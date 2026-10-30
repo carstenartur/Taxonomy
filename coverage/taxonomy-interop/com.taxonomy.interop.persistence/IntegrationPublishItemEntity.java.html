@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationPublishItemEntity.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.persistence</a> &gt; <span class="el_source">IntegrationPublishItemEntity.java</span></div><h1>IntegrationPublishItemEntity.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.persistence;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+/**
+ * Owned exclusively by the scoped IntegrationStore transaction.
+ */
+@Entity
+@Table(name = &quot;interop_publish_item&quot;, indexes = { @Index(name = &quot;ix_interop_publish_item_scope&quot;, columnList = &quot;scope_id,connection_id&quot;) }, uniqueConstraints = { @UniqueConstraint(name = &quot;uq_publish_item_key&quot;, columnNames = { &quot;operation_id&quot;, &quot;item_key&quot; }), @UniqueConstraint(name = &quot;uq_publish_item_ordinal&quot;, columnNames = { &quot;operation_id&quot;, &quot;item_ordinal&quot; }), @UniqueConstraint(name = &quot;uq_publish_item_idempotency&quot;, columnNames = { &quot;connection_id&quot;, &quot;idempotency_key&quot; }) })
+public class IntegrationPublishItemEntity {
+
+    @Id
+    @Column(name = &quot;id&quot;, nullable = false, length = 64)
+    String id;
+
+    @Column(name = &quot;scope_id&quot;, nullable = false, length = 64)
+    String scopeId;
+
+    @Column(name = &quot;connection_id&quot;, nullable = false, length = 36)
+    String connectionId;
+
+    @Column(name = &quot;operation_id&quot;, nullable = false, length = 36)
+    String operationId;
+
+    @Column(name = &quot;item_key&quot;, nullable = false, length = 64)
+    String itemKey;
+
+    @Column(name = &quot;item_ordinal&quot;, nullable = false)
+    int ordinal;
+
+    @Column(name = &quot;idempotency_key&quot;, nullable = false, length = 64)
+    String idempotencyKey;
+
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+    @Column(name = &quot;intent_json&quot;, nullable = false)
+    String intentJson;
+
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+    @Column(name = &quot;request_json&quot;)
+    String requestJson;
+
+    @Column(name = &quot;request_fingerprint&quot;, length = 64)
+    String requestFingerprint;
+
+    @Column(name = &quot;state&quot;, nullable = false, length = 32)
+    String state;
+
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+    @Column(name = &quot;receipt_json&quot;)
+    String receiptJson;
+
+    @Column(name = &quot;attempt_count&quot;, nullable = false)
+    int attemptCount;
+
+    @Column(name = &quot;resubmit_allowed&quot;, nullable = false)
+    boolean resubmitAllowed;
+
+    @Column(name = &quot;failure_code&quot;, length = 64)
+    String failureCode;
+
+    @Version
+    @Column(name = &quot;row_version&quot;, nullable = false)
+    long rowVersion;
+
+<span class="fc" id="L67">    protected IntegrationPublishItemEntity() {</span>
+<span class="fc" id="L68">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

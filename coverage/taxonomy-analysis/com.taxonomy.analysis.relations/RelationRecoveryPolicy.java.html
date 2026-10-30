@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationRecoveryPolicy.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.relations</a> &gt; <span class="el_source">RelationRecoveryPolicy.java</span></div><h1>RelationRecoveryPolicy.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.relations;
+
+import com.taxonomy.analysis.recovery.AnalysisCheckpointSession;
+import java.util.LinkedHashSet;
+import java.util.List;
+
+/** Proves the original resource-bearing identity without changing its semantic inputs. */
+public final class RelationRecoveryPolicy {
+    private static final String LEGACY_PREFIX = &quot;relation-downwalk-v8/source-call-reservation=half/relation-semantics-v2/relation-source-context-v1/provider-profiles/taxonomy-cohorts/custom-defaults=3,16000/&quot;;
+
+    private RelationRecoveryPolicy() { }
+
+    /** A zero cohort means the current policy has no historical source packing to restore. */
+<span class="fc" id="L14">    public record Compatible(String fingerprint, int sourceCohortSize) { }</span>
+
+    static Compatible compatible(String savedHash, String currentFingerprint, boolean enabled, int depth,
+            Integer batchOverride, Integer promptOverride, int configuredCalls, int configuredWork, int configuredSources) {
+<span class="pc bpc" id="L18" title="2 of 4 branches missed.">        if (savedHash == null || !savedHash.matches(&quot;[0-9a-f]{64}&quot;)) return null;</span>
+<span class="fc bfc" id="L19" title="All 2 branches covered.">        if (savedHash.equals(AnalysisCheckpointSession.digest(currentFingerprint)))</span>
+<span class="fc" id="L20">            return new Compatible(currentFingerprint, 0);</span>
+
+        // This bridge proves only the original v8 -&gt; v9 resource migration.
+        // A later semantic policy must never inherit answers through that migration.
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        if (!currentFingerprint.equals(legacyBridgeTarget(enabled, depth, batchOverride, promptOverride)))</span>
+<span class="fc" id="L25">            return null;</span>
+
+        // Old fingerprints did not retain separate settings. Enumerate only bounded
+        // call counts and known deployment/default packing; all semantics stay fixed.
+<span class="fc" id="L29">        var sources = new LinkedHashSet&lt;&gt;(List.of(32, configuredSources));</span>
+<span class="fc" id="L30">        var workItems = new LinkedHashSet&lt;&gt;(List.of(512, configuredWork));</span>
+<span class="fc" id="L31">        var preferredCalls = new LinkedHashSet&lt;&gt;(List.of(24, configuredCalls, 256));</span>
+<span class="fc bfc" id="L32" title="All 4 branches covered.">        for (int sourceCount : sources) for (int work : workItems) {</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">            for (int calls : preferredCalls) {</span>
+<span class="fc" id="L34">                String fingerprint = legacy(enabled, depth, batchOverride, promptOverride, calls, work, sourceCount);</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">                if (savedHash.equals(AnalysisCheckpointSession.digest(fingerprint)))</span>
+<span class="fc" id="L36">                    return new Compatible(fingerprint, sourceCount);</span>
+<span class="fc" id="L37">            }</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">            for (int calls = 0; calls &lt;= 10_000; calls++) {</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">                if (preferredCalls.contains(calls)) continue;</span>
+<span class="fc" id="L40">                String fingerprint = legacy(enabled, depth, batchOverride, promptOverride, calls, work, sourceCount);</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">                if (savedHash.equals(AnalysisCheckpointSession.digest(fingerprint)))</span>
+<span class="fc" id="L42">                    return new Compatible(fingerprint, sourceCount);</span>
+            }
+<span class="fc" id="L44">        }</span>
+<span class="fc" id="L45">        return null;</span>
+    }
+
+    /** Frozen target of the historical migration; do not follow future semantic policy changes. */
+    private static String legacyBridgeTarget(boolean enabled, int depth, Integer batchOverride, Integer promptOverride) {
+<span class="fc" id="L50">        return &quot;relation-downwalk-v9/source-call-reservation=half/relation-semantics-v2/relation-source-context-v1/provider-profiles/taxonomy-cohorts/custom-defaults=3,16000/&quot; + enabled</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">                + &quot;/max-depth=&quot; + depth + &quot;/standard-batch=&quot; + (batchOverride == null ? 10 : batchOverride)</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">                + &quot;/standard-prompt=&quot; + (promptOverride == null ? 120_000 : promptOverride)</span>
+                + &quot;/batch-override=&quot; + batchOverride + &quot;/prompt-override=&quot; + promptOverride;
+    }
+
+    private static String legacy(boolean enabled, int depth, Integer batchOverride, Integer promptOverride,
+            int calls, int work, int sources) {
+        // Spell the original three-field record representation explicitly: Options
+        // now has an execution budget field, which must not enter an old identity.
+<span class="fc" id="L60">        return LEGACY_PREFIX + enabled + &quot;/Options[limits=Limits[maxCalls=&quot; + calls + &quot;, maxDepth=&quot; + depth</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">                + &quot;, batchSize=&quot; + (batchOverride == null ? 10 : batchOverride) + &quot;, maxWorkItems=&quot; + work</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">                + &quot;], maxSources=&quot; + sources + &quot;, maxPromptCharacters=&quot; + (promptOverride == null ? 120_000 : promptOverride)</span>
+                + &quot;]/batch-override=&quot; + batchOverride + &quot;/prompt-override=&quot; + promptOverride;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

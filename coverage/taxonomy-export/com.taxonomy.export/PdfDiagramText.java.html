@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PdfDiagramText.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">PdfDiagramText.java</span></div><h1>PdfDiagramText.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import org.apache.pdfbox.pdmodel.font.PDFont;
+import java.io.IOException;
+import java.text.Normalizer;
+import java.util.ArrayList;
+import java.util.List;
+
+/** Measures the actual Standard-14 glyphs after transliteration, before choosing line breaks. */
+final class PdfDiagramText {
+    private PdfDiagramText() { }
+
+    static String printable(String value) {
+<span class="fc bfc" id="L14" title="All 4 branches covered.">        String text = value == null || value.isBlank() ? &quot;n/a&quot; : value.strip();</span>
+<span class="fc" id="L15">        text = text.replace(&quot;Ä&quot;, &quot;Ae&quot;).replace(&quot;Ö&quot;, &quot;Oe&quot;).replace(&quot;Ü&quot;, &quot;Ue&quot;)</span>
+<span class="fc" id="L16">                .replace(&quot;ä&quot;, &quot;ae&quot;).replace(&quot;ö&quot;, &quot;oe&quot;).replace(&quot;ü&quot;, &quot;ue&quot;).replace(&quot;ß&quot;, &quot;ss&quot;)</span>
+<span class="fc" id="L17">                .replace('–', '-').replace('—', '-').replace(&quot;…&quot;, &quot;...&quot;).replace('·', '|');</span>
+<span class="fc" id="L18">        return Normalizer.normalize(text, Normalizer.Form.NFD).replaceAll(&quot;\\p{M}+&quot;, &quot;&quot;)</span>
+<span class="fc" id="L19">                .replaceAll(&quot;[^\\x20-\\x7E]&quot;, &quot;?&quot;);</span>
+    }
+
+    static float width(PDFont font, float size, String printable) throws IOException {
+<span class="fc" id="L23">        return font.getStringWidth(printable) / 1000f * size;</span>
+    }
+
+    static List&lt;String&gt; wrap(String value, PDFont font, float size, float maximum, int limit) throws IOException {
+<span class="fc bfc" id="L27" title="All 6 branches covered.">        if (!(maximum &gt; 0) || !(size &gt; 0) || limit &lt; 1) throw new IllegalArgumentException(&quot;Invalid text bounds&quot;);</span>
+<span class="fc" id="L28">        String rest = printable(value);</span>
+<span class="fc" id="L29">        List&lt;String&gt; lines = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L30" title="1 of 2 branches missed.">        while (!rest.isEmpty()) {</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">            if (width(font, size, rest) &lt;= maximum) { lines.add(rest); break; }</span>
+<span class="fc" id="L32">            int end = fittingPrefix(rest, font, size, maximum);</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">            if (lines.size() + 1 == limit) {</span>
+<span class="fc" id="L34">                String ellipsis = &quot;...&quot;;</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">                if (width(font, size, ellipsis) &gt; maximum) throw new IllegalArgumentException(&quot;Box too narrow for readable text&quot;);</span>
+<span class="fc" id="L36">                end = fittingPrefix(rest, font, size, maximum - width(font, size, ellipsis));</span>
+<span class="fc" id="L37">                lines.add(rest.substring(0, end).stripTrailing() + ellipsis);</span>
+<span class="fc" id="L38">                break;</span>
+            }
+<span class="fc bfc" id="L40" title="All 2 branches covered.">            if (end == 0) throw new IllegalArgumentException(&quot;Box too narrow for readable text&quot;);</span>
+<span class="fc" id="L41">            int space = rest.lastIndexOf(' ', end);</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            if (space &gt; 0) end = space;</span>
+<span class="fc" id="L43">            lines.add(rest.substring(0, end).stripTrailing());</span>
+<span class="fc" id="L44">            rest = rest.substring(end).stripLeading();</span>
+<span class="fc" id="L45">        }</span>
+<span class="fc" id="L46">        return List.copyOf(lines);</span>
+    }
+
+    private static int fittingPrefix(String value, PDFont font, float size, float maximum) throws IOException {
+<span class="fc" id="L50">        int low = 0, high = value.length();</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        while (low &lt; high) {</span>
+<span class="fc" id="L52">            int middle = (low + high + 1) &gt;&gt;&gt; 1;</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">            if (width(font, size, value.substring(0, middle)) &lt;= maximum) low = middle;</span>
+<span class="fc" id="L54">            else high = middle - 1;</span>
+<span class="fc" id="L55">        }</span>
+<span class="fc" id="L56">        return low;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

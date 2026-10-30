@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RestorePlanStore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.restore</a> &gt; <span class="el_source">RestorePlanStore.java</span></div><h1>RestorePlanStore.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.restore;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.backup.archive.VerifiedBackup;
+import com.taxonomy.backup.runtime.BackupAuthorizationService;
+import com.taxonomy.identity.StableIdentityHash;
+import org.flywaydb.core.Flyway;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import javax.sql.DataSource;
+import java.io.*;
+import java.sql.*;
+import java.time.*;
+import java.util.*;
+
+/** Versioned private plans in a third physical database. No staging or source entity writes. */
+public final class RestorePlanStore {
+    private static final String HISTORY=&quot;restore_control_schema_history&quot;;
+    private final DataSource active,target,control;private final TargetDatabaseIdentity identity;private final BackupAuthorizationService authority;private final Clock clock;
+<span class="fc" id="L19">    private RestorePlanStore(DataSource active,DataSource target,DataSource control,TargetDatabaseIdentity identity,BackupAuthorizationService authority,Clock clock) {</span>
+<span class="fc" id="L20">        this.active=active;this.target=target;this.control=control;this.identity=identity;this.authority=authority;this.clock=clock;</span>
+<span class="fc" id="L21">    }</span>
+    public static RestorePlanStore open(DataSource active,DataSource target,DataSource control,BackupAuthorizationService authority,Clock clock)throws IOException {
+<span class="fc" id="L23">        var identity=TargetDatabaseIdentity.proveIsolated(active,control,()-&gt;{});</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        if(identity.destinationFingerprint().equals(TargetDatabaseIdentity.inspect(target,()-&gt;{}).destinationFingerprint()))throw new IOException(&quot;Restore control database is not isolated from staging&quot;);</span>
+<span class="fc" id="L25">        try(var connection=control.getConnection()) {</span>
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">            if(!identity.equals(TargetDatabaseIdentity.inspectConnection(connection)))throw new IOException(&quot;Restore control database binding changed&quot;);</span>
+<span class="fc" id="L27">            requireControlIsolation(active,target,connection);</span>
+<span class="fc" id="L28">            var pinned=new SingleConnectionDataSource(connection,true);var evidence=TargetSchemaEvidence.inspect(pinned,()-&gt;{});</span>
+<span class="fc" id="L29">            var expected=Set.of(HISTORY,&quot;RESTORE_CONTROL_PLAN&quot;,&quot;RESTORE_CONTROL_GENERATION&quot;);</span>
+<span class="pc bpc" id="L30" title="1 of 4 branches missed.">            if(!evidence.tableNames().isEmpty()&amp;&amp;!evidence.tableNames().equals(expected))throw new IOException(&quot;Restore control schema is not a supported private store&quot;);</span>
+<span class="fc" id="L31">            connection.setReadOnly(false);connection.setAutoCommit(true);</span>
+<span class="fc" id="L32">            var migrations=Flyway.configure().dataSource(pinned).table(HISTORY).locations(&quot;classpath:db/restore-control/hsqldb&quot;).baselineOnMigrate(false).load();</span>
+<span class="fc" id="L33">            migrations.migrate();migrations.validate();var applied=migrations.info().applied();</span>
+<span class="pc bpc" id="L34" title="2 of 4 branches missed.">            if(applied.length!=1||!&quot;1&quot;.equals(applied[0].getVersion().toString()))throw new IOException(&quot;Restore control schema validation failed&quot;);</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">            if(!TargetSchemaEvidence.inspect(pinned,()-&gt;{}).tableNames().equals(expected))throw new IOException(&quot;Restore control schema validation failed&quot;);</span>
+<span class="fc" id="L36">            return new RestorePlanStore(active,target,control,identity,Objects.requireNonNull(authority),Objects.requireNonNull(clock));</span>
+<span class="nc" id="L37">        } catch(SQLException|RuntimeException failure){throw new IOException(&quot;Restore control schema migration failed&quot;);}</span>
+    }
+    public void save(RestorePlan plan,PrincipalId actor,BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L40">        requireActor(plan,actor);requireLive(plan);checkpoint.check();</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        if(!plan.targetIdentity().equals(TargetDatabaseIdentity.proveIsolated(active,target,checkpoint))</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">                ||!plan.targetSchemaSha256().equals(TargetSchemaEvidence.inspect(target,checkpoint).schemaSha256()))throw new IOException(&quot;Restore plan target proof changed&quot;);</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">        if(identity.destinationFingerprint().equals(plan.targetIdentity().destinationFingerprint()))throw new IOException(&quot;Restore control database is not isolated from staging&quot;);</span>
+<span class="fc" id="L44">        String json=RestorePlanCodec.encode(plan),sha=plan.sha256();</span>
+<span class="fc" id="L45">        try(var connection=connection()) {</span>
+<span class="fc" id="L46">            connection.setAutoCommit(false);connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);</span>
+<span class="fc" id="L47">            try(var rollback=new Rollback(connection)) {</span>
+<span class="fc" id="L48">                var old=read(connection,plan.planId(),actor,checkpoint);</span>
+<span class="pc bpc" id="L49" title="1 of 4 branches missed.">                if(old!=null){if(!old.plan().equals(plan))throw new IOException(&quot;Restore plan identity is already bound to another payload&quot;);return;}</span>
+<span class="fc" id="L50">                update(connection,&quot;insert into restore_control_plan(plan_id,actor_principal,plan_sha256,plan_json,created_at,expires_at,approval_state,approved_sha256,row_version) values(?,?,?,?,?,?,'DRAFT',null,0)&quot;,</span>
+<span class="fc" id="L51">                        plan.planId().toString(),actor.value().toString(),sha,json,plan.createdAt(),plan.expiresAt());</span>
+<span class="fc" id="L52">                update(connection,&quot;insert into restore_control_generation(target_database_sha256,generation_id,plan_id) values(?,?,?)&quot;,plan.targetIdentity().destinationFingerprint(),plan.generationId().toString(),plan.planId().toString());</span>
+<span class="fc" id="L53">                checkpoint.check();requireControlIsolation(active,target,connection);connection.commit();rollback.committed=true;checkpoint.check();</span>
+<span class="fc" id="L54">            }</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">        } catch(InterruptedIOException cancelled){Thread.currentThread().interrupt();throw cancelled;}</span>
+<span class="fc" id="L56">        catch(SQLException|RuntimeException failure){throw new IOException(&quot;Restore plan persistence failed&quot;);}</span>
+<span class="fc" id="L57">    }</span>
+    public RestorePlan load(UUID planId,PrincipalId actor,BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L59">        requireAuthority(actor);checkpoint.check();</span>
+<span class="fc" id="L60">        try(var connection=connection()) {</span>
+<span class="fc" id="L61">            connection.setReadOnly(true);connection.setAutoCommit(false);</span>
+<span class="fc" id="L62">            try(var rollback=new Rollback(connection)) {</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">                var row=read(connection,planId,actor,checkpoint);if(row==null)throw new IOException(&quot;Restore plan is unavailable&quot;);</span>
+<span class="fc" id="L64">                requireActor(row.plan(),actor);requireLive(row.plan());checkpoint.check();return row.plan();</span>
+            }
+<span class="nc" id="L66">        } catch(InterruptedIOException cancelled){Thread.currentThread().interrupt();throw cancelled;}</span>
+<span class="nc" id="L67">        catch(SQLException|RuntimeException failure){throw new IOException(&quot;Restore plan access failed&quot;);}</span>
+    }
+    public void approve(UUID planId,PrincipalId actor,String expectedSha,VerifiedBackup archive,DataSource active,DataSource target,
+                        RestorePlanner planner,BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L71">        var plan=load(planId,actor,checkpoint);planner.requireAuthority(actor);</span>
+<span class="pc bpc" id="L72" title="2 of 4 branches missed.">        if(!plan.sha256().equals(expectedSha)||!plan.archiveSha256().equals(archive.archiveSha256()))throw new IOException(&quot;Restore approval payload proof changed&quot;);</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">        if(!plan.targetIdentity().equals(TargetDatabaseIdentity.proveIsolated(active,target,checkpoint))</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">                ||!plan.targetSchemaSha256().equals(TargetSchemaEvidence.inspect(target,checkpoint).schemaSha256()))throw new IOException(&quot;Restore approval target proof changed&quot;);</span>
+        // Closed registry refuses before any approval update. Concrete owner/matrix composition must replace it.
+<span class="nc" id="L76">        planner.requireSupported(plan);</span>
+<span class="nc" id="L77">        try(var connection=connection()) {</span>
+<span class="nc" id="L78">            connection.setAutoCommit(false);connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);</span>
+<span class="nc" id="L79">            try(var rollback=new Rollback(connection)) {</span>
+<span class="nc bnc" id="L80" title="All 4 branches missed.">                var row=read(connection,planId,actor,checkpoint);if(row==null||!row.plan().equals(plan))throw new IOException(&quot;Restore approval payload proof changed&quot;);</span>
+<span class="nc" id="L81">                requireLive(row.plan());requireAuthority(actor);checkpoint.check();</span>
+<span class="nc" id="L82">                update(connection,&quot;update restore_control_plan set approval_state='APPROVED',approved_sha256=?,row_version=row_version+1 where plan_id=? and actor_principal=? and plan_sha256=? and row_version=? and approval_state='DRAFT'&quot;,</span>
+<span class="nc" id="L83">                        expectedSha,planId.toString(),actor.value().toString(),expectedSha,row.version());</span>
+<span class="nc" id="L84">                checkpoint.check();requireControlIsolation(active,target,connection);connection.commit();rollback.committed=true;checkpoint.check();</span>
+            }
+<span class="nc" id="L86">        } catch(InterruptedIOException cancelled){Thread.currentThread().interrupt();throw cancelled;}</span>
+<span class="nc" id="L87">        catch(SQLException|RuntimeException failure){throw new IOException(&quot;Restore approval failed&quot;);}</span>
+<span class="nc" id="L88">    }</span>
+    private Connection connection()throws SQLException,IOException {
+<span class="fc" id="L90">        var connection=control.getConnection();</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        try{if(!identity.equals(TargetDatabaseIdentity.inspectConnection(connection)))throw new IOException(&quot;Restore control database binding changed&quot;);requireControlIsolation(active,target,connection);return connection;}</span>
+<span class="pc" id="L92">        catch(IOException|SQLException|RuntimeException failure){try{connection.close();}catch(SQLException cleanup){failure.addSuppressed(cleanup);}throw failure;}</span>
+    }
+    private Row read(Connection connection,UUID planId,PrincipalId actor,BackupCheckpoint checkpoint)throws SQLException,IOException {
+<span class="fc" id="L95">        try(var statement=statement(connection,&quot;select plan_sha256,plan_json,created_at,expires_at,approval_state,approved_sha256,row_version from restore_control_plan where plan_id=? and actor_principal=?&quot;)) {</span>
+<span class="fc" id="L96">            statement.setString(1,planId.toString());statement.setString(2,actor.value().toString());checkpoint.check();</span>
+<span class="fc" id="L97">            try(var rows=statement.executeQuery()) {</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                if(!rows.next())return null;String sha=rows.getString(1),json=bounded(rows.getCharacterStream(2),checkpoint);var plan=RestorePlanCodec.decode(json);</span>
+<span class="pc bpc" id="L99" title="3 of 8 branches missed.">                if(!StableIdentityHash.sha256(json).equals(sha)||!plan.sha256().equals(sha)||!plan.planId().equals(planId)||!plan.actor().equals(actor)</span>
+<span class="pc bpc" id="L100" title="2 of 4 branches missed.">                        ||!plan.createdAt().equals(rows.getString(3))||!plan.expiresAt().equals(rows.getString(4)))throw new IOException(&quot;Restore plan payload proof changed&quot;);</span>
+<span class="fc" id="L101">                String state=rows.getString(5),approved=rows.getString(6);long version=rows.getLong(7);</span>
+<span class="pc bpc" id="L102" title="11 of 14 branches missed.">                if(version&lt;0||!(state.equals(&quot;DRAFT&quot;)&amp;&amp;approved==null||state.equals(&quot;APPROVED&quot;)&amp;&amp;sha.equals(approved)||state.equals(&quot;REVOKED&quot;)&amp;&amp;approved==null))throw new IOException(&quot;Restore plan approval proof changed&quot;);</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">                if(rows.next())throw new IOException(&quot;Restore plan inventory proof changed&quot;);</span>
+<span class="fc" id="L104">                try(var binding=statement(connection,&quot;select generation_id,plan_id from restore_control_generation where target_database_sha256=?&quot;)) {</span>
+<span class="fc" id="L105">                    binding.setString(1,plan.targetIdentity().destinationFingerprint());</span>
+<span class="fc" id="L106">                    try(var allocation=binding.executeQuery()) {</span>
+<span class="pc bpc" id="L107" title="4 of 8 branches missed.">                        if(!allocation.next()||!plan.generationId().toString().equals(allocation.getString(1))||!planId.toString().equals(allocation.getString(2))||allocation.next())throw new IOException(&quot;Restore plan generation proof changed&quot;);</span>
+                    }
+                }
+<span class="fc" id="L110">                checkpoint.check();return new Row(plan,state,version);</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">            }</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">        }</span>
+    }
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">    private void requireActor(RestorePlan plan,PrincipalId actor){requireAuthority(actor);if(!plan.actor().equals(actor))throw new org.springframework.security.access.AccessDeniedException(&quot;Restore plan access denied&quot;);}</span>
+<span class="fc" id="L115">    private void requireAuthority(PrincipalId actor){authority.require(actor,BackupCapability.RESTORE_INSTALLATION,new BackupScope.Installation());}</span>
+    private void requireLive(RestorePlan plan)throws IOException {
+<span class="pc bpc" id="L117" title="1 of 4 branches missed.">        Instant now=clock.instant();if(now.isBefore(Instant.parse(plan.createdAt()))||!now.isBefore(Instant.parse(plan.expiresAt())))throw new IOException(&quot;Restore plan has expired or its clock binding is invalid&quot;);</span>
+<span class="fc" id="L118">    }</span>
+<span class="fc" id="L119">    private static PreparedStatement statement(Connection connection,String sql)throws SQLException {var statement=connection.prepareStatement(sql);statement.setMaxRows(2);statement.setQueryTimeout(60);return statement;}</span>
+    private void update(Connection connection,String sql,Object...values)throws SQLException,IOException {
+<span class="pc bpc" id="L121" title="1 of 4 branches missed.">        try(var statement=statement(connection,sql)){for(int index=0;index&lt;values.length;index++)statement.setObject(index+1,values[index]);requireControlIsolation(active,target,connection);if(statement.executeUpdate()!=1)throw new SQLException(&quot;Changed restore plan version&quot;);}</span>
+<span class="fc" id="L122">    }</span>
+    private static void requireControlIsolation(DataSource active,DataSource target,Connection control)throws SQLException,IOException {
+<span class="fc" id="L124">        String actual=TargetDatabaseIdentity.inspectConnection(control).destinationFingerprint();</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        if(actual.equals(TargetDatabaseIdentity.inspect(active,()-&gt;{}).destinationFingerprint())</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">                ||actual.equals(TargetDatabaseIdentity.inspect(target,()-&gt;{}).destinationFingerprint()))throw new IOException(&quot;Restore control database is not isolated from active or staging&quot;);</span>
+<span class="fc" id="L127">    }</span>
+    private static String bounded(Reader reader,BackupCheckpoint checkpoint)throws IOException {
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        if(reader==null)throw new IOException(&quot;Restore plan payload proof is missing&quot;);</span>
+<span class="fc" id="L130">        try(reader) {</span>
+<span class="fc" id="L131">            var result=new StringBuilder();int bytes=0,pendingHigh=0;</span>
+            for(;;) {
+<span class="fc bfc" id="L133" title="All 2 branches covered.">                if((result.length()&amp;4095)==0)checkpoint.check();int value=reader.read();</span>
+<span class="pc bpc" id="L134" title="2 of 6 branches missed.">                if(value&lt;0){if(pendingHigh!=0)bytes+=3;if(bytes&gt;RestorePlanCodec.MAX_BYTES)throw budget();return result.toString();}</span>
+<span class="fc" id="L135">                char character=(char)value;</span>
+<span class="pc bpc" id="L136" title="7 of 8 branches missed.">                if(pendingHigh!=0){if(Character.isLowSurrogate(character)){bytes+=4;pendingHigh=0;}else{bytes+=3;pendingHigh=0;bytes+=character&lt;=127?1:character&lt;=2047?2:3;}}</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">                else if(Character.isHighSurrogate(character))pendingHigh=character;</span>
+<span class="pc bpc" id="L138" title="3 of 4 branches missed.">                else bytes+=character&lt;=127?1:character&lt;=2047?2:3;</span>
+<span class="pc bpc" id="L139" title="2 of 4 branches missed.">                if(bytes&gt;RestorePlanCodec.MAX_BYTES||result.length()&gt;=RestorePlanCodec.MAX_BYTES)throw budget();result.append(character);</span>
+<span class="fc" id="L140">            }</span>
+        }
+    }
+<span class="nc" id="L143">    private static IOException budget(){return new IOException(&quot;Restore plan payload proof exceeds its budget&quot;);}</span>
+<span class="fc" id="L144">    private record Row(RestorePlan plan,String state,long version) { }</span>
+    private static final class Rollback implements AutoCloseable {
+<span class="fc" id="L146">        private final Connection connection;boolean committed;Rollback(Connection connection){this.connection=connection;}</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        @Override public void close()throws SQLException{if(!committed)connection.rollback();}</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

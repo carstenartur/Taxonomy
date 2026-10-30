@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ZipDirectoryBounds.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.archive</a> &gt; <span class="el_source">ZipDirectoryBounds.java</span></div><h1>ZipDirectoryBounds.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.archive;
+
+import java.io.IOException;
+import java.nio.*;
+import java.nio.channels.SeekableByteChannel;
+import java.nio.charset.*;
+
+/** Bounds the directory before Commons Compress allocates its entry index. Single-disk, no archive comment. */
+final class ZipDirectoryBounds {
+<span class="fc" id="L10">    record Directory(long offset, long entries) { }</span>
+    private ZipDirectoryBounds() { }
+
+    static Directory inspect(SeekableByteChannel channel, ArchiveLimits limits, ArchiveIO.Guard guard) throws IOException {
+<span class="fc" id="L14">        long size = channel.size();</span>
+<span class="pc bpc" id="L15" title="2 of 4 branches missed.">        if (size &lt; 22 || size &gt; limits.maxArchiveBytes()) throw new IOException(&quot;Archive size limit or structure invalid&quot;);</span>
+<span class="fc" id="L16">        ByteBuffer end = read(channel, size - 22, 22);</span>
+<span class="pc bpc" id="L17" title="3 of 6 branches missed.">        if (end.getInt() != 0x06054b50 || u16(end) != 0 || u16(end) != 0) throw invalid();</span>
+<span class="fc" id="L18">        int diskCount = u16(end), count = u16(end);</span>
+<span class="fc" id="L19">        long length = u32(end), offset = u32(end), boundary = size - 22;</span>
+<span class="pc bpc" id="L20" title="1 of 4 branches missed.">        if (u16(end) != 0 || diskCount != count) throw invalid();</span>
+<span class="fc" id="L21">        long entries = count;</span>
+<span class="pc bpc" id="L22" title="1 of 4 branches missed.">        if (size &gt;= 42 &amp;&amp; read(channel, size - 42, 4).getInt() == 0x07064b50) {</span>
+<span class="fc" id="L23">            ByteBuffer locator = read(channel, size - 42, 20); locator.getInt();</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">            if (locator.getInt() != 0) throw invalid();</span>
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">            long recordOffset = locator.getLong(); if (locator.getInt() != 1) throw invalid();</span>
+<span class="fc" id="L26">            ByteBuffer zip64 = read(channel, recordOffset, 56);</span>
+<span class="pc bpc" id="L27" title="3 of 6 branches missed.">            if (recordOffset != size - 98 || zip64.getInt() != 0x06064b50 || zip64.getLong() != 44) throw invalid();</span>
+<span class="fc" id="L28">            zip64.getShort(); zip64.getShort();</span>
+<span class="pc bpc" id="L29" title="2 of 4 branches missed.">            if (zip64.getInt() != 0 || zip64.getInt() != 0) throw invalid();</span>
+<span class="fc" id="L30">            long localEntries = zip64.getLong(); entries = zip64.getLong();</span>
+<span class="fc" id="L31">            length = zip64.getLong(); offset = zip64.getLong(); boundary = recordOffset;</span>
+<span class="pc bpc" id="L32" title="3 of 6 branches missed.">            if (localEntries != entries || (count != 65535 &amp;&amp; count != entries)) throw invalid();</span>
+<span class="pc bpc" id="L33" title="3 of 6 branches missed.">        } else if (count == 65535 || length == 0xffffffffL || offset == 0xffffffffL) throw invalid();</span>
+<span class="pc bpc" id="L34" title="7 of 14 branches missed.">        if (entries &lt; 1 || entries &gt; limits.maxEntries() + 1L || length &lt; 46 * entries</span>
+                || length &gt; entries * (46L + 2048 + 128) || offset &lt; 0 || length &gt; boundary || offset != boundary - length)
+<span class="nc" id="L36">            throw new IOException(&quot;Archive directory limit or structure invalid&quot;);</span>
+<span class="fc" id="L37">        long cursor = offset;</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        for (long n = 0; n &lt; entries; n++) {</span>
+<span class="fc" id="L39">            guard.check(); ByteBuffer header = read(channel, cursor, 46);</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">            if (header.getInt() != 0x02014b50) throw invalid();</span>
+<span class="fc" id="L41">            header.position(28); int name = u16(header), extra = u16(header), comment = u16(header), disk = u16(header);</span>
+<span class="pc bpc" id="L42" title="6 of 12 branches missed.">            if (name &lt; 1 || name &gt; 2048 || extra &gt; 128 || comment != 0 || disk != 0 || cursor &gt; boundary - 46L - name - extra)</span>
+<span class="nc" id="L43">                throw new IOException(&quot;Archive entry metadata limit exceeded&quot;);</span>
+            // Replacement decoding must never turn two invalid byte sequences into the same path.
+<span class="fc" id="L45">            try { StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)</span>
+<span class="fc" id="L46">                    .onUnmappableCharacter(CodingErrorAction.REPORT).decode(read(channel, cursor + 46, name)); }</span>
+<span class="pc" id="L47">            catch (CharacterCodingException failure) { throw invalid(); }</span>
+<span class="fc" id="L48">            cursor += 46L + name + extra;</span>
+        }
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">        if (cursor != boundary) throw invalid();</span>
+<span class="fc" id="L51">        channel.position(0); return new Directory(offset, entries);</span>
+    }
+    static ByteBuffer read(SeekableByteChannel channel, long offset, int length) throws IOException {
+<span class="pc bpc" id="L54" title="2 of 4 branches missed.">        if (offset &lt; 0 || offset &gt; channel.size() - length) throw invalid();</span>
+<span class="fc" id="L55">        ByteBuffer bytes = ByteBuffer.allocate(length).order(ByteOrder.LITTLE_ENDIAN); channel.position(offset);</span>
+<span class="pc bpc" id="L56" title="1 of 4 branches missed.">        while (bytes.hasRemaining()) if (channel.read(bytes) &lt; 0) throw invalid();</span>
+<span class="fc" id="L57">        return bytes.flip();</span>
+    }
+<span class="fc" id="L59">    static int u16(ByteBuffer value) { return Short.toUnsignedInt(value.getShort()); }</span>
+<span class="fc" id="L60">    static long u32(ByteBuffer value) { return Integer.toUnsignedLong(value.getInt()); }</span>
+<span class="fc" id="L61">    static IOException invalid() { return new IOException(&quot;Invalid or unsupported ZIP structure&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

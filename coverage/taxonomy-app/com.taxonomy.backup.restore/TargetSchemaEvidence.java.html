@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TargetSchemaEvidence.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.restore</a> &gt; <span class="el_source">TargetSchemaEvidence.java</span></div><h1>TargetSchemaEvidence.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.restore;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.identity.StableIdentityHash;
+import javax.sql.DataSource;
+import java.io.*;
+import java.sql.*;
+import java.util.*;
+
+/** Read-only target evidence: structural changes and any existing row invalidate an empty-target plan. */
+public record TargetSchemaEvidence(String schemaSha256, Set&lt;String&gt; tableNames, boolean populated) {
+<span class="fc" id="L12">    public TargetSchemaEvidence {</span>
+<span class="pc bpc" id="L13" title="2 of 4 branches missed.">        if (schemaSha256 == null || !schemaSha256.matches(&quot;[0-9a-f]{64}&quot;)) throw new IllegalArgumentException(&quot;Invalid target schema proof&quot;);</span>
+<span class="fc" id="L14">        tableNames = Set.copyOf(tableNames);</span>
+<span class="pc bpc" id="L15" title="1 of 2 branches missed.">        if (tableNames.size() &gt; BackupLimits.MAX_ITEMS) throw new IllegalArgumentException(&quot;Too many target tables&quot;);</span>
+<span class="fc" id="L16">        tableNames.forEach(TargetSchemaEvidence::identifier);</span>
+<span class="fc" id="L17">    }</span>
+
+    public static TargetSchemaEvidence inspect(DataSource database, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L21">            checkpoint.check();</span>
+<span class="fc" id="L22">            try (var connection = database.getConnection()) {</span>
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">                if (SourceDatabaseFamily.fromProductName(connection.getMetaData().getDatabaseProductName()) != SourceDatabaseFamily.HSQLDB)</span>
+<span class="nc" id="L24">                    throw new IOException(&quot;Target schema proof is unsupported for this database family&quot;);</span>
+<span class="fc" id="L25">                connection.setReadOnly(true); connection.setAutoCommit(false);</span>
+<span class="fc" id="L26">                try (Rollback rollback = new Rollback(connection)) {</span>
+<span class="fc" id="L27">                    var metadata = connection.getMetaData(); String catalog = connection.getCatalog(), schema = connection.getSchema();</span>
+<span class="fc" id="L28">                    var tables = new TreeSet&lt;String&gt;();</span>
+<span class="fc" id="L29">                    try (var rows = metadata.getTables(catalog, schema, &quot;%&quot;, new String[]{&quot;TABLE&quot;, &quot;VIEW&quot;})) {</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">                        while (rows.next()) {</span>
+<span class="fc" id="L31">                            checkpoint.check();</span>
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">                            if (!&quot;TABLE&quot;.equals(rows.getString(&quot;TABLE_TYPE&quot;))) throw new IOException(&quot;Restore target contains unsupported schema objects&quot;);</span>
+<span class="fc" id="L33">                            tables.add(identifier(rows.getString(&quot;TABLE_NAME&quot;)));</span>
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">                            if (tables.size() &gt; BackupLimits.MAX_ITEMS) throw new IOException(&quot;Target schema inventory limit exceeded&quot;);</span>
+                        }
+                    }
+<span class="fc" id="L37">                    try (var statement = connection.prepareStatement(&quot;select trigger_name from information_schema.triggers where trigger_schema=?&quot;)) {</span>
+<span class="fc" id="L38">                        statement.setString(1, schema); statement.setMaxRows(1); statement.setQueryTimeout(60); checkpoint.check();</span>
+<span class="fc" id="L39">                        try (var rows = statement.executeQuery()) {</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">                            if (rows.next()) throw new IOException(&quot;Restore target contains unsupported schema objects&quot;);</span>
+<span class="fc" id="L41">                            checkpoint.check();</span>
+                        }
+                    }
+<span class="fc" id="L44">                    var canonical = new StringBuilder(); boolean populated = false; int columns = 0, indexes = 0;</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">                    for (String table : tables) {</span>
+<span class="fc" id="L46">                        checkpoint.check(); append(canonical, &quot;table&quot;, table);</span>
+<span class="fc" id="L47">                        var definitions = new TreeMap&lt;Integer, String&gt;();</span>
+<span class="fc" id="L48">                        try (var rows = metadata.getColumns(catalog, schema, table, &quot;%&quot;)) {</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">                            while (rows.next()) {</span>
+<span class="fc" id="L50">                                checkpoint.check();</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">                                if (!table.equals(rows.getString(&quot;TABLE_NAME&quot;))) continue;</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">                                if (++columns &gt; BackupLimits.MAX_ITEMS) throw new IOException(&quot;Target schema inventory limit exceeded&quot;);</span>
+<span class="fc" id="L53">                                int ordinal = rows.getInt(&quot;ORDINAL_POSITION&quot;);</span>
+<span class="fc" id="L54">                                String definition = identifier(rows.getString(&quot;COLUMN_NAME&quot;)) + &quot;:&quot; + rows.getInt(&quot;DATA_TYPE&quot;)</span>
+<span class="fc" id="L55">                                        + &quot;:&quot; + rows.getInt(&quot;COLUMN_SIZE&quot;) + &quot;:&quot; + rows.getInt(&quot;DECIMAL_DIGITS&quot;) + &quot;:&quot; + rows.getInt(&quot;NULLABLE&quot;)</span>
+<span class="fc" id="L56">                                        + &quot;:&quot; + Objects.toString(rows.getString(&quot;COLUMN_DEF&quot;), &quot;&lt;null&gt;&quot;)</span>
+<span class="fc" id="L57">                                        + &quot;:&quot; + rows.getString(&quot;IS_AUTOINCREMENT&quot;) + &quot;:&quot; + rows.getString(&quot;IS_GENERATEDCOLUMN&quot;);</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">                                if (definition.length() &gt; 2048) throw new IOException(&quot;Target schema evidence limit exceeded&quot;);</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">                                if (definitions.put(ordinal, definition) != null) throw new IOException(&quot;Ambiguous target schema inventory&quot;);</span>
+<span class="fc" id="L60">                            }</span>
+                        }
+<span class="fc bfc" id="L62" title="All 2 branches covered.">                        for (var column : definitions.entrySet()) append(canonical, &quot;column:&quot; + column.getKey(), column.getValue());</span>
+<span class="fc" id="L63">                        var indexDefinitions = new TreeSet&lt;String&gt;();</span>
+<span class="fc" id="L64">                        try (var rows = metadata.getIndexInfo(catalog, schema, table, false, false)) {</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                            while (rows.next()) {</span>
+<span class="fc" id="L66">                                checkpoint.check(); String name = rows.getString(&quot;INDEX_NAME&quot;);</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">                                if (name == null) continue;</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">                                if (++indexes &gt; BackupLimits.MAX_ITEMS) throw new IOException(&quot;Target schema inventory limit exceeded&quot;);</span>
+<span class="fc" id="L69">                                indexDefinitions.add(identifier(name) + &quot;:&quot; + rows.getBoolean(&quot;NON_UNIQUE&quot;) + &quot;:&quot;</span>
+<span class="fc" id="L70">                                        + rows.getInt(&quot;ORDINAL_POSITION&quot;) + &quot;:&quot; + identifier(rows.getString(&quot;COLUMN_NAME&quot;)));</span>
+<span class="fc" id="L71">                            }</span>
+                        }
+<span class="fc bfc" id="L73" title="All 2 branches covered.">                        for (String index : indexDefinitions) append(canonical, &quot;index&quot;, index);</span>
+<span class="fc" id="L74">                        var foreignKeys = new TreeSet&lt;String&gt;();</span>
+<span class="fc" id="L75">                        try (var rows = metadata.getImportedKeys(catalog, schema, table)) {</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">                            while (rows.next()) {</span>
+<span class="fc" id="L77">                                checkpoint.check();</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">                                if (++indexes &gt; BackupLimits.MAX_ITEMS) throw new IOException(&quot;Target schema inventory limit exceeded&quot;);</span>
+<span class="fc" id="L79">                                foreignKeys.add(Objects.toString(rows.getString(&quot;FK_NAME&quot;), &quot;&lt;unnamed&gt;&quot;) + &quot;:&quot; + rows.getInt(&quot;KEY_SEQ&quot;)</span>
+<span class="fc" id="L80">                                        + &quot;:&quot; + identifier(rows.getString(&quot;FKCOLUMN_NAME&quot;)) + &quot;:&quot; + identifier(rows.getString(&quot;PKTABLE_SCHEM&quot;))</span>
+<span class="fc" id="L81">                                        + &quot;:&quot; + identifier(rows.getString(&quot;PKTABLE_NAME&quot;)) + &quot;:&quot; + identifier(rows.getString(&quot;PKCOLUMN_NAME&quot;))</span>
+<span class="fc" id="L82">                                        + &quot;:&quot; + rows.getInt(&quot;UPDATE_RULE&quot;) + &quot;:&quot; + rows.getInt(&quot;DELETE_RULE&quot;) + &quot;:&quot; + rows.getInt(&quot;DEFERRABILITY&quot;));</span>
+                            }
+                        }
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                        for (String foreignKey : foreignKeys) append(canonical, &quot;foreign-key&quot;, foreignKey);</span>
+<span class="fc" id="L86">                        try (var statement = connection.prepareStatement(&quot;select c.constraint_name,c.check_clause from information_schema.check_constraints c&quot;</span>
+                                + &quot; join information_schema.table_constraints t on t.constraint_catalog=c.constraint_catalog&quot;
+                                + &quot; and t.constraint_schema=c.constraint_schema and t.constraint_name=c.constraint_name&quot;
+                                + &quot; where t.table_schema=? and t.table_name=? order by c.constraint_name&quot;)) {
+<span class="fc" id="L90">                            statement.setString(1, schema); statement.setString(2, table);</span>
+<span class="fc" id="L91">                            statement.setMaxRows(BackupLimits.MAX_ITEMS + 1); statement.setQueryTimeout(60); checkpoint.check();</span>
+<span class="fc" id="L92">                            try (var rows = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">                                while (rows.next()) {</span>
+<span class="fc" id="L94">                                    checkpoint.check();</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                                    if (++indexes &gt; BackupLimits.MAX_ITEMS) throw new IOException(&quot;Target schema inventory limit exceeded&quot;);</span>
+<span class="fc" id="L96">                                    String clause = rows.getString(2);</span>
+<span class="pc bpc" id="L97" title="2 of 4 branches missed.">                                    if (clause == null || clause.length() &gt; 8192) throw new IOException(&quot;Target schema evidence limit exceeded&quot;);</span>
+<span class="fc" id="L98">                                    append(canonical, &quot;check:&quot; + identifier(rows.getString(1)), clause);</span>
+<span class="fc" id="L99">                                }</span>
+                            }
+                        }
+                        boolean hasRows;
+<span class="fc" id="L103">                        try (var statement = connection.prepareStatement(&quot;select 1 from &quot;</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">                                + (schema == null ? &quot;&quot; : quote(schema) + &quot;.&quot;) + quote(table))) {</span>
+<span class="fc" id="L105">                            statement.setMaxRows(1); statement.setQueryTimeout(60); checkpoint.check();</span>
+<span class="fc" id="L106">                            try (var rows = statement.executeQuery()) { hasRows = rows.next(); checkpoint.check(); }</span>
+                        }
+<span class="fc" id="L108">                        populated |= hasRows; append(canonical, &quot;populated&quot;, Boolean.toString(hasRows));</span>
+<span class="fc" id="L109">                    }</span>
+<span class="fc" id="L110">                    checkpoint.check(); return new TargetSchemaEvidence(StableIdentityHash.sha256(canonical.toString()), tables, populated);</span>
+                }
+            }
+<span class="fc" id="L113">        } catch (InterruptedIOException cancelled) {</span>
+<span class="fc" id="L114">            Thread.currentThread().interrupt(); throw new InterruptedIOException(&quot;Restore target schema inspection was cancelled&quot;);</span>
+<span class="nc" id="L115">        } catch (SQLException | IllegalArgumentException invalid) { throw new IOException(&quot;Restore target schema inspection failed&quot;); }</span>
+    }
+
+    private static void append(StringBuilder result, String key, String value) throws IOException {
+<span class="fc" id="L119">        result.append(key.length()).append(':').append(key).append(value.length()).append(':').append(value).append('\n');</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">        if (result.length() &gt; BackupLimits.MAX_MANIFEST_BYTES) throw new IOException(&quot;Target schema evidence limit exceeded&quot;);</span>
+<span class="fc" id="L121">    }</span>
+    private static String identifier(String value) {
+<span class="pc bpc" id="L123" title="4 of 8 branches missed.">        if (value == null || value.isBlank() || value.length() &gt; BackupLimits.MAX_TEXT_LENGTH || value.chars().anyMatch(Character::isISOControl))</span>
+<span class="nc" id="L124">            throw new IllegalArgumentException(&quot;Invalid target schema identifier&quot;);</span>
+<span class="fc" id="L125">        return value;</span>
+    }
+<span class="fc" id="L127">    private static String quote(String value) { return '&quot;' + identifier(value).replace(&quot;\&quot;&quot;, &quot;\&quot;\&quot;&quot;) + '&quot;'; }</span>
+<span class="fc" id="L128">    private record Rollback(Connection connection) implements AutoCloseable {</span>
+<span class="fc" id="L129">        @Override public void close() throws SQLException { connection.rollback(); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

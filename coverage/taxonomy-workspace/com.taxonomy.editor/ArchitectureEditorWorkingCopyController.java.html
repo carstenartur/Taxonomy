@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureEditorWorkingCopyController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.editor</a> &gt; <span class="el_source">ArchitectureEditorWorkingCopyController.java</span></div><h1>ArchitectureEditorWorkingCopyController.java</h1><pre class="source lang-java linenums">package com.taxonomy.editor;
+
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
+import com.taxonomy.workspace.service.RepositoryWorkspaceService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+/** The editor's working-copy command is available independently of the repository catalogue UI/API. */
+@RestController
+@Tag(name = &quot;Architecture editor&quot;)
+public class ArchitectureEditorWorkingCopyController {
+    private final WorkspaceResolver resolver;
+    private final RepositoryMembershipService membership;
+    private final RepositoryWorkspaceService workspaces;
+    private final SystemRepositoryService repositories;
+
+    public ArchitectureEditorWorkingCopyController(WorkspaceResolver resolver,
+            RepositoryMembershipService membership, RepositoryWorkspaceService workspaces,
+<span class="fc" id="L28">            SystemRepositoryService repositories) {</span>
+<span class="fc" id="L29">        this.resolver = resolver;</span>
+<span class="fc" id="L30">        this.membership = membership;</span>
+<span class="fc" id="L31">        this.workspaces = workspaces;</span>
+<span class="fc" id="L32">        this.repositories = repositories;</span>
+<span class="fc" id="L33">    }</span>
+
+    @PostMapping(&quot;/api/architecture/editor/workspaces&quot;)
+    @Operation(summary = &quot;Create an editor working copy from the selected central branch&quot;,
+            description = &quot;Requires the exact currently selected central repository and branch and repository working-copy permission &quot;
+                    + &quot;(CONTRIBUTOR, with the existing authenticated-user exception for the historic primary repository). &quot;
+                    + &quot;Creates a personal working copy through the existing provisioning service. Does not switch other tabs &quot;
+                    + &quot;or adopt an analysis snapshot; the multi-repository catalogue feature flag is not required.&quot;)
+    public ResponseEntity&lt;WorkingCopy&gt; create(@RequestBody CreateRequest request) {
+<span class="fc" id="L42">        var source = resolver.resolveCurrentRepositoryContext();</span>
+<span class="fc bfc" id="L43" title="All 4 branches covered.">        if (!source.repositoryId().equals(request.repositoryId()) || !source.branch().equals(request.branch())) {</span>
+<span class="fc" id="L44">            throw new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;The exact source context is not selected or accessible&quot;);</span>
+        }
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        if (source.workspaceId() != null) {</span>
+<span class="fc" id="L47">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Select a central architecture before creating a working copy&quot;);</span>
+        }
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (!membership.canContribute(repositories.getRepository(source.repositoryId()), source.username())) {</span>
+<span class="fc" id="L50">            throw new ResponseStatusException(HttpStatus.FORBIDDEN, &quot;Repository CONTRIBUTOR role required&quot;);</span>
+        }
+<span class="pc bpc" id="L52" title="3 of 6 branches missed.">        if (request.displayName() == null || request.displayName().isBlank() || request.displayName().length() &gt; 255) {</span>
+<span class="nc" id="L53">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;A working-copy name of 1–255 characters is required&quot;);</span>
+        }
+<span class="fc" id="L55">        var workspace = workspaces.createWorkingCopy(source.username(), source.repositoryId(),</span>
+<span class="fc" id="L56">                source.branch(), request.displayName().strip(), &quot;&quot;);</span>
+<span class="fc" id="L57">        return ResponseEntity.status(HttpStatus.CREATED).body(new WorkingCopy(workspace.getWorkspaceId(),</span>
+<span class="fc" id="L58">                workspace.getSourceRepositoryId(), workspace.getSourceBranch(), workspace.getCurrentBranch(),</span>
+<span class="fc" id="L59">                workspace.getProvisioningStatus()));</span>
+    }
+
+<span class="fc" id="L62">    public record CreateRequest(String repositoryId, String branch, String displayName) {}</span>
+<span class="fc" id="L63">    public record WorkingCopy(String workspaceId, String sourceRepositoryId, String sourceBranch,</span>
+                              String currentBranch, WorkspaceProvisioningStatus provisioningStatus) {}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

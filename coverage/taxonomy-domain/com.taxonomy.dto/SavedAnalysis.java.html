@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SavedAnalysis.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">SavedAnalysis.java</span></div><h1>SavedAnalysis.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * DTO representing a saved (exported/imported) taxonomy analysis result.
+ *
+ * &lt;p&gt;Semantic distinction:
+ * &lt;ul&gt;
+ *   &lt;li&gt;A node code &lt;b&gt;present with value {@code 0}&lt;/b&gt; → the node was &lt;b&gt;evaluated and scored 0%&lt;/b&gt; (not relevant)&lt;/li&gt;
+ *   &lt;li&gt;A node code &lt;b&gt;absent / {@code null}&lt;/b&gt; → the node was &lt;b&gt;not yet evaluated&lt;/b&gt;&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;Version history:
+ * &lt;ul&gt;
+ *   &lt;li&gt;&lt;b&gt;Version 1&lt;/b&gt;: Original format with requirement, scores, reasons&lt;/li&gt;
+ *   &lt;li&gt;&lt;b&gt;Version 2&lt;/b&gt;: Adds optional provenance data (sources, sourceVersions, sourceFragments, requirementSourceLinks)&lt;/li&gt;
+ *   &lt;li&gt;&lt;b&gt;Version 4&lt;/b&gt;: Decimal percentages; raw scores remain distinct from effective relevance. Automatic coverage, when supplied, is validated as in version 3.&lt;/li&gt;
+ *   &lt;li&gt;&lt;b&gt;Version 3&lt;/b&gt;: Requires raw scores, own assessment/subtree coverage and analysis status; older readers reject it rather than silently losing unknowns.&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+public class SavedAnalysis {
+
+    /** Portable evidence for display/export, never proof of an owned server operation. */
+    private AnalysisCopilotResult copilot;
+<span class="fc" id="L27">    public AnalysisCopilotResult getCopilot() { return copilot; }</span>
+<span class="fc" id="L28">    public void setCopilot(AnalysisCopilotResult value) { copilot = value; }</span>
+
+    /** Recorded content language; absent historical values stay unknown. */
+    private AnalysisLanguage analysisLanguage;
+<span class="fc" id="L32">    public AnalysisLanguage getAnalysisLanguage() { return analysisLanguage; }</span>
+<span class="fc" id="L33">    public void setAnalysisLanguage(AnalysisLanguage value) { analysisLanguage = value; }</span>
+
+    /** Frozen generation preference; absent for manual and legacy evidence. */
+    private AnalysisReasonLength analysisReasonLength;
+<span class="fc" id="L37">    public AnalysisReasonLength getAnalysisReasonLength() { return analysisReasonLength; }</span>
+<span class="fc" id="L38">    public void setAnalysisReasonLength(AnalysisReasonLength value) { analysisReasonLength = value; }</span>
+
+    /** Optional follow-up locator; authority is revalidated by the operation owner on every use. */
+    private String analysisOperationId;
+    private String analysisProviderId;
+<span class="fc" id="L43">    public String getAnalysisOperationId() { return analysisOperationId; }</span>
+<span class="fc" id="L44">    public void setAnalysisOperationId(String value) { analysisOperationId = value; }</span>
+<span class="fc" id="L45">    public String getAnalysisProviderId() { return analysisProviderId; }</span>
+<span class="fc" id="L46">    public void setAnalysisProviderId(String value) { analysisProviderId = value; }</span>
+
+    /** Optional frozen automatic-run provenance; manual and legacy evidence may have none. */
+    private AnalysisScope analysisScope;
+<span class="fc" id="L50">    public AnalysisScope getAnalysisScope() { return analysisScope; }</span>
+<span class="fc" id="L51">    public void setAnalysisScope(AnalysisScope value) { analysisScope = value; }</span>
+
+    /** Format version — {@code 1} for legacy, {@code 2} for provenance support. */
+<span class="fc" id="L54">    private int version = 2;</span>
+
+    /** The business requirement text that was analyzed. */
+    private String requirement;
+
+    /** ISO 8601 timestamp of when the analysis was performed or exported. */
+    private String timestamp;
+
+    /** Name of the LLM provider that generated these scores (informational). */
+    private String provider;
+
+    /**
+     * Node code → score (0–100).
+     * {@code 0} means the node was evaluated but scored zero (not relevant).
+     * An absent key means the node was not evaluated at all.
+     */
+    private Map&lt;String, Double&gt; scores;
+
+    /**
+     * Node code → reason text (optional, may be sparse).
+     */
+    private Map&lt;String, String&gt; reasons;
+
+    /** Source artifacts referenced by this analysis (optional, may be null). */
+    private List&lt;SourceArtifactDto&gt; sources;
+
+    /** Source versions (optional, may be null). */
+    private List&lt;SourceVersionDto&gt; sourceVersions;
+
+    /** Source fragments (optional, may be null). */
+    private List&lt;SourceFragmentDto&gt; sourceFragments;
+
+    /** Requirement-to-source links (optional, may be null). */
+    private List&lt;RequirementSourceLinkDto&gt; requirementSourceLinks;
+
+    private AnalysisCoverage analysisCoverage;
+    private String analysisStatus;
+    private Map&lt;String, Double&gt; rawScores;
+<span class="fc" id="L92">    public AnalysisCoverage getAnalysisCoverage() { return analysisCoverage; }</span>
+<span class="fc" id="L93">    public void setAnalysisCoverage(AnalysisCoverage value) { analysisCoverage = value; }</span>
+<span class="fc" id="L94">    public String getAnalysisStatus() { return analysisStatus; }</span>
+<span class="fc" id="L95">    public void setAnalysisStatus(String value) { analysisStatus = value; }</span>
+<span class="fc" id="L96">    public Map&lt;String, Double&gt; getRawScores() { return rawScores; }</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">    public void setRawScores(Map&lt;String, ? extends Number&gt; value) { rawScores = value == null ? null : new java.util.LinkedHashMap&lt;&gt;(AnalysisScoreSemantics.normalizeScores(value)); }</span>
+
+    /** Validate recorded coverage in versions 3 and 4 before publishing or consuming a score file. */
+    public void validateCoverageEvidence() {
+        // Version 4 also supports manual scores without fabricated automatic coverage.
+        // Version 3 retains its original mandatory coverage contract.
+<span class="fc bfc" id="L103" title="All 6 branches covered.">        if (this.getVersion() == 3 || this.getVersion() &gt;= 4 &amp;&amp; this.getAnalysisCoverage() != null) {</span>
+<span class="fc" id="L104">            var coverage = this.getAnalysisCoverage(); var raw = this.getRawScores();</span>
+<span class="pc bpc" id="L105" title="3 of 8 branches missed.">            if (coverage == null || raw == null || this.getScores() == null || this.getAnalysisStatus() == null</span>
+<span class="pc bpc" id="L106" title="2 of 4 branches missed.">                    || this.getAnalysisStatus().isBlank() || raw.size() &gt; 25000</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">                    || !raw.keySet().containsAll(this.getScores().keySet()))</span>
+<span class="fc" id="L108">                throw new IllegalArgumentException(&quot;Recorded coverage requires complete raw evidence, status and coverage metadata&quot;);</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            for (var entry : raw.entrySet()) {</span>
+<span class="fc" id="L110">                var assessment = coverage.nodes().get(entry.getKey());</span>
+<span class="pc bpc" id="L111" title="2 of 4 branches missed.">                if (assessment == null || assessment.state() == com.taxonomy.dto.AnalysisCoverage.State.UNKNOWN</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">                        || !java.util.Objects.equals(entry.getValue(), assessment.score()))</span>
+<span class="fc" id="L113">                    throw new IllegalArgumentException(&quot;Raw evidence disagrees with assessment coverage&quot;);</span>
+<span class="fc" id="L114">            }</span>
+<span class="fc bfc" id="L115" title="All 4 branches covered.">            for (var entry : coverage.nodes().entrySet()) if (entry.getValue().state() != com.taxonomy.dto.AnalysisCoverage.State.UNKNOWN</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                    &amp;&amp; !raw.containsKey(entry.getKey()))</span>
+<span class="nc" id="L117">                throw new IllegalArgumentException(&quot;Coverage contains a completed assessment without its raw evidence&quot;);</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            for (var entry : this.getScores().entrySet()) {</span>
+<span class="fc" id="L119">                var assessment = coverage.nodes().get(entry.getKey());</span>
+<span class="pc bpc" id="L120" title="2 of 4 branches missed.">                if (assessment == null || !java.util.Objects.equals(entry.getValue(), assessment.effectiveRelevance()))</span>
+<span class="nc" id="L121">                    throw new IllegalArgumentException(&quot;Effective evidence disagrees with assessment coverage&quot;);</span>
+<span class="fc" id="L122">            }</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            if (coverage.hasOpenEvaluations()) this.setAnalysisStatus(&quot;PARTIAL&quot;);</span>
+        }
+
+<span class="fc" id="L126">    }</span>
+
+<span class="fc" id="L128">    public SavedAnalysis() {}</span>
+
+<span class="fc" id="L130">    public int getVersion() { return version; }</span>
+<span class="fc" id="L131">    public void setVersion(int version) { this.version = version; }</span>
+
+<span class="fc" id="L133">    public String getRequirement() { return requirement; }</span>
+<span class="fc" id="L134">    public void setRequirement(String requirement) { this.requirement = requirement; }</span>
+
+<span class="fc" id="L136">    public String getTimestamp() { return timestamp; }</span>
+<span class="fc" id="L137">    public void setTimestamp(String timestamp) { this.timestamp = timestamp; }</span>
+
+<span class="fc" id="L139">    public String getProvider() { return provider; }</span>
+<span class="fc" id="L140">    public void setProvider(String provider) { this.provider = provider; }</span>
+
+<span class="fc" id="L142">    public Map&lt;String, Double&gt; getScores() { return scores; }</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">    public void setScores(Map&lt;String, ? extends Number&gt; scores) { this.scores = scores == null ? null : new java.util.LinkedHashMap&lt;&gt;(AnalysisScoreSemantics.normalizeScores(scores)); }</span>
+
+<span class="fc" id="L145">    public Map&lt;String, String&gt; getReasons() { return reasons; }</span>
+<span class="fc" id="L146">    public void setReasons(Map&lt;String, String&gt; reasons) { this.reasons = reasons; }</span>
+
+<span class="fc" id="L148">    public List&lt;SourceArtifactDto&gt; getSources() { return sources; }</span>
+<span class="fc" id="L149">    public void setSources(List&lt;SourceArtifactDto&gt; sources) { this.sources = sources; }</span>
+
+<span class="fc" id="L151">    public List&lt;SourceVersionDto&gt; getSourceVersions() { return sourceVersions; }</span>
+<span class="fc" id="L152">    public void setSourceVersions(List&lt;SourceVersionDto&gt; sourceVersions) { this.sourceVersions = sourceVersions; }</span>
+
+<span class="fc" id="L154">    public List&lt;SourceFragmentDto&gt; getSourceFragments() { return sourceFragments; }</span>
+<span class="fc" id="L155">    public void setSourceFragments(List&lt;SourceFragmentDto&gt; sourceFragments) { this.sourceFragments = sourceFragments; }</span>
+
+<span class="fc" id="L157">    public List&lt;RequirementSourceLinkDto&gt; getRequirementSourceLinks() { return requirementSourceLinks; }</span>
+<span class="fc" id="L158">    public void setRequirementSourceLinks(List&lt;RequirementSourceLinkDto&gt; requirementSourceLinks) { this.requirementSourceLinks = requirementSourceLinks; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

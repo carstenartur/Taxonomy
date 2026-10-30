@@ -1,0 +1,804 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioGitService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortfolioGitService.java</span></div><h1>PortfolioGitService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.DocumentAst;
+import com.taxonomy.dsl.ast.MetaAst;
+import com.taxonomy.dsl.ast.PropertyAst;
+import com.taxonomy.dsl.ast.SourceLocation;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.requirements.RequirementRealization;
+import com.taxonomy.dsl.requirements.RequirementTrace;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.serializer.TaxDslSerializer;
+import com.taxonomy.workspace.service.WorkspacePortfolioDocumentPort.DocumentHandle;
+import com.taxonomy.workspace.service.WorkspacePortfolioDocumentPort;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementVersionRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SourceReference;
+import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateProjectRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateRequirementRequest;
+import com.taxonomy.portfolio.model.ArchitectureProject;
+import com.taxonomy.portfolio.model.PortfolioTypes.Criticality;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProjectStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.RequirementStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.RequirementType;
+import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+import com.taxonomy.portfolio.model.ProjectRequirement;
+import com.taxonomy.portfolio.model.ProjectRequirementVersion;
+import com.taxonomy.portfolio.model.RequirementElementMapping;
+import com.taxonomy.portfolio.repository.ArchitectureProjectRepository;
+import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
+import com.taxonomy.portfolio.repository.ProjectRequirementVersionRepository;
+import com.taxonomy.portfolio.repository.RequirementElementMappingRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * Projects the durable project/requirement portfolio into the canonical Git DSL
+ * and materializes merged DSL blocks back into a workspace projection.
+ *
+ * &lt;p&gt;Operational analysis jobs and large immutable snapshot payloads remain in
+ * the database. Stable project identities, requirement versions and current
+ * requirement-to-taxonomy decisions are Git-native and can be merged between
+ * contributors.&lt;/p&gt;
+ */
+@Service
+public class PortfolioGitService {
+
+    public static final String PROJECT_BLOCK = &quot;project&quot;;
+    public static final String REQUIREMENT_BLOCK = &quot;projectRequirement&quot;;
+    public static final String VERSION_BLOCK = &quot;requirementVersion&quot;;
+    public static final String MANAGED_PROPERTY = &quot;x-portfolio-managed&quot;;
+
+<span class="fc" id="L72">    private static final Set&lt;String&gt; OWNED_BLOCKS =</span>
+<span class="fc" id="L73">            Set.of(PROJECT_BLOCK, REQUIREMENT_BLOCK, VERSION_BLOCK);</span>
+<span class="fc" id="L74">    private static final Map&lt;String, Set&lt;String&gt;&gt; OWNED_PROPERTIES = Map.of(</span>
+<span class="fc" id="L75">            PROJECT_BLOCK, Set.of(&quot;title&quot;, &quot;description&quot;, &quot;status&quot;, &quot;owner&quot;, &quot;workspaceId&quot;, &quot;targetArchitecture&quot;,</span>
+                    &quot;targetDate&quot;, &quot;budgetAmount&quot;, &quot;budgetCurrency&quot;, MANAGED_PROPERTY),
+<span class="fc" id="L77">            REQUIREMENT_BLOCK, Set.of(&quot;title&quot;, &quot;status&quot;, &quot;priority&quot;, &quot;criticality&quot;, &quot;requirementType&quot;, &quot;reviewStatus&quot;, &quot;owner&quot;,</span>
+                    &quot;currentVersionId&quot;, &quot;currentVersionNumber&quot;, &quot;currentSnapshotId&quot;, MANAGED_PROPERTY),
+<span class="fc" id="L79">            VERSION_BLOCK, Set.of(&quot;text&quot;, &quot;contentHash&quot;, &quot;changeReason&quot;, &quot;createdBy&quot;, &quot;createdAt&quot;, &quot;sourceArtifactId&quot;,</span>
+                    &quot;sourceVersionId&quot;, &quot;sourceFragmentIds&quot;, &quot;sectionReference&quot;, &quot;pageNumber&quot;, &quot;originalText&quot;, MANAGED_PROPERTY),
+<span class="fc" id="L81">            &quot;requirement&quot;, Set.of(&quot;title&quot;, &quot;text&quot;, MANAGED_PROPERTY, &quot;x-project-key&quot;, &quot;x-requirement-key&quot;, &quot;x-version&quot;,</span>
+                    &quot;x-content-hash&quot;, &quot;x-review-status&quot;, &quot;x-owner&quot;),
+<span class="fc" id="L83">            &quot;mapping&quot;, Set.of(&quot;score&quot;, &quot;source&quot;, MANAGED_PROPERTY, &quot;x-relevance&quot;, &quot;x-confidence&quot;, &quot;x-origin&quot;, &quot;x-review-status&quot;,</span>
+                    &quot;x-action-status&quot;, &quot;x-evidence&quot;, &quot;x-decision-by&quot;, &quot;x-decision-at&quot;, &quot;x-decision-comment&quot;));
+<span class="fc" id="L85">    private static final SourceLocation GENERATED =</span>
+            new SourceLocation(&quot;portfolio-projection&quot;, 1, 1);
+
+    private final ProjectPortfolioService projectService;
+    private final ArchitectureProjectRepository projectRepository;
+    private final ProjectRequirementRepository requirementRepository;
+    private final ProjectRequirementVersionRepository versionRepository;
+    private final RequirementElementMappingRepository elementMappingRepository;
+    private final WorkspacePortfolioDocumentPort repositoryFactory;
+<span class="fc" id="L94">    private final TaxDslParser parser = new TaxDslParser();</span>
+<span class="fc" id="L95">    private final TaxDslSerializer serializer = new TaxDslSerializer();</span>
+
+    public PortfolioGitService(ProjectPortfolioService projectService,
+                               ArchitectureProjectRepository projectRepository,
+                               ProjectRequirementRepository requirementRepository,
+                               ProjectRequirementVersionRepository versionRepository,
+                               RequirementElementMappingRepository elementMappingRepository,
+<span class="fc" id="L102">                               WorkspacePortfolioDocumentPort repositoryFactory) {</span>
+<span class="fc" id="L103">        this.projectService = projectService;</span>
+<span class="fc" id="L104">        this.projectRepository = projectRepository;</span>
+<span class="fc" id="L105">        this.requirementRepository = requirementRepository;</span>
+<span class="fc" id="L106">        this.versionRepository = versionRepository;</span>
+<span class="fc" id="L107">        this.elementMappingRepository = elementMappingRepository;</span>
+<span class="fc" id="L108">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L109">    }</span>
+
+    /** Return a standalone deterministic DSL document for the current workspace portfolio. */
+    @Transactional(readOnly = true)
+    public String exportPortfolio(String username, WorkspaceContext context) {
+<span class="fc" id="L114">        return exportPortfolio(username, context, VersionSelection.HISTORY);</span>
+    }
+
+    /** Current owner projection: exact saved version only, without loading historical bodies. */
+    protected String exportCurrentPortfolio(String username, WorkspaceContext context) {
+<span class="fc" id="L119">        return exportPortfolio(username, context, VersionSelection.CURRENT);</span>
+    }
+
+    private String exportPortfolio(String username, WorkspaceContext context, VersionSelection selection) {
+<span class="fc" id="L123">        DocumentAst document = new DocumentAst(</span>
+                new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION,
+                        &quot;portfolio&quot;, GENERATED),
+<span class="fc" id="L126">                portfolioBlocks(username, context, selection));</span>
+<span class="fc" id="L127">        return serializer.serialize(document);</span>
+    }
+
+    /** Replace only portfolio-owned blocks while preserving the remaining architecture DSL. */
+    @Transactional(readOnly = true)
+    public String contributeTo(String existingDsl, String username, WorkspaceContext context) {
+<span class="fc" id="L133">        DocumentAst existing = parseOrEmpty(existingDsl);</span>
+<span class="fc" id="L134">        Map&lt;String, BlockAst&gt; sourceBlocks = ArchitectureSemanticPatch.index(existingDsl);</span>
+<span class="fc" id="L135">        List&lt;BlockAst&gt; blocks = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        for (BlockAst block : existing.getBlocks()) {</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">            if (!isPortfolioManaged(block)) blocks.add(block);</span>
+<span class="fc" id="L138">        }</span>
+<span class="fc" id="L139">        List&lt;BlockAst&gt; contributed = portfolioBlocks(username, context);</span>
+<span class="fc" id="L140">        Map&lt;String, String&gt; identities = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L141" title="All 4 branches covered.">        for (BlockAst block : contributed) if (&quot;requirement&quot;.equals(block.getKind())) {</span>
+<span class="fc" id="L142">            String identity = resolveRequirementIdentity(block.property(&quot;x-project-key&quot;), block.property(&quot;x-requirement-key&quot;), existing.getBlocks(), contributed);</span>
+<span class="fc" id="L143">            identities.put(block.getHeaderTokens().getFirst(), identity);</span>
+        }
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        for (BlockAst block : contributed) {</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">            if (Set.of(&quot;requirement&quot;, &quot;mapping&quot;).contains(block.getKind())) {</span>
+<span class="fc" id="L147">                List&lt;String&gt; header = new ArrayList&lt;&gt;(block.getHeaderTokens());</span>
+<span class="fc" id="L148">                header.set(0, identities.getOrDefault(header.getFirst(), header.getFirst()));</span>
+<span class="fc" id="L149">                block = new BlockAst(block.getKind(), header, block.getProperties(), block.getChildren(), block.getExtensions(), null);</span>
+            }
+<span class="fc" id="L151">            BlockAst old = sourceBlocks.get(ArchitectureSemanticPatch.key(block));</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            if (&quot;requirement&quot;.equals(block.getKind())) {</span>
+<span class="fc" id="L153">                block = com.taxonomy.dsl.planning.PlanningInformation.retain(block, old);</span>
+<span class="fc" id="L154">                block = RequirementRealization.retain(block, old);</span>
+<span class="fc" id="L155">                block = RequirementTrace.retain(block, old);</span>
+            }
+<span class="fc" id="L157">            block = retainUnownedProperties(block, old);</span>
+<span class="fc" id="L158">            blocks.add(block);</span>
+<span class="fc" id="L159">        }</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        MetaAst meta = existing.getMeta() != null</span>
+<span class="fc" id="L161">                ? existing.getMeta()</span>
+<span class="fc" id="L162">                : new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION,</span>
+                        &quot;default&quot;, GENERATED);
+<span class="fc" id="L164">        String projected = serializer.serialize(new DocumentAst(meta, blocks));</span>
+<span class="pc bpc" id="L165" title="1 of 4 branches missed.">        return existingDsl == null || existingDsl.isBlank() ? projected : ArchitectureSemanticPatch.applyProjection(existingDsl, projected);</span>
+    }
+
+    /** Portfolio text owns its declared fields; imported/source annotations retain their original values. */
+    private static BlockAst retainUnownedProperties(BlockAst generated, BlockAst existing) {
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        if (existing == null) return generated;</span>
+<span class="fc" id="L171">        Set&lt;String&gt; generatedKeys = generated.getProperties().stream().map(PropertyAst::key).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc" id="L172">        Set&lt;String&gt; owned = OWNED_PROPERTIES.getOrDefault(generated.getKind(), Set.of());</span>
+<span class="fc" id="L173">        List&lt;PropertyAst&gt; values = new ArrayList&lt;&gt;(generated.getProperties());</span>
+<span class="fc bfc" id="L174" title="All 4 branches covered.">        existing.getProperties().stream().filter(p -&gt; !owned.contains(p.key()) &amp;&amp; !generatedKeys.contains(p.key())).forEach(values::add);</span>
+<span class="fc" id="L175">        Map&lt;String, String&gt; extensions = new LinkedHashMap&lt;&gt;(generated.getExtensions());</span>
+<span class="fc" id="L176">        values.stream().filter(PropertyAst::isExtension).forEach(p -&gt; extensions.put(p.key(), p.value()));</span>
+<span class="fc" id="L177">        return new BlockAst(generated.getKind(), generated.getHeaderTokens(), values, generated.getChildren(), extensions, null);</span>
+    }
+
+    /** Resolve exact business identity without mutating storage or migrating canonical references. */
+    @Transactional(readOnly = true)
+    public String planRequirementIdentity(String projectKey, String requirementKey, String dsl,
+                                          String username, WorkspaceContext context) {
+<span class="fc" id="L184">        return resolveRequirementIdentity(projectKey, requirementKey, parseOrEmpty(dsl).getBlocks(), portfolioBlocks(username, context));</span>
+    }
+
+    private static String resolveRequirementIdentity(String projectKey, String requirementKey,
+                                                      List&lt;BlockAst&gt; existing, List&lt;BlockAst&gt; contributed) {
+<span class="fc bfc" id="L189" title="All 2 branches covered.">        List&lt;BlockAst&gt; matching = existing.stream().filter(b -&gt; &quot;requirement&quot;.equals(b.getKind())</span>
+<span class="fc bfc" id="L190" title="All 4 branches covered.">                &amp;&amp; projectKey.equals(b.property(&quot;x-project-key&quot;)) &amp;&amp; requirementKey.equals(b.property(&quot;x-requirement-key&quot;))).toList();</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">        if (matching.size() &gt; 1) throw identityMismatch();</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        String id = matching.isEmpty() ? canonicalRequirementId(projectKey, requirementKey) : matching.getFirst().getHeaderTokens().getFirst();</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        for (BlockAst block : java.util.stream.Stream.concat(existing.stream(), contributed.stream()).toList()) {</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">            if (!&quot;requirement&quot;.equals(block.getKind())) continue;</span>
+<span class="fc bfc" id="L195" title="All 4 branches covered.">            boolean same = projectKey.equals(block.property(&quot;x-project-key&quot;)) &amp;&amp; requirementKey.equals(block.property(&quot;x-requirement-key&quot;));</span>
+<span class="fc bfc" id="L196" title="All 4 branches covered.">            if (!same &amp;&amp; (id.equals(block.getHeaderTokens().getFirst())</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">                    || canonicalRequirementId(projectKey, requirementKey).equals(block.getHeaderTokens().getFirst()))) throw identityMismatch();</span>
+<span class="fc" id="L198">        }</span>
+<span class="fc" id="L199">        return id;</span>
+    }
+    private static PortfolioException identityMismatch() {
+<span class="fc" id="L202">        return new PortfolioException(PortfolioException.Kind.CONFLICT, &quot;REQUIREMENT_IDENTITY_MISMATCH&quot;,</span>
+                &quot;Canonical requirement identity is ambiguous; resolve the exact project and requirement keys before importing&quot;, null);
+    }
+
+    /** Commit the complete current portfolio projection to a branch. */
+    @Transactional(readOnly = true)
+    public CommitResult commit(String branch,
+                               String message,
+                               String username,
+                               WorkspaceContext context) throws IOException {
+<span class="fc" id="L212">        DocumentHandle repository = repositoryFactory.resolveRepository(context);</span>
+<span class="fc" id="L213">        return commitAtHead(repository, branch, repository.getHeadCommit(branch), message, username, context);</span>
+    }
+
+    /** Use the same captured repository and parent that the application will report to the caller. */
+    @Transactional(readOnly = true)
+    public CommitResult commitAtHead(DocumentHandle repository,
+                                     String branch,
+                                     String expectedHead,
+                                     String message,
+                                     String username,
+                                     WorkspaceContext context) throws IOException {
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">        String current = expectedHead == null ? null : repository.getDslAtCommit(expectedHead);</span>
+<span class="fc" id="L225">        String projected = contributeTo(current, username, context);</span>
+<span class="pc bpc" id="L226" title="2 of 4 branches missed.">        String rationale = message == null || message.isBlank()</span>
+<span class="pc" id="L227">                ? &quot;Update Git-backed project requirement portfolio&quot; : message.strip();</span>
+        try {
+<span class="fc bfc" id="L229" title="All 2 branches covered.">            if (normalize(current).equals(normalize(projected))) {</span>
+<span class="fc" id="L230">                return new CommitResult(repository.verifyHeadForVersion(branch, expectedHead, username, rationale),</span>
+                        false, branch);
+            }
+<span class="fc" id="L233">            String commit = repository.commitDslIfHeadMatches(branch, expectedHead, projected, username, rationale);</span>
+<span class="fc" id="L234">            return new CommitResult(commit, true, branch);</span>
+<span class="fc" id="L235">        } catch (BranchHeadConflictException conflict) {</span>
+<span class="fc" id="L236">            throw PortfolioException.conflict(&quot;Portfolio branch changed while preparing the commit; refresh and retry.&quot;);</span>
+        }
+    }
+
+    /** Materialize the portfolio blocks at a branch HEAD into the target workspace. */
+    @Transactional
+    public MaterializeResult materializeHead(String branch,
+                                             String username,
+                                             WorkspaceContext context) throws IOException {
+<span class="fc" id="L245">        DocumentHandle repository = repositoryFactory.resolveRepository(context);</span>
+<span class="fc" id="L246">        String dsl = repository.getDslAtHead(branch);</span>
+<span class="pc bpc" id="L247" title="2 of 4 branches missed.">        if (dsl == null || dsl.isBlank()) {</span>
+<span class="nc" id="L248">            return new MaterializeResult(0, 0, 0, List.of(&quot;Branch has no DSL content&quot;));</span>
+        }
+<span class="fc" id="L250">        return materialize(dsl, username, context);</span>
+    }
+
+    /** Validate every prospective owner input and retained immutable identity before any Git ref can move. */
+    @Transactional
+    public void validateMaterialization(String dsl, String username, WorkspaceContext context) {
+<span class="fc" id="L256">        DocumentAst document = parser.parse(dsl, &quot;portfolio-preflight.taxdsl&quot;);</span>
+<span class="fc" id="L257">        validateNormalizedIdentities(document);</span>
+<span class="fc" id="L258">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L259">        String scope = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L260">        Map&lt;String, BlockAst&gt; projectBlocks = keyed(document, PROJECT_BLOCK, 1, warnings);</span>
+<span class="fc" id="L261">        Map&lt;String, BlockAst&gt; requirementBlocks = keyed(document, REQUIREMENT_BLOCK, 2, warnings);</span>
+<span class="fc" id="L262">        Map&lt;String, List&lt;BlockAst&gt;&gt; versionBlocks = groupedVersions(document, warnings);</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">        for (var entry : versionBlocks.entrySet().stream()</span>
+<span class="fc" id="L264">                .sorted(Map.Entry.comparingByKey()).toList()) {</span>
+<span class="fc" id="L265">            String[] keys = entry.getKey().split(&quot;\\u0000&quot;, -1);</span>
+<span class="fc" id="L266">            ArchitectureProject project = projectRepository.findByScopeKeyAndProjectKeyIgnoreCase(scope, keys[0]).orElse(null);</span>
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">            ProjectRequirement requirement = project == null ? null : requirementRepository</span>
+<span class="fc" id="L268">                    .findByProjectIdAndScopeKeyAndRequirementKeyIgnoreCase(project.getId(), scope, keys[1]).orElse(null);</span>
+<span class="fc" id="L269">            List&lt;ProjectPortfolioService.ImportedVersion&gt; versions = entry.getValue().stream()</span>
+<span class="fc" id="L270">                    .sorted(Comparator.comparingInt(this::versionNumber))</span>
+<span class="fc" id="L271">                    .map(block -&gt; importedVersion(block, warnings)).toList();</span>
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">            projectService.validateRequirementVersionImports(project == null ? null : project.getId(),</span>
+<span class="fc bfc" id="L273" title="All 2 branches covered.">                    requirement == null ? null : requirement.getId(), versions, username, context);</span>
+<span class="fc" id="L274">        }</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        for (var entry : projectBlocks.entrySet()) {</span>
+<span class="fc" id="L276">            var existing = projectRepository.findByScopeKeyAndProjectKeyIgnoreCase(scope, entry.getKey()).orElse(null);</span>
+<span class="pc bpc" id="L277" title="1 of 2 branches missed.">            if (existing == null) ProjectPortfolioService.validatedProjectInput(createProjectInput(entry.getKey(), entry.getValue(), warnings));</span>
+<span class="fc" id="L278">            else ProjectPortfolioService.validatedProjectInput(updateProjectInput(entry.getValue(), existing, warnings),</span>
+<span class="fc" id="L279">                    existing.getBudgetAmount(), existing.getBudgetCurrency());</span>
+<span class="fc" id="L280">        }</span>
+<span class="fc bfc" id="L281" title="All 2 branches covered.">        for (var entry : requirementBlocks.entrySet()) {</span>
+<span class="fc" id="L282">            String[] keys = entry.getKey().split(&quot;\\u0000&quot;, -1);</span>
+<span class="fc" id="L283">            List&lt;BlockAst&gt; versions = versionBlocks.getOrDefault(entry.getKey(), List.of()).stream()</span>
+<span class="fc" id="L284">                    .sorted(Comparator.comparingInt(this::versionNumber)).toList();</span>
+            // Materialization deliberately does not create orphan identities or requirements without a version.
+<span class="pc bpc" id="L286" title="2 of 4 branches missed.">            if (!projectBlocks.containsKey(keys[0]) || versions.isEmpty()) continue;</span>
+<span class="fc" id="L287">            var project = projectRepository.findByScopeKeyAndProjectKeyIgnoreCase(scope, keys[0]).orElse(null);</span>
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">            var existing = project == null ? null : requirementRepository</span>
+<span class="fc" id="L289">                    .findByProjectIdAndScopeKeyAndRequirementKeyIgnoreCase(project.getId(), scope, keys[1]).orElse(null);</span>
+<span class="pc bpc" id="L290" title="1 of 2 branches missed.">            if (existing == null) ProjectPortfolioService.validatedRequirementInput(</span>
+<span class="fc" id="L291">                    createRequirementInput(keys[1], entry.getValue(), versions.getFirst(), username, warnings),</span>
+<span class="fc" id="L292">                    importedVersion(versions.getFirst(), warnings));</span>
+<span class="nc" id="L293">            else projectService.validateRequirementImportMetadata(existing, updateRequirementInput(entry.getValue(), existing, warnings));</span>
+<span class="nc" id="L294">        }</span>
+<span class="fc" id="L295">    }</span>
+
+    /**
+     * Upsert projects, requirement identities and immutable versions from DSL.
+     * Deletions are intentionally not propagated automatically; removing business
+     * records requires an explicit archival decision rather than a Git omission.
+     */
+    @Transactional
+    public MaterializeResult materialize(String dsl,
+                                         String username,
+                                         WorkspaceContext context) {
+<span class="fc" id="L306">        DocumentAst document = parser.parse(dsl, &quot;portfolio-materialize.taxdsl&quot;);</span>
+<span class="fc" id="L307">        validateNormalizedIdentities(document);</span>
+<span class="fc" id="L308">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L309">        Map&lt;String, BlockAst&gt; projectBlocks = keyed(document, PROJECT_BLOCK, 1, warnings);</span>
+<span class="fc" id="L310">        Map&lt;String, BlockAst&gt; requirementBlocks = keyed(document, REQUIREMENT_BLOCK, 2, warnings);</span>
+<span class="fc" id="L311">        Map&lt;String, List&lt;BlockAst&gt;&gt; versionBlocks = groupedVersions(document, warnings);</span>
+
+<span class="fc" id="L313">        int projects = 0;</span>
+<span class="fc" id="L314">        int requirements = 0;</span>
+<span class="fc" id="L315">        int versions = 0;</span>
+<span class="fc" id="L316">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L317">        Map&lt;String, ProjectView&gt; materializedProjects = new LinkedHashMap&lt;&gt;();</span>
+
+<span class="fc bfc" id="L319" title="All 2 branches covered.">        for (Map.Entry&lt;String, BlockAst&gt; entry : projectBlocks.entrySet()) {</span>
+<span class="fc" id="L320">            String projectKey = entry.getKey();</span>
+<span class="fc" id="L321">            BlockAst block = entry.getValue();</span>
+<span class="fc" id="L322">            ArchitectureProject existing = projectRepository</span>
+<span class="fc" id="L323">                    .findByScopeKeyAndProjectKeyIgnoreCase(scopeKey, projectKey)</span>
+<span class="fc" id="L324">                    .orElse(null);</span>
+            ProjectView view;
+<span class="fc bfc" id="L326" title="All 2 branches covered.">            if (existing == null) {</span>
+<span class="fc" id="L327">                view = projectService.createProject(createProjectInput(projectKey, block, warnings), username, context);</span>
+<span class="fc" id="L328">                projects++;</span>
+            } else {
+<span class="fc" id="L330">                view = projectService.updateProject(existing.getId(), updateProjectInput(block, existing, warnings), username, context);</span>
+            }
+<span class="fc" id="L332">            materializedProjects.put(projectKey, view);</span>
+<span class="fc" id="L333">        }</span>
+
+<span class="fc" id="L335">        List&lt;Map.Entry&lt;String, BlockAst&gt;&gt; orderedRequirements = requirementBlocks.entrySet().stream()</span>
+<span class="fc" id="L336">                .sorted(Map.Entry.comparingByKey())</span>
+<span class="fc" id="L337">                .toList();</span>
+<span class="fc bfc" id="L338" title="All 2 branches covered.">        for (Map.Entry&lt;String, BlockAst&gt; entry : orderedRequirements) {</span>
+<span class="fc" id="L339">            String composite = entry.getKey();</span>
+<span class="fc" id="L340">            String[] keys = composite.split(&quot;\\u0000&quot;, -1);</span>
+<span class="fc" id="L341">            String projectKey = keys[0];</span>
+<span class="fc" id="L342">            String requirementKey = keys[1];</span>
+<span class="fc" id="L343">            ProjectView project = materializedProjects.get(projectKey);</span>
+<span class="pc bpc" id="L344" title="1 of 2 branches missed.">            if (project == null) {</span>
+<span class="nc" id="L345">                warnings.add(&quot;Requirement &quot; + projectKey + &quot;/&quot; + requirementKey</span>
+                        + &quot; references a project block that is not available&quot;);
+<span class="nc" id="L347">                continue;</span>
+            }
+<span class="fc" id="L349">            BlockAst block = entry.getValue();</span>
+<span class="fc" id="L350">            List&lt;BlockAst&gt; versionsForRequirement = versionBlocks</span>
+<span class="fc" id="L351">                    .getOrDefault(composite, List.of()).stream()</span>
+<span class="fc" id="L352">                    .sorted(Comparator.comparingInt(this::versionNumber))</span>
+<span class="fc" id="L353">                    .toList();</span>
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">            if (versionsForRequirement.isEmpty()) {</span>
+<span class="nc" id="L355">                warnings.add(&quot;Requirement &quot; + projectKey + &quot;/&quot; + requirementKey</span>
+                        + &quot; has no requirementVersion block&quot;);
+<span class="nc" id="L357">                continue;</span>
+            }
+
+<span class="fc" id="L360">            ProjectRequirement existingRequirement = requirementRepository</span>
+<span class="fc" id="L361">                    .findByProjectIdAndScopeKeyAndRequirementKeyIgnoreCase(</span>
+<span class="fc" id="L362">                            project.id(), scopeKey, requirementKey)</span>
+<span class="fc" id="L363">                    .orElse(null);</span>
+            RequirementView requirementView;
+<span class="fc" id="L365">            BlockAst firstVersion = versionsForRequirement.getFirst();</span>
+<span class="fc bfc" id="L366" title="All 2 branches covered.">            if (existingRequirement == null) {</span>
+<span class="fc" id="L367">                requirementView = projectService.createImportedRequirement(</span>
+<span class="fc" id="L368">                        project.id(),</span>
+<span class="fc" id="L369">                        createRequirementInput(requirementKey, block, firstVersion, username, warnings),</span>
+<span class="fc" id="L370">                        importedVersion(firstVersion, warnings),</span>
+                        username,
+                        context);
+<span class="fc" id="L373">                requirements++;</span>
+<span class="fc" id="L374">                versions++;</span>
+            } else {
+<span class="fc" id="L376">                requirementView = projectService.updateRequirement(</span>
+<span class="fc" id="L377">                        project.id(), existingRequirement.getId(),</span>
+<span class="fc" id="L378">                        updateRequirementInput(block, existingRequirement, warnings),</span>
+                        username,
+                        context);
+            }
+
+<span class="fc bfc" id="L383" title="All 2 branches covered.">            for (BlockAst version : versionsForRequirement) {</span>
+<span class="fc" id="L384">                int number = versionNumber(version);</span>
+<span class="fc" id="L385">                boolean exists = versionRepository.findByRequirementIdAndScopeKeyAndVersionNumber(</span>
+<span class="fc" id="L386">                        requirementView.id(), scopeKey, number).isPresent();</span>
+<span class="fc" id="L387">                projectService.importRequirementVersion(project.id(), requirementView.id(),</span>
+<span class="fc" id="L388">                        importedVersion(version, warnings), username, context);</span>
+<span class="fc bfc" id="L389" title="All 2 branches covered.">                if (!exists) versions++;</span>
+<span class="fc" id="L390">            }</span>
+<span class="fc" id="L391">        }</span>
+<span class="fc" id="L392">        return new MaterializeResult(projects, requirements, versions, List.copyOf(warnings));</span>
+    }
+
+    private CreateProjectRequest createProjectInput(String key, BlockAst block, List&lt;String&gt; warnings) {
+<span class="fc" id="L396">        return new CreateProjectRequest(key, required(block, &quot;title&quot;, key), block.property(&quot;description&quot;),</span>
+<span class="fc" id="L397">                enumValue(ProjectStatus.class, block.property(&quot;status&quot;), ProjectStatus.PLANNING), block.property(&quot;targetArchitecture&quot;),</span>
+<span class="fc" id="L398">                dateValue(block.property(&quot;targetDate&quot;), warnings, identity(block)),</span>
+<span class="fc" id="L399">                decimalValue(block.property(&quot;budgetAmount&quot;), warnings, identity(block)), block.property(&quot;budgetCurrency&quot;));</span>
+    }
+
+    private UpdateProjectRequest updateProjectInput(BlockAst block, ArchitectureProject existing, List&lt;String&gt; warnings) {
+<span class="fc" id="L403">        return new UpdateProjectRequest(required(block, &quot;title&quot;, existing.getTitle()), block.property(&quot;description&quot;),</span>
+<span class="fc" id="L404">                enumValue(ProjectStatus.class, block.property(&quot;status&quot;), existing.getStatus()), block.property(&quot;targetArchitecture&quot;),</span>
+<span class="fc" id="L405">                dateValue(block.property(&quot;targetDate&quot;), warnings, identity(block)),</span>
+<span class="fc" id="L406">                decimalValue(block.property(&quot;budgetAmount&quot;), warnings, identity(block)), block.property(&quot;budgetCurrency&quot;));</span>
+    }
+
+    private CreateRequirementRequest createRequirementInput(String key, BlockAst block, BlockAst version,
+                                                             String username, List&lt;String&gt; warnings) {
+<span class="fc" id="L411">        return new CreateRequirementRequest(key, required(block, &quot;title&quot;, key), required(version, &quot;text&quot;, &quot;&quot;),</span>
+<span class="fc" id="L412">                enumValue(RequirementStatus.class, block.property(&quot;status&quot;), RequirementStatus.DRAFT),</span>
+<span class="fc" id="L413">                intValue(block.property(&quot;priority&quot;), 50, warnings, identity(block)),</span>
+<span class="fc" id="L414">                enumValue(Criticality.class, block.property(&quot;criticality&quot;), Criticality.MEDIUM),</span>
+<span class="fc" id="L415">                enumValue(RequirementType.class, block.property(&quot;requirementType&quot;), RequirementType.FUNCTIONAL),</span>
+<span class="fc" id="L416">                enumValue(ReviewStatus.class, block.property(&quot;reviewStatus&quot;), ReviewStatus.PROPOSED),</span>
+<span class="fc" id="L417">                valueOrDefault(block.property(&quot;owner&quot;), username), version.property(&quot;changeReason&quot;), sourceReference(version, warnings));</span>
+    }
+
+    private UpdateRequirementRequest updateRequirementInput(BlockAst block, ProjectRequirement existing, List&lt;String&gt; warnings) {
+<span class="fc" id="L421">        return new UpdateRequirementRequest(required(block, &quot;title&quot;, existing.getTitle()),</span>
+<span class="fc" id="L422">                enumValue(RequirementStatus.class, block.property(&quot;status&quot;), existing.getStatus()),</span>
+<span class="fc" id="L423">                intValue(block.property(&quot;priority&quot;), existing.getPriority(), warnings, identity(block)),</span>
+<span class="fc" id="L424">                enumValue(Criticality.class, block.property(&quot;criticality&quot;), existing.getCriticality()),</span>
+<span class="fc" id="L425">                enumValue(RequirementType.class, block.property(&quot;requirementType&quot;), existing.getRequirementType()),</span>
+<span class="fc" id="L426">                enumValue(ReviewStatus.class, block.property(&quot;reviewStatus&quot;), existing.getReviewStatus()),</span>
+<span class="fc" id="L427">                valueOrDefault(block.property(&quot;owner&quot;), existing.getOwnerUsername()));</span>
+    }
+
+    private List&lt;BlockAst&gt; portfolioBlocks(String username, WorkspaceContext context) {
+<span class="fc" id="L431">        return portfolioBlocks(username, context, VersionSelection.HISTORY);</span>
+    }
+
+    private List&lt;BlockAst&gt; portfolioBlocks(String username, WorkspaceContext context, VersionSelection selection) {
+<span class="fc" id="L435">        List&lt;BlockAst&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L436">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L437">        List&lt;ArchitectureProject&gt; projects = projectRepository</span>
+<span class="fc" id="L438">                .findByScopeKeyOrderByUpdatedAtDesc(scopeKey).stream()</span>
+<span class="fc" id="L439">                .sorted(Comparator.comparing(ArchitectureProject::getProjectKey))</span>
+<span class="fc" id="L440">                .toList();</span>
+
+<span class="fc bfc" id="L442" title="All 2 branches covered.">        for (ArchitectureProject project : projects) {</span>
+<span class="fc" id="L443">            result.add(block(PROJECT_BLOCK, List.of(project.getProjectKey()), properties(</span>
+<span class="fc" id="L444">                    &quot;title&quot;, project.getTitle(),</span>
+<span class="fc" id="L445">                    &quot;description&quot;, project.getDescription(),</span>
+<span class="fc" id="L446">                    &quot;status&quot;, name(project.getStatus()),</span>
+<span class="fc" id="L447">                    &quot;owner&quot;, project.getOwnerUsername(),</span>
+<span class="fc" id="L448">                    &quot;workspaceId&quot;, project.getWorkspaceId(),</span>
+<span class="fc" id="L449">                    &quot;targetArchitecture&quot;, project.getTargetArchitecture(),</span>
+<span class="fc" id="L450">                    &quot;targetDate&quot;, string(project.getTargetDate()),</span>
+<span class="fc" id="L451">                    &quot;budgetAmount&quot;, string(project.getBudgetAmount()),</span>
+<span class="fc" id="L452">                    &quot;budgetCurrency&quot;, project.getBudgetCurrency(),</span>
+                    MANAGED_PROPERTY, &quot;true&quot;)));
+
+<span class="fc" id="L455">            List&lt;ProjectRequirement&gt; requirements = requirementRepository</span>
+<span class="fc" id="L456">                    .findByProjectIdAndScopeKeyOrderByRequirementKeyAsc(</span>
+<span class="fc" id="L457">                            project.getId(), scopeKey);</span>
+<span class="fc" id="L458">            Map&lt;Long, List&lt;RequirementElementMapping&gt;&gt; mappingsByRequirement =</span>
+<span class="fc" id="L459">                    mappingsByRequirement(project.getId(), scopeKey);</span>
+<span class="fc bfc" id="L460" title="All 2 branches covered.">            for (ProjectRequirement requirement : requirements) {</span>
+<span class="fc" id="L461">                List&lt;ProjectRequirementVersion&gt; versions = versions(requirement, scopeKey, selection);</span>
+<span class="fc" id="L462">                ProjectRequirementVersion current = versions.stream()</span>
+<span class="fc" id="L463">                        .filter(version -&gt; Objects.equals(version.getId(), requirement.getCurrentVersionId()))</span>
+<span class="fc" id="L464">                        .findFirst()</span>
+<span class="fc bfc" id="L465" title="All 2 branches covered.">                        .orElse(versions.isEmpty() ? null : versions.getLast());</span>
+<span class="fc" id="L466">                result.add(block(REQUIREMENT_BLOCK,</span>
+<span class="fc" id="L467">                        List.of(project.getProjectKey(), requirement.getRequirementKey()), properties(</span>
+<span class="fc" id="L468">                                &quot;title&quot;, requirement.getTitle(),</span>
+<span class="fc" id="L469">                                &quot;status&quot;, name(requirement.getStatus()),</span>
+<span class="fc" id="L470">                                &quot;priority&quot;, Integer.toString(requirement.getPriority()),</span>
+<span class="fc" id="L471">                                &quot;criticality&quot;, name(requirement.getCriticality()),</span>
+<span class="fc" id="L472">                                &quot;requirementType&quot;, name(requirement.getRequirementType()),</span>
+<span class="fc" id="L473">                                &quot;reviewStatus&quot;, name(requirement.getReviewStatus()),</span>
+<span class="fc" id="L474">                                &quot;owner&quot;, requirement.getOwnerUsername(),</span>
+<span class="fc bfc" id="L475" title="All 2 branches covered.">                                &quot;currentVersionId&quot;, selection == VersionSelection.HISTORY ? string(requirement.getCurrentVersionId()) : null,</span>
+<span class="fc bfc" id="L476" title="All 4 branches covered.">                                &quot;currentVersionNumber&quot;, selection == VersionSelection.CURRENT &amp;&amp; current != null ? string(current.getVersionNumber()) : null,</span>
+<span class="fc" id="L477">                                &quot;currentSnapshotId&quot;, requirement.getCurrentAnalysisSnapshotId(),</span>
+                                MANAGED_PROPERTY, &quot;true&quot;)));
+
+<span class="fc bfc" id="L480" title="All 2 branches covered.">                for (ProjectRequirementVersion version : versions) {</span>
+<span class="fc" id="L481">                    result.add(block(VERSION_BLOCK,</span>
+<span class="fc" id="L482">                            List.of(project.getProjectKey(), requirement.getRequirementKey(),</span>
+<span class="fc" id="L483">                                    Integer.toString(version.getVersionNumber())), properties(</span>
+<span class="fc" id="L484">                                    &quot;text&quot;, version.getText(),</span>
+<span class="fc" id="L485">                                    &quot;contentHash&quot;, version.getContentHash(),</span>
+<span class="fc bfc" id="L486" title="All 2 branches covered.">                                    &quot;changeReason&quot;, selection == VersionSelection.HISTORY ? version.getChangeReason() : null,</span>
+<span class="fc" id="L487">                                    &quot;createdBy&quot;, version.getCreatedBy(),</span>
+<span class="fc" id="L488">                                    &quot;createdAt&quot;, string(version.getCreatedAt()),</span>
+<span class="fc" id="L489">                                    &quot;sourceArtifactId&quot;, string(version.getSourceArtifactId()),</span>
+<span class="fc" id="L490">                                    &quot;sourceVersionId&quot;, string(version.getSourceVersionId()),</span>
+<span class="fc" id="L491">                                    &quot;sourceFragmentIds&quot;, version.getSourceFragmentIdsJson(),</span>
+<span class="fc" id="L492">                                    &quot;sectionReference&quot;, version.getSectionReference(),</span>
+<span class="fc" id="L493">                                    &quot;pageNumber&quot;, string(version.getPageNumber()),</span>
+<span class="fc bfc" id="L494" title="All 2 branches covered.">                                    &quot;originalText&quot;, selection == VersionSelection.HISTORY ? version.getOriginalText() : null,</span>
+                                    MANAGED_PROPERTY, &quot;true&quot;)));
+<span class="fc" id="L496">                }</span>
+
+<span class="fc bfc" id="L498" title="All 2 branches covered.">                if (current == null) continue;</span>
+<span class="fc" id="L499">                String canonicalId = canonicalRequirementId(</span>
+<span class="fc" id="L500">                        project.getProjectKey(), requirement.getRequirementKey());</span>
+<span class="fc" id="L501">                result.add(block(&quot;requirement&quot;, List.of(canonicalId), properties(</span>
+<span class="fc" id="L502">                        &quot;title&quot;, requirement.getTitle(),</span>
+<span class="fc" id="L503">                        &quot;text&quot;, current.getText(),</span>
+                        MANAGED_PROPERTY, &quot;true&quot;,
+<span class="fc" id="L505">                        &quot;x-project-key&quot;, project.getProjectKey(),</span>
+<span class="fc" id="L506">                        &quot;x-requirement-key&quot;, requirement.getRequirementKey(),</span>
+<span class="fc" id="L507">                        &quot;x-version&quot;, Integer.toString(current.getVersionNumber()),</span>
+<span class="fc" id="L508">                        &quot;x-content-hash&quot;, current.getContentHash(),</span>
+<span class="fc" id="L509">                        &quot;x-review-status&quot;, name(requirement.getReviewStatus()),</span>
+<span class="fc" id="L510">                        &quot;x-owner&quot;, requirement.getOwnerUsername())));</span>
+
+                for (RequirementElementMapping mapping : mappingsByRequirement
+<span class="fc bfc" id="L513" title="All 2 branches covered.">                        .getOrDefault(requirement.getId(), List.of())) {</span>
+<span class="fc" id="L514">                    result.add(block(&quot;mapping&quot;,</span>
+<span class="fc" id="L515">                            List.of(canonicalId, &quot;-&gt;&quot;, mapping.getNodeCode()), properties(</span>
+<span class="fc" id="L516">                                    &quot;score&quot;, com.taxonomy.dto.AnalysisPercentages.canonical(mapping.getDirectScore()),</span>
+<span class="fc" id="L517">                                    &quot;source&quot;, mapping.getSnapshot().getId(),</span>
+                                    MANAGED_PROPERTY, &quot;true&quot;,
+<span class="fc" id="L519">                                    &quot;x-relevance&quot;, Double.toString(mapping.getRelevance()),</span>
+<span class="fc" id="L520">                                    &quot;x-confidence&quot;, Double.toString(mapping.getConfidence()),</span>
+<span class="fc" id="L521">                                    &quot;x-origin&quot;, name(mapping.getMappingOrigin()),</span>
+<span class="fc" id="L522">                                    &quot;x-review-status&quot;, name(mapping.getReviewStatus()),</span>
+<span class="fc" id="L523">                                    &quot;x-action-status&quot;, name(mapping.getActionStatus()),</span>
+<span class="fc" id="L524">                                    &quot;x-evidence&quot;, mapping.getActionEvidence(),</span>
+<span class="fc" id="L525">                                    &quot;x-decision-by&quot;, mapping.getDecisionBy(),</span>
+<span class="fc" id="L526">                                    &quot;x-decision-at&quot;, string(mapping.getDecisionAt()),</span>
+<span class="fc" id="L527">                                    &quot;x-decision-comment&quot;, mapping.getDecisionComment())));</span>
+<span class="fc" id="L528">                }</span>
+<span class="fc" id="L529">            }</span>
+<span class="fc" id="L530">        }</span>
+<span class="fc" id="L531">        return result;</span>
+    }
+
+<span class="fc" id="L534">    private enum VersionSelection { CURRENT, HISTORY }</span>
+
+    private List&lt;ProjectRequirementVersion&gt; versions(ProjectRequirement requirement, String scopeKey, VersionSelection selection) {
+<span class="fc bfc" id="L537" title="All 2 branches covered.">        if (selection == VersionSelection.CURRENT) {</span>
+<span class="fc bfc" id="L538" title="All 2 branches covered.">            if (requirement.getCurrentVersionId() == null) return List.of();</span>
+<span class="fc" id="L539">            return List.of(versionRepository.findByIdAndRequirementIdAndScopeKey(</span>
+<span class="fc" id="L540">                    requirement.getCurrentVersionId(), requirement.getId(), scopeKey)</span>
+<span class="fc" id="L541">                    .orElseThrow(() -&gt; PortfolioException.conflict(&quot;Current requirement version is unavailable in its tenant&quot;)));</span>
+        }
+<span class="fc" id="L543">        return versionRepository.findByRequirementIdAndScopeKeyOrderByVersionNumberDesc(requirement.getId(), scopeKey).stream()</span>
+<span class="fc" id="L544">                .sorted(Comparator.comparingInt(ProjectRequirementVersion::getVersionNumber)).toList();</span>
+    }
+
+    private Map&lt;Long, List&lt;RequirementElementMapping&gt;&gt; mappingsByRequirement(
+            Long projectId, String scopeKey) {
+<span class="fc" id="L549">        Map&lt;Long, List&lt;RequirementElementMapping&gt;&gt; result = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L550" title="All 2 branches covered.">        for (RequirementElementMapping mapping : elementMappingRepository</span>
+<span class="fc" id="L551">                .findCurrentMappingsForProject(projectId, scopeKey)) {</span>
+<span class="fc" id="L552">            Long requirementId = mapping.getSnapshot().getRequirement().getId();</span>
+<span class="fc" id="L553">            result.computeIfAbsent(requirementId, ignored -&gt; new ArrayList&lt;&gt;()).add(mapping);</span>
+<span class="fc" id="L554">        }</span>
+<span class="fc" id="L555">        return result;</span>
+    }
+
+    private boolean isPortfolioManaged(BlockAst block) {
+<span class="fc bfc" id="L559" title="All 2 branches covered.">        return OWNED_BLOCKS.contains(block.getKind())</span>
+<span class="fc bfc" id="L560" title="All 2 branches covered.">                || (Set.of(&quot;requirement&quot;, &quot;mapping&quot;).contains(block.getKind())</span>
+<span class="fc bfc" id="L561" title="All 2 branches covered.">                &amp;&amp; &quot;true&quot;.equalsIgnoreCase(block.property(MANAGED_PROPERTY)));</span>
+    }
+
+    private DocumentAst parseOrEmpty(String dsl) {
+<span class="pc bpc" id="L565" title="1 of 4 branches missed.">        if (dsl == null || dsl.isBlank()) {</span>
+<span class="fc" id="L566">            return new DocumentAst(</span>
+                    new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION,
+                            &quot;default&quot;, GENERATED),
+<span class="fc" id="L569">                    List.of());</span>
+        }
+<span class="fc" id="L571">        return parser.parse(dsl, &quot;architecture.taxdsl&quot;);</span>
+    }
+
+    /** Reject source aliases before separate raw blocks can address the same owner identity. */
+    protected final void validateNormalizedIdentities(DocumentAst document) {
+<span class="fc" id="L576">        Set&lt;String&gt; identities = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L577" title="All 2 branches covered.">        for (BlockAst block : document.getBlocks()) {</span>
+<span class="fc" id="L578">            List&lt;String&gt; header = block.getHeaderTokens();</span>
+<span class="fc bfc" id="L579" title="All 4 branches covered.">            String normalized = switch (block.getKind()) {</span>
+<span class="pc bpc" id="L580" title="1 of 2 branches missed.">                case PROJECT_BLOCK -&gt; header.isEmpty() ? null</span>
+<span class="fc" id="L581">                        : ProjectPortfolioService.normalizeBusinessKey(header.getFirst(), &quot;projectKey&quot;);</span>
+<span class="pc bpc" id="L582" title="1 of 2 branches missed.">                case REQUIREMENT_BLOCK -&gt; header.size() &lt; 2 ? null</span>
+<span class="fc" id="L583">                        : normalizedRequirementIdentity(header.get(0), header.get(1));</span>
+<span class="pc bpc" id="L584" title="1 of 2 branches missed.">                case VERSION_BLOCK -&gt; header.size() &lt; 3 ? null</span>
+<span class="fc" id="L585">                        : normalizedRequirementIdentity(header.get(0), header.get(1)) + '\u0000' + versionNumber(block);</span>
+<span class="fc" id="L586">                default -&gt; null;</span>
+            };
+<span class="fc bfc" id="L588" title="All 4 branches covered.">            if (normalized != null &amp;&amp; !identities.add(block.getKind() + '\u0000' + normalized)) {</span>
+<span class="fc" id="L589">                throw PortfolioException.conflict(&quot;Duplicate normalized &quot; + block.getKind()</span>
+<span class="fc" id="L590">                        + &quot; identity: &quot; + normalized.replace('\u0000', '/'));</span>
+            }
+<span class="fc" id="L592">        }</span>
+<span class="fc" id="L593">    }</span>
+
+    protected static String normalizedRequirementIdentity(String project, String requirement) {
+<span class="fc" id="L596">        return ProjectPortfolioService.normalizeBusinessKey(project, &quot;projectKey&quot;) + '\u0000'</span>
+<span class="fc" id="L597">                + ProjectPortfolioService.normalizeBusinessKey(requirement, &quot;requirementKey&quot;);</span>
+    }
+
+    private Map&lt;String, BlockAst&gt; keyed(DocumentAst document,
+                                        String kind,
+                                        int headerSize,
+                                        List&lt;String&gt; warnings) {
+<span class="fc" id="L604">        Map&lt;String, BlockAst&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L605" title="All 2 branches covered.">        for (BlockAst block : document.blocksOfKind(kind)) {</span>
+<span class="pc bpc" id="L606" title="1 of 2 branches missed.">            if (block.getHeaderTokens().size() &lt; headerSize) {</span>
+<span class="nc" id="L607">                warnings.add(&quot;Invalid &quot; + kind + &quot; header at &quot; + block.getSourceLocation());</span>
+<span class="nc" id="L608">                continue;</span>
+            }
+<span class="fc bfc" id="L610" title="All 2 branches covered.">            String key = headerSize == 1</span>
+<span class="fc" id="L611">                    ? block.getHeaderTokens().getFirst()</span>
+<span class="fc" id="L612">                    : block.getHeaderTokens().get(0) + &quot;\u0000&quot; + block.getHeaderTokens().get(1);</span>
+<span class="pc bpc" id="L613" title="1 of 2 branches missed.">            if (result.putIfAbsent(key, block) != null) {</span>
+<span class="nc" id="L614">                warnings.add(&quot;Duplicate &quot; + kind + &quot; block: &quot; + key.replace('\u0000', '/'));</span>
+            }
+<span class="fc" id="L616">        }</span>
+<span class="fc" id="L617">        return result;</span>
+    }
+
+    private Map&lt;String, List&lt;BlockAst&gt;&gt; groupedVersions(DocumentAst document,
+                                                         List&lt;String&gt; warnings) {
+<span class="fc" id="L622">        Map&lt;String, List&lt;BlockAst&gt;&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L623" title="All 2 branches covered.">        for (BlockAst block : document.blocksOfKind(VERSION_BLOCK)) {</span>
+<span class="pc bpc" id="L624" title="1 of 2 branches missed.">            if (block.getHeaderTokens().size() &lt; 3) {</span>
+<span class="nc" id="L625">                warnings.add(&quot;Invalid requirementVersion header at &quot; + block.getSourceLocation());</span>
+<span class="nc" id="L626">                continue;</span>
+            }
+<span class="fc" id="L628">            String key = block.getHeaderTokens().get(0) + &quot;\u0000&quot; + block.getHeaderTokens().get(1);</span>
+<span class="fc" id="L629">            result.computeIfAbsent(key, ignored -&gt; new ArrayList&lt;&gt;()).add(block);</span>
+<span class="fc" id="L630">        }</span>
+<span class="fc" id="L631">        return result;</span>
+    }
+
+    protected final int versionNumber(BlockAst block) {
+        try {
+<span class="fc" id="L636">            int number = Integer.parseInt(block.getHeaderTokens().get(2));</span>
+<span class="pc bpc" id="L637" title="1 of 2 branches missed.">            if (number &gt; 0) return number;</span>
+<span class="nc" id="L638">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L639">            throw PortfolioException.validation(&quot;Invalid immutable requirement version number: &quot; + identity(block));</span>
+<span class="nc" id="L640">        }</span>
+<span class="nc" id="L641">        throw PortfolioException.validation(&quot;Immutable requirement version number must be positive: &quot; + identity(block));</span>
+    }
+
+    private ProjectPortfolioService.ImportedVersion importedVersion(BlockAst block, List&lt;String&gt; warnings) {
+<span class="fc" id="L645">        Instant createdAt = null;</span>
+<span class="pc bpc" id="L646" title="1 of 2 branches missed.">        if (block.property(&quot;createdAt&quot;) != null) {</span>
+<span class="fc" id="L647">            try { createdAt = Instant.parse(block.property(&quot;createdAt&quot;)); }</span>
+<span class="pc" id="L648">            catch (java.time.DateTimeException invalid) { throw PortfolioException.validation(&quot;Invalid immutable requirement creation time&quot;); }</span>
+        }
+<span class="fc" id="L650">        return new ProjectPortfolioService.ImportedVersion(versionNumber(block), block.property(&quot;text&quot;), block.property(&quot;contentHash&quot;),</span>
+<span class="fc" id="L651">                block.property(&quot;changeReason&quot;), sourceReference(block, warnings), block.property(&quot;createdBy&quot;), createdAt);</span>
+    }
+
+    private SourceReference sourceReference(BlockAst block, List&lt;String&gt; warnings) {
+<span class="fc" id="L655">        return new SourceReference(</span>
+<span class="fc" id="L656">                longValue(block.property(&quot;sourceArtifactId&quot;), warnings, identity(block)),</span>
+<span class="fc" id="L657">                longValue(block.property(&quot;sourceVersionId&quot;), warnings, identity(block)),</span>
+<span class="fc" id="L658">                longList(block.property(&quot;sourceFragmentIds&quot;), warnings, identity(block)),</span>
+<span class="fc" id="L659">                block.property(&quot;sectionReference&quot;),</span>
+<span class="fc" id="L660">                integerValue(block.property(&quot;pageNumber&quot;), warnings, identity(block)),</span>
+<span class="fc" id="L661">                block.property(&quot;originalText&quot;));</span>
+    }
+
+    private static BlockAst block(String kind, List&lt;String&gt; header, List&lt;PropertyAst&gt; properties) {
+<span class="fc" id="L665">        return new BlockAst(kind, header, properties, List.of(), Map.of(), GENERATED);</span>
+    }
+
+    private static List&lt;PropertyAst&gt; properties(String... pairs) {
+<span class="fc" id="L669">        List&lt;PropertyAst&gt; properties = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L670" title="All 2 branches covered.">        for (int index = 0; index + 1 &lt; pairs.length; index += 2) {</span>
+<span class="fc" id="L671">            String value = pairs[index + 1];</span>
+<span class="fc bfc" id="L672" title="All 2 branches covered.">            if (value != null) {</span>
+<span class="fc" id="L673">                properties.add(new PropertyAst(pairs[index], value, GENERATED));</span>
+            }
+        }
+<span class="fc" id="L676">        return properties;</span>
+    }
+
+    private static String canonicalRequirementId(String projectKey, String requirementKey) {
+<span class="fc" id="L680">        return (projectKey + &quot;__&quot; + requirementKey).replaceAll(&quot;[^A-Za-z0-9._-]&quot;, &quot;_&quot;);</span>
+    }
+
+    private static String identity(BlockAst block) {
+<span class="fc" id="L684">        return block.getKind() + &quot; &quot; + String.join(&quot; &quot;, block.getHeaderTokens());</span>
+    }
+
+    private static String required(BlockAst block, String property, String fallback) {
+<span class="fc" id="L688">        String value = block.property(property);</span>
+<span class="pc bpc" id="L689" title="2 of 4 branches missed.">        return value == null || value.isBlank() ? fallback : value;</span>
+    }
+
+    private static String valueOrDefault(String value, String fallback) {
+<span class="pc bpc" id="L693" title="2 of 4 branches missed.">        return value == null || value.isBlank() ? fallback : value;</span>
+    }
+
+    private static String name(Enum&lt;?&gt; value) {
+<span class="pc bpc" id="L697" title="1 of 2 branches missed.">        return value == null ? null : value.name();</span>
+    }
+
+    private static String string(Object value) {
+<span class="fc bfc" id="L701" title="All 2 branches covered.">        return value == null ? null : value.toString();</span>
+    }
+
+    private static String normalize(String text) {
+<span class="pc bpc" id="L705" title="1 of 2 branches missed.">        return text == null ? &quot;&quot; : text.strip();</span>
+    }
+
+    private static &lt;E extends Enum&lt;E&gt;&gt; E enumValue(Class&lt;E&gt; type, String value, E fallback) {
+<span class="pc bpc" id="L709" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) return fallback;</span>
+        try {
+<span class="fc" id="L711">            return Enum.valueOf(type, value.strip().toUpperCase());</span>
+<span class="nc" id="L712">        } catch (IllegalArgumentException exception) {</span>
+<span class="nc" id="L713">            return fallback;</span>
+        }
+    }
+
+    private static LocalDate dateValue(String value,
+                                       List&lt;String&gt; warnings,
+                                       String identity) {
+<span class="pc bpc" id="L720" title="3 of 4 branches missed.">        if (value == null || value.isBlank()) return null;</span>
+        try {
+<span class="nc" id="L722">            return LocalDate.parse(value);</span>
+<span class="nc" id="L723">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L724">            warnings.add(identity + &quot; has invalid date: &quot; + value);</span>
+<span class="nc" id="L725">            return null;</span>
+        }
+    }
+
+    private static BigDecimal decimalValue(String value,
+                                           List&lt;String&gt; warnings,
+                                           String identity) {
+<span class="pc bpc" id="L732" title="3 of 4 branches missed.">        if (value == null || value.isBlank()) return null;</span>
+        try {
+<span class="nc" id="L734">            return new BigDecimal(value);</span>
+<span class="nc" id="L735">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L736">            warnings.add(identity + &quot; has invalid decimal: &quot; + value);</span>
+<span class="nc" id="L737">            return null;</span>
+        }
+    }
+
+    private static int intValue(String value,
+                                int fallback,
+                                List&lt;String&gt; warnings,
+                                String identity) {
+<span class="fc" id="L745">        Integer parsed = integerValue(value, warnings, identity);</span>
+<span class="pc bpc" id="L746" title="1 of 2 branches missed.">        return parsed != null ? parsed : fallback;</span>
+    }
+
+    private static Integer integerValue(String value,
+                                        List&lt;String&gt; warnings,
+                                        String identity) {
+<span class="pc bpc" id="L752" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) return null;</span>
+        try {
+<span class="fc" id="L754">            return Integer.valueOf(value);</span>
+<span class="nc" id="L755">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L756">            warnings.add(identity + &quot; has invalid integer: &quot; + value);</span>
+<span class="nc" id="L757">            return null;</span>
+        }
+    }
+
+    private static Long longValue(String value,
+                                  List&lt;String&gt; warnings,
+                                  String identity) {
+<span class="pc bpc" id="L764" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) return null;</span>
+        try {
+<span class="fc" id="L766">            return Long.valueOf(value);</span>
+<span class="nc" id="L767">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L768">            warnings.add(identity + &quot; has invalid long value: &quot; + value);</span>
+<span class="nc" id="L769">            return null;</span>
+        }
+    }
+
+    private static List&lt;Long&gt; longList(String value,
+                                       List&lt;String&gt; warnings,
+                                       String identity) {
+<span class="pc bpc" id="L776" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) return List.of();</span>
+<span class="fc" id="L777">        String normalized = value.replace(&quot;[&quot;, &quot;&quot;).replace(&quot;]&quot;, &quot;&quot;).replace(&quot;\&quot;&quot;, &quot;&quot;);</span>
+<span class="fc" id="L778">        List&lt;Long&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L779" title="All 2 branches covered.">        for (String token : normalized.split(&quot;,&quot;)) {</span>
+<span class="fc" id="L780">            String trimmed = token.strip();</span>
+<span class="pc bpc" id="L781" title="1 of 2 branches missed.">            if (trimmed.isEmpty()) continue;</span>
+            try {
+<span class="nc" id="L783">                result.add(Long.valueOf(trimmed));</span>
+<span class="nc" id="L784">            } catch (NumberFormatException exception) {</span>
+<span class="nc" id="L785">                warnings.add(identity + &quot; has invalid fragment ID: &quot; + trimmed);</span>
+<span class="nc" id="L786">            }</span>
+        }
+<span class="fc" id="L788">        return List.copyOf(result);</span>
+    }
+
+<span class="fc" id="L791">    public record CommitResult(String commitId, boolean changed, String branch) {</span>
+    }
+
+    public record MaterializeResult(
+            int projectsCreated,
+            int requirementsCreated,
+            int versionsCreated,
+            List&lt;String&gt; warnings) {
+<span class="fc" id="L799">        public MaterializeResult {</span>
+<span class="pc bpc" id="L800" title="1 of 2 branches missed.">            warnings = warnings == null ? List.of() : List.copyOf(warnings);</span>
+<span class="fc" id="L801">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

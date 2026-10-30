@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TemplateBackupCapture.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-templates</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">TemplateBackupCapture.java</span></div><h1>TemplateBackupCapture.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import com.taxonomy.backup.BackupCheckpoint;
+import com.taxonomy.backup.BackupLimits;
+import com.taxonomy.backup.PortableGitPaths;
+import com.taxonomy.templates.DocumentTemplateGitRepository.CapturedFile;
+import com.taxonomy.templates.DocumentTemplateGitRepository.CapturedTree;
+import com.taxonomy.templates.api.TemplateManifest;
+import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
+
+/** Complete preflight of one immutable template tree, with bounded metadata and streamed checksums. */
+final class TemplateBackupCapture {
+    private static final int MAX_MANIFEST_BYTES = 1_048_576;
+    private static final int MAX_COMMIT_BYTES = 1_048_576;
+    private static final int MAX_TREE_BYTES = 4 * 1_048_576;
+    private static final int MAX_METADATA_BYTES = 16 * 1_048_576;
+<span class="fc" id="L28">    private static final JsonMapper JSON = JsonMapper.builder()</span>
+<span class="fc" id="L29">            .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)</span>
+<span class="fc" id="L30">            .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, DeserializationFeature.FAIL_ON_TRAILING_TOKENS)</span>
+<span class="fc" id="L31">            .build();</span>
+
+    private TemplateBackupCapture() { }
+
+    static CapturedTree capture(Repository repository, ObjectId head, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        if (head == null) return new CapturedTree(null, List.of());</span>
+<span class="fc" id="L37">        var files = new ArrayList&lt;CapturedFile&gt;();</span>
+<span class="fc" id="L38">        var packages = new TreeMap&lt;String, PackageFiles&gt;();</span>
+<span class="fc" id="L39">        try (var reader = repository.newObjectReader(); var tree = new TreeWalk(reader)) {</span>
+<span class="fc" id="L40">            long metadataBytes = checkMetadata(reader, head, Constants.OBJ_COMMIT, MAX_COMMIT_BYTES, 0, checkpoint);</span>
+            // A size lookup only hints the type; parseCommit would peel an unchecked tag target.
+<span class="fc" id="L42">            byte[] commit = reader.open(head, Constants.OBJ_COMMIT).getBytes(MAX_COMMIT_BYTES);</span>
+<span class="fc" id="L43">            var root = RevCommit.parse(commit).getTree();</span>
+<span class="fc" id="L44">            metadataBytes = checkMetadata(reader, root, Constants.OBJ_TREE, MAX_TREE_BYTES, metadataBytes, checkpoint);</span>
+<span class="fc" id="L45">            tree.addTree(root);</span>
+            // Visit directories explicitly so every subtree is bounded before JGit loads it.
+<span class="fc" id="L47">            tree.setRecursive(false);</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">            while (tree.next()) {</span>
+<span class="fc" id="L49">                checkpoint.check();</span>
+<span class="fc" id="L50">                String path = PortableGitPaths.requireFile(tree.getPathString());</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">                if (!Arrays.equals(tree.getRawPath(), path.getBytes(StandardCharsets.UTF_8))) {</span>
+<span class="nc" id="L52">                    throw new IOException(&quot;Template path is not canonical UTF-8&quot;);</span>
+                }
+<span class="fc bfc" id="L54" title="All 2 branches covered.">                if (tree.isSubtree()) {</span>
+<span class="fc" id="L55">                    metadataBytes = checkMetadata(reader, tree.getObjectId(0), Constants.OBJ_TREE, MAX_TREE_BYTES, metadataBytes, checkpoint);</span>
+<span class="fc" id="L56">                    tree.enterSubtree();</span>
+<span class="fc" id="L57">                    continue;</span>
+                }
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">                if (files.size() &gt;= BackupLimits.MAX_ITEMS - 1) throw new IOException(&quot;Template capture file limit exceeded&quot;);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">                if (!FileMode.REGULAR_FILE.equals(tree.getFileMode(0))) {</span>
+<span class="fc" id="L61">                    throw new IOException(&quot;Template capture requires regular files&quot;);</span>
+                }
+<span class="fc" id="L63">                String[] parts = path.split(&quot;/&quot;, 4);</span>
+<span class="pc bpc" id="L64" title="1 of 4 branches missed.">                if (parts.length &lt; 3 || !parts[0].equals(&quot;templates&quot;)) throw new IOException(&quot;Unclassified template repository file&quot;);</span>
+<span class="fc" id="L65">                DocumentTemplateGitRepository.validateTemplateId(parts[1]);</span>
+<span class="fc" id="L66">                var group = packages.computeIfAbsent(parts[1], ignored -&gt; new PackageFiles());</span>
+<span class="fc" id="L67">                var loader = repository.open(tree.getObjectId(0), Constants.OBJ_BLOB);</span>
+<span class="fc" id="L68">                var file = new CapturedFile(path, tree.getObjectId(0).name(), loader.getSize());</span>
+<span class="pc bpc" id="L69" title="1 of 4 branches missed.">                if (parts.length == 3 &amp;&amp; parts[2].equals(&quot;template.json&quot;)) {</span>
+<span class="pc bpc" id="L70" title="1 of 4 branches missed.">                    if (file.length() &gt; MAX_MANIFEST_BYTES || group.manifest != null) throw new IOException(&quot;Invalid template manifest size or duplicate&quot;);</span>
+<span class="fc" id="L71">                    group.manifest = file;</span>
+<span class="pc bpc" id="L72" title="2 of 4 branches missed.">                } else if (parts.length == 4 &amp;&amp; parts[2].equals(&quot;package&quot;)) {</span>
+<span class="fc" id="L73">                    OoxmlTemplatePackageCodec.validatePartPath(parts[3]);</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">                    if (file.length() &gt; OoxmlTemplatePackageCodec.MAX_PART_BYTES</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">                            || group.parts.size() &gt;= OoxmlTemplatePackageCodec.MAX_PARTS</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">                            || file.length() &gt; OoxmlTemplatePackageCodec.MAX_UNCOMPRESSED_BYTES - group.length) {</span>
+<span class="nc" id="L77">                        throw new IOException(&quot;Template package capture limit exceeded&quot;);</span>
+                    }
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">                    if (group.parts.putIfAbsent(parts[3], file) != null) throw new IOException(&quot;Duplicate template package part&quot;);</span>
+<span class="fc" id="L80">                    group.length += file.length();</span>
+                } else {
+<span class="nc" id="L82">                    throw new IOException(&quot;Unclassified template repository file&quot;);</span>
+                }
+<span class="fc" id="L84">                files.add(file);</span>
+<span class="fc" id="L85">            }</span>
+        }
+<span class="fc" id="L87">        PortableGitPaths.requireTree(files.stream().map(CapturedFile::path).toList());</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        for (var entry : packages.entrySet()) {</span>
+<span class="fc" id="L89">            checkpoint.check();</span>
+<span class="fc" id="L90">            verifyPackage(repository, entry.getKey(), entry.getValue(), checkpoint);</span>
+<span class="fc" id="L91">        }</span>
+<span class="fc" id="L92">        return new CapturedTree(head.name(), files);</span>
+    }
+
+    private static long checkMetadata(ObjectReader reader, AnyObjectId id, int type, int maximum,
+                                      long consumed, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L97">        checkpoint.check();</span>
+<span class="fc" id="L98">        long size = reader.getObjectSize(id, type);</span>
+<span class="pc bpc" id="L99" title="1 of 6 branches missed.">        if (size &lt; 0 || size &gt; maximum || size &gt; MAX_METADATA_BYTES - consumed) {</span>
+<span class="fc" id="L100">            throw new IOException(&quot;Template capture metadata limit exceeded&quot;);</span>
+        }
+<span class="fc" id="L102">        return consumed + size;</span>
+    }
+
+    private static void verifyPackage(Repository repository, String templateId, PackageFiles files,
+                                      BackupCheckpoint checkpoint) throws IOException {
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if (files.manifest == null) throw new IOException(&quot;Template package manifest is missing&quot;);</span>
+        TemplateManifest manifest;
+        try {
+<span class="fc" id="L110">            byte[] content = repository.open(ObjectId.fromString(files.manifest.objectId()), Constants.OBJ_BLOB)</span>
+<span class="fc" id="L111">                    .getBytes(MAX_MANIFEST_BYTES);</span>
+<span class="fc" id="L112">            manifest = JSON.readValue(content, TemplateManifest.class);</span>
+<span class="fc" id="L113">        } catch (RuntimeException invalid) {</span>
+<span class="fc" id="L114">            throw new IOException(&quot;Invalid stored template manifest&quot;, invalid);</span>
+<span class="fc" id="L115">        }</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (manifest == null) throw new IOException(&quot;Template package manifest is null&quot;);</span>
+<span class="fc" id="L117">        DocumentTemplateGitRepository.validateStoredManifest(templateId, manifest, null);</span>
+<span class="pc bpc" id="L118" title="1 of 4 branches missed.">        if (manifest.partCount() != files.parts.size() || manifest.uncompressedSize() != files.length) {</span>
+<span class="fc" id="L119">            throw new IOException(&quot;Stored template package statistics do not match its manifest&quot;);</span>
+        }
+<span class="fc" id="L121">        MessageDigest digest = sha256();</span>
+<span class="fc" id="L122">        byte[] buffer = new byte[8_192];</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        for (var part : files.parts.entrySet()) {</span>
+<span class="fc" id="L124">            checkpoint.check();</span>
+<span class="fc" id="L125">            digest.update(part.getKey().getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L126">            digest.update((byte) 0);</span>
+<span class="fc" id="L127">            long length = 0;</span>
+<span class="fc" id="L128">            try (var input = repository.open(ObjectId.fromString(part.getValue().objectId()), Constants.OBJ_BLOB).openStream()) {</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">                for (int read; (read = input.read(buffer)) != -1;) {</span>
+<span class="fc" id="L130">                    checkpoint.check();</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">                    if (read &gt; part.getValue().length() - length) throw new IOException(&quot;Template blob exceeds its declared size&quot;);</span>
+<span class="fc" id="L132">                    digest.update(buffer, 0, read);</span>
+<span class="fc" id="L133">                    length += read;</span>
+                }
+            }
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">            if (length != part.getValue().length()) throw new IOException(&quot;Truncated template blob&quot;);</span>
+<span class="fc" id="L137">            digest.update((byte) 0);</span>
+<span class="fc" id="L138">        }</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        if (!HexFormat.of().formatHex(digest.digest()).equals(manifest.packageSha256())) {</span>
+<span class="fc" id="L140">            throw new IOException(&quot;Stored template package checksum does not match its manifest&quot;);</span>
+        }
+<span class="fc" id="L142">    }</span>
+
+    private static MessageDigest sha256() {
+<span class="fc" id="L145">        try { return MessageDigest.getInstance(&quot;SHA-256&quot;); }</span>
+<span class="nc" id="L146">        catch (NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }</span>
+    }
+
+<span class="fc" id="L149">    private static final class PackageFiles {</span>
+        CapturedFile manifest;
+<span class="fc" id="L151">        final TreeMap&lt;String, CapturedFile&gt; parts = new TreeMap&lt;&gt;();</span>
+        long length;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

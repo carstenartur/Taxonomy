@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RestoreRepositoryAllocation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.restore</a> &gt; <span class="el_source">RestoreRepositoryAllocation.java</span></div><h1>RestoreRepositoryAllocation.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.restore;
+
+import com.taxonomy.backup.BackupRepositoryKey;
+import java.util.Objects;
+
+/** Explicitly approved target routing; archive names never allocate physical storage. */
+public record RestoreRepositoryAllocation(BackupRepositoryKey targetKey, String physicalStorageName) {
+<span class="fc" id="L8">    public RestoreRepositoryAllocation {</span>
+<span class="fc" id="L9">        Objects.requireNonNull(targetKey);</span>
+<span class="pc bpc" id="L10" title="1 of 4 branches missed.">        if (physicalStorageName == null || !physicalStorageName.matches(&quot;[A-Za-z0-9][A-Za-z0-9._-]{0,254}&quot;)</span>
+<span class="pc bpc" id="L11" title="1 of 2 branches missed.">                || physicalStorageName.contains(&quot;..&quot;)</span>
+<span class="fc bfc" id="L12" title="All 2 branches covered.">                || physicalStorageName.matches(&quot;(?i)CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9]&quot;))</span>
+<span class="fc" id="L13">            throw new IllegalArgumentException(&quot;Invalid allocated repository storage name&quot;);</span>
+<span class="fc" id="L14">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

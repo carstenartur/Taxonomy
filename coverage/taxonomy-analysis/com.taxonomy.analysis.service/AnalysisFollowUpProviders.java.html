@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisFollowUpProviders.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">AnalysisFollowUpProviders.java</span></div><h1>AnalysisFollowUpProviders.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.analysis.cluster.ClusterAnalysisStore;
+import com.taxonomy.analysis.dag.RequirementReference;
+import com.taxonomy.extension.api.plugin.PluginInvocation;
+import com.taxonomy.dto.AnalysisReasonLength;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Objects;
+import java.util.function.Supplier;
+
+/** Resolves a follow-up's provider only within its original owner, source and requirement. */
+@Service
+public class AnalysisFollowUpProviders {
+<span class="fc" id="L21">    private record Pin(String provider, PluginInvocation binding, AnalysisReasonLength reasonLength,</span>
+                       com.taxonomy.dto.AnalysisLanguage analysisLanguage, RequirementReference requirement,
+                       String owner, WorkspaceContext workspace, Instant expires) { }
+    private final LlmProviderConfig providers;
+<span class="fc" id="L25">    private final LinkedHashMap&lt;String, Pin&gt; local = new LinkedHashMap&lt;&gt;();</span>
+    @Autowired(required = false) private ClusterAnalysisStore cluster;
+    @Autowired(required = false) private AnalysisRuntimeSettings analysisRuntimeSettings;
+
+<span class="fc" id="L29">    public AnalysisFollowUpProviders(LlmProviderConfig providers) { this.providers = providers; }</span>
+
+    /** Retention is bounded like live progress; an evicted operation must be reloaded or restarted explicitly. */
+    public synchronized String remember(String operationId, String requested, String text,
+                                        String owner, WorkspaceContext workspace) {
+<span class="fc" id="L34">        return remember(operationId, requested, text, owner, workspace,</span>
+<span class="fc" id="L35">                AnalysisReasonContext.resolve(null, analysisRuntimeSettings));</span>
+    }
+
+    public synchronized String remember(String operationId, String requested, String text,
+                                        String owner, WorkspaceContext workspace, AnalysisReasonLength reasonLength) {
+<span class="fc" id="L40">        return remember(operationId, requested, text, owner, workspace, reasonLength,</span>
+<span class="fc" id="L41">                AnalysisLanguageContext.resolveCurrentRequest(null));</span>
+    }
+
+    public synchronized String remember(String operationId, String requested, String text,
+                                        String owner, WorkspaceContext workspace, AnalysisReasonLength reasonLength,
+                                        com.taxonomy.dto.AnalysisLanguage language) {
+<span class="fc" id="L47">        String provider = effectiveProvider(requested);</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (providers.isScenarioReplay(provider)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,</span>
+                &quot;Replay requires an authorized persisted analysis operation&quot;);
+<span class="fc" id="L50">        local.entrySet().removeIf(entry -&gt; entry.getValue().expires().isBefore(Instant.now()));</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        if (local.containsKey(operationId)) throw unavailable();</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        while (local.size() &gt;= 512) local.remove(local.keySet().iterator().next());</span>
+<span class="fc" id="L53">        local.put(operationId, new Pin(provider, providers.captureProviderBinding(provider), AnalysisReasonContext.effective(reasonLength), language,</span>
+<span class="fc" id="L54">                RequirementReference.adHoc(text), owner, workspace, Instant.now().plusSeconds(86400)));</span>
+<span class="fc" id="L55">        return provider;</span>
+    }
+
+    public &lt;T&gt; T execute(String operationId, String requestedProvider, String text,
+                         String owner, WorkspaceContext workspace, Supplier&lt;T&gt; work) {
+        Pin pin;
+<span class="pc bpc" id="L61" title="1 of 4 branches missed.">        if (operationId != null &amp;&amp; !operationId.isBlank()) {</span>
+<span class="fc" id="L62">            pin = resolve(operationId, owner, workspace);</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">            if (!pin.requirement().matches(text)) throw new IllegalArgumentException(&quot;Follow-up requirement does not match analysis&quot;);</span>
+<span class="pc bpc" id="L64" title="1 of 4 branches missed.">            if (requestedProvider != null &amp;&amp; !requestedProvider.isBlank()</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                    &amp;&amp; !pin.provider().equalsIgnoreCase(requestedProvider.strip()))</span>
+<span class="fc" id="L66">                throw new IllegalArgumentException(&quot;Follow-up provider does not match analysis&quot;);</span>
+        } else {
+<span class="fc" id="L68">            String provider = effectiveProvider(requestedProvider);</span>
+            // Replay identities are usable only through a persisted and authorized operation.
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">            if (providers.isScenarioReplay(provider)) throw unavailable();</span>
+<span class="fc" id="L71">            pin = new Pin(provider, providers.captureProviderBinding(provider),</span>
+<span class="fc" id="L72">                    AnalysisReasonContext.resolve(null, analysisRuntimeSettings),</span>
+<span class="fc" id="L73">                    AnalysisLanguageContext.resolveCurrentRequest(null),</span>
+<span class="fc" id="L74">                    RequirementReference.adHoc(text),</span>
+<span class="fc" id="L75">                    owner, workspace, Instant.now());</span>
+        }
+<span class="fc" id="L77">        try (var ignored = providers.withRequestProvider(pin.provider(), pin.binding());</span>
+<span class="fc" id="L78">             var reasons = AnalysisReasonContext.open(pin.reasonLength());</span>
+<span class="fc" id="L79">             var language = AnalysisLanguageContext.open(pin.analysisLanguage())) { return work.get(); }</span>
+    }
+
+    private Pin resolve(String operationId, String owner, WorkspaceContext workspace) {
+<span class="pc bpc" id="L83" title="3 of 6 branches missed.">        if (owner == null || owner.isBlank() || workspace == null) throw unavailable();</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (cluster != null) {</span>
+            try {
+<span class="fc" id="L86">                var context = cluster.findAuthorized(operationId, owner, workspace);</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">                if (context.isPresent()) {</span>
+<span class="fc" id="L88">                    var command = cluster.command(context.get());</span>
+<span class="pc bpc" id="L89" title="2 of 4 branches missed.">                    if (!Objects.equals(command.username(), owner) || !Objects.equals(command.workspaceContext(), workspace))</span>
+<span class="nc" id="L90">                        throw unavailable();</span>
+<span class="pc bpc" id="L91" title="2 of 4 branches missed.">                    if (command.provider() == null || command.provider().isBlank()</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">                            || !context.get().requirement().matches(command.businessText())) throw unavailable();</span>
+<span class="fc" id="L93">                    return new Pin(command.provider(), command.providerBinding(),</span>
+<span class="fc" id="L94">                            AnalysisReasonContext.effective(command.analysisReasonLength()), command.analysisLanguage(),</span>
+<span class="fc" id="L95">                            context.get().requirement(), owner, workspace, Instant.MAX);</span>
+                }
+<span class="nc" id="L97">            } catch (SecurityException denied) { throw unavailable(); }</span>
+        }
+<span class="fc" id="L99">        synchronized (this) {</span>
+<span class="fc" id="L100">            var pin = local.get(operationId);</span>
+<span class="pc bpc" id="L101" title="2 of 6 branches missed.">            if (pin == null || pin.expires().isBefore(Instant.now()) || !Objects.equals(pin.owner(), owner)</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                    || !Objects.equals(pin.workspace(), workspace)) throw unavailable();</span>
+<span class="fc" id="L103">            return pin;</span>
+        }
+    }
+
+    private String effectiveProvider(String requested) {
+<span class="pc bpc" id="L108" title="1 of 4 branches missed.">        String explicit = requested == null || requested.isBlank() ? null : requested.strip();</span>
+<span class="fc bfc" id="L109" title="All 4 branches covered.">        if (explicit != null &amp;&amp; !&quot;MOCK&quot;.equalsIgnoreCase(explicit)) {</span>
+<span class="fc" id="L110">            try { explicit = providers.requireRegisteredProvider(explicit).value(); }</span>
+<span class="fc" id="L111">            catch (IllegalArgumentException invalid) {</span>
+<span class="fc" id="L112">                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Unknown analysis provider&quot;, invalid);</span>
+<span class="fc" id="L113">            }</span>
+        }
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        if (providers.isScenarioReplay(explicit)) return explicit;</span>
+<span class="fc bfc" id="L116" title="All 4 branches covered.">        if (&quot;MOCK&quot;.equalsIgnoreCase(explicit) || providers.isMockMode()) return &quot;MOCK&quot;;</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        return explicit == null ? providers.getActiveProviderId().value() : explicit;</span>
+    }
+    private static ResponseStatusException unavailable() {
+<span class="fc" id="L120">        return new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;Analysis operation is unavailable in this scope&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

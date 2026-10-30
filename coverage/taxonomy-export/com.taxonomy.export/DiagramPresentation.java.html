@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DiagramPresentation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">DiagramPresentation.java</span></div><h1>DiagramPresentation.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.diagram.DiagramScene;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+
+/** Presentation only: colors and counts never imply model acceptance or change graph evidence. */
+public final class DiagramPresentation {
+    private DiagramPresentation() { }
+
+    public static String fill(String type) {
+<span class="fc bfc" id="L17" title="All 2 branches covered.">        if (type == null) return &quot;#F1F5F9&quot;;</span>
+<span class="fc bfc" id="L18" title="All 7 branches covered.">        return switch (type) {</span>
+<span class="fc" id="L19">            case &quot;Capabilities&quot;, &quot;CP&quot;, &quot;Capability&quot; -&gt; &quot;#DBEAFE&quot;;</span>
+<span class="fc" id="L20">            case &quot;Business Processes&quot;, &quot;Business Roles&quot;, &quot;BP&quot;, &quot;BR&quot;, &quot;Process&quot;, &quot;BusinessRole&quot; -&gt; &quot;#DCFCE7&quot;;</span>
+<span class="fc" id="L21">            case &quot;Core Services&quot;, &quot;COI Services&quot;, &quot;Services&quot;, &quot;CR&quot;, &quot;CI&quot;, &quot;CoreService&quot;, &quot;COIService&quot; -&gt; &quot;#FEF3C7&quot;;</span>
+<span class="fc" id="L22">            case &quot;User Applications&quot;, &quot;Applications&quot;, &quot;UA&quot;, &quot;UserApplication&quot; -&gt; &quot;#F3E8FF&quot;;</span>
+<span class="fc" id="L23">            case &quot;Information Products&quot;, &quot;IP&quot;, &quot;InformationProduct&quot; -&gt; &quot;#FFE4E6&quot;;</span>
+<span class="fc" id="L24">            case &quot;Communications Services&quot;, &quot;CO&quot;, &quot;CommunicationsService&quot; -&gt; &quot;#CFFAFE&quot;;</span>
+<span class="fc" id="L25">            default -&gt; &quot;#F1F5F9&quot;;</span>
+        };
+    }
+
+    public static String relationshipStatus(com.taxonomy.diagram.DiagramRelationMetadata metadata) {
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        if (metadata == null) return &quot;Origin unrecorded&quot;;</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (metadata.proposed()) return &quot;AI-proposed&quot;;</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        if (metadata.origin() == null) return &quot;Origin unrecorded&quot;;</span>
+<span class="pc bpc" id="L33" title="1 of 4 branches missed.">        return switch (metadata.origin()) {</span>
+<span class="fc" id="L34">            case TAXONOMY_SEED -&gt; &quot;Catalogue seed&quot;;</span>
+<span class="fc" id="L35">            case PROPAGATED_TRACE -&gt; &quot;Propagated trace&quot;;</span>
+<span class="fc" id="L36">            case IMPACT_DERIVED -&gt; &quot;Derived impact&quot;;</span>
+<span class="nc" id="L37">            case LLM_SUPPORTED, SUGGESTED_CANDIDATE -&gt; &quot;AI-proposed&quot;;</span>
+        };
+    }
+
+    public static String relationshipStatus(com.taxonomy.diagram.DiagramRelationMetadata metadata, boolean german) {
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        if (!german) return relationshipStatus(metadata);</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (metadata == null) return &quot;Herkunft nicht aufgezeichnet&quot;;</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        if (metadata.proposed()) return &quot;KI-Vorschlag&quot;;</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        if (metadata.origin() == null) return &quot;Herkunft nicht aufgezeichnet&quot;;</span>
+<span class="pc bpc" id="L46" title="1 of 4 branches missed.">        return switch (metadata.origin()) {</span>
+<span class="fc" id="L47">            case TAXONOMY_SEED -&gt; &quot;Katalogbeziehung&quot;;</span>
+<span class="fc" id="L48">            case PROPAGATED_TRACE -&gt; &quot;Fortgeführte Herleitung&quot;;</span>
+<span class="fc" id="L49">            case IMPACT_DERIVED -&gt; &quot;Abgeleitete Auswirkung&quot;;</span>
+<span class="nc" id="L50">            case LLM_SUPPORTED, SUGGESTED_CANDIDATE -&gt; &quot;KI-Vorschlag&quot;;</span>
+        };
+    }
+
+    /** Complete readable provenance, including exact scoped evidence. Never infers review status. */
+    public static List&lt;String&gt; relationshipDetails(com.taxonomy.diagram.DiagramRelationMetadata metadata) {
+<span class="fc" id="L56">        return relationshipDetails(metadata, false);</span>
+    }
+
+    public static List&lt;String&gt; relationshipDetails(com.taxonomy.diagram.DiagramRelationMetadata metadata, boolean german) {
+<span class="fc" id="L60">        var lines = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L61">        lines.add(&quot;Status: &quot; + relationshipStatus(metadata, german));</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (metadata == null) return List.copyOf(lines);</span>
+<span class="fc bfc" id="L63" title="All 4 branches covered.">        if (metadata.relationId() != null) lines.add((german ? &quot;Beziehungskennung: &quot; : &quot;Relation ID: &quot;) + metadata.relationId());</span>
+<span class="fc bfc" id="L64" title="All 6 branches covered.">        lines.add((german ? &quot;Herkunft: &quot; : &quot;Origin: &quot;) + (metadata.origin() == null ? (german ? &quot;nicht aufgezeichnet&quot; : &quot;unrecorded&quot;) : metadata.origin().name()));</span>
+<span class="fc bfc" id="L65" title="All 4 branches covered.">        if (metadata.confidence() != null) lines.add((german ? &quot;Konfidenz: &quot; : &quot;Confidence: &quot;) + metadata.confidence());</span>
+<span class="fc bfc" id="L66" title="All 4 branches covered.">        if (metadata.seedType() != null) lines.add((german ? &quot;Ausgangstyp: &quot; : &quot;Seed type: &quot;) + metadata.seedType());</span>
+<span class="fc bfc" id="L67" title="All 4 branches covered.">        if (metadata.includedBecause() != null) lines.add((german ? &quot;Aufgenommen weil: &quot; : &quot;Included because: &quot;) + metadata.includedBecause());</span>
+<span class="fc bfc" id="L68" title="All 4 branches covered.">        if (metadata.derivationReason() != null) lines.add((german ? &quot;Herleitungsbegründung: &quot; : &quot;Derivation reason: &quot;) + metadata.derivationReason());</span>
+<span class="fc bfc" id="L69" title="All 4 branches covered.">        if (metadata.presenceReason() != null) lines.add((german ? &quot;Begründung der Aufnahme: &quot; : &quot;Presence reason: &quot;) + metadata.presenceReason());</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        for (var evidence : metadata.requirementEvidence()) {</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            lines.add((german ? &quot;Anforderungsbezogene Evidenz: &quot; : &quot;Scoped evidence: &quot;) + evidence.sourceId() + &quot; -&gt; &quot; + evidence.targetId()</span>
+<span class="fc" id="L72">                    + &quot; | &quot; + evidence.type() + &quot; | &quot; + evidence.direction());</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            lines.add((german ? &quot;Beitrag: &quot; : &quot;Contribution: &quot;) + evidence.contribution().text());</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            lines.add((german ? &quot;Originalzitat: &quot; : &quot;Original quote: &quot;) + evidence.contribution().quote());</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            lines.add((german ? &quot;Bedingung des Beitrags: &quot; : &quot;Contribution condition: &quot;) + evidence.contribution().condition());</span>
+<span class="fc" id="L76">            var decision = evidence.evidence();</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            if (decision != null) {</span>
+<span class="fc bfc" id="L78" title="All 4 branches covered.">                lines.add((german ? &quot;Ergebnis: &quot; : &quot;Outcome: &quot;) + decision.outcome() + (german ? &quot; | Notwendigkeit: &quot; : &quot; | Necessity: &quot;) + decision.necessity());</span>
+<span class="fc bfc" id="L79" title="All 4 branches covered.">                lines.add((german ? &quot;Evidenzbeitrag: &quot; : &quot;Evidence contribution: &quot;) + decision.contribution() + (german ? &quot; | Zitat: &quot; : &quot; | Quote: &quot;) + decision.quote());</span>
+<span class="fc bfc" id="L80" title="All 4 branches covered.">                lines.add((german ? &quot;Bedingung: &quot; : &quot;Condition: &quot;) + decision.condition() + (german ? &quot; | Alternativgruppe: &quot; : &quot; | Alternative group: &quot;) + decision.alternativeGroup());</span>
+<span class="fc bfc" id="L81" title="All 4 branches covered.">                lines.add((german ? &quot;Begründung: &quot; : &quot;Rationale: &quot;) + decision.rationale() + (german ? &quot; | Frage: &quot; : &quot; | Question: &quot;) + decision.question());</span>
+            }
+<span class="fc" id="L83">        }</span>
+<span class="fc" id="L84">        return List.copyOf(lines);</span>
+    }
+
+    /** Original mapping/review evidence stored separately from the frozen graph provenance. */
+    public static List&lt;String&gt; relationshipEvidenceDetails(Map&lt;String, String&gt; fields, boolean german) {
+<span class="fc bfc" id="L89" title="All 4 branches covered.">        if (fields == null || fields.isEmpty()) return List.of();</span>
+<span class="fc" id="L90">        var lines = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L91">        String presence = fields.get(&quot;presenceReason&quot;);</span>
+<span class="fc bfc" id="L92" title="All 4 branches covered.">        if (presence != null &amp;&amp; !presence.isBlank())</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            lines.add((german ? &quot;Gespeicherte Auswahlbegründung: &quot; : &quot;Recorded selection reason: &quot;) + presence);</span>
+<span class="fc" id="L94">        String comment = fields.get(&quot;decisionComment&quot;);</span>
+<span class="fc bfc" id="L95" title="All 4 branches covered.">        if (comment != null &amp;&amp; !comment.isBlank())</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            lines.add((german ? &quot;Gespeicherter Prüfkommentar: &quot; : &quot;Recorded review comment: &quot;) + comment);</span>
+<span class="fc" id="L97">        return List.copyOf(lines);</span>
+    }
+
+    /** Scores are fractions of one; a positive value must never be presented as zero. */
+    public static String percent(double relevance) {
+<span class="fc bfc" id="L102" title="All 6 branches covered.">        if (!Double.isFinite(relevance) || relevance &lt; 0 || relevance &gt; 1) return &quot;n/a&quot;;</span>
+<span class="fc" id="L103">        BigDecimal value = BigDecimal.valueOf(relevance).movePointRight(2);</span>
+<span class="fc bfc" id="L104" title="All 4 branches covered.">        if (value.signum() &gt; 0 &amp;&amp; value.compareTo(new BigDecimal(&quot;0.000001&quot;)) &lt; 0)</span>
+<span class="fc" id="L105">            return &quot;&lt;0.000001%&quot;;</span>
+<span class="fc" id="L106">        return value.setScale(6, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString() + &quot;%&quot;;</span>
+    }
+
+    /** Counts refer only to this exported scene, not the full catalogue or duplicated detail pages. */
+    public static List&lt;String&gt; inventorySummary(DiagramScene scene) {
+<span class="fc" id="L111">        var nodes = new LinkedHashMap&lt;String, com.taxonomy.diagram.DiagramSceneNode&gt;();</span>
+<span class="fc" id="L112">        scene.nodes().forEach(node -&gt; nodes.putIfAbsent(node.id(), node));</span>
+<span class="fc" id="L113">        long containers = nodes.values().stream().filter(node -&gt; node.container()).count();</span>
+<span class="fc" id="L114">        long relationships = scene.edges().stream().map(edge -&gt; edge.id()).distinct().count();</span>
+<span class="fc" id="L115">        Map&lt;String, Integer&gt; taxonomies = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        nodes.values().stream().filter(node -&gt; !node.container()).forEach(node -&gt;</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">                taxonomies.merge(node.type() == null ? &quot;Unclassified&quot; : node.type(), 1, Integer::sum));</span>
+<span class="fc" id="L118">        var lines = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L119">        lines.add(&quot;Exported view | Elements: &quot; + (nodes.size() - containers) + &quot; | Containers: &quot; + containers</span>
+                + &quot; | Relationships: &quot; + relationships);
+<span class="fc" id="L121">        taxonomies.forEach((type, count) -&gt; lines.add(type + &quot;: &quot; + count));</span>
+<span class="fc" id="L122">        Map&lt;String, Integer&gt; statuses = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L123">        var seenEdges = new java.util.HashSet&lt;String&gt;();</span>
+<span class="fc" id="L124">        scene.edges().stream().filter(edge -&gt; seenEdges.add(edge.id())).forEach(edge -&gt;</span>
+<span class="fc" id="L125">                statuses.merge(relationshipStatus(edge.metadata()), 1, Integer::sum));</span>
+<span class="fc" id="L126">        statuses.forEach((status, count) -&gt; lines.add(&quot;Relationships - &quot; + status + &quot;: &quot; + count));</span>
+<span class="fc" id="L127">        lines.add(&quot;Dashed connectors identify AI-proposed relationships; solid connectors do not imply approval.&quot;);</span>
+<span class="fc" id="L128">        lines.add(&quot;Colors identify taxonomy families; a strong border marks a selection anchor, not approval.&quot;);</span>
+<span class="fc" id="L129">        lines.add(&quot;Human confirmation is not recorded in this diagram model. AI verification is not human approval.&quot;);</span>
+<span class="fc" id="L130">        lines.add(&quot;Depth is the recorded taxonomy depth, not the horizontal layout layer.&quot;);</span>
+<span class="fc" id="L131">        return List.copyOf(lines);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

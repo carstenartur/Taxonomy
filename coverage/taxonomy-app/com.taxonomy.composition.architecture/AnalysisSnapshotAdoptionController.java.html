@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisSnapshotAdoptionController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.architecture</a> &gt; <span class="el_source">AnalysisSnapshotAdoptionController.java</span></div><h1>AnalysisSnapshotAdoptionController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.architecture;
+
+import com.taxonomy.composition.architecture.AnalysisSnapshotAdoptionService.*;
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.editor.ArchitectureCommandPort.Context;
+import com.taxonomy.editor.persistence.EditorJournal.RevisionConflict;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import java.io.IOException;
+import java.util.Map;
+
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;portfolio&quot;, &quot;analysis&quot;})
+@RestController
+public class AnalysisSnapshotAdoptionController {
+    private final AnalysisSnapshotAdoptionService service;
+    private final WorkspaceResolver resolver;
+<span class="fc" id="L19">    public AnalysisSnapshotAdoptionController(AnalysisSnapshotAdoptionService service,WorkspaceResolver resolver) {</span>
+<span class="fc" id="L20">        this.service = service; this.resolver = resolver;</span>
+<span class="fc" id="L21">    }</span>
+    @PostMapping(&quot;/api/architecture/editor/snapshot-adoptions/preview&quot;)
+    @Operation(summary = &quot;Preview adoption of exact retained analysis evidence&quot;, description = &quot;Read-only preview. Requires the full source tuple, editor Context/Metadata and exact workspace revision If-Match. No graph payload or review decision is accepted.&quot;)
+    public ResponseEntity&lt;PreviewResult&gt; preview(@RequestBody Request request,
+            @RequestHeader(value=HttpHeaders.IF_MATCH,required=false) String ifMatch,
+            @RequestHeader(value=HttpHeaders.IF_NONE_MATCH,required=false) String ifNoneMatch) throws IOException {
+<span class="fc" id="L27">        requireRevision(request.context(),ifMatch,ifNoneMatch);</span>
+<span class="fc" id="L28">        var result = service.preview(resolver.resolveCurrentRepositoryContext(),request);</span>
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">        return response(result.preview() == null ? request.context() : result.preview().context()).body(result);</span>
+    }
+    @PostMapping(&quot;/api/architecture/editor/snapshot-adoptions&quot;)
+    @Operation(summary = &quot;Adopt a previewed frozen snapshot into the private editor&quot;, description = &quot;Rebuilds the source server-side and checks the preview fingerprint before the existing journal accepts one undoable semantic edit. Repeated source adoption opens its canonical view; Git checkpoints remain explicit.&quot;)
+    public ResponseEntity&lt;Adopted&gt; adopt(@RequestBody Request request,
+            @RequestHeader(value=HttpHeaders.IF_MATCH,required=false) String ifMatch,
+            @RequestHeader(value=HttpHeaders.IF_NONE_MATCH,required=false) String ifNoneMatch) throws IOException {
+<span class="fc" id="L36">        requireRevision(request.context(),ifMatch,ifNoneMatch);</span>
+<span class="fc" id="L37">        var result = service.adopt(resolver.resolveCurrentRepositoryContext(),request);</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">        return response(result.accepted() == null ? request.context() : result.accepted().context()).body(result);</span>
+    }
+    private static void requireRevision(Context context,String ifMatch,String ifNoneMatch) {
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        if (ifMatch == null) throw new MissingRevision();</span>
+<span class="fc bfc" id="L42" title="All 4 branches covered.">        if (ifNoneMatch != null || !(&quot;\&quot;workspace-revision-&quot; + context.revision() + &quot;\&quot;&quot;).equals(ifMatch))</span>
+<span class="fc" id="L43">            throw new IllegalArgumentException(&quot;HTTP precondition must match the exact workspace revision&quot;);</span>
+<span class="fc" id="L44">    }</span>
+    private static ResponseEntity.BodyBuilder response(Context context) {
+<span class="fc" id="L46">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).eTag(&quot;\&quot;workspace-revision-&quot; + context.revision() + &quot;\&quot;&quot;)</span>
+<span class="fc" id="L47">                .header(&quot;X-Taxonomy-Semantic-Revision&quot;,Long.toString(context.revision()));</span>
+    }
+    private static final class MissingRevision extends IllegalArgumentException {}
+    @ExceptionHandler(MissingRevision.class)
+    public ResponseEntity&lt;Map&lt;String,String&gt;&gt; missing() {
+<span class="fc" id="L52">        return ResponseEntity.status(428).body(Map.of(&quot;code&quot;,&quot;PRECONDITION_REQUIRED&quot;,&quot;detail&quot;,&quot;An exact semantic revision If-Match is required&quot;));</span>
+    }
+    @ExceptionHandler(RevisionConflict.class)
+    public ResponseEntity&lt;Map&lt;String,Object&gt;&gt; conflict(RevisionConflict error) {
+<span class="nc" id="L56">        return ResponseEntity.status(412).body(Map.of(&quot;code&quot;,&quot;REVISION_MOVED&quot;,&quot;detail&quot;,&quot;Refresh the target and preview again&quot;,</span>
+<span class="nc" id="L57">                &quot;expectedRevision&quot;,error.expected(),&quot;currentRevision&quot;,error.actual()));</span>
+    }
+    @ExceptionHandler(CommandProblem.class)
+    public ResponseEntity&lt;Map&lt;String,Object&gt;&gt; problem(CommandProblem error) {
+<span class="nc bnc" id="L61" title="All 4 branches missed.">        int status = switch(error.code()) {</span>
+<span class="nc" id="L62">            case &quot;NOT_FOUND&quot; -&gt; 404;</span>
+<span class="nc" id="L63">            case &quot;READ_ONLY&quot; -&gt; 403;</span>
+<span class="nc" id="L64">            case &quot;CONTEXT_CHANGED&quot;,&quot;COMMAND_ID_REUSED&quot;,&quot;CHECKPOINT_PENDING&quot;,&quot;VERSION_CHANGED&quot;,&quot;SNAPSHOT_IDENTITY_CONFLICT&quot;,&quot;SNAPSHOT_TYPE_CONFLICT&quot;,&quot;PREVIEW_CHANGED&quot; -&gt; 409;</span>
+<span class="nc" id="L65">            default -&gt; 422;</span>
+        };
+<span class="nc" id="L67">        return ResponseEntity.status(status).body(Map.of(&quot;code&quot;,error.code(),&quot;field&quot;,error.field(),&quot;detail&quot;,error.getMessage(),&quot;dependencies&quot;,error.dependencies()));</span>
+    }
+    @ExceptionHandler(com.taxonomy.portfolio.service.PortfolioException.class)
+    public ResponseEntity&lt;org.springframework.http.ProblemDetail&gt; sourceProblem(com.taxonomy.portfolio.service.PortfolioException error) {
+<span class="fc" id="L71">        return new com.taxonomy.portfolio.controller.PortfolioExceptionHandler().handlePortfolioException(error);</span>
+    }
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity&lt;Map&lt;String,String&gt;&gt; invalid(IllegalArgumentException error) {
+<span class="fc" id="L75">        return ResponseEntity.badRequest().body(Map.of(&quot;code&quot;,&quot;INVALID_COMMAND&quot;,&quot;detail&quot;,String.valueOf(error.getMessage())));</span>
+    }
+    @ExceptionHandler(IOException.class)
+    public ResponseEntity&lt;Map&lt;String,String&gt;&gt; unavailable() {
+<span class="nc" id="L79">        return ResponseEntity.status(503).body(Map.of(&quot;code&quot;,&quot;GIT_UNAVAILABLE&quot;,&quot;detail&quot;,&quot;Storage is unavailable; retry the same command identity&quot;));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>InventorySourceProfiles.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.inventory</a> &gt; <span class="el_source">InventorySourceProfiles.java</span></div><h1>InventorySourceProfiles.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.inventory;
+import com.taxonomy.extension.api.inventory.InventoryReadContracts.*;
+import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.*;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+import java.net.URI;
+import java.util.*;
+
+/** Operator configuration only. Empty by default; restored evidence cannot activate grants. */
+@Component
+@ConfigurationProperties(prefix=&quot;taxonomy.inventory&quot;)
+<span class="fc" id="L12">public class InventorySourceProfiles {</span>
+<span class="fc" id="L13">    private Map&lt;String,Profile&gt; profiles=Map.of();</span>
+<span class="fc" id="L14">    public Map&lt;String,Profile&gt; getProfiles() { return profiles; }</span>
+<span class="fc" id="L15">    public void setProfiles(Map&lt;String,Profile&gt; profiles) { this.profiles=Map.copyOf(profiles); }</span>
+    /** Each meaning/field/kind is approved for this installation; unknown or missing values do not create an assertion. */
+    public record AssertionProjection(Criterion criterion,String positiveField,String startField,String endField,
+                                      String organizationField,String environmentField,String nodeField,AssertionKind kind) {
+<span class="nc" id="L19">        public AssertionProjection {Objects.requireNonNull(criterion);Objects.requireNonNull(positiveField);Objects.requireNonNull(kind);}</span>
+    }
+    public record RelationshipProjection(String sourceRelation,RelationshipKind kind,String qualifier,AssertionKind assertionKind) {
+<span class="fc" id="L22">        public RelationshipProjection {</span>
+<span class="pc bpc" id="L23" title="3 of 6 branches missed.">            if(sourceRelation==null || sourceRelation.isBlank() || sourceRelation.length()&gt;100)throw new IllegalArgumentException(&quot;Invalid source relationship meaning&quot;);</span>
+<span class="fc" id="L24">            Objects.requireNonNull(kind);Objects.requireNonNull(assertionKind);</span>
+<span class="pc bpc" id="L25" title="3 of 6 branches missed.">            if(qualifier!=null &amp;&amp; (qualifier.isBlank() || qualifier.length()&gt;200))throw new IllegalArgumentException(&quot;Invalid relationship qualifier&quot;);</span>
+<span class="fc" id="L26">        }</span>
+    }
+    public record Profile(String revision,String extensionId,String instanceId,URI origin,String repositoryId,
+                          String organization,Set&lt;String&gt; principals,Set&lt;String&gt; selectedIds,List&lt;TypeProjection&gt; projections,
+                          boolean readUsageRelations,Limits limits,Map&lt;String,String&gt; options,String credentialEnvironment,
+                          String principalEnvironment,boolean allowPrivateNetworks,List&lt;AssertionProjection&gt; assertions,List&lt;RelationshipProjection&gt; relationships) {
+        public Profile(String revision,String extensionId,String instanceId,URI origin,String repositoryId,String organization,Set&lt;String&gt; principals,Set&lt;String&gt; selectedIds,List&lt;TypeProjection&gt; projections,boolean readUsageRelations,Limits limits,Map&lt;String,String&gt; options,String credentialEnvironment,String principalEnvironment,boolean allowPrivateNetworks,List&lt;AssertionProjection&gt; assertions) {
+<span class="fc" id="L33">            this(revision,extensionId,instanceId,origin,repositoryId,organization,principals,selectedIds,projections,readUsageRelations,limits,options,credentialEnvironment,principalEnvironment,allowPrivateNetworks,assertions,List.of());</span>
+<span class="fc" id="L34">        }</span>
+<span class="fc" id="L35">        public Profile {</span>
+<span class="fc" id="L36">            Objects.requireNonNull(revision);Objects.requireNonNull(extensionId);Objects.requireNonNull(instanceId);Objects.requireNonNull(origin);Objects.requireNonNull(repositoryId);Objects.requireNonNull(organization);</span>
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">            relationships=relationships==null?List.of():List.copyOf(relationships);</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">            if(relationships.size()&gt;16)throw new IllegalArgumentException(&quot;Relationship projection limit&quot;);</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">            assertions=assertions==null?List.of():List.copyOf(assertions);</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">            if(assertions.size()&gt;16)throw new IllegalArgumentException(&quot;Assertion projection limit&quot;);</span>
+<span class="fc" id="L41">            principals=Set.copyOf(principals);selectedIds=Set.copyOf(selectedIds);projections=List.copyOf(projections);options=Map.copyOf(options);</span>
+<span class="pc bpc" id="L42" title="4 of 8 branches missed.">            if(!&quot;https&quot;.equals(origin.getScheme()) || origin.getUserInfo()!=null || origin.getQuery()!=null || origin.getFragment()!=null)throw new IllegalArgumentException(&quot;Inventory profile requires a trusted HTTPS origin&quot;);</span>
+<span class="pc bpc" id="L43" title="2 of 4 branches missed.">            if(credentialEnvironment==null || !credentialEnvironment.matches(&quot;[A-Z][A-Z0-9_]{1,99}&quot;))throw new IllegalArgumentException(&quot;Credential must be an environment reference&quot;);</span>
+<span class="pc bpc" id="L44" title="3 of 4 branches missed.">            if(principalEnvironment!=null &amp;&amp; !principalEnvironment.matches(&quot;[A-Z][A-Z0-9_]{1,99}&quot;))throw new IllegalArgumentException(&quot;Principal must be an environment reference&quot;);</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">            if(options.keySet().stream().anyMatch(k-&gt;k.toLowerCase(java.util.Locale.ROOT).matches(&quot;.*(password|secret|token|credential|authorization).*&quot;)))throw new IllegalArgumentException(&quot;Secrets must use environment references&quot;);</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">            if(selectedIds.isEmpty())throw new IllegalArgumentException(&quot;An approved bounded read selector is required&quot;);</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">            if(limits==null)limits=Limits.defaults();</span>
+<span class="fc" id="L48">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

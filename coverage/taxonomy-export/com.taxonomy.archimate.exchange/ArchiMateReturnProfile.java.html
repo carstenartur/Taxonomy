@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchiMateReturnProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.archimate.exchange</a> &gt; <span class="el_source">ArchiMateReturnProfile.java</span></div><h1>ArchiMateReturnProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.archimate.exchange;
+
+import com.taxonomy.archimate.ArchiMateModel;
+import com.taxonomy.archimate.ArchiMateLoss;
+import com.taxonomy.exchange.ExchangeXml;
+import org.w3c.dom.*;
+import javax.xml.XMLConstants;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+/**
+ * Explicit content-preservation return profile for the observed Archi 5.10 export.
+ * Requires a strict original; never selected as a fallback by the strict reader.
+ * Returned semantic edits are unsupported. The original supplies erased representation,
+ * never missing identity, property values or provenance. Callers must expose all losses.
+ */
+<span class="fc" id="L17">public final class ArchiMateReturnProfile {</span>
+    public static final String VERSION = &quot;taxonomy-archi-5.10-return-v1&quot;;
+    private static final String NS = &quot;http://www.opengroup.org/xsd/archimate/3.0/&quot;;
+    private static final String NODE_DEFAULTS = &quot;&lt;style xmlns=\&quot;&quot; + NS + &quot;\&quot;&gt;&lt;lineColor r=\&quot;92\&quot; g=\&quot;92\&quot; b=\&quot;92\&quot; a=\&quot;100\&quot;/&gt;&quot;
+            + &quot;&lt;font name=\&quot;Sans\&quot; size=\&quot;9\&quot;&gt;&lt;color r=\&quot;0\&quot; g=\&quot;0\&quot; b=\&quot;0\&quot;/&gt;&lt;/font&gt;&lt;/style&gt;&quot;;
+    private static final String CONNECTION_STYLE = &quot;&lt;style xmlns=\&quot;&quot; + NS + &quot;\&quot;&gt;&lt;lineColor r=\&quot;0\&quot; g=\&quot;0\&quot; b=\&quot;0\&quot;/&gt;&quot;
+            + &quot;&lt;font name=\&quot;Sans\&quot; size=\&quot;9\&quot;&gt;&lt;color r=\&quot;0\&quot; g=\&quot;0\&quot; b=\&quot;0\&quot;/&gt;&lt;/font&gt;&lt;/style&gt;&quot;;
+
+    public ArchiMateModel read(byte[] original, byte[] returned) {
+<span class="fc" id="L26">        ArchiMateModel model = new ArchiMateExchangeReader().read(original);</span>
+<span class="fc" id="L27">        ArchiMateSchema.parse(returned);</span>
+<span class="fc" id="L28">        Document before = ExchangeXml.parse(original), after = ExchangeXml.parse(returned);</span>
+<span class="fc" id="L29">        List&lt;ArchiMateLoss&gt; losses = new ArrayList&lt;&gt;(model.losses());</span>
+<span class="fc" id="L30">        requireKnownLanguageLocations(before);</span>
+<span class="fc" id="L31">        requireKnownLanguageLocations(after);</span>
+<span class="fc" id="L32">        comparePropertyRepresentations(before, after, losses);</span>
+<span class="fc" id="L33">        compareOrganizations(before, after, losses);</span>
+<span class="fc" id="L34">        compareNames(before, after, losses);</span>
+<span class="fc" id="L35">        compareLabels(before, after, losses);</span>
+<span class="fc" id="L36">        compareStyles(before, after, losses);</span>
+<span class="fc" id="L37">        compareDefinitions(before, after, losses);</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        for (Element view : ExchangeXml.all(before, NS, &quot;view&quot;)) {</span>
+<span class="fc" id="L39">            Element actual = ExchangeXml.all(after, NS, &quot;view&quot;).stream()</span>
+<span class="fc" id="L40">                    .filter(e -&gt; e.getAttribute(&quot;identifier&quot;).equals(view.getAttribute(&quot;identifier&quot;))).findFirst().orElseThrow();</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">            if (!view.hasAttributeNS(XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI, &quot;type&quot;)</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">                    &amp;&amp; actual.hasAttributeNS(XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI, &quot;type&quot;)</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">                    &amp;&amp; &quot;Diagram&quot;.equals(ArchiMateExchangeReader.type(actual))) {</span>
+<span class="fc" id="L44">                view.setAttributeNS(XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI, &quot;xsi:type&quot;, &quot;Diagram&quot;);</span>
+<span class="fc" id="L45">                losses.add(new ArchiMateLoss(&quot;return&quot;, view.getAttribute(&quot;identifier&quot;), &quot;view.xsi:type&quot;, &quot;ARCHI_DIAGRAM_TYPE_EXPLICIT&quot;,</span>
+                        &quot;Archi writes the previously implicit Diagram type explicitly; view membership and attributes remain exact.&quot;));
+            }
+<span class="fc" id="L48">        }</span>
+<span class="fc" id="L49">        requireEqual(&quot;complete content and attributes&quot;, canonical(before.getDocumentElement()), canonical(after.getDocumentElement()));</span>
+<span class="fc" id="L50">        return new ArchiMateModel(model.id(), model.title(), model.elements(), model.relationships(),</span>
+<span class="fc" id="L51">                model.organizations(), model.views(), model.properties(), losses);</span>
+    }
+
+    private static void compareDefinitions(Document before, Document after, List&lt;ArchiMateLoss&gt; losses) {
+<span class="fc" id="L55">        Map&lt;String, Element&gt; originals = definitions(before), returned = definitions(after);</span>
+<span class="fc" id="L56">        requireEqual(&quot;property names&quot;, originals.keySet(), returned.keySet());</span>
+<span class="fc" id="L57">        Map&lt;String, String&gt; references = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L58">        originals.forEach((name, definition) -&gt; {</span>
+<span class="fc" id="L59">            Element actual = returned.get(name);</span>
+<span class="fc" id="L60">            String originalType = definition.getAttribute(&quot;type&quot;), actualType = actual.getAttribute(&quot;type&quot;);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (!originalType.equals(actualType)) {</span>
+<span class="pc bpc" id="L62" title="2 of 4 branches missed.">                if (!Set.of(&quot;number&quot;, &quot;boolean&quot;).contains(originalType) || !&quot;string&quot;.equals(actualType))</span>
+<span class="nc" id="L63">                    throw new IllegalArgumentException(&quot;Unsupported property declaration change: &quot; + name);</span>
+<span class="fc" id="L64">                losses.add(new ArchiMateLoss(&quot;return&quot;, name, &quot;propertyDefinition.type&quot;, &quot;ARCHI_PROPERTY_TYPE_TO_STRING&quot;,</span>
+                        &quot;Archi changed &quot; + originalType + &quot; to string. Exact unchanged values are interpreted using the supplied original declaration.&quot;));
+<span class="fc" id="L66">                definition.setAttribute(&quot;type&quot;, actualType);</span>
+            }
+<span class="fc" id="L68">            String originalId = definition.getAttribute(&quot;identifier&quot;), actualId = actual.getAttribute(&quot;identifier&quot;);</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            if (!originalId.equals(actualId)) losses.add(new ArchiMateLoss(&quot;return&quot;, name, &quot;propertyDefinition.identifier&quot;,</span>
+                    &quot;ARCHI_PROPERTY_DEFINITION_ID_REWRITTEN&quot;, &quot;Property declaration identifier changed from &quot; + originalId + &quot; to &quot; + actualId + &quot;; matched by the unique unchanged property name.&quot;));
+<span class="fc" id="L71">            references.put(actualId, originalId);</span>
+<span class="fc" id="L72">            actual.setAttribute(&quot;identifier&quot;, originalId);</span>
+<span class="fc" id="L73">        });</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        for (Element property : ExchangeXml.all(after, NS, &quot;property&quot;)) {</span>
+<span class="fc" id="L75">            String ref = references.get(property.getAttribute(&quot;propertyDefinitionRef&quot;));</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">            if (ref == null) throw new IllegalArgumentException(&quot;Unknown returned property reference&quot;);</span>
+<span class="fc" id="L77">            property.setAttribute(&quot;propertyDefinitionRef&quot;, ref);</span>
+<span class="fc" id="L78">        }</span>
+<span class="fc" id="L79">    }</span>
+
+    private static Map&lt;String, Element&gt; definitions(Document document) {
+<span class="fc" id="L82">        Map&lt;String, Element&gt; result = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        for (Element definition : ExchangeXml.all(document, NS, &quot;propertyDefinition&quot;)) {</span>
+<span class="fc" id="L84">            String name = ExchangeXml.text(definition, &quot;name&quot;);</span>
+<span class="pc bpc" id="L85" title="2 of 4 branches missed.">            if (name.isBlank() || result.putIfAbsent(name, definition) != null)</span>
+<span class="nc" id="L86">                throw new IllegalArgumentException(&quot;Missing or duplicate property name&quot;);</span>
+<span class="fc" id="L87">        }</span>
+<span class="fc" id="L88">        return result;</span>
+    }
+
+    // Compare every field after only the declared transformations. Collection order and namespace
+    // prefix choices do not establish identity. Text (including blank property values) stays exact.
+    private static String canonical(Element element) {
+<span class="fc" id="L94">        Map&lt;String, String&gt; attrs = attributes(element);</span>
+<span class="fc" id="L95">        attrs.remove(XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI + &quot;|schemaLocation&quot;);</span>
+<span class="fc" id="L96">        String typeKey = XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI + &quot;|type&quot;;</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (attrs.containsKey(typeKey)) {</span>
+<span class="fc" id="L98">            String value = attrs.get(typeKey); int colon = value.indexOf(':');</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">            attrs.put(typeKey, &quot;{&quot; + element.lookupNamespaceURI(colon &lt; 0 ? null : value.substring(0, colon)) + &quot;}&quot; + value.substring(colon + 1));</span>
+        }
+<span class="fc" id="L101">        var children = ExchangeXml.children(element);</span>
+<span class="fc" id="L102">        List&lt;String&gt; content = children.stream().map(ArchiMateReturnProfile::canonical).toList();</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (Set.of(&quot;elements&quot;, &quot;relationships&quot;, &quot;properties&quot;, &quot;propertyDefinitions&quot;).contains(element.getLocalName()))</span>
+<span class="fc" id="L104">            content = content.stream().sorted().toList();</span>
+<span class="fc" id="L105">        StringBuilder text = new StringBuilder();</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        for (Node child = element.getFirstChild(); child != null; child = child.getNextSibling())</span>
+<span class="pc bpc" id="L107" title="1 of 4 branches missed.">            if ((child.getNodeType() == Node.TEXT_NODE || child.getNodeType() == Node.CDATA_SECTION_NODE)</span>
+<span class="pc bpc" id="L108" title="1 of 4 branches missed.">                    &amp;&amp; (children.isEmpty() || !child.getNodeValue().isBlank())) text.append(child.getNodeValue());</span>
+<span class="fc" id="L109">        StringBuilder result = new StringBuilder();</span>
+<span class="fc" id="L110">        part(result, element.getNamespaceURI()); part(result, element.getLocalName());</span>
+<span class="fc" id="L111">        part(result, Integer.toString(attrs.size()));</span>
+<span class="fc" id="L112">        attrs.forEach((key, value) -&gt; { part(result, key); part(result, value); });</span>
+<span class="fc" id="L113">        part(result, Integer.toString(content.size()));</span>
+<span class="fc" id="L114">        content.forEach(value -&gt; part(result, value));</span>
+<span class="fc" id="L115">        part(result, text.toString());</span>
+<span class="fc" id="L116">        return result.toString();</span>
+    }
+
+    private static void part(StringBuilder result, String value) {
+<span class="fc" id="L120">        result.append(value.length()).append(':').append(value);</span>
+<span class="fc" id="L121">    }</span>
+
+    private static void requireEqual(String part, Object expected, Object actual) {
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (!Objects.equals(expected, actual)) throw new IllegalArgumentException(&quot;Unsupported Archi return change: &quot; + part);</span>
+<span class="fc" id="L125">    }</span>
+    private static void comparePropertyRepresentations(org.w3c.dom.Document before, org.w3c.dom.Document after, List&lt;ArchiMateLoss&gt; losses) {
+<span class="fc" id="L127">        var originals = scopedProperties(before);</span>
+<span class="fc" id="L128">        var returned = scopedProperties(after);</span>
+<span class="fc" id="L129">        requireEqual(&quot;property membership&quot;, originals.keySet(), returned.keySet());</span>
+<span class="fc" id="L130">        originals.forEach((key, property) -&gt; {</span>
+<span class="fc" id="L131">            var actual = returned.get(key);</span>
+<span class="fc" id="L132">            var values = ExchangeXml.children(property);</span>
+<span class="fc" id="L133">            var actualValues = ExchangeXml.children(actual);</span>
+<span class="fc" id="L134">            requireEqual(&quot;property value count &quot; + key, values.size(), actualValues.size());</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            for (int index = 0; index &lt; values.size(); index++) {</span>
+<span class="fc" id="L136">                var value = values.get(index);</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">                if (&quot;en&quot;.equals(value.getAttributeNS(javax.xml.XMLConstants.XML_NS_URI, &quot;lang&quot;))</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">                        &amp;&amp; !actualValues.get(index).hasAttributeNS(javax.xml.XMLConstants.XML_NS_URI, &quot;lang&quot;)) {</span>
+<span class="fc" id="L139">                    value.removeAttributeNS(javax.xml.XMLConstants.XML_NS_URI, &quot;lang&quot;);</span>
+<span class="fc" id="L140">                    losses.add(new ArchiMateLoss(&quot;return&quot;, key, &quot;value.xml:lang&quot;, &quot;ARCHI_PROPERTY_LANGUAGE_OMITTED&quot;,</span>
+                            &quot;Archi 5.10.0 omits the emitted en property-value language marker; the value and all remaining attributes are compared exactly.&quot;));
+                }
+            }
+<span class="fc" id="L144">            var expectedValue = (org.w3c.dom.Element) property.cloneNode(true);</span>
+<span class="fc" id="L145">            var actualValue = (org.w3c.dom.Element) actual.cloneNode(true);</span>
+<span class="fc" id="L146">            expectedValue.removeAttribute(&quot;propertyDefinitionRef&quot;);</span>
+<span class="fc" id="L147">            actualValue.removeAttribute(&quot;propertyDefinitionRef&quot;);</span>
+<span class="fc" id="L148">            requireEqual(&quot;property content &quot; + key, ExchangeXml.semantic(ExchangeXml.xml(expectedValue)), ExchangeXml.semantic(ExchangeXml.xml(actualValue)));</span>
+<span class="fc" id="L149">        });</span>
+<span class="fc" id="L150">    }</span>
+
+    private static Map&lt;String, org.w3c.dom.Element&gt; scopedProperties(org.w3c.dom.Document document) {
+<span class="fc" id="L153">        var definitions = new HashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L154">        var nodes = document.getElementsByTagNameNS(&quot;http://www.opengroup.org/xsd/archimate/3.0/&quot;, &quot;propertyDefinition&quot;);</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        for (int index = 0; index &lt; nodes.getLength(); index++) {</span>
+<span class="fc" id="L156">            var definition = (org.w3c.dom.Element) nodes.item(index);</span>
+<span class="fc" id="L157">            definitions.put(definition.getAttribute(&quot;identifier&quot;), ExchangeXml.text(definition, &quot;name&quot;));</span>
+        }
+<span class="fc" id="L159">        var result = new TreeMap&lt;String, org.w3c.dom.Element&gt;();</span>
+<span class="fc" id="L160">        nodes = document.getElementsByTagNameNS(&quot;http://www.opengroup.org/xsd/archimate/3.0/&quot;, &quot;property&quot;);</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        for (int index = 0; index &lt; nodes.getLength(); index++) {</span>
+<span class="fc" id="L162">            var property = (org.w3c.dom.Element) nodes.item(index);</span>
+<span class="fc" id="L163">            var owner = (org.w3c.dom.Element) property.getParentNode().getParentNode();</span>
+<span class="fc" id="L164">            String name = definitions.get(property.getAttribute(&quot;propertyDefinitionRef&quot;));</span>
+<span class="pc bpc" id="L165" title="2 of 4 branches missed.">            if (name == null || owner.getAttribute(&quot;identifier&quot;).isBlank()) throw new IllegalArgumentException(&quot;Unscoped property&quot;);</span>
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">            if (result.putIfAbsent(owner.getAttribute(&quot;identifier&quot;) + &quot;/&quot; + name, property) != null)</span>
+<span class="nc" id="L167">                throw new IllegalArgumentException(&quot;Duplicate scoped property&quot;);</span>
+        }
+<span class="fc" id="L169">        return result;</span>
+    }
+
+    private static void compareNames(org.w3c.dom.Document before, org.w3c.dom.Document after, List&lt;ArchiMateLoss&gt; losses) {
+<span class="fc" id="L173">        var original = scopedFields(before, &quot;name&quot;); var returned = scopedFields(after, &quot;name&quot;);</span>
+<span class="fc" id="L174">        requireEqual(&quot;name membership&quot;, original.keySet(), returned.keySet());</span>
+<span class="fc" id="L175">        original.forEach((key, name) -&gt; {</span>
+<span class="fc" id="L176">            var actual = returned.get(key);</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">            if (&quot;en&quot;.equals(name.getAttributeNS(javax.xml.XMLConstants.XML_NS_URI, &quot;lang&quot;))</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">                    &amp;&amp; !actual.hasAttributeNS(javax.xml.XMLConstants.XML_NS_URI, &quot;lang&quot;)) {</span>
+<span class="fc" id="L179">                name.removeAttributeNS(javax.xml.XMLConstants.XML_NS_URI, &quot;lang&quot;);</span>
+<span class="fc" id="L180">                losses.add(new ArchiMateLoss(&quot;return&quot;, key, &quot;name.xml:lang&quot;, &quot;ARCHI_NAME_LANGUAGE_OMITTED&quot;,</span>
+<span class="fc" id="L181">                        &quot;Archi 5.10.0 omits the emitted en name language marker for &quot; + name.getTextContent()</span>
+                                + &quot;; the name text and remaining attributes are compared exactly.&quot;));
+            }
+<span class="fc" id="L184">            requireEqual(&quot;name content &quot; + key, field(name), field(actual));</span>
+<span class="fc" id="L185">        });</span>
+<span class="fc" id="L186">    }</span>
+
+    private static void compareLabels(org.w3c.dom.Document before, org.w3c.dom.Document after, List&lt;ArchiMateLoss&gt; losses) {
+<span class="fc" id="L189">        var original = scopedFields(before, &quot;label&quot;); var returned = scopedFields(after, &quot;label&quot;);</span>
+<span class="fc" id="L190">        var keys = new TreeSet&lt;&gt;(original.keySet()); keys.addAll(returned.keySet());</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        for (String key : keys) {</span>
+<span class="fc" id="L192">            var label = original.get(key); var actual = returned.get(key);</span>
+<span class="pc bpc" id="L193" title="3 of 8 branches missed.">            if (label != null &amp;&amp; actual == null &amp;&amp; key.startsWith(&quot;node/&quot;) &amp;&amp; emittedEnglishLabel(label)) {</span>
+<span class="fc" id="L194">                losses.add(new ArchiMateLoss(&quot;return&quot;, key, &quot;label&quot;, &quot;ARCHI_NODE_LABEL_OMITTED&quot;,</span>
+<span class="fc" id="L195">                        &quot;Archi 5.10.0 omits the complete emitted node label, including its en language marker: &quot; + ExchangeXml.xml(label)));</span>
+<span class="fc" id="L196">                label.getParentNode().removeChild(label);</span>
+<span class="fc" id="L197">            } else requireEqual(&quot;visual label &quot; + key, field(label), field(actual));</span>
+<span class="fc" id="L198">        }</span>
+<span class="fc" id="L199">    }</span>
+
+    private static void compareStyles(org.w3c.dom.Document before, org.w3c.dom.Document after, List&lt;ArchiMateLoss&gt; losses) {
+<span class="fc" id="L202">        var original = scopedFields(before, &quot;style&quot;); var returned = scopedFields(after, &quot;style&quot;);</span>
+<span class="fc" id="L203">        Map&lt;String, Element&gt; connections = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L204">        ExchangeXml.all(before, NS, &quot;connection&quot;).forEach(e -&gt; connections.put(e.getAttribute(&quot;identifier&quot;), e));</span>
+<span class="fc" id="L205">        var keys = new TreeSet&lt;&gt;(original.keySet()); keys.addAll(returned.keySet());</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">        for (String key : keys) {</span>
+<span class="fc" id="L207">            var style = original.get(key); var actual = returned.get(key);</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">            if (Objects.equals(field(style), field(actual))) continue;</span>
+<span class="pc bpc" id="L209" title="2 of 6 branches missed.">            if (style == null &amp;&amp; actual != null &amp;&amp; key.startsWith(&quot;connection/&quot;)) {</span>
+<span class="fc" id="L210">                requireEqual(&quot;observed connection style &quot; + key, ExchangeXml.semantic(CONNECTION_STYLE), field(actual));</span>
+<span class="fc" id="L211">                losses.add(new ArchiMateLoss(&quot;return&quot;, key, &quot;style&quot;, &quot;ARCHI_CONNECTION_STYLE_ADDED&quot;,</span>
+<span class="fc" id="L212">                        &quot;Archi 5.10.0 adds the observed black line and Sans 9 black font: &quot; + ExchangeXml.xml(actual)));</span>
+<span class="pc bpc" id="L213" title="3 of 6 branches missed.">            } else if (style != null &amp;&amp; actual != null &amp;&amp; key.startsWith(&quot;node/&quot;)) {</span>
+<span class="fc" id="L214">                var children = ExchangeXml.children(style); var attributes = attributes(style);</span>
+<span class="pc bpc" id="L215" title="2 of 6 branches missed.">                if (!(attributes.isEmpty() || attributes.equals(Map.of(&quot;lineWidth&quot;, &quot;3&quot;))) || children.size() != 1</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">                        || !children.getFirst().getLocalName().equals(&quot;fillColor&quot;)</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">                        || !attributes(children.getFirst()).keySet().equals(Set.of(&quot;r&quot;, &quot;g&quot;, &quot;b&quot;)))</span>
+<span class="nc" id="L218">                    throw new IllegalArgumentException(&quot;Unrecognized source node style for product transformation: &quot; + key);</span>
+<span class="fc" id="L219">                var expected = (org.w3c.dom.Element) style.cloneNode(true);</span>
+<span class="fc" id="L220">                expected.removeAttribute(&quot;lineWidth&quot;);</span>
+<span class="fc" id="L221">                ExchangeXml.children(expected).getFirst().setAttribute(&quot;a&quot;, &quot;100&quot;);</span>
+<span class="fc" id="L222">                var additions = ExchangeXml.parse(NODE_DEFAULTS.getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">                for (var addition : ExchangeXml.children(additions.getDocumentElement()))</span>
+<span class="fc" id="L224">                    expected.appendChild(expected.getOwnerDocument().importNode(addition, true));</span>
+<span class="fc" id="L225">                requireEqual(&quot;observed node style &quot; + key, field(expected), field(actual));</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">                if (style.hasAttribute(&quot;lineWidth&quot;)) losses.add(new ArchiMateLoss(&quot;return&quot;, key, &quot;style.lineWidth&quot;, &quot;ARCHI_NODE_LINE_WIDTH_OMITTED&quot;,</span>
+                        &quot;Archi 5.10.0 omits the emitted lineWidth=3; arbitrary line-width replacements are rejected.&quot;));
+<span class="fc" id="L228">                losses.add(new ArchiMateLoss(&quot;return&quot;, key, &quot;style&quot;, &quot;ARCHI_NODE_STYLE_DEFAULTS_ADDED&quot;,</span>
+<span class="fc" id="L229">                        &quot;Archi 5.10.0 adds fill alpha 100, line RGBA 92/92/92/100 and Sans 9 black font; original fill RGB remains exact: &quot; + ExchangeXml.xml(actual)));</span>
+<span class="pc" id="L230">            } else throw new IllegalArgumentException(&quot;Unrecognized product style change for &quot; + key);</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">            if (style != null) style.getParentNode().replaceChild(before.importNode(actual, true), style);</span>
+            else {
+<span class="fc" id="L233">                String id = key.substring(key.indexOf('/') + 1);</span>
+<span class="fc" id="L234">                Element connection = connections.get(id);</span>
+<span class="pc bpc" id="L235" title="1 of 2 branches missed.">                if (connection == null) throw new IllegalArgumentException(&quot;Unknown returned connection: &quot; + id);</span>
+<span class="fc" id="L236">                connection.appendChild(before.importNode(actual, true));</span>
+            }
+<span class="fc" id="L238">        }</span>
+<span class="fc" id="L239">    }</span>
+
+    private static Map&lt;String, org.w3c.dom.Element&gt; scopedFields(org.w3c.dom.Document document, String field) {
+<span class="fc" id="L242">        var result = new TreeMap&lt;String, org.w3c.dom.Element&gt;();</span>
+<span class="fc" id="L243">        var nodes = document.getElementsByTagNameNS(NS, field);</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        for (int index = 0; index &lt; nodes.getLength(); index++) {</span>
+<span class="fc" id="L245">            var value = (org.w3c.dom.Element) nodes.item(index);</span>
+<span class="fc" id="L246">            var owner = (org.w3c.dom.Element) value.getParentNode();</span>
+<span class="fc bfc" id="L247" title="All 4 branches covered.">            if (field.equals(&quot;label&quot;) &amp;&amp; owner.getLocalName().equals(&quot;item&quot;)) continue; // Compared with the complete organizations subtree.</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">            String identity = owner.getLocalName().equals(&quot;propertyDefinition&quot;) ? ExchangeXml.text(owner, &quot;name&quot;) : owner.getAttribute(&quot;identifier&quot;);</span>
+<span class="pc bpc" id="L249" title="2 of 4 branches missed.">            if (identity.isBlank() || result.putIfAbsent(owner.getLocalName() + &quot;/&quot; + identity, value) != null)</span>
+<span class="nc" id="L250">                throw new IllegalArgumentException(&quot;Unscoped or duplicate &quot; + field + &quot; field&quot;);</span>
+        }
+<span class="fc" id="L252">        return result;</span>
+    }
+
+    private static void requireKnownLanguageLocations(org.w3c.dom.Document document) {
+<span class="fc" id="L256">        var elements = document.getElementsByTagNameNS(&quot;*&quot;, &quot;*&quot;);</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">        for (int index = 0; index &lt; elements.getLength(); index++) {</span>
+<span class="fc" id="L258">            var element = (org.w3c.dom.Element) elements.item(index);</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">            if (element.hasAttributeNS(javax.xml.XMLConstants.XML_NS_URI, &quot;lang&quot;)</span>
+<span class="pc bpc" id="L260" title="2 of 4 branches missed.">                    &amp;&amp; (!NS.equals(element.getNamespaceURI()) || !Set.of(&quot;name&quot;, &quot;label&quot;, &quot;value&quot;).contains(element.getLocalName())))</span>
+<span class="nc" id="L261">                throw new IllegalArgumentException(&quot;Unexpected language-bearing field: &quot; + element.getLocalName());</span>
+        }
+<span class="fc" id="L263">    }</span>
+
+    private static boolean emittedEnglishLabel(org.w3c.dom.Element label) {
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">        return attributes(label).equals(Map.of(javax.xml.XMLConstants.XML_NS_URI + &quot;|lang&quot;, &quot;en&quot;))</span>
+<span class="pc bpc" id="L267" title="2 of 4 branches missed.">                &amp;&amp; ExchangeXml.children(label).isEmpty() &amp;&amp; !label.getTextContent().isBlank();</span>
+    }
+
+    private static Map&lt;String, String&gt; attributes(org.w3c.dom.Element element) {
+<span class="fc" id="L271">        var result = new TreeMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        for (int index = 0; index &lt; element.getAttributes().getLength(); index++) {</span>
+<span class="fc" id="L273">            var attribute = element.getAttributes().item(index);</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">            if (javax.xml.XMLConstants.XMLNS_ATTRIBUTE_NS_URI.equals(attribute.getNamespaceURI())) continue;</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">            result.put(attribute.getNamespaceURI() == null ? attribute.getNodeName() : attribute.getNamespaceURI() + &quot;|&quot; + attribute.getLocalName(), attribute.getNodeValue());</span>
+        }
+<span class="fc" id="L277">        return result;</span>
+    }
+
+    private static String field(org.w3c.dom.Element element) {
+<span class="fc bfc" id="L281" title="All 2 branches covered.">        return element == null ? null : ExchangeXml.semantic(ExchangeXml.xml(element));</span>
+    }
+
+    private static void compareOrganizations(org.w3c.dom.Document before, org.w3c.dom.Document after, List&lt;ArchiMateLoss&gt; losses) {
+<span class="fc" id="L285">        var original = ExchangeXml.children(before.getDocumentElement()).stream().filter(e -&gt; e.getLocalName().equals(&quot;organizations&quot;)).toList();</span>
+<span class="fc" id="L286">        var returned = ExchangeXml.children(after.getDocumentElement()).stream().filter(e -&gt; e.getLocalName().equals(&quot;organizations&quot;)).toList();</span>
+<span class="pc bpc" id="L287" title="1 of 4 branches missed.">        if (original.size() == 1 &amp;&amp; returned.isEmpty()) {</span>
+<span class="fc" id="L288">            var groups = ExchangeXml.children(original.getFirst());</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">            for (var group : groups) {</span>
+<span class="pc bpc" id="L290" title="2 of 4 branches missed.">                if (!group.getLocalName().equals(&quot;item&quot;) || group.hasAttribute(&quot;identifierRef&quot;)) throw new IllegalArgumentException(&quot;Unexpected source folder shape&quot;);</span>
+<span class="fc" id="L291">                var members = ExchangeXml.children(group).stream().filter(e -&gt; e.getLocalName().equals(&quot;item&quot;)).toList();</span>
+<span class="pc bpc" id="L292" title="4 of 8 branches missed.">                if (members.isEmpty() || members.stream().anyMatch(e -&gt; !e.hasAttribute(&quot;identifierRef&quot;) || !ExchangeXml.children(e).isEmpty()))</span>
+<span class="nc" id="L293">                    throw new IllegalArgumentException(&quot;Only the observed flat source type folders may be omitted&quot;);</span>
+<span class="fc" id="L294">                var labels = ExchangeXml.children(group).stream().filter(e -&gt; e.getLocalName().equals(&quot;label&quot;)).toList();</span>
+<span class="pc bpc" id="L295" title="3 of 6 branches missed.">                if (labels.size() != 1 || !emittedEnglishLabel(labels.getFirst()) || ExchangeXml.children(group).size() != members.size() + 1)</span>
+<span class="nc" id="L296">                    throw new IllegalArgumentException(&quot;Only the observed en-labelled source type folders may be omitted&quot;);</span>
+<span class="fc" id="L297">                losses.add(new ArchiMateLoss(&quot;return&quot;, before.getDocumentElement().getAttribute(&quot;identifier&quot;) + &quot;/organizations/&quot; + ExchangeXml.text(group, &quot;label&quot;), &quot;organizations&quot;, &quot;ARCHI_TYPE_FOLDERS_OMITTED&quot;,</span>
+<span class="fc" id="L298">                        &quot;Archi 5.10.0 omits the flat source type folder &quot; + ExchangeXml.text(group, &quot;label&quot;)</span>
+<span class="fc" id="L299">                                + &quot;, including its label's en language marker, with references &quot; + members.stream().map(e -&gt; e.getAttribute(&quot;identifierRef&quot;)).toList() + &quot;; element identities and view membership are compared separately.&quot;));</span>
+<span class="fc" id="L300">            }</span>
+<span class="fc" id="L301">            before.getDocumentElement().removeChild(original.getFirst());</span>
+<span class="fc" id="L302">        } else {</span>
+<span class="fc" id="L303">            requireEqual(&quot;organization folders&quot;, original.stream().map(e -&gt; ExchangeXml.semantic(ExchangeXml.xml(e))).toList(),</span>
+<span class="fc" id="L304">                    returned.stream().map(e -&gt; ExchangeXml.semantic(ExchangeXml.xml(e))).toList());</span>
+        }
+<span class="fc" id="L306">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

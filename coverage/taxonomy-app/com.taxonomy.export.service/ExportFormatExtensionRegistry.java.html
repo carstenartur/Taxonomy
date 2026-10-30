@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExportFormatExtensionRegistry.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export.service</a> &gt; <span class="el_source">ExportFormatExtensionRegistry.java</span></div><h1>ExportFormatExtensionRegistry.java</h1><pre class="source lang-java linenums">package com.taxonomy.export.service;
+
+import com.taxonomy.export.spi.*;
+import com.taxonomy.shared.extension.ExtensionKind;
+import com.taxonomy.extension.api.plugin.*;
+import com.taxonomy.extension.runtime.BuiltinCatalog;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import java.util.List;
+import java.util.Optional;
+
+/** Export facade; each physical export holds its admitted plugin version until completion. */
+@Service
+public class ExportFormatExtensionRegistry {
+    private final ExtensionCatalog catalog;
+<span class="fc" id="L16">    public ExportFormatExtensionRegistry(List&lt;ExportFormatExtension&gt; extensions) { this(BuiltinCatalog.create(extensions)); }</span>
+<span class="fc" id="L17">    @Autowired public ExportFormatExtensionRegistry(ExtensionCatalog catalog) { this.catalog = catalog; }</span>
+    public ExportFormatExtension getRequired(String id) {
+<span class="fc" id="L19">        return findByFormatId(id).orElseThrow(() -&gt; new IllegalArgumentException(&quot;Unknown export format: &quot; + id));</span>
+    }
+    public Optional&lt;ExportFormatExtension&gt; findByFormatId(String id) {
+<span class="fc bfc" id="L22" title="All 4 branches covered.">        if (id == null || id.isBlank()) return Optional.empty();</span>
+<span class="fc" id="L23">        var key = new ExtensionKey(ExtensionKind.EXPORT_FORMAT, id);</span>
+<span class="fc" id="L24">        try (var lease = catalog.acquire(key, ExportFormatExtension.class)) {</span>
+<span class="fc" id="L25">            ExportFormatDescriptor metadata = lease.extension().descriptor();</span>
+<span class="fc" id="L26">            var identity = lease.plugin();</span>
+<span class="fc" id="L27">            return Optional.of(new ExportFormatExtension() {</span>
+<span class="fc" id="L28">                public ExportFormatDescriptor descriptor() { return metadata; }</span>
+                public ExportResult export(ExportContext context) {
+<span class="fc" id="L30">                    try (var admitted = catalog.acquire(key, ExportFormatExtension.class)) {</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">                        if (!identity.equals(admitted.plugin())) throw new ExtensionUnavailableException(key);</span>
+<span class="fc" id="L32">                        return admitted.extension().export(context);</span>
+                    }
+                }
+            });
+<span class="fc" id="L36">        } catch (ExtensionUnavailableException unavailable) { return Optional.empty(); }</span>
+    }
+    public List&lt;ExportFormatDescriptor&gt; listDescriptors() {
+<span class="fc" id="L39">        var leases = catalog.acquireAll(ExtensionKind.EXPORT_FORMAT, ExportFormatExtension.class);</span>
+<span class="fc" id="L40">        try { return leases.stream().map(lease -&gt; lease.extension().descriptor()).toList(); }</span>
+<span class="fc" id="L41">        finally { leases.forEach(ExtensionLease::close); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

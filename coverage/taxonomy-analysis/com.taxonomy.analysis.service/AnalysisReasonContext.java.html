@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisReasonContext.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">AnalysisReasonContext.java</span></div><h1>AnalysisReasonContext.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.dto.AnalysisReasonLength;
+
+/** One admitted generation preference, shared with the synchronous task transport and restored after use. */
+public final class AnalysisReasonContext {
+    public static final String SETTING = &quot;analysis.reason-length&quot;;
+    public static final String POLICY = &quot;reason-length-v1&quot;;
+<span class="fc" id="L9">    private static final ThreadLocal&lt;Scope&gt; CURRENT = new ThreadLocal&lt;&gt;();</span>
+
+    private AnalysisReasonContext() { }
+
+    /** A missing runtime preference is resolved only at an entry boundary, never during prompt rendering. */
+    public static AnalysisReasonLength resolve(AnalysisReasonLength requested, AnalysisRuntimeSettings settings) {
+<span class="pc bpc" id="L15" title="1 of 2 branches missed.">        if (requested != null) return requested;</span>
+<span class="fc" id="L16">        Scope current = CURRENT.get();</span>
+<span class="fc bfc" id="L17" title="All 2 branches covered.">        if (current != null) return current.length;</span>
+<span class="fc bfc" id="L18" title="All 2 branches covered.">        return AnalysisReasonLength.fromValue(settings == null ? &quot;standard&quot; : settings.getString(SETTING, &quot;standard&quot;));</span>
+    }
+
+    /** Legacy persisted work runs with the former default even if live preferences have since changed. */
+    public static AnalysisReasonLength effective(AnalysisReasonLength value) {
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        return value == null ? AnalysisReasonLength.STANDARD : value;</span>
+    }
+
+    public static AnalysisReasonLength current() {
+<span class="fc" id="L27">        Scope current = CURRENT.get();</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">        return current == null ? null : current.length;</span>
+    }
+
+<span class="fc" id="L31">    public static Scope open(AnalysisReasonLength value) { return new Scope(effective(value)); }</span>
+
+    public static final class Scope implements AutoCloseable {
+<span class="fc" id="L34">        private final Thread owner = Thread.currentThread();</span>
+<span class="fc" id="L35">        private final Scope previous = CURRENT.get();</span>
+        private final AnalysisReasonLength length;
+        private boolean closed;
+
+<span class="fc" id="L39">        private Scope(AnalysisReasonLength length) {</span>
+<span class="fc" id="L40">            this.length = length;</span>
+<span class="fc" id="L41">            CURRENT.set(this);</span>
+<span class="fc" id="L42">        }</span>
+
+        @Override public void close() {
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">            if (closed) return;</span>
+<span class="pc bpc" id="L46" title="2 of 4 branches missed.">            if (Thread.currentThread() != owner || CURRENT.get() != this)</span>
+<span class="nc" id="L47">                throw new IllegalStateException(&quot;Analysis reason scopes must close in order on their owning thread&quot;);</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">            if (previous == null) CURRENT.remove(); else CURRENT.set(previous);</span>
+<span class="fc" id="L49">            closed = true;</span>
+<span class="fc" id="L50">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

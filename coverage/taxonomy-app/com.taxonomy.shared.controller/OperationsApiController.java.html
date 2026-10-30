@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>OperationsApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.controller</a> &gt; <span class="el_source">OperationsApiController.java</span></div><h1>OperationsApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.controller;
+
+import com.taxonomy.extension.api.llm.ProviderId;
+
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.AiAvailabilityLevel;
+import com.taxonomy.dto.AiStatusResponse;
+import com.taxonomy.shared.service.HealthSummaryService;
+import com.taxonomy.shared.service.LogRingBufferService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Core operational routes remain available without the analysis package. */
+@RestController
+@RequestMapping(&quot;/api&quot;)
+@Tag(name = &quot;Administration&quot;)
+public class OperationsApiController {
+    private final TaxonomyService taxonomyService;
+    private final LogRingBufferService logRingBufferService;
+    private final HealthSummaryService healthSummaryService;
+    public OperationsApiController(TaxonomyService taxonomyService, LogRingBufferService logRingBufferService,
+<span class="fc" id="L41">                                   HealthSummaryService healthSummaryService) {</span>
+<span class="fc" id="L42">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L43">        this.logRingBufferService = logRingBufferService;</span>
+<span class="fc" id="L44">        this.healthSummaryService = healthSummaryService;</span>
+<span class="fc" id="L45">    }</span>
+
+    @Operation(summary = &quot;Startup status&quot;,
+            description = &quot;Returns the initialization state of the taxonomy data. Poll this endpoint after receiving a 503 to know when the app is ready.&quot;,
+            tags = {&quot;Status&quot;})
+    @GetMapping(&quot;/status/startup&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; startupStatus() {
+<span class="fc" id="L52">        Map&lt;String, Object&gt; status = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L53">        status.put(&quot;initialized&quot;, taxonomyService.isInitialized());</span>
+<span class="fc" id="L54">        status.put(&quot;status&quot;, taxonomyService.getInitStatus());</span>
+
+<span class="fc" id="L56">        com.taxonomy.catalog.service.AppInitializationStateService stateService = taxonomyService.getStateService();</span>
+<span class="fc" id="L57">        status.put(&quot;phase&quot;, stateService.getState().name());</span>
+<span class="fc" id="L58">        status.put(&quot;phaseMessage&quot;, stateService.getMessage());</span>
+<span class="fc" id="L59">        status.put(&quot;phaseUpdatedAt&quot;, stateService.getUpdatedAt().toString());</span>
+
+<span class="fc" id="L61">        Runtime rt = Runtime.getRuntime();</span>
+<span class="fc" id="L62">        long heapUsed = rt.totalMemory() - rt.freeMemory();</span>
+<span class="fc" id="L63">        long heapMax = rt.maxMemory();</span>
+<span class="fc" id="L64">        Map&lt;String, Object&gt; memory = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L65">        memory.put(&quot;heapUsedMB&quot;, heapUsed / (1024 * 1024));</span>
+<span class="fc" id="L66">        memory.put(&quot;heapMaxMB&quot;, heapMax / (1024 * 1024));</span>
+<span class="fc" id="L67">        memory.put(&quot;heapUsagePercent&quot;, Math.round((double) heapUsed / heapMax * 100));</span>
+<span class="fc" id="L68">        memory.put(&quot;threadCount&quot;, Thread.activeCount());</span>
+<span class="fc" id="L69">        status.put(&quot;memory&quot;, memory);</span>
+
+<span class="fc" id="L71">        return ResponseEntity.ok(status);</span>
+    }
+
+    @Operation(summary = &quot;Check admin UI authorization&quot;,
+            description = &quot;Returns whether the authenticated user must remain outside the admin UI&quot;,
+            tags = {&quot;Administration&quot;})
+    @GetMapping(&quot;/admin/status&quot;)
+    public ResponseEntity&lt;Map&lt;String, Boolean&gt;&gt; adminStatus(HttpServletRequest request) {
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        return ResponseEntity.ok(Map.of(&quot;passwordRequired&quot;, !isAdminAuthorized(request)));</span>
+    }
+
+    /**
+     * Backward-compatible endpoint for the existing admin modal. Authorization is
+     * derived exclusively from the authenticated ROLE_ADMIN identity; a second
+     * application password is intentionally not accepted.
+     */
+    @Operation(summary = &quot;Verify admin authorization&quot;,
+            description = &quot;Confirms whether the authenticated user has ROLE_ADMIN&quot;,
+            tags = {&quot;Administration&quot;})
+    @PostMapping(&quot;/admin/verify&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; verifyAdmin(
+            @RequestBody(required = false) Map&lt;String, String&gt; ignoredBody,
+            HttpServletRequest request) {
+<span class="fc" id="L94">        boolean valid = isAdminAuthorized(request);</span>
+<span class="fc" id="L95">        Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L96">        response.put(&quot;valid&quot;, valid);</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        if (valid) {</span>
+            // Kept only for compatibility with older UI code. The server never
+            // trusts this value; every protected request is authorized by ROLE_ADMIN.
+<span class="fc" id="L100">            response.put(&quot;token&quot;, &quot;role-admin&quot;);</span>
+        }
+<span class="fc" id="L102">        return ResponseEntity.ok(response);</span>
+    }
+
+    @Operation(summary = &quot;Get recent log entries&quot;,
+            description = &quot;Returns recent application log entries from the in-memory ring buffer (ROLE_ADMIN only)&quot;,
+            tags = {&quot;Administration&quot;})
+    @GetMapping(&quot;/admin/logs&quot;)
+    public ResponseEntity&lt;List&lt;LogRingBufferService.LogEntry&gt;&gt; getLogs(
+            @Parameter(description = &quot;Filter by log level (e.g. ERROR, WARN, INFO)&quot;)
+            @RequestParam(required = false) String level,
+            @Parameter(description = &quot;Filter by logger name substring&quot;)
+            @RequestParam(required = false) String component,
+            @Parameter(description = &quot;Max number of entries to return (max 500)&quot;)
+            @RequestParam(defaultValue = &quot;100&quot;) int limit,
+            HttpServletRequest request) {
+<span class="nc bnc" id="L117" title="All 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
+<span class="nc" id="L118">            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();</span>
+        }
+<span class="nc" id="L120">        return ResponseEntity.ok(logRingBufferService.getEntries(level, component, Math.min(limit, 500)));</span>
+    }
+
+    @Operation(summary = &quot;Get health summary&quot;,
+            description = &quot;Aggregated health status from startup, AI, embedding, and memory subsystems (ROLE_ADMIN only)&quot;,
+            tags = {&quot;Administration&quot;})
+    @GetMapping(&quot;/admin/health-summary&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getHealthSummary(HttpServletRequest request) {
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
+<span class="nc" id="L129">            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();</span>
+        }
+<span class="nc" id="L131">        return ResponseEntity.ok(healthSummaryService.getSummary());</span>
+    }
+
+    private boolean isAdminAuthorized(HttpServletRequest request) {
+<span class="pc bpc" id="L135" title="1 of 4 branches missed.">        return request.isUserInRole(&quot;ADMIN&quot;) || request.isUserInRole(&quot;ROLE_ADMIN&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

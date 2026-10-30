@@ -1,0 +1,362 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyRelationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">TaxonomyRelationService.java</span></div><h1>TaxonomyRelationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.dto.TaxonomyRelationDto;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.lang.Nullable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.List;
+
+@Service
+public class TaxonomyRelationService {
+
+<span class="fc" id="L24">    private static final Logger log = LoggerFactory.getLogger(TaxonomyRelationService.class);</span>
+    private static final String SYSTEM_USER = &quot;system&quot;;
+
+    private final TaxonomyRelationRepository relationRepository;
+    private final TaxonomyNodeRepository nodeRepository;
+    private final SystemRepositoryService systemRepositoryService;
+
+    public TaxonomyRelationService(
+            TaxonomyRelationRepository relationRepository,
+            TaxonomyNodeRepository nodeRepository,
+<span class="fc" id="L34">            SystemRepositoryService systemRepositoryService) {</span>
+<span class="fc" id="L35">        this.relationRepository = relationRepository;</span>
+<span class="fc" id="L36">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L37">        this.systemRepositoryService = systemRepositoryService;</span>
+<span class="fc" id="L38">    }</span>
+
+    // ── Explicit repository/workspace tenant reads ─────────────────
+
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getRelationsForNodeInContext(
+            String code, RepositoryContext context) {
+<span class="fc" id="L45">        RepositoryContext tenant = requireContext(context);</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        List&lt;TaxonomyRelation&gt; relations = tenant.workspaceId() == null</span>
+<span class="fc" id="L47">                ? relationRepository.findCentralByRepositoryAndNodeCode(</span>
+<span class="fc" id="L48">                        tenant.repositoryId(), code)</span>
+<span class="fc" id="L49">                : relationRepository.findVisibleByRepositoryAndWorkspaceAndNodeCode(</span>
+<span class="fc" id="L50">                        tenant.repositoryId(), tenant.workspaceId(), code);</span>
+<span class="fc" id="L51">        return toDtos(relations);</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getRelationsByTypeInContext(
+            RelationType type, RepositoryContext context) {
+<span class="fc" id="L57">        RepositoryContext tenant = requireContext(context);</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">        List&lt;TaxonomyRelation&gt; relations = tenant.workspaceId() == null</span>
+<span class="fc" id="L59">                ? relationRepository.findCentralByRepositoryAndRelationType(</span>
+<span class="fc" id="L60">                        tenant.repositoryId(), type)</span>
+<span class="pc" id="L61">                : relationRepository.findVisibleByRepositoryAndWorkspaceAndRelationType(</span>
+<span class="nc" id="L62">                        tenant.repositoryId(), tenant.workspaceId(), type);</span>
+<span class="fc" id="L63">        return toDtos(relations);</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getAllRelationsInContext(
+            RepositoryContext context) {
+<span class="fc" id="L69">        RepositoryContext tenant = requireContext(context);</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        List&lt;TaxonomyRelation&gt; relations = tenant.workspaceId() == null</span>
+<span class="fc" id="L71">                ? relationRepository.findCentralByRepository(tenant.repositoryId())</span>
+<span class="pc" id="L72">                : relationRepository.findVisibleByRepositoryAndWorkspace(</span>
+<span class="nc" id="L73">                        tenant.repositoryId(), tenant.workspaceId());</span>
+<span class="fc" id="L74">        return toDtos(relations);</span>
+    }
+
+    /**
+     * Return whether an equivalent relation is visible in the selected tenant.
+     * Workspace contexts inherit the central baseline of the same repository;
+     * central contexts never scan another repository or unpublished workspace.
+     */
+    @Transactional(readOnly = true)
+    public boolean relationExistsVisibleInContext(
+            String sourceCode,
+            String targetCode,
+            RelationType type,
+            RepositoryContext context) {
+<span class="fc" id="L88">        RepositoryContext tenant = requireContext(context);</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        List&lt;TaxonomyRelation&gt; existing = tenant.workspaceId() == null</span>
+<span class="fc" id="L90">                ? relationRepository.findCentralByRepositoryAndSourceTargetType(</span>
+<span class="fc" id="L91">                        tenant.repositoryId(), sourceCode, targetCode, type)</span>
+<span class="fc" id="L92">                : relationRepository.findVisibleByRepositoryAndWorkspaceAndSourceTargetType(</span>
+<span class="fc" id="L93">                        tenant.repositoryId(),</span>
+<span class="fc" id="L94">                        tenant.workspaceId(),</span>
+                        sourceCode,
+                        targetCode,
+                        type);
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        return !existing.isEmpty();</span>
+    }
+
+    // ── Explicit repository/workspace tenant writes ────────────────
+
+    @Transactional
+    public TaxonomyRelationDto createRelationInContext(
+            String sourceCode,
+            String targetCode,
+            RelationType type,
+            String description,
+            String provenance,
+            RepositoryContext context) {
+<span class="fc" id="L111">        RepositoryContext tenant = requireContext(context);</span>
+<span class="fc" id="L112">        TaxonomyNode source = nodeRepository.findByCode(sourceCode)</span>
+<span class="fc" id="L113">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                        &quot;Source node not found&quot;));
+<span class="fc" id="L115">        TaxonomyNode target = nodeRepository.findByCode(targetCode)</span>
+<span class="fc" id="L116">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                        &quot;Target node not found&quot;));
+
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        if (relationExistsVisibleInContext(sourceCode, targetCode, type, tenant)) {</span>
+<span class="fc" id="L120">            throw new IllegalArgumentException(</span>
+                    &quot;Relation already exists in active repository/workspace&quot;);
+        }
+
+<span class="fc" id="L124">        TaxonomyRelation relation = new TaxonomyRelation();</span>
+<span class="fc" id="L125">        relation.setRepositoryId(tenant.repositoryId());</span>
+<span class="fc" id="L126">        relation.setSourceNode(source);</span>
+<span class="fc" id="L127">        relation.setTargetNode(target);</span>
+<span class="fc" id="L128">        relation.setRelationType(type);</span>
+<span class="fc" id="L129">        relation.setDescription(description);</span>
+<span class="fc" id="L130">        relation.setProvenance(provenance);</span>
+<span class="fc" id="L131">        relation.setWorkspaceId(tenant.workspaceId());</span>
+<span class="fc" id="L132">        relation.setOwnerUsername(tenant.username());</span>
+
+<span class="fc" id="L134">        TaxonomyRelation saved = relationRepository.save(relation);</span>
+<span class="fc" id="L135">        log.info(&quot;Created relation (scope={}, count=1)&quot;, tenant.scope());</span>
+<span class="fc" id="L136">        return toDto(saved);</span>
+    }
+
+    /** Delete only from the exact repository and exact mutable workspace scope. */
+    @Transactional
+    public void deleteRelationInContext(Long id, RepositoryContext context) {
+<span class="fc" id="L142">        RepositoryContext tenant = requireContext(context);</span>
+<span class="fc" id="L143">        TaxonomyRelation relation = relationRepository.findByIdInRepositoryWorkspace(</span>
+<span class="fc" id="L144">                        tenant.repositoryId(), id, tenant.workspaceId())</span>
+<span class="fc" id="L145">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                        &quot;Relation not found in active repository/workspace&quot;));
+<span class="fc" id="L147">        relationRepository.delete(relation);</span>
+<span class="fc" id="L148">        log.info(&quot;Deleted relation (scope={}, count=1)&quot;, tenant.scope());</span>
+<span class="fc" id="L149">    }</span>
+
+    /** Delete matches only from the exact repository and exact workspace scope. */
+    @Transactional
+    public void deleteRelationBySourceTargetTypeInContext(
+            String sourceCode,
+            String targetCode,
+            RelationType type,
+            RepositoryContext context) {
+<span class="fc" id="L158">        RepositoryContext tenant = requireContext(context);</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">        List&lt;TaxonomyRelation&gt; matches = tenant.workspaceId() == null</span>
+<span class="nc" id="L160">                ? relationRepository.findCentralByRepositoryAndSourceTargetType(</span>
+<span class="nc" id="L161">                        tenant.repositoryId(), sourceCode, targetCode, type)</span>
+                : relationRepository
+<span class="fc" id="L163">                        .findByRepositoryIdAndWorkspaceIdAndSourceNodeCodeAndTargetNodeCodeAndRelationType(</span>
+<span class="fc" id="L164">                                tenant.repositoryId(),</span>
+<span class="fc" id="L165">                                tenant.workspaceId(),</span>
+                                sourceCode,
+                                targetCode,
+                                type);
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">        if (!matches.isEmpty()) {</span>
+<span class="fc" id="L170">            relationRepository.deleteAll(matches);</span>
+<span class="fc" id="L171">            log.info(&quot;Deleted relations (scope={}, count={})&quot;,</span>
+<span class="fc" id="L172">                    tenant.scope(), matches.size());</span>
+        }
+<span class="fc" id="L174">    }</span>
+
+    @Transactional(readOnly = true)
+    public long countRelationsInContext(RepositoryContext context) {
+<span class="fc" id="L178">        RepositoryContext tenant = requireContext(context);</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">        return tenant.workspaceId() == null</span>
+<span class="fc" id="L180">                ? relationRepository.countCentralByRepository(tenant.repositoryId())</span>
+<span class="nc" id="L181">                : relationRepository.countVisibleByRepositoryAndWorkspace(</span>
+<span class="nc" id="L182">                        tenant.repositoryId(), tenant.workspaceId());</span>
+    }
+
+    // ── Primary-repository compatibility boundary ──────────────────
+    // These overloads keep existing internal import/export and analysis callers
+    // working while they migrate. They resolve the catalog primary explicitly;
+    // no null workspace is ever interpreted as a global repository scope.
+
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getRelationsForNode(
+            String code, @Nullable String workspaceId) {
+<span class="fc" id="L193">        return getRelationsForNodeInContext(</span>
+<span class="fc" id="L194">                code, primaryContext(workspaceId, SYSTEM_USER));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getRelationsByType(
+            RelationType type, @Nullable String workspaceId) {
+<span class="fc" id="L200">        return getRelationsByTypeInContext(</span>
+<span class="fc" id="L201">                type, primaryContext(workspaceId, SYSTEM_USER));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getAllRelations(@Nullable String workspaceId) {
+<span class="fc" id="L206">        return getAllRelationsInContext(primaryContext(workspaceId, SYSTEM_USER));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public boolean relationExistsVisible(
+            String sourceCode,
+            String targetCode,
+            RelationType type,
+            @Nullable String workspaceId) {
+<span class="fc" id="L215">        return relationExistsVisibleInContext(</span>
+                sourceCode,
+                targetCode,
+                type,
+<span class="fc" id="L219">                primaryContext(workspaceId, SYSTEM_USER));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getRelationsForNode(String code) {
+<span class="fc" id="L224">        return getRelationsForNode(code, null);</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getRelationsByType(RelationType type) {
+<span class="fc" id="L229">        return getRelationsByType(type, null);</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getAllRelations() {
+<span class="fc" id="L234">        return getAllRelations(null);</span>
+    }
+
+    @Transactional
+    public TaxonomyRelationDto createRelation(
+            String sourceCode,
+            String targetCode,
+            RelationType type,
+            String description,
+            String provenance,
+            @Nullable String workspaceId,
+            @Nullable String ownerUsername) {
+<span class="fc" id="L246">        return createRelationInContext(</span>
+                sourceCode,
+                targetCode,
+                type,
+                description,
+                provenance,
+<span class="fc" id="L252">                primaryContext(workspaceId, ownerUsername));</span>
+    }
+
+    @Transactional
+    public TaxonomyRelationDto createRelation(
+            String sourceCode,
+            String targetCode,
+            RelationType type,
+            String description,
+            String provenance) {
+<span class="fc" id="L262">        return createRelation(</span>
+                sourceCode,
+                targetCode,
+                type,
+                description,
+                provenance,
+                null,
+                SYSTEM_USER);
+    }
+
+    @Transactional
+    public void deleteRelation(Long id, @Nullable String workspaceId) {
+<span class="fc" id="L274">        deleteRelationInContext(id, primaryContext(workspaceId, SYSTEM_USER));</span>
+<span class="fc" id="L275">    }</span>
+
+    @Transactional
+    public void deleteRelation(Long id) {
+<span class="fc" id="L279">        deleteRelation(id, null);</span>
+<span class="fc" id="L280">    }</span>
+
+    @Transactional
+    public void deleteRelationBySourceTargetType(
+            String sourceCode,
+            String targetCode,
+            RelationType type,
+            @Nullable String workspaceId) {
+<span class="nc" id="L288">        deleteRelationBySourceTargetTypeInContext(</span>
+                sourceCode,
+                targetCode,
+                type,
+<span class="nc" id="L292">                primaryContext(workspaceId, SYSTEM_USER));</span>
+<span class="nc" id="L293">    }</span>
+
+    @Transactional
+    public void deleteRelationBySourceTargetType(
+            String sourceCode,
+            String targetCode,
+            RelationType type) {
+<span class="nc" id="L300">        deleteRelationBySourceTargetType(sourceCode, targetCode, type, null);</span>
+<span class="nc" id="L301">    }</span>
+
+    @Transactional(readOnly = true)
+    public long countRelations(@Nullable String workspaceId) {
+<span class="fc" id="L305">        return countRelationsInContext(primaryContext(workspaceId, SYSTEM_USER));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public long countRelations() {
+<span class="fc" id="L310">        return countRelations(null);</span>
+    }
+
+    public TaxonomyRelationDto toDto(TaxonomyRelation relation) {
+<span class="fc" id="L314">        TaxonomyRelationDto dto = new TaxonomyRelationDto();</span>
+<span class="fc" id="L315">        dto.setId(relation.getId());</span>
+<span class="fc" id="L316">        dto.setSourceCode(relation.getSourceNode().getCode());</span>
+<span class="fc" id="L317">        dto.setSourceName(relation.getSourceNode().getNameEn());</span>
+<span class="fc" id="L318">        dto.setTargetCode(relation.getTargetNode().getCode());</span>
+<span class="fc" id="L319">        dto.setTargetName(relation.getTargetNode().getNameEn());</span>
+<span class="fc" id="L320">        dto.setRelationType(relation.getRelationType().name());</span>
+<span class="fc" id="L321">        dto.setDescription(relation.getDescription());</span>
+<span class="fc" id="L322">        dto.setProvenance(relation.getProvenance());</span>
+<span class="fc" id="L323">        dto.setWeight(relation.getWeight());</span>
+<span class="fc" id="L324">        dto.setBidirectional(relation.isBidirectional());</span>
+<span class="fc" id="L325">        return dto;</span>
+    }
+
+    private RepositoryContext primaryContext(
+            @Nullable String workspaceId, @Nullable String username) {
+<span class="fc" id="L330">        SystemRepository primary = systemRepositoryService.getPrimaryRepository();</span>
+<span class="pc bpc" id="L331" title="2 of 4 branches missed.">        String user = username == null || username.isBlank()</span>
+<span class="nc" id="L332">                ? SYSTEM_USER</span>
+<span class="fc" id="L333">                : username.strip();</span>
+<span class="pc bpc" id="L334" title="1 of 4 branches missed.">        String workspace = workspaceId == null || workspaceId.isBlank()</span>
+<span class="fc" id="L335">                ? null</span>
+<span class="fc" id="L336">                : workspaceId.strip();</span>
+<span class="fc bfc" id="L337" title="All 2 branches covered.">        return workspace == null</span>
+<span class="fc" id="L338">                ? RepositoryContext.centralRead(</span>
+<span class="fc" id="L339">                        primary.getRepositoryId(), primary.getDefaultBranch(), user)</span>
+<span class="fc" id="L340">                : RepositoryContext.workspace(</span>
+<span class="fc" id="L341">                        primary.getRepositoryId(),</span>
+                        workspace,
+<span class="fc" id="L343">                        primary.getDefaultBranch(),</span>
+                        user);
+    }
+
+    private static RepositoryContext requireContext(RepositoryContext context) {
+<span class="pc bpc" id="L348" title="1 of 2 branches missed.">        if (context == null) {</span>
+<span class="nc" id="L349">            throw new IllegalArgumentException(&quot;RepositoryContext must not be null&quot;);</span>
+        }
+<span class="fc" id="L351">        return context;</span>
+    }
+
+    private List&lt;TaxonomyRelationDto&gt; toDtos(List&lt;TaxonomyRelation&gt; relations) {
+<span class="fc" id="L355">        List&lt;TaxonomyRelationDto&gt; dtos = new ArrayList&lt;&gt;(relations.size());</span>
+<span class="fc bfc" id="L356" title="All 2 branches covered.">        for (TaxonomyRelation relation : relations) {</span>
+<span class="fc" id="L357">            dtos.add(toDto(relation));</span>
+<span class="fc" id="L358">        }</span>
+<span class="fc" id="L359">        return dtos;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

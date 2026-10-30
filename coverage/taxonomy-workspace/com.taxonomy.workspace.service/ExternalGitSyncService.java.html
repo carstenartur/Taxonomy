@@ -1,0 +1,453 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExternalGitSyncService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">ExternalGitSyncService.java</span></div><h1>ExternalGitSyncService.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.model.RepositoryTopologyMode;
+import com.taxonomy.workspace.model.SystemRepository;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.NullProgressMonitor;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.lib.RefUpdate;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.transport.FetchResult;
+import org.eclipse.jgit.transport.PushResult;
+import org.eclipse.jgit.transport.RefSpec;
+import org.eclipse.jgit.transport.RemoteRefUpdate;
+import org.eclipse.jgit.transport.Transport;
+import org.eclipse.jgit.transport.URIish;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * Handles synchronization between the internal system repository and an
+ * external Git remote (for example Gitea, GitHub or GitLab).
+ *
+ * &lt;p&gt;Synchronization is ancestry-aware. A remote branch is fast-forwarded or
+ * merged through JGit; remote file contents are never committed wholesale on
+ * top of an unrelated local history. Diverging edits that cannot be merged are
+ * reported as conflicts and leave the local shared branch unchanged.&lt;/p&gt;
+ */
+@Service
+public class ExternalGitSyncService {
+
+<span class="fc" id="L47">    private static final Logger log = LoggerFactory.getLogger(ExternalGitSyncService.class);</span>
+    private static final String EXTERNAL_SYNC_BRANCH_PREFIX = &quot;__external_sync__/&quot;;
+<span class="fc" id="L49">    private static final Set&lt;RemoteRefUpdate.Status&gt; SUCCESSFUL_PUSH_STATUSES =</span>
+<span class="fc" id="L50">            EnumSet.of(RemoteRefUpdate.Status.OK, RemoteRefUpdate.Status.UP_TO_DATE);</span>
+
+    private final DslGitRepositoryFactory repositoryFactory;
+    private final SystemRepositoryService systemRepositoryService;
+    private final ExternalGitCredentials credentials;
+
+    @Autowired
+    public ExternalGitSyncService(DslGitRepositoryFactory repositoryFactory,
+                                  SystemRepositoryService systemRepositoryService,
+<span class="fc" id="L59">                                  ExternalGitCredentials credentials) {</span>
+<span class="fc" id="L60">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L61">        this.systemRepositoryService = systemRepositoryService;</span>
+<span class="fc" id="L62">        this.credentials = credentials;</span>
+<span class="fc" id="L63">    }</span>
+
+    /** Convenience constructor for focused tests without configured credentials. */
+    public ExternalGitSyncService(DslGitRepositoryFactory repositoryFactory,
+                                  SystemRepositoryService systemRepositoryService) {
+<span class="fc" id="L68">        this(repositoryFactory, systemRepositoryService, ExternalGitCredentials.none());</span>
+<span class="fc" id="L69">    }</span>
+
+    /** Fetch all external branches into {@code refs/remotes/origin/*}. */
+    public synchronized FetchResult fetchFromExternal() throws Exception {
+<span class="fc" id="L73">        return fetchFromExternal(systemRepositoryService.getPrimaryRepository(),</span>
+<span class="fc" id="L74">                repositoryFactory.getSystemRepository(), systemRepositoryService.getSharedBranch());</span>
+    }
+
+    /** Fetch only the explicitly selected central repository; an invalid ID never selects primary. */
+    public synchronized FetchResult fetchFromExternal(String repositoryId) throws Exception {
+<span class="nc" id="L79">        SystemRepository selected = systemRepositoryService.getRepository(repositoryId);</span>
+<span class="nc" id="L80">        return fetchFromExternal(selected, repositoryFactory.getCentralRepository(repositoryId),</span>
+<span class="nc" id="L81">                selected.getDefaultBranch());</span>
+    }
+
+    private FetchResult fetchFromExternal(SystemRepository systemRepository,
+                                           DslGitRepository dslRepository,
+                                           String sharedBranch) throws Exception {
+<span class="fc" id="L87">        return fetchFromExternal(systemRepository, dslRepository, sharedBranch,</span>
+<span class="fc" id="L88">                acceptedLocalHeads(dslRepository.getGitRepository()));</span>
+    }
+
+    private FetchResult fetchFromExternal(SystemRepository systemRepository,
+                                          DslGitRepository dslRepository,
+                                          String sharedBranch,
+                                          List&lt;String&gt; acceptedHeads) throws Exception {
+<span class="fc" id="L95">        URIish uri = validateExternalModeAndCreateUri(systemRepository);</span>
+<span class="fc" id="L96">        validateBranchName(sharedBranch);</span>
+<span class="fc" id="L97">        Repository gitRepository = dslRepository.getGitRepository();</span>
+<span class="fc" id="L98">        log.info(&quot;Fetching from configured external Git remote&quot;);</span>
+<span class="fc" id="L99">        try (Transport transport = Transport.open(gitRepository, uri)) {</span>
+<span class="fc" id="L100">            credentials.configure(transport, systemRepository.getRepositoryId(), systemRepository.isPrimaryRepo());</span>
+<span class="fc" id="L101">            transport.setRemoveDeletedRefs(true);</span>
+<span class="fc" id="L102">            FetchResult result = transport.fetch(</span>
+                    NullProgressMonitor.INSTANCE,
+<span class="fc" id="L104">                    List.of(new RefSpec(&quot;+refs/heads/*:refs/remotes/origin/*&quot;)));</span>
+
+            // Tracking refs are fetched objects, not an acceptance boundary. Verify
+            // against local accepted ancestry before recording successful import.
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            for (Ref fetched : gitRepository.getRefDatabase().getRefsByPrefix(Constants.R_REMOTES + &quot;origin/&quot;)) {</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">                if (fetched.getObjectId() != null) {</span>
+<span class="fc" id="L110">                    dslRepository.verifyIncomingFromAcceptedHeads(fetched.getObjectId().name(), acceptedHeads);</span>
+                }
+<span class="fc" id="L112">            }</span>
+<span class="fc" id="L113">            Ref sharedRemoteRef = gitRepository.getRefDatabase()</span>
+<span class="fc" id="L114">                    .exactRef(remoteTrackingRefName(sharedBranch));</span>
+
+<span class="fc" id="L116">            systemRepository.setLastFetchAt(Instant.now());</span>
+<span class="pc bpc" id="L117" title="1 of 4 branches missed.">            if (sharedRemoteRef != null &amp;&amp; sharedRemoteRef.getObjectId() != null) {</span>
+<span class="fc" id="L118">                systemRepository.setLastFetchCommit(sharedRemoteRef.getObjectId().name());</span>
+            }
+<span class="fc" id="L120">            systemRepositoryService.save(systemRepository);</span>
+
+<span class="fc" id="L122">            log.info(&quot;External fetch completed with {} tracking updates&quot;,</span>
+<span class="fc" id="L123">                    result.getTrackingRefUpdates().size());</span>
+<span class="fc" id="L124">            return result;</span>
+        }
+    }
+
+    /**
+     * Push a local branch and fail when the remote rejects or does not perform
+     * the requested update.
+     */
+    public synchronized PushResult pushToExternal(String localBranch) throws Exception {
+<span class="fc" id="L133">        return pushToExternal(systemRepositoryService.getPrimaryRepository(),</span>
+<span class="fc" id="L134">                repositoryFactory.getSystemRepository(), localBranch);</span>
+    }
+
+    public synchronized PushResult pushToExternal(String repositoryId, String localBranch) throws Exception {
+<span class="fc" id="L138">        SystemRepository selected = systemRepositoryService.getRepository(repositoryId);</span>
+<span class="fc" id="L139">        return pushToExternal(selected, repositoryFactory.getCentralRepository(repositoryId), localBranch);</span>
+    }
+
+    private PushResult pushToExternal(SystemRepository systemRepository,
+                                     DslGitRepository dslRepository,
+                                     String localBranch) throws Exception {
+<span class="fc" id="L145">        URIish uri = validateExternalModeAndCreateUri(systemRepository);</span>
+<span class="fc" id="L146">        validateBranchName(localBranch);</span>
+<span class="fc" id="L147">        Repository gitRepository = dslRepository.getGitRepository();</span>
+<span class="fc" id="L148">        log.info(&quot;Pushing branch '{}' to configured external Git remote&quot;, localBranch);</span>
+<span class="fc" id="L149">        try (Transport transport = Transport.open(gitRepository, uri)) {</span>
+<span class="fc" id="L150">            credentials.configure(transport, systemRepository.getRepositoryId(), systemRepository.isPrimaryRepo());</span>
+<span class="fc" id="L151">            RemoteRefUpdate refUpdate = new RemoteRefUpdate(</span>
+                    gitRepository,
+<span class="fc" id="L153">                    localRefName(localBranch),</span>
+<span class="fc" id="L154">                    localRefName(localBranch),</span>
+                    false,
+                    null,
+                    null);
+<span class="fc" id="L158">            PushResult result = transport.push(</span>
+                    NullProgressMonitor.INSTANCE,
+<span class="fc" id="L160">                    List.of(refUpdate));</span>
+
+<span class="fc" id="L162">            verifyPushResult(result, localBranch);</span>
+
+<span class="fc" id="L164">            systemRepository.setLastPushAt(Instant.now());</span>
+<span class="fc" id="L165">            systemRepositoryService.save(systemRepository);</span>
+<span class="fc" id="L166">            log.info(&quot;Push completed successfully for branch '{}'&quot;, localBranch);</span>
+<span class="fc" id="L167">            return result;</span>
+        }
+    }
+
+    /**
+     * Fetch and integrate the configured remote shared branch.
+     *
+     * &lt;p&gt;Synchronization serializes in-process external operations. Each merge
+     * uses its own temporary ref, and expected-old object IDs protect creation,
+     * integration and cleanup from overwriting another writer's changes.&lt;/p&gt;
+     *
+     * @return the resulting local shared-branch commit, or {@code null} when the
+     *         configured remote does not contain the shared branch
+     * @throws ExternalSyncConflictException when histories diverge and cannot be merged
+     */
+    public synchronized String fullSync(String username) throws Exception {
+<span class="fc" id="L183">        SystemRepository primary = systemRepositoryService.getPrimaryRepository();</span>
+<span class="fc" id="L184">        return fullSync(primary, repositoryFactory.getSystemRepository(),</span>
+<span class="fc" id="L185">                systemRepositoryService.getSharedBranch(), username);</span>
+    }
+
+    public synchronized String fullSync(String repositoryId, String username) throws Exception {
+<span class="fc" id="L189">        SystemRepository selected = systemRepositoryService.getRepository(repositoryId);</span>
+<span class="fc" id="L190">        return fullSync(selected, repositoryFactory.getCentralRepository(repositoryId),</span>
+<span class="fc" id="L191">                selected.getDefaultBranch(), username);</span>
+    }
+
+    private String fullSync(SystemRepository metadata, DslGitRepository dslRepository,
+                            String sharedBranch, String username) throws Exception {
+<span class="fc" id="L196">        Repository gitRepository = dslRepository.getGitRepository();</span>
+<span class="fc" id="L197">        List&lt;String&gt; acceptedHeads = acceptedLocalHeads(gitRepository);</span>
+<span class="fc" id="L198">        fetchFromExternal(metadata, dslRepository, sharedBranch, acceptedHeads);</span>
+<span class="fc" id="L199">        validateBranchName(sharedBranch);</span>
+
+<span class="fc" id="L201">        String localRefName = localRefName(sharedBranch);</span>
+<span class="fc" id="L202">        Ref remoteRef = gitRepository.getRefDatabase()</span>
+<span class="fc" id="L203">                .exactRef(remoteTrackingRefName(sharedBranch));</span>
+<span class="pc bpc" id="L204" title="1 of 4 branches missed.">        if (remoteRef == null || remoteRef.getObjectId() == null) {</span>
+<span class="fc" id="L205">            log.info(&quot;External sync found no remote shared branch '{}'&quot;, sharedBranch);</span>
+<span class="fc" id="L206">            return null;</span>
+        }
+
+<span class="fc" id="L209">        Ref localRef = gitRepository.getRefDatabase().exactRef(localRefName);</span>
+<span class="fc" id="L210">        dslRepository.verifyIncomingFromAcceptedHeads(remoteRef.getObjectId().name(), acceptedHeads);</span>
+<span class="pc bpc" id="L211" title="1 of 4 branches missed.">        if (localRef == null || localRef.getObjectId() == null) {</span>
+<span class="fc" id="L212">            updateRef(</span>
+                    gitRepository,
+                    localRefName,
+<span class="fc" id="L215">                    remoteRef.getObjectId(),</span>
+<span class="fc" id="L216">                    ObjectId.zeroId(),</span>
+                    false,
+                    username,
+                    &quot;external-sync: create shared branch from remote&quot;);
+<span class="fc" id="L220">            log.info(&quot;Created local shared branch '{}' at fetched remote commit {}&quot;,</span>
+<span class="fc" id="L221">                    sharedBranch, remoteRef.getObjectId().name());</span>
+<span class="fc" id="L222">            return remoteRef.getObjectId().name();</span>
+        }
+
+<span class="fc" id="L225">        try (RevWalk walk = new RevWalk(gitRepository)) {</span>
+<span class="fc" id="L226">            RevCommit localCommit = walk.parseCommit(localRef.getObjectId());</span>
+<span class="fc" id="L227">            RevCommit remoteCommit = walk.parseCommit(remoteRef.getObjectId());</span>
+
+<span class="fc bfc" id="L229" title="All 2 branches covered.">            if (walk.isMergedInto(remoteCommit, localCommit)) {</span>
+<span class="fc" id="L230">                log.info(&quot;External sync: local shared branch '{}' is already up to date&quot;, sharedBranch);</span>
+<span class="fc" id="L231">                return localCommit.name();</span>
+            }
+<span class="fc" id="L233">        }</span>
+
+<span class="fc" id="L235">        String temporaryBranch = EXTERNAL_SYNC_BRANCH_PREFIX + UUID.randomUUID();</span>
+<span class="fc" id="L236">        String temporaryRefName = localRefName(temporaryBranch);</span>
+
+<span class="fc" id="L238">        updateRef(</span>
+                gitRepository,
+                temporaryRefName,
+<span class="fc" id="L241">                remoteRef.getObjectId(),</span>
+<span class="fc" id="L242">                ObjectId.zeroId(),</span>
+                false,
+                username,
+                &quot;external-sync: stage fetched shared branch&quot;);
+
+        try {
+<span class="fc" id="L248">            String resultingCommit = dslRepository.mergeFromAcceptedHeads(temporaryBranch, sharedBranch, acceptedHeads);</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">            if (resultingCommit == null) {</span>
+<span class="fc" id="L250">                throw new ExternalSyncConflictException(</span>
+                        &quot;The local and external shared branches contain conflicting changes&quot;);
+            }
+<span class="fc" id="L253">            log.info(&quot;External sync integrated remote branch into '{}' at {}&quot;,</span>
+                    sharedBranch, resultingCommit);
+<span class="fc" id="L255">            return resultingCommit;</span>
+        } finally {
+<span class="fc" id="L257">            deleteTemporaryRef(gitRepository, temporaryRefName, remoteRef.getObjectId());</span>
+        }
+    }
+
+    /** Freeze accepted ancestry before transport; staged or rejected objects are never trust anchors. */
+    private static List&lt;String&gt; acceptedLocalHeads(Repository repository) throws IOException {
+<span class="fc" id="L263">        return repository.getRefDatabase().getRefsByPrefix(Constants.R_HEADS).stream()</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">                .filter(ref -&gt; !ref.getName().startsWith(Constants.R_HEADS + EXTERNAL_SYNC_BRANCH_PREFIX))</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">                .filter(ref -&gt; ref.getObjectId() != null)</span>
+<span class="fc" id="L266">                .map(ref -&gt; ref.getObjectId().name())</span>
+<span class="fc" id="L267">                .distinct()</span>
+<span class="fc" id="L268">                .toList();</span>
+    }
+
+    /** Get the current external synchronization status without exposing credentials. */
+    public ExternalSyncStatus getStatus() {
+        try {
+<span class="fc" id="L274">            SystemRepository systemRepository = systemRepositoryService.getPrimaryRepository();</span>
+<span class="fc" id="L275">            return statusFor(systemRepository);</span>
+<span class="fc" id="L276">        } catch (Exception exception) {</span>
+<span class="fc" id="L277">            log.debug(&quot;External sync status is unavailable&quot;, exception);</span>
+<span class="fc" id="L278">            return new ExternalSyncStatus(false, null, credentials.isConfigured(), null, null, null);</span>
+        }
+    }
+
+    /** Explicit selection errors remain visible; no fallback to primary status. */
+    public ExternalSyncStatus getStatus(String repositoryId) {
+<span class="fc" id="L284">        return statusFor(systemRepositoryService.getRepository(repositoryId));</span>
+    }
+
+    private ExternalSyncStatus statusFor(SystemRepository repository) {
+<span class="fc" id="L288">        return new ExternalSyncStatus(</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">                repository.getTopologyMode() == RepositoryTopologyMode.EXTERNAL_CANONICAL,</span>
+<span class="fc" id="L290">                sanitizedExternalUrl(repository.getExternalUrl()),</span>
+<span class="fc" id="L291">                credentials.isConfigured(repository.getRepositoryId(), repository.isPrimaryRepo()),</span>
+<span class="fc" id="L292">                repository.getLastFetchAt(), repository.getLastPushAt(), repository.getLastFetchCommit());</span>
+    }
+
+    /** Render persisted legacy URLs without disclosing credential-bearing user information. */
+    private static String sanitizedExternalUrl(String externalUrl) {
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        if (externalUrl == null) return null;</span>
+        try {
+<span class="fc" id="L299">            return new URIish(externalUrl).setPass(null).setUser(null).toString();</span>
+<span class="nc" id="L300">        } catch (java.net.URISyntaxException | IllegalArgumentException exception) {</span>
+            // An unparseable legacy value cannot safely be returned as a URL.
+<span class="nc" id="L302">            return null;</span>
+        }
+    }
+
+    /**
+     * Validate a remote URL without returning or logging embedded credentials.
+     * HTTP(S) user information and passwords in any URI form are rejected. SSH
+     * user names such as {@code git@example.org:team/repo.git} remain supported,
+     * but authentication material must come from deployment secret configuration.
+     */
+    static URIish validateExternalUrl(String externalUrl) {
+<span class="pc bpc" id="L313" title="1 of 4 branches missed.">        if (externalUrl == null || externalUrl.isBlank()) {</span>
+<span class="fc" id="L314">            throw new IllegalArgumentException(&quot;External URL is not configured&quot;);</span>
+        }
+        try {
+<span class="fc" id="L317">            URIish uri = new URIish(externalUrl.strip());</span>
+<span class="fc bfc" id="L318" title="All 2 branches covered.">            String scheme = uri.getScheme() == null</span>
+<span class="fc" id="L319">                    ? &quot;&quot;</span>
+<span class="fc" id="L320">                    : uri.getScheme().toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L321" title="1 of 4 branches missed.">            boolean httpUserInfo = (&quot;http&quot;.equals(scheme) || &quot;https&quot;.equals(scheme))</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">                    &amp;&amp; uri.getUser() != null;</span>
+<span class="fc bfc" id="L323" title="All 4 branches covered.">            if (uri.getPass() != null || httpUserInfo) {</span>
+<span class="fc" id="L324">                throw new IllegalArgumentException(</span>
+                        &quot;External Git URL must not contain credentials or HTTP user information&quot;);
+            }
+<span class="fc" id="L327">            return uri;</span>
+<span class="fc" id="L328">        } catch (IllegalArgumentException exception) {</span>
+<span class="fc" id="L329">            throw exception;</span>
+<span class="nc" id="L330">        } catch (Exception exception) {</span>
+<span class="nc" id="L331">            throw new IllegalArgumentException(&quot;External Git URL is invalid&quot;, exception);</span>
+        }
+    }
+
+    private URIish validateExternalModeAndCreateUri(SystemRepository systemRepository) {
+<span class="fc bfc" id="L336" title="All 2 branches covered.">        if (systemRepository.getTopologyMode() != RepositoryTopologyMode.EXTERNAL_CANONICAL) {</span>
+<span class="fc" id="L337">            throw new IllegalStateException(</span>
+                    &quot;External sync operations require EXTERNAL_CANONICAL topology mode, but current mode is &quot;
+<span class="fc" id="L339">                            + systemRepository.getTopologyMode());</span>
+        }
+        try {
+<span class="fc" id="L342">            return validateExternalUrl(systemRepository.getExternalUrl());</span>
+<span class="fc" id="L343">        } catch (IllegalArgumentException exception) {</span>
+<span class="fc" id="L344">            throw new IllegalStateException(exception.getMessage(), exception);</span>
+        }
+    }
+
+    private void verifyPushResult(PushResult result, String branch) throws ExternalPushRejectedException {
+<span class="pc bpc" id="L349" title="1 of 2 branches missed.">        if (result.getRemoteUpdates().isEmpty()) {</span>
+<span class="nc" id="L350">            throw new ExternalPushRejectedException(</span>
+                    &quot;External Git remote did not report an update for branch '&quot; + branch + &quot;'&quot;);
+        }
+
+<span class="fc bfc" id="L354" title="All 2 branches covered.">        for (RemoteRefUpdate update : result.getRemoteUpdates()) {</span>
+<span class="fc bfc" id="L355" title="All 2 branches covered.">            if (!SUCCESSFUL_PUSH_STATUSES.contains(update.getStatus())) {</span>
+<span class="fc" id="L356">                String reason = update.getMessage();</span>
+<span class="pc bpc" id="L357" title="3 of 4 branches missed.">                String suffix = reason == null || reason.isBlank() ? &quot;&quot; : &quot; (&quot; + reason + &quot;)&quot;;</span>
+<span class="fc" id="L358">                throw new ExternalPushRejectedException(</span>
+                        &quot;External Git remote rejected branch '&quot; + branch + &quot;': &quot;
+<span class="fc" id="L360">                                + update.getStatus() + suffix);</span>
+            }
+<span class="fc" id="L362">        }</span>
+<span class="fc" id="L363">    }</span>
+
+    private static void validateBranchName(String branch) {
+<span class="fc bfc" id="L366" title="All 4 branches covered.">        if (branch == null || branch.isBlank()</span>
+<span class="fc bfc" id="L367" title="All 2 branches covered.">                || !Repository.isValidRefName(localRefName(branch))) {</span>
+<span class="fc" id="L368">            throw new IllegalArgumentException(&quot;Invalid Git branch name&quot;);</span>
+        }
+<span class="fc" id="L370">    }</span>
+
+    private static String localRefName(String branch) {
+<span class="fc" id="L373">        return Constants.R_HEADS + branch;</span>
+    }
+
+    private static String remoteTrackingRefName(String branch) {
+<span class="fc" id="L377">        return Constants.R_REMOTES + &quot;origin/&quot; + branch;</span>
+    }
+
+    private static void updateRef(Repository repository,
+                                  String refName,
+                                  ObjectId newObjectId,
+                                  ObjectId expectedOldObjectId,
+                                  boolean force,
+                                  String username,
+                                  String reflogMessage) throws IOException {
+<span class="fc" id="L387">        RefUpdate update = repository.updateRef(refName);</span>
+<span class="fc" id="L388">        update.setNewObjectId(newObjectId);</span>
+<span class="fc" id="L389">        update.setExpectedOldObjectId(expectedOldObjectId);</span>
+<span class="fc" id="L390">        update.setForceUpdate(force);</span>
+<span class="fc" id="L391">        update.setRefLogIdent(actor(username));</span>
+<span class="fc" id="L392">        update.setRefLogMessage(reflogMessage, false);</span>
+<span class="fc" id="L393">        RefUpdate.Result result = update.update();</span>
+<span class="pc bpc" id="L394" title="7 of 8 branches missed.">        if (result != RefUpdate.Result.NEW</span>
+                &amp;&amp; result != RefUpdate.Result.FAST_FORWARD
+                &amp;&amp; result != RefUpdate.Result.FORCED
+                &amp;&amp; result != RefUpdate.Result.NO_CHANGE) {
+<span class="nc" id="L398">            throw new IOException(&quot;Git ref update failed for &quot; + refName + &quot;: &quot; + result);</span>
+        }
+<span class="fc" id="L400">    }</span>
+
+    private static void deleteTemporaryRef(Repository repository, String refName, ObjectId stagedHead) {
+        try {
+<span class="fc" id="L404">            Ref existing = repository.getRefDatabase().exactRef(refName);</span>
+<span class="pc bpc" id="L405" title="2 of 4 branches missed.">            if (existing == null || !stagedHead.equals(existing.getObjectId())) {</span>
+<span class="nc" id="L406">                return;</span>
+            }
+<span class="fc" id="L408">            RefUpdate delete = repository.updateRef(refName);</span>
+<span class="fc" id="L409">            delete.setExpectedOldObjectId(stagedHead);</span>
+<span class="fc" id="L410">            delete.setForceUpdate(true);</span>
+<span class="fc" id="L411">            delete.setRefLogIdent(actor(&quot;taxonomy&quot;));</span>
+<span class="fc" id="L412">            delete.setRefLogMessage(&quot;external-sync: remove temporary merge ref&quot;, false);</span>
+<span class="fc" id="L413">            RefUpdate.Result result = delete.delete();</span>
+<span class="pc bpc" id="L414" title="5 of 6 branches missed.">            if (result != RefUpdate.Result.FORCED</span>
+                    &amp;&amp; result != RefUpdate.Result.NO_CHANGE
+                    &amp;&amp; result != RefUpdate.Result.NEW) {
+<span class="nc" id="L417">                log.warn(&quot;Could not remove temporary external-sync ref {}: {}&quot;, refName, result);</span>
+            }
+<span class="nc" id="L419">        } catch (IOException exception) {</span>
+<span class="nc" id="L420">            log.warn(&quot;Could not remove temporary external-sync ref {}&quot;, refName, exception);</span>
+<span class="fc" id="L421">        }</span>
+<span class="fc" id="L422">    }</span>
+
+    private static PersonIdent actor(String username) {
+<span class="pc bpc" id="L425" title="1 of 4 branches missed.">        String name = username == null || username.isBlank() ? &quot;taxonomy&quot; : username;</span>
+<span class="fc" id="L426">        String safeName = name.replaceAll(&quot;[\\r\\n&lt;&gt;]&quot;, &quot;_&quot;);</span>
+<span class="fc" id="L427">        return new PersonIdent(safeName, &quot;taxonomy@localhost&quot;);</span>
+    }
+
+    /** Raised when a fetched branch cannot be merged without conflicts. */
+    public static class ExternalSyncConflictException extends IOException {
+        public ExternalSyncConflictException(String message) {
+<span class="fc" id="L433">            super(message);</span>
+<span class="fc" id="L434">        }</span>
+    }
+
+    /** Raised when the remote does not accept the requested push update. */
+    public static class ExternalPushRejectedException extends IOException {
+        public ExternalPushRejectedException(String message) {
+<span class="fc" id="L440">            super(message);</span>
+<span class="fc" id="L441">        }</span>
+    }
+
+<span class="fc" id="L444">    public record ExternalSyncStatus(</span>
+            boolean externalEnabled,
+            String externalUrl,
+            boolean credentialConfigured,
+            Instant lastFetchAt,
+            Instant lastPushAt,
+            String lastFetchCommit) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

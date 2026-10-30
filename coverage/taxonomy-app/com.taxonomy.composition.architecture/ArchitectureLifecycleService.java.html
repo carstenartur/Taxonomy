@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureLifecycleService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.architecture</a> &gt; <span class="el_source">ArchitectureLifecycleService.java</span></div><h1>ArchitectureLifecycleService.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.architecture;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.dsl.requirements.RequirementRealization;
+import com.taxonomy.dsl.requirements.RequirementTrace;
+import com.taxonomy.editor.ArchitectureCommandPort.*;
+import com.taxonomy.editor.ArchitectureEditorService;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.portfolio.dto.PortfolioDtos.*;
+import com.taxonomy.portfolio.service.PortfolioGitService;
+import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.model.RepositoryLifecycleState;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.*;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.*;
+
+/** The persistent architecture owns its history; projects contribute version-bound requirements. */
+@Service
+@com.taxonomy.shared.features.ConditionalOnFeature(&quot;portfolio&quot;)
+public class ArchitectureLifecycleService {
+    private final ArchitectureEditorService editor;
+    private final ProjectPortfolioService projects;
+    private final PortfolioGitService portfolio;
+    private final UserWorkspaceRepository workspaces;
+    private final SystemRepositoryService repositories;
+    private final RepositoryMembershipService membership;
+    private final TransactionTemplate transaction;
+
+    public ArchitectureLifecycleService(ArchitectureEditorService editor, ProjectPortfolioService projects,
+            PortfolioGitService portfolio, UserWorkspaceRepository workspaces, SystemRepositoryService repositories,
+<span class="fc" id="L40">            RepositoryMembershipService membership, PlatformTransactionManager transactions) {</span>
+<span class="fc" id="L41">        this.editor=editor; this.projects=projects; this.portfolio=portfolio; this.workspaces=workspaces;</span>
+<span class="fc" id="L42">        this.repositories=repositories; this.membership=membership; this.transaction=new TransactionTemplate(transactions);</span>
+<span class="fc" id="L43">    }</span>
+
+<span class="fc" id="L45">    public record Project(Long id, String projectKey, String title, String status) {}</span>
+<span class="fc" id="L46">    public record Requirement(String id, Long projectId, String projectKey, Long requirementId, String requirementKey,</span>
+            String title, int version, Long versionId, String contentHash, String text,
+            RequirementRealization.Assessment realization, List&lt;RequirementTrace.Contribution&gt; contributors,
+            List&lt;RequirementTrace.Link&gt; links) {}
+<span class="fc" id="L50">    public record Dependency(String id, String kind, String title) {}</span>
+<span class="fc" id="L51">    public record Overview(Context context, String architectureTitle, String source, String projectionState,</span>
+            String publicationState, boolean mayEdit, List&lt;Project&gt; projects, List&lt;Requirement&gt; requirements,
+            List&lt;Dependency&gt; dependencies) {
+<span class="nc" id="L54">        public Overview readOnly() { return new Overview(context,architectureTitle,source,projectionState,</span>
+                publicationState,false,projects,requirements,dependencies); }
+    }
+    public record Request(Context context, Metadata metadata, Long projectId, Long requirementId,
+            Long expectedVersionId, String expectedContentHash, Long contributorProjectId, String status,
+            List&lt;String&gt; dependencyIds, String previewFingerprint) {
+<span class="fc" id="L60">        public Request {</span>
+<span class="fc" id="L61">            Objects.requireNonNull(context); Objects.requireNonNull(metadata);</span>
+<span class="pc bpc" id="L62" title="4 of 8 branches missed.">            if(projectId==null || requirementId==null || expectedVersionId==null || expectedContentHash==null)</span>
+<span class="nc" id="L63">                throw new IllegalArgumentException(&quot;An exact requirement version is required&quot;);</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">            if(!Set.of(&quot;OPEN&quot;,&quot;PARTIAL&quot;,&quot;COMPLETE&quot;).contains(Objects.toString(status,&quot;&quot;)))</span>
+<span class="nc" id="L65">                throw new IllegalArgumentException(&quot;Unknown realization status&quot;);</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">            dependencyIds=dependencyIds==null ? List.of() : List.copyOf(new TreeSet&lt;&gt;(dependencyIds));</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">            if(dependencyIds.size()&gt;1000) throw new IllegalArgumentException(&quot;Too many dependencies&quot;);</span>
+<span class="fc" id="L68">        }</span>
+    }
+<span class="fc" id="L70">    public record ReviewPreview(Context context, String requirementId, String fingerprint,</span>
+            RequirementRealization.Assessment realization, List&lt;ArchitectureSemanticPatch.BlockChange&gt; changes) {}
+<span class="fc" id="L72">    public record Publication(Context context, String state, CheckpointAccepted checkpoint, String code, String detail) {}</span>
+<span class="fc" id="L73">    private record Prepared(String id,String fingerprint,String source,RequirementRealization.Assessment realization) {}</span>
+
+    public Overview overview(RepositoryContext context, String commit, Long revision) throws IOException {
+<span class="fc" id="L76">        authorize(context,false);</span>
+<span class="fc" id="L77">        var document=editor.read(context,commit,revision);</span>
+<span class="fc bfc" id="L78" title="All 4 branches covered.">        boolean live=&quot;WORKSPACE_REVISION&quot;.equals(document.source()) &amp;&amp; !&quot;HISTORICAL&quot;.equals(document.projectionState());</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        String source=live ? portfolio.contributeTo(document.dsl(),context.username(),workspace(context)) : document.dsl();</span>
+<span class="fc" id="L80">        Map&lt;String,BlockAst&gt; blocks=ArchitectureSemanticPatch.index(source);</span>
+<span class="fc" id="L81">        Map&lt;String,ProjectView&gt; currentProjects=new HashMap&lt;&gt;();</span>
+<span class="fc" id="L82">        Map&lt;String,RequirementView&gt; currentRequirements=new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L83" title="All 4 branches covered.">        if(live) for(var project:projects.listProjects(context.username(),workspace(context))) {</span>
+<span class="fc" id="L84">            currentProjects.put(project.projectKey(),project);</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            for(var requirement:projects.listRequirements(project.id(),context.username(),workspace(context)))</span>
+<span class="fc" id="L86">                currentRequirements.put(project.projectKey()+&quot;\u0000&quot;+requirement.requirementKey(),requirement);</span>
+<span class="fc" id="L87">        }</span>
+<span class="fc" id="L88">        List&lt;Project&gt; projectViews=new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L89">        List&lt;Requirement&gt; requirementViews=new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L90">        List&lt;Dependency&gt; dependencies=new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        for(var entry:blocks.entrySet()) {</span>
+<span class="fc" id="L92">            var block=entry.getValue(); String id=block.getHeaderTokens().getFirst();</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            if(&quot;project&quot;.equals(block.getKind())) {</span>
+<span class="fc" id="L94">                var current=currentProjects.get(id);</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">                projectViews.add(new Project(current==null?null:current.id(),id,block.property(&quot;title&quot;),block.property(&quot;status&quot;)));</span>
+            }
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            if(&quot;requirement&quot;.equals(block.getKind())) {</span>
+<span class="fc" id="L98">                String projectKey=block.property(&quot;x-project-key&quot;), requirementKey=block.property(&quot;x-requirement-key&quot;);</span>
+<span class="fc" id="L99">                var current=currentRequirements.get(projectKey+&quot;\u0000&quot;+requirementKey);</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">                requirementViews.add(new Requirement(id,current==null?null:current.projectId(),projectKey,</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">                        current==null?null:current.id(),requirementKey,block.property(&quot;title&quot;),number(block.property(&quot;x-version&quot;)),</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                        current==null?null:current.currentVersionId(),block.property(&quot;x-content-hash&quot;),block.property(&quot;text&quot;),</span>
+<span class="fc" id="L103">                        RequirementRealization.evaluate(blocks,id),RequirementTrace.contributions(block),RequirementTrace.links(block)));</span>
+            }
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if(Set.of(&quot;element&quot;,&quot;relation&quot;,&quot;mapping&quot;).contains(block.getKind()))</span>
+<span class="fc" id="L106">                dependencies.add(new Dependency(entry.getKey(),block.getKind(),Objects.toString(block.property(&quot;title&quot;),String.join(&quot; &quot;,block.getHeaderTokens()))));</span>
+<span class="fc" id="L107">        }</span>
+<span class="fc" id="L108">        String publication=document.projectionState();</span>
+<span class="fc bfc" id="L109" title="All 4 branches covered.">        if(&quot;READY&quot;.equals(publication)) publication=!source.equals(document.dsl())?&quot;PORTFOLIO_CHANGES_PENDING&quot;</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">                :document.context().revision()&gt;document.checkpointRevision()?&quot;CHECKPOINT_REQUIRED&quot;:&quot;CHECKPOINTED&quot;;</span>
+<span class="pc bpc" id="L111" title="1 of 6 branches missed.">        boolean mayEdit=live &amp;&amp; &quot;READY&quot;.equals(document.projectionState()) &amp;&amp; context.scope()==RepositoryScope.WORKSPACE;</span>
+<span class="fc" id="L112">        return new Overview(document.context(),repositories.getRepository(context.repositoryId()).getDisplayName(),document.source(),</span>
+<span class="fc" id="L113">                document.projectionState(),publication,mayEdit,List.copyOf(projectViews),List.copyOf(requirementViews),List.copyOf(dependencies));</span>
+    }
+
+    public ReviewPreview preview(RepositoryContext context, Request request) throws IOException {
+<span class="fc" id="L117">        authorize(context,true); requireContext(context,request.context());</span>
+<span class="fc" id="L118">        var document=editor.read(context,null);</span>
+<span class="fc" id="L119">        requireStand(request.context(),document.context());</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">        if(!&quot;READY&quot;.equals(document.projectionState())) throw problem(&quot;VERSION_CHANGED&quot;,&quot;Refresh or reconcile the current architecture first&quot;);</span>
+<span class="fc" id="L121">        Prepared prepared=prepare(context,request,document.dsl());</span>
+<span class="fc" id="L122">        return new ReviewPreview(document.context(),prepared.id(),prepared.fingerprint(),prepared.realization(),</span>
+<span class="fc" id="L123">                ArchitectureSemanticPatch.between(document.dsl(),prepared.source()));</span>
+    }
+
+    public Publication accept(RepositoryContext context, Request request) throws IOException {
+<span class="fc" id="L127">        authorize(context,true); requireContext(context,request.context());</span>
+<span class="fc" id="L128">        Metadata checkpoint=checkpointMetadata(request.metadata());</span>
+<span class="fc" id="L129">        String intent=fingerprint(request.context(),request.metadata(),request.projectId(),request.requirementId(),request.expectedVersionId(),</span>
+<span class="fc" id="L130">                request.expectedContentHash(),request.contributorProjectId(),request.status(),request.dependencyIds(),request.previewFingerprint());</span>
+        Context accepted;
+        try {
+<span class="fc" id="L133">            accepted=transaction.execute(status -&gt; {</span>
+<span class="fc" id="L134">                try { return editor.acceptIntegration(context,request.context(),request.metadata(),intent,List.of(),source -&gt; {</span>
+<span class="fc" id="L135">                    lockProjects(context,request.projectId(),request.contributorProjectId());</span>
+<span class="fc" id="L136">                    Prepared prepared=prepare(context,request,source);</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">                    if(!Objects.equals(prepared.fingerprint(),request.previewFingerprint()))</span>
+<span class="fc" id="L138">                        throw problem(&quot;PREVIEW_CHANGED&quot;,&quot;Preview this exact requirement, contribution and architecture stand again&quot;);</span>
+<span class="fc" id="L139">                    return prepared.source();</span>
+<span class="nc" id="L140">                },checkpoint); } catch(IOException failure) { throw new UncheckedIOException(failure); }</span>
+            });
+<span class="pc" id="L142">        } catch(UncheckedIOException failure) { throw failure.getCause(); }</span>
+<span class="fc" id="L143">        return finish(context,accepted,checkpoint);</span>
+    }
+
+    private Prepared prepare(RepositoryContext context, Request request,String source) {
+<span class="fc" id="L147">        var scope=workspace(context);</span>
+<span class="fc" id="L148">        var requirement=projects.getRequirement(request.projectId(),request.requirementId(),context.username(),scope);</span>
+<span class="fc" id="L149">        requireVersion(requirement,request.expectedVersionId(),request.expectedContentHash());</span>
+<span class="fc" id="L150">        var project=projects.getProject(request.projectId(),context.username(),scope);</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">        var contributor=projects.getProject(request.contributorProjectId()==null?request.projectId():request.contributorProjectId(),context.username(),scope);</span>
+<span class="fc" id="L152">        String contributed=portfolio.contributeTo(source,context.username(),scope);</span>
+<span class="fc" id="L153">        String id=portfolio.planRequirementIdentity(project.projectKey(),requirement.requirementKey(),contributed,context.username(),scope);</span>
+<span class="fc" id="L154">        String fingerprint=fingerprint(request.context(),request.projectId(),request.requirementId(),request.expectedVersionId(),</span>
+<span class="fc" id="L155">                request.expectedContentHash(),contributor.projectKey(),request.status(),request.dependencyIds(),request.metadata().rationale(),contributed);</span>
+<span class="fc" id="L156">        List&lt;String&gt; dependencies=expandDependencies(contributed,request.dependencyIds());</span>
+<span class="fc" id="L157">        String changed=RequirementRealization.record(contributed,id,new RequirementRealization.Review(requirement.currentVersion().versionNumber(),</span>
+<span class="fc" id="L158">                requirement.currentVersion().contentHash(),request.status(),contributor.projectKey(),context.username(),Instant.now(),request.metadata().rationale(),dependencies));</span>
+<span class="fc" id="L159">        changed=RequirementTrace.contribute(changed,id,contributor.projectKey());</span>
+<span class="fc" id="L160">        return new Prepared(id,fingerprint,changed,RequirementRealization.evaluate(changed,id));</span>
+    }
+
+    static List&lt;String&gt; expandDependencies(String source,List&lt;String&gt; selected) {
+<span class="fc" id="L164">        var blocks=ArchitectureSemanticPatch.index(source); Set&lt;String&gt; expanded=new TreeSet&lt;&gt;();</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        for(String id:selected) {</span>
+<span class="fc" id="L166">            var block=blocks.get(id);</span>
+<span class="pc bpc" id="L167" title="2 of 4 branches missed.">            if(block==null || !Set.of(&quot;element&quot;,&quot;relation&quot;,&quot;mapping&quot;).contains(block.getKind()))</span>
+<span class="nc" id="L168">                throw problem(&quot;INVALID_DEPENDENCY&quot;,&quot;Select an existing architecture element, relation or mapping&quot;);</span>
+<span class="fc" id="L169">            expanded.add(id); var tokens=block.getHeaderTokens();</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            if(&quot;relation&quot;.equals(block.getKind())) {</span>
+<span class="fc" id="L171">                expanded.add(&quot;element:&quot;+tokens.getFirst()); expanded.add(&quot;element:&quot;+tokens.getLast());</span>
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">            } else if(&quot;mapping&quot;.equals(block.getKind())) expanded.add(&quot;element:&quot;+tokens.getLast());</span>
+<span class="fc" id="L173">        }</span>
+<span class="fc" id="L174">        return List.copyOf(expanded);</span>
+    }
+
+    public Publication finish(RepositoryContext context, Context accepted,Metadata checkpoint) {
+        try {
+            CheckpointAccepted receipt;
+            try {
+                // Prefer the operation's own durable receipt even if a later unrelated operation was published.
+<span class="fc" id="L182">                receipt=editor.checkpoint(context,new CreateCheckpointCommand(accepted,checkpoint));</span>
+                try {
+                    // A completed journal receipt can outlive an explicit branch undo. The workspace
+                    // reader verifies that its exact Git version remains reachable in this context.
+<span class="fc" id="L186">                    editor.read(context,receipt.commitId());</span>
+<span class="fc" id="L187">                } catch(CommandProblem unavailable) {</span>
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">                    if(!&quot;NOT_FOUND&quot;.equals(unavailable.code())) throw unavailable;</span>
+<span class="fc" id="L189">                    throw problem(&quot;VERSION_CHANGED&quot;,&quot;The original checkpoint is no longer reachable in this architecture; reconcile the retained decision before confirming its publication.&quot;);</span>
+<span class="fc" id="L190">                }</span>
+<span class="fc" id="L191">            } catch(CommandProblem failure) {</span>
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">                if(!Set.of(&quot;VERSION_CHANGED&quot;,&quot;CONTEXT_CHANGED&quot;,&quot;CHECKPOINT_REJECTED&quot;,&quot;CHECKPOINT_CONFLICT&quot;).contains(failure.code())) throw failure;</span>
+                // An explicitly reconciled operation may have been published by the reconciliation checkpoint.
+<span class="fc" id="L194">                var proven=editor.integrationCheckpointForOperation(context,checkpoint.causationId());</span>
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">                if(proven.isEmpty()) return new Publication(accepted,&quot;RECONCILIATION_REQUIRED&quot;,null,failure.code(),failure.getMessage());</span>
+<span class="nc" id="L196">                receipt=proven.get();</span>
+<span class="fc" id="L197">            }</span>
+<span class="fc" id="L198">            return new Publication(receipt.context(),&quot;CHECKPOINTED&quot;,receipt,null,null);</span>
+<span class="fc" id="L199">        } catch(IOException failure) {</span>
+<span class="fc" id="L200">            return new Publication(accepted,&quot;CHECKPOINT_PENDING&quot;,null,&quot;GIT_UNAVAILABLE&quot;,&quot;The change is retained. Retry the same operation to finish its Git checkpoint.&quot;);</span>
+        }
+    }
+
+    public void authorize(RepositoryContext context,boolean write) {
+<span class="fc" id="L205">        var repository=repositories.getRepository(context.repositoryId());</span>
+<span class="pc bpc" id="L206" title="2 of 4 branches missed.">        if(!membership.canRead(repository,context.username()) || repository.getLifecycleState()!=RepositoryLifecycleState.ACTIVE)</span>
+<span class="nc" id="L207">            throw problem(&quot;NOT_FOUND&quot;,&quot;The selected architecture is unavailable&quot;);</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        if(context.scope()==RepositoryScope.WORKSPACE) {</span>
+<span class="pc" id="L209">            var workspace=workspaces.findByWorkspaceId(context.workspaceId()).orElseThrow(()-&gt;problem(&quot;NOT_FOUND&quot;,&quot;Workspace unavailable&quot;));</span>
+<span class="pc bpc" id="L210" title="2 of 6 branches missed.">            if(workspace.isArchived() || workspace.isShared() || !context.username().equals(workspace.getUsername())</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">                    || !context.repositoryId().equals(workspace.getSourceRepositoryId())) throw problem(&quot;NOT_FOUND&quot;,&quot;Workspace unavailable&quot;);</span>
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">            if(workspace.getProvisioningStatus()!=WorkspaceProvisioningStatus.READY) throw problem(&quot;READ_ONLY&quot;,&quot;Workspace is not ready&quot;);</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">            if(!context.branch().equals(workspace.getCurrentBranch())) throw problem(&quot;CONTEXT_CHANGED&quot;,&quot;Select the exact workspace branch&quot;);</span>
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">        } else if(write) throw problem(&quot;READ_ONLY&quot;,&quot;Create a private working copy before editing&quot;);</span>
+<span class="fc" id="L215">    }</span>
+    void lockProjects(RepositoryContext context,Long... ids) {
+<span class="fc" id="L217">        Arrays.stream(ids).filter(Objects::nonNull).distinct().sorted()</span>
+<span class="fc" id="L218">                .forEach(id-&gt;projects.requireProjectForUpdate(id,context.username(),workspace(context)));</span>
+<span class="fc" id="L219">    }</span>
+    static void requireVersion(RequirementView requirement,Long versionId,String contentHash) {
+<span class="pc bpc" id="L221" title="2 of 4 branches missed.">        if(!Objects.equals(requirement.currentVersionId(),versionId) || requirement.currentVersion()==null</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">                || !Objects.equals(requirement.currentVersion().contentHash(),contentHash))</span>
+<span class="fc" id="L223">            throw problem(&quot;REQUIREMENT_VERSION_CHANGED&quot;,&quot;The requirement text changed; compare the current version before accepting&quot;);</span>
+<span class="fc" id="L224">    }</span>
+    static void requireContext(RepositoryContext actual,Context expected) {
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        if(!Context.of(actual,expected.commit(),expected.revision()).equals(expected))</span>
+<span class="fc" id="L227">            throw problem(&quot;CONTEXT_CHANGED&quot;,&quot;The exact repository, workspace, branch or actor changed&quot;);</span>
+<span class="fc" id="L228">    }</span>
+    static void requireStand(Context expected,Context actual) {
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">        if(expected.revision()!=actual.revision()) throw new com.taxonomy.editor.persistence.EditorJournal.RevisionConflict(expected.revision(),actual.revision());</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">        if(!Objects.equals(expected.commit(),actual.commit())) throw problem(&quot;VERSION_CHANGED&quot;,&quot;The architecture checkpoint changed&quot;);</span>
+<span class="fc" id="L232">    }</span>
+<span class="fc" id="L233">    static WorkspaceContext workspace(RepositoryContext context) { return new WorkspaceContext(context.username(),context.workspaceId(),context.branch(),context.repositoryId()); }</span>
+    static Metadata checkpointMetadata(Metadata original) {
+<span class="fc" id="L235">        String id=UUID.nameUUIDFromBytes((&quot;architecture-lifecycle:&quot;+original.commandId()).getBytes(StandardCharsets.UTF_8)).toString();</span>
+<span class="fc" id="L236">        return new Metadata(id,original.correlationId(),original.commandId(),original.rationale());</span>
+    }
+    static String fingerprint(Object... parts) {
+<span class="fc" id="L239">        StringBuilder text=new StringBuilder();</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        for(Object part:parts) {String value=Objects.toString(part,&quot;&lt;null&gt;&quot;);text.append(value.length()).append(':').append(value);}</span>
+<span class="fc" id="L241">        return StableIdentityHash.sha256(text.toString());</span>
+    }
+<span class="fc" id="L243">    static CommandProblem problem(String code,String detail) { return new CommandProblem(code,&quot;lifecycle&quot;,detail,List.of()); }</span>
+<span class="pc" id="L244">    private static int number(String value) { try{return Integer.parseInt(value);}catch(RuntimeException failure){return 0;} }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

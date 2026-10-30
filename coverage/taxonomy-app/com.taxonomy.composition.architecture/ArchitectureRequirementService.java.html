@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureRequirementService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.architecture</a> &gt; <span class="el_source">ArchitectureRequirementService.java</span></div><h1>ArchitectureRequirementService.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.architecture;
+
+import com.taxonomy.dsl.requirements.RequirementTrace;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.editor.ArchitectureCommandPort.*;
+import com.taxonomy.editor.ArchitectureEditorService;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.portfolio.dto.PortfolioDtos.*;
+import com.taxonomy.portfolio.service.PortfolioGitService;
+import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.service.RepositoryContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import java.io.*;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
+import static com.taxonomy.composition.architecture.ArchitectureLifecycleService.*;
+
+/** An explicit user choice creates or changes one requirement and journals the exact contribution atomically. */
+@Service
+@com.taxonomy.shared.features.ConditionalOnFeature(&quot;portfolio&quot;)
+public class ArchitectureRequirementService {
+    private final ArchitectureEditorService editor;
+    private final ArchitectureLifecycleService lifecycle;
+    private final ProjectPortfolioService projects;
+    private final PortfolioGitService portfolio;
+    private final TransactionTemplate transaction;
+
+    public ArchitectureRequirementService(ArchitectureEditorService editor,ArchitectureLifecycleService lifecycle,
+<span class="fc" id="L31">            ProjectPortfolioService projects,PortfolioGitService portfolio,PlatformTransactionManager transactions) {</span>
+<span class="fc" id="L32">        this.editor=editor;this.lifecycle=lifecycle;this.projects=projects;this.portfolio=portfolio;</span>
+<span class="fc" id="L33">        this.transaction=new TransactionTemplate(transactions);</span>
+<span class="fc" id="L34">    }</span>
+    public record Request(Context context,Metadata metadata,String choice,Long projectId,CreateProjectRequest newProject,
+            Long contributorProjectId,Long requirementId,CreateRequirementRequest requirement,Long expectedVersionId,
+            String expectedContentHash,String inputHash) {
+<span class="fc" id="L38">        public Request {</span>
+<span class="fc" id="L39">            Objects.requireNonNull(context); Objects.requireNonNull(metadata); Objects.requireNonNull(requirement);</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">            if(!Set.of(&quot;NEW&quot;,&quot;CHANGE&quot;,&quot;LINK&quot;).contains(Objects.toString(choice,&quot;&quot;))) throw new IllegalArgumentException(&quot;Choose NEW, CHANGE or LINK explicitly&quot;);</span>
+<span class="pc bpc" id="L41" title="2 of 4 branches missed.">            if(requirement.text()==null || !StableIdentityHash.sha256(requirement.text()).equals(inputHash))</span>
+<span class="nc" id="L42">                throw new IllegalArgumentException(&quot;The reviewed intake text changed&quot;);</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">            if(&quot;NEW&quot;.equals(choice)) {</span>
+<span class="pc bpc" id="L44" title="1 of 6 branches missed.">                if((projectId==null)==(newProject==null)) throw new IllegalArgumentException(&quot;Choose an existing or a new project&quot;);</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">                if(requirementId!=null) throw new IllegalArgumentException(&quot;A new requirement cannot replace an existing identity&quot;);</span>
+<span class="pc bpc" id="L46" title="4 of 8 branches missed.">            } else if(projectId==null || requirementId==null || expectedVersionId==null || expectedContentHash==null)</span>
+<span class="nc" id="L47">                throw new IllegalArgumentException(&quot;An exact existing project, requirement and text version are required&quot;);</span>
+<span class="fc" id="L48">        }</span>
+    }
+<span class="fc" id="L50">    public record Saved(Long projectId,Long requirementId,RequirementView requirement,Publication publication) {}</span>
+
+    public Saved save(RepositoryContext context,Request request) throws IOException {
+<span class="fc" id="L53">        lifecycle.authorize(context,true); requireContext(context,request.context());</span>
+<span class="fc" id="L54">        Metadata checkpoint=checkpointMetadata(request.metadata());</span>
+<span class="fc" id="L55">        String intent=fingerprint(request.context(),request.metadata(),request.choice(),request.projectId(),request.newProject(),</span>
+<span class="fc" id="L56">                request.contributorProjectId(),request.requirementId(),request.requirement(),request.expectedVersionId(),request.expectedContentHash(),request.inputHash());</span>
+<span class="fc" id="L57">        AtomicReference&lt;RequirementView&gt; changed=new AtomicReference&lt;&gt;();</span>
+        Context accepted;
+        try {
+<span class="fc" id="L60">            accepted=transaction.execute(status -&gt; {</span>
+<span class="fc" id="L61">                try { return editor.acceptIntegration(context,request.context(),request.metadata(),intent,List.of(),source -&gt; {</span>
+<span class="fc" id="L62">                    lifecycle.lockProjects(context,request.projectId(),request.contributorProjectId());</span>
+<span class="fc" id="L63">                    var scope=workspace(context);</span>
+<span class="fc" id="L64">                    Long projectId=request.projectId();</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                    if(projectId==null) projectId=projects.createProject(request.newProject(),context.username(),scope).id();</span>
+<span class="fc" id="L66">                    var project=projects.getProject(projectId,context.username(),scope);</span>
+                    RequirementView result;
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                    if(&quot;NEW&quot;.equals(request.choice())) result=projects.createRequirement(projectId,request.requirement(),context.username(),scope);</span>
+                    else {
+<span class="fc" id="L70">                        result=projects.getRequirement(projectId,request.requirementId(),context.username(),scope);</span>
+<span class="fc" id="L71">                        requireVersion(result,request.expectedVersionId(),request.expectedContentHash());</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">                        if(&quot;CHANGE&quot;.equals(request.choice())) {</span>
+<span class="fc" id="L73">                            var input=request.requirement();</span>
+<span class="fc" id="L74">                            projects.addRequirementVersion(projectId,result.id(),new CreateRequirementVersionRequest(input.text(),input.changeReason(),input.source()),context.username(),scope);</span>
+<span class="pc bpc" id="L75" title="2 of 4 branches missed.">                            if(input.title()!=null &amp;&amp; !input.title().isBlank()) projects.updateRequirement(projectId,result.id(),</span>
+<span class="fc" id="L76">                                    new UpdateRequirementRequest(input.title(),null,null,null,null,null,null),context.username(),scope);</span>
+<span class="fc" id="L77">                            result=projects.getRequirement(projectId,result.id(),context.username(),scope);</span>
+                        }
+                    }
+<span class="fc" id="L80">                    Long contributorId=request.contributorProjectId();</span>
+<span class="pc bpc" id="L81" title="1 of 4 branches missed.">                    if(!&quot;NEW&quot;.equals(request.choice()) &amp;&amp; request.newProject()!=null) {</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">                        if(contributorId!=null) throw new IllegalArgumentException(&quot;Choose one contribution project&quot;);</span>
+<span class="nc" id="L83">                        contributorId=projects.createProject(request.newProject(),context.username(),scope).id();</span>
+                    }
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                    var contributor=contributorId==null?project:projects.getProject(contributorId,context.username(),scope);</span>
+<span class="fc" id="L86">                    projects.refreshIntegrationRequirements(projectId,context.username(),scope);</span>
+<span class="fc" id="L87">                    result=projects.getRequirement(projectId,result.id(),context.username(),scope);</span>
+<span class="fc" id="L88">                    String next=portfolio.contributeTo(source,context.username(),scope);</span>
+<span class="fc" id="L89">                    String id=portfolio.planRequirementIdentity(project.projectKey(),result.requirementKey(),next,context.username(),scope);</span>
+<span class="fc" id="L90">                    next=RequirementTrace.contribute(next,id,contributor.projectKey());</span>
+<span class="fc" id="L91">                    changed.set(result);</span>
+<span class="fc" id="L92">                    return next;</span>
+<span class="nc" id="L93">                },checkpoint); } catch(IOException failure) { throw new UncheckedIOException(failure); }</span>
+            });
+<span class="pc" id="L95">        } catch(UncheckedIOException failure) { throw failure.getCause(); }</span>
+        // A transport retry returns the original durable operation; its callback deliberately does not run again.
+<span class="fc" id="L97">        RequirementView result=changed.get();</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        if(result==null) {</span>
+<span class="fc" id="L99">            Long projectId=request.projectId();</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            if(projectId==null) projectId=projects.listProjects(context.username(),workspace(context)).stream()</span>
+<span class="fc" id="L101">                    .filter(p-&gt;p.projectKey().equalsIgnoreCase(request.newProject().projectKey())).map(ProjectView::id).findFirst()</span>
+<span class="pc" id="L102">                    .orElseThrow(()-&gt;problem(&quot;NOT_FOUND&quot;,&quot;The retained project is unavailable&quot;));</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">            if(request.requirementId()!=null) result=projects.getRequirement(projectId,request.requirementId(),context.username(),workspace(context));</span>
+<span class="fc" id="L104">            else result=projects.listRequirements(projectId,context.username(),workspace(context)).stream()</span>
+<span class="fc" id="L105">                    .filter(r-&gt;r.requirementKey().equalsIgnoreCase(request.requirement().requirementKey())).findFirst()</span>
+<span class="pc" id="L106">                    .orElseThrow(()-&gt;problem(&quot;NOT_FOUND&quot;,&quot;The retained requirement is unavailable&quot;));</span>
+<span class="fc" id="L107">            var project=projects.getProject(projectId,context.username(),workspace(context));</span>
+<span class="fc" id="L108">            String requirementKey=result.requirementKey();</span>
+<span class="fc" id="L109">            var retained=ArchitectureSemanticPatch.index(editor.read(context,null,accepted.revision()).dsl()).values().stream()</span>
+<span class="pc bpc" id="L110" title="1 of 4 branches missed.">                    .filter(block-&gt;&quot;requirement&quot;.equals(block.getKind()) &amp;&amp; project.projectKey().equals(block.property(&quot;x-project-key&quot;))</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">                            &amp;&amp; requirementKey.equals(block.property(&quot;x-requirement-key&quot;))).findFirst()</span>
+<span class="pc" id="L112">                    .orElseThrow(()-&gt;problem(&quot;NOT_FOUND&quot;,&quot;The original accepted requirement source is unavailable&quot;));</span>
+<span class="fc" id="L113">            int number=Integer.parseInt(retained.property(&quot;x-version&quot;));</span>
+<span class="fc" id="L114">            var version=projects.listRequirementVersions(projectId,result.id(),context.username(),workspace(context)).stream()</span>
+<span class="pc bpc" id="L115" title="1 of 4 branches missed.">                    .filter(item-&gt;item.versionNumber()==number &amp;&amp; item.contentHash().equals(retained.property(&quot;x-content-hash&quot;))</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                            &amp;&amp; item.text().equals(retained.property(&quot;text&quot;))).findFirst()</span>
+<span class="pc" id="L117">                    .orElseThrow(()-&gt;problem(&quot;NOT_FOUND&quot;,&quot;The original immutable requirement version is unavailable&quot;));</span>
+<span class="fc" id="L118">            result=new RequirementView(result.id(),result.projectId(),result.requirementKey(),retained.property(&quot;title&quot;),</span>
+<span class="fc" id="L119">                    result.status(),result.priority(),result.criticality(),result.requirementType(),result.reviewStatus(),result.ownerUsername(),</span>
+<span class="fc" id="L120">                    version.id(),result.currentAnalysisSnapshotId(),result.createdAt(),result.updatedAt(),version);</span>
+        }
+<span class="fc" id="L122">        return new Saved(result.projectId(),result.id(),result,lifecycle.finish(context,accepted,checkpoint));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

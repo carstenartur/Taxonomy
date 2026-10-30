@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DslCommit.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.storage</a> &gt; <span class="el_source">DslCommit.java</span></div><h1>DslCommit.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.storage;
+
+import com.taxonomy.workspace.signing.CommitSignature;
+import com.taxonomy.workspace.signing.SignatureStatus;
+
+import java.time.Instant;
+
+/**
+ * Immutable DTO representing a single DSL commit in the Git history.
+ *
+ * @param commitId  the full SHA-1 hex string of the commit object
+ * @param author    the author identity (name &amp;lt;email&amp;gt;)
+ * @param timestamp when the commit was created
+ * @param message   the commit message
+ * @param signature the verification result for the stored Git object
+ */
+public record DslCommit(
+        String commitId,
+        String author,
+        Instant timestamp,
+        String message,
+        CommitSignature signature
+) {
+<span class="fc" id="L24">    public DslCommit {</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">        if (signature == null) {</span>
+<span class="fc" id="L26">            signature = new CommitSignature(SignatureStatus.UNSIGNED, null, null, false, null);</span>
+        }
+<span class="fc" id="L28">    }</span>
+
+    /** Retains source compatibility for legacy callers and unsigned history. */
+    public DslCommit(String commitId, String author, Instant timestamp, String message) {
+<span class="fc" id="L32">        this(commitId, author, timestamp, message, null);</span>
+<span class="fc" id="L33">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

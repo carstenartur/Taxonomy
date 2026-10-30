@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioJsonCodec.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortfolioJsonCodec.java</span></div><h1>PortfolioJsonCodec.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.fasterxml.jackson.annotation.JsonIncludeProperties;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.core.StreamReadFeature;
+import org.springframework.stereotype.Service;
+
+import java.io.FilterReader;
+import java.io.IOException;
+import java.io.PushbackReader;
+import java.io.Reader;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Central JSON codec for immutable snapshot payloads and extension attributes. */
+@Service
+public class PortfolioJsonCodec {
+
+    private final ObjectMapper objectMapper;
+    private final ObjectMapper strictEvidenceMapper;
+    private final ObjectMapper selectionMapper;
+
+<span class="fc" id="L28">    public PortfolioJsonCodec(ObjectMapper objectMapper) {</span>
+<span class="fc" id="L29">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L30">        this.strictEvidenceMapper = objectMapper.rebuild()</span>
+<span class="fc" id="L31">                .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)</span>
+<span class="fc" id="L32">                .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)</span>
+<span class="fc" id="L33">                .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();</span>
+<span class="fc" id="L34">        this.selectionMapper = objectMapper.rebuild()</span>
+<span class="fc" id="L35">                .addMixIn(AnalysisResult.class, SelectionAnalysisFields.class)</span>
+<span class="fc" id="L36">                .addMixIn(TaxonomyNodeDto.class, SelectionNodeFields.class).build();</span>
+<span class="fc" id="L37">    }</span>
+
+    public String write(Object value) {
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (value == null) return null;</span>
+        try {
+<span class="fc" id="L42">            return objectMapper.writeValueAsString(value);</span>
+<span class="fc" id="L43">        } catch (Exception exception) {</span>
+<span class="fc" id="L44">            throw PortfolioException.analysisFailed(&quot;Could not serialize portfolio payload&quot;, exception);</span>
+        }
+    }
+
+    public &lt;T&gt; T read(String json, Class&lt;T&gt; type) {
+<span class="fc bfc" id="L49" title="All 4 branches covered.">        if (json == null || json.isBlank()) return null;</span>
+        try {
+<span class="fc" id="L51">            return objectMapper.readValue(json, type);</span>
+<span class="fc" id="L52">        } catch (Exception exception) {</span>
+<span class="fc" id="L53">            throw PortfolioException.analysisFailed(</span>
+<span class="fc" id="L54">                    &quot;Could not deserialize portfolio payload as &quot; + type.getSimpleName(), exception);</span>
+        }
+    }
+
+    /** Full payload deserialization without materializing the CLOB; the caller owns the reader. */
+    public &lt;T&gt; T read(Reader json, Class&lt;T&gt; type) {
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (json == null) return null;</span>
+<span class="fc" id="L61">        try (var input = new PushbackReader(new FilterReader(json) {</span>
+<span class="fc" id="L62">            @Override public void close() { }</span>
+        }, 1)) {
+<span class="fc" id="L64">            boolean nonJsonWhitespace = false;</span>
+            int next;
+<span class="fc bfc" id="L66" title="All 4 branches covered.">            while ((next = input.read()) != -1 &amp;&amp; Character.isWhitespace(next))</span>
+<span class="fc bfc" id="L67" title="All 8 branches covered.">                nonJsonWhitespace |= next != ' ' &amp;&amp; next != '\t' &amp;&amp; next != '\r' &amp;&amp; next != '\n';</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            if (next == -1) return null;</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            if (nonJsonWhitespace) throw new IOException(&quot;Non-JSON whitespace before portfolio payload&quot;);</span>
+<span class="fc" id="L70">            input.unread(next);</span>
+            // Jackson may close its source; keep the pushback reader open for the final JDBC read.
+<span class="fc" id="L72">            T result = objectMapper.readValue(new FilterReader(input) {</span>
+<span class="fc" id="L73">                @Override public void close() { }</span>
+            }, type);
+            // The String path had read the whole CLOB, so late read failures must remain observable.
+<span class="fc" id="L76">            char[] tail = new char[8192];</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            while (input.read(tail) != -1) { }</span>
+<span class="fc" id="L78">            return result;</span>
+<span class="fc" id="L79">        } catch (Exception exception) {</span>
+<span class="fc" id="L80">            throw PortfolioException.analysisFailed(</span>
+<span class="fc" id="L81">                    &quot;Could not deserialize portfolio payload as &quot; + type.getSimpleName(), exception);</span>
+        }
+    }
+
+    /**
+     * Skip report graphs and text during streaming deserialization. Reuse the normal score setters
+     * and semantics, including legacy envelopes and product/family context, instead of trusting
+     * the serialized scores alias or rebuilding the entire JSON tree.
+     */
+    AnalysisResult readSelectionAnalysis(String json) {
+<span class="fc bfc" id="L91" title="All 4 branches covered.">        if (json == null || json.isBlank()) return null;</span>
+        try {
+<span class="fc" id="L93">            return selectionMapper.readValue(json, AnalysisResult.class);</span>
+<span class="fc" id="L94">        } catch (Exception exception) {</span>
+<span class="fc" id="L95">            throw PortfolioException.analysisFailed(&quot;Could not deserialize portfolio selection evidence&quot;, exception);</span>
+        }
+    }
+
+    /** Read the whole selection envelope without materializing its CLOB; the caller owns the reader. */
+    AnalysisResult readSelectionAnalysis(Reader json) {
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        if (json == null) return null;</span>
+        // Jackson may close its source. Keep the JDBC reader owned by the transaction boundary,
+        // where a read failure must retain any suppressed reader-close / Clob.free failures.
+<span class="fc" id="L104">        try (var input = new PushbackReader(new FilterReader(json) {</span>
+<span class="fc" id="L105">            @Override public void close() { }</span>
+        }, 1)) {
+<span class="fc" id="L107">            boolean nonJsonWhitespace = false;</span>
+            int next;
+<span class="fc bfc" id="L109" title="All 4 branches covered.">            while ((next = input.read()) != -1 &amp;&amp; Character.isWhitespace(next)) {</span>
+<span class="fc bfc" id="L110" title="All 8 branches covered.">                nonJsonWhitespace |= next != ' ' &amp;&amp; next != '\t' &amp;&amp; next != '\r' &amp;&amp; next != '\n';</span>
+            }
+            // String.isBlank accepts Unicode whitespace; JSON itself only accepts four characters.
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            if (next == -1) return null;</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            if (nonJsonWhitespace) throw new IOException(&quot;Non-JSON whitespace before selection payload&quot;);</span>
+<span class="fc" id="L115">            input.unread(next);</span>
+<span class="fc" id="L116">            return selectionMapper.readValue(input, AnalysisResult.class);</span>
+<span class="fc" id="L117">        } catch (Exception exception) {</span>
+<span class="fc" id="L118">            throw PortfolioException.analysisFailed(&quot;Could not deserialize portfolio selection evidence&quot;, exception);</span>
+        }
+    }
+
+    @JsonIncludeProperties({&quot;scores&quot;, &quot;rawScores&quot;, &quot;tree&quot;, &quot;warnings&quot;, &quot;scoreSemanticsContext&quot;,
+            &quot;scoreSemanticsVersion&quot;, &quot;scoreSemanticsFingerprintSha256&quot;, &quot;scoreDetails&quot;, &quot;effectiveScores&quot;,
+            &quot;productSuitabilityScores&quot;, &quot;scoreSemanticsWarnings&quot;})
+    private abstract static class SelectionAnalysisFields { }
+
+    @JsonIncludeProperties({&quot;code&quot;, &quot;parentCode&quot;, &quot;analysisRole&quot;, &quot;children&quot;})
+    private abstract static class SelectionNodeFields { }
+
+    /** Read recorded evidence without a DTO constructor inventing a default for an absent/null field. */
+    public &lt;T&gt; T readField(String json, String field, Class&lt;T&gt; type) {
+<span class="pc bpc" id="L132" title="2 of 4 branches missed.">        if (json == null || json.isBlank()) return null;</span>
+        try {
+<span class="fc" id="L134">            var root = objectMapper.readTree(json);</span>
+<span class="fc" id="L135">            var value = root.get(field);</span>
+<span class="fc bfc" id="L136" title="All 4 branches covered.">            return value == null || value.isNull() ? null : objectMapper.treeToValue(value, type);</span>
+<span class="nc" id="L137">        } catch (Exception exception) {</span>
+<span class="nc" id="L138">            throw PortfolioException.analysisFailed(&quot;Could not deserialize recorded field &quot; + field, exception);</span>
+        }
+    }
+
+    /** Evidence trust boundary: neither duplicate keys nor trailing values are recoverable. */
+    public &lt;T&gt; T readStrictEvidence(String value, Class&lt;T&gt; type) {
+<span class="pc bpc" id="L144" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) return null;</span>
+        try {
+<span class="fc" id="L146">            return strictEvidenceMapper.readValue(value, type);</span>
+<span class="fc" id="L147">        } catch (Exception exception) {</span>
+<span class="fc" id="L148">            throw PortfolioException.validation(&quot;Reformulation evidence integrity payload is invalid&quot;);</span>
+        }
+    }
+
+    public List&lt;Long&gt; readLongList(String json) {
+<span class="fc bfc" id="L153" title="All 4 branches covered.">        if (json == null || json.isBlank()) return List.of();</span>
+        try {
+<span class="fc" id="L155">            return List.copyOf(objectMapper.readValue(json, new TypeReference&lt;List&lt;Long&gt;&gt;() {}));</span>
+<span class="fc" id="L156">        } catch (Exception exception) {</span>
+<span class="fc" id="L157">            throw PortfolioException.analysisFailed(&quot;Could not deserialize source fragment IDs&quot;, exception);</span>
+        }
+    }
+
+    public Map&lt;String, String&gt; readStringMap(String json) {
+<span class="fc bfc" id="L162" title="All 4 branches covered.">        if (json == null || json.isBlank()) return Map.of();</span>
+        try {
+<span class="fc" id="L164">            Map&lt;String, String&gt; values = objectMapper.readValue(</span>
+<span class="fc" id="L165">                    json, new TypeReference&lt;Map&lt;String, String&gt;&gt;() {});</span>
+<span class="fc" id="L166">            return Map.copyOf(new LinkedHashMap&lt;&gt;(values));</span>
+<span class="fc" id="L167">        } catch (Exception exception) {</span>
+<span class="fc" id="L168">            throw PortfolioException.analysisFailed(&quot;Could not deserialize extension attributes&quot;, exception);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

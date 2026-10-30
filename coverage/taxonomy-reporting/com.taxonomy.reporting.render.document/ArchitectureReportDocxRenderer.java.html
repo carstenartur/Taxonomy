@@ -1,0 +1,332 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureReportDocxRenderer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.document</a> &gt; <span class="el_source">ArchitectureReportDocxRenderer.java</span></div><h1>ArchitectureReportDocxRenderer.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.document;
+
+import com.taxonomy.reporting.api.document.ArchitectureReportDocument;
+
+import com.taxonomy.reporting.render.decision.DecisionReportLabels;
+import com.taxonomy.dto.*;
+import com.taxonomy.export.*;
+
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.springframework.stereotype.Component;
+
+import java.io.ByteArrayOutputStream;
+import java.math.BigInteger;
+import java.util.*;
+
+/** Native Word rendering of frozen documents and a typed adapter for the legacy live report. */
+@Component
+<span class="fc" id="L18">public final class ArchitectureReportDocxRenderer {</span>
+    public byte[] render(ArchitectureReportDocument report) {
+<span class="fc" id="L20">        try (var document = new XWPFDocument();</span>
+<span class="fc" id="L21">                var output = new ByteArrayOutputStream()) {</span>
+<span class="fc" id="L22">            page(document);</span>
+<span class="fc" id="L23">            var labels = new DecisionReportLabels(report.languageTag());</span>
+<span class="fc" id="L24">            var writer = new WordDocumentWriter(document, labels);</span>
+<span class="fc" id="L25">            String snapshot = report.evidence().snapshotId();</span>
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">            String shortSnapshot = snapshot == null ? labels.unknown()</span>
+<span class="fc" id="L27">                    : snapshot.substring(0, Math.min(12, snapshot.length()));</span>
+<span class="fc" id="L28">            runningIdentity(document, labels, labels.architectureTitle() + &quot; · &quot; + shortSnapshot</span>
+<span class="fc" id="L29">                    + &quot; · &quot; + labels.requirementVersion() + &quot; &quot; + report.evidence().requirementVersionNumber());</span>
+<span class="fc" id="L30">            document.getProperties().getCoreProperties().setTitle(report.title());</span>
+<span class="fc" id="L31">            document.getProperties().getCoreProperties().setSubjectProperty(report.requirement());</span>
+<span class="fc" id="L32">            writer.heading(report.title(), 0, null);</span>
+<span class="fc" id="L33">            var navigation = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L34">            navigation.put(&quot;architecture_requirement&quot;, labels.requirement());</span>
+<span class="fc" id="L35">            navigation.put(&quot;architecture_figures&quot;, labels.architectureOverview());</span>
+<span class="fc" id="L36">            navigation.put(&quot;architecture_elements&quot;, labels.elements());</span>
+<span class="fc" id="L37">            navigation.put(&quot;architecture_relations&quot;, labels.relations());</span>
+<span class="fc" id="L38">            navigation.put(&quot;architecture_evidence&quot;, labels.provenance());</span>
+<span class="fc" id="L39">            writer.contents(navigation);</span>
+<span class="fc" id="L40">            new ArchitectureWordSectionRenderer().write(document, report);</span>
+<span class="fc" id="L41">            writer.completeContents();</span>
+<span class="fc" id="L42">            document.write(output);</span>
+<span class="fc" id="L43">            return output.toByteArray();</span>
+<span class="nc" id="L44">        } catch (com.taxonomy.reporting.render.document.WordReportLayoutException exception) {</span>
+<span class="nc" id="L45">            throw exception;</span>
+<span class="nc" id="L46">        } catch (Exception exception) {</span>
+<span class="nc" id="L47">            throw new IllegalStateException(&quot;Could not render architecture Word report&quot;, exception);</span>
+        }
+    }
+
+    public byte[] render(ArchitectureReport report) {
+<span class="fc" id="L52">        return render(report, &quot;en&quot;);</span>
+    }
+
+    public byte[] render(ArchitectureReport report, String language) {
+<span class="fc" id="L56">        return render(report, language, Map.of());</span>
+    }
+
+    public byte[] render(ArchitectureReport report, String language, Map&lt;String, String&gt; nodeReasons) {
+<span class="fc" id="L60">        try (var document = new XWPFDocument();</span>
+<span class="fc" id="L61">                var output = new ByteArrayOutputStream()) {</span>
+<span class="fc" id="L62">            page(document);</span>
+<span class="fc" id="L63">            var labels = new DecisionReportLabels(language);</span>
+<span class="fc" id="L64">            var w = new WordDocumentWriter(document, labels);</span>
+<span class="fc" id="L65">            runningIdentity(document, labels, labels.architectureTitle());</span>
+<span class="fc" id="L66">            w.heading(labels.architectureTitle(), 0, null);</span>
+<span class="fc" id="L67">            w.heading(labels.requirement(), 1, null);</span>
+<span class="fc" id="L68">            w.paragraph(report.getBusinessText());</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            if (report.getCopilot() != null) {</span>
+<span class="fc" id="L70">                w.paragraph(&quot;Copilot: &quot; + labels.retainedCopilotStatus(report.getCopilot().state()));</span>
+<span class="fc" id="L71">                report.getCopilot().notes().forEach(w::paragraph);</span>
+<span class="fc" id="L72">            } else w.paragraph(labels.liveReportNotice());</span>
+<span class="fc" id="L73">            w.heading(labels.score(), 1, null);</span>
+<span class="fc" id="L74">            w.table(</span>
+<span class="fc" id="L75">                    List.of(labels.node(), labels.score()),</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">                    report.getScores() == null</span>
+<span class="fc" id="L77">                            ? List.of()</span>
+<span class="fc" id="L78">                            : report.getScores().entrySet().stream()</span>
+<span class="fc" id="L79">                                    .sorted(Map.Entry.comparingByKey())</span>
+<span class="fc" id="L80">                                    .map(e -&gt; List.of(e.getKey(), e.getValue() + &quot;%&quot;))</span>
+<span class="fc" id="L81">                                    .toList());</span>
+<span class="fc" id="L82">            var view = report.getArchitectureView();</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">            if (view != null</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">                    &amp;&amp; view.getIncludedElements() != null</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                    &amp;&amp; !view.getIncludedElements().isEmpty()) {</span>
+<span class="fc" id="L86">                var graph =</span>
+<span class="fc" id="L87">                        PersistedDiagramProjection.project(</span>
+<span class="fc" id="L88">                                new DiagramProjectionService(), view, labels.architectureTitle());</span>
+<span class="fc" id="L89">                var scene = new LayeredDiagramLayoutService().layout(graph);</span>
+<span class="fc" id="L90">                var plan = new ArchitectureFigurePlanner().plan(graph, scene);</span>
+<span class="fc" id="L91">                w.heading(labels.architectureOverview(), 1, null);</span>
+<span class="fc" id="L92">                w.paragraph(labels.relationKeyNotice());</span>
+<span class="fc" id="L93">                var renderer = new ArchitectureFigureRenderer();</span>
+<span class="fc" id="L94">                var panels = new ArrayList&lt;ArchitectureFigurePlanner.Panel&gt;();</span>
+<span class="fc" id="L95">                panels.add(plan.overview());</span>
+<span class="fc" id="L96">                panels.addAll(plan.details());</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">                for (var panel : panels) {</span>
+<span class="fc" id="L98">                    var figure = renderer.render(panel, language);</span>
+<span class="fc" id="L99">                    w.picture(</span>
+<span class="fc" id="L100">                            figure.png(),</span>
+<span class="fc" id="L101">                            figure.id(),</span>
+<span class="fc" id="L102">                            figure.caption(),</span>
+<span class="fc" id="L103">                            figure.altDescription(),</span>
+<span class="fc" id="L104">                            figure.width(),</span>
+<span class="fc" id="L105">                            figure.height(),</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">                            !panel.overview());</span>
+<span class="fc" id="L107">                    w.caption(figure.caption(), true);</span>
+<span class="fc" id="L108">                }</span>
+<span class="fc" id="L109">                w.heading(labels.elements(), 1, null);</span>
+<span class="fc" id="L110">                w.table(</span>
+<span class="fc" id="L111">                        List.of(</span>
+<span class="fc" id="L112">                                labels.node(),</span>
+<span class="fc" id="L113">                                labels.titleLabel(),</span>
+<span class="fc" id="L114">                                labels.score(),</span>
+<span class="fc" id="L115">                                labels.rationale()),</span>
+<span class="fc" id="L116">                        view.getIncludedElements().stream()</span>
+<span class="fc" id="L117">                                .map(</span>
+                                        e -&gt;
+<span class="fc" id="L119">                                                List.of(</span>
+<span class="fc" id="L120">                                                        value(e.getNodeCode(), labels),</span>
+<span class="fc" id="L121">                                                        value(e.getTitle(), labels),</span>
+<span class="fc" id="L122">                                                        percent(e.getRelevance()),</span>
+<span class="fc" id="L123">                                                        value(e.getIncludedBecause(), labels)))</span>
+<span class="fc" id="L124">                                .toList());</span>
+            }
+<span class="pc bpc" id="L126" title="1 of 4 branches missed.">            if (nodeReasons != null &amp;&amp; !nodeReasons.isEmpty()) {</span>
+<span class="fc" id="L127">                w.heading(labels.recordedNodeReasons(), 1, null);</span>
+<span class="fc" id="L128">                nodeReasons.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -&gt; {</span>
+<span class="fc" id="L129">                    w.heading(entry.getKey(), 2, null);</span>
+<span class="fc" id="L130">                    w.paragraph(entry.getValue());</span>
+<span class="fc" id="L131">                });</span>
+            }
+<span class="fc bfc" id="L133" title="All 4 branches covered.">            if (view != null &amp;&amp; !view.getIncludedRelationships().isEmpty()) {</span>
+<span class="fc" id="L134">                w.heading(labels.relations(), 1, null);</span>
+<span class="fc" id="L135">                w.table(</span>
+<span class="fc" id="L136">                        List.of(labels.identifier(), labels.source(), labels.target(), labels.type(),</span>
+<span class="fc" id="L137">                                labels.category(), labels.rationale()),</span>
+<span class="fc" id="L138">                        view.getIncludedRelationships().stream()</span>
+<span class="fc" id="L139">                                .map(e -&gt; List.of(</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">                                        e.getRelationId() == null ? labels.unknown() : e.getRelationId().toString(),</span>
+<span class="fc" id="L141">                                        value(e.getSourceCode(), labels), value(e.getTargetCode(), labels),</span>
+<span class="fc" id="L142">                                        value(e.getRelationType(), labels), value(e.getRelationCategory(), labels),</span>
+<span class="fc" id="L143">                                        ArchitectureReportTextRenderer.relationshipReasons(e, labels)))</span>
+<span class="fc" id="L144">                                .toList());</span>
+            }
+<span class="fc" id="L146">            var gaps = report.getGapAnalysis();</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">            if (gaps != null) {</span>
+<span class="fc" id="L148">                w.heading(labels.gaps(), 1, null);</span>
+<span class="fc" id="L149">                w.table(</span>
+<span class="fc" id="L150">                        List.of(</span>
+<span class="fc" id="L151">                                labels.source(),</span>
+<span class="fc" id="L152">                                labels.type(),</span>
+<span class="fc" id="L153">                                labels.target(),</span>
+<span class="fc" id="L154">                                labels.rationale()),</span>
+<span class="fc" id="L155">                        gaps.getMissingRelations().stream()</span>
+<span class="fc" id="L156">                                .map(</span>
+                                        e -&gt;
+<span class="fc" id="L158">                                                List.of(</span>
+<span class="fc" id="L159">                                                        value(e.getSourceNodeCode(), labels),</span>
+<span class="fc" id="L160">                                                        value(e.getExpectedRelationType(), labels),</span>
+<span class="fc" id="L161">                                                        value(e.getExpectedTargetRoot(), labels),</span>
+<span class="fc" id="L162">                                                        value(e.getDescription(), labels)))</span>
+<span class="fc" id="L163">                                .toList());</span>
+<span class="fc" id="L164">                w.table(</span>
+<span class="fc" id="L165">                        List.of(labels.node(), labels.titleLabel(), labels.gaps()),</span>
+<span class="fc" id="L166">                        gaps.getIncompletePatterns().stream()</span>
+<span class="fc" id="L167">                                .map(</span>
+                                        e -&gt;
+<span class="fc" id="L169">                                                List.of(</span>
+<span class="fc" id="L170">                                                        value(e.getNodeCode(), labels),</span>
+<span class="fc" id="L171">                                                        value(e.getPatternDescription(), labels),</span>
+<span class="fc" id="L172">                                                        value(e.getMissingElement(), labels)))</span>
+<span class="fc" id="L173">                                .toList());</span>
+<span class="fc" id="L174">                gaps.getNotes().forEach(w::paragraph);</span>
+            }
+<span class="fc" id="L176">            var patterns = report.getPatternDetection();</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">            if (patterns != null) {</span>
+<span class="fc" id="L178">                w.heading(labels.detectedPatterns(), 1, null);</span>
+<span class="fc" id="L179">                patterns.getNotes().forEach(w::paragraph);</span>
+<span class="fc" id="L180">                w.paragraph(labels.patternCoverage() + &quot;: &quot; + String.format(Locale.ROOT, &quot;%.1f%%&quot;,</span>
+<span class="fc" id="L181">                        boundedPatternPercentage(patterns.getPatternCoverage())));</span>
+<span class="fc" id="L182">                var all = new ArrayList&lt;DetectedPattern&gt;(patterns.getMatchedPatterns());</span>
+<span class="fc" id="L183">                all.addAll(patterns.getIncompletePatterns());</span>
+<span class="fc" id="L184">                w.table(</span>
+<span class="fc" id="L185">                        List.of(labels.titleLabel(), labels.completeness(), labels.gaps()),</span>
+<span class="fc" id="L186">                        all.stream()</span>
+<span class="fc" id="L187">                                .map(</span>
+                                        e -&gt;
+<span class="fc" id="L189">                                                List.of(</span>
+<span class="fc" id="L190">                                                        value(e.getPatternName(), labels),</span>
+<span class="fc" id="L191">                                                        String.format(</span>
+                                                                Locale.ROOT,
+                                                                &quot;%.0f%%&quot;,
+<span class="fc" id="L194">                                                                boundedPatternPercentage(e.getCompleteness())),</span>
+<span class="fc" id="L195">                                                        String.join(&quot;, &quot;, e.getMissingSteps())))</span>
+<span class="fc" id="L196">                                .toList());</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">                for (var pattern : all) {</span>
+<span class="pc bpc" id="L198" title="3 of 4 branches missed.">                    if (pattern.getExpectedSteps().isEmpty() &amp;&amp; pattern.getPresentSteps().isEmpty()) continue;</span>
+<span class="fc" id="L199">                    w.heading(pattern.getPatternName(), 2, null);</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">                    if (!pattern.getExpectedSteps().isEmpty()) w.paragraph(labels.expectedSteps() + &quot;: &quot;</span>
+<span class="fc" id="L201">                            + String.join(&quot;, &quot;, pattern.getExpectedSteps()));</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">                    if (!pattern.getPresentSteps().isEmpty()) w.paragraph(labels.retainedSteps() + &quot;: &quot;</span>
+<span class="fc" id="L203">                            + String.join(&quot;, &quot;, pattern.getPresentSteps()));</span>
+<span class="fc" id="L204">                }</span>
+            }
+<span class="fc" id="L206">            var recommendation = report.getRecommendation();</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">            if (recommendation != null) {</span>
+<span class="fc" id="L208">                w.heading(labels.recommendation(), 1, null);</span>
+<span class="fc" id="L209">                recommendation.getReasoning().forEach(w::paragraph);</span>
+<span class="fc" id="L210">                w.paragraph(labels.confidence() + &quot;: &quot; + String.format(Locale.ROOT, &quot;%.1f%%&quot;, recommendation.getConfidence()));</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">                if (!recommendation.getConfirmedElements().isEmpty()) {</span>
+<span class="fc" id="L212">                    w.heading(labels.matchedElements(), 2, null);</span>
+<span class="fc" id="L213">                    w.paragraph(labels.matchedElementNotice());</span>
+<span class="fc" id="L214">                    recommendationElements(w, labels, recommendation.getConfirmedElements());</span>
+                }
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                if (!recommendation.getProposedElements().isEmpty()) {</span>
+<span class="fc" id="L217">                    w.heading(labels.proposedElements(), 2, null);</span>
+<span class="fc" id="L218">                    recommendationElements(w, labels, recommendation.getProposedElements());</span>
+                }
+<span class="fc bfc" id="L220" title="All 2 branches covered.">                if (!recommendation.getSuggestedRelations().isEmpty()) {</span>
+<span class="fc" id="L221">                    w.heading(labels.suggestedRelations(), 2, null);</span>
+<span class="fc" id="L222">                    w.table(</span>
+<span class="fc" id="L223">                            List.of(labels.source(), labels.target(), labels.type(), labels.rationale()),</span>
+<span class="fc" id="L224">                            recommendation.getSuggestedRelations().stream()</span>
+<span class="fc" id="L225">                                    .map(e -&gt; List.of(value(e.getSourceCode(), labels), value(e.getTargetCode(), labels),</span>
+<span class="fc" id="L226">                                            value(e.getRelationType(), labels), value(e.getReasoning(), labels)))</span>
+<span class="fc" id="L227">                                    .toList());</span>
+                }
+<span class="fc" id="L229">                recommendation.getNotes().forEach(w::paragraph);</span>
+            }
+<span class="pc bpc" id="L231" title="1 of 4 branches missed.">            if (report.getPendingProposals() != null &amp;&amp; !report.getPendingProposals().isEmpty()) {</span>
+<span class="fc" id="L232">                w.heading(labels.pendingRelationProposals(), 1, null);</span>
+<span class="fc" id="L233">                w.table(</span>
+<span class="fc" id="L234">                        List.of(</span>
+<span class="fc" id="L235">                                labels.identifier(),</span>
+<span class="fc" id="L236">                                labels.source(),</span>
+<span class="fc" id="L237">                                labels.target(),</span>
+<span class="fc" id="L238">                                labels.type(),</span>
+<span class="fc" id="L239">                                labels.confidence(),</span>
+<span class="fc" id="L240">                                labels.status(),</span>
+<span class="fc" id="L241">                                labels.rationale()),</span>
+<span class="fc" id="L242">                        report.getPendingProposals().stream()</span>
+<span class="fc" id="L243">                                .map(</span>
+                                        e -&gt;
+<span class="fc" id="L245">                                                List.of(</span>
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">                                                        e.getId() == null ? labels.unknown() : e.getId().toString(),</span>
+<span class="fc" id="L247">                                                        value(e.getSourceCode(), labels),</span>
+<span class="fc" id="L248">                                                        value(e.getTargetCode(), labels),</span>
+<span class="fc" id="L249">                                                        value(e.getRelationType(), labels),</span>
+<span class="fc" id="L250">                                                        percent(e.getConfidence()),</span>
+<span class="fc" id="L251">                                                        value(e.getStatus(), labels),</span>
+<span class="fc" id="L252">                                                        ArchitectureReportTextRenderer.proposalReasons(e, labels)))</span>
+<span class="fc" id="L253">                                .toList());</span>
+            }
+<span class="fc" id="L255">            w.heading(labels.provenance(), 1, null);</span>
+<span class="fc" id="L256">            w.paragraph(labels.generatedAt() + &quot;: &quot; + report.getGeneratedAt());</span>
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">            if (report.getViewContext() != null) {</span>
+<span class="nc" id="L258">                w.paragraph(labels.branch() + &quot;: &quot; + report.getViewContext().basedOnBranch());</span>
+<span class="nc" id="L259">                w.paragraph(</span>
+<span class="nc" id="L260">                        labels.basedOnCommit() + &quot;: &quot; + report.getViewContext().basedOnCommit());</span>
+            }
+<span class="fc" id="L262">            document.write(output);</span>
+<span class="fc" id="L263">            return output.toByteArray();</span>
+<span class="nc" id="L264">        } catch (com.taxonomy.reporting.render.document.WordReportLayoutException exception) {</span>
+<span class="nc" id="L265">            throw exception;</span>
+<span class="nc" id="L266">        } catch (Exception exception) {</span>
+<span class="nc" id="L267">            throw new IllegalStateException(</span>
+                    &quot;Could not render legacy architecture Word report&quot;, exception);
+        }
+    }
+
+    private static void recommendationElements(WordDocumentWriter writer, DecisionReportLabels labels,
+            List&lt;RecommendedElement&gt; elements) {
+<span class="fc" id="L274">        writer.table(</span>
+<span class="fc" id="L275">                List.of(labels.node(), labels.titleLabel(), labels.taxonomyRoot(), labels.score(), labels.rationale()),</span>
+<span class="fc" id="L276">                elements.stream().map(e -&gt; List.of(value(e.getNodeCode(), labels), value(e.getTitle(), labels),</span>
+<span class="fc" id="L277">                        value(e.getTaxonomyRoot(), labels), e.getScore() + &quot;%&quot;, value(e.getReasoning(), labels))).toList());</span>
+<span class="fc" id="L278">    }</span>
+
+    /** Pattern DTO percentages already use the 0–100 scale, unlike element relevance. */
+    private static double boundedPatternPercentage(double value) {
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        return Double.isFinite(value) ? Math.max(0.0, Math.min(100.0, value)) : 0.0;</span>
+    }
+
+    private static String value(String text, DecisionReportLabels labels) {
+<span class="fc bfc" id="L286" title="All 2 branches covered.">        return text == null ? labels.unknown() : text;</span>
+    }
+
+    private static String percent(double value) {
+<span class="fc" id="L290">        return com.taxonomy.dto.AnalysisPercentages.display(value * 100);</span>
+    }
+
+    private static void runningIdentity(XWPFDocument document, DecisionReportLabels labels, String identity) {
+<span class="fc" id="L294">        var header = document.createHeader(org.apache.poi.wp.usermodel.HeaderFooterType.DEFAULT);</span>
+<span class="fc" id="L295">        var headerParagraph = header.createParagraph();</span>
+<span class="fc" id="L296">        var run = headerParagraph.createRun();</span>
+<span class="fc" id="L297">        run.setFontSize(9);</span>
+<span class="fc" id="L298">        run.setText(identity);</span>
+<span class="fc" id="L299">        var footer = document.createFooter(org.apache.poi.wp.usermodel.HeaderFooterType.DEFAULT);</span>
+<span class="fc" id="L300">        var paragraph = footer.createParagraph();</span>
+<span class="fc" id="L301">        paragraph.setAlignment(org.apache.poi.xwpf.usermodel.ParagraphAlignment.RIGHT);</span>
+<span class="fc" id="L302">        paragraph.createRun().setText(labels.page() + &quot; &quot;);</span>
+<span class="fc" id="L303">        paragraph.getCTP().addNewFldSimple().setInstr(&quot;PAGE&quot;);</span>
+<span class="fc" id="L304">        paragraph.createRun().setText(&quot; &quot; + labels.of() + &quot; &quot;);</span>
+<span class="fc" id="L305">        paragraph.getCTP().addNewFldSimple().setInstr(&quot;NUMPAGES&quot;);</span>
+<span class="fc" id="L306">        paragraph.getRuns().forEach(r -&gt; r.setFontSize(9));</span>
+<span class="fc" id="L307">    }</span>
+
+    private static void page(XWPFDocument document) {
+        // Only fresh standalone documents reach this setup; custom DOTX styles stay authoritative.
+<span class="fc" id="L311">        var styles = document.createStyles();</span>
+<span class="fc" id="L312">        var fonts = org.openxmlformats.schemas.wordprocessingml.x2006.main.CTFonts.Factory.newInstance();</span>
+<span class="fc" id="L313">        fonts.setAscii(&quot;Aptos&quot;);</span>
+<span class="fc" id="L314">        fonts.setHAnsi(&quot;Aptos&quot;);</span>
+<span class="fc" id="L315">        fonts.setCs(&quot;Aptos&quot;);</span>
+<span class="fc" id="L316">        fonts.setEastAsia(&quot;Aptos&quot;);</span>
+<span class="fc" id="L317">        styles.setDefaultFonts(fonts);</span>
+<span class="fc" id="L318">        styles.getDefaultRunStyle().getRPr().addNewSz().setVal(BigInteger.valueOf(20));</span>
+<span class="fc" id="L319">        var section = document.getDocument().getBody().addNewSectPr();</span>
+<span class="fc" id="L320">        var size = section.addNewPgSz();</span>
+<span class="fc" id="L321">        size.setW(BigInteger.valueOf(11906));</span>
+<span class="fc" id="L322">        size.setH(BigInteger.valueOf(16838));</span>
+<span class="fc" id="L323">        var margin = section.addNewPgMar();</span>
+<span class="fc" id="L324">        margin.setLeft(BigInteger.valueOf(1050));</span>
+<span class="fc" id="L325">        margin.setRight(BigInteger.valueOf(1050));</span>
+<span class="fc" id="L326">        margin.setTop(BigInteger.valueOf(1020));</span>
+<span class="fc" id="L327">        margin.setBottom(BigInteger.valueOf(1160));</span>
+<span class="fc" id="L328">        margin.setHeader(BigInteger.valueOf(420));</span>
+<span class="fc" id="L329">        margin.setFooter(BigInteger.valueOf(560));</span>
+<span class="fc" id="L330">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,326 @@
+{
+  "schemaVersion": 1,
+  "shard": "recovery",
+  "commit": "2e3e9ba8dda7518728c0ad9a53dd4754195017c1",
+  "sourceTree": "5f7186a1114d46c421cd4dd31cfb2ca8d34b41b7",
+  "buildId": "41118793142.1.recovery",
+  "reports": [
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.OnnxRestEndpointTest.xml",
+      "className": "com.taxonomy.OnnxRestEndpointTest",
+      "sha256": "cc25210382133f0a1f94a3c35db1ac4a87f447a85ff385bba8b776eee228e6cb",
+      "tests": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.backup.recovery.NativeInstallationRecoveryTest.xml",
+      "className": "com.taxonomy.backup.recovery.NativeInstallationRecoveryTest",
+      "sha256": "315b3b13ff47af384e40ce69497f565239e1874a54e4f40474b0dcbd20da1c16",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest.xml",
+      "className": "com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest",
+      "sha256": "0208168eb2cb0dcfe454ad772265223ca51bc4945faa78b265174d5ebe1253a2",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.editor.ArchitectureApplicationRestartTest.xml",
+      "className": "com.taxonomy.editor.ArchitectureApplicationRestartTest",
+      "sha256": "fbaddc91cd757fbd4e64b0513ce5e07e0410d3ba9e998c1af9f8309119240e7b",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.interop.IntegrationRestartTest.xml",
+      "className": "com.taxonomy.interop.IntegrationRestartTest",
+      "sha256": "5b450196e6c8a3223bbe168befc3ce66ee566fe8e24e40aee3caa6823095409c",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest.xml",
+      "className": "com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest",
+      "sha256": "be16e14087c0b69ac8801230a65dafc7ca9a97c241339be09e36b791edfa7062",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.interop.publication.IntegrationPublicationRestartTest.xml",
+      "className": "com.taxonomy.interop.publication.IntegrationPublicationRestartTest",
+      "sha256": "d7b9659d9ad68a63a32a45b3d6c273754fdcf55cb629e90df9f49b4cb0d82d92",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.PortfolioJobLifecycleTest.xml",
+      "className": "com.taxonomy.portfolio.PortfolioJobLifecycleTest",
+      "sha256": "fcdbb34043c46825b994c0599181797364ef9e2d96316dbab543b41022685365",
+      "tests": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationAdoptionTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationAdoptionTest",
+      "sha256": "2eb62b5b17298834f52fc91d3d5fb0316b8d124a7f457e48c5a3b39930b6efd6",
+      "tests": 3,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationCheckpointTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationCheckpointTest",
+      "sha256": "f12a3c07f6ec8474fe9e5e30249b718ec171245f1a2b56e01de70a61ca1b43b5",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationGroupCheckpointTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationGroupCheckpointTest",
+      "sha256": "e0e039d9026dbe3a95be8da7ae39a6b1a22ce2cdbfeb85bf79928e29f9fd274b",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest",
+      "sha256": "4ec16e148b879b1d9febc17921e2a39d5e1fac4f8ca272d0b89413f802b318d9",
+      "tests": 6,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationProcessRecoveryTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationProcessRecoveryTest",
+      "sha256": "3489f998e752d69985cc342ab1002735fdd79ee72495ed86e9d085bb34ca3795",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationProgressTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationProgressTest",
+      "sha256": "d9e7b026fc3dba8c96965b91a16ceadda6b22ede3abcf98efd2fdce69db72b2a",
+      "tests": 4,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationReportHistoryTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationReportHistoryTest",
+      "sha256": "d36b27d6bc3368d680cefbde40960265155a1c259d39bd089ee1e65aecc2323d",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationRestartTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationRestartTest",
+      "sha256": "1a2c602e2f6c24e0c22ae944b1dddacbbd1a7dfcc14b18d17d6066f74a72b773",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationUsageTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationUsageTest",
+      "sha256": "2ff623bed09fc2878abe6978fb47b603dd790c61c48f2b7e33f750564d919871",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationUsageWorkerTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationUsageWorkerTest",
+      "sha256": "364906e9a1ace2689664b19aa0ff445bb613f28d930444de5e9fcee0c1d17aec",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.PortfolioVersioningRecoveryIT.xml",
+      "className": "com.taxonomy.PortfolioVersioningRecoveryIT",
+      "sha256": "31a714d7449db81f254c10409da6b3ace24a03b42630abc87b838a44142cfd93",
+      "tests": 42,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.ProductionPersistenceRestartIT.xml",
+      "className": "com.taxonomy.ProductionPersistenceRestartIT",
+      "sha256": "8c487d3a5695a09033fbb0be2b4406dcd41f7a224461f6a578d94e8acaa64892",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.backup.runtime.BackupWriterCoverageIT.xml",
+      "className": "com.taxonomy.backup.runtime.BackupWriterCoverageIT",
+      "sha256": "a1b27061f5819f955372ecd96c3edac7cf446f187f5e8087424d9bf93276c942",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.workspace.service.WorkspaceRestartSelectionIT.xml",
+      "className": "com.taxonomy.workspace.service.WorkspaceRestartSelectionIT",
+      "sha256": "213ad111ffdd079a95948e092d6d76d6584b3b26d57ae4791a42f510cc1f9bce",
+      "tests": 7,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    }
+  ],
+  "coverage": {
+    "path": "coverage.exec",
+    "sha256": "23c25684e92a9e01d971b0dcad40408eaf3be610500d68fbdb4438a7e8951597"
+  },
+  "timing": {
+    "durationSeconds": 1623.479,
+    "suites": [
+      {
+        "className": "com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest",
+        "durationSeconds": 243.359
+      },
+      {
+        "className": "com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest",
+        "durationSeconds": 173.137
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest",
+        "durationSeconds": 152.471
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationProgressTest",
+        "durationSeconds": 106.516
+      },
+      {
+        "className": "com.taxonomy.PortfolioVersioningRecoveryIT",
+        "durationSeconds": 100.168
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationProcessRecoveryTest",
+        "durationSeconds": 89.825
+      },
+      {
+        "className": "com.taxonomy.ProductionPersistenceRestartIT",
+        "durationSeconds": 86.944
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationUsageWorkerTest",
+        "durationSeconds": 82.954
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationReportHistoryTest",
+        "durationSeconds": 63.668
+      },
+      {
+        "className": "com.taxonomy.interop.IntegrationRestartTest",
+        "durationSeconds": 62.77
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationAdoptionTest",
+        "durationSeconds": 58.002
+      },
+      {
+        "className": "com.taxonomy.backup.recovery.NativeInstallationRecoveryTest",
+        "durationSeconds": 57.967
+      },
+      {
+        "className": "com.taxonomy.editor.ArchitectureApplicationRestartTest",
+        "durationSeconds": 52.24
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationUsageTest",
+        "durationSeconds": 50.798
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationGroupCheckpointTest",
+        "durationSeconds": 48.985
+      },
+      {
+        "className": "com.taxonomy.OnnxRestEndpointTest",
+        "durationSeconds": 47.017
+      },
+      {
+        "className": "com.taxonomy.interop.publication.IntegrationPublicationRestartTest",
+        "durationSeconds": 39.243
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationCheckpointTest",
+        "durationSeconds": 38.985
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationRestartTest",
+        "durationSeconds": 36.454
+      },
+      {
+        "className": "com.taxonomy.workspace.service.WorkspaceRestartSelectionIT",
+        "durationSeconds": 21.018
+      },
+      {
+        "className": "com.taxonomy.backup.runtime.BackupWriterCoverageIT",
+        "durationSeconds": 10.691
+      },
+      {
+        "className": "com.taxonomy.portfolio.PortfolioJobLifecycleTest",
+        "durationSeconds": 0.267
+      }
+    ]
+  }
+}

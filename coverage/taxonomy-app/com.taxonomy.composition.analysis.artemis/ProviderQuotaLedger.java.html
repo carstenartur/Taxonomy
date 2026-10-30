@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProviderQuotaLedger.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">ProviderQuotaLedger.java</span></div><h1>ProviderQuotaLedger.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.UUID;
+import com.taxonomy.analysis.service.LlmTransportMeter.Usage;
+
+/** Pure transitions on the single durable state message, never process-local quota authority. */
+<span class="nc" id="L13">final class ProviderQuotaLedger {</span>
+    static final long MINUTE = 60_000, DAY = 86_400_000;
+    record Policy(int rpm, long tpm, int rpd, long inputUpperBound, int outputCap,
+                  long clockSkewMillis, int maximumReservations) {
+<span class="fc" id="L17">        Policy {</span>
+<span class="pc bpc" id="L18" title="17 of 40 branches missed.">            if (rpm &lt; 0 || rpm &gt; 1_000_000 || tpm &lt; 0 || tpm &gt; 1_000_000_000L || rpd &lt; 0 || rpd &gt; 1_000_000</span>
+                    || rpm + tpm + rpd == 0 || clockSkewMillis &lt; 0 || clockSkewMillis &gt; 60_000
+                    || maximumReservations &lt; 1 || maximumReservations &gt; 20_000
+                    || inputUpperBound &lt; 0 || outputCap &lt; 0 || outputCap &gt; 1_000_000
+                    || (tpm &gt; 0 &amp;&amp; (inputUpperBound &lt; 1 || outputCap &lt; 1))
+                    || (tpm == 0 &amp;&amp; (inputUpperBound != 0 || outputCap != 0))) {
+<span class="fc" id="L24">                throw new IllegalArgumentException(&quot;Invalid bounded provider quota policy&quot;);</span>
+            }
+<span class="fc" id="L26">        }</span>
+        String fingerprint() {
+<span class="fc" id="L28">            try { return HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;)</span>
+<span class="fc" id="L29">                    .digest(toString().getBytes(StandardCharsets.UTF_8))); }</span>
+<span class="nc" id="L30">            catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+        }
+    }
+<span class="fc" id="L33">    record Debit(String id, long admittedAt, long reservedTokens, boolean settled, boolean started) {}</span>
+<span class="fc" id="L34">    record State(String policyFingerprint, long highWaterMillis, long cooldownUntil,</span>
+                 boolean unsafeTokenBound, List&lt;Debit&gt; debits) {}
+<span class="fc" id="L36">    record Decision(State state, boolean granted, long waitMillis) {}</span>
+
+<span class="fc" id="L38">    static State empty(Policy policy) { return new State(policy.fingerprint(), 0, 0, false, List.of()); }</span>
+    static Decision reserve(State state, Policy policy, String id, long tokens, long now) {
+<span class="fc" id="L40">        validate(state, policy, now);</span>
+<span class="fc" id="L41">        identity(id);</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        if (state.unsafeTokenBound()) throw unavailable(&quot;Provider token bound was exceeded; operator review required&quot;);</span>
+<span class="pc bpc" id="L43" title="2 of 8 branches missed.">        if (tokens &lt; 0 || (policy.tpm() &gt; 0 &amp;&amp; (tokens == 0 || tokens &gt; policy.tpm()</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">                || tokens &gt; Math.addExact(policy.inputUpperBound(), policy.outputCap())))</span>
+<span class="pc bpc" id="L45" title="1 of 4 branches missed.">                || (policy.tpm() == 0 &amp;&amp; tokens != 0)) throw unavailable(&quot;Provider token budget cannot be admitted&quot;);</span>
+<span class="fc" id="L46">        long at = Math.max(now, state.highWaterMillis());</span>
+<span class="fc" id="L47">        var retained = new ArrayList&lt;Debit&gt;();</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        long retention = policy.rpd() &gt; 0 ? DAY : MINUTE;</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        for (var debit : state.debits()) {</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            if (expires(debit, retention, policy) &gt; now) retained.add(debit);</span>
+<span class="fc" id="L51">        }</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        if (retained.stream().anyMatch(debit -&gt; debit.id().equals(id))) {</span>
+<span class="nc" id="L53">            throw unavailable(&quot;Provider attempt identity was already admitted&quot;);</span>
+        }
+<span class="fc" id="L55">        long wait = Math.max(0, state.cooldownUntil() - now);</span>
+<span class="fc" id="L56">        long minuteRequests = 0, minuteTokens = 0, earliestMinute = Long.MAX_VALUE;</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        for (var debit : retained) {</span>
+<span class="fc" id="L58">            long expiry = expires(debit, MINUTE, policy);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            if (expiry &gt; now) {</span>
+<span class="fc" id="L60">                minuteRequests++;</span>
+<span class="fc" id="L61">                minuteTokens = Math.addExact(minuteTokens, debit.reservedTokens());</span>
+<span class="fc" id="L62">                earliestMinute = Math.min(earliestMinute, expiry);</span>
+            }
+<span class="fc" id="L64">        }</span>
+<span class="fc bfc" id="L65" title="All 4 branches covered.">        if ((policy.rpm() &gt; 0 &amp;&amp; minuteRequests &gt;= policy.rpm())</span>
+<span class="fc bfc" id="L66" title="All 4 branches covered.">                || (policy.tpm() &gt; 0 &amp;&amp; Math.addExact(minuteTokens, tokens) &gt; policy.tpm())) {</span>
+<span class="fc" id="L67">            wait = Math.max(wait, earliestMinute - now);</span>
+        }
+<span class="fc bfc" id="L69" title="All 4 branches covered.">        if (policy.rpd() &gt; 0 &amp;&amp; retained.size() &gt;= policy.rpd()) {</span>
+<span class="fc" id="L70">            long earliestDay = retained.stream().mapToLong(debit -&gt; expires(debit, DAY, policy)).min().orElseThrow();</span>
+<span class="fc" id="L71">            wait = Math.max(wait, earliestDay - now);</span>
+        }
+<span class="fc" id="L73">        var updated = new State(state.policyFingerprint(), at, state.cooldownUntil(), false, List.copyOf(retained));</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (wait &gt; 0) return new Decision(updated, false, wait);</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        if (retained.size() &gt;= policy.maximumReservations()) throw unavailable(&quot;Provider quota ledger capacity exhausted&quot;);</span>
+<span class="fc" id="L76">        retained.add(new Debit(id, at, tokens, false, false));</span>
+<span class="fc" id="L77">        return new Decision(new State(state.policyFingerprint(), at, state.cooldownUntil(), false,</span>
+<span class="fc" id="L78">                List.copyOf(retained)), true, 0);</span>
+    }
+    /** Consumes one still-live debit; only extends occupancy, never creates capacity or another debit. */
+    static State start(State state, Policy policy, String id, long now) {
+<span class="fc" id="L82">        validate(state, policy, now); identity(id);</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">        if (state.unsafeTokenBound()) throw unavailable(&quot;Provider token bound was exceeded; operator review required&quot;);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (state.cooldownUntil() &gt; now) throw unavailable(&quot;Provider cooldown changed before physical transport&quot;);</span>
+<span class="fc" id="L85">        var updated = new ArrayList&lt;&gt;(state.debits());</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        for (int i = 0; i &lt; updated.size(); i++) {</span>
+<span class="fc" id="L87">            var debit = updated.get(i);</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            if (!debit.id().equals(id)) continue;</span>
+<span class="pc bpc" id="L89" title="1 of 4 branches missed.">            long window = policy.rpm() &gt; 0 || policy.tpm() &gt; 0 ? MINUTE : DAY;</span>
+<span class="pc bpc" id="L90" title="1 of 6 branches missed.">            if (debit.started() || debit.settled() || expires(debit, window, policy) &lt;= now)</span>
+<span class="fc" id="L91">                throw unavailable(&quot;Provider quota receipt was consumed or expired before transport&quot;);</span>
+<span class="fc" id="L92">            long at = Math.max(now, state.highWaterMillis());</span>
+<span class="fc" id="L93">            updated.set(i, new Debit(id, at, debit.reservedTokens(), false, true));</span>
+<span class="fc" id="L94">            return new State(state.policyFingerprint(), at, state.cooldownUntil(), false, List.copyOf(updated));</span>
+        }
+<span class="fc" id="L96">        throw unavailable(&quot;Provider quota receipt is no longer retained; a fresh admission is required&quot;);</span>
+    }
+    static State settle(State state, Policy policy, String id, Long actualTokens, long now) {
+<span class="fc" id="L99">        validate(state, policy, now);</span>
+<span class="fc" id="L100">        identity(id);</span>
+<span class="pc bpc" id="L101" title="2 of 6 branches missed.">        if (actualTokens == null || actualTokens &lt; 0 || policy.tpm() == 0) return state;</span>
+<span class="fc" id="L102">        var updated = new ArrayList&lt;&gt;(state.debits());</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        for (int i = 0; i &lt; updated.size(); i++) {</span>
+<span class="fc" id="L104">            var debit = updated.get(i);</span>
+<span class="fc bfc" id="L105" title="All 6 branches covered.">            if (!debit.id().equals(id) || !debit.started() || debit.settled()) continue;</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">            if (actualTokens &gt; debit.reservedTokens()) {</span>
+<span class="fc" id="L107">                return new State(state.policyFingerprint(), state.highWaterMillis(), state.cooldownUntil(), true, state.debits());</span>
+            }
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            if (expires(debit, MINUTE, policy) &lt;= now) continue;</span>
+<span class="fc" id="L110">            updated.set(i, new Debit(id, debit.admittedAt(), actualTokens, true, debit.started()));</span>
+<span class="fc" id="L111">            return new State(state.policyFingerprint(), state.highWaterMillis(), state.cooldownUntil(),</span>
+<span class="fc" id="L112">                    state.unsafeTokenBound(), List.copyOf(updated));</span>
+        }
+<span class="fc" id="L114">        return state;</span>
+    }
+    static State settleUsage(State state, Policy policy, String id, Usage usage, long now) {
+<span class="fc" id="L117">        return settleUsage(state, policy, id, usage, now, false);</span>
+    }
+    /** Called only by the private local receipt after a confirmed start; never by an archive/ID parser. */
+    static State settleConfirmedStartedUsage(State state, Policy policy, String id, Usage usage, long now) {
+<span class="fc" id="L121">        return settleUsage(state, policy, id, usage, now, true);</span>
+    }
+    private static State settleUsage(State state, Policy policy, String id, Usage usage, long now, boolean confirmedStart) {
+<span class="fc" id="L124">        validate(state, policy, now);</span>
+<span class="fc" id="L125">        identity(id);</span>
+<span class="pc bpc" id="L126" title="2 of 8 branches missed.">        if (usage == null || usage.invalid() || usage.inputTokens() == null || usage.outputTokens() == null</span>
+<span class="pc bpc" id="L127" title="1 of 6 branches missed.">                || usage.totalTokens() == null || usage.inputTokens() &lt; 0 || usage.outputTokens() &lt; 0</span>
+<span class="pc bpc" id="L128" title="2 of 4 branches missed.">                || usage.totalTokens() &lt; 0 || policy.tpm() == 0) return state;</span>
+        long total;
+<span class="fc" id="L130">        try { total = Math.addExact(usage.inputTokens(), usage.outputTokens()); }</span>
+<span class="fc" id="L131">        catch (ArithmeticException overflow) { return state; }</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (total != usage.totalTokens()</span>
+<span class="pc bpc" id="L133" title="1 of 6 branches missed.">                || (usage.cachedInputTokens() != null &amp;&amp; (usage.cachedInputTokens() &lt; 0 || usage.cachedInputTokens() &gt; usage.inputTokens()))</span>
+<span class="pc bpc" id="L134" title="1 of 6 branches missed.">                || (usage.reasoningTokens() != null &amp;&amp; (usage.reasoningTokens() &lt; 0 || usage.reasoningTokens() &gt; usage.outputTokens()))) return state;</span>
+        // A slow response can disprove a bound after its refund window has closed.
+        // Only a retained, confirmed-started, unsettled receipt owns that evidence.
+<span class="fc bfc" id="L137" title="All 10 branches covered.">        if (!confirmedStart &amp;&amp; state.debits().stream().noneMatch(debit -&gt; debit.id().equals(id) &amp;&amp; debit.started() &amp;&amp; !debit.settled())) return state;</span>
+<span class="fc bfc" id="L138" title="All 4 branches covered.">        if (usage.inputTokens() &gt; policy.inputUpperBound() || usage.outputTokens() &gt; policy.outputCap()) {</span>
+<span class="fc" id="L139">            return new State(state.policyFingerprint(), state.highWaterMillis(), state.cooldownUntil(), true, state.debits());</span>
+        }
+<span class="fc" id="L141">        return settle(state, policy, id, total, now);</span>
+    }
+    static State defer(State state, Policy policy, long delay, long now) {
+<span class="fc" id="L144">        validate(state, policy, now);</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">        if (delay &lt; 0) throw unavailable(&quot;Invalid provider cooldown budget&quot;);</span>
+<span class="fc" id="L146">        long at = Math.max(now, state.highWaterMillis());</span>
+<span class="fc" id="L147">        long allowance = 2 * policy.clockSkewMillis();</span>
+        // A long/overflowing provider Retry-After must never reset the group's cooldown.
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        long until = delay &gt; Long.MAX_VALUE - at - allowance ? Long.MAX_VALUE : at + delay + allowance;</span>
+<span class="fc" id="L150">        return new State(state.policyFingerprint(), at, Math.max(state.cooldownUntil(), until),</span>
+<span class="fc" id="L151">                state.unsafeTokenBound(), state.debits());</span>
+    }
+    private static long expires(Debit debit, long window, Policy policy) {
+<span class="fc" id="L154">        return Math.addExact(debit.admittedAt(), window + 2 * policy.clockSkewMillis());</span>
+    }
+    private static void validate(State state, Policy policy, long now) {
+<span class="pc bpc" id="L157" title="1 of 4 branches missed.">        if (state == null || !policy.fingerprint().equals(state.policyFingerprint())) throw unavailable(&quot;Provider quota policy mismatch&quot;);</span>
+<span class="pc bpc" id="L158" title="3 of 6 branches missed.">        if (now &lt; 0 || now &gt; Long.MAX_VALUE - DAY - 120_000 || state.highWaterMillis() &lt; 0</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">                || state.cooldownUntil() &lt; 0) throw unavailable(&quot;Invalid provider quota clock state&quot;);</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        if (state.highWaterMillis() - now &gt; 2 * policy.clockSkewMillis()) throw unavailable(&quot;Provider quota clock is outside configured skew&quot;);</span>
+<span class="pc bpc" id="L161" title="2 of 4 branches missed.">        if (state.debits() == null || state.debits().size() &gt; policy.maximumReservations()) throw unavailable(&quot;Invalid provider quota ledger size&quot;);</span>
+<span class="fc" id="L162">        var ids = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        for (var debit : state.debits()) {</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">            if (debit == null) throw unavailable(&quot;Invalid provider quota ledger entry&quot;);</span>
+<span class="fc" id="L165">            identity(debit.id());</span>
+<span class="pc bpc" id="L166" title="3 of 6 branches missed.">            if (!ids.add(debit.id()) || debit.admittedAt() &lt; 0 || debit.admittedAt() &gt; state.highWaterMillis()</span>
+<span class="pc bpc" id="L167" title="2 of 4 branches missed.">                    || debit.reservedTokens() &lt; 0 || debit.reservedTokens() &gt; policy.tpm()) {</span>
+<span class="nc" id="L168">                throw unavailable(&quot;Invalid provider quota ledger entry&quot;);</span>
+            }
+<span class="fc" id="L170">        }</span>
+<span class="fc" id="L171">    }</span>
+    private static void identity(String id) {
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">        try { if (!UUID.fromString(id).toString().equals(id)) throw new IllegalArgumentException(); }</span>
+<span class="pc" id="L174">        catch (IllegalArgumentException | NullPointerException invalid) { throw unavailable(&quot;Invalid provider quota attempt identity&quot;); }</span>
+<span class="fc" id="L175">    }</span>
+<span class="fc" id="L176">    private static IllegalStateException unavailable(String message) { return new IllegalStateException(message); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

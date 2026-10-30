@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SparxSemanticExchangeAssembler.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange.sparx</a> &gt; <span class="el_source">SparxSemanticExchangeAssembler.java</span></div><h1>SparxSemanticExchangeAssembler.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange.sparx;
+
+import com.taxonomy.exchange.ExchangeXml;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import java.util.*;
+import static com.taxonomy.exchange.sparx.SparxMappingProfile.*;
+
+/** One v2 semantic policy for both transport parsers. The records are bounded parsing values, not authoring models. */
+final class SparxSemanticExchangeAssembler {
+<span class="fc" id="L10">    record Resource(String id, ArtifactKind kind, String type, String title, String text, String parent,</span>
+                    Integer position, Map&lt;String,String&gt; attributes, Map&lt;String,String&gt; extensions) {}
+<span class="fc" id="L12">    record Feature(String id, String owner, String type, String title, String text, Integer position,</span>
+                   Map&lt;String,String&gt; attributes, Map&lt;String,String&gt; extensions) {}
+<span class="fc" id="L14">    record Connector(String id, String source, String target, String type, String direction,</span>
+                     Map&lt;String,String&gt; attributes, Map&lt;String,String&gt; extensions) {}
+    private SparxSemanticExchangeAssembler() {}
+
+    static ExchangeDocument assemble(String profile, String version, boolean complete, String source,
+            Map&lt;String,String&gt; metadata, List&lt;Resource&gt; resources, List&lt;Feature&gt; features,
+            List&lt;Connector&gt; connectors, List&lt;MappingLoss&gt; inputLosses) {
+<span class="fc" id="L21">        return assemble(profile, &quot;2&quot;, version, complete, source, metadata, resources, features, connectors, inputLosses);</span>
+    }
+    static ExchangeDocument assemble(String profile, String profileVersion, String version, boolean complete, String source,
+            Map&lt;String,String&gt; metadata, List&lt;Resource&gt; resources, List&lt;Feature&gt; features,
+            List&lt;Connector&gt; connectors, List&lt;MappingLoss&gt; inputLosses) {
+<span class="fc" id="L26">        Map&lt;String,Artifact&gt; objects = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L27">        List&lt;MappingLoss&gt; losses = new ArrayList&lt;&gt;(inputLosses);</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">        for (Resource r : resources) {</span>
+<span class="fc" id="L29">            Map&lt;String,String&gt; extensions = new TreeMap&lt;&gt;(r.extensions());</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">            if (r.kind() == ArtifactKind.ELEMENT) {</span>
+<span class="fc" id="L31">                String canonical = mappedType(r.type(), r.attributes(), extensions);</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">                if (canonical != null) extensions.put(&quot;canonicalType&quot;, canonical);</span>
+<span class="fc" id="L33">                else losses.add(loss(r.id(), &quot;type&quot;, &quot;SPARX_ELEMENT_UNMAPPED&quot;, LossDisposition.UNSUPPORTED));</span>
+            }
+<span class="fc" id="L35">            put(objects, new Artifact(guid(r.id()), r.kind(), r.type(), r.title(), r.text(), r.attributes(), extensions));</span>
+<span class="fc" id="L36">        }</span>
+<span class="fc" id="L37">        Set&lt;String&gt; resourceIds = Set.copyOf(objects.keySet());</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        for (Feature f : features) {</span>
+<span class="fc" id="L39">            Map&lt;String,String&gt; extensions = new TreeMap&lt;&gt;(f.extensions());</span>
+<span class="fc" id="L40">            extensions.put(&quot;owner&quot;, guid(f.owner()));</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">            if (f.position() != null) extensions.put(&quot;position&quot;, Integer.toString(f.position()));</span>
+<span class="fc" id="L42">            put(objects, new Artifact(guid(f.id()), ArtifactKind.FEATURE, f.type(), f.title(), f.text(), f.attributes(), extensions));</span>
+<span class="fc" id="L43">        }</span>
+        // Identity-bearing tags remain separate even when a legacy owner projection is possible.
+<span class="fc" id="L45">        Map&lt;String,Map&lt;String,List&lt;Artifact&gt;&gt;&gt; tags = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L46" title="All 6 branches covered.">        for (Artifact a : objects.values()) if (a.kind() == ArtifactKind.FEATURE &amp;&amp; a.type().equals(&quot;tagged-value&quot;)) {</span>
+<span class="pc bpc" id="L47" title="3 of 6 branches missed.">            if (a.title().isBlank() || a.title().length() &gt; 240 || a.text().length() &gt; 100000)</span>
+<span class="nc" id="L48">                throw ExchangeXml.invalid(&quot;SPARX_TAG_INVALID&quot;, &quot;Tagged values need bounded names and values&quot;);</span>
+<span class="fc" id="L49">            tags.computeIfAbsent(a.extensions().get(&quot;owner&quot;), unused -&gt; new TreeMap&lt;&gt;())</span>
+<span class="fc" id="L50">                    .computeIfAbsent(a.title(), unused -&gt; new ArrayList&lt;&gt;()).add(a);</span>
+        }
+<span class="fc" id="L52">        tags.forEach((owner, names) -&gt; {</span>
+<span class="fc" id="L53">            Artifact a = objects.get(owner);</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">            if (a == null) throw ExchangeXml.invalid(&quot;SPARX_FEATURE_OWNER&quot;, &quot;Feature owner is missing&quot;);</span>
+<span class="fc" id="L55">            Map&lt;String,String&gt; attributes = new TreeMap&lt;&gt;(a.attributes());</span>
+<span class="fc" id="L56">            names.forEach((name, values) -&gt; {</span>
+<span class="fc" id="L57">                attributes.remove(&quot;tag:&quot; + name);</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                if (values.size() == 1) attributes.put(&quot;tag:&quot; + name, values.getFirst().text());</span>
+<span class="fc" id="L59">                else losses.add(loss(owner, &quot;tag:&quot; + name, &quot;SPARX_TAG_DUPLICATE_UNMAPPED&quot;, LossDisposition.PRESERVED_EXTENSION));</span>
+<span class="fc" id="L60">            });</span>
+<span class="fc" id="L61">            Map&lt;String,String&gt; extensions = new TreeMap&lt;&gt;(a.extensions());</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">            if (a.kind() == ArtifactKind.ELEMENT) {</span>
+<span class="fc" id="L63">                String canonical = mappedType(a.type(), attributes, extensions);</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">                if (canonical != null) extensions.put(&quot;canonicalType&quot;, canonical);</span>
+            }
+<span class="fc" id="L66">            objects.put(owner, new Artifact(a.id(), a.kind(), a.type(), a.title(), a.text(), attributes, extensions));</span>
+<span class="fc" id="L67">        });</span>
+<span class="fc" id="L68">        Map&lt;String,Relation&gt; relations = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        for (Connector c : connectors) {</span>
+<span class="fc" id="L70">            String id = guid(c.id()), from = guid(c.source()), to = guid(c.target());</span>
+<span class="fc" id="L71">            String direction = c.direction();</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">            if (!Set.of(&quot;Unspecified&quot;, &quot;Source -&gt; Destination&quot;, &quot;Destination -&gt; Source&quot;, &quot;Bi-Directional&quot;).contains(direction))</span>
+<span class="nc" id="L73">                throw ExchangeXml.invalid(&quot;SPARX_DIRECTION&quot;, &quot;Unsupported connector direction&quot;);</span>
+<span class="fc" id="L74">            Map&lt;String,String&gt; extensions = new TreeMap&lt;&gt;(c.extensions());</span>
+<span class="fc bfc" id="L75" title="All 4 branches covered.">            if (&quot;3&quot;.equals(profileVersion) &amp;&amp; extensions.containsKey(&quot;direction&quot;))</span>
+<span class="fc" id="L76">                SparxRelationProfileV3.require(direction, extensions.get(&quot;direction&quot;), &quot;EA direction contradicts preserved evidence&quot;);</span>
+<span class="fc" id="L77">            extensions.put(&quot;direction&quot;, direction);</span>
+<span class="fc" id="L78">            String canonical = relationType(c.type());</span>
+<span class="fc" id="L79">            String declared = c.attributes().get(&quot;tag:taxonomy.relationType&quot;);</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            if (&quot;3&quot;.equals(profileVersion)) {</span>
+<span class="fc" id="L81">                SparxRelationProfileV3.transport(declared);</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">                if (extensions.containsKey(&quot;canonicalType&quot;)) SparxRelationProfileV3.require(declared, extensions.get(&quot;canonicalType&quot;),</span>
+                        &quot;The canonical relation type contradicts its declaration&quot;);
+<span class="fc" id="L84">                canonical = declared;</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            } else if (declared != null) {</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">                if (eaRelation(declared) == null) throw ExchangeXml.invalid(&quot;SPARX_RELATION_UNMAPPED&quot;, &quot;Unsupported declared relation type&quot;);</span>
+<span class="fc" id="L87">                canonical = declared;</span>
+            }
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">            if (canonical != null) extensions.put(&quot;canonicalType&quot;, canonical);</span>
+<span class="nc" id="L90">            else losses.add(loss(id, &quot;type&quot;, &quot;SPARX_RELATION_UNMAPPED&quot;, LossDisposition.UNSUPPORTED));</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">            if (direction.equals(&quot;Bi-Directional&quot;)) losses.add(loss(id, &quot;direction&quot;, &quot;SPARX_DIRECTION_UNMAPPED&quot;, LossDisposition.UNSUPPORTED));</span>
+<span class="fc" id="L92">            Relation relation = new Relation(id, c.type(), from, to, c.attributes(), extensions);</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            if (&quot;3&quot;.equals(profileVersion)) SparxRelationProfileV3.validate(relation);</span>
+<span class="fc" id="L94">            Relation previous = relations.putIfAbsent(id, relation);</span>
+<span class="fc bfc" id="L95" title="All 4 branches covered.">            if (previous != null &amp;&amp; !previous.equals(relation)) throw duplicate();</span>
+<span class="fc" id="L96">        }</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        for (Relation r : new ArrayList&lt;&gt;(relations.values())) {</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">            if (objects.containsKey(r.id())) throw duplicate();</span>
+<span class="pc bpc" id="L99" title="1 of 4 branches missed.">            if (!resourceIds.contains(r.source()) || !resourceIds.contains(r.target())) {</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">                String owner = resourceIds.contains(r.source()) ? r.source() : r.target();</span>
+<span class="fc" id="L101">                Map&lt;String,String&gt; ext = new TreeMap&lt;&gt;(r.extensions());</span>
+<span class="fc" id="L102">                ext.put(&quot;owner&quot;, owner); ext.put(&quot;source&quot;, r.source()); ext.put(&quot;target&quot;, r.target());</span>
+<span class="fc" id="L103">                ext.put(&quot;eaType&quot;, r.type()); ext.put(&quot;preservedOnly&quot;, &quot;true&quot;);</span>
+<span class="fc" id="L104">                put(objects, new Artifact(r.id(), ArtifactKind.FEATURE, &quot;external-connector&quot;,</span>
+<span class="fc" id="L105">                        r.attributes().getOrDefault(&quot;name&quot;, &quot;&quot;), r.attributes().getOrDefault(&quot;description&quot;, &quot;&quot;), r.attributes(), ext));</span>
+<span class="fc" id="L106">                relations.remove(r.id());</span>
+<span class="fc" id="L107">                losses.add(loss(r.id(), &quot;endpoint&quot;, &quot;SPARX_AM_ENDPOINT_OUTSIDE_SCOPE&quot;, LossDisposition.PRESERVED_EXTENSION));</span>
+            }
+<span class="fc" id="L109">        }</span>
+<span class="fc" id="L110">        String model = guid(metadata.get(&quot;identifier&quot;));</span>
+<span class="fc" id="L111">        Set&lt;String&gt; ids = new HashSet&lt;&gt;(objects.keySet());</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">        if (!ids.add(model)) throw duplicate();</span>
+<span class="pc bpc" id="L113" title="1 of 4 branches missed.">        for (Relation r : relations.values()) if (!ids.add(r.id())) throw duplicate();</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">        if (objects.size() + relations.size() &gt; ExchangeXml.MAX_ARTIFACTS) throw ExchangeXml.invalid(&quot;ITEM_LIMIT&quot;, &quot;Sparx scope exceeds the item bound&quot;);</span>
+<span class="fc" id="L115">        SparxModelValidator.features(objects);</span>
+<span class="fc" id="L116">        Set&lt;String&gt; taxonomyIds = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        for (Artifact a : objects.values()) SparxModelValidator.checkTags(a.attributes(), taxonomyIds, profile + &quot;@&quot; + profileVersion);</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        for (Relation r : relations.values()) SparxModelValidator.checkTags(r.attributes(), taxonomyIds, profile + &quot;@&quot; + profileVersion);</span>
+<span class="fc" id="L119">        List&lt;Placement&gt; placements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L120">        Map&lt;String,Resource&gt; roots = new TreeMap&lt;&gt;(); resources.forEach(r -&gt; roots.put(guid(r.id()), r));</span>
+<span class="fc" id="L121">        Map&lt;String,Integer&gt; positions = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        for (Resource r : roots.values()) {</span>
+<span class="pc bpc" id="L123" title="1 of 4 branches missed.">            String parent = r.parent() == null || r.parent().isEmpty() ? null : guid(r.parent());</span>
+<span class="fc" id="L124">            Set&lt;String&gt; seen = new HashSet&lt;&gt;(); String ancestor = parent;</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">            while (ancestor != null) {</span>
+<span class="pc bpc" id="L126" title="3 of 6 branches missed.">                if (!seen.add(ancestor) || seen.size() &gt;= 80 || ancestor.equals(guid(r.id())))</span>
+<span class="nc" id="L127">                    throw ExchangeXml.invalid(&quot;HIERARCHY_CYCLE&quot;, &quot;Package hierarchy is cyclic or too deep&quot;);</span>
+<span class="fc" id="L128">                Resource p = roots.get(ancestor);</span>
+<span class="pc bpc" id="L129" title="2 of 4 branches missed.">                if (p == null || p.kind() != ArtifactKind.SPECIFICATION)</span>
+<span class="nc" id="L130">                    throw ExchangeXml.invalid(&quot;SPARX_AM_PARENT_MISSING&quot;, &quot;Parent package is outside the scope&quot;);</span>
+<span class="pc bpc" id="L131" title="1 of 4 branches missed.">                ancestor = p.parent() == null || p.parent().isEmpty() ? null : guid(p.parent());</span>
+<span class="fc" id="L132">            }</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">            placements.add(new Placement(&quot;placement:&quot; + guid(r.id()), model, parent == null ? null : &quot;placement:&quot; + parent,</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">                    guid(r.id()), r.position() == null ? positions.getOrDefault(parent, 0) : r.position(), Map.of()));</span>
+<span class="fc" id="L135">            positions.merge(parent, 1, Integer::sum);</span>
+<span class="fc" id="L136">        }</span>
+<span class="fc" id="L137">        losses.sort(Comparator.comparing((MappingLoss l) -&gt; Objects.toString(l.artifactId(), &quot;&quot;)).thenComparing(MappingLoss::field).thenComparing(MappingLoss::code));</span>
+<span class="fc" id="L138">        return new ExchangeDocument(profile, profileVersion, version, complete, source, List.copyOf(objects.values()),</span>
+<span class="fc" id="L139">                List.copyOf(relations.values()), placements, metadata, losses);</span>
+    }
+    private static String mappedType(String type, Map&lt;String,String&gt; attributes, Map&lt;String,String&gt; extensions) {
+<span class="pc bpc" id="L142" title="1 of 4 branches missed.">        if (&quot;UNMAPPED&quot;.equals(extensions.get(&quot;stereotypeMapping&quot;)) &amp;&amp; !attributes.containsKey(&quot;tag:taxonomy.elementType&quot;)) return null;</span>
+<span class="fc" id="L143">        return elementType(type, extensions.get(&quot;stereotype&quot;), attributes.get(&quot;tag:taxonomy.elementType&quot;));</span>
+    }
+    static MappingLoss loss(String id, String field, String code, LossDisposition disposition) {
+<span class="fc" id="L146">        return new MappingLoss(id, field, code, disposition, &quot;Bounded Sparx feature requires explicit review; no implicit native authoring&quot;);</span>
+    }
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">    private static void put(Map&lt;String,Artifact&gt; values, Artifact value) { if (values.putIfAbsent(value.id(), value) != null) throw duplicate(); }</span>
+<span class="fc" id="L149">    private static RuntimeException duplicate() { return ExchangeXml.invalid(&quot;DUPLICATE_IDENTITY&quot;, &quot;Conflicting or duplicate Sparx identity&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

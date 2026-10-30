@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReportApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.report</a> &gt; <span class="el_source">ReportApiController.java</span></div><h1>ReportApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.report;
+
+import com.taxonomy.analysis.cluster.ClusterAnalysisObservation;
+import com.taxonomy.analysis.recovery.AnalysisContinuationService;
+import com.taxonomy.reporting.render.document.ReportRendererRegistry;
+import com.taxonomy.reporting.render.decision.DecisionReportLanguage;
+import com.taxonomy.dto.AnalysisLanguage;
+import com.taxonomy.architecture.service.ArchitectureReportService;
+import com.taxonomy.dto.ArchitectureReport;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.Map;
+import java.util.Objects;
+
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;architecture&quot;, &quot;reporting&quot;})
+@RestController
+@RequestMapping(&quot;/api/report&quot;)
+@Tag(name = &quot;Report Export&quot;)
+public class ReportApiController {
+
+    private final ArchitectureReportService reportService;
+    private final ReportRendererRegistry reportRendererRegistry;
+    private final RepositoryStateService repositoryStateService;
+    private final WorkspaceResolver workspaceResolver;
+    private final AnalysisContinuationService continuations;
+    private final ClusterAnalysisObservation cluster;
+
+    public ReportApiController(ArchitectureReportService reportService,
+                               ReportRendererRegistry reportRendererRegistry,
+                               RepositoryStateService repositoryStateService,
+                               WorkspaceResolver workspaceResolver) {
+<span class="fc" id="L53">        this(reportService, reportRendererRegistry, repositoryStateService, workspaceResolver, null, null);</span>
+<span class="fc" id="L54">    }</span>
+
+    @Autowired
+    public ReportApiController(ArchitectureReportService reportService,
+                               ReportRendererRegistry reportRendererRegistry,
+                               RepositoryStateService repositoryStateService,
+                               WorkspaceResolver workspaceResolver,
+                               ObjectProvider&lt;AnalysisContinuationService&gt; continuations,
+<span class="fc" id="L62">                               ObjectProvider&lt;ClusterAnalysisObservation&gt; cluster) {</span>
+<span class="fc" id="L63">        this.reportService = reportService;</span>
+<span class="fc" id="L64">        this.reportRendererRegistry = reportRendererRegistry;</span>
+<span class="fc" id="L65">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L66">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        this.continuations = continuations == null ? null : continuations.getIfAvailable();</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        this.cluster = cluster == null ? null : cluster.getIfAvailable();</span>
+<span class="fc" id="L69">    }</span>
+
+<span class="fc" id="L71">    public record AnalysisReference(String operationId, String continuationId, String workspaceId) { }</span>
+
+<span class="fc" id="L73">    public record ReportRequest(</span>
+            Map&lt;String, Double&gt; scores,
+            String businessText,
+            Integer minScore,
+            Map&lt;String, String&gt; reasons,
+            AnalysisLanguage analysisLanguage,
+            String language,
+            AnalysisReference analysisReference) {
+        public ReportRequest(Map&lt;String, Double&gt; scores, String businessText, int minScore) {
+<span class="fc" id="L82">            this(scores, businessText, minScore, Map.of(), null, null);</span>
+<span class="fc" id="L83">        }</span>
+        public ReportRequest(Map&lt;String, Double&gt; scores, String businessText, int minScore,
+                             Map&lt;String, String&gt; reasons, AnalysisLanguage analysisLanguage, String language) {
+<span class="fc" id="L86">            this(scores, businessText, minScore, reasons, analysisLanguage, language, null);</span>
+<span class="fc" id="L87">        }</span>
+    }
+
+    @Operation(summary = &quot;Export Markdown report&quot;,
+            description = &quot;Generates a comprehensive architecture report as Markdown&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Markdown report returned&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Scores are missing&quot;)
+    @PostMapping(&quot;/markdown&quot;)
+    public ResponseEntity&lt;byte[]&gt; exportMarkdown(@RequestBody ReportRequest request) {
+<span class="fc" id="L96">        return render(request, &quot;markdown&quot;);</span>
+    }
+
+    @Operation(summary = &quot;Export HTML report&quot;,
+            description = &quot;Generates a comprehensive architecture report as standalone HTML&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;HTML report returned&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Scores are missing&quot;)
+    @PostMapping(&quot;/html&quot;)
+    public ResponseEntity&lt;byte[]&gt; exportHtml(@RequestBody ReportRequest request) {
+<span class="fc" id="L105">        return render(request, &quot;html&quot;);</span>
+    }
+
+    @Operation(summary = &quot;Export DOCX report&quot;,
+            description = &quot;Generates a comprehensive architecture report as Word document&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;DOCX report returned as binary&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Scores are missing&quot;)
+    @PostMapping(&quot;/docx&quot;)
+    public ResponseEntity&lt;byte[]&gt; exportDocx(@RequestBody ReportRequest request) {
+<span class="fc" id="L114">        return render(request, &quot;docx&quot;);</span>
+    }
+
+    @Operation(summary = &quot;Export JSON report&quot;,
+            description = &quot;Returns the full architecture report as structured JSON&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;JSON report returned&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Scores are missing&quot;)
+    @PostMapping(&quot;/json&quot;)
+    public ResponseEntity&lt;ArchitectureReport&gt; exportJson(@RequestBody ReportRequest request) {
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (!isValid(request)) {</span>
+<span class="fc" id="L124">            return ResponseEntity.badRequest().build();</span>
+        }
+<span class="fc" id="L126">        ArchitectureReport report = prepareReport(request).report();</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (request.analysisReference() == null) {</span>
+<span class="fc" id="L128">            WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L129">            String username = context.username();</span>
+<span class="fc" id="L130">            String branch = repositoryStateService.resolveWorkspaceBranch(username);</span>
+<span class="fc" id="L131">            report.setViewContext(repositoryStateService.getViewContext(username, branch, context));</span>
+        }
+<span class="fc" id="L133">        return ResponseEntity.ok(report);</span>
+    }
+
+    private ResponseEntity&lt;byte[]&gt; render(ReportRequest request, String formatId) {
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        if (!isValid(request)) {</span>
+<span class="fc" id="L138">            return ResponseEntity.badRequest().build();</span>
+        }
+<span class="fc" id="L140">        PreparedReport prepared = prepareReport(request);</span>
+<span class="fc" id="L141">        ReportRendererExtension renderer = reportRendererRegistry.getRequired(formatId);</span>
+<span class="fc" id="L142">        ReportFormatDescriptor format = renderer.descriptor();</span>
+<span class="fc" id="L143">        String language = DecisionReportLanguage.resolve(</span>
+<span class="fc" id="L144">                DecisionReportLanguage.optionalOverride(request.language()), prepared.language()).toLanguageTag();</span>
+<span class="fc" id="L145">        ReportRenderResult rendered = renderer.render(new ReportRenderContext(prepared.report(), Map.of(</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">                &quot;language&quot;, language, &quot;nodeReasons&quot;, prepared.reasons() == null ? Map.of() : prepared.reasons())));</span>
+<span class="fc" id="L147">        return ResponseEntity.ok()</span>
+<span class="fc" id="L148">                .header(HttpHeaders.CONTENT_DISPOSITION,</span>
+                        &quot;attachment; filename=\&quot;architecture-report.&quot;
+<span class="fc" id="L150">                                + format.fileExtension() + &quot;\&quot;&quot;)</span>
+<span class="fc" id="L151">                .contentType(MediaType.parseMediaType(format.contentType()))</span>
+<span class="fc" id="L152">                .body(rendered.bytes());</span>
+    }
+
+<span class="fc" id="L155">    private record PreparedReport(ArchitectureReport report, Map&lt;String, String&gt; reasons, AnalysisLanguage language) { }</span>
+
+    private PreparedReport prepareReport(ReportRequest request) {
+<span class="fc" id="L158">        AnalysisReference reference = request.analysisReference();</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        if (reference == null) {</span>
+<span class="fc" id="L160">            return new PreparedReport(reportService.generateReport(request.scores(), request.businessText(),</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">                    request.minScore() == null ? 0 : request.minScore()),</span>
+<span class="fc" id="L162">                    request.reasons(), request.analysisLanguage());</span>
+        }
+<span class="fc" id="L164">        WorkspaceContext scope = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L165">        String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="pc bpc" id="L166" title="1 of 4 branches missed.">        if (!hasText(reference.workspaceId()) || !Objects.equals(reference.workspaceId(), scope.workspaceId())) {</span>
+<span class="fc" id="L167">            throw new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;Saved analysis not found&quot;);</span>
+        }
+        AnalysisResult result;
+        String businessText;
+        AnalysisLanguage language;
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        if (hasText(reference.continuationId())) {</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">            if (continuations == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;Saved analysis not found&quot;);</span>
+<span class="fc" id="L174">            var snapshot = continuations.read(reference.continuationId(), username, scope);</span>
+<span class="fc" id="L175">            result = snapshot.result();</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">            if (hasText(reference.operationId())) {</span>
+<span class="pc bpc" id="L177" title="2 of 6 branches missed.">                if (hasText(snapshot.clusterOperationId()) &amp;&amp; !Objects.equals(reference.operationId(), snapshot.clusterOperationId())</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">                        || result != null &amp;&amp; hasText(result.getAnalysisOperationId())</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">                        &amp;&amp; !Objects.equals(reference.operationId(), result.getAnalysisOperationId())</span>
+<span class="pc bpc" id="L180" title="5 of 6 branches missed.">                        || !hasText(snapshot.clusterOperationId()) &amp;&amp; (result == null || !hasText(result.getAnalysisOperationId()))) {</span>
+<span class="fc" id="L181">                    throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Saved analysis references disagree&quot;);</span>
+                }
+            }
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">            if (snapshot.request() == null) throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Saved analysis input is unavailable&quot;);</span>
+<span class="fc" id="L185">            businessText = snapshot.request().getBusinessText();</span>
+<span class="fc" id="L186">            language = snapshot.request().getAnalysisLanguage();</span>
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">        } else if (hasText(reference.operationId())) {</span>
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">            if (cluster == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;Saved analysis not found&quot;);</span>
+<span class="fc" id="L189">            var input = cluster.request(reference.operationId(), username, scope);</span>
+<span class="fc" id="L190">            result = cluster.result(reference.operationId(), username, scope);</span>
+<span class="fc" id="L191">            businessText = input.businessText();</span>
+<span class="fc" id="L192">            language = input.analysisLanguage();</span>
+<span class="fc" id="L193">        } else {</span>
+<span class="nc" id="L194">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;An analysis operation or continuation is required&quot;);</span>
+        }
+        // Historical absence is distinct from a completed report with empty findings.
+        // Never turn a failed/not-yet-retained result into a fresh global computation.
+<span class="pc bpc" id="L198" title="1 of 4 branches missed.">        if (result == null || result.getCopilot() == null) {</span>
+<span class="fc" id="L199">            throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;The saved Copilot report is not available&quot;);</span>
+        }
+<span class="fc" id="L201">        return new PreparedReport(reportService.generateRetainedReport(result, businessText), result.getReasons(),</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">                result.getAnalysisLanguage() != null ? result.getAnalysisLanguage() : language);</span>
+    }
+
+<span class="pc bpc" id="L205" title="1 of 4 branches missed.">    private static boolean hasText(String value) { return value != null &amp;&amp; !value.isBlank(); }</span>
+
+    private boolean isValid(ReportRequest request) {
+<span class="fc bfc" id="L208" title="All 8 branches covered.">        return request != null &amp;&amp; (request.analysisReference() != null || request.scores() != null &amp;&amp; !request.scores().isEmpty());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

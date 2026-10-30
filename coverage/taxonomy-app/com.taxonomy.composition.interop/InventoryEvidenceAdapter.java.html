@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>InventoryEvidenceAdapter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.interop</a> &gt; <span class="el_source">InventoryEvidenceAdapter.java</span></div><h1>InventoryEvidenceAdapter.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.interop;
+import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.*;
+import com.taxonomy.extension.api.inventory.InventoryEvidencePort;
+import com.taxonomy.interop.IntegrationJson;
+import com.taxonomy.interop.inventory.*;
+import org.springframework.stereotype.Service;
+import java.util.*;
+import java.util.function.Supplier;
+/** Joins inventory journal/source ownership with the portfolio comparison workflow. */
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;interop&quot;,&quot;portfolio&quot;})
+@Service
+public class InventoryEvidenceAdapter implements InventoryEvidencePort {
+    private final InventoryJournal journal;private final InventorySourceHost sources;private final IntegrationJson json;
+<span class="fc" id="L14">    public InventoryEvidenceAdapter(InventoryJournal journal,InventorySourceHost sources,IntegrationJson json){this.journal=journal;this.sources=sources;this.json=json;}</span>
+<span class="fc" id="L15">    public List&lt;Assertion&gt; assertions(Scope s,String candidate){return call(()-&gt;journal.assertions(s,candidate));}</span>
+<span class="fc" id="L16">    public void appendAssertion(Scope s,Assertion a){call(()-&gt;{journal.append(s,a);return null;});}</span>
+<span class="fc" id="L17">    public SourceRead readSources(Scope s,Demand d,List&lt;String&gt; ids){return call(()-&gt;sources.read(s,d,ids));}</span>
+<span class="fc" id="L18">    public void authorize(Scope s,Demand d,List&lt;SourceEvidence&gt; refs){call(()-&gt;{sources.authorize(s,d,refs);return null;});}</span>
+<span class="fc" id="L19">    public void revalidate(Scope s,Demand d,List&lt;SourceEvidence&gt; refs){call(()-&gt;{sources.revalidate(s,d,refs);return null;});}</span>
+<span class="fc" id="L20">    public String fingerprint(Object value){return json.fingerprint(value);}</span>
+<span class="fc" id="L21">    public void save(Scope s,Comparison c){call(()-&gt;{journal.save(s,c);return null;});}</span>
+<span class="fc" id="L22">    public Comparison read(Scope s,UUID id){return call(()-&gt;journal.read(s,id));}</span>
+<span class="fc" id="L23">    public List&lt;Comparison&gt; list(Scope s,Long project,String snapshot){return call(()-&gt;journal.list(s,project,snapshot));}</span>
+<span class="fc" id="L24">    public List&lt;Reviewed&gt; reviews(Scope s,UUID id){return call(()-&gt;journal.reviews(s,id));}</span>
+<span class="fc" id="L25">    public Reviewed review(Scope s,UUID id,Review r,Supplier&lt;Void&gt; apply){return call(()-&gt;journal.review(s,id,r,apply));}</span>
+<span class="nc" id="L26">    public void map(Scope s,Mapping m){call(()-&gt;{journal.map(s,m);return null;});}</span>
+<span class="nc" id="L27">    public List&lt;Mapping&gt; mappings(Scope s,String candidate){return call(()-&gt;journal.mappings(s,candidate));}</span>
+    private &lt;T&gt; T call(Supplier&lt;T&gt; action) {
+<span class="fc" id="L29">        try{return action.get();}</span>
+<span class="fc" id="L30">        catch(com.taxonomy.interop.IntegrationProblem p){throw new Failure(p.code(),p.status(),p.getMessage());}</span>
+<span class="nc" id="L31">        catch(com.taxonomy.extension.api.inventory.InventoryReadContracts.ReadFailure p){throw new Failure(p.code(),502,p.getMessage());}</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

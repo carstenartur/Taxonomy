@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArtemisProviderQuotaSettings.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">ArtemisProviderQuotaSettings.java</span></div><h1>ArtemisProviderQuotaSettings.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import com.taxonomy.extension.api.llm.ProviderId;
+import com.taxonomy.analysis.service.ProviderRateQuotas.TokenBudget;
+import java.util.Map;
+
+record ArtemisProviderQuotaSettings(String destinationPrefix, Map&lt;ProviderId, String&gt; providerGroups,
+                                    Map&lt;String, ProviderQuotaLedger.Policy&gt; policies,
+                                    Map&lt;String, TokenBudget&gt; tokenBudgets, long maximumWaitMillis) {
+<span class="fc" id="L10">    ArtemisProviderQuotaSettings {</span>
+<span class="fc" id="L11">        new ArtemisProviderPermitSettings(destinationPrefix, providerGroups, maximumWaitMillis);</span>
+<span class="fc" id="L12">        providerGroups = Map.copyOf(providerGroups); policies = Map.copyOf(policies); tokenBudgets = Map.copyOf(tokenBudgets);</span>
+<span class="pc bpc" id="L13" title="1 of 4 branches missed.">        if (providerGroups.isEmpty() || !policies.keySet().equals(new java.util.HashSet&lt;&gt;(providerGroups.values()))) {</span>
+<span class="fc" id="L14">            throw new IllegalArgumentException(&quot;Explicit provider quota group/policy coverage is required&quot;);</span>
+        }
+<span class="fc" id="L16">        var tokenGroups = new java.util.HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L17" title="All 2 branches covered.">        for (var entry : policies.entrySet()) {</span>
+<span class="fc" id="L18">            String group = entry.getKey(); var policy = entry.getValue();</span>
+<span class="fc" id="L19">            ArtemisProviderPermitSettings.validateGroup(group);</span>
+<span class="fc bfc" id="L20" title="All 2 branches covered.">            if (policy.tpm() &gt; 0) {</span>
+<span class="fc" id="L21">                tokenGroups.add(group); var budget = tokenBudgets.get(group);</span>
+<span class="pc bpc" id="L22" title="2 of 4 branches missed.">                if (budget == null || budget.inputUpperBound() != policy.inputUpperBound()</span>
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">                        || budget.maximumOutputTokens() != policy.outputCap()) {</span>
+<span class="nc" id="L24">                    throw new IllegalArgumentException(&quot;TPM policy requires its exact token budget contract&quot;);</span>
+                }
+            }
+<span class="fc" id="L27">        }</span>
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">        if (!tokenGroups.equals(tokenBudgets.keySet())) throw new IllegalArgumentException(&quot;Unexpected token quota budget group&quot;);</span>
+<span class="fc" id="L29">    }</span>
+    String group(com.taxonomy.extension.api.llm.ProviderId provider) {
+<span class="fc" id="L31">        String group = providerGroups.get(provider);</span>
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">        if (group == null) throw new com.taxonomy.analysis.service.ProviderRateQuotas.UnavailableException(&quot;No explicit provider rate quota group&quot;, null);</span>
+<span class="fc" id="L33">        return group;</span>
+    }
+<span class="fc" id="L35">    String queueName(String group) { ArtemisProviderPermitSettings.validateGroup(group); return destinationPrefix + &quot;.&quot; + group; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

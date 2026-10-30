@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationProgressController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.reformulation</a> &gt; <span class="el_source">ReformulationProgressController.java</span></div><h1>ReformulationProgressController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.reformulation;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import com.taxonomy.portfolio.reformulation.ReformulationProgressService;
+import com.taxonomy.portfolio.reformulation.ReformulationUsageService;
+import com.taxonomy.portfolio.reformulation.ReformulationProgressService.Partial;
+import com.taxonomy.portfolio.reformulation.ReformulationProgressService.Progress;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+/** Inspection is GET-only, authenticated and scoped; it cannot change the original or proposal. */
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;portfolio&quot;})
+@RestController
+@Tag(name = &quot;Reformulation progress&quot;)
+@RequestMapping(&quot;/api/projects/{projectId}/requirements/{requirementId}/reformulations/{proposalId}/synthesis-runs/{runId}&quot;)
+public class ReformulationProgressController {
+    private final ReformulationProgressService progress;
+    private final WorkspaceResolver resolver;
+    private final ReformulationUsageService usage;
+<span class="fc" id="L28">    public ReformulationProgressController(ReformulationProgressService progress, WorkspaceResolver resolver, ReformulationUsageService usage) {</span>
+<span class="fc" id="L29">        this.progress = progress;</span>
+<span class="fc" id="L30">        this.usage = usage;</span>
+<span class="fc" id="L31">        this.resolver = resolver;</span>
+<span class="fc" id="L32">    }</span>
+    @GetMapping(&quot;/usage&quot;)
+    @Operation(summary = &quot;Read synthesis provider usage&quot;,
+            description = &quot;Returns the retained usage summary for the authorized synthesis run. This private read does not execute a provider call, change the proposal or adopt requirement text.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Operation completed&quot;)
+    public ResponseEntity&lt;ReformulationUsageService.Summary&gt; usage(@Parameter(description = &quot;Project containing the scoped resource&quot;) @PathVariable Long projectId, @Parameter(description = &quot;Requirement within the selected project&quot;) @PathVariable Long requirementId,
+            @Parameter(description = &quot;Existing reformulation proposal identifier&quot;) @PathVariable String proposalId, @Parameter(description = &quot;Existing synthesis run identifier&quot;) @PathVariable String runId) {
+<span class="fc" id="L39">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(usage.summary(projectId, requirementId, proposalId, runId,</span>
+<span class="fc" id="L40">                resolver.resolveCurrentUsername(), resolver.resolveCurrentContext()));</span>
+    }
+    @GetMapping(&quot;/progress&quot;)
+    @Operation(summary = &quot;Read paginated synthesis progress&quot;,
+            description = &quot;Returns bounded progress and checkpoint summaries for the selected synthesis run. Use the returned continuation cursor as after; limit bounds the requested page. No provider call or proposal mutation is performed.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Operation completed&quot;)
+    public ResponseEntity&lt;Progress&gt; progress(@Parameter(description = &quot;Project containing the scoped resource&quot;) @PathVariable Long projectId, @Parameter(description = &quot;Requirement within the selected project&quot;) @PathVariable Long requirementId,
+            @Parameter(description = &quot;Existing reformulation proposal identifier&quot;) @PathVariable String proposalId, @Parameter(description = &quot;Existing synthesis run identifier&quot;) @PathVariable String runId,
+            @Parameter(description = &quot;Maximum progress summaries in the requested page&quot;) @RequestParam(defaultValue = &quot;20&quot;) int limit, @Parameter(description = &quot;Opaque cursor returned by the preceding progress page&quot;) @RequestParam(required = false) String after) {
+<span class="fc" id="L49">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(progress.progress(projectId, requirementId, proposalId, runId,</span>
+<span class="fc" id="L50">                limit, after, resolver.resolveCurrentUsername(), resolver.resolveCurrentContext()));</span>
+    }
+    @GetMapping(&quot;/progress/checkpoints/{checkpointId}&quot;)
+    @Operation(summary = &quot;Read a retained synthesis checkpoint&quot;,
+            description = &quot;Returns the stored partial evidence identified by checkpointId within the authorized run. Partial output is not a completed proposal or an accepted requirement.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Operation completed&quot;)
+    public ResponseEntity&lt;Partial&gt; partial(@Parameter(description = &quot;Project containing the scoped resource&quot;) @PathVariable Long projectId, @Parameter(description = &quot;Requirement within the selected project&quot;) @PathVariable Long requirementId,
+            @Parameter(description = &quot;Existing reformulation proposal identifier&quot;) @PathVariable String proposalId, @Parameter(description = &quot;Existing synthesis run identifier&quot;) @PathVariable String runId, @Parameter(description = &quot;Checkpoint identifier returned in run progress&quot;) @PathVariable String checkpointId) {
+<span class="fc" id="L58">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(progress.partial(projectId, requirementId, proposalId, runId,</span>
+<span class="fc" id="L59">                checkpointId, resolver.resolveCurrentUsername(), resolver.resolveCurrentContext()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

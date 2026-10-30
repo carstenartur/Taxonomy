@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>FeatureAssembly.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.features</a> &gt; <span class="el_source">FeatureAssembly.java</span></div><h1>FeatureAssembly.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.features;
+
+import java.io.IOException;
+import java.util.*;
+
+/** Supported startup packages and their actual Maven prerequisites. No feature is hot-unloaded. */
+public final class FeatureAssembly {
+    private FeatureAssembly() { }
+<span class="fc" id="L9">    private static final Map&lt;String, Set&lt;String&gt;&gt; REQUIRED = Map.of(</span>
+<span class="fc" id="L10">            &quot;templates&quot;, Set.of(), &quot;architecture&quot;, Set.of(), &quot;reporting&quot;, Set.of(&quot;templates&quot;),</span>
+<span class="fc" id="L11">            &quot;analysis&quot;, Set.of(&quot;architecture&quot;), &quot;portfolio&quot;, Set.of(&quot;analysis&quot;, &quot;architecture&quot;, &quot;reporting&quot;),</span>
+<span class="fc" id="L12">            &quot;interop&quot;, Set.of());</span>
+<span class="fc" id="L13">    private static final Map&lt;String, String&gt; MARKERS = Map.of(</span>
+            &quot;templates&quot;, &quot;com/taxonomy/templates/DocumentTemplateService.class&quot;,
+            &quot;architecture&quot;, &quot;com/taxonomy/architecture/service/RequirementArchitectureViewService.class&quot;,
+            &quot;reporting&quot;, &quot;com/taxonomy/reporting/config/ReportingAutoConfiguration.class&quot;,
+            &quot;analysis&quot;, &quot;com/taxonomy/analysis/service/LlmService.class&quot;,
+            &quot;portfolio&quot;, &quot;com/taxonomy/portfolio/service/ProjectPortfolioService.class&quot;,
+            &quot;interop&quot;, &quot;com/taxonomy/interop/controller/IntegrationController.class&quot;);
+
+    public static FeatureSet validate(Set&lt;String&gt; installed) {
+<span class="fc" id="L22">        var copy = new TreeSet&lt;&gt;(Objects.requireNonNull(installed, &quot;installed&quot;));</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        for (String feature : copy) {</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">            if (!REQUIRED.containsKey(feature)) throw new IllegalArgumentException(&quot;Unknown startup feature: &quot; + feature);</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">            for (String dependency : new TreeSet&lt;&gt;(REQUIRED.get(feature))) {</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">                if (!copy.contains(dependency)) throw new IllegalArgumentException(feature + &quot; requires &quot; + dependency);</span>
+<span class="fc" id="L27">            }</span>
+<span class="fc" id="L28">        }</span>
+<span class="fc" id="L29">        return new FeatureSet(copy);</span>
+    }
+    public static FeatureSet discover(ClassLoader loader) {
+<span class="fc" id="L32">        return discover(loader, FeatureAssembly.class.getPackage().getImplementationVersion());</span>
+    }
+    static FeatureSet discover(ClassLoader loader, String hostVersion) {
+<span class="fc" id="L35">        var installed = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L36">        var locations = new HashMap&lt;String, java.net.URL&gt;();</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        for (var marker : MARKERS.entrySet()) {</span>
+            try {
+<span class="fc" id="L39">                var resources = Collections.list(loader.getResources(marker.getValue()));</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">                if (resources.size() &gt; 1) throw new IllegalArgumentException(&quot;Duplicate startup feature: &quot; + marker.getKey());</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">                if (!resources.isEmpty()) { installed.add(marker.getKey()); locations.put(marker.getKey(), resources.getFirst()); }</span>
+<span class="pc" id="L42">            } catch (IOException failure) { throw new IllegalStateException(&quot;Cannot inventory startup feature &quot; + marker.getKey(), failure); }</span>
+<span class="fc" id="L43">        }</span>
+<span class="fc" id="L44">        FeatureSet result = validate(installed);</span>
+<span class="fc" id="L45">        var artifacts = new TreeMap&lt;String, com.taxonomy.extension.api.plugin.PluginIdentity&gt;();</span>
+        {
+<span class="fc bfc" id="L47" title="All 2 branches covered.">            for (var feature : locations.entrySet()) {</span>
+                try {
+<span class="fc" id="L49">                    var connection = feature.getValue().openConnection();</span>
+<span class="fc" id="L50">                    connection.setUseCaches(false);</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">                    if (!(connection instanceof java.net.JarURLConnection)) {</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">                        if (hostVersion != null) throw new IllegalArgumentException(&quot;Packaged host requires a packaged startup feature: &quot; + feature.getKey());</span>
+<span class="nc" id="L53">                        continue; // Exploded development classes have no distributable artifact identity.</span>
+                    }
+<span class="fc" id="L55">                    var jar = (java.net.JarURLConnection) connection;</span>
+                    String version;
+<span class="fc" id="L57">                    try (var archive = jar.getJarFile()) {</span>
+<span class="fc" id="L58">                        var manifest = archive.getManifest();</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">                        version = manifest == null ? null : manifest.getMainAttributes().getValue(&quot;Implementation-Version&quot;);</span>
+                    }
+<span class="fc bfc" id="L61" title="All 4 branches covered.">                    if (hostVersion != null &amp;&amp; !hostVersion.equals(version))</span>
+<span class="fc" id="L62">                        throw new IllegalArgumentException(&quot;Incompatible startup feature version: &quot; + feature.getKey()</span>
+                                + &quot; requires host &quot; + hostVersion);
+<span class="fc" id="L64">                    var digest = java.security.MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L65">                    try (var input = new java.security.DigestInputStream(jar.getJarFileURL().openStream(), digest)) {</span>
+<span class="fc" id="L66">                        input.transferTo(java.io.OutputStream.nullOutputStream());</span>
+                    }
+<span class="fc" id="L68">                    artifacts.put(feature.getKey(), new com.taxonomy.extension.api.plugin.PluginIdentity(</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">                            &quot;taxonomy.feature.&quot; + feature.getKey(), version == null ? &quot;0.0.0-dev&quot; : version,</span>
+<span class="fc" id="L70">                            java.util.HexFormat.of().formatHex(digest.digest())));</span>
+<span class="nc" id="L71">                } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible);</span>
+<span class="pc" id="L72">                } catch (IOException failure) { throw new IllegalStateException(&quot;Cannot verify startup feature &quot; + feature.getKey(), failure); }</span>
+<span class="fc" id="L73">            }</span>
+        }
+<span class="fc" id="L75">        return new FeatureSet(result.installed(), artifacts);</span>
+    }
+    public record FeatureSet(Set&lt;String&gt; installed, Map&lt;String, com.taxonomy.extension.api.plugin.PluginIdentity&gt; artifacts) {
+<span class="fc" id="L78">        public FeatureSet(Set&lt;String&gt; installed) { this(installed, Map.of()); }</span>
+<span class="fc" id="L79">        public FeatureSet { installed = Collections.unmodifiableSet(new TreeSet&lt;&gt;(installed)); artifacts = Map.copyOf(artifacts); }</span>
+<span class="fc" id="L80">        public boolean has(String id) { return installed.contains(id); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

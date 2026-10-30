@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ClusterAnalysisRun.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">ClusterAnalysisRun.java</span></div><h1>ClusterAnalysisRun.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.DynamicUpdate;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+/** Durable coordinator authority. Large frozen shard data lives in separate rows. */
+@Entity @DynamicUpdate
+@Table(name = &quot;analysis_cluster_run&quot;, indexes = {
+        @Index(name = &quot;idx_analysis_cluster_owner&quot;, columnList = &quot;username,created_at&quot;),
+        @Index(name = &quot;idx_analysis_cluster_scope&quot;, columnList = &quot;username,scope_key,created_at&quot;)})
+public class ClusterAnalysisRun {
+    @Id @Column(length = 128) String id;
+    @Column(nullable = false, length = 160) String username;
+    @Column(name = &quot;scope_key&quot;, nullable = false, length = 64) String scopeKey;
+    @Column(name = &quot;project_id&quot;) Long projectId;
+    @Column(name = &quot;requirement_id&quot;) Long requirementId;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = &quot;context_json&quot;, nullable = false) String contextJson;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = &quot;command_json&quot;, nullable = false) String commandJson;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = &quot;view_json&quot;) String viewJson;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = &quot;result_json&quot;) String resultJson;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = &quot;relation_plan_json&quot;) String relationPlanJson;
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 32) ClusterAnalysisState state;
+    @Column(name = &quot;total_roots&quot;, nullable = false) int totalRoots;
+    @Column(name = &quot;completed_roots&quot;, nullable = false) int completedRoots;
+    @Column(name = &quot;event_revision&quot;, nullable = false) long revision;
+    @Column(name = &quot;created_at&quot;, nullable = false) long createdAt;
+    @Column(name = &quot;updated_at&quot;, nullable = false) long updatedAt;
+    @Version @Column(name = &quot;row_version&quot;, nullable = false) long version;
+<span class="fc" id="L31">    protected ClusterAnalysisRun() { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

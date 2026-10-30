@@ -1,0 +1,384 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DemoReplyBook.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.demo</a> &gt; <span class="el_source">DemoReplyBook.java</span></div><h1>DemoReplyBook.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.demo;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Deterministic replacement for exactly one external model reply.
+ *
+ * &lt;p&gt;The product assembles the real prompt; this class only selects the authored
+ * reply for the bound scenario and iteration. It never reads the reference
+ * annotation, never consults the network and refuses prompts it cannot answer
+ * exactly. Identical prompts always yield byte-identical replies.&lt;/p&gt;
+ */
+public final class DemoReplyBook {
+<span class="fc" id="L26">    private static final JsonMapper JSON = JsonMapper.builder().build();</span>
+    static final String RELATION_PREFIX = &quot;You assess requirement-scoped architectural relationships. Protocol: relation-downwalk-v1.\n&quot;;
+    private static final String NODE_MARKER = &quot;\nINPUT_DATA_JSON\n&quot;;
+    private static final String RECONCILE_MARKER = &quot;\nRECONCILIATION_DATA_JSON\n&quot;;
+    private static final String ROOT_MARKER = &quot;This is one root assessment&quot;;
+    private static final String PRODUCT_MARKER = &quot;Concrete Information Product candidates&quot;;
+<span class="fc" id="L32">    private static final Pattern KEYS = Pattern.compile(&quot;using EXACTLY these keys: ([^\\n]+)&quot;);</span>
+<span class="fc" id="L33">    private static final Pattern PARENT_SCORE = Pattern.compile(</span>
+            &quot;The scores must sum to (\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)(?=\\.(?:\\s|$)|\\s|$)&quot;);
+<span class="fc" id="L35">    private static final Pattern LEAF = Pattern.compile(&quot;Node to explain: (\\S+)&quot;);</span>
+
+    private final DemoScenario scenario;
+    private final DemoScenario.Iteration iteration;
+
+<span class="fc" id="L40">    public DemoReplyBook(DemoScenario scenario, String iteration) {</span>
+<span class="fc" id="L41">        this.scenario = scenario;</span>
+<span class="fc" id="L42">        this.iteration = scenario.iteration(iteration);</span>
+<span class="fc" id="L43">    }</span>
+
+<span class="nc" id="L45">    public String scenarioId() { return scenario.id(); }</span>
+<span class="nc" id="L46">    public String iteration() { return iteration.name(); }</span>
+
+    public String reply(String prompt) {
+<span class="pc bpc" id="L49" title="2 of 4 branches missed.">        if (prompt == null || prompt.isBlank()) throw failure(DemoReplayException.Code.UNKNOWN_PROMPT, &quot;empty prompt&quot;);</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (prompt.startsWith(RELATION_PREFIX)) return relation(prompt);</span>
+<span class="fc" id="L51">        int reconcile = prompt.lastIndexOf(RECONCILE_MARKER);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (reconcile &gt;= 0) return reconcile(payload(prompt, reconcile + RECONCILE_MARKER.length()));</span>
+<span class="fc" id="L53">        int node = prompt.lastIndexOf(NODE_MARKER);</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        if (node &gt;= 0) return node(payload(prompt, node + NODE_MARKER.length()));</span>
+<span class="fc" id="L55">        Matcher parent = PARENT_SCORE.matcher(prompt);</span>
+<span class="fc" id="L56">        Matcher leaf = LEAF.matcher(prompt);</span>
+<span class="fc" id="L57">        boolean parentPrompt = parent.find();</span>
+<span class="fc" id="L58">        boolean leafPrompt = leaf.find();</span>
+<span class="pc bpc" id="L59" title="1 of 8 branches missed.">        if (!prompt.contains(ROOT_MARKER) &amp;&amp; !prompt.contains(PRODUCT_MARKER) &amp;&amp; !parentPrompt &amp;&amp; !leafPrompt)</span>
+<span class="fc" id="L60">            throw failure(DemoReplayException.Code.UNKNOWN_PROMPT, &quot;prompt kind is not part of the scenario&quot;);</span>
+<span class="fc" id="L61">        requireAnalysisIteration(prompt);</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (prompt.contains(ROOT_MARKER)) return roots(keys(prompt));</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">        if (prompt.contains(PRODUCT_MARKER))</span>
+<span class="nc" id="L64">            throw failure(DemoReplayException.Code.MISSING_REPLY, &quot;the scenario authors no concrete-product assessment for &quot; + keys(prompt));</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (parentPrompt) return children(keys(prompt), com.taxonomy.dto.AnalysisPercentages.require(new java.math.BigDecimal(parent.group(1))));</span>
+<span class="fc" id="L66">        return justification(leaf.group(1));</span>
+    }
+
+    // ── Iteration identity ───────────────────────────────────────────────────
+
+<span class="fc" id="L71">    private boolean isR0() { return &quot;R0&quot;.equals(iteration.name()); }</span>
+
+    /** The bound iteration must match the analysed requirement text. */
+    private void requireAnalysisIteration(String prompt) {
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (isR0()) {</span>
+<span class="pc bpc" id="L76" title="1 of 4 branches missed.">            if (!prompt.contains(scenario.r0Text()) || scenario.r1RequiredPhrases().stream().anyMatch(prompt::contains))</span>
+<span class="fc" id="L77">                throw failure(DemoReplayException.Code.ITERATION_MISMATCH, &quot;prompt does not analyse the exact R0 text&quot;);</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        } else if (!scenario.r1RequiredPhrases().stream().allMatch(prompt::contains)) {</span>
+<span class="fc" id="L79">            throw failure(DemoReplayException.Code.ITERATION_MISMATCH, iteration.name()</span>
+                    + &quot; replies require the adopted demo decisions in the analysed text&quot;);
+        }
+<span class="fc" id="L82">    }</span>
+
+    private void requireReformulationIteration(String originalText) {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        boolean matches = isR0() ? scenario.r0Text().equals(originalText)</span>
+<span class="fc" id="L86">                : scenario.r1RequiredPhrases().stream().allMatch(originalText::contains);</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        if (!matches) throw failure(DemoReplayException.Code.ITERATION_MISMATCH,</span>
+<span class="nc" id="L88">                &quot;reformulation source does not belong to &quot; + iteration.name());</span>
+<span class="fc" id="L89">    }</span>
+
+    // ── Scoring ──────────────────────────────────────────────────────────────
+
+    private String roots(List&lt;String&gt; keys) {
+<span class="fc" id="L94">        var reply = new LinkedHashMap&lt;String, Object&gt;();</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        for (String key : keys) {</span>
+<span class="fc" id="L96">            var assessment = iteration.roots().get(key);</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">            if (assessment == null) throw failure(DemoReplayException.Code.MISSING_REPLY, &quot;no root reply for &quot; + key);</span>
+<span class="fc" id="L98">            var decision = new LinkedHashMap&lt;String, Object&gt;();</span>
+<span class="fc" id="L99">            decision.put(&quot;status&quot;, assessment.status().name());</span>
+<span class="fc" id="L100">            decision.put(&quot;score&quot;, assessment.score());</span>
+<span class="fc" id="L101">            decision.put(&quot;reason&quot;, assessment.reason());</span>
+<span class="fc" id="L102">            decision.put(&quot;question&quot;, assessment.question());</span>
+<span class="fc" id="L103">            reply.put(key, decision);</span>
+<span class="fc" id="L104">        }</span>
+<span class="fc" id="L105">        return JSON.writeValueAsString(reply);</span>
+    }
+
+    private String children(List&lt;String&gt; keys, double parentScore) {
+<span class="fc" id="L109">        String parent = null;</span>
+<span class="fc" id="L110">        Map&lt;String, DemoScenario.Score&gt; declared = null;</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        for (var expansion : iteration.expansions().entrySet()) {</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            if (expansion.getValue().keySet().stream().anyMatch(keys::contains)) {</span>
+<span class="fc" id="L113">                parent = expansion.getKey();</span>
+<span class="fc" id="L114">                declared = expansion.getValue();</span>
+<span class="fc" id="L115">                break;</span>
+            }
+<span class="fc" id="L117">        }</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (declared == null)</span>
+<span class="fc" id="L119">            throw failure(DemoReplayException.Code.MISSING_REPLY, &quot;no authored expansion for candidates &quot; + keys);</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">        if (!keys.containsAll(declared.keySet()))</span>
+<span class="nc" id="L121">            throw failure(DemoReplayException.Code.MISSING_REPLY, &quot;candidate set of &quot; + parent + &quot; differs from the scenario catalogue&quot;);</span>
+<span class="fc" id="L122">        var scaled = scale(declared, keys, parentScore);</span>
+<span class="fc" id="L123">        var reply = new LinkedHashMap&lt;String, Object&gt;();</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        for (String key : keys) {</span>
+<span class="fc" id="L125">            var score = declared.get(key);</span>
+<span class="fc" id="L126">            reply.put(key, Map.of(&quot;score&quot;, scaled.getOrDefault(key, 0d),</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">                    &quot;reason&quot;, score == null ? iteration.zeroReason() : score.reason()));</span>
+<span class="fc" id="L128">        }</span>
+<span class="fc" id="L129">        return JSON.writeValueAsString(reply);</span>
+    }
+
+    /** Decimal-preserving scaling so authored proportions meet the product's exact parent budget. */
+    static Map&lt;String, Double&gt; scale(Map&lt;String, DemoScenario.Score&gt; declared, List&lt;String&gt; keys, double target) {
+<span class="fc" id="L134">        var weights = new LinkedHashMap&lt;String, Double&gt;();</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        for (String key : keys) {</span>
+<span class="fc" id="L136">            var score = declared.get(key);</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">            weights.put(key, score == null ? 0d : score.score());</span>
+<span class="fc" id="L138">        }</span>
+<span class="fc" id="L139">        return com.taxonomy.dto.AnalysisPercentages.normalize(weights, target);</span>
+    }
+
+    private String justification(String code) {
+<span class="fc" id="L143">        String text = iteration.justifications().get(code);</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        if (text == null) throw failure(DemoReplayException.Code.MISSING_REPLY, &quot;no authored justification for &quot; + code);</span>
+<span class="fc" id="L145">        return text;</span>
+    }
+
+    // ── Relations (relation-downwalk-v1) ────────────────────────────────────
+
+    private String relation(String prompt) {
+<span class="fc" id="L151">        int input = prompt.indexOf(&quot;INPUT\n&quot;);</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        if (input &lt; 0) throw failure(DemoReplayException.Code.UNKNOWN_PROMPT, &quot;relation prompt without input&quot;);</span>
+<span class="fc" id="L153">        JsonNode query = JSON.readTree(prompt.substring(input + 6));</span>
+<span class="fc" id="L154">        String original = query.path(&quot;original&quot;).asString();</span>
+<span class="fc" id="L155">        requireAnalysisIteration(original);</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        if (query.has(&quot;nodes&quot;)) {</span>
+<span class="fc" id="L157">            var selections = new ArrayList&lt;Map&lt;String, Object&gt;&gt;();</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">            for (JsonNode node : query.path(&quot;nodes&quot;)) {</span>
+<span class="fc" id="L159">                String id = node.path(&quot;id&quot;).asString();</span>
+<span class="fc" id="L160">                var own = iteration.relations().stream().filter(r -&gt; r.source().equals(id)).toList();</span>
+<span class="fc" id="L161">                var contributions = new ArrayList&lt;Map&lt;String, Object&gt;&gt;();</span>
+<span class="fc" id="L162">                new LinkedHashSet&lt;&gt;(own.stream().map(DemoScenario.Relation::contribution).toList())</span>
+<span class="fc" id="L163">                        .forEach(text -&gt; contributions.add(Map.of(&quot;text&quot;, text, &quot;quote&quot;, original, &quot;condition&quot;, &quot;&quot;)));</span>
+<span class="fc" id="L164">                var selection = new LinkedHashMap&lt;String, Object&gt;();</span>
+<span class="fc" id="L165">                selection.put(&quot;nodeId&quot;, id);</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">                selection.put(&quot;outcome&quot;, contributions.isEmpty() ? &quot;REJECT&quot; : &quot;EXPLICIT&quot;);</span>
+<span class="fc" id="L167">                selection.put(&quot;contributions&quot;, contributions.stream().limit(4).toList());</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">                selection.put(&quot;rationale&quot;, contributions.isEmpty()</span>
+<span class="fc" id="L169">                        ? &quot;Szenario-Antwort: keine Beziehung aus diesem Element vorgesehen.&quot;</span>
+<span class="fc" id="L170">                        : &quot;Szenario-Antwort: Beziehungsquelle laut Szenario.&quot;);</span>
+<span class="fc" id="L171">                selection.put(&quot;question&quot;, &quot;&quot;);</span>
+<span class="fc" id="L172">                selections.add(selection);</span>
+<span class="fc" id="L173">            }</span>
+<span class="fc" id="L174">            return JSON.writeValueAsString(Map.of(&quot;selections&quot;, selections));</span>
+        }
+<span class="fc" id="L176">        String source = query.path(&quot;contribution&quot;).path(&quot;source&quot;).path(&quot;id&quot;).asString();</span>
+<span class="fc" id="L177">        String text = query.path(&quot;contribution&quot;).path(&quot;text&quot;).asString();</span>
+<span class="fc" id="L178">        boolean outgoing = &quot;OUTGOING&quot;.equals(query.path(&quot;direction&quot;).asString());</span>
+<span class="fc" id="L179">        String type = query.path(&quot;type&quot;).asString();</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        var relevant = outgoing ? iteration.relations().stream()</span>
+<span class="pc bpc" id="L181" title="1 of 4 branches missed.">                .filter(r -&gt; r.source().equals(source) &amp;&amp; r.type().equals(type)</span>
+<span class="pc bpc" id="L182" title="2 of 4 branches missed.">                        &amp;&amp; (text.isEmpty() || r.contribution().equals(text))).toList() : List.&lt;DemoScenario.Relation&gt;of();</span>
+<span class="fc" id="L183">        boolean verify = &quot;VERIFY&quot;.equals(query.path(&quot;phase&quot;).asString());</span>
+<span class="fc" id="L184">        var decisions = new ArrayList&lt;Map&lt;String, Object&gt;&gt;();</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">        for (JsonNode node : query.path(&quot;candidates&quot;)) {</span>
+<span class="fc" id="L186">            String id = node.path(&quot;id&quot;).asString();</span>
+<span class="fc" id="L187">            var target = relevant.stream().filter(r -&gt; r.target().equals(id)).findFirst().orElse(null);</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">            boolean match = target != null;</span>
+<span class="pc bpc" id="L189" title="1 of 4 branches missed.">            if (verify &amp;&amp; match) {</span>
+<span class="fc" id="L190">                JsonNode proposal = query.path(&quot;proposal&quot;);</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">                match = id.equals(proposal.path(&quot;targetId&quot;).asString())</span>
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">                        &amp;&amp; target.contribution().equals(proposal.path(&quot;contribution&quot;).asString())</span>
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">                        &amp;&amp; original.equals(proposal.path(&quot;quote&quot;).asString())</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">                        &amp;&amp; &quot;REQUIRED&quot;.equals(proposal.path(&quot;necessity&quot;).asString())</span>
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">                        &amp;&amp; proposal.path(&quot;condition&quot;).asString().isEmpty()</span>
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">                        &amp;&amp; proposal.path(&quot;alternativeGroup&quot;).asString().isEmpty();</span>
+            }
+<span class="fc bfc" id="L198" title="All 4 branches covered.">            boolean descend = !verify &amp;&amp; !match &amp;&amp; relevant.stream()</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">                    .anyMatch(r -&gt; r.path().subList(0, r.path().size() - 1).contains(id));</span>
+<span class="fc bfc" id="L200" title="All 6 branches covered.">            String outcome = match ? (verify ? &quot;VERIFIED&quot; : &quot;MATCH&quot;) : descend ? &quot;DESCEND&quot; : &quot;REJECT&quot;;</span>
+<span class="fc" id="L201">            var decision = new LinkedHashMap&lt;String, Object&gt;();</span>
+<span class="fc" id="L202">            decision.put(&quot;targetId&quot;, id);</span>
+<span class="fc" id="L203">            decision.put(&quot;outcome&quot;, outcome);</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">            decision.put(&quot;contribution&quot;, match ? target.contribution() : &quot;&quot;);</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">            decision.put(&quot;quote&quot;, match ? original : &quot;&quot;);</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">            decision.put(&quot;necessity&quot;, match ? &quot;REQUIRED&quot; : null);</span>
+<span class="fc" id="L207">            decision.put(&quot;condition&quot;, &quot;&quot;);</span>
+<span class="fc" id="L208">            decision.put(&quot;alternativeGroup&quot;, &quot;&quot;);</span>
+<span class="fc" id="L209">            decision.put(&quot;rationale&quot;, &quot;Szenario-Antwort: &quot; + outcome);</span>
+<span class="fc" id="L210">            decision.put(&quot;question&quot;, &quot;&quot;);</span>
+<span class="fc" id="L211">            decisions.add(decision);</span>
+<span class="fc" id="L212">        }</span>
+<span class="fc" id="L213">        return JSON.writeValueAsString(Map.of(&quot;decisions&quot;, decisions));</span>
+    }
+
+    // ── Reformulation ────────────────────────────────────────────────────────
+
+    private static JsonNode payload(String prompt, int start) {
+<span class="fc" id="L219">        String json = prompt.substring(start);</span>
+<span class="fc" id="L220">        int errors = json.indexOf(&quot;\nVALIDATION_ERRORS&quot;);</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">        if (errors &gt;= 0) json = json.substring(0, errors);</span>
+<span class="fc" id="L222">        return JSON.readTree(json);</span>
+    }
+
+    private String reconcile(JsonNode data) {
+<span class="fc" id="L226">        requireReformulationIteration(data.path(&quot;baseline&quot;).path(&quot;originalText&quot;).asString());</span>
+<span class="fc" id="L227">        var reply = new LinkedHashMap&lt;String, Object&gt;();</span>
+<span class="fc" id="L228">        reply.put(&quot;affectedSectionIds&quot;, List.of());</span>
+<span class="fc" id="L229">        reply.put(&quot;sourceResolutions&quot;, List.of());</span>
+<span class="fc" id="L230">        reply.put(&quot;findings&quot;, List.of());</span>
+<span class="fc" id="L231">        return JSON.writeValueAsString(reply);</span>
+    }
+
+    private String node(JsonNode data) {
+<span class="fc" id="L235">        requireReformulationIteration(data.path(&quot;baseline&quot;).path(&quot;originalText&quot;).asString());</span>
+<span class="fc" id="L236">        String nodeId = data.path(&quot;nodeId&quot;).asString();</span>
+<span class="pc bpc" id="L237" title="1 of 4 branches missed.">        boolean root = data.path(&quot;parentId&quot;).isMissingNode() || data.path(&quot;parentId&quot;).isNull();</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        String rootCode = nodeId.contains(&quot;-&quot;) ? nodeId.substring(0, nodeId.indexOf('-')) : nodeId;</span>
+<span class="pc bpc" id="L239" title="1 of 4 branches missed.">        boolean anchored = root &amp;&amp; DemoScenario.ROOTS.contains(rootCode);</span>
+
+<span class="fc" id="L241">        var statementIds = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc" id="L242">        var questionIds = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc" id="L243">        var rejected = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc" id="L244">        var wordings = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L245">        var subjects = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L246">        var questionsById = new LinkedHashMap&lt;String, JsonNode&gt;();</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">        for (JsonNode statement : data.path(&quot;directContributions&quot;)) collectStatement(statement, statementIds, rejected, wordings);</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">        for (JsonNode child : data.path(&quot;children&quot;)) {</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">            for (JsonNode statement : child.path(&quot;statementProposals&quot;)) collectStatement(statement, statementIds, rejected, wordings);</span>
+<span class="fc" id="L250">            child.path(&quot;preservedStatementIds&quot;).forEach(id -&gt; statementIds.add(id.asString()));</span>
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">            for (JsonNode question : child.path(&quot;questionProposals&quot;)) collectQuestion(question, questionIds, subjects, questionsById);</span>
+<span class="pc" id="L252">            child.path(&quot;preservedQuestionIds&quot;).forEach(id -&gt; questionIds.add(id.asString()));</span>
+<span class="fc" id="L253">        }</span>
+<span class="fc bfc" id="L254" title="All 2 branches covered.">        for (JsonNode question : data.path(&quot;openDecisions&quot;)) collectQuestion(question, questionIds, subjects, questionsById);</span>
+<span class="fc" id="L255">        collectInheritedRejections(data.path(&quot;inheritedDecisionContext&quot;), rejected);</span>
+
+<span class="fc" id="L257">        var reformulation = iteration.reformulation();</span>
+<span class="fc" id="L258">        var statements = new ArrayList&lt;Map&lt;String, Object&gt;&gt;();</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">        if (anchored) {</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">            for (var addition : reformulation.additions()) {</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">                if (addition.anchorRoot().equals(rootCode)) addStatement(statements, addition.wording(), addition.provenance(), List.of(), rejected, wordings);</span>
+<span class="fc" id="L262">            }</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">            for (JsonNode answer : data.path(&quot;answers&quot;)) {</span>
+<span class="pc bpc" id="L264" title="2 of 4 branches missed.">                if (!answer.path(&quot;disposition&quot;).isMissingNode() &amp;&amp; !answer.path(&quot;disposition&quot;).isNull()</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">                        &amp;&amp; !&quot;ANSWER&quot;.equals(answer.path(&quot;disposition&quot;).asString())) continue;</span>
+<span class="fc" id="L266">                JsonNode question = questionsById.get(answer.path(&quot;questionId&quot;).asString());</span>
+<span class="fc" id="L267">                var values = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L268">                answer.path(&quot;values&quot;).forEach(value -&gt; values.add(value.asString()));</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">                var authored = question != null ? authoredQuestion(question.path(&quot;key&quot;).path(&quot;subject&quot;).asString())</span>
+<span class="pc" id="L270">                        : authoredQuestionByValues(values);</span>
+<span class="pc bpc" id="L271" title="2 of 4 branches missed.">                if (authored == null || !authored.anchorRoot().equals(rootCode)) continue;</span>
+                // A dependency may only reference a question visible in this exact input.
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">                var dependencies = question != null ? List.of(question.path(&quot;id&quot;).asString()) : List.&lt;String&gt;of();</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">                for (String value : values) {</span>
+<span class="fc" id="L275">                    String consequence = authored.consequences().get(value);</span>
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">                    if (consequence == null) throw failure(DemoReplayException.Code.MISSING_REPLY,</span>
+<span class="nc" id="L277">                            &quot;no authored consequence for &quot; + authored.id() + &quot; = &quot; + value);</span>
+<span class="fc" id="L278">                    addStatement(statements, consequence, &quot;MODEL_ADDITION&quot;, dependencies, rejected, wordings);</span>
+<span class="fc" id="L279">                }</span>
+<span class="fc" id="L280">            }</span>
+        }
+<span class="fc" id="L282">        var questions = new ArrayList&lt;Map&lt;String, Object&gt;&gt;();</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">        if (anchored) {</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">            for (var question : reformulation.questions()) {</span>
+<span class="fc bfc" id="L285" title="All 4 branches covered.">                if (!question.anchorRoot().equals(rootCode) || subjects.contains(question.subject())) continue;</span>
+<span class="fc" id="L286">                var schema = new LinkedHashMap&lt;String, Object&gt;();</span>
+<span class="fc" id="L287">                schema.put(&quot;kind&quot;, question.kind());</span>
+<span class="fc" id="L288">                schema.put(&quot;options&quot;, question.options());</span>
+<span class="fc" id="L289">                schema.put(&quot;unit&quot;, null);</span>
+<span class="fc" id="L290">                schema.put(&quot;minimum&quot;, null);</span>
+<span class="fc" id="L291">                schema.put(&quot;maximum&quot;, null);</span>
+<span class="fc" id="L292">                var proposal = new LinkedHashMap&lt;String, Object&gt;();</span>
+<span class="fc" id="L293">                proposal.put(&quot;subject&quot;, question.subject());</span>
+<span class="fc" id="L294">                proposal.put(&quot;dimension&quot;, question.dimension());</span>
+<span class="fc" id="L295">                proposal.put(&quot;scope&quot;, nodeId);</span>
+<span class="fc" id="L296">                proposal.put(&quot;wording&quot;, question.wording());</span>
+<span class="fc" id="L297">                proposal.put(&quot;rationale&quot;, question.rationale());</span>
+<span class="fc" id="L298">                proposal.put(&quot;affectedStatementIds&quot;, List.of());</span>
+<span class="fc" id="L299">                proposal.put(&quot;sourceSpans&quot;, List.of());</span>
+<span class="fc" id="L300">                proposal.put(&quot;nodeIds&quot;, List.of(nodeId));</span>
+<span class="fc" id="L301">                proposal.put(&quot;edgeIds&quot;, List.of());</span>
+<span class="fc" id="L302">                proposal.put(&quot;answerSchema&quot;, schema);</span>
+<span class="fc" id="L303">                proposal.put(&quot;prerequisites&quot;, List.of());</span>
+<span class="fc" id="L304">                proposal.put(&quot;consequences&quot;, question.consequenceSummary());</span>
+<span class="fc" id="L305">                questions.add(proposal);</span>
+<span class="fc" id="L306">            }</span>
+        }
+<span class="fc" id="L308">        var reply = new LinkedHashMap&lt;String, Object&gt;();</span>
+<span class="fc bfc" id="L309" title="All 2 branches covered.">        reply.put(&quot;summary&quot;, anchored ? reformulation.summaries().getOrDefault(rootCode, reformulation.defaultSummary())</span>
+<span class="fc" id="L310">                : reformulation.defaultSummary());</span>
+<span class="fc" id="L311">        reply.put(&quot;statementProposals&quot;, statements);</span>
+<span class="fc" id="L312">        reply.put(&quot;preservedStatementIds&quot;, List.copyOf(statementIds));</span>
+<span class="fc" id="L313">        reply.put(&quot;questionProposals&quot;, questions);</span>
+<span class="fc" id="L314">        reply.put(&quot;preservedQuestionIds&quot;, List.copyOf(questionIds));</span>
+<span class="fc" id="L315">        reply.put(&quot;uncoveredSourceRefs&quot;, List.of());</span>
+<span class="fc" id="L316">        reply.put(&quot;conflictCandidates&quot;, List.of());</span>
+<span class="fc" id="L317">        return JSON.writeValueAsString(reply);</span>
+    }
+
+    private DemoScenario.Question authoredQuestion(String subject) {
+<span class="fc" id="L321">        return scenario.iterations().values().stream().flatMap(i -&gt; i.reformulation().questions().stream())</span>
+<span class="fc" id="L322">                .filter(q -&gt; q.subject().equals(subject)).findFirst().orElse(null);</span>
+    }
+
+    /** Only an unambiguous option value identifies an authored question without its visible record. */
+    private DemoScenario.Question authoredQuestionByValues(List&lt;String&gt; values) {
+<span class="nc bnc" id="L327" title="All 2 branches missed.">        if (values.isEmpty()) return null;</span>
+<span class="nc" id="L328">        var matches = scenario.iterations().values().stream().flatMap(i -&gt; i.reformulation().questions().stream())</span>
+<span class="nc" id="L329">                .filter(q -&gt; q.consequences().keySet().containsAll(values)).toList();</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">        return matches.size() == 1 ? matches.getFirst() : null;</span>
+    }
+
+    private static void addStatement(List&lt;Map&lt;String, Object&gt;&gt; statements, String wording, String provenance,
+                                     List&lt;String&gt; dependencies, Set&lt;String&gt; rejected, Set&lt;String&gt; existing) {
+        // Exact rejected wording is evidence, never a new offer; duplicates are not repeated.
+<span class="pc bpc" id="L336" title="3 of 8 branches missed.">        if (existing.contains(wording) || rejected.stream().anyMatch(r -&gt; !r.isEmpty() &amp;&amp; wording.contains(r))) return;</span>
+<span class="fc" id="L337">        existing.add(wording);</span>
+<span class="fc" id="L338">        var statement = new LinkedHashMap&lt;String, Object&gt;();</span>
+<span class="fc" id="L339">        statement.put(&quot;wording&quot;, wording);</span>
+<span class="fc" id="L340">        statement.put(&quot;provenance&quot;, provenance);</span>
+<span class="fc" id="L341">        statement.put(&quot;sourceSpans&quot;, List.of());</span>
+<span class="fc" id="L342">        statement.put(&quot;architectureLinks&quot;, List.of());</span>
+<span class="fc" id="L343">        statement.put(&quot;questionDependencies&quot;, dependencies);</span>
+<span class="fc" id="L344">        statement.put(&quot;conditionalValidity&quot;, null);</span>
+<span class="fc" id="L345">        statements.add(statement);</span>
+<span class="fc" id="L346">    }</span>
+
+    private static void collectStatement(JsonNode statement, Set&lt;String&gt; ids, Set&lt;String&gt; rejected, Set&lt;String&gt; wordings) {
+<span class="fc" id="L349">        ids.add(statement.path(&quot;id&quot;).asString());</span>
+<span class="fc" id="L350">        String wording = statement.path(&quot;wording&quot;).asString();</span>
+<span class="fc" id="L351">        wordings.add(wording);</span>
+<span class="fc bfc" id="L352" title="All 2 branches covered.">        if (&quot;REJECTED&quot;.equals(statement.path(&quot;reviewState&quot;).asString())) rejected.add(wording.strip());</span>
+<span class="fc" id="L353">    }</span>
+
+    private static void collectQuestion(JsonNode question, Set&lt;String&gt; ids, Set&lt;String&gt; subjects, Map&lt;String, JsonNode&gt; byId) {
+<span class="fc" id="L356">        String id = question.path(&quot;id&quot;).asString();</span>
+<span class="fc" id="L357">        ids.add(id);</span>
+<span class="fc" id="L358">        byId.put(id, question);</span>
+<span class="pc" id="L359">        question.path(&quot;aliases&quot;).forEach(alias -&gt; byId.put(alias.asString(), question));</span>
+<span class="fc" id="L360">        subjects.add(question.path(&quot;key&quot;).path(&quot;subject&quot;).asString());</span>
+<span class="fc" id="L361">    }</span>
+
+    private static void collectInheritedRejections(JsonNode node, Set&lt;String&gt; rejected) {
+<span class="pc bpc" id="L364" title="1 of 6 branches missed.">        if (node == null || node.isMissingNode() || node.isNull()) return;</span>
+<span class="fc bfc" id="L365" title="All 2 branches covered.">        if (node.isObject()) {</span>
+<span class="pc bpc" id="L366" title="1 of 4 branches missed.">            if (&quot;REJECTED&quot;.equals(node.path(&quot;reviewState&quot;).asString()) &amp;&amp; node.path(&quot;wording&quot;).isString())</span>
+<span class="fc" id="L367">                rejected.add(node.path(&quot;wording&quot;).asString().strip());</span>
+<span class="fc" id="L368">            node.properties().forEach(e -&gt; collectInheritedRejections(e.getValue(), rejected));</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">        } else if (node.isArray()) {</span>
+<span class="fc" id="L370">            node.forEach(item -&gt; collectInheritedRejections(item, rejected));</span>
+        }
+<span class="fc" id="L372">    }</span>
+
+    private static List&lt;String&gt; keys(String prompt) {
+<span class="fc" id="L375">        Matcher matcher = KEYS.matcher(prompt);</span>
+<span class="pc bpc" id="L376" title="1 of 2 branches missed.">        if (!matcher.find()) throw failure(DemoReplayException.Code.UNKNOWN_PROMPT, &quot;prompt does not declare expected keys&quot;);</span>
+<span class="pc bpc" id="L377" title="1 of 2 branches missed.">        return Arrays.stream(matcher.group(1).split(&quot;,&quot;)).map(String::strip).filter(s -&gt; !s.isEmpty()).toList();</span>
+    }
+
+    private static DemoReplayException failure(DemoReplayException.Code code, String message) {
+<span class="fc" id="L381">        return new DemoReplayException(code, message);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

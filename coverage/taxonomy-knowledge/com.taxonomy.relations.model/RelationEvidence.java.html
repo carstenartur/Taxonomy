@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationEvidence.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.model</a> &gt; <span class="el_source">RelationEvidence.java</span></div><h1>RelationEvidence.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.model;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.Nationalized;
+
+import java.time.Instant;
+
+/**
+ * Evidence supporting or challenging a {@link RelationHypothesis}.
+ *
+ * &lt;p&gt;Stores LLM, semantic, or rule-based justifications for relation hypotheses
+ * to enable audit trails and re-validation.
+ */
+@Entity
+@Table(name = &quot;relation_evidence&quot;)
+<span class="fc" id="L16">public class RelationEvidence {</span>
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;hypothesis_id&quot;, nullable = false)
+    private Long hypothesisId;
+    @Column(name = &quot;repository_id&quot;, nullable = false, length = 255)
+    private String repositoryId;
+    @Column(name = &quot;workspace_scope_key&quot;, nullable = false, length = 255)
+    private String workspaceScopeKey;
+    @Nationalized
+    @Column(name = &quot;branch_name&quot;, nullable = false, length = 255)
+    private String branchName;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumns(value = {
+        @JoinColumn(name = &quot;hypothesis_id&quot;, referencedColumnName = &quot;id&quot;, insertable = false, updatable = false),
+        @JoinColumn(name = &quot;repository_id&quot;, referencedColumnName = &quot;repository_id&quot;, insertable = false, updatable = false),
+        @JoinColumn(name = &quot;workspace_scope_key&quot;, referencedColumnName = &quot;workspace_scope_key&quot;, insertable = false, updatable = false),
+        @JoinColumn(name = &quot;branch_name&quot;, referencedColumnName = &quot;branch_name&quot;, insertable = false, updatable = false)
+    }, foreignKey = @ForeignKey(name = &quot;fk_evidence_hypothesis_scope&quot;))
+    private RelationHypothesis hypothesis;
+
+    @Nationalized
+    @Column(name = &quot;evidence_type&quot;, nullable = false)
+    private String evidenceType;
+
+    @Nationalized
+    @Lob
+    @Column(length = 2000)
+    private String summary;
+
+    @Nationalized
+    @Lob
+    @Column(name = &quot;full_text&quot;, length = 10000)
+    private String fullText;
+
+    @Column
+    private Double confidence;
+
+    @Nationalized
+    @Column(name = &quot;model_name&quot;)
+    private String modelName;
+
+    @Nationalized
+    @Column(name = &quot;model_version&quot;)
+    private String modelVersion;
+
+    @Nationalized
+    @Column(name = &quot;prompt_version&quot;)
+    private String promptVersion;
+
+    @Nationalized
+    @Lob
+    @Column(name = &quot;input_snapshot&quot;, length = 10000)
+    private String inputSnapshot;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @PrePersist
+    @PreUpdate
+    protected void onCreate() {
+<span class="pc bpc" id="L81" title="4 of 8 branches missed.">        if (hypothesisId == null || repositoryId == null || workspaceScopeKey == null || branchName == null</span>
+<span class="pc bpc" id="L82" title="3 of 6 branches missed.">                || repositoryId.isBlank() || workspaceScopeKey.isBlank() || branchName.isBlank()) {</span>
+<span class="nc" id="L83">            throw new IllegalArgumentException(&quot;Evidence requires exact parent authority&quot;);</span>
+        }
+<span class="pc bpc" id="L85" title="2 of 4 branches missed.">        if (hypothesis != null &amp;&amp; (!hypothesisId.equals(hypothesis.getId())</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">                || !repositoryId.equals(hypothesis.getRepositoryId())</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">                || !workspaceScopeKey.equals(hypothesis.getWorkspaceScopeKey())</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">                || !branchName.equals(hypothesis.getBranchName()))) {</span>
+<span class="nc" id="L89">            throw new IllegalArgumentException(&quot;Evidence parent authority mismatch&quot;);</span>
+        }
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (createdAt == null) {</span>
+<span class="fc" id="L92">            createdAt = Instant.now();</span>
+        }
+<span class="fc" id="L94">    }</span>
+
+<span class="nc" id="L96">    public Long getId() { return id; }</span>
+<span class="nc" id="L97">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="nc" id="L99">    public RelationHypothesis getHypothesis() { return hypothesis; }</span>
+    public void setHypothesis(RelationHypothesis hypothesis) {
+<span class="fc" id="L101">        this.hypothesis = java.util.Objects.requireNonNull(hypothesis, &quot;hypothesis&quot;);</span>
+<span class="fc" id="L102">        this.hypothesisId = hypothesis.getId();</span>
+<span class="fc" id="L103">        this.repositoryId = hypothesis.getRepositoryId();</span>
+<span class="fc" id="L104">        this.workspaceScopeKey = hypothesis.getWorkspaceScopeKey();</span>
+<span class="fc" id="L105">        this.branchName = hypothesis.getBranchName();</span>
+<span class="fc" id="L106">    }</span>
+<span class="nc" id="L107">    public Long getHypothesisId() { return hypothesisId; }</span>
+<span class="fc" id="L108">    public String getRepositoryId() { return repositoryId; }</span>
+<span class="fc" id="L109">    public String getWorkspaceScopeKey() { return workspaceScopeKey; }</span>
+<span class="fc" id="L110">    public String getBranchName() { return branchName; }</span>
+
+<span class="fc" id="L112">    public String getEvidenceType() { return evidenceType; }</span>
+<span class="fc" id="L113">    public void setEvidenceType(String evidenceType) { this.evidenceType = evidenceType; }</span>
+
+<span class="fc" id="L115">    public String getSummary() { return summary; }</span>
+<span class="fc" id="L116">    public void setSummary(String summary) { this.summary = summary; }</span>
+
+<span class="nc" id="L118">    public String getFullText() { return fullText; }</span>
+<span class="fc" id="L119">    public void setFullText(String fullText) { this.fullText = fullText; }</span>
+
+<span class="nc" id="L121">    public Double getConfidence() { return confidence; }</span>
+<span class="fc" id="L122">    public void setConfidence(Double confidence) { this.confidence = confidence; }</span>
+
+<span class="nc" id="L124">    public String getModelName() { return modelName; }</span>
+<span class="nc" id="L125">    public void setModelName(String modelName) { this.modelName = modelName; }</span>
+
+<span class="nc" id="L127">    public String getModelVersion() { return modelVersion; }</span>
+<span class="nc" id="L128">    public void setModelVersion(String modelVersion) { this.modelVersion = modelVersion; }</span>
+
+<span class="nc" id="L130">    public String getPromptVersion() { return promptVersion; }</span>
+<span class="nc" id="L131">    public void setPromptVersion(String promptVersion) { this.promptVersion = promptVersion; }</span>
+
+<span class="nc" id="L133">    public String getInputSnapshot() { return inputSnapshot; }</span>
+<span class="nc" id="L134">    public void setInputSnapshot(String inputSnapshot) { this.inputSnapshot = inputSnapshot; }</span>
+
+<span class="nc" id="L136">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="nc" id="L137">    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

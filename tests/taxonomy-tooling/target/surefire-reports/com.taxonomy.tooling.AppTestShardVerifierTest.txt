@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.tooling.AppTestShardVerifierTest
+-------------------------------------------------------------------------------
+Tests run: 46, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.502 s -- in com.taxonomy.tooling.AppTestShardVerifierTest

@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DemoReferenceEvaluator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.demo.evaluation</a> &gt; <span class="el_source">DemoReferenceEvaluator.java</span></div><h1>DemoReferenceEvaluator.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.demo.evaluation;
+
+import com.taxonomy.dto.AnalysisCoverage;
+import com.taxonomy.dto.AnalysisPercentages;
+import com.taxonomy.dto.RootAssessment;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * Compares two real analyses (A0 for R0, A1 for R1) against the independent
+ * reference annotation. Missing work is reported as NOT_EXECUTED, never as a
+ * failed or passed quality finding.
+ */
+public final class DemoReferenceEvaluator {
+
+<span class="fc" id="L20">    public enum Status { PASS, FAIL, NOT_EXECUTED }</span>
+
+<span class="fc" id="L22">    public enum Overall { PASS, FAIL, INCOMPLETE }</span>
+
+    /** One analysed iteration; coverage preserves the distinction between a clarification and absent evidence. */
+    public record Observation(String requirementText, Map&lt;String, Double&gt; scores, Set&lt;String&gt; relations,
+                              Map&lt;String, AnalysisCoverage.NodeAssessment&gt; coverage,
+                              boolean scoringComplete, boolean relationSearchComplete) {
+        public Observation(String requirementText, Map&lt;String, Double&gt; scores, Set&lt;String&gt; relations) {
+<span class="fc bfc" id="L29" title="All 2 branches covered.">            this(requirementText, scores, relations, Map.of(), true, relations != null);</span>
+<span class="fc" id="L30">        }</span>
+        public Observation(String requirementText, Map&lt;String, Double&gt; scores, Set&lt;String&gt; relations,
+                           Map&lt;String, AnalysisCoverage.NodeAssessment&gt; coverage) {
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">            this(requirementText, scores, relations, coverage, true, relations != null);</span>
+<span class="fc" id="L34">        }</span>
+<span class="fc" id="L35">        public Observation {</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">            coverage = coverage == null ? Map.of() : Map.copyOf(coverage);</span>
+<span class="fc" id="L37">        }</span>
+<span class="pc bpc" id="L38" title="1 of 4 branches missed.">        public boolean executed() { return requirementText != null &amp;&amp; scores != null; }</span>
+    }
+
+<span class="fc" id="L41">    public record Check(String id, String kind, String iteration, Status status, String expected, String actual) { }</span>
+
+<span class="fc" id="L43">    public record Report(String scenario, int referenceVersion, Overall overall, List&lt;Check&gt; checks,</span>
+                         List&lt;String&gt; improvements) { }
+
+    private DemoReferenceEvaluator() { }
+
+    public static Report evaluate(DemoReference reference, Observation a0, Observation a1) {
+<span class="fc" id="L49">        Objects.requireNonNull(reference);</span>
+<span class="fc" id="L50">        var checks = new ArrayList&lt;Check&gt;();</span>
+<span class="fc" id="L51">        var improvements = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        for (var aspect : reference.requiredAspects()) {</span>
+<span class="fc" id="L53">            Status r0 = textStatus(a0, aspect.anyOf());</span>
+<span class="fc" id="L54">            Status r1 = textStatus(a1, aspect.anyOf());</span>
+<span class="fc" id="L55">            checks.add(new Check(&quot;aspect:&quot; + aspect.id(), &quot;REQUIRED_ASPECT&quot;, &quot;R1&quot;, r1,</span>
+<span class="fc" id="L56">                    &quot;one of &quot; + aspect.anyOf(), describe(r1)));</span>
+<span class="fc bfc" id="L57" title="All 4 branches covered.">            if (r0 == Status.FAIL &amp;&amp; r1 == Status.PASS) improvements.add(&quot;aspect:&quot; + aspect.id());</span>
+<span class="fc" id="L58">        }</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        for (var forbidden : reference.forbiddenPhrases()) {</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            for (var entry : iterations(a0, a1)) {</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">                Status status = !executed(entry.getValue()) ? Status.NOT_EXECUTED</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">                        : entry.getValue().requirementText().contains(forbidden.phrase()) ? Status.FAIL : Status.PASS;</span>
+<span class="fc" id="L63">                checks.add(new Check(&quot;forbidden-phrase:&quot; + forbidden.id(), &quot;FORBIDDEN_PHRASE&quot;, entry.getKey(), status,</span>
+<span class="fc" id="L64">                        &quot;absent: &quot; + forbidden.phrase(), describe(status)));</span>
+<span class="fc" id="L65">            }</span>
+<span class="fc" id="L66">        }</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        for (var root : reference.expectedRootAssessments()) {</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            for (String iteration : root.iterations()) {</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">                var observation = &quot;R0&quot;.equals(iteration) ? a0 : a1;</span>
+<span class="fc" id="L70">                String actual = rootAssessment(observation, root.code());</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">                Status status = actual == null ? Status.NOT_EXECUTED</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                        : root.status().name().equals(actual) ? Status.PASS : Status.FAIL;</span>
+<span class="fc" id="L73">                checks.add(new Check(&quot;root:&quot; + root.code(), &quot;ROOT_ASSESSMENT&quot;, iteration, status,</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">                        root.status().name(), actual == null ? &quot;not assessed&quot; : actual));</span>
+<span class="fc" id="L75">            }</span>
+<span class="fc" id="L76">        }</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        for (var node : reference.expectedNodes()) {</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            for (String iteration : node.iterations()) {</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">                var observation = &quot;R0&quot;.equals(iteration) ? a0 : a1;</span>
+                Status status;
+                String actual;
+<span class="fc bfc" id="L82" title="All 2 branches covered.">                if (!executed(observation)) { status = Status.NOT_EXECUTED; actual = &quot;not executed&quot;; }</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                else if (unassessed(observation, node.code())) { status = Status.NOT_EXECUTED; actual = &quot;not assessed&quot;; }</span>
+                else {
+<span class="fc" id="L85">                    double score = observation.scores().getOrDefault(node.code(), 0d);</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                    status = score &gt;= node.minimumScore() ? Status.PASS : Status.FAIL;</span>
+<span class="fc" id="L87">                    actual = AnalysisPercentages.canonical(score);</span>
+                }
+<span class="fc" id="L89">                checks.add(new Check(&quot;node:&quot; + node.code(), &quot;EXPECTED_NODE&quot;, iteration, status,</span>
+<span class="fc" id="L90">                        &quot;&gt;= &quot; + node.minimumScore(), actual));</span>
+<span class="fc" id="L91">            }</span>
+<span class="fc bfc" id="L92" title="All 4 branches covered.">            if (executed(a0) &amp;&amp; executed(a1)</span>
+<span class="fc bfc" id="L93" title="All 4 branches covered.">                    &amp;&amp; !unassessed(a0, node.code()) &amp;&amp; !unassessed(a1, node.code())</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">                    &amp;&amp; a1.scores().getOrDefault(node.code(), 0d) &gt; a0.scores().getOrDefault(node.code(), 0d))</span>
+<span class="fc" id="L95">                improvements.add(&quot;node:&quot; + node.code());</span>
+<span class="fc" id="L96">        }</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        for (var node : reference.forbiddenNodes()) {</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            for (var entry : iterations(a0, a1)) {</span>
+                Status status;
+                String actual;
+<span class="fc bfc" id="L101" title="All 2 branches covered.">                if (!executed(entry.getValue())) { status = Status.NOT_EXECUTED; actual = &quot;not executed&quot;; }</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                else if (unassessed(entry.getValue(), node.code())) { status = Status.NOT_EXECUTED; actual = &quot;not assessed&quot;; }</span>
+                else {
+<span class="fc" id="L104">                    double score = entry.getValue().scores().getOrDefault(node.code(), 0d);</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                    status = score &gt; 0 ? Status.FAIL : Status.PASS;</span>
+<span class="fc" id="L106">                    actual = AnalysisPercentages.canonical(score);</span>
+                }
+<span class="fc" id="L108">                checks.add(new Check(&quot;forbidden-node:&quot; + node.code(), &quot;FORBIDDEN_NODE&quot;, entry.getKey(), status, &quot;0&quot;, actual));</span>
+<span class="fc" id="L109">            }</span>
+<span class="fc" id="L110">        }</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        for (var relation : reference.expectedRelations()) {</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            for (String iteration : relation.iterations()) {</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                var observation = &quot;R0&quot;.equals(iteration) ? a0 : a1;</span>
+<span class="fc bfc" id="L114" title="All 4 branches covered.">                Status status = !executed(observation) || observation.relations() == null ? Status.NOT_EXECUTED</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">                        : observation.relations().contains(relation.key()) ? Status.PASS</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">                        : observation.relationSearchComplete() ? Status.FAIL : Status.NOT_EXECUTED;</span>
+<span class="fc" id="L117">                checks.add(new Check(&quot;relation:&quot; + relation.key(), &quot;EXPECTED_RELATION&quot;, iteration, status,</span>
+<span class="fc" id="L118">                        &quot;present&quot;, describe(status)));</span>
+<span class="fc" id="L119">            }</span>
+<span class="fc bfc" id="L120" title="All 6 branches covered.">            if (executed(a0) &amp;&amp; executed(a1) &amp;&amp; a0.relationSearchComplete()</span>
+<span class="pc bpc" id="L121" title="1 of 4 branches missed.">                    &amp;&amp; a0.relations() != null &amp;&amp; a1.relations() != null</span>
+<span class="fc bfc" id="L122" title="All 4 branches covered.">                    &amp;&amp; !a0.relations().contains(relation.key()) &amp;&amp; a1.relations().contains(relation.key()))</span>
+<span class="fc" id="L123">                improvements.add(&quot;relation:&quot; + relation.key());</span>
+<span class="fc" id="L124">        }</span>
+<span class="fc bfc" id="L125" title="All 4 branches covered.">        Overall overall = checks.stream().anyMatch(c -&gt; c.status() == Status.FAIL) ? Overall.FAIL</span>
+<span class="fc bfc" id="L126" title="All 4 branches covered.">                : checks.stream().anyMatch(c -&gt; c.status() == Status.NOT_EXECUTED) ? Overall.INCOMPLETE : Overall.PASS;</span>
+<span class="fc" id="L127">        return new Report(reference.scenario(), reference.version(), overall, List.copyOf(checks), List.copyOf(improvements));</span>
+    }
+
+    /** Null-tolerant iteration pairs: an absent analysis is NOT_EXECUTED, never an error. */
+    private static List&lt;Map.Entry&lt;String, Observation&gt;&gt; iterations(Observation a0, Observation a1) {
+<span class="fc" id="L132">        return List.of(new java.util.AbstractMap.SimpleImmutableEntry&lt;&gt;(&quot;R0&quot;, a0),</span>
+                new java.util.AbstractMap.SimpleImmutableEntry&lt;&gt;(&quot;R1&quot;, a1));
+    }
+
+<span class="fc bfc" id="L136" title="All 4 branches covered.">    private static boolean executed(Observation observation) { return observation != null &amp;&amp; observation.executed(); }</span>
+
+    /** A failed or unvisited node is not an explicit root clarification. */
+    private static String rootAssessment(Observation observation, String code) {
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (!executed(observation)) return null;</span>
+<span class="fc" id="L141">        var coverage = observation.coverage().get(code);</span>
+<span class="fc" id="L142">        Double score = observation.scores().get(code);</span>
+<span class="pc bpc" id="L143" title="1 of 4 branches missed.">        if (coverage != null &amp;&amp; coverage.state() == AnalysisCoverage.State.UNKNOWN) {</span>
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">            if (score != null) return &quot;inconsistent evidence&quot;;</span>
+<span class="pc bpc" id="L145" title="2 of 4 branches missed.">            return coverage.reason() != null &amp;&amp; coverage.reason().startsWith(&quot;CLARIFICATION:&quot;)</span>
+<span class="pc" id="L146">                    ? RootAssessment.Status.UNRESOLVED.name() : null;</span>
+        }
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        if (score == null) return null;</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">        if (!AnalysisPercentages.valid(score)) return &quot;invalid score&quot;;</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        return score &gt; 0 ? RootAssessment.Status.RELEVANT.name() : RootAssessment.Status.IRRELEVANT.name();</span>
+    }
+
+    private static boolean unassessed(Observation observation, String code) {
+<span class="fc" id="L154">        var coverage = observation.coverage().get(code);</span>
+<span class="fc bfc" id="L155" title="All 4 branches covered.">        return coverage != null ? coverage.state() == AnalysisCoverage.State.UNKNOWN</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">                &amp;&amp; !&quot;NOT_VISITED_PARENT_EXCLUDED&quot;.equals(coverage.reason())</span>
+<span class="fc bfc" id="L157" title="All 4 branches covered.">                : !observation.scoringComplete() &amp;&amp; !observation.scores().containsKey(code);</span>
+    }
+
+    private static Status textStatus(Observation observation, List&lt;String&gt; anyOf) {
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (!executed(observation)) return Status.NOT_EXECUTED;</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        return anyOf.stream().anyMatch(observation.requirementText()::contains) ? Status.PASS : Status.FAIL;</span>
+    }
+
+    private static String describe(Status status) {
+<span class="fc bfc" id="L166" title="All 3 branches covered.">        return switch (status) {</span>
+<span class="fc" id="L167">            case PASS -&gt; &quot;present&quot;;</span>
+<span class="fc" id="L168">            case FAIL -&gt; &quot;missing&quot;;</span>
+<span class="fc" id="L169">            case NOT_EXECUTED -&gt; &quot;not executed&quot;;</span>
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

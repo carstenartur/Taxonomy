@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DiagramLayout.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.diagram</a> &gt; <span class="el_source">DiagramLayout.java</span></div><h1>DiagramLayout.java</h1><pre class="source lang-java linenums">package com.taxonomy.diagram;
+
+<span class="fc" id="L3">public record DiagramLayout(</span>
+    String direction,
+    boolean groupByLayer
+) {
+    /** Explicit server presentation policy; never changes architecture semantics. */
+<span class="fc" id="L8">    public enum Strategy {</span>
+<span class="fc" id="L9">        STABLE(&quot;stable&quot;), REDUCE_CROSSINGS(&quot;reduce-crossings&quot;);</span>
+        private final String id;
+<span class="fc" id="L11">        Strategy(String id) { this.id = id; }</span>
+<span class="fc" id="L12">        public String id() { return id; }</span>
+        public static Strategy fromId(String id) {
+<span class="pc bpc" id="L14" title="1 of 4 branches missed.">            if (id == null || id.isBlank()) return STABLE;</span>
+<span class="fc bfc" id="L15" title="All 4 branches covered.">            for (Strategy strategy : values()) if (strategy.id.equals(id)) return strategy;</span>
+<span class="fc" id="L16">            throw new IllegalArgumentException(&quot;Unknown layout strategy: &quot; + id);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

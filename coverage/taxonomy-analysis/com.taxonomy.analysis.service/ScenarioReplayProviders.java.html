@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ScenarioReplayProviders.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">ScenarioReplayProviders.java</span></div><h1>ScenarioReplayProviders.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.extension.api.llm.ProviderId;
+
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * Strategy for run-bound scenario-replay providers.
+ *
+ * &lt;p&gt;A scenario replay answers prompts from authored, versioned replies instead
+ * of a model. It is never a live, plugin-backed or globally selectable provider:
+ * it may only be used when a persisted run binds it explicitly. Generic provider
+ * code dispatches on this capability and never on a concrete scenario format.&lt;/p&gt;
+ */
+public interface ScenarioReplayProviders {
+
+    /** Provider-id namespace check, independent of whether the replay is executable. */
+    boolean owns(ProviderId provider);
+
+    /** Executable replay for an owned provider id, empty when no authored replies exist. */
+    Optional&lt;Replay&gt; find(ProviderId provider);
+
+    /** Replies authored for one replay provider; never falls back to a model. */
+    @FunctionalInterface
+    interface ReplyBook {
+        /** @throws MissingReplyException when the prompt is not answered exactly */
+        String reply(String prompt);
+    }
+
+    /**
+     * Description of one executable replay.
+     *
+     * @param model             stable model identity recorded in analysis provenance
+     * @param endpointIdentity  stable non-network endpoint identity
+     * @param displayName       locale-neutral technical provider name
+     * @param contentIdentity   fingerprint of the authored replies; part of the analysis configuration digest
+     */
+    record Replay(ProviderId provider, String model, String endpointIdentity, String displayName,
+                  String contentIdentity, ReplyBook replies) {
+<span class="fc" id="L41">        public Replay {</span>
+<span class="fc" id="L42">            Objects.requireNonNull(provider, &quot;provider&quot;);</span>
+<span class="fc" id="L43">            Objects.requireNonNull(model, &quot;model&quot;);</span>
+<span class="fc" id="L44">            Objects.requireNonNull(endpointIdentity, &quot;endpointIdentity&quot;);</span>
+<span class="fc" id="L45">            Objects.requireNonNull(displayName, &quot;displayName&quot;);</span>
+<span class="fc" id="L46">            Objects.requireNonNull(contentIdentity, &quot;contentIdentity&quot;);</span>
+<span class="fc" id="L47">            Objects.requireNonNull(replies, &quot;replies&quot;);</span>
+<span class="fc" id="L48">        }</span>
+    }
+
+    /** A replay request the authored replies cannot answer exactly. */
+    class MissingReplyException extends RuntimeException {
+<span class="fc" id="L53">        public MissingReplyException(String message) { super(message); }</span>
+    }
+
+    /** Null object for contexts without scenario replays. */
+<span class="fc" id="L57">    ScenarioReplayProviders NONE = new ScenarioReplayProviders() {</span>
+<span class="fc" id="L58">        @Override public boolean owns(ProviderId provider) { return false; }</span>
+<span class="nc" id="L59">        @Override public Optional&lt;Replay&gt; find(ProviderId provider) { return Optional.empty(); }</span>
+    };
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

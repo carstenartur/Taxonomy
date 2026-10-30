@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureLifecycleController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.architecture</a> &gt; <span class="el_source">ArchitectureLifecycleController.java</span></div><h1>ArchitectureLifecycleController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.architecture;
+
+import com.taxonomy.composition.architecture.ArchitectureLifecycleService.*;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.Operation;
+import java.io.IOException;
+
+@RestController
+@com.taxonomy.shared.features.ConditionalOnFeature(&quot;portfolio&quot;)
+@RequestMapping(&quot;/api/architecture/lifecycle&quot;)
+public class ArchitectureLifecycleController {
+    private final ArchitectureLifecycleService service; private final LifecycleHttpContext contexts;
+<span class="fc" id="L14">    public ArchitectureLifecycleController(ArchitectureLifecycleService service,LifecycleHttpContext contexts){this.service=service;this.contexts=contexts;}</span>
+    @GetMapping
+    @Operation(summary=&quot;Read requirement realization at the exact selected architecture stand&quot;,description=&quot;Historical commits and semantic revisions are read-only and never overlaid with current portfolio records.&quot;)
+    public ResponseEntity&lt;Overview&gt; overview(@RequestParam(required=false) String repositoryId,@RequestParam(required=false) String workspaceScopeKey,
+            @RequestParam(required=false) String branch,@RequestParam(required=false) String commit,@RequestParam(required=false) Long revision) throws IOException {
+<span class="fc" id="L19">        var result=service.overview(contexts.resolve(repositoryId,workspaceScopeKey,branch),commit,revision);</span>
+<span class="pc bpc" id="L20" title="1 of 2 branches missed.">        if(!LifecycleHttpContext.mayEdit()) result=result.readOnly();</span>
+<span class="fc" id="L21">        return LifecycleHttpContext.response(result.context()).header(&quot;X-Taxonomy-Source&quot;,result.source()).body(result);</span>
+    }
+    @PostMapping(&quot;/realizations/preview&quot;)
+    @Operation(summary=&quot;Preview an exact requirement realization review&quot;,description=&quot;Checks the requirement text version, contribution project and selected architecture dependencies without writing.&quot;)
+    public ResponseEntity&lt;ReviewPreview&gt; preview(@RequestBody Request request,@RequestHeader(value=HttpHeaders.IF_MATCH,required=false) String ifMatch,
+            @RequestHeader(value=HttpHeaders.IF_NONE_MATCH,required=false) String ifNoneMatch) throws IOException {
+<span class="fc" id="L27">        LifecycleHttpContext.requireRevision(request.context(),ifMatch,ifNoneMatch);</span>
+<span class="fc" id="L28">        var result=service.preview(contexts.resolve(),request);return LifecycleHttpContext.response(result.context()).body(result);</span>
+    }
+    @PostMapping(&quot;/realizations&quot;)
+    @Operation(summary=&quot;Accept a reviewed requirement realization and checkpoint it&quot;,description=&quot;Requires the exact preview fingerprint and revision; retries retain the original command identity and Git publication state.&quot;)
+    public ResponseEntity&lt;Publication&gt; accept(@RequestBody Request request,@RequestHeader(value=HttpHeaders.IF_MATCH,required=false) String ifMatch,
+            @RequestHeader(value=HttpHeaders.IF_NONE_MATCH,required=false) String ifNoneMatch) throws IOException {
+<span class="nc" id="L34">        LifecycleHttpContext.requireRevision(request.context(),ifMatch,ifNoneMatch);</span>
+<span class="nc" id="L35">        var result=service.accept(contexts.resolve(),request);return LifecycleHttpContext.response(result.context()).body(result);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

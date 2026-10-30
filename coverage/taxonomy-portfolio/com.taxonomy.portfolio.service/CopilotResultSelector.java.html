@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CopilotResultSelector.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">CopilotResultSelector.java</span></div><h1>CopilotResultSelector.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
+import com.taxonomy.portfolio.dto.SnapshotSelection;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import org.springframework.stereotype.Component;
+
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/** Selects the strongest immutable snapshot without mutating or discarding any pass. */
+@Component
+<span class="fc" id="L16">public class CopilotResultSelector {</span>
+
+    public Optional&lt;SnapshotDetail&gt; select(List&lt;SnapshotDetail&gt; candidates) {
+<span class="fc bfc" id="L19" title="All 2 branches covered.">        if (candidates == null) return Optional.empty();</span>
+<span class="fc" id="L20">        return candidates.stream()</span>
+<span class="fc" id="L21">                .filter(this::usable)</span>
+<span class="fc" id="L22">                .max(Comparator.comparing(this::quality));</span>
+    }
+
+    public Optional&lt;SnapshotSelection&gt; selectForOperation(List&lt;SnapshotSelection&gt; candidates) {
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        if (candidates == null) return Optional.empty();</span>
+<span class="fc" id="L27">        return candidates.stream()</span>
+<span class="pc bpc" id="L28" title="1 of 4 branches missed.">                .filter(candidate -&gt; candidate != null &amp;&amp; usable(candidate.status(), candidate.scores()))</span>
+<span class="fc" id="L29">                .max(Comparator.comparing(candidate -&gt; quality(candidate.status(), candidate.durationMs(),</span>
+<span class="fc" id="L30">                        candidate.scores(), candidate.elementMappingCount(), candidate.relationMappingCount(),</span>
+<span class="fc" id="L31">                        candidate.warningCount())));</span>
+    }
+
+    private boolean usable(SnapshotDetail detail) {
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">        return detail != null</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">                &amp;&amp; detail.summary() != null</span>
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">                &amp;&amp; detail.analysis() != null</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">                &amp;&amp; usable(detail.summary().status(), detail.analysis().getScores());</span>
+    }
+
+    private boolean usable(AnalysisStatus status, Map&lt;String, Double&gt; scores) {
+<span class="pc bpc" id="L42" title="2 of 8 branches missed.">        return scores != null &amp;&amp; !scores.isEmpty()</span>
+                &amp;&amp; (status == AnalysisStatus.SUCCESS || status == AnalysisStatus.PARTIAL);
+    }
+
+    private Quality quality(SnapshotDetail detail) {
+<span class="fc" id="L47">        AnalysisResult analysis = detail.analysis();</span>
+<span class="fc" id="L48">        return quality(detail.summary().status(), detail.summary().durationMs(), analysis.getScores(),</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">                detail.elementMappings() == null ? 0 : detail.elementMappings().size(),</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">                detail.relationMappings() == null ? 0 : detail.relationMappings().size(),</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">                analysis.getWarnings() == null ? 0 : analysis.getWarnings().size());</span>
+    }
+
+    private Quality quality(AnalysisStatus status, long durationMs, Map&lt;String, Double&gt; scores,
+                            long mappedElements, long mappedRelations, int warnings) {
+<span class="fc" id="L56">        int positive = (int) scores.values().stream()</span>
+<span class="pc bpc" id="L57" title="1 of 4 branches missed.">                .filter(value -&gt; value != null &amp;&amp; value &gt; 0)</span>
+<span class="fc" id="L58">                .count();</span>
+<span class="fc" id="L59">        double scoreSum = scores.values().stream()</span>
+<span class="fc" id="L60">                .filter(java.util.Objects::nonNull)</span>
+<span class="fc" id="L61">                .mapToDouble(Double::doubleValue)</span>
+<span class="fc" id="L62">                .sum();</span>
+<span class="fc" id="L63">        return new Quality(</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">                status == AnalysisStatus.SUCCESS ? 2 : 1,</span>
+                positive,
+                scoreSum,
+                mappedElements,
+                mappedRelations,
+                -warnings,
+<span class="fc" id="L70">                -Math.max(0L, durationMs));</span>
+    }
+
+<span class="fc" id="L73">    private record Quality(</span>
+            int status,
+            int positiveScores,
+            double scoreSum,
+            long mappedElements,
+            long mappedRelations,
+            int warningPreference,
+            long durationPreference) implements Comparable&lt;Quality&gt; {
+
+        @Override
+        public int compareTo(Quality other) {
+<span class="fc" id="L84">            int result = Integer.compare(status, other.status);</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            if (result != 0) return result;</span>
+<span class="fc" id="L86">            result = Integer.compare(positiveScores, other.positiveScores);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            if (result != 0) return result;</span>
+<span class="fc" id="L88">            result = Double.compare(scoreSum, other.scoreSum);</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">            if (result != 0) return result;</span>
+<span class="fc" id="L90">            result = Long.compare(mappedElements, other.mappedElements);</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">            if (result != 0) return result;</span>
+<span class="fc" id="L92">            result = Long.compare(mappedRelations, other.mappedRelations);</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            if (result != 0) return result;</span>
+<span class="fc" id="L94">            result = Integer.compare(warningPreference, other.warningPreference);</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">            if (result != 0) return result;</span>
+<span class="fc" id="L96">            return Long.compare(durationPreference, other.durationPreference);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

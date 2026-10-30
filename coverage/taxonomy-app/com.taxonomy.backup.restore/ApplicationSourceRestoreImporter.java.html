@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ApplicationSourceRestoreImporter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.restore</a> &gt; <span class="el_source">ApplicationSourceRestoreImporter.java</span></div><h1>ApplicationSourceRestoreImporter.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.restore;
+
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.taxonomy.backup.*;
+import com.taxonomy.backup.archive.VerifiedBackup;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.provenance.backup.ApplicationBackupContributor.*;
+import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.channels.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributeView;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.sql.*;
+import java.time.*;
+import java.util.*;
+
+/** Typed source owner import into an already migrated, isolated inactive generation. Never activates it. */
+public final class ApplicationSourceRestoreImporter {
+<span class="fc" id="L24">    private static final BackupComponentId OWNER=new BackupComponentId(&quot;application&quot;);</span>
+    private static final int MAX_ROWS=100_000, MAX_MODEL_BYTES=32*1024*1024;
+<span class="fc" id="L26">    private static final JsonMapper JSON=JsonMapper.builder().build();</span>
+    private final Path activeRoot,targetRoot;
+<span class="fc" id="L28">    public ApplicationSourceRestoreImporter(Path activeRoot,Path targetRoot) {</span>
+<span class="fc" id="L29">        this.activeRoot=Objects.requireNonNull(activeRoot);this.targetRoot=Objects.requireNonNull(targetRoot);</span>
+<span class="fc" id="L30">    }</span>
+    public record Result(Map&lt;SourceRecordId,Long&gt; artifactIds,Map&lt;SourceRecordId,Long&gt; versionIds,
+                         Map&lt;SourceRecordId,Long&gt; fragmentIds,Set&lt;SourceRecordId&gt; quarantinedLegacyLinks) {
+<span class="fc" id="L33">        public Result {artifactIds=Map.copyOf(artifactIds);versionIds=Map.copyOf(versionIds);</span>
+<span class="fc" id="L34">            fragmentIds=Map.copyOf(fragmentIds);quarantinedLegacyLinks=Set.copyOf(quarantinedLegacyLinks);}</span>
+    }
+    public Result restore(VerifiedBackup archive,RestoreTargetGeneration generation,BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L37">        checkpoint.check(); Path active=activeRoot.toRealPath(),target=targetRoot.toRealPath();</span>
+<span class="pc bpc" id="L38" title="1 of 4 branches missed.">        if(target.startsWith(active)||active.startsWith(target))throw new IOException(&quot;Source content target is not isolated&quot;);</span>
+<span class="pc bpc" id="L39" title="2 of 4 branches missed.">        if(Files.isSymbolicLink(targetRoot)||Files.isSymbolicLink(activeRoot))throw invalid();</span>
+<span class="fc" id="L40">        var rootKey=directoryKey(target);</span>
+<span class="fc" id="L41">        var model=inspect(archive,checkpoint); // All owner records and ancestry are checked before SQL or file writes.</span>
+<span class="fc" id="L42">        generation.requireUnchanged(checkpoint);</span>
+<span class="fc" id="L43">        try(var directory=Files.newDirectoryStream(target)) {</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">            if(!(directory instanceof SecureDirectoryStream&lt;Path&gt; secure))throw new IOException(&quot;Safe staged source storage is unavailable&quot;);</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">            if(!rootKey.equals(secure.getFileAttributeView(BasicFileAttributeView.class).readAttributes().fileKey()))</span>
+<span class="fc" id="L46">                throw new IOException(&quot;Source target directory binding changed&quot;);</span>
+<span class="fc" id="L47">            requireDirectory(target,rootKey);</span>
+<span class="fc" id="L48">            try(var connection=generation.dataSource().getConnection()) {</span>
+                // Prove the actual write connection, then pin it for the entire transaction.
+<span class="fc" id="L50">                generation.requireConnection(connection,checkpoint);</span>
+<span class="fc" id="L51">                connection.setAutoCommit(false); connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);</span>
+<span class="fc" id="L52">                try(var rollback=new Rollback(connection)) {</span>
+<span class="fc" id="L53">                    String generationId=generation.generationId().toString(), rootHash=StableIdentityHash.sha256(target+&quot;|&quot;+rootKey);</span>
+<span class="fc" id="L54">                    var existing=owner(connection,checkpoint);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">                    if(existing!=null) {</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">                        if(!existing.equals(List.of(generationId,archive.archiveSha256(),rootHash)))throw new IOException(&quot;Source owner is bound to another restore plan&quot;);</span>
+<span class="fc" id="L57">                        var restored=resume(connection,model,secure,checkpoint);</span>
+<span class="fc" id="L58">                        requireDirectory(target,rootKey);generation.requireConnection(connection,checkpoint);return restored;</span>
+                    }
+<span class="fc" id="L60">                    requireEmpty(connection,checkpoint);</span>
+<span class="fc" id="L61">                    var files=new LinkedHashMap&lt;String,String&gt;();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">                    for(var entry:model.files.values()) { checkpoint.check(); files.put(entry.path(),writeFile(archive,entry,secure,checkpoint)); }</span>
+<span class="fc" id="L63">                    var artifacts=new LinkedHashMap&lt;SourceRecordId,Long&gt;();var versions=new LinkedHashMap&lt;SourceRecordId,Long&gt;();var fragments=new LinkedHashMap&lt;SourceRecordId,Long&gt;();</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">                    for(var record:model.artifacts.values()) {</span>
+<span class="fc" id="L65">                        checkpoint.check(); long id=insert(connection,&quot;source_artifact&quot;,</span>
+                                &quot;source_type,title,canonical_identifier,canonical_url,origin_system,author,description,language,created_at,updated_at&quot;,
+<span class="fc" id="L67">                                record.type().name(),record.title(),record.canonicalIdentifier(),record.canonicalUrl(),record.originSystem(),record.author(),record.description(),record.language(),timestamp(record.createdAt()),timestamp(record.updatedAt()));</span>
+<span class="fc" id="L68">                        artifacts.put(record.sourceId(),id);</span>
+<span class="fc" id="L69">                    }</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                    for(var record:model.versions.values()) {</span>
+<span class="fc" id="L71">                        checkpoint.check(); long id=insert(connection,&quot;source_version&quot;,</span>
+                                &quot;source_artifact_id,version_label,retrieved_at,effective_date,content_hash,mime_type,storage_location,raw_text_location&quot;,
+<span class="fc" id="L73">                                artifacts.get(record.artifactId()),record.versionLabel(),timestamp(record.retrievedAt()),date(record.effectiveDate()),record.contentHash(),record.mimeType(),</span>
+<span class="pc bpc" id="L74" title="2 of 4 branches missed.">                                record.original()==null?null:files.get(record.original().path()),record.rawText()==null?null:files.get(record.rawText().path()));</span>
+<span class="fc" id="L75">                        versions.put(record.sourceId(),id);</span>
+<span class="fc" id="L76">                    }</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">                    for(var record:model.fragments.values()) {</span>
+<span class="fc" id="L78">                        checkpoint.check(); long id=insert(connection,&quot;source_fragment&quot;,</span>
+                                &quot;source_version_id,section_path,paragraph_ref,page_from,page_to,fragment_text,fragment_hash,chunk_level&quot;,
+<span class="fc" id="L80">                                versions.get(record.versionId()),record.sectionPath(),record.paragraphReference(),record.pageFrom(),record.pageTo(),record.text(),record.contentHash(),record.chunkLevel());</span>
+<span class="fc" id="L81">                        fragments.put(record.sourceId(),id);</span>
+<span class="fc" id="L82">                    }</span>
+<span class="fc bfc" id="L83" title="All 4 branches covered.">                    for(var record:model.fragments.values())if(record.parentId()!=null) {</span>
+<span class="fc" id="L84">                        checkpoint.check(); update(connection,&quot;update source_fragment set parent_fragment_id=? where id=?&quot;,fragments.get(record.parentId()),fragments.get(record.sourceId()));</span>
+                    }
+<span class="fc" id="L86">                    saveMappings(connection,artifacts,checkpoint);saveMappings(connection,versions,checkpoint);saveMappings(connection,fragments,checkpoint);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">                    for(var record:model.legacy.values()) {</span>
+<span class="fc" id="L88">                        checkpoint.check();String json=JSON.writeValueAsString(record);</span>
+                        // No reviewed target-global namespace mapping exists. Preserve private data, never attach it to an arbitrary tenant.
+<span class="fc" id="L90">                        update(connection,&quot;insert into restore_source_quarantine(record_kind,source_value,record_json,sha256,reason) values(?,?,?,?,?)&quot;,</span>
+<span class="fc" id="L91">                                record.sourceId().kind(),record.sourceId().value(),json,StableIdentityHash.sha256(json),&quot;UNMAPPED_LEGACY_GLOBAL_NAMESPACE&quot;);</span>
+<span class="fc" id="L92">                    }</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">                    for(var entry:model.files.values()) {</span>
+<span class="fc" id="L94">                        checkpoint.check();update(connection,&quot;insert into restore_source_file(entry_path,content_name,length,sha256) values(?,?,?,?)&quot;,entry.path(),files.get(entry.path()),entry.length(),entry.sha256());</span>
+<span class="fc" id="L95">                    }</span>
+<span class="fc" id="L96">                    update(connection,&quot;insert into restore_source_owner(owner_id,generation_id,archive_sha256,content_root_sha256) values('sources',?,?,?)&quot;,generationId,archive.archiveSha256(),rootHash);</span>
+<span class="fc" id="L97">                    checkpoint.check();requireDirectory(target,rootKey);</span>
+<span class="fc" id="L98">                    try(var directoryChannel=FileChannel.open(target,StandardOpenOption.READ,LinkOption.NOFOLLOW_LINKS)){directoryChannel.force(true);}</span>
+<span class="fc" id="L99">                    requireDirectory(target,rootKey);generation.requireConnection(connection,checkpoint);connection.commit();rollback.committed=true;</span>
+<span class="fc" id="L100">                    checkpoint.check();</span>
+                    // Outer restore journal may crash after this commit. This owner's rows and mappings are already atomic.
+<span class="fc" id="L102">                    return new Result(artifacts,versions,fragments,model.legacy.keySet());</span>
+<span class="fc" id="L103">                }</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">            }</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">        } catch(InterruptedIOException cancelled){Thread.currentThread().interrupt();throw cancelled;}</span>
+<span class="nc" id="L106">        catch(SQLException|RuntimeException failure){throw new IOException(&quot;Staged source owner import failed&quot;);}</span>
+    }
+
+    private static Model inspect(VerifiedBackup archive,BackupCheckpoint checkpoint)throws IOException {
+<span class="pc bpc" id="L110" title="3 of 6 branches missed.">        if(archive.manifest().components().stream().noneMatch(component-&gt;component.id().equals(OWNER)&amp;&amp;component.version()==1))throw invalid();</span>
+<span class="fc" id="L111">        var model=new Model();</span>
+<span class="fc" id="L112">        read(archive,&quot;source-artifact&quot;,ArtifactRecord.class,checkpoint,record-&gt;{</span>
+<span class="fc" id="L113">            id(record.sourceId(),&quot;source-artifact&quot;);required(record.title(),500);Objects.requireNonNull(record.type());required(record.createdAt(),100);</span>
+<span class="fc" id="L114">            length(record.canonicalIdentifier(),500);length(record.canonicalUrl(),1000);length(record.originSystem(),200);length(record.author(),200);</span>
+<span class="fc" id="L115">            length(record.description(),2000);length(record.language(),10);timestamp(record.createdAt());timestamp(record.updatedAt());model.add(model.artifacts,record.sourceId(),record);</span>
+<span class="fc" id="L116">        });</span>
+<span class="fc" id="L117">        read(archive,&quot;source-version&quot;,VersionRecord.class,checkpoint,record-&gt;{</span>
+<span class="fc" id="L118">            id(record.sourceId(),&quot;source-version&quot;);id(record.artifactId(),&quot;source-artifact&quot;);required(record.retrievedAt(),100);timestamp(record.retrievedAt());date(record.effectiveDate());</span>
+<span class="fc" id="L119">            length(record.versionLabel(),200);length(record.contentHash(),128);length(record.mimeType(),100);</span>
+<span class="pc bpc" id="L120" title="4 of 8 branches missed.">            if(record.originalAvailability()==null || (record.originalAvailability()==ContentAvailability.INCLUDED)!=(record.original()!=null))throw invalid();</span>
+<span class="pc bpc" id="L121" title="4 of 8 branches missed.">            if(record.original()!=null &amp;&amp; (record.contentHash()==null || !record.contentHash().matches(&quot;[a-fA-F0-9]{64}&quot;) || !record.contentHash().equalsIgnoreCase(record.original().sha256())))throw invalid();</span>
+<span class="fc" id="L122">            entry(archive,model,record.original());entry(archive,model,record.rawText());model.add(model.versions,record.sourceId(),record);</span>
+<span class="fc" id="L123">        });</span>
+<span class="fc" id="L124">        read(archive,&quot;source-fragment&quot;,FragmentRecord.class,checkpoint,record-&gt;{</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">            id(record.sourceId(),&quot;source-fragment&quot;);id(record.versionId(),&quot;source-version&quot;);if(record.parentId()!=null)id(record.parentId(),&quot;source-fragment&quot;);</span>
+<span class="fc" id="L126">            length(record.sectionPath(),500);length(record.paragraphReference(),100);length(record.text(),4000);length(record.contentHash(),128);</span>
+<span class="fc" id="L127">            integer(record.pageFrom());integer(record.pageTo());integer(record.chunkLevel());model.add(model.fragments,record.sourceId(),record);</span>
+<span class="fc" id="L128">        });</span>
+<span class="fc" id="L129">        read(archive,&quot;legacy-source-link&quot;,LegacyLinkRecord.class,checkpoint,record-&gt;{</span>
+<span class="pc bpc" id="L130" title="2 of 4 branches missed.">            id(record.sourceId(),&quot;legacy-source-link&quot;);id(record.artifactId(),&quot;source-artifact&quot;);if(record.versionId()!=null)id(record.versionId(),&quot;source-version&quot;);if(record.fragmentId()!=null)id(record.fragmentId(),&quot;source-fragment&quot;);</span>
+<span class="fc" id="L131">            required(record.legacyRequirementKey(),255);length(record.note(),1000);Objects.requireNonNull(record.type());</span>
+<span class="pc bpc" id="L132" title="3 of 4 branches missed.">            if(record.confidence()!=null &amp;&amp; !Double.isFinite(record.confidence()))throw invalid();model.add(model.legacy,record.sourceId(),record);</span>
+<span class="fc" id="L133">        });</span>
+<span class="pc bpc" id="L134" title="1 of 4 branches missed.">        for(var version:model.versions.values()) {checkpoint.check();if(!model.artifacts.containsKey(version.artifactId()))throw invalid();}</span>
+<span class="fc" id="L135">        var completed=new HashSet&lt;SourceRecordId&gt;();</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        for(var fragment:model.fragments.values()) {</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">            checkpoint.check();if(!model.versions.containsKey(fragment.versionId()))throw invalid();</span>
+<span class="fc" id="L138">            var path=new HashSet&lt;SourceRecordId&gt;();var next=fragment;</span>
+<span class="fc bfc" id="L139" title="All 4 branches covered.">            while(next!=null&amp;&amp;!completed.contains(next.sourceId())) {</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">                checkpoint.check();if(!path.add(next.sourceId()))throw new IOException(&quot;Invalid source fragment ancestry&quot;);</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">                if(next.parentId()==null)next=null;</span>
+<span class="pc bpc" id="L142" title="1 of 4 branches missed.">                else {var parent=model.fragments.get(next.parentId());if(parent==null||!parent.versionId().equals(fragment.versionId()))throw new IOException(&quot;Invalid source fragment ancestry&quot;);next=parent;}</span>
+<span class="fc" id="L143">            } completed.addAll(path);</span>
+<span class="fc" id="L144">        }</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        for(var link:model.legacy.values()) {</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">            checkpoint.check();if(!model.artifacts.containsKey(link.artifactId()))throw invalid();</span>
+<span class="pc bpc" id="L147" title="2 of 4 branches missed.">            var version=link.versionId()==null?null:model.versions.get(link.versionId());var fragment=link.fragmentId()==null?null:model.fragments.get(link.fragmentId());</span>
+<span class="pc bpc" id="L148" title="3 of 6 branches missed.">            if(link.versionId()!=null&amp;&amp;(version==null||!version.artifactId().equals(link.artifactId())))throw invalid();</span>
+<span class="pc bpc" id="L149" title="4 of 8 branches missed.">            if(link.fragmentId()!=null&amp;&amp;(fragment==null||link.versionId()!=null&amp;&amp;!fragment.versionId().equals(link.versionId())</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">                    ||!model.versions.get(fragment.versionId()).artifactId().equals(link.artifactId())))throw invalid();</span>
+<span class="fc" id="L151">        }</span>
+<span class="fc" id="L152">        checkpoint.check();return model;</span>
+    }
+    private static &lt;T extends Record&gt;void read(VerifiedBackup archive,String kind,Class&lt;T&gt; type,BackupCheckpoint checkpoint,RestoreArchiveRecords.Visitor&lt;T&gt; visitor)throws IOException {
+<span class="fc" id="L155">        try {RestoreArchiveRecords.read(archive,OWNER,&quot;data/application/&quot;+kind+&quot;.ndjson&quot;,kind,type,MAX_ROWS,checkpoint,visitor);}</span>
+<span class="pc" id="L156">        catch(IllegalArgumentException|NullPointerException failure){throw invalid();}</span>
+<span class="fc" id="L157">    }</span>
+    private static void entry(VerifiedBackup archive,Model model,BackupEntry entry)throws IOException {
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">        if(entry==null)return;</span>
+<span class="pc bpc" id="L160" title="2 of 4 branches missed.">        if(!entry.path().matches(&quot;files/source-[1-9][0-9]*-(original|text)&quot;)||!RestoreArchiveRecords.declares(archive,OWNER,entry.path())</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">                ||!archive.manifest().entries().contains(entry))throw invalid();</span>
+<span class="pc bpc" id="L162" title="3 of 4 branches missed.">        if(model.files.size()&gt;=MAX_ROWS&amp;&amp;!model.files.containsKey(entry.path()))throw invalid();</span>
+<span class="pc bpc" id="L163" title="3 of 4 branches missed.">        var previous=model.files.putIfAbsent(entry.path(),entry);if(previous!=null&amp;&amp;!previous.equals(entry))throw invalid();</span>
+<span class="fc" id="L164">    }</span>
+<span class="pc bpc" id="L165" title="3 of 6 branches missed.">    private static void id(SourceRecordId id,String kind)throws IOException {if(id==null||!id.kind().equals(&quot;application.&quot;+kind)||id.value().length()&gt;4096)throw invalid();}</span>
+<span class="pc bpc" id="L166" title="2 of 4 branches missed.">    private static void required(String value,int max)throws IOException {if(value==null||value.isBlank())throw invalid();length(value,max);}</span>
+<span class="pc bpc" id="L167" title="1 of 4 branches missed.">    private static void length(String value,int max)throws IOException {if(value!=null&amp;&amp;value.length()&gt;max)throw invalid();}</span>
+<span class="pc bpc" id="L168" title="5 of 6 branches missed.">    private static void integer(Long value)throws IOException {if(value!=null&amp;&amp;(value&lt;Integer.MIN_VALUE||value&gt;Integer.MAX_VALUE))throw invalid();}</span>
+<span class="pc bfc" id="L169" title="All 2 branches covered.">    private static Timestamp timestamp(String value)throws IOException {try{return value==null?null:Timestamp.from(Instant.parse(value));}catch(RuntimeException failure){throw invalid();}}</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">    private static java.sql.Date date(String value)throws IOException {try{return value==null?null:java.sql.Date.valueOf(LocalDate.parse(value));}catch(RuntimeException failure){throw invalid();}}</span>
+<span class="nc" id="L171">    private static IOException invalid(){return new IOException(&quot;Invalid typed source restore data&quot;);}</span>
+<span class="fc" id="L172">    private static final class Model {</span>
+<span class="fc" id="L173">        final Map&lt;SourceRecordId,ArtifactRecord&gt; artifacts=new LinkedHashMap&lt;&gt;();final Map&lt;SourceRecordId,VersionRecord&gt; versions=new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L174">        final Map&lt;SourceRecordId,FragmentRecord&gt; fragments=new LinkedHashMap&lt;&gt;();final Map&lt;SourceRecordId,LegacyLinkRecord&gt; legacy=new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L175">        final Map&lt;String,BackupEntry&gt; files=new LinkedHashMap&lt;&gt;();int bytes,rows;</span>
+        &lt;T extends Record&gt;void add(Map&lt;SourceRecordId,T&gt; target,SourceRecordId id,T value)throws IOException {
+<span class="pc bpc" id="L177" title="2 of 4 branches missed.">            if(++rows&gt;MAX_ROWS||target.putIfAbsent(id,value)!=null)throw invalid();</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">            int length=JSON.writeValueAsBytes(value).length;if(length&gt;MAX_MODEL_BYTES-bytes)throw new IOException(&quot;Source restore model budget exceeded&quot;);bytes+=length;</span>
+<span class="fc" id="L179">        }</span>
+    }
+
+    private static Object directoryKey(Path directory)throws IOException {
+<span class="fc" id="L183">        var attributes=Files.readAttributes(directory,BasicFileAttributes.class,LinkOption.NOFOLLOW_LINKS);</span>
+<span class="pc bpc" id="L184" title="2 of 4 branches missed.">        if(!attributes.isDirectory()||attributes.fileKey()==null)throw new IOException(&quot;Source target directory binding is unproven&quot;);</span>
+<span class="fc" id="L185">        return attributes.fileKey();</span>
+    }
+    private static void requireDirectory(Path directory,Object expected)throws IOException {
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">        if(!expected.equals(directoryKey(directory)))throw new IOException(&quot;Source target directory binding changed&quot;);</span>
+<span class="fc" id="L189">    }</span>
+    private static String writeFile(VerifiedBackup archive,BackupEntry entry,SecureDirectoryStream&lt;Path&gt; directory,BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L191">        String name=entry.sha256()+&quot;.source&quot;;</span>
+        try {
+<span class="nc" id="L193">            verifyFile(directory,name,entry,checkpoint);return name;</span>
+<span class="fc" id="L194">        } catch(NoSuchFileException absent) { /* A new file is published only after its bytes are verified and forced. */ }</span>
+<span class="fc" id="L195">        Path temporary=Path.of(&quot;.&quot;+entry.sha256()+&quot;.partial-&quot;+UUID.randomUUID());</span>
+<span class="fc" id="L196">        try(var cleanup=new TemporaryFile(directory,temporary)) {</span>
+<span class="fc" id="L197">            try(var output=directory.newByteChannel(temporary,Set.of(StandardOpenOption.WRITE,StandardOpenOption.CREATE_NEW,LinkOption.NOFOLLOW_LINKS),</span>
+<span class="fc" id="L198">                    PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString(&quot;rw-------&quot;)))) {</span>
+                // Register the actual file before an independently cancellable archive open can fail.
+<span class="fc" id="L200">                cleanup.created=true;</span>
+<span class="fc" id="L201">                try(var input=archive.openEntry(entry.path(),checkpoint)) {</span>
+<span class="fc" id="L202">                    byte[] bytes=new byte[8192];long count=0;</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">                    for(;;) {checkpoint.check();int read=input.read(bytes);if(read&lt;0)break;count+=read;</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">                        var buffer=ByteBuffer.wrap(bytes,0,read);while(buffer.hasRemaining()){checkpoint.check();output.write(buffer);}}</span>
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">                    if(count!=entry.length())throw invalid();</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">                    if(!(output instanceof FileChannel file))throw new IOException(&quot;Durable staged source storage is unavailable&quot;);</span>
+<span class="fc" id="L207">                    file.force(true);</span>
+                }
+            }
+<span class="fc" id="L210">            checkpoint.check();directory.move(temporary,directory,Path.of(name));cleanup.published=true;</span>
+<span class="fc" id="L211">            verifyFile(directory,name,entry,checkpoint);return name;</span>
+        }
+    }
+    private static final class TemporaryFile implements AutoCloseable {
+        private final SecureDirectoryStream&lt;Path&gt; directory;private final Path path;boolean created,published;
+<span class="fc" id="L216">        TemporaryFile(SecureDirectoryStream&lt;Path&gt; directory,Path path){this.directory=directory;this.path=path;}</span>
+<span class="pc bpc" id="L217" title="1 of 4 branches missed.">        @Override public void close()throws IOException {if(created&amp;&amp;!published)directory.deleteFile(path);}</span>
+    }
+    private static void verifyFile(SecureDirectoryStream&lt;Path&gt; directory,String name,BackupEntry entry,BackupCheckpoint checkpoint)throws IOException {
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">        if(!name.equals(entry.sha256()+&quot;.source&quot;))throw invalid();</span>
+<span class="fc" id="L221">        try(var input=directory.newByteChannel(Path.of(name),Set.of(StandardOpenOption.READ,LinkOption.NOFOLLOW_LINKS))) {</span>
+<span class="fc" id="L222">            var hash=sha256();var buffer=ByteBuffer.allocate(8192);long count=0;</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">            for(;;){checkpoint.check();buffer.clear();int read=input.read(buffer);if(read&lt;0)break;count+=read;</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">                if(count&gt;entry.length())throw new IOException(&quot;Staged source file proof changed&quot;);buffer.flip();hash.update(buffer);}</span>
+<span class="pc bpc" id="L225" title="2 of 4 branches missed.">            if(count!=entry.length()||!HexFormat.of().formatHex(hash.digest()).equals(entry.sha256()))throw new IOException(&quot;Staged source file proof changed&quot;);</span>
+        }
+<span class="fc" id="L227">    }</span>
+<span class="pc" id="L228">    private static MessageDigest sha256(){try{return MessageDigest.getInstance(&quot;SHA-256&quot;);}catch(NoSuchAlgorithmException impossible){throw new AssertionError(impossible);}}</span>
+    private static PreparedStatement statement(Connection connection,String sql)throws SQLException {
+<span class="fc" id="L230">        var statement=connection.prepareStatement(sql);statement.setMaxRows(MAX_ROWS+1);statement.setQueryTimeout(60);return statement;</span>
+    }
+<span class="fc bfc" id="L232" title="All 2 branches covered.">    private static void parameters(PreparedStatement statement,Object...values)throws SQLException {for(int index=0;index&lt;values.length;index++)statement.setObject(index+1,values[index]);}</span>
+    private static void update(Connection connection,String sql,Object...values)throws SQLException {
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">        try(var statement=statement(connection,sql)){parameters(statement,values);if(statement.executeUpdate()!=1)throw new SQLException(&quot;Unexpected source restore update count&quot;);}</span>
+<span class="fc" id="L235">    }</span>
+    private static long insert(Connection connection,String table,String columns,Object...values)throws SQLException {
+<span class="fc" id="L237">        String placeholders=String.join(&quot;,&quot;,Collections.nCopies(values.length,&quot;?&quot;));</span>
+<span class="fc" id="L238">        try(var statement=connection.prepareStatement(&quot;insert into &quot;+table+&quot;(&quot;+columns+&quot;) values(&quot;+placeholders+&quot;)&quot;,Statement.RETURN_GENERATED_KEYS)) {</span>
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">            statement.setQueryTimeout(60);parameters(statement,values);if(statement.executeUpdate()!=1)throw new SQLException(&quot;Missing source restore row&quot;);</span>
+<span class="pc bpc" id="L240" title="3 of 6 branches missed.">            try(var keys=statement.getGeneratedKeys()){if(!keys.next())throw new SQLException(&quot;Missing target identity&quot;);long id=keys.getLong(1);if(id&lt;=0||keys.next())throw new SQLException(&quot;Invalid target identity&quot;);return id;}</span>
+        }
+    }
+<span class="pc bpc" id="L243" title="1 of 4 branches missed.">    private static String table(String kind)throws IOException {return switch(kind){case &quot;application.source-artifact&quot;-&gt;&quot;source_artifact&quot;;case &quot;application.source-version&quot;-&gt;&quot;source_version&quot;;case &quot;application.source-fragment&quot;-&gt;&quot;source_fragment&quot;;default-&gt;throw invalid();};}</span>
+    private static String rowHash(Connection connection,String table,long id,BackupCheckpoint checkpoint)throws SQLException,IOException {
+<span class="fc" id="L245">        try(var statement=statement(connection,&quot;select * from &quot;+table+&quot; where id=?&quot;)) {parameters(statement,id);</span>
+<span class="fc" id="L246">            try(var rows=statement.executeQuery()) {</span>
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">                checkpoint.check();if(!rows.next())throw new IOException(&quot;Staged source row proof changed&quot;);var hash=sha256();</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">                for(int column=1;column&lt;=rows.getMetaData().getColumnCount();column++) {</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">                    String value=rows.getString(column);String framed=value==null?&quot;N;&quot;:&quot;V&quot;+value.length()+&quot;:&quot;+value;</span>
+<span class="fc" id="L250">                    hash.update(framed.getBytes(StandardCharsets.UTF_8));</span>
+                }
+<span class="pc bpc" id="L252" title="1 of 2 branches missed.">                if(rows.next())throw invalid();checkpoint.check();return HexFormat.of().formatHex(hash.digest());</span>
+            }
+        }
+    }
+    private static void saveMappings(Connection connection,Map&lt;SourceRecordId,Long&gt; ids,BackupCheckpoint checkpoint)throws SQLException,IOException {
+<span class="fc bfc" id="L257" title="All 2 branches covered.">        for(var mapping:ids.entrySet()){checkpoint.check();var id=mapping.getKey();</span>
+<span class="fc" id="L258">            update(connection,&quot;insert into restore_source_mapping(record_kind,source_value,target_id,row_sha256) values(?,?,?,?)&quot;,id.kind(),id.value(),mapping.getValue(),rowHash(connection,table(id.kind()),mapping.getValue(),checkpoint));}</span>
+<span class="fc" id="L259">    }</span>
+    private static List&lt;String&gt; owner(Connection connection,BackupCheckpoint checkpoint)throws SQLException,IOException {
+<span class="fc" id="L261">        try(var statement=statement(connection,&quot;select generation_id,archive_sha256,content_root_sha256 from restore_source_owner where owner_id='sources'&quot; );var rows=statement.executeQuery()) {</span>
+<span class="pc bpc" id="L262" title="1 of 4 branches missed.">            checkpoint.check();if(!rows.next())return null;var result=List.of(rows.getString(1),rows.getString(2),rows.getString(3));if(rows.next())throw invalid();return result;</span>
+<span class="pc bpc" id="L263" title="2 of 4 branches missed.">        }</span>
+    }
+    private static void requireEmpty(Connection connection,BackupCheckpoint checkpoint)throws SQLException,IOException {
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        for(String table:List.of(&quot;source_artifact&quot;,&quot;source_version&quot;,&quot;source_fragment&quot;,&quot;requirement_source_link&quot;,&quot;restore_source_owner&quot;,&quot;restore_source_mapping&quot;,&quot;restore_source_file&quot;,&quot;restore_source_quarantine&quot;)) {</span>
+<span class="fc" id="L267">            checkpoint.check();try(var statement=statement(connection,&quot;select count(*) from &quot;+table);var rows=statement.executeQuery()) {</span>
+<span class="pc bpc" id="L268" title="2 of 4 branches missed.">                if(!rows.next()||rows.getLong(1)!=0)throw new IOException(&quot;Unjournaled source target is not empty&quot;);}</span>
+<span class="fc" id="L269">        }</span>
+<span class="fc" id="L270">    }</span>
+    private static Result resume(Connection connection,Model model,SecureDirectoryStream&lt;Path&gt; directory,BackupCheckpoint checkpoint)throws SQLException,IOException {
+<span class="fc" id="L272">        var artifacts=new LinkedHashMap&lt;SourceRecordId,Long&gt;();var versions=new LinkedHashMap&lt;SourceRecordId,Long&gt;();var fragments=new LinkedHashMap&lt;SourceRecordId,Long&gt;();int count=0;</span>
+<span class="fc" id="L273">        try(var statement=statement(connection,&quot;select record_kind,source_value,target_id,row_sha256 from restore_source_mapping order by record_kind,source_value&quot;);var rows=statement.executeQuery()) {</span>
+<span class="pc bpc" id="L274" title="1 of 4 branches missed.">            while(rows.next()){checkpoint.check();if(++count&gt;MAX_ROWS)throw invalid();var source=new SourceRecordId(rows.getString(1),rows.getString(2));long id=rows.getLong(3);</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">                if(!rowHash(connection,table(source.kind()),id,checkpoint).equals(rows.getString(4)))throw new IOException(&quot;Staged source row proof changed&quot;);</span>
+<span class="pc bpc" id="L276" title="1 of 4 branches missed.">                var target=switch(source.kind()){case &quot;application.source-artifact&quot;-&gt;artifacts;case &quot;application.source-version&quot;-&gt;versions;case &quot;application.source-fragment&quot;-&gt;fragments;default-&gt;throw invalid();};</span>
+<span class="pc bpc" id="L277" title="1 of 2 branches missed.">                if(target.putIfAbsent(source,id)!=null)throw invalid();}</span>
+        }
+<span class="pc bpc" id="L279" title="3 of 6 branches missed.">        if(!artifacts.keySet().equals(model.artifacts.keySet())||!versions.keySet().equals(model.versions.keySet())||!fragments.keySet().equals(model.fragments.keySet()))throw invalid();</span>
+<span class="fc" id="L280">        var files=new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L281">        try(var statement=statement(connection,&quot;select entry_path,content_name,length,sha256 from restore_source_file&quot;);var rows=statement.executeQuery()) {</span>
+<span class="pc bpc" id="L282" title="1 of 4 branches missed.">            while(rows.next()){checkpoint.check();if(files.size()&gt;=MAX_ROWS)throw invalid();var entry=model.files.get(rows.getString(1));</span>
+<span class="pc bpc" id="L283" title="4 of 8 branches missed.">                if(entry==null||entry.length()!=rows.getLong(3)||!entry.sha256().equals(rows.getString(4))||!files.add(entry.path()))throw invalid();verifyFile(directory,rows.getString(2),entry,checkpoint);}</span>
+        }
+<span class="pc bpc" id="L285" title="1 of 2 branches missed.">        if(!files.equals(model.files.keySet()))throw invalid();var quarantine=new HashSet&lt;SourceRecordId&gt;();</span>
+<span class="fc" id="L286">        try(var statement=statement(connection,&quot;select record_kind,source_value,record_json,sha256,reason from restore_source_quarantine&quot;);var rows=statement.executeQuery()) {</span>
+<span class="pc bpc" id="L287" title="1 of 4 branches missed.">            while(rows.next()){checkpoint.check();if(quarantine.size()&gt;=MAX_ROWS)throw invalid();var id=new SourceRecordId(rows.getString(1),rows.getString(2));var expected=model.legacy.get(id);</span>
+<span class="pc bpc" id="L288" title="5 of 10 branches missed.">                if(expected==null||!quarantine.add(id)||!JSON.writeValueAsString(expected).equals(rows.getString(3))||!StableIdentityHash.sha256(rows.getString(3)).equals(rows.getString(4))||!&quot;UNMAPPED_LEGACY_GLOBAL_NAMESPACE&quot;.equals(rows.getString(5)))throw invalid();}</span>
+        }
+<span class="pc bpc" id="L290" title="1 of 2 branches missed.">        if(!quarantine.equals(model.legacy.keySet()))throw invalid();</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">        for(var entry:Map.of(&quot;source_artifact&quot;,artifacts.size(),&quot;source_version&quot;,versions.size(),&quot;source_fragment&quot;,fragments.size(),&quot;requirement_source_link&quot;,0).entrySet()) {</span>
+<span class="fc" id="L292">            checkpoint.check();try(var statement=statement(connection,&quot;select count(*) from &quot;+entry.getKey());var rows=statement.executeQuery()) {</span>
+<span class="pc bpc" id="L293" title="2 of 4 branches missed.">                if(!rows.next()||rows.getLong(1)!=entry.getValue())throw new IOException(&quot;Staged source row inventory changed&quot;);}</span>
+<span class="fc" id="L294">        }</span>
+<span class="fc" id="L295">        return new Result(artifacts,versions,fragments,quarantine);</span>
+    }
+    private static final class Rollback implements AutoCloseable {
+        private final Connection connection;boolean committed;
+<span class="fc" id="L299">        Rollback(Connection connection){this.connection=connection;}</span>
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        @Override public void close()throws SQLException {if(!committed)connection.rollback();}</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

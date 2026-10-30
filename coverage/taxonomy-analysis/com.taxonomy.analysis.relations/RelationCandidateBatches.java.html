@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationCandidateBatches.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.relations</a> &gt; <span class="el_source">RelationCandidateBatches.java</span></div><h1>RelationCandidateBatches.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.relations;
+
+import com.taxonomy.dto.RelationSearchModel.Node;
+import java.util.*;
+import java.util.function.ToIntFunction;
+
+/** Packs whole descriptions using the assembled prompt; never truncates catalogue evidence. */
+final class RelationCandidateBatches {
+    private RelationCandidateBatches() { }
+
+    static List&lt;List&lt;Node&gt;&gt; split(List&lt;Node&gt; nodes, int countLimit, int characterLimit,
+                                  ToIntFunction&lt;List&lt;Node&gt;&gt; promptSize) {
+<span class="fc" id="L13">        List&lt;List&lt;Node&gt;&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L14">        List&lt;Node&gt; batch = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L15" title="All 2 branches covered.">        for (Node node : nodes) {</span>
+<span class="fc" id="L16">            var proposed = new ArrayList&lt;&gt;(batch); proposed.add(node);</span>
+<span class="fc bfc" id="L17" title="All 4 branches covered.">            if (!batch.isEmpty() &amp;&amp; (proposed.size() &gt; countLimit</span>
+<span class="pc bpc" id="L18" title="1 of 4 branches missed.">                    || !node.root().equals(batch.getFirst().root()) || promptSize.applyAsInt(proposed) &gt; characterLimit)) {</span>
+<span class="fc" id="L19">                result.add(List.copyOf(batch)); batch.clear();</span>
+            }
+<span class="fc" id="L21">            batch.add(node);</span>
+<span class="fc" id="L22">        }</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        if (!batch.isEmpty()) result.add(List.copyOf(batch));</span>
+<span class="fc" id="L24">        return List.copyOf(result);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

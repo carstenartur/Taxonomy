@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RestorePlanCodec.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.restore</a> &gt; <span class="el_source">RestorePlanCodec.java</span></div><h1>RestorePlanCodec.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.restore;
+
+import com.fasterxml.jackson.core.*;
+import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+
+/** A private compiled plan contract, never a generic entity or user-selected type reader. */
+<span class="nc" id="L10">final class RestorePlanCodec {</span>
+    static final int MAX_BYTES=32*1024*1024;
+<span class="fc" id="L12">    private static final JsonMapper JSON=JsonMapper.builder(JsonFactory.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)</span>
+<span class="fc" id="L13">            .disable(StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION).streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(100).maxStringLength(MAX_BYTES).maxNumberLength(100).build()).build())</span>
+<span class="fc" id="L14">            .enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY)</span>
+<span class="fc" id="L15">            .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,DeserializationFeature.FAIL_ON_MISSING_CREATOR_PROPERTIES,DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES,DeserializationFeature.FAIL_ON_TRAILING_TOKENS)</span>
+<span class="fc" id="L16">            .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS).build();</span>
+    static String encode(RestorePlan plan)throws IOException {
+<span class="fc" id="L18">        var bytes=new ByteArrayOutputStream();</span>
+<span class="fc" id="L19">        try(var limited=new OutputStream(){</span>
+            int count;
+<span class="nc bnc" id="L21" title="All 2 branches missed.">            @Override public void write(int value)throws IOException{if(count&gt;=MAX_BYTES)throw budget();bytes.write(value);count++;}</span>
+<span class="pc bpc" id="L22" title="1 of 2 branches missed.">            @Override public void write(byte[] buffer,int offset,int length)throws IOException{if(length&gt;MAX_BYTES-count)throw budget();bytes.write(buffer,offset,length);count+=length;}</span>
+<span class="fc" id="L23">        }){JSON.writeValue(limited,plan);}</span>
+<span class="fc" id="L24">        return bytes.toString(StandardCharsets.UTF_8);</span>
+    }
+    static RestorePlan decode(String json)throws IOException {
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">        try{if(json.getBytes(StandardCharsets.UTF_8).length&gt;MAX_BYTES)throw invalid();return JSON.readValue(json,RestorePlan.class);}</span>
+<span class="nc" id="L28">        catch(RuntimeException|JsonProcessingException malformed){throw invalid();}</span>
+    }
+<span class="nc" id="L30">    private static IOException invalid(){return new IOException(&quot;Restore plan payload proof is invalid&quot;);}</span>
+<span class="nc" id="L31">    private static IOException budget(){return new IOException(&quot;Restore plan payload budget exceeded&quot;);}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

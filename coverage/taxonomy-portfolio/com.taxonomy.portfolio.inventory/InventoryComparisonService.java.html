@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>InventoryComparisonService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.inventory</a> &gt; <span class="el_source">InventoryComparisonService.java</span></div><h1>InventoryComparisonService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.inventory;
+
+import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.*;
+import com.taxonomy.extension.api.inventory.InventoryEvidencePort;
+import com.taxonomy.extension.api.inventory.InventoryEvidencePort.Scope;
+import com.taxonomy.portfolio.dto.PortfolioDtos.*;
+import com.taxonomy.portfolio.model.PortfolioTypes.*;
+import com.taxonomy.portfolio.service.*;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import java.time.Instant;
+import java.util.*;
+
+/** Frozen saved-demand comparisons and explicit reviewed portfolio application. No analysis rescoring. */
+@org.springframework.boot.autoconfigure.condition.ConditionalOnBean(com.taxonomy.extension.api.inventory.InventoryEvidencePort.class)
+@Service
+public class InventoryComparisonService {
+    private final ProductCatalogService products;private final PortfolioAnalysisPersistenceService snapshots;
+    private final ProjectPortfolioService projects;private final SolutionPortfolioService solutions;private final InventoryEvidencePort evidence;private final PortfolioJsonCodec codec;
+<span class="fc" id="L20">    private final InventoryCriterionEvaluator evaluator=new InventoryCriterionEvaluator();private final CuratedInventoryProjection projection=new CuratedInventoryProjection();</span>
+<span class="fc" id="L21">    public InventoryComparisonService(ProductCatalogService products,PortfolioAnalysisPersistenceService snapshots,ProjectPortfolioService projects,SolutionPortfolioService solutions,InventoryEvidencePort evidence,PortfolioJsonCodec codec) {</span>
+<span class="fc" id="L22">        this.products=products;this.snapshots=snapshots;this.projects=projects;this.solutions=solutions;this.evidence=evidence;this.codec=codec;</span>
+<span class="fc" id="L23">    }</span>
+    public record CreateComparisonRequest(List&lt;String&gt; selectedNodes,Question question,List&lt;String&gt; sourceProfiles,List&lt;RelationshipRequirement&gt; relationships,List&lt;VariantInput&gt; variants) {
+<span class="fc" id="L25">        public CreateComparisonRequest(List&lt;String&gt; selectedNodes,Question question,List&lt;String&gt; sourceProfiles) {this(selectedNodes,question,sourceProfiles,List.of(),List.of());}</span>
+<span class="pc bpc" id="L26" title="5 of 10 branches missed.">        public CreateComparisonRequest { selectedNodes=List.copyOf(selectedNodes);sourceProfiles=sourceProfiles==null?List.of():List.copyOf(sourceProfiles);Objects.requireNonNull(question);relationships=relationships==null?List.of():List.copyOf(relationships);variants=variants==null?List.of():List.copyOf(variants);if(relationships.size()&gt;100 || variants.size()&gt;20)throw new IllegalArgumentException(&quot;Too many comparison inputs&quot;); }</span>
+    }
+<span class="fc" id="L28">    public record MapCandidateRequest(UUID id,Long productId,String comparisonFingerprint,String rationale) { }</span>
+    public Comparison compare(Long project,String snapshot,CreateComparisonRequest request,String actor,WorkspaceContext context) {
+<span class="fc" id="L30">        var detail=snapshots.getSnapshot(project,snapshot,actor,context);var summary=detail.summary();var scope=scope(actor,context);</span>
+<span class="fc" id="L31">        var frozenNodes=new TreeMap&lt;String,String&gt;();</span>
+<span class="pc bpc" id="L32" title="1 of 4 branches missed.">        if(detail.analysis()!=null &amp;&amp; detail.analysis().getTree()!=null)freezeRecordedNodes(detail.analysis().getTree(),detail.analysis().getRawScores(),frozenNodes);</span>
+<span class="fc" id="L33">        detail.elementMappings().forEach(m-&gt;frozenNodes.put(m.nodeCode(),codec.write(m)));</span>
+<span class="fc" id="L34">        Set&lt;String&gt; recorded=frozenNodes.keySet();</span>
+<span class="pc bpc" id="L35" title="2 of 6 branches missed.">        if(request.selectedNodes().isEmpty() || !recorded.containsAll(request.selectedNodes()) || new HashSet&lt;&gt;(request.selectedNodes()).size()!=request.selectedNodes().size())throw PortfolioException.validation(&quot;Select distinct nodes recorded in this exact analysis snapshot&quot;);</span>
+<span class="fc" id="L36">        frozenNodes.keySet().retainAll(request.selectedNodes());</span>
+<span class="pc" id="L37">        String requirementText=projects.listRequirementVersions(project,summary.requirementId(),actor,context).stream().filter(v-&gt;v.id().equals(summary.requirementVersionId())).map(RequirementVersionView::text).findFirst().orElseThrow(()-&gt;PortfolioException.notFound(&quot;Exact saved requirement version is unavailable&quot;));</span>
+<span class="fc" id="L38">        var demand=new Demand(scope.repositoryId(),scope.scopeKey(),scope.branch(),project,summary.requirementId(),summary.requirementVersionId(),snapshot,summary.taxonomyFingerprint(),evidence.fingerprint(codec.write(detail)),request.selectedNodes(),request.question(),requirementText,frozenNodes,projects.getRequirement(project,summary.requirementId(),actor,context).currentVersionId());</span>
+<span class="fc" id="L39">        var candidates=new ArrayList&lt;Candidate&gt;();</span>
+<span class="fc" id="L40">        var catalogue=products.listProducts(actor,context);</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        if(catalogue.size()&gt;100)throw PortfolioException.validation(&quot;Catalogue candidate limit exceeded; narrow the sourced catalogue before comparing&quot;);</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        for(var product:catalogue) candidates.add(curated(product,scope,request.question()));</span>
+<span class="fc" id="L43">        var remote=evidence.readSources(scope,demand,request.sourceProfiles());</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">        for(var external:remote.candidates()) {</span>
+<span class="nc" id="L45">            var mappings=evidence.mappings(scope,external.id());</span>
+<span class="nc" id="L46">            var externalMetadata=new TreeMap&lt;&gt;(external.metadata());externalMetadata.put(&quot;mappingStateFingerprint&quot;,evidence.fingerprint(mappings));</span>
+<span class="nc" id="L47">            external=new Candidate(external.id(),external.productId(),external.name(),external.kind(),external.fingerprint(),externalMetadata,external.assertions());</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">            if(mappings.isEmpty()) {candidates.add(external);continue;}</span>
+<span class="nc" id="L49">            var mapping=mappings.stream().max(Comparator.comparing(Mapping::mappedAt)).orElseThrow();var product=products.getProduct(mapping.productId(),actor,context);</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">            if(!mapping.productFingerprint().equals(evidence.fingerprint(product))) {</span>
+<span class="nc" id="L51">                var stale=new TreeMap&lt;&gt;(external.metadata());stale.put(&quot;mappingStale&quot;,&quot;Mapped product changed; review identity again&quot;);stale.put(&quot;previousMappingId&quot;,mapping.id().toString());</span>
+<span class="nc" id="L52">                candidates.add(new Candidate(external.id(),null,external.name(),external.kind(),external.fingerprint(),stale,external.assertions()));continue;</span>
+            }
+<span class="nc" id="L54">            var metadata=new TreeMap&lt;&gt;(external.metadata());metadata.put(&quot;mappingId&quot;,mapping.id().toString());metadata.put(&quot;mappedProductFingerprint&quot;,mapping.productFingerprint());metadata.put(&quot;mappingRationale&quot;,mapping.rationale());metadata.put(&quot;curatedAssertionsFingerprint&quot;,evidence.fingerprint(evidence.assertions(scope,&quot;product:&quot;+product.id())));</span>
+<span class="nc" id="L55">            var assertions=new ArrayList&lt;&gt;(external.assertions());</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">            for(var a:projection.project(product,mapping.productFingerprint(),evidence.assertions(scope,&quot;product:&quot;+product.id()),request.question()).assertions())</span>
+<span class="nc" id="L57">                assertions.add(new Assertion(a.id(),external.id(),a.criterion(),a.nodeCode(),a.positive(),a.start(),a.endExclusive(),a.organization(),a.environment(),a.kind(),a.citation(),a.recordedAt(),a.relationship()));</span>
+<span class="nc" id="L58">            candidates.add(new Candidate(external.id(),product.id(),external.name(),external.kind(),evidence.fingerprint(List.of(external.fingerprint(),mapping)),metadata,assertions));</span>
+<span class="nc" id="L59">        }</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">        if(candidates.size()&gt;100)throw PortfolioException.validation(&quot;Comparison candidate limit exceeded&quot;);</span>
+        // Only reviewed identity mappings permit cross-source corroboration/conflict.
+        // Keep each source object row and every original assertion ID visible.
+<span class="fc" id="L63">        var joined=new ArrayList&lt;Candidate&gt;();</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        for(var candidate:candidates) {</span>
+<span class="fc" id="L65">            var assertions=new ArrayList&lt;&gt;(candidate.assertions());</span>
+<span class="pc bpc" id="L66" title="2 of 8 branches missed.">            if(candidate.productId()!=null) for(var other:candidates) if(!other.id().equals(candidate.id()) &amp;&amp; candidate.productId().equals(other.productId()))</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">                for(var a:other.assertions()) assertions.add(new Assertion(a.id(),candidate.id(),a.criterion(),a.nodeCode(),a.positive(),a.start(),a.endExclusive(),a.organization(),a.environment(),a.kind(),a.citation(),a.recordedAt(),a.relationship()));</span>
+<span class="fc" id="L68">            joined.add(new Candidate(candidate.id(),candidate.productId(),candidate.name(),candidate.kind(),candidate.fingerprint(),candidate.metadata(),assertions.stream().distinct().toList()));</span>
+<span class="fc" id="L69">        }</span>
+<span class="fc" id="L70">        candidates=joined;</span>
+<span class="fc" id="L71">        var findings=new ArrayList&lt;Finding&gt;();</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        for(var candidate:candidates) {</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            for(var node:demand.selectedNodes())findings.add(evaluator.evaluate(candidate.id(),Criterion.CAPABILITY,node,demand.question(),candidate.assertions(),true));</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            for(var criterion:List.of(Criterion.AVAILABILITY,Criterion.SUPPORT,Criterion.ORGANIZATION,Criterion.ENVIRONMENT,Criterion.RELATIONSHIPS))</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">                findings.add(evaluator.evaluate(candidate.id(),criterion,null,demand.question(),candidate.assertions(),criterion!=Criterion.RELATIONSHIPS));</span>
+<span class="fc" id="L76">        }</span>
+<span class="fc" id="L77">        var candidateIds=candidates.stream().map(Candidate::id).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc" id="L78">        var relationshipIds=new HashSet&lt;String&gt;();var relationshipFindings=new ArrayList&lt;RelationshipFinding&gt;();</span>
+<span class="fc" id="L79">        var relationshipEvaluator=new InventoryRelationshipEvaluator();</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        for(var requirement:request.relationships()) {</span>
+<span class="pc bpc" id="L81" title="3 of 6 branches missed.">            if(!relationshipIds.add(requirement.id()) || !candidateIds.contains(requirement.sourceCandidateId()) || !candidateIds.contains(requirement.targetCandidateId()))throw PortfolioException.validation(&quot;Relationship must have a distinct ID and exact retained endpoints&quot;);</span>
+<span class="fc" id="L82">            var sourceCandidate=candidates.stream().filter(c-&gt;c.id().equals(requirement.sourceCandidateId())).findFirst().orElseThrow();</span>
+<span class="fc" id="L83">            relationshipFindings.add(relationshipEvaluator.evaluate(requirement,request.question(),sourceCandidate.assertions()));</span>
+<span class="fc" id="L84">        }</span>
+<span class="fc" id="L85">        var variants=new ArrayList&lt;VariantAssessment&gt;();var variantIds=new HashSet&lt;Long&gt;();</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        var existing=request.variants().isEmpty()?List.&lt;ProjectSolutionView&gt;of():solutions.listProjectSolutions(project,actor,context);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        for(var input:request.variants()) {</span>
+<span class="pc bpc" id="L88" title="2 of 4 branches missed.">            if(!variantIds.add(input.projectSolutionId()) || !candidateIds.containsAll(input.candidateIds()))throw PortfolioException.validation(&quot;Variant must name a distinct existing project solution and retained evidence candidates&quot;);</span>
+<span class="pc" id="L89">            var solution=existing.stream().filter(v-&gt;v.id().equals(input.projectSolutionId())).findFirst().orElseThrow(()-&gt;PortfolioException.validation(&quot;Variant is not an existing solution of this project&quot;));</span>
+<span class="fc" id="L90">            variants.add(new InventoryVariantEvaluator().evaluate(solution,evidence.fingerprint(solution),codec.write(solution),input,demand,findings,relationshipFindings));</span>
+<span class="fc" id="L91">        }</span>
+<span class="fc" id="L92">        UUID id=UUID.randomUUID();Instant now=Instant.now();String fingerprint=evidence.fingerprint(List.of(id,demand,InventoryCriterionEvaluator.VERSION,now,candidates,findings,remote.sources(),request.relationships(),relationshipFindings,variants));</span>
+<span class="fc" id="L93">        var result=new Comparison(id,demand,InventoryCriterionEvaluator.VERSION,now,candidates,findings,remote.sources(),fingerprint,request.relationships(),relationshipFindings,variants);evidence.save(scope,result);return result;</span>
+    }
+
+    public List&lt;Comparison&gt; list(Long project,String snapshot,String actor,WorkspaceContext context) {
+<span class="fc" id="L97">        snapshots.getSnapshot(project,snapshot,actor,context);</span>
+<span class="fc bfc" id="L98" title="All 4 branches covered.">        return evidence.list(scope(actor,context),project,snapshot).stream().filter(c-&gt;{try{evidence.authorize(scope(actor,context),c.demand(),c.sources());return true;}catch(InventoryEvidencePort.Failure denied){if(denied.status()==403||denied.status()==404)return false;throw denied;}}).toList();</span>
+    }
+    public Comparison read(UUID id,String actor,WorkspaceContext context) {
+<span class="fc" id="L101">        var comparison=evidence.read(scope(actor,context),id);projects.requireProject(comparison.demand().projectId(),actor,context);evidence.authorize(scope(actor,context),comparison.demand(),comparison.sources());return comparison;</span>
+    }
+    @org.springframework.transaction.annotation.Transactional
+    public Assertion appendAssertion(Long productId,Assertion assertion,String actor,WorkspaceContext context) {
+<span class="fc" id="L105">        products.requireProductForUpdate(productId,actor,context);</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if(!assertion.candidateId().equals(&quot;product:&quot;+productId))throw PortfolioException.validation(&quot;Assertion must name this existing product&quot;);</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if(assertion.recordedAt().isAfter(Instant.now()))throw PortfolioException.validation(&quot;Assertion recording date cannot be in the future&quot;);</span>
+<span class="fc" id="L108">        evidence.appendAssertion(scope(actor,context),assertion);return assertion;</span>
+    }
+    public Mapping map(UUID comparisonId,String candidateId,MapCandidateRequest request,String actor,WorkspaceContext context) {
+<span class="fc" id="L111">        var comparison=read(comparisonId,actor,context);</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        if(!comparison.fingerprint().equals(request.comparisonFingerprint()))throw PortfolioException.conflict(&quot;Comparison changed&quot;);</span>
+<span class="fc" id="L113">        var candidate=candidate(comparison,candidateId);</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        if(!candidate.metadata().containsKey(&quot;sourceProfile&quot;))throw PortfolioException.validation(&quot;Only an explicit external source identity may be mapped&quot;);</span>
+<span class="fc" id="L115">        revalidateDemand(comparison,actor,context);</span>
+<span class="fc" id="L116">        var product=products.getProduct(request.productId(),actor,context);</span>
+<span class="fc" id="L117">        var source=comparison.sources().stream().filter(s-&gt;s.profileId().equals(candidate.metadata().get(&quot;sourceProfile&quot;))).findFirst().orElseThrow(()-&gt;PortfolioException.validation(&quot;External candidate has no retained source identity&quot;));</span>
+<span class="fc" id="L118">        var previous=evidence.mappings(scope(actor,context),candidate.id()).stream().filter(m-&gt;m.id().equals(request.id())).findFirst();</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        if(previous.isPresent()) {</span>
+<span class="fc" id="L120">            var prior=previous.get();</span>
+<span class="fc bfc" id="L121" title="All 8 branches covered.">            if(!prior.productId().equals(product.id()) || !prior.productFingerprint().equals(evidence.fingerprint(product)) || !prior.rationale().equals(request.rationale()) || !prior.actor().equals(actor))throw PortfolioException.conflict(&quot;Mapping ID was reused with a different payload&quot;);return prior;</span>
+        }
+<span class="fc" id="L123">        var mapping=new Mapping(request.id(),candidate.id(),product.id(),evidence.fingerprint(product),source.profileId(),source.revision(),candidate.fingerprint(),request.rationale(),actor,Instant.now());</span>
+<span class="fc" id="L124">        evidence.map(scope(actor,context),mapping);return mapping;</span>
+    }
+    public Reviewed review(UUID id,Review review,String actor,WorkspaceContext context) {
+<span class="fc" id="L127">        var comparison=read(id,actor,context);</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        if(review.variantDecision()!=null)return reviewVariant(comparison,review,actor,context);</span>
+<span class="fc" id="L129">        var candidate=candidate(comparison,review.candidateId());</span>
+<span class="fc" id="L130">        var findings=comparison.findings().stream().filter(f-&gt;f.candidateId().equals(candidate.id())).toList();</span>
+<span class="pc bpc" id="L131" title="2 of 6 branches missed.">        String hard=findings.stream().filter(f-&gt;f.hardExclusion() || f.outcome()==Outcome.CONTRADICTED || f.outcome()==Outcome.CONFLICT).map(f-&gt;f.criterion()+&quot;:&quot;+Objects.toString(f.nodeCode(),&quot;&quot;)+&quot;:&quot;+f.outcome()).collect(java.util.stream.Collectors.joining(&quot;; &quot;));</span>
+<span class="pc bnc" id="L132" title="All 4 branches missed.">        var directedExclusions=comparison.relationshipFindings().stream().filter(f-&gt;f.sourceCandidateId().equals(candidate.id()) &amp;&amp; f.finding().hardExclusion()).map(f-&gt;f.requirementId()+&quot;:&quot;+f.finding().outcome()).toList();</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        if(!directedExclusions.isEmpty())hard=hard+&quot;; &quot;+String.join(&quot;; &quot;,directedExclusions);</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">        final String retainedHard=hard.length()&lt;=4000?hard:&quot;Hard exclusions retained in inventory comparison &quot;+comparison.id()+&quot; / &quot;+comparison.fingerprint()+&quot;; candidate &quot;+candidate.id();</span>
+<span class="fc bfc" id="L135" title="All 4 branches covered.">        if(review.selectProduct() &amp;&amp; !hard.isEmpty())throw PortfolioException.validation(&quot;A hard contradiction or conflict prevents product selection&quot;);</span>
+<span class="pc bpc" id="L136" title="1 of 4 branches missed.">        if(review.selectProduct() &amp;&amp; candidate.productId()==null)throw PortfolioException.validation(&quot;Explicitly map the external candidate to an existing catalogue product before selection&quot;);</span>
+<span class="fc" id="L137">        return evidence.review(scope(actor,context),id,review,()-&gt;{</span>
+            // Existing identical reviews replay in the journal without applying again.
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if(!InventoryCriterionEvaluator.VERSION.equals(comparison.evaluatorVersion()))throw PortfolioException.conflict(&quot;Inventory evaluation rules changed; compare again&quot;);</span>
+            // The journal owns the transaction. Every mutable input writer observes
+            // these aggregate locks; validation and the portfolio write share them.
+<span class="fc" id="L142">            projects.requireProjectForUpdate(comparison.demand().projectId(),actor,context);</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">            if(candidate.productId()!=null)products.requireProductForUpdate(candidate.productId(),actor,context);</span>
+<span class="fc" id="L144">            revalidateDemand(comparison,actor,context);</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">            if(candidate.productId()!=null) {</span>
+<span class="fc" id="L146">                var product=products.getProduct(candidate.productId(),actor,context);</span>
+<span class="fc" id="L147">                String expected=candidate.metadata().getOrDefault(&quot;mappedProductFingerprint&quot;,candidate.metadata().getOrDefault(&quot;catalogueFingerprint&quot;,candidate.fingerprint()));</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">                if(!expected.equals(evidence.fingerprint(product)))throw PortfolioException.conflict(&quot;Catalogue product or confirmed mapping changed; compare again&quot;);</span>
+<span class="fc" id="L149">                String assertionFingerprint=candidate.metadata().get(&quot;curatedAssertionsFingerprint&quot;);</span>
+<span class="pc bpc" id="L150" title="1 of 4 branches missed.">                if(assertionFingerprint!=null &amp;&amp; !assertionFingerprint.equals(evidence.fingerprint(evidence.assertions(scope(actor,context),&quot;product:&quot;+product.id()))))throw PortfolioException.conflict(&quot;Curated inventory assertions changed; compare again&quot;);</span>
+            }
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            if(review.projectSolutionId()!=null) {</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">                if(review.coveragePercent()==null)throw PortfolioException.validation(&quot;Portfolio application requires an explicit reviewed coverage percentage&quot;);</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">                if(candidate.productId()==null)throw PortfolioException.validation(&quot;Map the external object before portfolio application&quot;);</span>
+<span class="fc" id="L155">                String reference=reviewReference(comparison,review);</span>
+<span class="pc bpc" id="L156" title="4 of 6 branches missed.">                products.applyReviewedInventoryCandidate(comparison.demand().projectId(),review.projectSolutionId(),new UpsertProductCandidateRequest(candidate.productId(),review.coveragePercent(),retainedHard.isEmpty()?null:retainedHard,null,null,reference,0.0,ReviewStatus.CONFIRMED,review.selectProduct()?ProductSelectionStatus.SELECTED:retainedHard.isEmpty()?ProductSelectionStatus.SHORTLISTED:ProductSelectionStatus.REJECTED),comparison.id().toString(),comparison.fingerprint(),retainedHard,actor,context);</span>
+<span class="fc" id="L157">                solutions.linkRequirement(comparison.demand().projectId(),review.projectSolutionId(),new LinkRequirementSolutionRequest(comparison.demand().requirementId(),comparison.demand().snapshotId(),review.coveragePercent(),RequirementSolutionRole.USES,ReviewStatus.CONFIRMED,reference),actor,context);</span>
+            }
+<span class="fc" id="L159">            return null;</span>
+        });
+    }
+    private Reviewed reviewVariant(Comparison comparison,Review review,String actor,WorkspaceContext context) {
+<span class="fc" id="L163">        var decision=review.variantDecision();</span>
+<span class="pc" id="L164">        var variant=comparison.variants().stream().filter(v-&gt;v.projectSolutionId().equals(decision.projectSolutionId())).findFirst().orElseThrow(()-&gt;PortfolioException.validation(&quot;Variant is not part of this retained comparison&quot;));</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">        if(review.coveragePercent()==null)throw PortfolioException.validation(&quot;Variant application requires explicit reviewed coverage&quot;);</span>
+<span class="fc bfc" id="L166" title="All 4 branches covered.">        if(decision.outcome()==VariantOutcome.SELECTED &amp;&amp; !variant.hardExclusions().isEmpty())throw PortfolioException.validation(&quot;Hard exclusions prevent selecting this solution variant&quot;);</span>
+<span class="pc bpc" id="L167" title="1 of 6 branches missed.">        if(decision.outcome()==VariantOutcome.SELECTED &amp;&amp; !variant.openQuestions().isEmpty() &amp;&amp; !decision.acknowledgeUnknowns())throw PortfolioException.validation(&quot;Acknowledge unresolved evidence before selection&quot;);</span>
+<span class="fc" id="L168">        return evidence.review(scope(actor,context),comparison.id(),review,()-&gt;{</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">            if(!InventoryCriterionEvaluator.VERSION.equals(comparison.evaluatorVersion()))throw PortfolioException.conflict(&quot;Inventory evaluation rules changed; compare again&quot;);</span>
+<span class="fc" id="L170">            projects.requireProjectForUpdate(comparison.demand().projectId(),actor,context);</span>
+<span class="fc" id="L171">            solutions.requireSolutionForUpdate(variant.solutionId(),actor,context);</span>
+<span class="pc" id="L172">            var current=solutions.listProjectSolutions(comparison.demand().projectId(),actor,context).stream().filter(v-&gt;v.id().equals(variant.projectSolutionId())).findFirst().orElseThrow(()-&gt;PortfolioException.conflict(&quot;Project solution changed; compare again&quot;));</span>
+<span class="fc" id="L173">            var productIds=new TreeSet&lt;Long&gt;();current.productCandidates().forEach(p-&gt;productIds.add(p.product().id()));</span>
+<span class="pc bpc" id="L174" title="1 of 4 branches missed.">            for(var candidateId:variant.input().candidateIds()) {var c=candidate(comparison,candidateId);if(c.productId()!=null)productIds.add(c.productId());}</span>
+<span class="fc" id="L175">            productIds.forEach(p-&gt;products.requireProductForUpdate(p,actor,context));</span>
+<span class="fc" id="L176">            revalidateDemand(comparison,actor,context);</span>
+<span class="pc" id="L177">            current=solutions.listProjectSolutions(comparison.demand().projectId(),actor,context).stream().filter(v-&gt;v.id().equals(variant.projectSolutionId())).findFirst().orElseThrow(()-&gt;PortfolioException.conflict(&quot;Project solution changed; compare again&quot;));</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">            if(!variant.fingerprint().equals(evidence.fingerprint(current)))throw PortfolioException.conflict(&quot;Solution, coverage, membership or requirement links changed; compare again&quot;);</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">            for(var candidateId:variant.input().candidateIds())revalidateCandidate(comparison,candidate(comparison,candidateId),actor,context);</span>
+<span class="fc" id="L180">            String reference=reviewReference(comparison,review);</span>
+<span class="fc" id="L181">            String exclusions=String.join(&quot;; &quot;,variant.hardExclusions());</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">            if(exclusions.length()&gt;4000)exclusions=&quot;Hard exclusions retained in inventory comparison &quot;+comparison.id()+&quot; / &quot;+comparison.fingerprint()+&quot;; variant &quot;+variant.projectSolutionId()+&quot; (&quot;+variant.hardExclusions().size()+&quot; complete reasons).&quot;;</span>
+<span class="fc" id="L183">            solutions.applyInventoryVariant(comparison.demand().projectId(),variant.projectSolutionId(),ProjectSolutionStatus.valueOf(decision.outcome().name()),ActionStatus.valueOf(variant.input().action().name()),reference,comparison.id().toString(),comparison.fingerprint(),exclusions,actor,context);</span>
+<span class="fc" id="L184">            solutions.linkRequirement(comparison.demand().projectId(),variant.projectSolutionId(),new LinkRequirementSolutionRequest(comparison.demand().requirementId(),comparison.demand().snapshotId(),review.coveragePercent(),RequirementSolutionRole.USES,ReviewStatus.CONFIRMED,reference),actor,context);</span>
+<span class="fc" id="L185">            return null;</span>
+        });
+    }
+    private void revalidateCandidate(Comparison comparison,Candidate candidate,String actor,WorkspaceContext context) {
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">        if(candidate.productId()==null)return;</span>
+<span class="fc" id="L190">        var product=products.getProduct(candidate.productId(),actor,context);</span>
+<span class="fc" id="L191">        String expected=candidate.metadata().getOrDefault(&quot;mappedProductFingerprint&quot;,candidate.metadata().getOrDefault(&quot;catalogueFingerprint&quot;,candidate.fingerprint()));</span>
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">        if(!expected.equals(evidence.fingerprint(product)))throw PortfolioException.conflict(&quot;Catalogue product changed; compare again&quot;);</span>
+<span class="fc" id="L193">        String assertions=candidate.metadata().get(&quot;curatedAssertionsFingerprint&quot;);</span>
+<span class="pc bpc" id="L194" title="2 of 4 branches missed.">        if(assertions!=null &amp;&amp; !assertions.equals(evidence.fingerprint(evidence.assertions(scope(actor,context),&quot;product:&quot;+product.id()))))throw PortfolioException.conflict(&quot;Curated assertions changed; compare again&quot;);</span>
+<span class="fc" id="L195">    }</span>
+    private String reviewReference(Comparison comparison,Review review) {
+<span class="fc" id="L197">        String prefix=&quot;Inventory comparison &quot;+comparison.id()+&quot; / &quot;+comparison.fingerprint()+&quot;; snapshot &quot;+comparison.demand().snapshotId()+&quot;; review &quot;+review.id()+&quot;; &quot;;</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        return prefix.length()+review.rationale().length()&lt;=2000?prefix+review.rationale():prefix+&quot;Full rationale retained in this review.&quot;;</span>
+    }
+<span class="fc" id="L200">    private record FrozenNode(String code,String nameEn,String nameDe,String descriptionEn,String descriptionDe,String parentCode,String analysisRole,String source,String externalId,Double originalScore) { }</span>
+    private void freezeRecordedNodes(List&lt;com.taxonomy.dto.TaxonomyNodeDto&gt; nodes,Map&lt;String,Double&gt; scores,Map&lt;String,String&gt; frozen) {
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        for(var node:nodes) {</span>
+<span class="pc bpc" id="L203" title="3 of 6 branches missed.">            if(scores!=null &amp;&amp; scores.containsKey(node.getCode()) &amp;&amp; scores.get(node.getCode())!=null)</span>
+<span class="fc" id="L204">                frozen.put(node.getCode(),codec.write(new FrozenNode(node.getCode(),node.getNameEn(),node.getNameDe(),node.getDescriptionEn(),node.getDescriptionDe(),node.getParentCode(),node.getAnalysisRole(),node.getSource(),node.getExternalId(),scores.get(node.getCode()))));</span>
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">            if(node.getChildren()!=null)freezeRecordedNodes(node.getChildren(),scores,frozen);</span>
+<span class="fc" id="L206">        }</span>
+<span class="fc" id="L207">    }</span>
+<span class="fc" id="L208">    public List&lt;Reviewed&gt; reviews(UUID id,String actor,WorkspaceContext context) {read(id,actor,context);return evidence.reviews(scope(actor,context),id);}</span>
+    private Candidate curated(ProductView product,Scope scope,Question question) {
+<span class="fc" id="L210">        var assertions=evidence.assertions(scope,&quot;product:&quot;+product.id());</span>
+<span class="fc" id="L211">        var candidate=projection.project(product,evidence.fingerprint(product),assertions,question);</span>
+<span class="fc" id="L212">        var metadata=new TreeMap&lt;&gt;(candidate.metadata());metadata.put(&quot;catalogueFingerprint&quot;,candidate.fingerprint());metadata.put(&quot;curatedAssertionsFingerprint&quot;,evidence.fingerprint(assertions));</span>
+<span class="fc" id="L213">        return new Candidate(candidate.id(),candidate.productId(),candidate.name(),candidate.kind(),evidence.fingerprint(List.of(product,assertions)),metadata,candidate.assertions());</span>
+    }
+    private void revalidateDemand(Comparison c,String actor,WorkspaceContext context) {
+<span class="fc" id="L216">        evidence.revalidate(scope(actor,context),c.demand(),c.sources());</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        for(var candidate:c.candidates()) {</span>
+<span class="fc" id="L218">            String expected=candidate.metadata().get(&quot;mappingStateFingerprint&quot;);</span>
+<span class="pc bpc" id="L219" title="1 of 4 branches missed.">            if(expected!=null &amp;&amp; !expected.equals(evidence.fingerprint(evidence.mappings(scope(actor,context),candidate.id()))))throw PortfolioException.conflict(&quot;Source identity mapping authority changed; compare again&quot;);</span>
+<span class="fc" id="L220">        }</span>
+<span class="fc" id="L221">        var current=snapshots.getSnapshot(c.demand().projectId(),c.demand().snapshotId(),actor,context);</span>
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">        if(!c.demand().snapshotFingerprint().equals(evidence.fingerprint(codec.write(current))))throw PortfolioException.conflict(&quot;Saved snapshot changed; compare again&quot;);</span>
+<span class="fc" id="L223">        var requirement=projects.getRequirement(c.demand().projectId(),c.demand().requirementId(),actor,context);</span>
+<span class="pc bpc" id="L224" title="1 of 4 branches missed.">        if(!Objects.equals(requirement.currentVersionId(),c.demand().observedRequirementVersionId()!=null?c.demand().observedRequirementVersionId():c.demand().requirementVersionId()))throw PortfolioException.conflict(&quot;Current requirement version changed; compare the intended saved version again&quot;);</span>
+<span class="fc" id="L225">    }</span>
+<span class="fc" id="L226">    private Candidate candidate(Comparison c,String id) {return c.candidates().stream().filter(v-&gt;v.id().equals(id)).findFirst().orElseThrow(()-&gt;PortfolioException.validation(&quot;Candidate is not part of this retained comparison&quot;));}</span>
+<span class="fc" id="L227">    private Scope scope(String actor,WorkspaceContext context) {return new Scope(PortfolioScope.repositoryId(context),PortfolioScope.key(actor,context),PortfolioScope.branch(context),PortfolioScope.username(actor,context));}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

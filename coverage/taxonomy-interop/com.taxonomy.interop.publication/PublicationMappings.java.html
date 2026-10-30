@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PublicationMappings.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.publication</a> &gt; <span class="el_source">PublicationMappings.java</span></div><h1>PublicationMappings.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.publication;
+
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.extension.api.integration.PublicationContracts.PublicationScope;
+import com.taxonomy.interop.*;
+import com.taxonomy.interop.IntegrationDomainAdapter.EndpointIndex;
+import com.taxonomy.interop.publication.PublicationEvidence.PublicationPreviewEnvelope;
+import java.util.*;
+import static com.taxonomy.extension.api.integration.PublicationBounds.*;
+
+/** Bounded pre-effect mappings. The optional endpoint index must come from scoped local validation,
+ * never a request/import deserializer. The execution service still authorizes typed local apply. */
+public final class PublicationMappings {
+<span class="fc" id="L14">    private static final List&lt;String&gt; NATIVE_AUTHORITY = List.of(&quot;nativeProjection&quot;, &quot;nativeSource&quot;, &quot;nativeTarget&quot;, &quot;nativeType&quot;);</span>
+    private final IntegrationContext endpointContext;
+    private final EndpointIndex endpoints;
+    private final PublicationScope endpointScope;
+<span class="fc" id="L18">    public PublicationMappings() { endpointContext = null; endpointScope = null; endpoints = null; }</span>
+<span class="fc" id="L19">    public PublicationMappings(IntegrationContext validatedContext, PublicationScope validatedScope, EndpointIndex validatedEndpoints) {</span>
+<span class="fc" id="L20">        endpointContext = Objects.requireNonNull(validatedContext); endpointScope = Objects.requireNonNull(validatedScope);</span>
+<span class="pc bpc" id="L21" title="1 of 2 branches missed.">        if (!endpointContext.externalScope().equals(endpointScope.externalScope())) throw IntegrationProblem.conflict(&quot;PUBLICATION_ENDPOINT_CONTEXT_MISMATCH&quot;);</span>
+<span class="fc" id="L22">        endpoints = new EndpointIndex(map(Objects.requireNonNull(validatedEndpoints).external(), MAX_SCOPE_ITEMS));</span>
+<span class="fc" id="L23">        endpoints.external().forEach((id, endpoint) -&gt; { resource(id); Objects.requireNonNull(endpoint.kind()); text(endpoint.businessIdentity()); });</span>
+<span class="fc" id="L24">        bounded(MAX_DOCUMENT_BYTES, endpointContext, endpointScope, endpoints);</span>
+<span class="fc" id="L25">    }</span>
+    public record Result(Artifact target, Set&lt;MappingLoss&gt; resolvedLosses) {
+<span class="fc" id="L27">        public Result { resolvedLosses = Set.copyOf(resolvedLosses); }</span>
+    }
+    public Result apply(PublicationPreviewEnvelope preview, String changeId, Artifact locallyAccepted, Artifact target,
+                        MappingOverride mapping, EndpointOverride endpoint, List&lt;MappingLoss&gt; losses) {
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (target == null) {</span>
+<span class="pc bpc" id="L32" title="2 of 4 branches missed.">            if (mapping != null || endpoint != null) throw unsupported();</span>
+<span class="fc" id="L33">            return new Result(null, Set.of());</span>
+        }
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        if (mapping != null) {</span>
+<span class="pc bpc" id="L36" title="1 of 6 branches missed.">            if (mapping.internalIdentity() != null || mapping.canonicalType() != null || target.kind() != ArtifactKind.REQUIREMENT</span>
+<span class="pc bpc" id="L37" title="3 of 4 branches missed.">                    || mapping.titleAttribute() == null &amp;&amp; mapping.textAttribute() == null) throw unsupported();</span>
+            try {
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">                if (mapping.titleAttribute() != null) text(mapping.titleAttribute());</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">                if (mapping.textAttribute() != null) text(mapping.textAttribute());</span>
+<span class="fc" id="L41">                target = IntegrationMappingFields.remap(target, mapping);</span>
+<span class="fc" id="L42">            } catch (RuntimeException invalidMapping) { throw unsupported(); }</span>
+<span class="pc bpc" id="L43" title="4 of 8 branches missed.">            if (target.title().isBlank() || target.title().length() &gt; 240 || target.text().isBlank() || target.text().length() &gt; 100_000) throw unsupported();</span>
+        }
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        if (target.kind() == ArtifactKind.RELATION) target = localAuthority(target, locallyAccepted);</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        if (endpoint != null) target = endpoint(preview, target, endpoint);</span>
+<span class="fc" id="L47">        Set&lt;MappingLoss&gt; resolved = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L48" title="All 4 branches covered.">        if (mapping != null) for (MappingLoss loss : losses) {</span>
+<span class="pc bpc" id="L49" title="3 of 4 branches missed.">            if (!Objects.equals(loss.artifactId(), target.id()) &amp;&amp; !Objects.equals(loss.artifactId(), changeId)) continue;</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">            if (loss.disposition() != LossDisposition.UNSUPPORTED) continue;</span>
+<span class="pc bpc" id="L51" title="4 of 6 branches missed.">            boolean title = mapping.titleAttribute() != null &amp;&amp; &quot;title&quot;.equals(loss.field()) &amp;&amp; &quot;AMBIGUOUS_TITLE_ATTRIBUTE&quot;.equals(loss.code());</span>
+<span class="pc bpc" id="L52" title="1 of 4 branches missed.">            boolean body = mapping.textAttribute() != null &amp;&amp; &quot;text&quot;.equals(loss.field())</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">                    &amp;&amp; Set.of(&quot;AMBIGUOUS_TEXT_ATTRIBUTE&quot;, &quot;EMPTY_REQUIREMENT_TEXT&quot;).contains(loss.code());</span>
+<span class="pc bpc" id="L54" title="1 of 4 branches missed.">            if (title || body) resolved.add(loss);</span>
+<span class="fc" id="L55">        }</span>
+<span class="fc" id="L56">        bounded(MAX_ITEM_BYTES, target, resolved);</span>
+<span class="fc" id="L57">        return new Result(target, resolved);</span>
+    }
+    private Artifact endpoint(PublicationPreviewEnvelope preview, Artifact target, EndpointOverride endpoint) {
+<span class="pc bpc" id="L60" title="1 of 4 branches missed.">        if (target.kind() != ArtifactKind.RELATION || endpoint.projection() == null) throw unsupported();</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (endpointContext == null) throw new IntegrationProblem(&quot;PUBLICATION_ENDPOINT_CONTEXT_REQUIRED&quot;, 422, &quot;Endpoint review requires a scoped local identity index&quot;);</span>
+<span class="fc bfc" id="L62" title="All 4 branches covered.">        if (!endpointContext.equals(preview.context()) || !endpointScope.equals(preview.request().scope())) throw IntegrationProblem.conflict(&quot;PUBLICATION_ENDPOINT_CONTEXT_MISMATCH&quot;);</span>
+<span class="fc" id="L63">        bounded(MAX_ITEM_BYTES, endpoint);</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        if (endpoint.projection() == RelationProjection.ARCHITECTURE_RELATION) {</span>
+<span class="nc bnc" id="L65" title="All 4 branches missed.">            if (endpoint.canonicalType() == null || !com.taxonomy.dsl.validation.DslValidator.relationTypes().contains(endpoint.canonicalType())) throw unsupported();</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        } else if (endpoint.canonicalType() != null) throw unsupported();</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        if (endpoint.projection() == RelationProjection.PRESERVE_ONLY) {</span>
+<span class="nc bnc" id="L68" title="All 4 branches missed.">            if (endpoint.sourceInternalIdentity() != null || endpoint.targetInternalIdentity() != null) throw unsupported();</span>
+        } else {
+<span class="fc" id="L70">            try { text(endpoint.sourceInternalIdentity()); text(endpoint.targetInternalIdentity()); }</span>
+<span class="pc" id="L71">            catch (IllegalArgumentException invalidIdentity) { throw unsupported(); }</span>
+        }
+        // This shared guard compares the exact normalized ends, endpoint kinds and scoped business identities.
+        // Passing the explicit override avoids the legacy fallback that can read retained nativeProjection evidence.
+<span class="fc" id="L75">        var reviewed = IntegrationDomainAdapter.relationTarget(target, endpoints, endpoint);</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">        if (reviewed.type() != null) target = IntegrationMappingFields.remap(target, new MappingOverride(reviewed.type(), null, null, null));</span>
+<span class="fc" id="L77">        Map&lt;String, String&gt; extension = new TreeMap&lt;&gt;(target.extensions()); NATIVE_AUTHORITY.forEach(extension::remove);</span>
+<span class="fc" id="L78">        extension.put(&quot;nativeProjection&quot;, reviewed.projection().name());</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">        if (reviewed.source() != null) extension.put(&quot;nativeSource&quot;, reviewed.source());</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (reviewed.target() != null) extension.put(&quot;nativeTarget&quot;, reviewed.target());</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">        if (reviewed.type() != null) extension.put(&quot;nativeType&quot;, reviewed.type());</span>
+<span class="fc" id="L82">        return new Artifact(target.id(), target.kind(), target.type(), target.title(), target.text(), target.attributes(), extension);</span>
+    }
+    private static Artifact localAuthority(Artifact target, Artifact local) {
+<span class="fc" id="L85">        Map&lt;String, String&gt; extension = new TreeMap&lt;&gt;(target.extensions()); NATIVE_AUTHORITY.forEach(extension::remove);</span>
+<span class="pc bpc" id="L86" title="1 of 4 branches missed.">        boolean sameEnds = local != null &amp;&amp; local.kind() == ArtifactKind.RELATION</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">                &amp;&amp; List.of(&quot;source&quot;, &quot;target&quot;, &quot;direction&quot;, &quot;canonicalType&quot;).stream().allMatch(field -&gt; Objects.equals(local.extensions().get(field), target.extensions().get(field)));</span>
+<span class="pc bpc" id="L88" title="1 of 6 branches missed.">        if (sameEnds) for (String key : NATIVE_AUTHORITY) if (local.extensions().containsKey(key)) extension.put(key, local.extensions().get(key));</span>
+<span class="fc" id="L89">        return new Artifact(target.id(), target.kind(), target.type(), target.title(), target.text(), target.attributes(), extension);</span>
+    }
+<span class="fc" id="L91">    private static IntegrationProblem unsupported() { return new IntegrationProblem(&quot;PUBLICATION_REMAP_UNSUPPORTED&quot;, 422, &quot;This pre-effect publication mapping is unsupported&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

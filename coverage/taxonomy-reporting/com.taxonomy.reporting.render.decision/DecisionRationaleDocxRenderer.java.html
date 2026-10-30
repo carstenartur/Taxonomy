@@ -1,0 +1,1147 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionRationaleDocxRenderer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.decision</a> &gt; <span class="el_source">DecisionRationaleDocxRenderer.java</span></div><h1>DecisionRationaleDocxRenderer.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.decision;
+
+import com.taxonomy.reporting.render.document.WordDocumentWriter;
+import com.taxonomy.reporting.render.document.DecisionTreeWordSectionRenderer;
+import com.taxonomy.reporting.render.document.ArchitectureWordSectionRenderer;
+import com.taxonomy.reporting.render.document.DecisionTreeLandscapeSection;
+import com.taxonomy.reporting.render.document.WordReportLayoutException;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReportPlugin;
+import com.taxonomy.reporting.api.document.DecisionTreeOverview;
+
+import com.taxonomy.reporting.render.decision.DecisionChapterDiagramRenderer.DiagramPanel;
+import com.taxonomy.reporting.render.document.*;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.ChildDecision;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.DecisionChapter;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.LeafCandidate;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.PathStep;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
+import org.apache.poi.util.Units;
+import org.apache.poi.xwpf.model.XWPFHeaderFooterPolicy;
+import org.apache.poi.xwpf.usermodel.Document;
+import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
+import org.apache.poi.xwpf.usermodel.TableRowAlign;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFFooter;
+import org.apache.poi.xwpf.usermodel.XWPFHeader;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
+import org.apache.poi.xwpf.usermodel.XWPFTableCell;
+import org.apache.poi.xwpf.usermodel.XWPFTableRow;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTBorder;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPageMar;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPageSz;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPBdr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPPr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSectPr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTShd;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSimpleField;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTbl;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblBorders;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblPr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTcPr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTText;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STBorder;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STLineSpacingRule;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STPageOrientation;
+import org.springframework.stereotype.Component;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.math.BigInteger;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.Locale;
+
+/**
+ * Professional DOCX renderer for the hierarchical decision rationale report.
+ *
+ * &lt;p&gt;The generated document uses A4 pages, a title page, an executive summary,
+ * deterministic decision diagrams, repeating table headings where possible, and a footer
+ * containing generation/account/version evidence plus PAGE/NUMPAGES fields.&lt;/p&gt;
+ */
+@Component
+@SuppressWarnings(&quot;serial&quot;)
+public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
+
+<span class="fc" id="L79">    private static final ReportFormatDescriptor DESCRIPTOR = new ReportFormatDescriptor(</span>
+            &quot;docx&quot;,
+            &quot;DOCX&quot;,
+            &quot;docx&quot;,
+            &quot;application/vnd.openxmlformats-officedocument.wordprocessingml.document&quot;,
+            true);
+
+    private static final String FONT = &quot;Aptos&quot;;
+    private static final String MONO_FONT = &quot;Aptos Mono&quot;;
+    private static final String NAVY = &quot;0B1F33&quot;;
+    private static final String TEAL = &quot;007A78&quot;;
+    private static final String LIGHT_TEAL = &quot;E1F4F3&quot;;
+    private static final String PALE_BLUE = &quot;E9F0F7&quot;;
+    private static final String LIGHT_GRAY = &quot;F4F6F8&quot;;
+    private static final String LINE = &quot;CDD5DC&quot;;
+    private static final String MUTED = &quot;64707C&quot;;
+    private static final String WARNING = &quot;FFF4D6&quot;;
+    private static final String WARNING_BORDER = &quot;B98200&quot;;
+    private static final int PAGE_WIDTH_TWIPS = 11_906;
+    private static final int PAGE_HEIGHT_TWIPS = 16_838;
+
+    private final DecisionChapterDiagramRenderer diagramRenderer;
+
+<span class="fc" id="L102">    public DecisionRationaleDocxRenderer(DecisionChapterDiagramRenderer diagramRenderer) {</span>
+<span class="fc" id="L103">        this.diagramRenderer = diagramRenderer;</span>
+<span class="fc" id="L104">    }</span>
+
+    @Override
+    public String reportTypeId() {
+<span class="fc" id="L108">        return DecisionRationaleReportPlugin.REPORT_TYPE_ID;</span>
+    }
+
+    @Override
+    public Class&lt;?&gt; reportModelType() {
+<span class="fc" id="L113">        return DecisionRationaleReport.class;</span>
+    }
+
+    @Override
+    public ReportFormatDescriptor descriptor() {
+<span class="fc" id="L118">        return DESCRIPTOR;</span>
+    }
+
+    @Override
+    public ReportRenderResult render(ReportRenderContext context) {
+<span class="fc" id="L123">        return new ReportRenderResult(render(</span>
+<span class="fc" id="L124">                context.payloadAs(DecisionRationaleReport.class)));</span>
+    }
+
+    public byte[] render(DecisionRationaleReport report) {
+<span class="fc" id="L128">        DecisionReportLabels labels = new DecisionReportLabels(report.languageTag());</span>
+<span class="fc" id="L129">        try (XWPFDocument document = new XWPFDocument();</span>
+<span class="fc" id="L130">             ByteArrayOutputStream output = new ByteArrayOutputStream()) {</span>
+<span class="fc" id="L131">            configurePage(document);</span>
+<span class="fc" id="L132">            WordDocumentWriter.ensureStyles(document);</span>
+<span class="fc" id="L133">            addHeaderAndFooter(document, report, labels);</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            if (report.scope().options().includes(DecisionReportOptions.Section.TITLE_PAGE)) renderTitlePage(document, report, labels);</span>
+<span class="fc" id="L135">            writeReportBody(document, report, labels);</span>
+<span class="fc" id="L136">            document.write(output);</span>
+<span class="fc" id="L137">            return output.toByteArray();</span>
+<span class="nc" id="L138">        } catch (com.taxonomy.reporting.render.document.WordReportLayoutException exception) {</span>
+<span class="nc" id="L139">            throw exception;</span>
+<span class="nc" id="L140">        } catch (Exception exception) {</span>
+<span class="nc" id="L141">            throw new IllegalStateException(&quot;Could not generate decision rationale DOCX&quot;, exception);</span>
+        }
+    }
+
+    /**
+     * Writes the report content shared by standalone and template-backed DOCX output.
+     *
+     * &lt;p&gt;The already opened document owns its cover, headers, footers and template
+     * styling. This typed boundary owns the single implementation of metadata,
+     * executive-summary, chapter/table/diagram and appendix semantics.&lt;/p&gt;
+     */
+    void writeReportBody(
+            XWPFDocument document,
+            DecisionRationaleReport report,
+            DecisionReportLabels labels) throws Exception {
+<span class="fc" id="L156">        WordDocumentWriter writer = new WordDocumentWriter(document, labels);</span>
+<span class="fc" id="L157">        configureCoreProperties(document, report);</span>
+<span class="fc" id="L158">        var options = report.scope().options();</span>
+<span class="fc" id="L159">        var navigation = new LinkedHashMap&lt;String,String&gt;();</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        if (options.includes(DecisionReportOptions.Section.SUMMARY)) navigation.put(&quot;decision_summary&quot;, labels.executiveSummary());</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">        if (options.includes(DecisionReportOptions.Section.TREE)) navigation.put(&quot;decision_tree&quot;, labels.treeOverview());</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        if (options.includes(DecisionReportOptions.Section.CHAPTERS)) navigation.put(&quot;decision_chapters&quot;, labels.decisionChapters());</span>
+<span class="fc bfc" id="L163" title="All 4 branches covered.">        if (options.includes(DecisionReportOptions.Section.ARCHITECTURE) &amp;&amp; report.architecture() != null) navigation.put(&quot;architecture_figures&quot;, labels.architectureOverview());</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">        if (options.includes(DecisionReportOptions.Section.EVIDENCE)) navigation.put(&quot;decision_evidence&quot;, labels.appendix());</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        if (!options.includes(DecisionReportOptions.Section.TITLE_PAGE)) {</span>
+<span class="fc" id="L166">            writer.heading(report.title(), 0, null);</span>
+<span class="fc" id="L167">            writer.paragraph(report.requirement());</span>
+        }
+<span class="fc" id="L169">        var evidence = new DecisionNodeEvidence(report);</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        boolean shortCompact = options.profile() == DecisionReportOptions.Profile.COMPACT</span>
+<span class="pc bpc" id="L171" title="1 of 4 branches missed.">                &amp;&amp; !options.includes(DecisionReportOptions.Section.CHAPTERS) &amp;&amp; !options.includes(DecisionReportOptions.Section.EVIDENCE);</span>
+<span class="fc" id="L172">        var sourceNotice = DecisionReportPresentation.sourceNotice(report);</span>
+<span class="fc" id="L173">        sourceNotice.stream().limit(4).forEach(writer::paragraph);</span>
+<span class="pc bpc" id="L174" title="1 of 4 branches missed.">        if (!report.scope().analysisComplete() || !report.scope().selectionComplete())</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">            writer.paragraph(labels.german() ? &quot;Unvollständiger Analyse- oder Auswahlstand; siehe Quellnachweise.&quot;</span>
+<span class="fc" id="L176">                    : &quot;Analysis or selection is incomplete; see source evidence.&quot;);</span>
+<span class="pc bpc" id="L177" title="1 of 4 branches missed.">        if (options.contents() != DecisionReportOptions.Contents.NONE &amp;&amp; !navigation.isEmpty())</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">            writer.contents(navigation, options.contents() == DecisionReportOptions.Contents.SHORT ? 1 : 2);</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (options.includes(DecisionReportOptions.Section.SUMMARY)) {</span>
+<span class="fc" id="L180">            writer.heading(labels.executiveSummary(), 1, &quot;decision_summary&quot;);</span>
+<span class="fc" id="L181">            evidence.writeOverview(document, labels);</span>
+<span class="fc" id="L182">            writer.paragraph(report.executiveSummary().conciseConclusion());</span>
+<span class="fc" id="L183">            writer.paragraph(labels.analysisDuration() + &quot;: &quot; + labels.durationMillis(report.metadata().analysisDurationMillis()));</span>
+        }
+<span class="fc bfc" id="L185" title="All 4 branches covered.">        boolean architecture = options.includes(DecisionReportOptions.Section.ARCHITECTURE) &amp;&amp; report.architecture() != null;</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        if (shortCompact) {</span>
+<span class="fc" id="L187">            sourceNotice.stream().skip(4).forEach(writer::paragraph);</span>
+<span class="fc" id="L188">            writer.paragraph(report.executiveSummary().methodologyNote());</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">            if (options.includes(DecisionReportOptions.Section.TITLE_PAGE)) renderTitleEvidence(document, report, labels);</span>
+        }
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">        if (options.includes(DecisionReportOptions.Section.TREE)) {</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">            if (options.treeLayout() == DecisionReportOptions.TreeLayout.TABLE)</span>
+<span class="fc" id="L193">                new DecisionTreeWordSectionRenderer().write(document, report.scope().decisionTree(), report.languageTag(), options.includes(DecisionReportOptions.Section.CHAPTERS), evidence.linkedReasonCodes());</span>
+<span class="pc bpc" id="L194" title="1 of 4 branches missed.">            else new DecisionTreeLandscapeSection().write(document, report,</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">                    !shortCompact || architecture || !evidence.linkedReasonCodes().isEmpty(), evidence.includesFullReasons());</span>
+        }
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        if (options.includes(DecisionReportOptions.Section.CHAPTERS)) renderChapters(document, report, labels, evidence);</span>
+<span class="fc" id="L198">        evidence.writeReasons(document, labels);</span>
+<span class="fc bfc" id="L199" title="All 4 branches covered.">        if (options.includes(DecisionReportOptions.Section.SUMMARY) &amp;&amp; options.profile() != DecisionReportOptions.Profile.COMPACT)</span>
+<span class="fc" id="L200">            renderExecutiveSummary(document, report, labels);</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        if (architecture) new ArchitectureWordSectionRenderer().write(document, report.architecture());</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        if (!shortCompact) {</span>
+<span class="fc" id="L203">            writer.heading(labels.provenance(), 1, &quot;decision_source&quot;);</span>
+<span class="fc" id="L204">            sourceNotice.stream().skip(4).forEach(writer::paragraph);</span>
+<span class="fc" id="L205">            writer.paragraph(report.executiveSummary().methodologyNote());</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">            if (options.includes(DecisionReportOptions.Section.TITLE_PAGE)) renderTitleEvidence(document, report, labels);</span>
+        }
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        if (options.includes(DecisionReportOptions.Section.EVIDENCE)) renderAppendix(document, report, labels);</span>
+<span class="fc" id="L209">        writer.completeContents();</span>
+<span class="fc" id="L210">    }</span>
+
+    private void configurePage(XWPFDocument document) {
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">        CTSectPr section = document.getDocument().getBody().isSetSectPr()</span>
+<span class="nc" id="L214">                ? document.getDocument().getBody().getSectPr()</span>
+<span class="fc" id="L215">                : document.getDocument().getBody().addNewSectPr();</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">        CTPageSz pageSize = section.isSetPgSz() ? section.getPgSz() : section.addNewPgSz();</span>
+<span class="fc" id="L217">        pageSize.setW(BigInteger.valueOf(PAGE_WIDTH_TWIPS));</span>
+<span class="fc" id="L218">        pageSize.setH(BigInteger.valueOf(PAGE_HEIGHT_TWIPS));</span>
+<span class="fc" id="L219">        pageSize.setOrient(STPageOrientation.PORTRAIT);</span>
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">        CTPageMar margins = section.isSetPgMar() ? section.getPgMar() : section.addNewPgMar();</span>
+<span class="fc" id="L221">        margins.setTop(BigInteger.valueOf(1_020));</span>
+<span class="fc" id="L222">        margins.setBottom(BigInteger.valueOf(1_160));</span>
+<span class="fc" id="L223">        margins.setLeft(BigInteger.valueOf(1_050));</span>
+<span class="fc" id="L224">        margins.setRight(BigInteger.valueOf(1_050));</span>
+<span class="fc" id="L225">        margins.setHeader(BigInteger.valueOf(480));</span>
+<span class="fc" id="L226">        margins.setFooter(BigInteger.valueOf(500));</span>
+<span class="fc" id="L227">        margins.setGutter(BigInteger.ZERO);</span>
+<span class="fc" id="L228">    }</span>
+
+    private void configureCoreProperties(XWPFDocument document, DecisionRationaleReport report) {
+<span class="fc" id="L231">        var properties = document.getProperties().getCoreProperties();</span>
+<span class="fc" id="L232">        properties.setTitle(report.title());</span>
+<span class="fc" id="L233">        properties.setSubjectProperty(report.requirement());</span>
+<span class="fc" id="L234">        properties.setCreator(report.metadata().generatedBy());</span>
+<span class="fc" id="L235">        properties.setDescription(&quot;Traceable hierarchical decision rationale generated by Taxonomy&quot;);</span>
+<span class="fc" id="L236">        properties.setKeywords(&quot;Taxonomy, decision rationale, requirements analysis, AI, traceability&quot;);</span>
+<span class="fc" id="L237">    }</span>
+
+    private void addHeaderAndFooter(
+            XWPFDocument document,
+            DecisionRationaleReport report,
+            DecisionReportLabels labels) {
+<span class="fc" id="L243">        XWPFHeaderFooterPolicy policy = new XWPFHeaderFooterPolicy(document);</span>
+<span class="fc" id="L244">        XWPFHeader header = policy.createHeader(XWPFHeaderFooterPolicy.DEFAULT);</span>
+<span class="fc" id="L245">        XWPFParagraph headerParagraph = header.createParagraph();</span>
+<span class="fc" id="L246">        headerParagraph.setAlignment(ParagraphAlignment.RIGHT);</span>
+<span class="fc" id="L247">        headerParagraph.setSpacingAfter(0);</span>
+<span class="fc" id="L248">        XWPFRun headerRun = headerParagraph.createRun();</span>
+<span class="fc" id="L249">        headerRun.setFontFamily(FONT);</span>
+<span class="fc" id="L250">        headerRun.setFontSize(8);</span>
+<span class="fc" id="L251">        headerRun.setColor(MUTED);</span>
+<span class="fc" id="L252">        headerRun.setText(report.title() + &quot; · &quot; + report.metadata().taxonomyDataVersion());</span>
+<span class="fc" id="L253">        setBottomBorder(headerParagraph, LINE, 4);</span>
+
+<span class="fc" id="L255">        XWPFFooter footer = policy.createFooter(XWPFHeaderFooterPolicy.DEFAULT);</span>
+<span class="fc" id="L256">        XWPFTable table = footer.createTable(1, 2);</span>
+<span class="fc" id="L257">        table.setWidth(&quot;100%&quot;);</span>
+<span class="fc" id="L258">        table.setTableAlignment(TableRowAlign.CENTER);</span>
+<span class="fc" id="L259">        removeTableBorders(table);</span>
+<span class="fc" id="L260">        XWPFTableRow row = table.getRow(0);</span>
+<span class="fc" id="L261">        XWPFTableCell left = row.getCell(0);</span>
+<span class="fc" id="L262">        XWPFTableCell right = row.getCell(1);</span>
+<span class="fc" id="L263">        left.setWidth(&quot;82%&quot;);</span>
+<span class="fc" id="L264">        right.setWidth(&quot;18%&quot;);</span>
+<span class="fc" id="L265">        clearCell(left);</span>
+<span class="fc" id="L266">        clearCell(right);</span>
+
+<span class="fc" id="L268">        XWPFParagraph leftParagraph = left.addParagraph();</span>
+<span class="fc" id="L269">        leftParagraph.setSpacingBefore(0);</span>
+<span class="fc" id="L270">        leftParagraph.setSpacingAfter(0);</span>
+<span class="fc" id="L271">        XWPFRun leftRun = leftParagraph.createRun();</span>
+<span class="fc" id="L272">        leftRun.setFontFamily(FONT);</span>
+<span class="fc" id="L273">        leftRun.setFontSize(7);</span>
+<span class="fc" id="L274">        leftRun.setColor(MUTED);</span>
+<span class="fc" id="L275">        leftRun.setText(footerText(report, labels));</span>
+
+<span class="fc" id="L277">        XWPFParagraph rightParagraph = right.addParagraph();</span>
+<span class="fc" id="L278">        rightParagraph.setAlignment(ParagraphAlignment.RIGHT);</span>
+<span class="fc" id="L279">        rightParagraph.setSpacingBefore(0);</span>
+<span class="fc" id="L280">        rightParagraph.setSpacingAfter(0);</span>
+<span class="fc" id="L281">        XWPFRun pageLabel = rightParagraph.createRun();</span>
+<span class="fc" id="L282">        pageLabel.setFontFamily(FONT);</span>
+<span class="fc" id="L283">        pageLabel.setFontSize(8);</span>
+<span class="fc" id="L284">        pageLabel.setColor(MUTED);</span>
+<span class="fc" id="L285">        pageLabel.setText(labels.page() + &quot; &quot;);</span>
+<span class="fc" id="L286">        addSimpleField(rightParagraph, &quot;PAGE&quot;, &quot;1&quot;, 8, MUTED);</span>
+<span class="fc" id="L287">        XWPFRun of = rightParagraph.createRun();</span>
+<span class="fc" id="L288">        of.setFontFamily(FONT);</span>
+<span class="fc" id="L289">        of.setFontSize(8);</span>
+<span class="fc" id="L290">        of.setColor(MUTED);</span>
+<span class="fc" id="L291">        of.setText(&quot; &quot; + labels.of() + &quot; &quot;);</span>
+<span class="fc" id="L292">        addSimpleField(rightParagraph, &quot;NUMPAGES&quot;, &quot;1&quot;, 8, MUTED);</span>
+<span class="fc" id="L293">        setTopBorder(leftParagraph, LINE, 4);</span>
+<span class="fc" id="L294">        setTopBorder(rightParagraph, LINE, 4);</span>
+<span class="fc" id="L295">    }</span>
+
+    private void renderTitlePage(
+            XWPFDocument document,
+            DecisionRationaleReport report,
+            DecisionReportLabels labels) {
+<span class="fc" id="L301">        addAccentBar(document);</span>
+<span class="fc" id="L302">        spacer(document, 20);</span>
+<span class="fc" id="L303">        XWPFParagraph eyebrow = document.createParagraph();</span>
+<span class="fc" id="L304">        eyebrow.setSpacingAfter(120);</span>
+<span class="fc" id="L305">        XWPFRun eyebrowRun = eyebrow.createRun();</span>
+<span class="fc" id="L306">        eyebrowRun.setText(labels.evidenceEyebrow());</span>
+<span class="fc" id="L307">        eyebrowRun.setFontFamily(FONT);</span>
+<span class="fc" id="L308">        eyebrowRun.setFontSize(10);</span>
+<span class="fc" id="L309">        eyebrowRun.setBold(true);</span>
+<span class="fc" id="L310">        eyebrowRun.setColor(TEAL);</span>
+<span class="fc" id="L311">        eyebrowRun.setCharacterSpacing(25);</span>
+
+<span class="fc" id="L313">        XWPFParagraph title = document.createParagraph();</span>
+<span class="fc" id="L314">        title.setStyle(&quot;Title&quot;);</span>
+<span class="fc" id="L315">        title.setSpacingBefore(0);</span>
+<span class="fc" id="L316">        title.setSpacingAfter(120);</span>
+<span class="fc" id="L317">        XWPFRun titleRun = title.createRun();</span>
+<span class="fc" id="L318">        titleRun.setText(report.title());</span>
+<span class="fc" id="L319">        titleRun.setFontFamily(FONT);</span>
+<span class="fc" id="L320">        titleRun.setFontSize(31);</span>
+<span class="fc" id="L321">        titleRun.setBold(true);</span>
+<span class="fc" id="L322">        titleRun.setColor(NAVY);</span>
+
+<span class="fc" id="L324">        XWPFParagraph subtitle = document.createParagraph();</span>
+<span class="fc" id="L325">        subtitle.setSpacingAfter(240);</span>
+<span class="fc" id="L326">        XWPFRun subtitleRun = subtitle.createRun();</span>
+<span class="fc" id="L327">        subtitleRun.setText(labels.subtitle());</span>
+<span class="fc" id="L328">        subtitleRun.setFontFamily(FONT);</span>
+<span class="fc" id="L329">        subtitleRun.setFontSize(14);</span>
+<span class="fc" id="L330">        subtitleRun.setColor(MUTED);</span>
+
+<span class="fc" id="L332">        XWPFTable statusTable = document.createTable(1, 1);</span>
+<span class="fc" id="L333">        statusTable.setWidth(&quot;42%&quot;);</span>
+<span class="fc" id="L334">        removeTableBorders(statusTable);</span>
+<span class="fc" id="L335">        XWPFTableCell statusCell = statusTable.getRow(0).getCell(0);</span>
+<span class="pc bpc" id="L336" title="1 of 2 branches missed.">        shade(statusCell, report.status() == DecisionRationaleReport.ReportStatus.DRAFT_INCOMPLETE</span>
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">                || report.status() == DecisionRationaleReport.ReportStatus.NO_RESULT</span>
+<span class="pc" id="L338">                ? WARNING : LIGHT_TEAL);</span>
+<span class="fc" id="L339">        setCellMargins(statusCell, 100, 130, 100, 130);</span>
+<span class="fc" id="L340">        setCellText(statusCell, statusLabel(report, labels), 10, true,</span>
+<span class="pc bpc" id="L341" title="1 of 2 branches missed.">                report.status() == DecisionRationaleReport.ReportStatus.DRAFT_INCOMPLETE</span>
+<span class="pc bpc" id="L342" title="1 of 2 branches missed.">                        || report.status() == DecisionRationaleReport.ReportStatus.NO_RESULT</span>
+<span class="pc" id="L343">                        ? &quot;745400&quot; : TEAL, ParagraphAlignment.CENTER);</span>
+
+<span class="fc" id="L345">        spacer(document, 18);</span>
+<span class="fc" id="L346">        addLabel(document, labels.requirement());</span>
+<span class="fc" id="L347">        XWPFTable requirement = document.createTable(1, 1);</span>
+<span class="fc" id="L348">        requirement.setWidth(&quot;100%&quot;);</span>
+<span class="fc" id="L349">        XWPFTableCell requirementCell = requirement.getRow(0).getCell(0);</span>
+<span class="fc" id="L350">        shade(requirementCell, LIGHT_GRAY);</span>
+<span class="fc" id="L351">        setCellMargins(requirementCell, 180, 220, 180, 220);</span>
+<span class="fc" id="L352">        setLeftCellBorder(requirementCell, TEAL, 22);</span>
+<span class="fc" id="L353">        setCellText(requirementCell, report.requirement(), 13, false, NAVY,</span>
+                ParagraphAlignment.LEFT);
+
+<span class="fc" id="L356">        addBodyParagraph(document, labels.analysisSnapshot() + &quot;: &quot; + report.metadata().analysisSnapshotId(), true);</span>
+<span class="fc" id="L357">    }</span>
+
+    private void renderTitleEvidence(XWPFDocument document, DecisionRationaleReport report, DecisionReportLabels labels) {
+<span class="fc" id="L360">        spacer(document, 18);</span>
+<span class="fc" id="L361">        addLabel(document, labels.taxonomyBasis());</span>
+<span class="fc" id="L362">        XWPFTable metadata = document.createTable(1, 2);</span>
+<span class="fc" id="L363">        metadata.setWidth(&quot;100%&quot;);</span>
+<span class="fc" id="L364">        metadata.setTableAlignment(TableRowAlign.CENTER);</span>
+<span class="fc" id="L365">        setMetadataRow(metadata.getRow(0), labels.dataVersion(),</span>
+<span class="fc" id="L366">                report.metadata().taxonomyDataVersion());</span>
+<span class="fc" id="L367">        addMetadataRow(metadata, labels.sourceFile(), report.metadata().taxonomyCatalogueFile());</span>
+<span class="fc" id="L368">        addMetadataRow(metadata, labels.sourceDigest(), report.metadata().taxonomyCatalogueResourceSha256());</span>
+<span class="fc" id="L369">        addMetadataRow(metadata, labels.dataDigest(), report.metadata().taxonomyDataFingerprintSha256());</span>
+<span class="fc" id="L370">        addMetadataRow(metadata, labels.hierarchyEvidence(),</span>
+<span class="fc bfc" id="L371" title="All 2 branches covered.">                report.metadata().hierarchyFromImmutableSnapshot()</span>
+<span class="fc" id="L372">                        ? labels.frozenHierarchy() : labels.liveHierarchy());</span>
+<span class="fc" id="L373">        addMetadataRow(metadata, labels.nodes(), report.metadata().taxonomyNodeCount()</span>
+<span class="fc" id="L374">                + &quot; / &quot; + report.metadata().taxonomyRootCount());</span>
+
+<span class="fc" id="L376">        spacer(document, 12);</span>
+<span class="fc" id="L377">        addLabel(document, labels.provenance());</span>
+<span class="fc" id="L378">        XWPFTable provenance = document.createTable(1, 2);</span>
+<span class="fc" id="L379">        provenance.setWidth(&quot;100%&quot;);</span>
+<span class="fc" id="L380">        provenance.setTableAlignment(TableRowAlign.CENTER);</span>
+<span class="fc" id="L381">        setMetadataRow(provenance.getRow(0), labels.generatedAt(),</span>
+<span class="fc" id="L382">                formatInstant(report.metadata().generatedAt(), report.metadata().reportTimeZone()));</span>
+<span class="fc" id="L383">        addMetadataRow(provenance, labels.generatedBy(), report.metadata().generatedBy());</span>
+<span class="fc" id="L384">        addMetadataRow(provenance, labels.applicationVersion(),</span>
+<span class="fc" id="L385">                report.metadata().taxonomyApplicationVersion());</span>
+<span class="fc" id="L386">        addMetadataRow(provenance, labels.buildCommit(), report.metadata().taxonomyBuildCommit());</span>
+<span class="fc" id="L387">        addMetadataRow(provenance, labels.repository(), report.metadata().repositoryId());</span>
+<span class="fc" id="L388">        addMetadataRow(provenance, labels.workspace(), report.metadata().workspaceId());</span>
+<span class="fc" id="L389">        addMetadataRow(provenance, labels.branch(), report.metadata().branch());</span>
+<span class="fc" id="L390">        addMetadataRow(provenance, labels.basedOnCommit(), report.metadata().basedOnCommit());</span>
+<span class="fc" id="L391">        addMetadataRow(provenance, labels.analysisProvider(), report.metadata().analysisProvider());</span>
+<span class="fc" id="L392">        addMetadataRow(provenance, labels.analysisModel(), report.metadata().analysisModel());</span>
+<span class="fc" id="L393">        addMetadataRow(provenance, labels.analysisSnapshot(), report.metadata().analysisSnapshotId());</span>
+<span class="fc" id="L394">        addMetadataRow(provenance, labels.requirementVersion(), requirementVersion(report));</span>
+<span class="fc" id="L395">        addMetadataRow(provenance, labels.analysisCreatedAt(),</span>
+<span class="fc" id="L396">                formatInstant(report.metadata().analysisCreatedAt(), report.metadata().reportTimeZone()));</span>
+<span class="fc" id="L397">        addMetadataRow(provenance, labels.analysisCreatedBy(), report.metadata().analysisCreatedBy());</span>
+<span class="fc" id="L398">        addMetadataRow(provenance, labels.analysisDigest(),</span>
+<span class="fc" id="L399">                report.metadata().analysisSnapshotFingerprintSha256());</span>
+<span class="fc" id="L400">        addMetadataRow(provenance, labels.analysisStatus(), report.metadata().analysisStatus());</span>
+<span class="fc" id="L401">        addMetadataRow(provenance, labels.analysisDuration(), labels.durationMillis(report.metadata().analysisDurationMillis()));</span>
+
+
+<span class="fc" id="L404">    }</span>
+
+    private void renderExecutiveSummary(
+            XWPFDocument document,
+            DecisionRationaleReport report,
+            DecisionReportLabels labels) {
+<span class="pc bpc" id="L410" title="1 of 4 branches missed.">        if (report.executiveSummary().leadingLeaf() == null &amp;&amp; report.executiveSummary().path().isEmpty()) return;</span>
+<span class="fc bfc" id="L411" title="All 2 branches covered.">        new WordDocumentWriter(document, labels).heading(labels.german()</span>
+<span class="fc" id="L412">                ? &quot;Gespeicherte übergreifende Zusammenfassung&quot; : &quot;Recorded overall summary&quot;, 2, null);</span>
+
+<span class="fc" id="L414">        LeafCandidate leading = report.executiveSummary().leadingLeaf();</span>
+<span class="pc bpc" id="L415" title="1 of 2 branches missed.">        if (leading != null) {</span>
+<span class="fc" id="L416">            XWPFTable banner = document.createTable(1, 2);</span>
+<span class="fc" id="L417">            banner.setWidth(&quot;100%&quot;);</span>
+<span class="fc" id="L418">            removeTableBorders(banner);</span>
+<span class="fc" id="L419">            XWPFTableCell textCell = banner.getRow(0).getCell(0);</span>
+<span class="fc" id="L420">            XWPFTableCell scoreCell = banner.getRow(0).getCell(1);</span>
+<span class="fc" id="L421">            shade(textCell, NAVY);</span>
+<span class="fc" id="L422">            shade(scoreCell, TEAL);</span>
+<span class="fc" id="L423">            setCellMargins(textCell, 180, 220, 180, 220);</span>
+<span class="fc" id="L424">            setCellMargins(scoreCell, 180, 150, 180, 150);</span>
+<span class="fc" id="L425">            clearCell(textCell);</span>
+<span class="fc" id="L426">            XWPFParagraph p = textCell.addParagraph();</span>
+<span class="fc" id="L427">            p.setSpacingAfter(40);</span>
+<span class="fc" id="L428">            XWPFRun label = p.createRun();</span>
+<span class="fc" id="L429">            label.setText(labels.leadingLeaf().toUpperCase(Locale.ROOT));</span>
+<span class="fc" id="L430">            label.setFontFamily(FONT);</span>
+<span class="fc" id="L431">            label.setFontSize(8);</span>
+<span class="fc" id="L432">            label.setBold(true);</span>
+<span class="fc" id="L433">            label.setColor(&quot;8DE0DD&quot;);</span>
+<span class="fc" id="L434">            XWPFRun name = p.createRun();</span>
+<span class="fc" id="L435">            name.addBreak();</span>
+<span class="fc" id="L436">            name.setText(leading.code() + &quot; · &quot; + leading.title());</span>
+<span class="fc" id="L437">            name.setFontFamily(FONT);</span>
+<span class="fc" id="L438">            name.setFontSize(14);</span>
+<span class="fc" id="L439">            name.setBold(true);</span>
+<span class="fc" id="L440">            name.setColor(&quot;FFFFFF&quot;);</span>
+<span class="fc" id="L441">            XWPFRun root = p.createRun();</span>
+<span class="fc" id="L442">            root.addBreak();</span>
+<span class="fc" id="L443">            root.setText(leading.taxonomyRoot());</span>
+<span class="fc" id="L444">            root.setFontFamily(FONT);</span>
+<span class="fc" id="L445">            root.setFontSize(9);</span>
+<span class="fc" id="L446">            root.setColor(&quot;DCE7EF&quot;);</span>
+<span class="fc" id="L447">            setCellText(scoreCell, leading.score() + &quot; %&quot;, 24, true, &quot;FFFFFF&quot;,</span>
+                    ParagraphAlignment.CENTER);
+<span class="fc" id="L449">            scoreCell.setVerticalAlignment(XWPFTableCell.XWPFVertAlign.CENTER);</span>
+        }
+
+<span class="pc bpc" id="L452" title="1 of 2 branches missed.">        if (!report.executiveSummary().path().isEmpty()) {</span>
+<span class="fc" id="L453">        addHeading(document, labels.highestPath(), 2, false);</span>
+<span class="fc" id="L454">        XWPFTable pathTable = document.createTable(1, 5);</span>
+<span class="fc" id="L455">        RationaleIndex reasons = new RationaleIndex();</span>
+<span class="fc" id="L456">        setHeaderRow(pathTable.getRow(0), new String[]{</span>
+<span class="fc" id="L457">                labels.step(), labels.node(), labels.score(), labels.localShare(), labels.rationale()});</span>
+<span class="fc bfc" id="L458" title="All 2 branches covered.">        for (PathStep step : report.executiveSummary().path()) {</span>
+<span class="fc" id="L459">            XWPFTableRow row = pathTable.createRow();</span>
+<span class="fc" id="L460">            setCellText(row.getCell(0), String.valueOf(step.position()), 8, false, NAVY, ParagraphAlignment.CENTER);</span>
+<span class="fc" id="L461">            setCodeAndName(row.getCell(1), step.code(), step.title());</span>
+<span class="fc" id="L462">            setCellText(row.getCell(2), score(step.absoluteScore()), 8, true, NAVY, ParagraphAlignment.CENTER);</span>
+<span class="fc" id="L463">            setCellText(row.getCell(3), percent(step.localSharePercent()), 8, false, NAVY, ParagraphAlignment.CENTER);</span>
+<span class="fc" id="L464">            setCellText(row.getCell(4), reasons.reference(step.code(), step.reason(), step.reasonSource()),</span>
+                    8, false, NAVY, ParagraphAlignment.LEFT);
+<span class="fc bfc" id="L466" title="All 2 branches covered.">            styleDataRow(row, step.position() % 2 == 0 ? LIGHT_GRAY : &quot;FFFFFF&quot;);</span>
+<span class="fc" id="L467">        }</span>
+<span class="fc" id="L468">        tableWidths(pathTable, 8, 46, 13, 18, 15);</span>
+<span class="fc" id="L469">        reasons.render(document, labels);</span>
+        }
+
+<span class="fc" id="L472">    }</span>
+
+    private void renderChapters(
+            XWPFDocument document,
+            DecisionRationaleReport report,
+            DecisionReportLabels labels,
+            DecisionNodeEvidence evidence) throws Exception {
+<span class="fc" id="L479">        addSectionHeading(document, &quot;02&quot;, labels.decisionChapters());</span>
+<span class="fc" id="L480">        new WordDocumentWriter(document,labels).bookmark(document.getParagraphs().getLast(),&quot;decision_chapters&quot;);</span>
+<span class="fc bfc" id="L481" title="All 2 branches covered.">        addBodyParagraph(document, labels.german()</span>
+<span class="fc" id="L482">                ? &quot;Jedes folgende Kapitel entspricht genau einem Vaterknoten, dessen direkte Kindknoten mindestens einen von Null verschiedenen Bewertungswert enthalten. Sämtliche direkten Kinder bleiben als geprüfte oder noch ungeprüfte Alternativen sichtbar.&quot;</span>
+<span class="fc" id="L483">                : &quot;Each following chapter corresponds to one parent whose direct children contain at least one non-zero score. All direct children remain visible as evaluated or unevaluated alternatives.&quot;, false);</span>
+
+<span class="fc bfc" id="L485" title="All 2 branches covered.">        for (int chapterIndex = 0; chapterIndex &lt; report.chapters().size(); chapterIndex++) {</span>
+<span class="fc" id="L486">            DecisionChapter chapter = report.chapters().get(chapterIndex);</span>
+<span class="fc" id="L487">            addChapterHeading(document, chapter, labels);</span>
+<span class="pc bpc" id="L488" title="1 of 4 branches missed.">            if (chapter.parentDescription() != null &amp;&amp; !chapter.parentDescription().isBlank()) {</span>
+<span class="fc" id="L489">                addBodyParagraph(document, chapter.parentDescription(), true);</span>
+            }
+
+<span class="fc" id="L492">            var writer = new WordDocumentWriter(document, labels);</span>
+<span class="fc" id="L493">            var chapterTree = DecisionTreeOverview.from(List.of(chapter));</span>
+<span class="fc" id="L494">            var panels = new DecisionTreeFigureRenderer().renderChapter(chapterTree, report.languageTag(), writer.decisionFigureWidth());</span>
+<span class="fc bfc" id="L495" title="All 2 branches covered.">            for (int panelIndex = 0; panelIndex &lt; panels.size(); panelIndex++) {</span>
+<span class="fc" id="L496">                var panel = panels.get(panelIndex);</span>
+<span class="fc" id="L497">                String caption = labels.parentNode() + &quot; &quot; + chapter.parentCode() + &quot; · &quot; + (panelIndex + 1) + &quot;/&quot; + panels.size();</span>
+<span class="fc" id="L498">                writer.decisionPicture(panel.png(), &quot;decision-&quot; + chapter.number() + &quot;-&quot; + panelIndex,</span>
+<span class="fc" id="L499">                        caption, panel.description(), panel.width(), panel.height());</span>
+<span class="fc" id="L500">                writer.caption(caption, true);</span>
+            }
+<span class="fc" id="L502">            var node = evidence.node(chapter.parentCode());</span>
+<span class="pc bpc" id="L503" title="2 of 4 branches missed.">            if (report.scope().options().includes(DecisionReportOptions.Section.TREE) &amp;&amp; node != null</span>
+<span class="pc bpc" id="L504" title="1 of 6 branches missed.">                    &amp;&amp; report.scope().decisionTree().rows().stream().anyMatch(row -&gt; row.depth() == 0 &amp;&amp; row.code().equals(node.root())))</span>
+<span class="fc" id="L505">                writer.link(writer.paragraph(&quot;&quot;), DecisionNodeEvidence.rootBookmark(node.root()),</span>
+<span class="fc bfc" id="L506" title="All 2 branches covered.">                        labels.german() ? &quot;Zurück zum Wurzelbaum&quot; : &quot;Back to root tree&quot;);</span>
+
+<span class="fc" id="L508">            addRationaleBox(document, labels.decisionResult(), chapter.decisionSummary(), PALE_BLUE);</span>
+<span class="fc" id="L509">            addRationaleBox(document, labels.comparison(), chapter.comparativeRationale(), LIGHT_TEAL);</span>
+<span class="fc" id="L510">            addHeading(document, labels.alternatives() + &quot; · &quot; + chapter.parentCode(), 3, false);</span>
+<span class="fc" id="L511">            addChildTable(document, chapter, labels, evidence);</span>
+<span class="pc bpc" id="L512" title="1 of 2 branches missed.">            if (!chapter.complete()) {</span>
+<span class="nc" id="L513">                addWarningBox(document,</span>
+<span class="nc bnc" id="L514" title="All 2 branches missed.">                        labels.german() ? &quot;Unvollständige Entscheidung&quot; : &quot;Incomplete decision&quot;,</span>
+<span class="nc bnc" id="L515" title="All 2 branches missed.">                        List.of((labels.german()</span>
+<span class="nc" id="L516">                                ? &quot;Nicht bewertete direkte Kinder: &quot;</span>
+<span class="nc" id="L517">                                : &quot;Unevaluated direct children: &quot;)</span>
+<span class="nc" id="L518">                                + String.join(&quot;, &quot;, chapter.missingChildCodes())));</span>
+            }
+        }
+<span class="fc" id="L521">    }</span>
+
+    private void renderAppendix(
+            XWPFDocument document,
+            DecisionRationaleReport report,
+            DecisionReportLabels labels) {
+<span class="fc" id="L527">        addSectionHeading(document, &quot;03&quot;, labels.appendix());</span>
+<span class="fc" id="L528">        new WordDocumentWriter(document,labels).bookmark(document.getParagraphs().getLast(),&quot;decision_evidence&quot;);</span>
+<span class="fc" id="L529">        addHeading(document, labels.leadingLeaves(), 2, false);</span>
+<span class="fc" id="L530">        XWPFTable leafTable = document.createTable(1, 5);</span>
+<span class="fc" id="L531">        RationaleIndex reasons = new RationaleIndex();</span>
+<span class="fc" id="L532">        setHeaderRow(leafTable.getRow(0), new String[]{</span>
+<span class="fc" id="L533">                labels.rank(), labels.node(), labels.score(), labels.hierarchyPath(), labels.rationale()});</span>
+<span class="fc" id="L534">        int rank = 1;</span>
+<span class="fc bfc" id="L535" title="All 2 branches covered.">        for (LeafCandidate leaf : report.leadingLeaves()) {</span>
+<span class="fc" id="L536">            XWPFTableRow row = leafTable.createRow();</span>
+<span class="fc" id="L537">            setCellText(row.getCell(0), String.valueOf(rank), 8, false, NAVY, ParagraphAlignment.CENTER);</span>
+<span class="fc" id="L538">            setCodeAndName(row.getCell(1), leaf.code(), leaf.title());</span>
+<span class="fc" id="L539">            setCellText(row.getCell(2), leaf.score() + &quot; %&quot;, 8, true, NAVY, ParagraphAlignment.CENTER);</span>
+<span class="fc" id="L540">            setCellText(row.getCell(3), leaf.taxonomyRoot() + &quot; · &quot; + leaf.hierarchyPath(), 8, false, NAVY, ParagraphAlignment.LEFT);</span>
+<span class="fc" id="L541">            setCellText(row.getCell(4), reasons.reference(leaf.code(), leaf.reason(), leaf.reasonSource()),</span>
+                    8, false, NAVY, ParagraphAlignment.LEFT);
+<span class="fc bfc" id="L543" title="All 2 branches covered.">            styleDataRow(row, rank % 2 == 0 ? LIGHT_GRAY : &quot;FFFFFF&quot;);</span>
+<span class="fc" id="L544">            rank++;</span>
+<span class="fc" id="L545">        }</span>
+<span class="fc" id="L546">        tableWidths(leafTable, 7, 31, 12, 36, 14);</span>
+<span class="fc" id="L547">        reasons.render(document, labels);</span>
+
+<span class="fc" id="L549">        addHeading(document, labels.taxonomyBasis(), 2, false);</span>
+<span class="fc" id="L550">        XWPFTable evidence = document.createTable(1, 2);</span>
+<span class="fc" id="L551">        evidence.setWidth(&quot;100%&quot;);</span>
+<span class="fc" id="L552">        setMetadataRow(evidence.getRow(0), labels.catalogue(),</span>
+<span class="fc" id="L553">                report.metadata().taxonomyDataSource());</span>
+<span class="fc" id="L554">        addMetadataRow(evidence, labels.dataVersion(), report.metadata().taxonomyDataVersion());</span>
+<span class="fc" id="L555">        addMetadataRow(evidence, labels.sourceFile(), report.metadata().taxonomyCatalogueFile());</span>
+<span class="fc" id="L556">        addMetadataRow(evidence, labels.sourceDigest(), report.metadata().taxonomyCatalogueResourceSha256());</span>
+<span class="fc" id="L557">        addMetadataRow(evidence, labels.dataDigest(), report.metadata().taxonomyDataFingerprintSha256());</span>
+<span class="fc" id="L558">        addMetadataRow(evidence, labels.recordedTaxonomyDigest(),</span>
+<span class="fc" id="L559">                report.metadata().recordedTaxonomyFingerprintSha256());</span>
+<span class="fc" id="L560">        addMetadataRow(evidence, labels.promptDigest(), report.metadata().promptFingerprintSha256());</span>
+<span class="fc" id="L561">        addMetadataRow(evidence, labels.analysisDigest(),</span>
+<span class="fc" id="L562">                report.metadata().analysisSnapshotFingerprintSha256());</span>
+<span class="fc" id="L563">        addMetadataRow(evidence, labels.analysisSnapshot(), report.metadata().analysisSnapshotId());</span>
+<span class="fc" id="L564">        addMetadataRow(evidence, labels.requirementVersion(), requirementVersion(report));</span>
+<span class="fc" id="L565">        addMetadataRow(evidence, labels.analysisCreatedAt(),</span>
+<span class="fc" id="L566">                formatInstant(report.metadata().analysisCreatedAt(), report.metadata().reportTimeZone()));</span>
+<span class="fc" id="L567">        addMetadataRow(evidence, labels.analysisCreatedBy(), report.metadata().analysisCreatedBy());</span>
+<span class="fc" id="L568">        addMetadataRow(evidence, labels.repository(), report.metadata().repositoryId());</span>
+<span class="fc" id="L569">        addMetadataRow(evidence, labels.workspace(), report.metadata().workspaceId());</span>
+<span class="fc" id="L570">        addMetadataRow(evidence, labels.branch(), report.metadata().branch());</span>
+<span class="fc" id="L571">        addMetadataRow(evidence, labels.basedOnCommit(), report.metadata().basedOnCommit());</span>
+<span class="fc" id="L572">        addMetadataRow(evidence, labels.analysisProvider(), report.metadata().analysisProvider());</span>
+<span class="fc" id="L573">        addMetadataRow(evidence, labels.analysisModel(), report.metadata().analysisModel());</span>
+<span class="fc" id="L574">        addMetadataRow(evidence, labels.analysisStatus(), report.metadata().analysisStatus());</span>
+<span class="fc" id="L575">        addMetadataRow(evidence, labels.analysisDuration(), labels.durationMillis(report.metadata().analysisDurationMillis()));</span>
+<span class="fc" id="L576">        addMetadataRow(evidence, labels.completeness(),</span>
+<span class="fc" id="L577">                percent(report.metadata().completenessPercent()));</span>
+
+<span class="pc bpc" id="L579" title="1 of 2 branches missed.">        if (!report.discrepancies().isEmpty()) {</span>
+<span class="nc" id="L580">            addHeading(document,</span>
+<span class="nc bnc" id="L581" title="All 2 branches missed.">                    labels.german() ? &quot;Dokumentierte Bewertungsabweichungen&quot;</span>
+<span class="nc" id="L582">                            : &quot;Documented scoring discrepancies&quot;,</span>
+                    2,
+                    false);
+<span class="nc bnc" id="L585" title="All 2 branches missed.">            for (Object discrepancy : report.discrepancies()) {</span>
+<span class="nc" id="L586">                addBullet(document, String.valueOf(discrepancy));</span>
+<span class="nc" id="L587">            }</span>
+        }
+<span class="fc" id="L589">    }</span>
+
+    private void addChapterHeading(
+            XWPFDocument document,
+            DecisionChapter chapter,
+            DecisionReportLabels labels) {
+<span class="fc" id="L595">        var writer=new WordDocumentWriter(document,labels);</span>
+<span class="fc" id="L596">        writer.heading(labels.chapter()+&quot; &quot;+chapter.number()+&quot; · &quot;+chapter.parentCode()+&quot; · &quot;+chapter.parentTitle(),2,DecisionTreeOverview.bookmark(chapter));</span>
+<span class="pc bpc" id="L597" title="1 of 2 branches missed.">        writer.paragraph(labels.parentScore()+&quot;: &quot;+(chapter.parentScore()==null?labels.notEvaluated():score(chapter.parentScore())));</span>
+<span class="fc" id="L598">    }</span>
+
+    private void addChildTable(
+            XWPFDocument document,
+            DecisionChapter chapter,
+            DecisionReportLabels labels,
+            DecisionNodeEvidence evidence) {
+<span class="fc" id="L605">        XWPFTable table = document.createTable(1, 6);</span>
+<span class="fc" id="L606">        RationaleIndex reasons = new RationaleIndex();</span>
+<span class="fc" id="L607">        table.setWidth(&quot;100%&quot;);</span>
+<span class="fc" id="L608">        setHeaderRow(table.getRow(0), new String[]{</span>
+<span class="fc" id="L609">                labels.rank(), labels.node(), labels.score(), labels.localShare(),</span>
+<span class="fc" id="L610">                labels.disposition(), labels.rationale()</span>
+        });
+<span class="fc" id="L612">        int rowNumber = 0;</span>
+<span class="fc bfc" id="L613" title="All 2 branches covered.">        for (ChildDecision child : chapter.children()) {</span>
+<span class="fc" id="L614">            XWPFTableRow row = table.createRow();</span>
+<span class="fc bfc" id="L615" title="All 2 branches covered.">            setCellText(row.getCell(0), child.rank() == null ? &quot;—&quot; : child.rank().toString(),</span>
+                    7, false, NAVY, ParagraphAlignment.CENTER);
+<span class="fc" id="L617">            setCodeAndName(row.getCell(1), child.code(), child.title());</span>
+<span class="fc" id="L618">            setCellText(row.getCell(2), score(child.absoluteScore()), 7, true, NAVY,</span>
+                    ParagraphAlignment.CENTER);
+<span class="fc" id="L620">            setCellText(row.getCell(3), percent(child.localSharePercent()), 7, false, NAVY,</span>
+                    ParagraphAlignment.CENTER);
+<span class="fc" id="L622">            setCellText(row.getCell(4), disposition(child, labels), 7, false, NAVY,</span>
+                    ParagraphAlignment.LEFT);
+<span class="pc bpc" id="L624" title="2 of 4 branches missed.">            if (child.reason() == null || child.reason().isBlank()) {</span>
+<span class="nc" id="L625">                setCellText(row.getCell(5), labels.missingReason(), 8, false, NAVY, ParagraphAlignment.LEFT);</span>
+<span class="fc bfc" id="L626" title="All 2 branches covered.">            } else if (evidence.matches(child.code(), child.reason(), child.reasonSource())) {</span>
+<span class="fc" id="L627">                var writer = new WordDocumentWriter(document, labels);</span>
+<span class="fc" id="L628">                writer.link(row.getCell(5).getParagraphs().getFirst(), DecisionNodeEvidence.reasonBookmark(child.code()), child.code());</span>
+<span class="fc" id="L629">            } else setCellText(row.getCell(5), reasons.reference(child.code(), child.reason(), child.reasonSource()),</span>
+                    8, false, NAVY, ParagraphAlignment.LEFT);
+            String fill;
+<span class="fc bfc" id="L632" title="All 2 branches covered.">            if (child.leadingSibling()) {</span>
+<span class="fc" id="L633">                fill = LIGHT_TEAL;</span>
+<span class="fc bfc" id="L634" title="All 2 branches covered.">            } else if (child.disposition() == DecisionRationaleReport.Disposition.REJECTED</span>
+<span class="fc bfc" id="L635" title="All 2 branches covered.">                    || child.disposition() == DecisionRationaleReport.Disposition.NOT_EVALUATED) {</span>
+<span class="fc" id="L636">                fill = LIGHT_GRAY;</span>
+            } else {
+<span class="fc bfc" id="L638" title="All 2 branches covered.">                fill = rowNumber % 2 == 0 ? &quot;FFFFFF&quot; : &quot;F8FAFB&quot;;</span>
+            }
+<span class="fc" id="L640">            styleDataRow(row, fill);</span>
+<span class="fc" id="L641">            rowNumber++;</span>
+<span class="fc" id="L642">        }</span>
+<span class="fc" id="L643">        tableWidths(table, 7, 32, 12, 16, 19, 14);</span>
+<span class="fc" id="L644">        reasons.render(document, labels);</span>
+<span class="fc" id="L645">    }</span>
+
+    private void addAccentBar(XWPFDocument document) {
+<span class="fc" id="L648">        XWPFTable bar = document.createTable(1, 2);</span>
+<span class="fc" id="L649">        bar.setWidth(&quot;100%&quot;);</span>
+<span class="fc" id="L650">        removeTableBorders(bar);</span>
+<span class="fc" id="L651">        shade(bar.getRow(0).getCell(0), NAVY);</span>
+<span class="fc" id="L652">        shade(bar.getRow(0).getCell(1), TEAL);</span>
+<span class="fc" id="L653">        bar.getRow(0).getCell(0).setWidth(&quot;72%&quot;);</span>
+<span class="fc" id="L654">        bar.getRow(0).getCell(1).setWidth(&quot;28%&quot;);</span>
+<span class="fc" id="L655">        setCellMargins(bar.getRow(0).getCell(0), 40, 0, 40, 0);</span>
+<span class="fc" id="L656">        setCellMargins(bar.getRow(0).getCell(1), 40, 0, 40, 0);</span>
+<span class="fc" id="L657">        clearCell(bar.getRow(0).getCell(0));</span>
+<span class="fc" id="L658">        clearCell(bar.getRow(0).getCell(1));</span>
+        // Word table cells must contain at least one paragraph.
+<span class="fc" id="L660">        bar.getRow(0).getCell(0).addParagraph().setSpacingAfter(0);</span>
+<span class="fc" id="L661">        bar.getRow(0).getCell(1).addParagraph().setSpacingAfter(0);</span>
+<span class="fc" id="L662">    }</span>
+
+    private void addSectionHeading(XWPFDocument document, String number, String title) {
+<span class="fc" id="L665">        XWPFParagraph kicker = document.createParagraph();</span>
+<span class="fc" id="L666">        kicker.setSpacingAfter(20);</span>
+<span class="fc" id="L667">        kicker.setPageBreak(true);</span>
+<span class="fc" id="L668">        kicker.setKeepNext(true);</span>
+<span class="fc" id="L669">        XWPFRun kickerRun = kicker.createRun();</span>
+<span class="fc" id="L670">        kickerRun.setText(number);</span>
+<span class="fc" id="L671">        kickerRun.setFontFamily(FONT);</span>
+<span class="fc" id="L672">        kickerRun.setFontSize(10);</span>
+<span class="fc" id="L673">        kickerRun.setBold(true);</span>
+<span class="fc" id="L674">        kickerRun.setColor(TEAL);</span>
+<span class="fc" id="L675">        XWPFParagraph heading = document.createParagraph();</span>
+<span class="fc" id="L676">        heading.setStyle(&quot;Heading1&quot;);</span>
+<span class="fc" id="L677">        heading.setSpacingBefore(0);</span>
+<span class="fc" id="L678">        heading.setKeepNext(true);</span>
+<span class="fc" id="L679">        heading.setSpacingAfter(220);</span>
+<span class="fc" id="L680">        XWPFRun run = heading.createRun();</span>
+<span class="fc" id="L681">        run.setText(title);</span>
+<span class="fc" id="L682">        run.setFontFamily(FONT);</span>
+<span class="fc" id="L683">        run.setFontSize(23);</span>
+<span class="fc" id="L684">        run.setBold(true);</span>
+<span class="fc" id="L685">        run.setColor(NAVY);</span>
+<span class="fc" id="L686">        setBottomBorder(heading, NAVY, 12);</span>
+<span class="fc" id="L687">    }</span>
+
+    private void addHeading(
+            XWPFDocument document,
+            String text,
+            int level,
+            boolean pageBreakBefore) {
+<span class="fc" id="L694">        XWPFParagraph paragraph = document.createParagraph();</span>
+<span class="fc" id="L695">        paragraph.setStyle(&quot;Heading&quot;+level);</span>
+<span class="fc" id="L696">        paragraph.setPageBreak(pageBreakBefore);</span>
+<span class="pc bpc" id="L697" title="1 of 2 branches missed.">        if (paragraph.getCTP().getPPr() == null) {</span>
+<span class="nc" id="L698">            paragraph.getCTP().addNewPPr();</span>
+        }
+<span class="fc" id="L700">        paragraph.setKeepNext(true);</span>
+<span class="fc bfc" id="L701" title="All 2 branches covered.">        paragraph.setSpacingBefore(level == 2 ? 240 : 160);</span>
+<span class="fc" id="L702">        paragraph.setSpacingAfter(100);</span>
+<span class="fc" id="L703">        XWPFRun run = paragraph.createRun();</span>
+<span class="fc" id="L704">        run.setText(text);</span>
+<span class="fc" id="L705">        run.setFontFamily(FONT);</span>
+<span class="fc" id="L706">        run.setBold(true);</span>
+<span class="fc" id="L707">        run.setColor(NAVY);</span>
+<span class="fc bfc" id="L708" title="All 2 branches covered.">        run.setFontSize(level == 2 ? 15 : 12);</span>
+<span class="fc" id="L709">    }</span>
+
+    private void addLabel(XWPFDocument document, String label) {
+<span class="fc" id="L712">        XWPFParagraph paragraph = document.createParagraph();</span>
+<span class="pc bpc" id="L713" title="1 of 2 branches missed.">        if (paragraph.getCTP().getPPr() == null) {</span>
+<span class="fc" id="L714">            paragraph.getCTP().addNewPPr();</span>
+        }
+<span class="fc" id="L716">        paragraph.setKeepNext(true);</span>
+<span class="fc" id="L717">        paragraph.setSpacingBefore(80);</span>
+<span class="fc" id="L718">        paragraph.setSpacingAfter(40);</span>
+<span class="fc" id="L719">        XWPFRun run = paragraph.createRun();</span>
+<span class="fc" id="L720">        run.setText(label.toUpperCase(Locale.ROOT));</span>
+<span class="fc" id="L721">        run.setFontFamily(FONT);</span>
+<span class="fc" id="L722">        run.setFontSize(8);</span>
+<span class="fc" id="L723">        run.setBold(true);</span>
+<span class="fc" id="L724">        run.setColor(TEAL);</span>
+<span class="fc" id="L725">        run.setCharacterSpacing(15);</span>
+<span class="fc" id="L726">    }</span>
+
+    private void addLeadParagraph(XWPFDocument document, String text) {
+<span class="nc" id="L729">        XWPFParagraph paragraph = document.createParagraph();</span>
+<span class="nc" id="L730">        paragraph.setSpacingAfter(180);</span>
+<span class="nc" id="L731">        setLineSpacing(paragraph, 1.15);</span>
+<span class="nc" id="L732">        XWPFRun run = paragraph.createRun();</span>
+<span class="nc" id="L733">        run.setText(text);</span>
+<span class="nc" id="L734">        run.setFontFamily(FONT);</span>
+<span class="nc" id="L735">        run.setFontSize(13);</span>
+<span class="nc" id="L736">        run.setColor(NAVY);</span>
+<span class="nc" id="L737">    }</span>
+
+    private void addBodyParagraph(XWPFDocument document, String text, boolean muted) {
+<span class="fc" id="L740">        XWPFParagraph paragraph = document.createParagraph();</span>
+<span class="fc" id="L741">        paragraph.setSpacingAfter(110);</span>
+<span class="fc" id="L742">        setLineSpacing(paragraph, 1.08);</span>
+<span class="fc" id="L743">        XWPFRun run = paragraph.createRun();</span>
+<span class="pc bpc" id="L744" title="1 of 2 branches missed.">        run.setText(text == null ? &quot;&quot; : text);</span>
+<span class="fc" id="L745">        run.setFontFamily(FONT);</span>
+<span class="fc" id="L746">        run.setFontSize(9);</span>
+<span class="fc bfc" id="L747" title="All 2 branches covered.">        run.setColor(muted ? MUTED : &quot;26303A&quot;);</span>
+<span class="fc" id="L748">    }</span>
+
+    private void addRationaleBox(
+            XWPFDocument document,
+            String heading,
+            String body,
+            String fill) {
+<span class="fc" id="L755">        XWPFTable table = document.createTable(1, 1);</span>
+<span class="fc" id="L756">        table.setWidth(&quot;100%&quot;);</span>
+<span class="fc" id="L757">        table.getRow(0).setCantSplitRow(true);</span>
+<span class="fc" id="L758">        removeTableBorders(table);</span>
+<span class="fc" id="L759">        XWPFTableCell cell = table.getRow(0).getCell(0);</span>
+<span class="fc" id="L760">        shade(cell, fill);</span>
+<span class="fc" id="L761">        setTopCellBorder(cell, TEAL, 18);</span>
+<span class="fc" id="L762">        setCellMargins(cell, 150, 180, 150, 180);</span>
+<span class="fc" id="L763">        clearCell(cell);</span>
+<span class="fc" id="L764">        XWPFParagraph headingParagraph = cell.addParagraph();</span>
+<span class="fc" id="L765">        headingParagraph.setSpacingAfter(50);</span>
+<span class="fc" id="L766">        headingParagraph.setKeepNext(true);</span>
+<span class="fc" id="L767">        XWPFRun headingRun = headingParagraph.createRun();</span>
+<span class="fc" id="L768">        headingRun.setText(heading);</span>
+<span class="fc" id="L769">        headingRun.setFontFamily(FONT);</span>
+<span class="fc" id="L770">        headingRun.setFontSize(10);</span>
+<span class="fc" id="L771">        headingRun.setBold(true);</span>
+<span class="fc" id="L772">        headingRun.setColor(NAVY);</span>
+<span class="fc" id="L773">        XWPFParagraph bodyParagraph = cell.addParagraph();</span>
+<span class="fc" id="L774">        bodyParagraph.setSpacingAfter(0);</span>
+<span class="fc" id="L775">        XWPFRun bodyRun = bodyParagraph.createRun();</span>
+<span class="fc" id="L776">        bodyRun.setText(body);</span>
+<span class="fc" id="L777">        bodyRun.setFontFamily(FONT);</span>
+<span class="fc" id="L778">        bodyRun.setFontSize(9);</span>
+<span class="fc" id="L779">        bodyRun.setColor(&quot;26303A&quot;);</span>
+<span class="fc" id="L780">        spacer(document, 6);</span>
+<span class="fc" id="L781">    }</span>
+
+    private void addWarningBox(XWPFDocument document, String heading, List&lt;String&gt; warnings) {
+<span class="nc" id="L784">        XWPFTable table = document.createTable(1, 1);</span>
+<span class="nc" id="L785">        table.setWidth(&quot;100%&quot;);</span>
+<span class="nc" id="L786">        XWPFTableCell cell = table.getRow(0).getCell(0);</span>
+<span class="nc" id="L787">        shade(cell, WARNING);</span>
+<span class="nc" id="L788">        setLeftCellBorder(cell, WARNING_BORDER, 18);</span>
+<span class="nc" id="L789">        setCellMargins(cell, 140, 180, 140, 180);</span>
+<span class="nc" id="L790">        clearCell(cell);</span>
+<span class="nc" id="L791">        XWPFParagraph title = cell.addParagraph();</span>
+<span class="nc" id="L792">        title.setSpacingAfter(50);</span>
+<span class="nc" id="L793">        XWPFRun titleRun = title.createRun();</span>
+<span class="nc" id="L794">        titleRun.setText(heading);</span>
+<span class="nc" id="L795">        titleRun.setFontFamily(FONT);</span>
+<span class="nc" id="L796">        titleRun.setFontSize(10);</span>
+<span class="nc" id="L797">        titleRun.setBold(true);</span>
+<span class="nc" id="L798">        titleRun.setColor(&quot;745400&quot;);</span>
+<span class="nc bnc" id="L799" title="All 2 branches missed.">        for (String warning : warnings) {</span>
+<span class="nc" id="L800">            XWPFParagraph bullet = cell.addParagraph();</span>
+<span class="nc" id="L801">            bullet.setIndentationLeft(220);</span>
+<span class="nc" id="L802">            bullet.setFirstLineIndent(-160);</span>
+<span class="nc" id="L803">            bullet.setSpacingAfter(40);</span>
+<span class="nc" id="L804">            XWPFRun run = bullet.createRun();</span>
+<span class="nc" id="L805">            run.setText(&quot;• &quot; + warning);</span>
+<span class="nc" id="L806">            run.setFontFamily(FONT);</span>
+<span class="nc" id="L807">            run.setFontSize(8);</span>
+<span class="nc" id="L808">            run.setColor(&quot;4F3C00&quot;);</span>
+<span class="nc" id="L809">        }</span>
+<span class="nc" id="L810">    }</span>
+
+    private void addMetadataRow(XWPFTable table, String label, String value) {
+<span class="fc" id="L813">        setMetadataRow(table.createRow(), label, value);</span>
+<span class="fc" id="L814">    }</span>
+
+    private void setMetadataRow(XWPFTableRow row, String label, String value) {
+<span class="fc" id="L817">        setCellText(row.getCell(0), label, 8, true, NAVY, ParagraphAlignment.LEFT);</span>
+<span class="fc" id="L818">        setCellText(row.getCell(1), value, 8, false, &quot;26303A&quot;, ParagraphAlignment.LEFT);</span>
+<span class="fc" id="L819">        shade(row.getCell(0), LIGHT_GRAY);</span>
+<span class="fc" id="L820">        shade(row.getCell(1), &quot;FFFFFF&quot;);</span>
+<span class="fc" id="L821">        setCellMargins(row.getCell(0), 80, 110, 80, 110);</span>
+<span class="fc" id="L822">        setCellMargins(row.getCell(1), 80, 110, 80, 110);</span>
+<span class="fc" id="L823">        setCellBorders(row.getCell(0), LINE, 3);</span>
+<span class="fc" id="L824">        setCellBorders(row.getCell(1), LINE, 3);</span>
+<span class="fc" id="L825">    }</span>
+
+    private void setHeaderRow(XWPFTableRow row, String[] headers) {
+<span class="fc bfc" id="L828" title="All 2 branches covered.">        for (int index = 0; index &lt; headers.length; index++) {</span>
+<span class="fc" id="L829">            XWPFTableCell cell = row.getCell(index);</span>
+<span class="fc" id="L830">            shade(cell, NAVY);</span>
+<span class="fc" id="L831">            setCellMargins(cell, 80, 80, 80, 80);</span>
+<span class="fc" id="L832">            setCellText(cell, headers[index], 7, true, &quot;FFFFFF&quot;, ParagraphAlignment.LEFT);</span>
+        }
+<span class="fc" id="L834">        row.setRepeatHeader(true);</span>
+<span class="fc" id="L835">    }</span>
+
+    private void setCodeAndName(XWPFTableCell cell, String code, String name) {
+<span class="fc" id="L838">        clearCell(cell);</span>
+<span class="fc" id="L839">        XWPFParagraph paragraph = cell.addParagraph();</span>
+<span class="fc" id="L840">        paragraph.setSpacingAfter(0);</span>
+<span class="fc" id="L841">        XWPFRun codeRun = paragraph.createRun();</span>
+<span class="fc" id="L842">        codeRun.setText(code);</span>
+<span class="fc" id="L843">        codeRun.setFontFamily(MONO_FONT);</span>
+<span class="fc" id="L844">        codeRun.setFontSize(8);</span>
+<span class="fc" id="L845">        codeRun.setBold(true);</span>
+<span class="fc" id="L846">        codeRun.setColor(NAVY);</span>
+<span class="fc" id="L847">        XWPFRun nameRun = paragraph.createRun();</span>
+<span class="fc" id="L848">        nameRun.addBreak();</span>
+<span class="fc" id="L849">        nameRun.setText(name);</span>
+<span class="fc" id="L850">        nameRun.setFontFamily(FONT);</span>
+<span class="fc" id="L851">        nameRun.setFontSize(7);</span>
+<span class="fc" id="L852">        nameRun.setColor(MUTED);</span>
+<span class="fc" id="L853">    }</span>
+
+    private void setCellText(
+            XWPFTableCell cell,
+            String value,
+            int fontSize,
+            boolean bold,
+            String color,
+            ParagraphAlignment alignment) {
+<span class="fc" id="L862">        clearCell(cell);</span>
+<span class="fc" id="L863">        XWPFParagraph paragraph = cell.addParagraph();</span>
+<span class="fc" id="L864">        paragraph.setAlignment(alignment);</span>
+<span class="fc" id="L865">        paragraph.setSpacingBefore(0);</span>
+<span class="fc" id="L866">        paragraph.setSpacingAfter(0);</span>
+<span class="fc" id="L867">        XWPFRun run = paragraph.createRun();</span>
+<span class="pc bpc" id="L868" title="2 of 4 branches missed.">        run.setText(value == null || value.isBlank() ? &quot;—&quot; : value);</span>
+<span class="fc" id="L869">        run.setFontFamily(FONT);</span>
+<span class="fc" id="L870">        run.setFontSize(fontSize);</span>
+<span class="fc" id="L871">        run.setBold(bold);</span>
+<span class="fc" id="L872">        run.setColor(color);</span>
+<span class="fc" id="L873">    }</span>
+
+    private void styleDataRow(XWPFTableRow row, String fill) {
+<span class="fc" id="L876">        row.setCantSplitRow(true);</span>
+<span class="fc bfc" id="L877" title="All 2 branches covered.">        for (XWPFTableCell cell : row.getTableCells()) {</span>
+<span class="fc" id="L878">            shade(cell, fill);</span>
+<span class="fc" id="L879">            setCellMargins(cell, 70, 70, 70, 70);</span>
+<span class="fc" id="L880">            setCellBorders(cell, LINE, 2);</span>
+<span class="fc" id="L881">            cell.setVerticalAlignment(XWPFTableCell.XWPFVertAlign.TOP);</span>
+<span class="fc" id="L882">        }</span>
+        try {
+<span class="fc" id="L884">            row.setCantSplitRow(true);</span>
+<span class="nc" id="L885">        } catch (Exception ignored) {</span>
+            // Older POI builds may not expose the convenience method.
+<span class="fc" id="L887">        }</span>
+<span class="fc" id="L888">    }</span>
+
+    private void clearCell(XWPFTableCell cell) {
+<span class="fc bfc" id="L891" title="All 2 branches covered.">        while (!cell.getParagraphs().isEmpty()) {</span>
+<span class="fc" id="L892">            cell.removeParagraph(0);</span>
+        }
+<span class="fc" id="L894">    }</span>
+
+    private void shade(XWPFTableCell cell, String color) {
+<span class="pc bpc" id="L897" title="1 of 2 branches missed.">        CTTcPr properties = cell.getCTTc().isSetTcPr()</span>
+<span class="pc" id="L898">                ? cell.getCTTc().getTcPr() : cell.getCTTc().addNewTcPr();</span>
+<span class="pc bpc" id="L899" title="1 of 2 branches missed.">        CTShd shading = properties.isSetShd() ? properties.getShd() : properties.addNewShd();</span>
+<span class="fc" id="L900">        shading.setFill(color);</span>
+<span class="fc" id="L901">    }</span>
+
+    private void setCellMargins(
+            XWPFTableCell cell,
+            int top,
+            int left,
+            int bottom,
+            int right) {
+<span class="pc bpc" id="L909" title="1 of 2 branches missed.">        CTTcPr properties = cell.getCTTc().isSetTcPr()</span>
+<span class="pc" id="L910">                ? cell.getCTTc().getTcPr() : cell.getCTTc().addNewTcPr();</span>
+<span class="pc bpc" id="L911" title="1 of 2 branches missed.">        var margins = properties.isSetTcMar() ? properties.getTcMar() : properties.addNewTcMar();</span>
+<span class="pc bpc" id="L912" title="1 of 2 branches missed.">        if (!margins.isSetTop()) margins.addNewTop();</span>
+<span class="pc bpc" id="L913" title="1 of 2 branches missed.">        if (!margins.isSetLeft()) margins.addNewLeft();</span>
+<span class="pc bpc" id="L914" title="1 of 2 branches missed.">        if (!margins.isSetBottom()) margins.addNewBottom();</span>
+<span class="pc bpc" id="L915" title="1 of 2 branches missed.">        if (!margins.isSetRight()) margins.addNewRight();</span>
+<span class="fc" id="L916">        margins.getTop().setW(BigInteger.valueOf(top));</span>
+<span class="fc" id="L917">        margins.getLeft().setW(BigInteger.valueOf(left));</span>
+<span class="fc" id="L918">        margins.getBottom().setW(BigInteger.valueOf(bottom));</span>
+<span class="fc" id="L919">        margins.getRight().setW(BigInteger.valueOf(right));</span>
+<span class="fc" id="L920">    }</span>
+
+    private void setCellBorders(XWPFTableCell cell, String color, int size) {
+<span class="pc bpc" id="L923" title="1 of 2 branches missed.">        CTTcPr properties = cell.getCTTc().isSetTcPr()</span>
+<span class="pc" id="L924">                ? cell.getCTTc().getTcPr() : cell.getCTTc().addNewTcPr();</span>
+<span class="pc bpc" id="L925" title="1 of 2 branches missed.">        var borders = properties.isSetTcBorders()</span>
+<span class="pc" id="L926">                ? properties.getTcBorders() : properties.addNewTcBorders();</span>
+<span class="pc bpc" id="L927" title="1 of 2 branches missed.">        configureBorder(borders.isSetTop() ? borders.getTop() : borders.addNewTop(), color, size);</span>
+<span class="pc bpc" id="L928" title="1 of 2 branches missed.">        configureBorder(borders.isSetBottom() ? borders.getBottom() : borders.addNewBottom(), color, size);</span>
+<span class="pc bpc" id="L929" title="1 of 2 branches missed.">        configureBorder(borders.isSetLeft() ? borders.getLeft() : borders.addNewLeft(), color, size);</span>
+<span class="pc bpc" id="L930" title="1 of 2 branches missed.">        configureBorder(borders.isSetRight() ? borders.getRight() : borders.addNewRight(), color, size);</span>
+<span class="fc" id="L931">    }</span>
+
+    private void setLeftCellBorder(XWPFTableCell cell, String color, int size) {
+<span class="pc bpc" id="L934" title="1 of 2 branches missed.">        CTTcPr properties = cell.getCTTc().isSetTcPr()</span>
+<span class="pc" id="L935">                ? cell.getCTTc().getTcPr() : cell.getCTTc().addNewTcPr();</span>
+<span class="pc bpc" id="L936" title="1 of 2 branches missed.">        var borders = properties.isSetTcBorders()</span>
+<span class="pc" id="L937">                ? properties.getTcBorders() : properties.addNewTcBorders();</span>
+<span class="pc bpc" id="L938" title="1 of 2 branches missed.">        configureBorder(borders.isSetLeft() ? borders.getLeft() : borders.addNewLeft(), color, size);</span>
+<span class="fc" id="L939">    }</span>
+
+    private void setTopCellBorder(XWPFTableCell cell, String color, int size) {
+<span class="pc bpc" id="L942" title="1 of 2 branches missed.">        CTTcPr properties = cell.getCTTc().isSetTcPr()</span>
+<span class="pc" id="L943">                ? cell.getCTTc().getTcPr() : cell.getCTTc().addNewTcPr();</span>
+<span class="pc bpc" id="L944" title="1 of 2 branches missed.">        var borders = properties.isSetTcBorders()</span>
+<span class="pc" id="L945">                ? properties.getTcBorders() : properties.addNewTcBorders();</span>
+<span class="pc bpc" id="L946" title="1 of 2 branches missed.">        configureBorder(borders.isSetTop() ? borders.getTop() : borders.addNewTop(), color, size);</span>
+<span class="fc" id="L947">    }</span>
+
+    private void removeTableBorders(XWPFTable table) {
+<span class="fc" id="L950">        CTTbl tableXml = table.getCTTbl();</span>
+<span class="fc" id="L951">        CTTblPr properties = tableXml.getTblPr();</span>
+<span class="pc bpc" id="L952" title="1 of 2 branches missed.">        if (properties == null) {</span>
+<span class="nc" id="L953">            properties = tableXml.addNewTblPr();</span>
+        }
+<span class="pc bpc" id="L955" title="1 of 2 branches missed.">        CTTblBorders borders = properties.isSetTblBorders()</span>
+<span class="pc" id="L956">                ? properties.getTblBorders() : properties.addNewTblBorders();</span>
+<span class="pc bpc" id="L957" title="1 of 2 branches missed.">        noBorder(borders.isSetTop() ? borders.getTop() : borders.addNewTop());</span>
+<span class="pc bpc" id="L958" title="1 of 2 branches missed.">        noBorder(borders.isSetBottom() ? borders.getBottom() : borders.addNewBottom());</span>
+<span class="pc bpc" id="L959" title="1 of 2 branches missed.">        noBorder(borders.isSetLeft() ? borders.getLeft() : borders.addNewLeft());</span>
+<span class="pc bpc" id="L960" title="1 of 2 branches missed.">        noBorder(borders.isSetRight() ? borders.getRight() : borders.addNewRight());</span>
+<span class="pc bpc" id="L961" title="1 of 2 branches missed.">        noBorder(borders.isSetInsideH() ? borders.getInsideH() : borders.addNewInsideH());</span>
+<span class="pc bpc" id="L962" title="1 of 2 branches missed.">        noBorder(borders.isSetInsideV() ? borders.getInsideV() : borders.addNewInsideV());</span>
+<span class="fc" id="L963">    }</span>
+
+    private void noBorder(CTBorder border) {
+<span class="fc" id="L966">        border.setVal(STBorder.NIL);</span>
+<span class="fc" id="L967">    }</span>
+
+    private void configureBorder(CTBorder border, String color, int size) {
+<span class="fc" id="L970">        border.setVal(STBorder.SINGLE);</span>
+<span class="fc" id="L971">        border.setColor(color);</span>
+<span class="fc" id="L972">        border.setSz(BigInteger.valueOf(size));</span>
+<span class="fc" id="L973">    }</span>
+
+    private void setBottomBorder(XWPFParagraph paragraph, String color, int size) {
+<span class="pc bpc" id="L976" title="1 of 2 branches missed.">        CTPPr properties = paragraph.getCTP().isSetPPr()</span>
+<span class="pc" id="L977">                ? paragraph.getCTP().getPPr() : paragraph.getCTP().addNewPPr();</span>
+<span class="pc bpc" id="L978" title="1 of 2 branches missed.">        CTPBdr borders = properties.isSetPBdr() ? properties.getPBdr() : properties.addNewPBdr();</span>
+<span class="pc bpc" id="L979" title="1 of 2 branches missed.">        configureBorder(borders.isSetBottom() ? borders.getBottom() : borders.addNewBottom(), color, size);</span>
+<span class="fc" id="L980">    }</span>
+
+    private void setTopBorder(XWPFParagraph paragraph, String color, int size) {
+<span class="pc bpc" id="L983" title="1 of 2 branches missed.">        CTPPr properties = paragraph.getCTP().isSetPPr()</span>
+<span class="pc" id="L984">                ? paragraph.getCTP().getPPr() : paragraph.getCTP().addNewPPr();</span>
+<span class="pc bpc" id="L985" title="1 of 2 branches missed.">        CTPBdr borders = properties.isSetPBdr() ? properties.getPBdr() : properties.addNewPBdr();</span>
+<span class="pc bpc" id="L986" title="1 of 2 branches missed.">        configureBorder(borders.isSetTop() ? borders.getTop() : borders.addNewTop(), color, size);</span>
+<span class="fc" id="L987">    }</span>
+
+    private void addSimpleField(
+            XWPFParagraph paragraph,
+            String instruction,
+            String fallback,
+            int fontSize,
+            String color) {
+<span class="fc" id="L995">        CTSimpleField field = paragraph.getCTP().addNewFldSimple();</span>
+<span class="fc" id="L996">        field.setInstr(instruction);</span>
+<span class="fc" id="L997">        var runXml = field.addNewR();</span>
+<span class="fc" id="L998">        var properties = runXml.addNewRPr();</span>
+<span class="fc" id="L999">        properties.addNewColor().setVal(color);</span>
+<span class="fc" id="L1000">        properties.addNewSz().setVal(BigInteger.valueOf(fontSize * 2L));</span>
+<span class="fc" id="L1001">        CTText text = runXml.addNewT();</span>
+<span class="fc" id="L1002">        text.setStringValue(fallback);</span>
+<span class="fc" id="L1003">    }</span>
+
+    private void addBullet(XWPFDocument document, String text) {
+<span class="nc" id="L1006">        XWPFParagraph paragraph = document.createParagraph();</span>
+<span class="nc" id="L1007">        paragraph.setIndentationLeft(260);</span>
+<span class="nc" id="L1008">        paragraph.setFirstLineIndent(-170);</span>
+<span class="nc" id="L1009">        paragraph.setSpacingAfter(50);</span>
+<span class="nc" id="L1010">        XWPFRun run = paragraph.createRun();</span>
+<span class="nc" id="L1011">        run.setText(&quot;• &quot; + text);</span>
+<span class="nc" id="L1012">        run.setFontFamily(FONT);</span>
+<span class="nc" id="L1013">        run.setFontSize(8);</span>
+<span class="nc" id="L1014">        run.setColor(&quot;26303A&quot;);</span>
+<span class="nc" id="L1015">    }</span>
+
+    /** Keep prose out of narrow numeric tables; source is part of the deduplication key. */
+<span class="fc" id="L1018">    private final class RationaleIndex {</span>
+<span class="fc" id="L1019">        private record Evidence(String text, DecisionRationaleReport.ReasonSource source) {}</span>
+<span class="fc" id="L1020">        private final Map&lt;Evidence, List&lt;String&gt;&gt; entries = new LinkedHashMap&lt;&gt;();</span>
+
+        String reference(String code, String text, DecisionRationaleReport.ReasonSource source) {
+<span class="fc" id="L1023">            Evidence evidence = new Evidence(text, source);</span>
+<span class="fc" id="L1024">            entries.computeIfAbsent(evidence, ignored -&gt; new ArrayList&lt;&gt;()).add(code);</span>
+<span class="fc" id="L1025">            return &quot;R&quot; + (new ArrayList&lt;&gt;(entries.keySet()).indexOf(evidence) + 1);</span>
+        }
+
+        void render(XWPFDocument document, DecisionReportLabels labels) {
+<span class="fc" id="L1029">            int index = 1;</span>
+<span class="fc bfc" id="L1030" title="All 2 branches covered.">            for (var entry : entries.entrySet()) {</span>
+<span class="fc" id="L1031">                addLabel(document, &quot;R&quot; + index++ + &quot; · &quot; + String.join(&quot;, &quot;, entry.getValue())</span>
+<span class="fc" id="L1032">                        + &quot; · &quot; + reasonSource(entry.getKey().source(), labels));</span>
+<span class="fc" id="L1033">                addBodyParagraph(document, entry.getKey().text(), false);</span>
+<span class="fc" id="L1034">            }</span>
+<span class="fc" id="L1035">        }</span>
+    }
+
+    private void tableWidths(XWPFTable table, int... percentages) {
+<span class="fc" id="L1039">        table.setWidth(&quot;100%&quot;);</span>
+<span class="fc" id="L1040">        var properties = table.getCTTbl().getTblPr();</span>
+<span class="pc bpc" id="L1041" title="1 of 2 branches missed.">        var layout = properties.isSetTblLayout() ? properties.getTblLayout() : properties.addNewTblLayout();</span>
+<span class="fc" id="L1042">        layout.setType(org.openxmlformats.schemas.wordprocessingml.x2006.main.STTblLayoutType.FIXED);</span>
+<span class="fc" id="L1043">        var grid = table.getCTTbl().getTblGrid();</span>
+<span class="pc bpc" id="L1044" title="1 of 2 branches missed.">        if (grid == null) grid = table.getCTTbl().addNewTblGrid();</span>
+<span class="pc bpc" id="L1045" title="1 of 2 branches missed.">        while (grid.sizeOfGridColArray() &gt; 0) grid.removeGridCol(0);</span>
+<span class="fc bfc" id="L1046" title="All 2 branches covered.">        for (int percent : percentages) grid.addNewGridCol().setW(BigInteger.valueOf(9806L * percent / 100));</span>
+<span class="fc bfc" id="L1047" title="All 4 branches covered.">        for (var row : table.getRows()) for (int i = 0; i &lt; percentages.length; i++)</span>
+<span class="fc" id="L1048">            row.getCell(i).setWidth(percentages[i] + &quot;%&quot;);</span>
+<span class="fc" id="L1049">    }</span>
+
+    private void spacer(XWPFDocument document, int points) {
+<span class="fc" id="L1052">        XWPFParagraph paragraph = document.createParagraph();</span>
+<span class="fc" id="L1053">        paragraph.setSpacingBefore(0);</span>
+<span class="fc" id="L1054">        paragraph.setSpacingAfter(0);</span>
+<span class="fc" id="L1055">        paragraph.setSpacingBetween(points, org.apache.poi.xwpf.usermodel.LineSpacingRule.EXACT);</span>
+<span class="fc" id="L1056">        paragraph.createRun().setText(&quot;&quot;);</span>
+<span class="fc" id="L1057">    }</span>
+
+    private void setLineSpacing(XWPFParagraph paragraph, double multiplier) {
+<span class="pc bpc" id="L1060" title="1 of 2 branches missed.">        CTPPr properties = paragraph.getCTP().isSetPPr()</span>
+<span class="pc" id="L1061">                ? paragraph.getCTP().getPPr() : paragraph.getCTP().addNewPPr();</span>
+<span class="pc bpc" id="L1062" title="1 of 2 branches missed.">        var spacing = properties.isSetSpacing() ? properties.getSpacing() : properties.addNewSpacing();</span>
+<span class="fc" id="L1063">        spacing.setLine(BigInteger.valueOf(Math.round(240 * multiplier)));</span>
+<span class="fc" id="L1064">        spacing.setLineRule(STLineSpacingRule.AUTO);</span>
+<span class="fc" id="L1065">    }</span>
+
+    private String statusLabel(DecisionRationaleReport report, DecisionReportLabels labels) {
+<span class="pc bpc" id="L1068" title="3 of 4 branches missed.">        return switch (report.status()) {</span>
+<span class="fc" id="L1069">            case FINAL -&gt; labels.finalStatus();</span>
+<span class="nc" id="L1070">            case FINAL_WITH_WARNINGS -&gt; labels.finalWarnings();</span>
+<span class="nc" id="L1071">            case DRAFT_INCOMPLETE -&gt; labels.draft();</span>
+<span class="nc" id="L1072">            case NO_RESULT -&gt; labels.noResult();</span>
+        };
+    }
+
+    private String disposition(ChildDecision child, DecisionReportLabels labels) {
+<span class="fc bfc" id="L1077" title="All 4 branches covered.">        return switch (child.disposition()) {</span>
+<span class="fc" id="L1078">            case CONTINUED -&gt; labels.continued();</span>
+<span class="fc" id="L1079">            case LEAF_CANDIDATE -&gt; labels.leafCandidate();</span>
+<span class="fc" id="L1080">            case REJECTED -&gt; labels.rejected();</span>
+<span class="fc" id="L1081">            case NOT_EVALUATED -&gt; labels.notEvaluated();</span>
+        };
+    }
+
+    private String reasonSource(
+            DecisionRationaleReport.ReasonSource source,
+            DecisionReportLabels labels) {
+<span class="pc bpc" id="L1088" title="1 of 2 branches missed.">        if (source == null) {</span>
+<span class="nc" id="L1089">            return labels.missingReason();</span>
+        }
+<span class="pc bpc" id="L1091" title="2 of 3 branches missed.">        return switch (source) {</span>
+<span class="fc" id="L1092">            case AI_SCORING -&gt; labels.aiReason();</span>
+<span class="nc" id="L1093">            case DETERMINISTIC_TRACE -&gt; labels.deterministicReason();</span>
+<span class="nc" id="L1094">            case MISSING -&gt; labels.missingReason();</span>
+        };
+    }
+
+    private String requirementVersion(DecisionRationaleReport report) {
+<span class="fc bfc" id="L1099" title="All 2 branches covered.">        if (report.metadata().requirementVersionNumber() == null) {</span>
+<span class="fc" id="L1100">            return &quot;—&quot;;</span>
+        }
+<span class="fc" id="L1102">        StringBuilder value = new StringBuilder(&quot;v&quot;)</span>
+<span class="fc" id="L1103">                .append(report.metadata().requirementVersionNumber());</span>
+<span class="pc bpc" id="L1104" title="1 of 2 branches missed.">        if (report.metadata().requirementId() != null) {</span>
+<span class="fc" id="L1105">            value.append(&quot; · requirement &quot;).append(report.metadata().requirementId());</span>
+        }
+<span class="pc bpc" id="L1107" title="1 of 2 branches missed.">        if (report.metadata().projectId() != null) {</span>
+<span class="fc" id="L1108">            value.append(&quot; · project &quot;).append(report.metadata().projectId());</span>
+        }
+<span class="fc" id="L1110">        return value.toString();</span>
+    }
+
+    private String footerText(DecisionRationaleReport report, DecisionReportLabels labels) {
+<span class="fc" id="L1114">        return labels.generatedNotice() + &quot; · &quot;</span>
+<span class="fc" id="L1115">                + formatInstant(report.metadata().generatedAt(), report.metadata().reportTimeZone())</span>
+<span class="fc" id="L1116">                + &quot; · &quot; + report.metadata().generatedBy()</span>
+<span class="fc" id="L1117">                + &quot; · Taxonomy &quot; + report.metadata().taxonomyApplicationVersion()</span>
+<span class="fc" id="L1118">                + &quot; · &quot; + report.metadata().taxonomyDataVersion();</span>
+    }
+
+    private String formatInstant(Instant instant, String zone) {
+<span class="fc bfc" id="L1122" title="All 2 branches covered.">        if (instant == null) {</span>
+<span class="fc" id="L1123">            return &quot;—&quot;;</span>
+        }
+        ZoneId zoneId;
+        try {
+<span class="fc" id="L1127">            zoneId = ZoneId.of(zone);</span>
+<span class="nc" id="L1128">        } catch (Exception ignored) {</span>
+<span class="nc" id="L1129">            zoneId = ZoneOffset.UTC;</span>
+<span class="fc" id="L1130">        }</span>
+<span class="fc" id="L1131">        return DateTimeFormatter.ofPattern(&quot;dd.MM.yyyy HH:mm:ss z&quot;, Locale.GERMANY)</span>
+<span class="fc" id="L1132">                .withZone(zoneId)</span>
+<span class="fc" id="L1133">                .format(instant);</span>
+    }
+
+    private String score(Double value) {
+<span class="fc bfc" id="L1137" title="All 2 branches covered.">        return value == null ? &quot;—&quot; : com.taxonomy.dto.AnalysisPercentages.display(value).replace(&quot;%&quot;, &quot; %&quot;);</span>
+    }
+
+    private String percent(Double value) {
+<span class="fc bfc" id="L1141" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L1142">            return &quot;—&quot;;</span>
+        }
+<span class="fc" id="L1144">        return com.taxonomy.dto.AnalysisPercentages.display(value).replace(&quot;%&quot;, &quot; %&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

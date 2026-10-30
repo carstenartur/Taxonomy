@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyRootTypes.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.model</a> &gt; <span class="el_source">TaxonomyRootTypes.java</span></div><h1>TaxonomyRootTypes.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.model;
+
+import java.util.Map;
+
+/**
+ * Shared mapping between taxonomy root codes and human-readable element type names.
+ *
+ * &lt;p&gt;This mapping is used across the DSL subsystem (export, import, validation)
+ * to ensure consistent type names in DSL files.
+ */
+public final class TaxonomyRootTypes {
+
+    private TaxonomyRootTypes() {} // utility class
+
+    /**
+     * Maps taxonomy root codes to DSL element type names.
+     *
+     * &lt;p&gt;Includes C4 model types:
+     * &lt;ul&gt;
+     *   &lt;li&gt;{@code &quot;SY&quot;} → {@code &quot;System&quot;} (C4 Software System)&lt;/li&gt;
+     *   &lt;li&gt;{@code &quot;CM&quot;} → {@code &quot;Component&quot;} (C4 Component)&lt;/li&gt;
+     * &lt;/ul&gt;
+     */
+<span class="fc" id="L24">    public static final Map&lt;String, String&gt; ROOT_TO_TYPE = Map.ofEntries(</span>
+<span class="fc" id="L25">            Map.entry(&quot;CP&quot;, &quot;Capability&quot;),</span>
+<span class="fc" id="L26">            Map.entry(&quot;BP&quot;, &quot;Process&quot;),</span>
+<span class="fc" id="L27">            Map.entry(&quot;CR&quot;, &quot;CoreService&quot;),</span>
+<span class="fc" id="L28">            Map.entry(&quot;CI&quot;, &quot;COIService&quot;),</span>
+<span class="fc" id="L29">            Map.entry(&quot;CO&quot;, &quot;CommunicationsService&quot;),</span>
+<span class="fc" id="L30">            Map.entry(&quot;UA&quot;, &quot;UserApplication&quot;),</span>
+<span class="fc" id="L31">            Map.entry(&quot;IP&quot;, &quot;InformationProduct&quot;),</span>
+<span class="fc" id="L32">            Map.entry(&quot;BR&quot;, &quot;BusinessRole&quot;),</span>
+<span class="fc" id="L33">            Map.entry(&quot;SY&quot;, &quot;System&quot;),</span>
+<span class="fc" id="L34">            Map.entry(&quot;CM&quot;, &quot;Component&quot;)</span>
+    );
+
+    /** Reverse mapping: DSL element type name → taxonomy root code. */
+    public static final Map&lt;String, String&gt; TYPE_TO_ROOT;
+
+    static {
+<span class="fc" id="L41">        var reverse = new java.util.LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L42">        ROOT_TO_TYPE.forEach((root, type) -&gt; reverse.put(type, root));</span>
+<span class="fc" id="L43">        TYPE_TO_ROOT = java.util.Collections.unmodifiableMap(reverse);</span>
+<span class="fc" id="L44">    }</span>
+
+    /**
+     * Get the DSL element type name for a taxonomy root code.
+     * Returns the root code itself if no mapping is defined.
+     */
+    public static String typeFor(String taxonomyRoot) {
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (taxonomyRoot == null) return &quot;Unknown&quot;;</span>
+<span class="fc" id="L52">        return ROOT_TO_TYPE.getOrDefault(taxonomyRoot, taxonomyRoot);</span>
+    }
+
+    /**
+     * Get the taxonomy root code for a DSL element type name.
+     * Returns {@code null} if no mapping is defined.
+     */
+    public static String rootFor(String typeName) {
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (typeName == null) return null;</span>
+        // Check if it's already a root code
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (ROOT_TO_TYPE.containsKey(typeName)) return typeName;</span>
+<span class="fc" id="L63">        return TYPE_TO_ROOT.get(typeName);</span>
+    }
+
+    /**
+     * Extract the root code prefix from an element ID (e.g., &quot;CP&quot; from &quot;CP-1023&quot;).
+     * Returns {@code null} if the ID doesn't match the expected pattern.
+     */
+    public static String rootFromId(String elementId) {
+<span class="fc bfc" id="L71" title="All 4 branches covered.">        if (elementId == null || elementId.length() &lt; 2) return null;</span>
+<span class="fc" id="L72">        int dash = elementId.indexOf('-');</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        if (dash &lt; 2) return null;</span>
+<span class="fc" id="L74">        String prefix = elementId.substring(0, dash);</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        return ROOT_TO_TYPE.containsKey(prefix) ? prefix : null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioConnectionPoints.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.visio</a> &gt; <span class="el_source">VisioConnectionPoints.java</span></div><h1>VisioConnectionPoints.java</h1><pre class="source lang-java linenums">package com.taxonomy.visio;
+
+/** Native side ports and their cached page coordinates. Port rows are zero-based in XML. */
+public final class VisioConnectionPoints {
+    private VisioConnectionPoints() { }
+
+<span class="fc" id="L7">    public enum Side {</span>
+<span class="fc" id="L8">        LEFT(1, 0, .5), RIGHT(2, 1, .5), BOTTOM(3, .5, 0), TOP(4, .5, 1);</span>
+        private final int number;
+        private final double xFraction;
+        private final double yFraction;
+<span class="fc" id="L12">        Side(int number, double xFraction, double yFraction) {</span>
+<span class="fc" id="L13">            this.number = number; this.xFraction = xFraction; this.yFraction = yFraction;</span>
+<span class="fc" id="L14">        }</span>
+<span class="fc" id="L15">        public int number() { return number; }</span>
+<span class="fc" id="L16">        public double xFraction() { return xFraction; }</span>
+<span class="fc" id="L17">        public double yFraction() { return yFraction; }</span>
+<span class="fc bfc" id="L18" title="All 4 branches covered.">        public Side opposite() { return switch (this) { case LEFT -&gt; RIGHT; case RIGHT -&gt; LEFT; case BOTTOM -&gt; TOP; case TOP -&gt; BOTTOM; }; }</span>
+    }
+
+<span class="fc" id="L21">    public record Point(Side side, double x, double y) {</span>
+        public String formula(String shapeId) {
+<span class="fc" id="L23">            return &quot;PAR(PNT(Sheet.&quot; + shapeId + &quot;!Connections.X&quot; + side.number()</span>
+<span class="fc" id="L24">                    + &quot;,Sheet.&quot; + shapeId + &quot;!Connections.Y&quot; + side.number() + &quot;))&quot;;</span>
+        }
+    }
+
+<span class="fc" id="L28">    public record Endpoints(Point source, Point target) {</span>
+<span class="fc" id="L29">        public double length() { return Math.hypot(target.x() - source.x(), target.y() - source.y()); }</span>
+    }
+
+    public static Endpoints between(VisioShape source, VisioShape target) {
+<span class="fc" id="L33">        double dx = target.getX() - source.getX(), dy = target.getY() - source.getY();</span>
+<span class="fc bfc" id="L34" title="All 6 branches covered.">        Side start = Math.abs(dx) &gt;= Math.abs(dy) ? (dx &gt;= 0 ? Side.RIGHT : Side.LEFT) : (dy &gt;= 0 ? Side.TOP : Side.BOTTOM);</span>
+<span class="fc" id="L35">        Endpoints endpoints = new Endpoints(point(source, start), point(target, start.opposite()));</span>
+<span class="pc bpc" id="L36" title="5 of 6 branches missed.">        if (endpoints.length() == 0 &amp;&amp; (dx != 0 || dy != 0)) {</span>
+            // Touching shapes still need a visible, editable connector. Use the
+            // adjacent sides instead of emitting a collapsed zero-length shape.
+<span class="nc bnc" id="L39" title="All 4 branches missed.">            start = start == Side.LEFT || start == Side.RIGHT ? Side.TOP : Side.RIGHT;</span>
+<span class="nc" id="L40">            endpoints = new Endpoints(point(source, start), point(target, start));</span>
+        }
+<span class="fc" id="L42">        return endpoints;</span>
+    }
+
+    private static Point point(VisioShape shape, Side side) {
+<span class="fc" id="L46">        return new Point(side, shape.getX() + (side.xFraction() - .5) * shape.getWidth(),</span>
+<span class="fc" id="L47">                shape.getY() + (side.yFraction() - .5) * shape.getHeight());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

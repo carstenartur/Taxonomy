@@ -1,0 +1,9 @@
+{
+  "commit": "2e3e9ba8dda7518728c0ad9a53dd4754195017c1",
+  "sourceTree": "5f7186a1114d46c421cd4dd31cfb2ca8d34b41b7",
+  "buildId": "41118793142.1",
+  "reports": {
+    "TEST-com.taxonomy.build.ExternalPluginPackagedIT.xml": "2c69a2f6648dca04dd900636fe285aa3616c067a015e7f934f9a85f92f0d4274",
+    "TEST-com.taxonomy.build.OptionalFeaturePackagedIT.xml": "2fbfa8438c9c560636a2d647926e0f5247949671bf1e9b958d166efb84c605a3"
+  }
+}

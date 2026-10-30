@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyApplication.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy</a> &gt; <span class="el_source">TaxonomyApplication.java</span></div><h1>TaxonomyApplication.java</h1><pre class="source lang-java linenums">package com.taxonomy;
+
+import com.taxonomy.setup.SetupCommand;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.persistence.autoconfigure.EntityScan;
+import org.springframework.scheduling.annotation.EnableAsync;
+
+/** Main Spring Boot application. */
+@SpringBootApplication
+@org.springframework.context.annotation.ComponentScan(basePackages = &quot;com.taxonomy&quot;, excludeFilters = {
+        @org.springframework.context.annotation.ComponentScan.Filter(type = org.springframework.context.annotation.FilterType.CUSTOM,
+                classes = org.springframework.boot.context.TypeExcludeFilter.class),
+        @org.springframework.context.annotation.ComponentScan.Filter(type = org.springframework.context.annotation.FilterType.CUSTOM,
+                classes = org.springframework.boot.autoconfigure.AutoConfigurationExcludeFilter.class),
+        @org.springframework.context.annotation.ComponentScan.Filter(type = org.springframework.context.annotation.FilterType.REGEX,
+                pattern = &quot;com\\.taxonomy\\.(templates|reporting|architecture|analysis|portfolio|interop)\\..*&quot;)
+})
+@EntityScan(basePackages = {
+        &quot;com.taxonomy&quot;,
+        &quot;io.github.carstenartur.jgit.storage.hibernate.entity&quot;
+})
+@EnableAsync
+<span class="nc" id="L24">public class TaxonomyApplication {</span>
+    /** Explicit feature opt-in; unrelated partial Spring contexts never start application features. */
+    @org.springframework.context.annotation.Bean(name = &quot;taxonomyFeatureHost&quot;)
+<span class="nc" id="L27">    static Object featureHost() { return new Object(); }</span>
+
+    public static void main(String[] args) {
+<span class="nc" id="L30">        com.taxonomy.shared.features.FeatureAssembly.discover(Thread.currentThread().getContextClassLoader());</span>
+<span class="nc" id="L31">        int setupExitCode = SetupCommand.execute(args, System.out);</span>
+<span class="nc bnc" id="L32" title="All 2 branches missed.">        if (setupExitCode &gt;= 0) {</span>
+<span class="nc" id="L33">            System.exit(setupExitCode);</span>
+<span class="nc" id="L34">            return;</span>
+        }
+<span class="nc" id="L36">        SpringApplication.run(TaxonomyApplication.class, SetupCommand.applicationArguments(args));</span>
+<span class="nc" id="L37">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

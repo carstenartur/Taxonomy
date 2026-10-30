@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupRequest.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup</a> &gt; <span class="el_source">BackupRequest.java</span></div><h1>BackupRequest.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup;
+
+import java.util.Objects;
+
+/** Validates the three independent selection axes before authorization or I/O. */
+public record BackupRequest(BackupProfile profile, BackupScope scope, BackupTime time,
+                            GitRepresentation gitRepresentation, SecretsSelection secrets) {
+<span class="fc" id="L8">    public BackupRequest {</span>
+<span class="fc" id="L9">        Objects.requireNonNull(profile); Objects.requireNonNull(scope); Objects.requireNonNull(time);</span>
+<span class="fc" id="L10">        Objects.requireNonNull(gitRepresentation); Objects.requireNonNull(secrets);</span>
+<span class="fc bfc" id="L11" title="All 2 branches covered.">        if (profile.isInstallation() != (scope instanceof BackupScope.Installation)) {</span>
+<span class="fc" id="L12">            throw new IllegalArgumentException(&quot;Profile and installation scope disagree&quot;);</span>
+        }
+<span class="fc bfc" id="L14" title="All 3 branches covered.">        boolean validTime = switch (profile) {</span>
+<span class="fc" id="L15">            case CURRENT_STATE, INSTALLATION_CURRENT -&gt; time instanceof BackupTime.Current;</span>
+<span class="fc" id="L16">            case SELECTED_VERSION -&gt; time instanceof BackupTime.SelectedVersion;</span>
+<span class="fc" id="L17">            case REPOSITORY_HISTORY, INSTALLATION_FULL -&gt; time instanceof BackupTime.History;</span>
+        };
+<span class="fc bfc" id="L19" title="All 2 branches covered.">        if (!validTime) throw new IllegalArgumentException(&quot;Profile and time selection disagree&quot;);</span>
+<span class="fc bfc" id="L20" title="All 4 branches covered.">        if (time instanceof BackupTime.SelectedVersion version &amp;&amp; !version.commitsByRepository().keySet().equals(scope.selectedRepositories())) {</span>
+<span class="fc" id="L21">            throw new IllegalArgumentException(&quot;Select exactly one commit for each selected repository&quot;);</span>
+        }
+<span class="fc bfc" id="L23" title="All 4 branches covered.">        if (profile.includesHistory() &amp;&amp; gitRepresentation == GitRepresentation.NONE) {</span>
+<span class="fc" id="L24">            throw new IllegalArgumentException(&quot;History requires a Git representation&quot;);</span>
+        }
+<span class="fc bfc" id="L26" title="All 4 branches covered.">        if (secrets == SecretsSelection.INCLUDE_ENCRYPTED &amp;&amp; profile != BackupProfile.INSTALLATION_FULL) {</span>
+<span class="fc" id="L27">            throw new IllegalArgumentException(&quot;Secrets require an encrypted full installation backup&quot;);</span>
+        }
+<span class="fc" id="L29">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

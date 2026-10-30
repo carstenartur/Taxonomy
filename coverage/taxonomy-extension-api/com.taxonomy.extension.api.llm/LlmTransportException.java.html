@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LlmTransportException.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.api.llm</a> &gt; <span class="el_source">LlmTransportException.java</span></div><h1>LlmTransportException.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.api.llm;
+
+import java.time.Duration;
+import java.util.Objects;
+import java.util.Optional;
+
+/** Typed provider failure. Messages must be redacted; no response bodies or credentials. */
+public final class LlmTransportException extends RuntimeException {
+<span class="fc" id="L9">    public enum FailureKind { RATE_LIMIT, TIMEOUT, UNAVAILABLE, INVALID_RESPONSE }</span>
+
+    private final FailureKind kind;
+    private final Duration retryAfter;
+
+    public LlmTransportException(FailureKind kind, String redactedMessage) {
+<span class="fc" id="L15">        this(kind, redactedMessage, null);</span>
+<span class="fc" id="L16">    }</span>
+
+    public LlmTransportException(FailureKind kind, String redactedMessage, Duration retryAfter) {
+<span class="fc" id="L19">        super(redactedMessage);</span>
+<span class="fc" id="L20">        this.kind = Objects.requireNonNull(kind, &quot;kind&quot;);</span>
+<span class="fc bfc" id="L21" title="All 4 branches covered.">        if (retryAfter != null &amp;&amp; retryAfter.isNegative()) {</span>
+<span class="fc" id="L22">            throw new IllegalArgumentException(&quot;Retry delay must not be negative&quot;);</span>
+        }
+<span class="fc" id="L24">        this.retryAfter = retryAfter;</span>
+<span class="fc" id="L25">    }</span>
+
+<span class="fc" id="L27">    public FailureKind kind() { return kind; }</span>
+<span class="fc" id="L28">    public Optional&lt;Duration&gt; retryAfter() { return Optional.ofNullable(retryAfter); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

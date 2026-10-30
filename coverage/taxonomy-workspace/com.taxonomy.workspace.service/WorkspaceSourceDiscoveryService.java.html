@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceSourceDiscoveryService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceSourceDiscoveryService.java</span></div><h1>WorkspaceSourceDiscoveryService.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.model.RepositoryLifecycleState;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.repository.SystemRepositoryRepository;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.util.List;
+import java.util.Objects;
+
+/** Workspace-owned, bounded source discovery and exact-context read authority. No document access or mutation. */
+@Service
+public class WorkspaceSourceDiscoveryService {
+    private static final int MAXIMUM_SOURCES = 16;
+    private final SystemRepositoryRepository repositories;
+    private final RepositoryMembershipService membership;
+    private final UserWorkspaceRepository workspaces;
+
+    public WorkspaceSourceDiscoveryService(SystemRepositoryRepository repositories, RepositoryMembershipService membership,
+<span class="fc" id="L23">                                           UserWorkspaceRepository workspaces) {</span>
+<span class="fc" id="L24">        this.repositories = repositories;</span>
+<span class="fc" id="L25">        this.membership = membership;</span>
+<span class="fc" id="L26">        this.workspaces = workspaces;</span>
+<span class="fc" id="L27">    }</span>
+
+<span class="fc" id="L29">    public record Source(String repositoryId, String branch, String title, String description) { }</span>
+    public record Discovery(List&lt;Source&gt; sources, boolean truncated) {
+<span class="fc" id="L31">        public Discovery { sources = List.copyOf(sources); }</span>
+    }
+
+    @Transactional(readOnly = true)
+    public Discovery readableSources(String username) {
+<span class="pc bpc" id="L36" title="2 of 4 branches missed.">        if (username == null || username.isBlank()) throw new IllegalArgumentException(&quot;A source reader is required&quot;);</span>
+<span class="fc" id="L37">        var page = repositories.findByLifecycleStateOrderByDisplayNameAsc(</span>
+<span class="fc" id="L38">                RepositoryLifecycleState.ACTIVE, PageRequest.of(0, MAXIMUM_SOURCES));</span>
+<span class="fc" id="L39">        var sources = page.stream().filter(repository -&gt; readable(repository, username))</span>
+<span class="fc" id="L40">                .map(repository -&gt; new Source(repository.getRepositoryId(), repository.getDefaultBranch(),</span>
+<span class="fc" id="L41">                        repository.getDisplayName(), repository.getDescription())).toList();</span>
+<span class="fc" id="L42">        return new Discovery(sources, page.hasNext());</span>
+    }
+
+    @Transactional(readOnly = true)
+    public boolean canReadRepository(String repositoryId, String username) {
+<span class="pc bpc" id="L47" title="4 of 8 branches missed.">        if (repositoryId == null || repositoryId.isBlank() || username == null || username.isBlank()) return false;</span>
+<span class="fc" id="L48">        return repositories.findByRepositoryId(repositoryId).filter(repository -&gt; readable(repository, username)).isPresent();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public boolean canReadContext(String username, WorkspaceContext context) {
+<span class="pc bpc" id="L53" title="2 of 4 branches missed.">        if (context == null || !Objects.equals(username, context.username())</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">                || !canReadRepository(context.repositoryId(), username)) return false;</span>
+<span class="pc bpc" id="L55" title="1 of 4 branches missed.">        if (context.workspaceId() == null || context.workspaceId().isBlank()) return true;</span>
+<span class="fc" id="L56">        return workspaces.findByWorkspaceId(context.workspaceId()).filter(workspace -&gt;</span>
+<span class="fc bfc" id="L57" title="All 6 branches covered.">                Objects.equals(workspace.getUsername(), username) &amp;&amp; !workspace.isArchived() &amp;&amp; !workspace.isShared()</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                        &amp;&amp; Objects.equals(workspace.getSourceRepositoryId(), context.repositoryId())</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">                        &amp;&amp; Objects.equals(workspace.getCurrentBranch(), context.currentBranch())</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">                        &amp;&amp; workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.READY).isPresent();</span>
+    }
+
+    private boolean readable(SystemRepository repository, String username) {
+<span class="fc bfc" id="L64" title="All 4 branches covered.">        return repository.getLifecycleState() == RepositoryLifecycleState.ACTIVE &amp;&amp; membership.canRead(repository, username);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

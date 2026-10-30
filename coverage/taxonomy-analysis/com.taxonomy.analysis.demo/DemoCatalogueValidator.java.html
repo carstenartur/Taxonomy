@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DemoCatalogueValidator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.demo</a> &gt; <span class="el_source">DemoCatalogueValidator.java</span></div><h1>DemoCatalogueValidator.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.demo;
+
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+
+/**
+ * Verifies a scenario against the application's actual catalogue. Codes are never
+ * invented: every scored, expanded, justified or related code must exist with the
+ * recorded title, declared children must be real children, and every positively
+ * scored non-leaf must have an authored expansion (otherwise replay would stop).
+ */
+public final class DemoCatalogueValidator {
+
+    /** Read-only catalogue projection. */
+    public interface CatalogueView {
+        Optional&lt;String&gt; title(String code);
+        List&lt;String&gt; children(String code);
+    }
+
+    private DemoCatalogueValidator() { }
+
+    public static List&lt;String&gt; problems(DemoScenario scenario, CatalogueView catalogue) {
+<span class="fc" id="L26">        var problems = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L27">        scenario.catalogueAnchors().forEach((code, expected) -&gt; {</span>
+<span class="fc" id="L28">            var actual = catalogue.title(code);</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">            if (actual.isEmpty()) problems.add(&quot;Unknown catalogue code &quot; + code);</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">            else if (!expected.equals(actual.get()))</span>
+<span class="fc" id="L31">                problems.add(&quot;Catalogue mismatch for &quot; + code + &quot;: expected '&quot; + expected + &quot;' but found '&quot; + actual.get()</span>
+<span class="fc" id="L32">                        + &quot;' (scenario recorded &quot; + scenario.catalogueSource() + &quot;)&quot;);</span>
+<span class="fc" id="L33">        });</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        for (var iteration : scenario.iterations().values()) {</span>
+<span class="fc" id="L35">            Set&lt;String&gt; used = new LinkedHashSet&lt;&gt;(iteration.roots().keySet());</span>
+<span class="fc" id="L36">            iteration.expansions().forEach((parent, children) -&gt; {</span>
+<span class="fc" id="L37">                used.add(parent);</span>
+<span class="fc" id="L38">                used.addAll(children.keySet());</span>
+<span class="fc" id="L39">                var actualChildren = catalogue.children(parent);</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">                for (String child : children.keySet()) {</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">                    if (!actualChildren.contains(child))</span>
+<span class="fc" id="L42">                        problems.add(iteration.name() + &quot;: &quot; + child + &quot; is not a catalogue child of &quot; + parent);</span>
+<span class="fc" id="L43">                }</span>
+<span class="fc" id="L44">            });</span>
+<span class="fc" id="L45">            used.addAll(iteration.justifications().keySet());</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">            for (var relation : iteration.relations()) {</span>
+<span class="fc" id="L47">                used.add(relation.source());</span>
+<span class="fc" id="L48">                used.addAll(relation.path());</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">                for (int i = 1; i &lt; relation.path().size(); i++) {</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">                    if (!catalogue.children(relation.path().get(i - 1)).contains(relation.path().get(i)))</span>
+<span class="nc" id="L51">                        problems.add(iteration.name() + &quot;: relation path &quot; + relation.path() + &quot; is not a catalogue path&quot;);</span>
+                }
+<span class="fc" id="L53">            }</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            for (String code : used) {</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">                if (catalogue.title(code).isEmpty()) problems.add(iteration.name() + &quot;: unknown catalogue code &quot; + code);</span>
+<span class="pc bpc" id="L56" title="1 of 4 branches missed.">                else if (!DemoScenario.ROOTS.contains(code) &amp;&amp; !scenario.catalogueAnchors().containsKey(code))</span>
+<span class="nc" id="L57">                    problems.add(iteration.name() + &quot;: code &quot; + code + &quot; has no recorded catalogue anchor&quot;);</span>
+<span class="fc" id="L58">            }</span>
+<span class="fc" id="L59">            iteration.declaredScores().forEach((code, score) -&gt; {</span>
+<span class="pc bpc" id="L60" title="1 of 6 branches missed.">                if (score &gt; 0 &amp;&amp; !catalogue.children(code).isEmpty() &amp;&amp; !iteration.expansions().containsKey(code))</span>
+<span class="nc" id="L61">                    problems.add(iteration.name() + &quot;: positive non-leaf &quot; + code + &quot; has no authored expansion&quot;);</span>
+<span class="fc" id="L62">            });</span>
+<span class="fc" id="L63">        }</span>
+<span class="fc" id="L64">        return List.copyOf(problems);</span>
+    }
+
+    public static void validate(DemoScenario scenario, CatalogueView catalogue) {
+<span class="fc" id="L68">        var problems = problems(scenario, catalogue);</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (!problems.isEmpty())</span>
+<span class="fc" id="L70">            throw new IllegalStateException(&quot;DEMO_SCENARIO_CATALOGUE_MISMATCH: &quot; + String.join(&quot;; &quot;, problems));</span>
+<span class="fc" id="L71">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

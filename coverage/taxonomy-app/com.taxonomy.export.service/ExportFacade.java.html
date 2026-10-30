@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExportFacade.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export.service</a> &gt; <span class="el_source">ExportFacade.java</span></div><h1>ExportFacade.java</h1><pre class="source lang-java linenums">package com.taxonomy.export.service;
+
+import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.analysis.service.SavedAnalysisService;
+import com.taxonomy.archimate.ArchiMateModel;
+import com.taxonomy.architecture.service.RequirementArchitectureViewService;
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.RequirementArchitectureView;
+import com.taxonomy.dto.SavedAnalysis;
+import com.taxonomy.export.ArchiMateDiagramService;
+import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
+import com.taxonomy.export.DiagramProjectionService;
+import com.taxonomy.export.StructurizrExportService;
+import com.taxonomy.export.VisioDiagramService;
+import com.taxonomy.export.VisioPackageBuilder;
+import com.taxonomy.export.spi.ExportFormatExtension;
+import com.taxonomy.visio.VisioDocument;
+import com.taxonomy.visio.VisioExportMetadata;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+
+/** High-level application facade for analysis-driven exports and score exchange. */
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;analysis&quot;})
+@Service
+public class ExportFacade {
+
+    private final LlmService llmService;
+    private final RequirementArchitectureViewService architectureViewService;
+    private final DiagramProjectionService diagramProjectionService;
+    private final VisioDiagramService visioDiagramService;
+    private final VisioPackageBuilder visioPackageBuilder;
+    private final ArchiMateDiagramService archiMateDiagramService;
+    private final ArchiMateXmlExporter archiMateXmlExporter;
+    private final StructurizrExportService structurizrExportService;
+    private final SavedAnalysisService savedAnalysisService;
+
+    private final VisioWorkingViewMetadata workingViewMetadata;
+
+    public ExportFacade(LlmService llmService,
+                        RequirementArchitectureViewService architectureViewService,
+                        DiagramProjectionService diagramProjectionService,
+                        VisioDiagramService visioDiagramService,
+                        VisioPackageBuilder visioPackageBuilder,
+                        ArchiMateDiagramService archiMateDiagramService,
+                        ArchiMateXmlExporter archiMateXmlExporter,
+                        StructurizrExportService structurizrExportService,
+                        SavedAnalysisService savedAnalysisService) {
+<span class="fc" id="L52">        this(llmService, architectureViewService, diagramProjectionService, visioDiagramService,</span>
+                visioPackageBuilder, archiMateDiagramService, archiMateXmlExporter,
+                structurizrExportService, savedAnalysisService, null);
+<span class="fc" id="L55">    }</span>
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ExportFacade(LlmService llmService,
+                        RequirementArchitectureViewService architectureViewService,
+                        DiagramProjectionService diagramProjectionService,
+                        VisioDiagramService visioDiagramService,
+                        VisioPackageBuilder visioPackageBuilder,
+                        ArchiMateDiagramService archiMateDiagramService,
+                        ArchiMateXmlExporter archiMateXmlExporter,
+                        StructurizrExportService structurizrExportService,
+                        SavedAnalysisService savedAnalysisService,
+<span class="fc" id="L67">                        VisioWorkingViewMetadata workingViewMetadata) {</span>
+<span class="fc" id="L68">        this.llmService = llmService;</span>
+<span class="fc" id="L69">        this.architectureViewService = architectureViewService;</span>
+<span class="fc" id="L70">        this.diagramProjectionService = diagramProjectionService;</span>
+<span class="fc" id="L71">        this.visioDiagramService = visioDiagramService;</span>
+<span class="fc" id="L72">        this.visioPackageBuilder = visioPackageBuilder;</span>
+<span class="fc" id="L73">        this.archiMateDiagramService = archiMateDiagramService;</span>
+<span class="fc" id="L74">        this.archiMateXmlExporter = archiMateXmlExporter;</span>
+<span class="fc" id="L75">        this.structurizrExportService = structurizrExportService;</span>
+<span class="fc" id="L76">        this.savedAnalysisService = savedAnalysisService;</span>
+<span class="fc" id="L77">        this.workingViewMetadata = workingViewMetadata;</span>
+<span class="fc" id="L78">    }</span>
+
+    public byte[] exportAsVisio(String businessText) throws IOException {
+<span class="fc" id="L81">        DiagramModel diagram = analyzeAndProject(businessText);</span>
+<span class="fc" id="L82">        VisioDocument visioDocument = visioDiagramService.convert(diagram,</span>
+<span class="fc" id="L83">                new VisioExportMetadata(VisioWorkingViewMetadata.document(businessText, workingViewMetadata),</span>
+<span class="fc" id="L84">                        Map.of(), Map.of(), VisioExportMetadata.unbound().losses()));</span>
+<span class="fc" id="L85">        return visioPackageBuilder.build(visioDocument);</span>
+    }
+
+    public byte[] exportAsArchiMate(String businessText) {
+<span class="fc" id="L89">        DiagramModel diagram = analyzeAndProject(businessText);</span>
+<span class="fc" id="L90">        ArchiMateModel model = archiMateDiagramService.convert(diagram);</span>
+<span class="fc" id="L91">        return archiMateXmlExporter.export(model);</span>
+    }
+
+    public String exportAsStructurizrDsl(String businessText) {
+<span class="nc" id="L95">        return structurizrExportService.export(analyzeAndProject(businessText));</span>
+    }
+
+    public SavedAnalysis buildExport(String requirement,
+                                     Map&lt;String, Double&gt; scores,
+                                     Map&lt;String, String&gt; reasons,
+                                     String provider) {
+<span class="fc" id="L102">        return savedAnalysisService.buildExport(requirement, scores, reasons, provider);</span>
+    }
+
+    public SavedAnalysis importFromJson(String jsonBody) throws IOException {
+<span class="fc" id="L106">        return savedAnalysisService.importFromJson(jsonBody);</span>
+    }
+
+    public void validateCoverageEvidence(SavedAnalysis saved) {
+<span class="fc" id="L110">        savedAnalysisService.validateCoverageEvidence(saved);</span>
+<span class="fc" id="L111">    }</span>
+
+    public List&lt;String&gt; findUnknownCodes(SavedAnalysis saved) {
+<span class="fc" id="L114">        return savedAnalysisService.findUnknownCodes(saved);</span>
+    }
+
+    public String getActiveProviderName() {
+<span class="nc" id="L118">        return llmService.getActiveProviderName();</span>
+    }
+
+    /**
+     * Builds the format-neutral diagram consumed by an {@link ExportFormatExtension}.
+     */
+    public DiagramModel buildDiagram(String businessText) {
+<span class="fc" id="L125">        return analyzeAndProject(businessText);</span>
+    }
+
+    /**
+     * Exports the supplied working-view snapshot without scoring, fetching current
+     * taxonomy data, applying a second selection policy, or persisting changes.
+     * This is client-provided working data, not a certified historical snapshot.
+     */
+    public DiagramModel buildCurrentDiagram(RequirementArchitectureView view) {
+<span class="pc bpc" id="L134" title="1 of 4 branches missed.">        if (view == null || view.getIncludedElements() == null</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                || view.getIncludedElements().isEmpty()) {</span>
+<span class="fc" id="L136">            throw new IllegalArgumentException(&quot;An existing architecture view is required; no analysis was started.&quot;);</span>
+        }
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (view.getIncludedElements().size() &gt; 10_000</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">                || view.getIncludedRelationships() == null</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">                || view.getIncludedRelationships().size() &gt; 30_000) {</span>
+<span class="fc" id="L141">            throw new IllegalArgumentException(&quot;Architecture exceeds export capacity or has no relationship list.&quot;);</span>
+        }
+<span class="fc" id="L143">        var codes = new java.util.HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        for (var element : view.getIncludedElements()) {</span>
+<span class="pc bpc" id="L145" title="3 of 6 branches missed.">            if (element == null || element.getNodeCode() == null || element.getNodeCode().isBlank()</span>
+<span class="fc bfc" id="L146" title="All 4 branches covered.">                    || !codes.add(element.getNodeCode()) || !Double.isFinite(element.getRelevance())</span>
+<span class="fc bfc" id="L147" title="All 4 branches covered.">                    || element.getRelevance() &lt; 0 || element.getRelevance() &gt; 1) {</span>
+<span class="fc" id="L148">                throw new IllegalArgumentException(&quot;Architecture contains invalid or duplicate nodes.&quot;);</span>
+            }
+<span class="fc" id="L150">        }</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        for (var relation : view.getIncludedRelationships()) {</span>
+<span class="pc bpc" id="L152" title="2 of 4 branches missed.">            if (relation == null || !codes.contains(relation.getSourceCode())</span>
+<span class="pc bpc" id="L153" title="1 of 4 branches missed.">                    || !codes.contains(relation.getTargetCode()) || relation.getRelationType() == null</span>
+<span class="pc bpc" id="L154" title="1 of 4 branches missed.">                    || relation.getRelationType().isBlank() || !Double.isFinite(relation.getPropagatedRelevance())</span>
+<span class="fc bfc" id="L155" title="All 4 branches covered.">                    || relation.getPropagatedRelevance() &lt; 0 || relation.getPropagatedRelevance() &gt; 1) {</span>
+<span class="fc" id="L156">                throw new IllegalArgumentException(&quot;Architecture contains invalid relationships or missing endpoints.&quot;);</span>
+            }
+<span class="fc" id="L158">        }</span>
+<span class="fc" id="L159">        String title = view.getViewTitle();</span>
+<span class="fc" id="L160">        return diagramProjectionService.projectRaw(view,</span>
+<span class="pc bpc" id="L161" title="1 of 4 branches missed.">                title == null || title.isBlank() ? &quot;Requirement architecture&quot; : title);</span>
+    }
+
+    private DiagramModel analyzeAndProject(String businessText) {
+<span class="fc" id="L165">        AnalysisResult result = llmService.analyzeWithBudget(businessText);</span>
+<span class="fc" id="L166">        RequirementArchitectureView view = architectureViewService.build(</span>
+<span class="fc" id="L167">                result.getScores(), businessText, 20);</span>
+<span class="fc" id="L168">        view.setAnalysisCoverage(result.getAnalysisCoverage());</span>
+<span class="fc" id="L169">        view.setAnalysisStatus(result.getStatus());</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">        String title = businessText.length() &gt; 60</span>
+<span class="nc" id="L171">                ? businessText.substring(0, 57) + &quot;...&quot;</span>
+<span class="fc" id="L172">                : businessText;</span>
+<span class="fc" id="L173">        return diagramProjectionService.project(view, title);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

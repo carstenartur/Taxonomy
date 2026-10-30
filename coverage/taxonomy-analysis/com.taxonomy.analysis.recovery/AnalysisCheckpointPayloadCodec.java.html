@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisCheckpointPayloadCodec.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.recovery</a> &gt; <span class="el_source">AnalysisCheckpointPayloadCodec.java</span></div><h1>AnalysisCheckpointPayloadCodec.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.recovery;
+
+import com.taxonomy.dto.LlmCallDetail;
+import tools.jackson.core.JsonToken;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
+import java.util.zip.CRC32;
+import java.util.zip.DataFormatException;
+import java.util.zip.GZIPOutputStream;
+import java.util.zip.Inflater;
+
+/** Lossless, explicitly versioned storage for one question's retained evidence. */
+public final class AnalysisCheckpointPayloadCodec {
+    private static final int MAX_CHARACTERS = 2_000_000;
+    // A bounded two-byte representation plus GZIP/Base64 overhead can exceed
+    // its decoded character count. This is a parser bound, not a run budget.
+    private static final int MAX_ENCODED_CHARACTERS = 5_500_000;
+    private static final String LAYOUT_FORMAT = &quot;analysis-question-payload-v1&quot;;
+    private static final String FULL_FORMAT = &quot;gzip-utf16be-v1&quot;;
+    private static final String REFERENCE_FORMAT = &quot;gzip-utf16be-json-prompt-ref-v1&quot;;
+<span class="fc" id="L29">    private static final Set&lt;String&gt; FULL_FIELDS = Set.of(&quot;format&quot;, &quot;characters&quot;, &quot;sha256&quot;, &quot;data&quot;);</span>
+<span class="fc" id="L30">    private static final Set&lt;String&gt; REFERENCE_FIELDS = Set.of(&quot;format&quot;, &quot;characters&quot;, &quot;sha256&quot;, &quot;data&quot;,</span>
+            &quot;remainderCharacters&quot;, &quot;promptOffset&quot;);
+<span class="fc" id="L32">    private static final char[] HEX = &quot;0123456789ABCDEF&quot;.toCharArray();</span>
+    private final ObjectMapper mapper;
+
+    /** Encoding comes only from node_codes' structural layout, never from a prompt's contents. */
+    public record Layout(List&lt;String&gt; nodes, boolean encoded) {
+<span class="fc" id="L37">        public Layout { nodes = List.copyOf(nodes); }</span>
+    }
+<span class="fc" id="L39">    public AnalysisCheckpointPayloadCodec(ObjectMapper mapper) { this.mapper = Objects.requireNonNull(mapper); }</span>
+
+    public Layout parseLayout(String nodeCodes) {
+<span class="fc" id="L42">        bounded(nodeCodes);</span>
+<span class="fc" id="L43">        JsonNode value = readJson(nodeCodes);</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        if (value.isArray()) return new Layout(nodes(value), false);</span>
+<span class="fc" id="L45">        fields(value, Set.of(&quot;format&quot;, &quot;nodes&quot;));</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        if (!LAYOUT_FORMAT.equals(text(value, &quot;format&quot;))) throw invalid();</span>
+<span class="fc" id="L47">        return new Layout(nodes(value.path(&quot;nodes&quot;)), true);</span>
+    }
+
+    public String encodeNodes(List&lt;String&gt; nodes) {
+<span class="fc" id="L51">        var values = List.copyOf(nodes);</span>
+<span class="fc" id="L52">        var layout = new LinkedHashMap&lt;String, Object&gt;();</span>
+<span class="fc" id="L53">        layout.put(&quot;format&quot;, LAYOUT_FORMAT); layout.put(&quot;nodes&quot;, values);</span>
+<span class="fc" id="L54">        String encoded = mapper.writeValueAsString(layout);</span>
+<span class="fc" id="L55">        parseLayout(encoded);</span>
+<span class="fc" id="L56">        return encoded;</span>
+    }
+
+    public String encodePrompt(String raw) {
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (raw == null) return null;</span>
+<span class="fc" id="L61">        bounded(raw);</span>
+<span class="fc" id="L62">        return mapper.writeValueAsString(envelope(FULL_FORMAT, raw, raw));</span>
+    }
+
+    public String decodePrompt(Layout layout, String stored) {
+<span class="fc" id="L66">        Objects.requireNonNull(layout);</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        if (stored == null) return null;</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (!layout.encoded()) { bounded(stored); return stored; }</span>
+<span class="fc" id="L69">        JsonNode envelope = payload(stored);</span>
+<span class="fc" id="L70">        fields(envelope, FULL_FIELDS);</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (!FULL_FORMAT.equals(text(envelope, &quot;format&quot;))) throw invalid();</span>
+<span class="fc" id="L72">        return decodeFull(envelope);</span>
+    }
+
+    public String encodeDetail(String rawJson, String fullPrompt) {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (rawJson == null) return null;</span>
+<span class="fc" id="L77">        bounded(rawJson);</span>
+<span class="fc" id="L78">        Span span = referenceSpan(rawJson, fullPrompt);</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        if (span == null) return encodePrompt(rawJson);</span>
+<span class="fc" id="L80">        String remainder = rawJson.substring(0, span.start()) + rawJson.substring(span.end());</span>
+<span class="fc" id="L81">        var encoded = envelope(REFERENCE_FORMAT, rawJson, remainder);</span>
+<span class="fc" id="L82">        encoded.put(&quot;remainderCharacters&quot;, remainder.length());</span>
+<span class="fc" id="L83">        encoded.put(&quot;promptOffset&quot;, span.start());</span>
+<span class="fc" id="L84">        return mapper.writeValueAsString(encoded);</span>
+    }
+
+    public String decodeDetail(Layout layout, String storedDetail, String fullPrompt) {
+<span class="fc" id="L88">        Objects.requireNonNull(layout);</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (storedDetail == null) return null;</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        if (!layout.encoded()) { bounded(storedDetail); return storedDetail; }</span>
+<span class="fc" id="L91">        JsonNode envelope = payload(storedDetail);</span>
+<span class="fc" id="L92">        String format = text(envelope, &quot;format&quot;);</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        if (FULL_FORMAT.equals(format)) {</span>
+<span class="fc" id="L94">            fields(envelope, FULL_FIELDS);</span>
+<span class="fc" id="L95">            return decodeFull(envelope);</span>
+        }
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        if (!REFERENCE_FORMAT.equals(format)) throw invalid();</span>
+<span class="fc" id="L98">        fields(envelope, REFERENCE_FIELDS);</span>
+<span class="fc" id="L99">        int characters = count(envelope, &quot;characters&quot;);</span>
+<span class="fc" id="L100">        int remainderCharacters = count(envelope, &quot;remainderCharacters&quot;);</span>
+<span class="fc" id="L101">        int offset = count(envelope, &quot;promptOffset&quot;);</span>
+<span class="fc" id="L102">        bounded(fullPrompt);</span>
+<span class="pc bpc" id="L103" title="2 of 4 branches missed.">        if (offset &gt; remainderCharacters || remainderCharacters &gt; characters) throw invalid();</span>
+        // Version-one quoting and exact fragments make this read independent of
+        // future DTO properties, map ordering, score normalization or Jackson settings.
+<span class="fc" id="L106">        String token = quoteV1(fullPrompt, characters - remainderCharacters);</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (remainderCharacters + token.length() != characters) throw invalid();</span>
+<span class="fc" id="L108">        String remainder = inflateUnits(text(envelope, &quot;data&quot;), remainderCharacters);</span>
+<span class="fc" id="L109">        String original = remainder.substring(0, offset) + token + remainder.substring(offset);</span>
+<span class="fc" id="L110">        verify(envelope, original);</span>
+<span class="fc" id="L111">        return original;</span>
+    }
+
+    private String decodeFull(JsonNode envelope) {
+<span class="fc" id="L115">        int characters = count(envelope, &quot;characters&quot;);</span>
+<span class="fc" id="L116">        String original = inflateUnits(text(envelope, &quot;data&quot;), characters);</span>
+<span class="fc" id="L117">        verify(envelope, original);</span>
+<span class="fc" id="L118">        return original;</span>
+    }
+
+    private LinkedHashMap&lt;String, Object&gt; envelope(String format, String original, String payload) {
+<span class="fc" id="L122">        var value = new LinkedHashMap&lt;String, Object&gt;();</span>
+<span class="fc" id="L123">        value.put(&quot;format&quot;, format); value.put(&quot;characters&quot;, original.length());</span>
+<span class="fc" id="L124">        value.put(&quot;sha256&quot;, hash(original)); value.put(&quot;data&quot;, compressUnits(payload));</span>
+<span class="fc" id="L125">        return value;</span>
+    }
+
+    private JsonNode payload(String stored) {
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        if (stored.length() &gt; MAX_ENCODED_CHARACTERS) throw invalid();</span>
+<span class="fc" id="L130">        return readJson(stored);</span>
+    }
+
+    private JsonNode readJson(String value) {
+        try {
+<span class="fc" id="L135">            return mapper.readerFor(JsonNode.class).with(StreamReadFeature.STRICT_DUPLICATE_DETECTION)</span>
+<span class="fc" id="L136">                    .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readValue(value);</span>
+<span class="fc" id="L137">        } catch (RuntimeException failure) { throw invalid(); }</span>
+    }
+
+    private static List&lt;String&gt; nodes(JsonNode value) {
+<span class="pc bpc" id="L141" title="2 of 4 branches missed.">        if (!value.isArray() || value.size() &gt; 4096) throw invalid();</span>
+<span class="fc" id="L142">        var nodes = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        for (JsonNode node : value) {</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            if (!node.isString()) throw invalid();</span>
+<span class="fc" id="L145">            nodes.add(node.asString());</span>
+<span class="fc" id="L146">        }</span>
+<span class="fc" id="L147">        return nodes;</span>
+    }
+
+    private static void fields(JsonNode value, Set&lt;String&gt; expected) {
+<span class="pc bpc" id="L151" title="1 of 6 branches missed.">        if (value == null || !value.isObject() || value.size() != expected.size()) throw invalid();</span>
+<span class="pc bpc" id="L152" title="1 of 4 branches missed.">        for (var field : value.properties()) if (!expected.contains(field.getKey())) throw invalid();</span>
+<span class="fc" id="L153">    }</span>
+
+    private static String text(JsonNode value, String field) {
+<span class="fc" id="L156">        JsonNode found = value.path(field);</span>
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">        if (!found.isString()) throw invalid();</span>
+<span class="fc" id="L158">        return found.asString();</span>
+    }
+
+    private static int count(JsonNode value, String field) {
+<span class="fc" id="L162">        JsonNode found = value.path(field);</span>
+<span class="pc bpc" id="L163" title="1 of 4 branches missed.">        if (!found.isIntegralNumber() || !found.canConvertToInt()</span>
+<span class="fc bfc" id="L164" title="All 4 branches covered.">                || found.asInt() &lt; 0 || found.asInt() &gt; MAX_CHARACTERS) throw invalid();</span>
+<span class="fc" id="L165">        return found.asInt();</span>
+    }
+
+    private static void bounded(String value) {
+<span class="fc bfc" id="L169" title="All 4 branches covered.">        if (value == null || value.length() &gt; MAX_CHARACTERS) throw invalid();</span>
+<span class="fc" id="L170">    }</span>
+
+    private static void verify(JsonNode envelope, String original) {
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">        if (original.length() != count(envelope, &quot;characters&quot;)</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">                || !hash(original).equals(text(envelope, &quot;sha256&quot;))) throw invalid();</span>
+<span class="fc" id="L175">    }</span>
+
+<span class="fc" id="L177">    private record Span(int start, int end) { }</span>
+
+    /** Conservative write optimization; a failed eligibility check retains the complete original text. */
+    private Span referenceSpan(String original, String prompt) {
+<span class="pc bpc" id="L181" title="2 of 4 branches missed.">        if (prompt == null || prompt.length() &gt; MAX_CHARACTERS) return null;</span>
+        try {
+<span class="fc" id="L183">            var detail = mapper.readerFor(LlmCallDetail.class).with(StreamReadFeature.STRICT_DUPLICATE_DETECTION)</span>
+<span class="fc" id="L184">                    .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readValue(original);</span>
+<span class="pc bpc" id="L185" title="1 of 4 branches missed.">            if (!(detail instanceof LlmCallDetail typed) || !prompt.equals(typed.getPrompt())</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">                    || !original.equals(mapper.writeValueAsString(typed))) return null;</span>
+<span class="fc" id="L187">            String quoted = quoteV1(prompt, original.length());</span>
+<span class="fc" id="L188">            try (var parser = mapper.createParser(original)) {</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">                if (parser.nextToken() != JsonToken.START_OBJECT) return null;</span>
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">                while (parser.nextToken() == JsonToken.PROPERTY_NAME) {</span>
+<span class="fc" id="L191">                    String name = parser.currentName();</span>
+<span class="fc" id="L192">                    JsonToken token = parser.nextToken();</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                    if (&quot;prompt&quot;.equals(name)) {</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">                        if (token != JsonToken.VALUE_STRING) return null;</span>
+<span class="fc" id="L195">                        long start = parser.currentTokenLocation().getCharOffset();</span>
+<span class="fc" id="L196">                        parser.getString(); // Finish the lazy string token before reading its ending offset.</span>
+<span class="fc" id="L197">                        long end = parser.currentLocation().getCharOffset();</span>
+<span class="pc bpc" id="L198" title="3 of 6 branches missed.">                        if (start &lt; 0 || end &gt; original.length() || end - start != quoted.length()</span>
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">                                || !original.regionMatches((int) start, quoted, 0, quoted.length())) return null;</span>
+<span class="fc" id="L200">                        return new Span((int) start, (int) end);</span>
+                    }
+<span class="fc" id="L202">                    parser.skipChildren();</span>
+<span class="fc" id="L203">                }</span>
+<span class="pc bpc" id="L204" title="7 of 8 branches missed.">            }</span>
+<span class="pc" id="L205">        } catch (RuntimeException rejected) { return null; }</span>
+<span class="nc" id="L206">        return null;</span>
+    }
+
+    /** This escaping is part of the stored reference format and must never track mapper configuration. */
+    private static String quoteV1(String value, int maximumLength) {
+<span class="fc" id="L211">        long length = 2;</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        for (int i = 0; i &lt; value.length(); i++) {</span>
+<span class="fc" id="L213">            char c = value.charAt(i);</span>
+<span class="pc bpc" id="L214" title="4 of 16 branches missed.">            length += c == '&quot;' || c == '\\' || c == '\b' || c == '\t' || c == '\n' || c == '\f' || c == '\r' ? 2 : c &lt; 32 ? 6 : 1;</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">            if (length &gt; maximumLength) throw invalid();</span>
+        }
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">        if (length &gt; maximumLength) throw invalid();</span>
+<span class="fc" id="L218">        var quoted = new StringBuilder((int) length); quoted.append('&quot;');</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        for (int i = 0; i &lt; value.length(); i++) {</span>
+<span class="fc" id="L220">            char c = value.charAt(i);</span>
+<span class="pc bpc" id="L221" title="4 of 8 branches missed.">            switch (c) {</span>
+<span class="fc" id="L222">                case '&quot;' -&gt; quoted.append(&quot;\\\&quot;&quot;);</span>
+<span class="fc" id="L223">                case '\\' -&gt; quoted.append(&quot;\\\\&quot;);</span>
+<span class="nc" id="L224">                case '\b' -&gt; quoted.append(&quot;\\b&quot;);</span>
+<span class="nc" id="L225">                case '\t' -&gt; quoted.append(&quot;\\t&quot;);</span>
+<span class="fc" id="L226">                case '\n' -&gt; quoted.append(&quot;\\n&quot;);</span>
+<span class="nc" id="L227">                case '\f' -&gt; quoted.append(&quot;\\f&quot;);</span>
+<span class="nc" id="L228">                case '\r' -&gt; quoted.append(&quot;\\r&quot;);</span>
+                default -&gt; {
+<span class="fc bfc" id="L230" title="All 2 branches covered.">                    if (c &lt; 32) quoted.append(&quot;\\u00&quot;).append(HEX[c &gt;&gt;&gt; 4]).append(HEX[c &amp; 15]);</span>
+<span class="fc" id="L231">                    else quoted.append(c);</span>
+                }
+            }
+        }
+<span class="fc" id="L235">        return quoted.append('&quot;').toString();</span>
+    }
+
+    private static String compressUnits(String value) {
+        try {
+<span class="fc" id="L240">            var bytes = new ByteArrayOutputStream();</span>
+<span class="fc" id="L241">            try (var gzip = new GZIPOutputStream(bytes)) { writeUnits(value, gzip::write); }</span>
+<span class="fc" id="L242">            return Base64.getEncoder().encodeToString(bytes.toByteArray());</span>
+<span class="nc" id="L243">        } catch (IOException failure) { throw invalid(); }</span>
+    }
+
+    @FunctionalInterface private interface Bytes { void accept(byte[] bytes, int offset, int length) throws IOException; }
+
+    private static void writeUnits(String value, Bytes destination) throws IOException {
+<span class="fc" id="L249">        byte[] buffer = new byte[8192]; int used = 0;</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">        for (int i = 0; i &lt; value.length(); i++) {</span>
+<span class="fc" id="L251">            char unit = value.charAt(i); buffer[used++] = (byte) (unit &gt;&gt;&gt; 8); buffer[used++] = (byte) unit;</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">            if (used == buffer.length) { destination.accept(buffer, 0, used); used = 0; }</span>
+        }
+<span class="fc bfc" id="L254" title="All 2 branches covered.">        if (used != 0) destination.accept(buffer, 0, used);</span>
+<span class="fc" id="L255">    }</span>
+
+    private static String hash(String value) {
+        try {
+<span class="fc" id="L259">            MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L260">            writeUnits(value, digest::update);</span>
+<span class="fc" id="L261">            return HexFormat.of().formatHex(digest.digest());</span>
+<span class="nc" id="L262">        } catch (NoSuchAlgorithmException | IOException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+
+    private static String inflateUnits(String base64, int characters) {
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">        if (base64.length() &gt; MAX_ENCODED_CHARACTERS) throw invalid();</span>
+        byte[] compressed;
+<span class="fc" id="L268">        try { compressed = Base64.getDecoder().decode(base64); }</span>
+<span class="fc" id="L269">        catch (IllegalArgumentException malformed) { throw invalid(); }</span>
+        // Version one writes one ordinary GZIP member without optional header fields.
+        // Parsing its bounded deflate body directly also rejects ignored trailing bytes
+        // and concatenated members, which GZIPInputStream otherwise accepts.
+<span class="pc bpc" id="L273" title="5 of 10 branches missed.">        if (compressed.length &lt; 20 || (compressed[0] &amp; 255) != 31 || (compressed[1] &amp; 255) != 139</span>
+<span class="nc" id="L274">                || compressed[2] != 8 || compressed[3] != 0) throw invalid();</span>
+<span class="fc" id="L275">        int footer = compressed.length - 8;</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">        if (littleEndian(compressed, footer + 4) != (long) characters * 2) throw invalid();</span>
+<span class="fc" id="L277">        char[] result = new char[characters]; byte[] buffer = new byte[8192];</span>
+<span class="fc" id="L278">        var crc = new CRC32(); var inflater = new Inflater(true);</span>
+<span class="fc" id="L279">        long total = 0; int index = 0, high = -1;</span>
+        try {
+<span class="fc" id="L281">            inflater.setInput(compressed, 10, footer - 10);</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">            while (!inflater.finished()) {</span>
+<span class="fc" id="L283">                int read = inflater.inflate(buffer);</span>
+<span class="pc bpc" id="L284" title="1 of 2 branches missed.">                if (total + read &gt; (long) characters * 2) throw invalid();</span>
+<span class="fc" id="L285">                total += read; crc.update(buffer, 0, read);</span>
+<span class="fc bfc" id="L286" title="All 2 branches covered.">                for (int i = 0; i &lt; read; i++) {</span>
+<span class="fc bfc" id="L287" title="All 2 branches covered.">                    if (high &lt; 0) high = buffer[i] &amp; 255;</span>
+<span class="fc" id="L288">                    else { result[index++] = (char) ((high &lt;&lt; 8) | (buffer[i] &amp; 255)); high = -1; }</span>
+                }
+<span class="pc bpc" id="L290" title="1 of 4 branches missed.">                if (read == 0 &amp;&amp; !inflater.finished()) throw invalid();</span>
+<span class="fc" id="L291">            }</span>
+<span class="pc bpc" id="L292" title="2 of 6 branches missed.">            if (inflater.getRemaining() != 0 || total != (long) characters * 2 || high != -1</span>
+<span class="pc bpc" id="L293" title="1 of 2 branches missed.">                    || crc.getValue() != littleEndian(compressed, footer)) throw invalid();</span>
+<span class="fc" id="L294">            return new String(result);</span>
+<span class="nc" id="L295">        } catch (DataFormatException malformed) { throw invalid(); }</span>
+<span class="fc" id="L296">        finally { inflater.end(); }</span>
+    }
+
+    private static long littleEndian(byte[] bytes, int offset) {
+<span class="fc" id="L300">        return (bytes[offset] &amp; 255L) | ((bytes[offset + 1] &amp; 255L) &lt;&lt; 8)</span>
+                | ((bytes[offset + 2] &amp; 255L) &lt;&lt; 16) | ((bytes[offset + 3] &amp; 255L) &lt;&lt; 24);
+    }
+
+<span class="fc" id="L304">    private static IllegalArgumentException invalid() { return new IllegalArgumentException(&quot;Invalid analysis checkpoint payload&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

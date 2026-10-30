@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.ScreenshotGeneratorIT
+-------------------------------------------------------------------------------
+Tests run: 51, Failures: 0, Errors: 0, Skipped: 51, Time elapsed: 0.003 s -- in com.taxonomy.ScreenshotGeneratorIT

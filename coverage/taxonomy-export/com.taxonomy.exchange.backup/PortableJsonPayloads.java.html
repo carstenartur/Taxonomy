@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortableJsonPayloads.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange.backup</a> &gt; <span class="el_source">PortableJsonPayloads.java</span></div><h1>PortableJsonPayloads.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange.backup;
+
+import java.io.ByteArrayOutputStream;
+import java.io.FilterReader;
+import java.io.IOException;
+import java.io.Reader;
+import java.io.StringReader;
+import java.io.Writer;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Base64;
+import java.util.HexFormat;
+import java.util.Objects;
+import java.util.zip.CRC32;
+import java.util.zip.DataFormatException;
+import java.util.zip.GZIPOutputStream;
+import java.util.zip.Inflater;
+
+/**
+ * Lossless field framing for large retained JSON documents. Ordinary JSON remains readable unchanged.
+ * The non-JSON prefix is reserved to this explicit format; it cannot collide with a JSON document.
+ * Owners supply their decoded character quota. Packing never increases the stored character count.
+ * This bounded transformation preserves an interrupted worker's ability to checkpoint partial
+ * evidence and never consumes its interrupt flag. Capture owns cancellation at its I/O boundaries.
+ */
+public final class PortableJsonPayloads {
+    private static final String FAMILY = &quot;taxonomy-json-payload:&quot;;
+    private static final String PREFIX = FAMILY + &quot;v1:&quot;;
+    private static final int MIN_PACK_CHARACTERS = 65_536;
+    private PortableJsonPayloads() { }
+
+    public static String pack(String json, int maxCharacters) throws IOException {
+<span class="fc" id="L33">        bounded(json, maxCharacters);</span>
+<span class="fc bfc" id="L34" title="All 4 branches covered.">        if (json == null || json.length() &lt; MIN_PACK_CHARACTERS) return json;</span>
+<span class="fc" id="L35">        var compressed = new ByteArrayOutputStream();</span>
+<span class="fc" id="L36">        try (var gzip = new GZIPOutputStream(compressed)) { units(json, gzip::write); }</span>
+        // The input is bounded, including the worst-case deflate and Base64 overhead.
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        if (((long) compressed.size() + 2) / 3 * 4 + 128 &gt;= json.length()) return json;</span>
+<span class="fc" id="L39">        return PREFIX + json.length() + &quot;:&quot; + hash(json) + &quot;:&quot;</span>
+<span class="fc" id="L40">                + Base64.getEncoder().encodeToString(compressed.toByteArray());</span>
+    }
+
+    @FunctionalInterface public interface PayloadWriter { void write(Writer writer) throws IOException; }
+
+    /**
+     * Serialize complete evidence directly into the existing frame, without retaining expanded
+     * JSON on the compressible path. Small or incompressible values recover their literal text
+     * from the just-written frame, using the same strict code-unit and integrity validation.
+     */
+    public static String packSerialized(PayloadWriter serializer, int maxCharacters) throws IOException {
+<span class="fc" id="L51">        bounded(null, maxCharacters);</span>
+<span class="fc" id="L52">        Objects.requireNonNull(serializer);</span>
+<span class="fc" id="L53">        var compressed = new ByteArrayOutputStream();</span>
+<span class="fc" id="L54">        var output = new UnitWriter(compressed, maxCharacters);</span>
+<span class="fc" id="L55">        try (output) {</span>
+<span class="fc" id="L56">            try { serializer.write(output); }</span>
+<span class="fc" id="L57">            catch (RuntimeException failure) {</span>
+                // JSON libraries can wrap the quota IOException in a runtime exception.
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">                if (output.failure != null) throw output.failure;</span>
+<span class="nc" id="L60">                throw failure;</span>
+<span class="fc" id="L61">            }</span>
+        }
+        // A serializer cannot accept partial evidence by swallowing a failed write.
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (output.failure != null) throw output.failure;</span>
+<span class="fc" id="L65">        var frame = new Frame(compressed.toByteArray(), output.characters,</span>
+<span class="fc" id="L66">                HexFormat.of().formatHex(output.digest.digest()));</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        if (frame.characters() &lt; MIN_PACK_CHARACTERS</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                || ((long) frame.compressed().length + 2) / 3 * 4 + 128 &gt;= frame.characters()) {</span>
+<span class="fc" id="L69">            char[] result = new char[frame.characters()];</span>
+<span class="fc" id="L70">            try (var reader = new PackedReader(frame)) {</span>
+<span class="fc" id="L71">                int offset = 0;</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                while (offset &lt; result.length) {</span>
+<span class="fc" id="L73">                    int count = reader.read(result, offset, result.length - offset);</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">                    if (count &lt; 0) throw invalid();</span>
+<span class="fc" id="L75">                    offset += count;</span>
+<span class="fc" id="L76">                }</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">                if (reader.read() != -1) throw invalid();</span>
+            }
+<span class="fc" id="L79">            return new String(result);</span>
+        }
+<span class="fc" id="L81">        return PREFIX + frame.characters() + &quot;:&quot; + frame.hash() + &quot;:&quot;</span>
+<span class="fc" id="L82">                + Base64.getEncoder().encodeToString(frame.compressed());</span>
+    }
+
+    /** UTF-16 code units, not a charset encoder: unmatched surrogates are retained unchanged. */
+    private static final class UnitWriter extends Writer {
+<span class="fc" id="L87">        private final MessageDigest digest = sha256();</span>
+<span class="fc" id="L88">        private final byte[] buffer = new byte[8192];</span>
+        private final GZIPOutputStream gzip;
+        private final int maximum;
+        private int used, characters;
+        private boolean closed;
+        private IOException failure;
+
+<span class="fc" id="L95">        UnitWriter(ByteArrayOutputStream destination, int maximum) throws IOException {</span>
+<span class="fc" id="L96">            this.maximum = maximum;</span>
+<span class="fc" id="L97">            gzip = new GZIPOutputStream(destination);</span>
+<span class="fc" id="L98">        }</span>
+
+        private void accept(int count) throws IOException {
+<span class="fc bfc" id="L101" title="All 2 branches covered.">            if (failure != null) throw failure;</span>
+<span class="fc bfc" id="L102" title="All 4 branches covered.">            if (closed || (long) characters + count &gt; maximum) {</span>
+<span class="fc" id="L103">                failure = invalid(); throw failure;</span>
+            }
+<span class="fc" id="L105">            characters += count;</span>
+<span class="fc" id="L106">        }</span>
+
+        private void emit() throws IOException {
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            if (used != 0) {</span>
+<span class="fc" id="L110">                digest.update(buffer, 0, used);</span>
+<span class="fc" id="L111">                gzip.write(buffer, 0, used);</span>
+<span class="fc" id="L112">                used = 0;</span>
+            }
+<span class="fc" id="L114">        }</span>
+
+        @Override public void write(char[] source, int offset, int length) throws IOException {
+<span class="fc" id="L117">            Objects.checkFromIndexSize(offset, length, source.length);</span>
+<span class="fc" id="L118">            accept(length);</span>
+<span class="fc" id="L119">            int remaining = length;</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">            while (remaining != 0) {</span>
+<span class="fc" id="L121">                int count = Math.min(remaining, (buffer.length - used) / 2);</span>
+<span class="fc" id="L122">                int end = offset + count, cursor = used;</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">                while (offset &lt; end) {</span>
+<span class="fc" id="L124">                    char value = source[offset++];</span>
+<span class="fc" id="L125">                    buffer[cursor++] = (byte) (value &gt;&gt;&gt; 8); buffer[cursor++] = (byte) value;</span>
+<span class="fc" id="L126">                }</span>
+<span class="fc" id="L127">                used = cursor; remaining -= count;</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                if (used == buffer.length) emit();</span>
+<span class="fc" id="L129">            }</span>
+<span class="fc" id="L130">        }</span>
+
+        @Override public void write(String source, int offset, int length) throws IOException {
+<span class="fc" id="L133">            Objects.checkFromIndexSize(offset, length, source.length());</span>
+<span class="fc" id="L134">            accept(length);</span>
+<span class="fc" id="L135">            int remaining = length;</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">            while (remaining != 0) {</span>
+<span class="fc" id="L137">                int count = Math.min(remaining, (buffer.length - used) / 2);</span>
+<span class="fc" id="L138">                int end = offset + count, cursor = used;</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">                while (offset &lt; end) {</span>
+<span class="fc" id="L140">                    char value = source.charAt(offset++);</span>
+<span class="fc" id="L141">                    buffer[cursor++] = (byte) (value &gt;&gt;&gt; 8); buffer[cursor++] = (byte) value;</span>
+<span class="fc" id="L142">                }</span>
+<span class="fc" id="L143">                used = cursor; remaining -= count;</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                if (used == buffer.length) emit();</span>
+<span class="fc" id="L145">            }</span>
+<span class="fc" id="L146">        }</span>
+
+        @Override public void write(int value) throws IOException {
+<span class="fc" id="L149">            accept(1);</span>
+<span class="fc" id="L150">            buffer[used++] = (byte) (value &gt;&gt;&gt; 8); buffer[used++] = (byte) value;</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            if (used == buffer.length) emit();</span>
+<span class="fc" id="L152">        }</span>
+
+        @Override public void flush() throws IOException {
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">            if (failure != null) throw failure;</span>
+<span class="fc" id="L156">            emit(); gzip.flush();</span>
+<span class="fc" id="L157">        }</span>
+
+        @Override public void close() throws IOException {
+<span class="fc bfc" id="L160" title="All 2 branches covered.">            if (!closed) {</span>
+                // Do not rethrow a latched body failure: try-with-resources would self-suppress it.
+<span class="fc" id="L162">                try { emit(); }</span>
+<span class="fc" id="L163">                finally { closed = true; gzip.close(); }</span>
+            }
+<span class="fc" id="L165">        }</span>
+    }
+
+    public static String unpack(String stored, int maxCharacters) throws IOException {
+<span class="fc" id="L169">        bounded(stored, maxCharacters);</span>
+<span class="fc bfc" id="L170" title="All 4 branches covered.">        if (stored == null || !stored.startsWith(FAMILY)) return stored;</span>
+<span class="fc" id="L171">        var frame = frame(stored, maxCharacters);</span>
+<span class="fc" id="L172">        char[] result = new char[frame.characters()];</span>
+<span class="fc" id="L173">        try (var reader = new PackedReader(frame)) {</span>
+<span class="fc" id="L174">            int offset = 0;</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">            while (offset &lt; result.length) {</span>
+<span class="fc" id="L176">                int count = reader.read(result, offset, result.length - offset);</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">                if (count &lt; 0) throw invalid();</span>
+<span class="fc" id="L178">                offset += count;</span>
+<span class="fc" id="L179">            }</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">            if (reader.read() != -1) throw invalid();</span>
+        }
+<span class="fc" id="L182">        return new String(result);</span>
+    }
+
+    @FunctionalInterface public interface PayloadReader&lt;T&gt; { T read(Reader reader) throws IOException; }
+
+    /**
+     * Parse retained evidence without allocating its expanded text. The returned value is released
+     * only after the entire frame passes the same count, hash and GZIP checks as {@link #unpack}.
+     * A parser may close or stop reading its supplied input; this method still validates the tail.
+     */
+    public static &lt;T&gt; T read(String stored, int maxCharacters, PayloadReader&lt;T&gt; parser) throws IOException {
+<span class="fc" id="L193">        bounded(stored, maxCharacters);</span>
+<span class="fc" id="L194">        Objects.requireNonNull(parser);</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        if (stored == null) return null;</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">        try (Reader input = stored.startsWith(FAMILY)</span>
+<span class="fc" id="L197">                ? new PackedReader(frame(stored, maxCharacters)) : new StringReader(stored)) {</span>
+<span class="fc" id="L198">            var borrowed = new FilterReader(input) { @Override public void close() { } };</span>
+            T result;
+<span class="fc" id="L200">            try { result = parser.read(borrowed); }</span>
+<span class="fc" id="L201">            catch (RuntimeException failure) {</span>
+                // JSON libraries may wrap a Reader's IOException in their own runtime exception.
+<span class="pc bpc" id="L203" title="2 of 4 branches missed.">                if (input instanceof PackedReader packed &amp;&amp; packed.failure != null) throw packed.failure;</span>
+<span class="nc" id="L204">                throw failure;</span>
+<span class="fc" id="L205">            }</span>
+<span class="fc" id="L206">            char[] tail = new char[8192];</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">            while (input.read(tail) != -1) { /* Validate all evidence before returning the parsed value. */ }</span>
+<span class="fc" id="L208">            return result;</span>
+        }
+    }
+
+<span class="fc" id="L212">    private record Frame(byte[] compressed, int characters, String hash) { }</span>
+    private static Frame frame(String stored, int maxCharacters) throws IOException {
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        if (!stored.startsWith(PREFIX)) throw invalid();</span>
+<span class="fc" id="L215">        String[] fields = stored.split(&quot;:&quot;, 5);</span>
+<span class="pc bpc" id="L216" title="2 of 4 branches missed.">        if (fields.length != 5 || !fields[3].matches(&quot;[a-f0-9]{64}&quot;)) throw invalid();</span>
+        int characters;
+<span class="fc" id="L218">        try { characters = Integer.parseInt(fields[2]); }</span>
+<span class="pc" id="L219">        catch (NumberFormatException malformed) { throw invalid(); }</span>
+<span class="pc bpc" id="L220" title="1 of 6 branches missed.">        if (characters &lt; 0 || characters &gt; maxCharacters || !Integer.toString(characters).equals(fields[2])) throw invalid();</span>
+        byte[] compressed;
+<span class="fc" id="L222">        try { compressed = Base64.getDecoder().decode(fields[4]); }</span>
+<span class="fc" id="L223">        catch (IllegalArgumentException malformed) { throw invalid(); }</span>
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">        if (!Base64.getEncoder().encodeToString(compressed).equals(fields[4])) throw invalid();</span>
+<span class="fc" id="L225">        return new Frame(compressed, characters, fields[3]);</span>
+    }
+
+    private static final class PackedReader extends Reader {
+        // One ordinary GZIP member, without optional headers. Inflater gives us the exact
+        // consumed byte count, so concatenated members and trailing bytes cannot be ignored.
+        private final Inflater inflater;
+<span class="fc" id="L232">        private final CRC32 crc = new CRC32();</span>
+<span class="fc" id="L233">        private final MessageDigest digest = sha256();</span>
+<span class="fc" id="L234">        private final byte[] buffer = new byte[8192];</span>
+        private final long expectedBytes, expectedCrc;
+        private final String expectedHash;
+        private long total;
+        private int index, available;
+        private boolean finished, closed;
+        private IOException failure;
+
+<span class="fc" id="L242">        PackedReader(Frame frame) throws IOException {</span>
+<span class="fc" id="L243">            byte[] compressed = frame.compressed();</span>
+<span class="pc bpc" id="L244" title="5 of 10 branches missed.">            if (compressed.length &lt; 20 || (compressed[0] &amp; 255) != 31 || (compressed[1] &amp; 255) != 139</span>
+<span class="nc" id="L245">                    || compressed[2] != 8 || compressed[3] != 0) throw invalid();</span>
+<span class="fc" id="L246">            int footer = compressed.length - 8;</span>
+<span class="fc" id="L247">            expectedBytes = (long) frame.characters() * 2;</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">            if (littleEndian(compressed, footer + 4) != expectedBytes) throw invalid();</span>
+<span class="fc" id="L249">            expectedCrc = littleEndian(compressed, footer);</span>
+<span class="fc" id="L250">            expectedHash = frame.hash();</span>
+<span class="fc" id="L251">            inflater = new Inflater(true);</span>
+<span class="fc" id="L252">            inflater.setInput(compressed, 10, footer - 10);</span>
+<span class="fc" id="L253">        }</span>
+
+        @Override public int read(char[] target, int offset, int length) throws IOException {
+<span class="fc" id="L256">            Objects.checkFromIndexSize(offset, length, target.length);</span>
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">            if (closed) throw new IOException(&quot;Packed JSON reader is closed&quot;);</span>
+<span class="pc bpc" id="L258" title="1 of 2 branches missed.">            if (length == 0) return 0;</span>
+<span class="fc" id="L259">            int count = 0;</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">            while (count &lt; length) {</span>
+<span class="fc" id="L261">                int high = nextByte();</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">                if (high &lt; 0) break;</span>
+<span class="fc" id="L263">                int low = nextByte();</span>
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">                if (low &lt; 0) { failure = invalid(); throw failure; }</span>
+<span class="fc" id="L265">                target[offset + count++] = (char) ((high &lt;&lt; 8) | low);</span>
+<span class="fc" id="L266">            }</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">            return count == 0 ? -1 : count;</span>
+        }
+
+        private int nextByte() throws IOException {
+<span class="fc bfc" id="L271" title="All 2 branches covered.">            if (failure != null) throw failure;</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">            if (index &lt; available) return buffer[index++] &amp; 255;</span>
+<span class="fc bfc" id="L273" title="All 2 branches covered.">            if (finished) return -1;</span>
+            try {
+<span class="fc" id="L275">                int read = inflater.inflate(buffer);</span>
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">                if (total + read &gt; expectedBytes) throw invalid();</span>
+<span class="fc" id="L277">                total += read; crc.update(buffer, 0, read); digest.update(buffer, 0, read);</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">                if (inflater.finished()) {</span>
+<span class="pc bpc" id="L279" title="1 of 6 branches missed.">                    if (inflater.getRemaining() != 0 || total != expectedBytes || crc.getValue() != expectedCrc</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">                            || !HexFormat.of().formatHex(digest.digest()).equals(expectedHash)) throw invalid();</span>
+<span class="fc" id="L281">                    finished = true;</span>
+<span class="pc bpc" id="L282" title="1 of 2 branches missed.">                } else if (read == 0) throw invalid();</span>
+<span class="fc" id="L283">                index = 0; available = read;</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">                return read == 0 ? -1 : buffer[index++] &amp; 255;</span>
+<span class="nc" id="L285">            } catch (DataFormatException malformed) { failure = invalid(); throw failure; }</span>
+<span class="fc" id="L286">            catch (IOException invalid) { failure = invalid; throw invalid; }</span>
+        }
+
+        @Override public void close() {
+<span class="pc bpc" id="L290" title="1 of 2 branches missed.">            if (!closed) {</span>
+<span class="fc" id="L291">                inflater.end();</span>
+<span class="fc" id="L292">                closed = true;</span>
+            }
+<span class="fc" id="L294">        }</span>
+    }
+
+    @FunctionalInterface private interface Bytes { void accept(byte[] bytes, int offset, int length) throws IOException; }
+    private static void units(String value, Bytes destination) throws IOException {
+<span class="fc" id="L299">        byte[] buffer = new byte[8192]; int used = 0;</span>
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        for (int i = 0; i &lt; value.length(); i++) {</span>
+<span class="fc" id="L301">            char unit = value.charAt(i); buffer[used++] = (byte) (unit &gt;&gt;&gt; 8); buffer[used++] = (byte) unit;</span>
+<span class="fc bfc" id="L302" title="All 2 branches covered.">            if (used == buffer.length) { destination.accept(buffer, 0, used); used = 0; }</span>
+        }
+<span class="fc bfc" id="L304" title="All 2 branches covered.">        if (used != 0) destination.accept(buffer, 0, used);</span>
+<span class="fc" id="L305">    }</span>
+    private static String hash(String value) throws IOException {
+<span class="fc" id="L307">        var digest = sha256(); units(value, digest::update);</span>
+<span class="fc" id="L308">        return HexFormat.of().formatHex(digest.digest());</span>
+    }
+    private static MessageDigest sha256() {
+        try {
+<span class="fc" id="L312">            return MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="nc" id="L313">        } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+    private static void bounded(String value, int maxCharacters) throws IOException {
+<span class="fc bfc" id="L316" title="All 6 branches covered.">        if (maxCharacters &lt; 0 || value != null &amp;&amp; value.length() &gt; maxCharacters) throw invalid();</span>
+<span class="fc" id="L317">    }</span>
+    private static long littleEndian(byte[] bytes, int offset) {
+<span class="fc" id="L319">        return (bytes[offset] &amp; 255L) | ((bytes[offset + 1] &amp; 255L) &lt;&lt; 8)</span>
+                | ((bytes[offset + 2] &amp; 255L) &lt;&lt; 16) | ((bytes[offset + 3] &amp; 255L) &lt;&lt; 24);
+    }
+<span class="fc" id="L322">    private static IOException invalid() { return new IOException(&quot;Invalid or oversized packed JSON payload&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

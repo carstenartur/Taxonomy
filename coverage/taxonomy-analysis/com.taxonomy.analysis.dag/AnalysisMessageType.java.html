@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisMessageType.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag</a> &gt; <span class="el_source">AnalysisMessageType.java</span></div><h1>AnalysisMessageType.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag;
+
+/**
+ * Explicit discriminator of the versioned message contract.
+ *
+ * &lt;p&gt;Serialized messages carry this value instead of Java class names, so a
+ * consumer can only materialize one of the declared contract records.&lt;/p&gt;
+ */
+<span class="fc" id="L9">public enum AnalysisMessageType {</span>
+<span class="fc" id="L10">    SUBTAXONOMY_ANALYSIS_TASK(SubtaxonomyAnalysisTask.class),</span>
+<span class="fc" id="L11">    SUBTAXONOMY_ANALYSIS_COMPLETED(SubtaxonomyAnalysisCompleted.class),</span>
+<span class="fc" id="L12">    RELATION_ANALYSIS_TASK(RelationAnalysisTask.class),</span>
+<span class="fc" id="L13">    RELATION_ANALYSIS_COMPLETED(RelationAnalysisCompleted.class),</span>
+<span class="fc" id="L14">    ANALYSIS_PROGRESS(AnalysisProgressEvent.class),</span>
+<span class="fc" id="L15">    ANALYSIS_CANCELLATION(AnalysisCancellationEvent.class);</span>
+
+    private final Class&lt;? extends AnalysisMessage&gt; contract;
+
+<span class="fc" id="L19">    AnalysisMessageType(Class&lt;? extends AnalysisMessage&gt; contract) {</span>
+<span class="fc" id="L20">        this.contract = contract;</span>
+<span class="fc" id="L21">    }</span>
+
+    public Class&lt;? extends AnalysisMessage&gt; contract() {
+<span class="fc" id="L24">        return contract;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

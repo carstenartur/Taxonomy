@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationSearchBudget.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">RelationSearchBudget.java</span></div><h1>RelationSearchBudget.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+/** New relation evaluations are distinct from replayed scheduler grants and completed work. */
+public record RelationSearchBudget(int callsPerSlice, int maxTotalCalls, int newCalls, int spentCalls,
+        boolean automatic, int slices, int sourcesPerSlice, int workItemsPerSlice, int sourceCohortSize) {
+<span class="fc" id="L6">    public RelationSearchBudget {</span>
+<span class="pc bpc" id="L7" title="13 of 26 branches missed.">        if (callsPerSlice &lt; 0 || callsPerSlice &gt; 10_000 || maxTotalCalls &lt; 0 || maxTotalCalls &gt; 10_000</span>
+                || newCalls &lt; 0 || spentCalls &lt; newCalls || slices &lt; 0
+                || sourcesPerSlice &lt; 1 || sourcesPerSlice &gt; 256
+                || workItemsPerSlice &lt; 1 || workItemsPerSlice &gt; 100_000
+                || sourceCohortSize &lt; 1 || sourceCohortSize &gt; 256)
+<span class="nc" id="L12">            throw new IllegalArgumentException(&quot;Invalid relation execution budget&quot;);</span>
+<span class="fc" id="L13">    }</span>
+
+    /** A lower administrative limit never erases calls already spent by the journal. */
+    public RelationSearchBudget withSpentCalls(int cumulative, int beforeExecution) {
+<span class="fc" id="L17">        int current = Math.max(0, cumulative - beforeExecution);</span>
+<span class="fc bfc" id="L18" title="All 2 branches covered.">        int sections = current == 0 ? 0 : Math.max(1, (current + Math.max(1, callsPerSlice) - 1) / Math.max(1, callsPerSlice));</span>
+<span class="fc" id="L19">        return new RelationSearchBudget(callsPerSlice, maxTotalCalls, current, cumulative, automatic,</span>
+<span class="fc" id="L20">                Math.max(slices, sections), sourcesPerSlice, workItemsPerSlice, sourceCohortSize);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

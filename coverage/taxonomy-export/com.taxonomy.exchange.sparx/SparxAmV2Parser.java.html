@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SparxAmV2Parser.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange.sparx</a> &gt; <span class="el_source">SparxAmV2Parser.java</span></div><h1>SparxAmV2Parser.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange.sparx;
+
+import com.taxonomy.exchange.*;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import org.apache.jena.rdf.model.*;
+import org.apache.jena.vocabulary.RDF;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import static com.taxonomy.exchange.OslcRdf.DCT;
+import static com.taxonomy.exchange.sparx.SparxOslcAmCodec.*;
+import static com.taxonomy.exchange.sparx.SparxMappingProfile.*;
+import static com.taxonomy.exchange.sparx.SparxSemanticExchangeAssembler.*;
+
+/** Bounded PCS contract parser. Unknown links are evidence, never requests. */
+final class SparxAmV2Parser {
+<span class="fc" id="L17">    private static final Set&lt;String&gt; ROOT_PREFIXES = Set.of(&quot;pk_&quot;, &quot;el_&quot;, &quot;dg_&quot;);</span>
+    private SparxAmV2Parser() {}
+
+    static List&lt;Model&gt; chain(List&lt;Page&gt; pages) {
+<span class="pc bpc" id="L21" title="2 of 4 branches missed.">        if (pages.isEmpty() || pages.size() &gt; MAX_PAGES) throw invalid(&quot;SPARX_AM_PAGE_LIMIT&quot;);</span>
+<span class="fc" id="L22">        Set&lt;URI&gt; seen = new HashSet&lt;&gt;(); List&lt;Model&gt; models = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L23">        URI endpoint = pages.getFirst().resource(); long bytes = 0, statements = 0;</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        for (int i = 0; i &lt; pages.size(); i++) {</span>
+<span class="fc" id="L25">            Page page = pages.get(i);</span>
+<span class="pc bpc" id="L26" title="2 of 4 branches missed.">            if (!seen.add(page.resource()) || !Objects.equals(endpoint.getScheme(), page.resource().getScheme())</span>
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">                    || !Objects.equals(endpoint.getAuthority(), page.resource().getAuthority())</span>
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">                    || !endpoint.getPath().equals(page.resource().getPath())) throw invalid(&quot;SPARX_AM_PAGING&quot;);</span>
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">            if ((bytes += page.content().length) &gt; ExchangeXml.MAX_BYTES) throw invalid(&quot;REMOTE_RESPONSE_LIMIT&quot;);</span>
+<span class="fc" id="L30">            Model model = SparxOslcAmCodec.parse(page.content(), page.resource());</span>
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">            if ((statements += model.size()) &gt; 100000) throw invalid(&quot;ITEM_LIMIT&quot;);</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">            for (org.apache.jena.rdf.model.Resource subject : model.listSubjects().toList()) {</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">                if (subject.listProperties().toList().size() &gt; 128) throw invalid(&quot;SPARX_AM_PROPERTY_LIMIT&quot;);</span>
+<span class="fc" id="L34">            }</span>
+<span class="fc" id="L35">            URI next = new SparxOslcAmCodec().nextPage(page.content(), page.resource());</span>
+<span class="pc bpc" id="L36" title="1 of 4 branches missed.">            if (!Objects.equals(next, i + 1 &lt; pages.size() ? pages.get(i + 1).resource() : null)) throw invalid(&quot;SPARX_AM_INCOMPLETE&quot;);</span>
+<span class="fc" id="L37">            models.add(model);</span>
+        }
+<span class="fc" id="L39">        return models;</span>
+    }
+    static List&lt;String&gt; roots(List&lt;Page&gt; pages, URI base) {
+<span class="fc" id="L42">        SortedMap&lt;String,String&gt; ids = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L43" title="All 4 branches covered.">        for (Model model : chain(pages)) for (org.apache.jena.rdf.model.Resource r : model.listResourcesWithProperty(RDF.type, model.createResource(AM + &quot;Resource&quot;)).toList()) {</span>
+<span class="fc" id="L44">            String id = literal(r, DCT + &quot;identifier&quot;, true), guid = prefixedGuid(id, ROOT_PREFIXES);</span>
+<span class="fc" id="L45">            requireRootUri(r, base, id);</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">            if (ids.putIfAbsent(guid, id) != null) throw invalid(&quot;DUPLICATE_IDENTITY&quot;);</span>
+<span class="fc" id="L47">        }</span>
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">        if (ids.size() &gt; ExchangeXml.MAX_ARTIFACTS) throw invalid(&quot;ITEM_LIMIT&quot;);</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        List&lt;String&gt; result = ids.values().stream().filter(id -&gt; !id.startsWith(&quot;dg_&quot;)).toList();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (result.size() &gt; 250) throw invalid(&quot;SPARX_AM_ENRICHMENT_LIMIT&quot;);</span>
+<span class="fc" id="L51">        return result;</span>
+    }
+    static List&lt;String&gt; featureIds(SparxOslcAmCodec.Collection c, URI base) {
+<span class="fc" id="L54">        return parseFeatures(c, base, new ArrayList&lt;&gt;(), new FragmentBudget()).stream().map(f -&gt; f.extensions().get(&quot;externalIdentifier&quot;))</span>
+<span class="pc" id="L55">                .sorted(Comparator.comparing(id -&gt; prefixedGuid(id, prefixes(c)))).toList();</span>
+    }
+    static ExchangeDocument read(List&lt;Page&gt; pages, List&lt;SparxOslcAmCodec.Collection&gt; collections, URI base) {
+<span class="fc" id="L58">        roots(pages, base);</span>
+<span class="fc" id="L59">        List&lt;SparxSemanticExchangeAssembler.Resource&gt; resources = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L60">        FragmentBudget preservation = new FragmentBudget();</span>
+<span class="fc" id="L61">        List&lt;Feature&gt; features = new ArrayList&lt;&gt;(); List&lt;Connector&gt; connectors = new ArrayList&lt;&gt;(); List&lt;MappingLoss&gt; losses = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        for (Model model : chain(pages)) {</span>
+<span class="fc" id="L63">            var values = model.listResourcesWithProperty(RDF.type, model.createResource(AM + &quot;Resource&quot;)).toList();</span>
+<span class="pc bpc" id="L64" title="1 of 4 branches missed.">            if (values.isEmpty() &amp;&amp; model.listStatements(null, model.createProperty(DCT + &quot;identifier&quot;), (RDFNode)null).hasNext()) throw invalid(&quot;SPARX_AM_RESOURCE_REQUIRED&quot;);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            for (org.apache.jena.rdf.model.Resource r : values) {</span>
+<span class="fc" id="L66">                String external = literal(r, DCT + &quot;identifier&quot;, true), id = prefixedGuid(external, ROOT_PREFIXES);</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">                if (external.startsWith(&quot;dg_&quot;)) { losses.add(loss(id, &quot;diagram&quot;, &quot;SPARX_LAYOUT_EXCLUDED&quot;, LossDisposition.UNSUPPORTED)); continue; }</span>
+<span class="fc" id="L68">                String type = literal(r, DCT + &quot;type&quot;, true), parent = literal(r, SS + &quot;parentresourceidentifier&quot;, false);</span>
+<span class="pc bpc" id="L69" title="1 of 4 branches missed.">                boolean pkg = external.startsWith(&quot;pk_&quot;); if (pkg &amp;&amp; !type.equals(&quot;Package&quot;)) throw invalid(&quot;SPARX_AM_TYPE&quot;);</span>
+<span class="fc" id="L70">                Map&lt;String,String&gt; attributes = new TreeMap&lt;&gt;(), extensions = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L71">                extensions.put(&quot;externalIdentifier&quot;, external); extensions.put(&quot;uri&quot;, r.getURI());</span>
+<span class="fc" id="L72">                List&lt;String&gt; stereotypes = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">                for (Statement s : r.listProperties(model.createProperty(SS + &quot;stereotype&quot;)).toList()) {</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">                    if (s.getObject().isLiteral()) stereotypes.add(s.getString());</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">                    else for (Statement name : s.getResource().listProperties(model.createProperty(SS + &quot;name&quot;)).toList()) {</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">                        if (!name.getObject().isLiteral()) throw invalid(&quot;SPARX_AM_PROPERTY&quot;);</span>
+<span class="nc" id="L77">                        stereotypes.add(name.getString());</span>
+<span class="nc" id="L78">                    }</span>
+<span class="fc" id="L79">                }</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">                if (stereotypes.size() &gt; 32) throw invalid(&quot;SPARX_AM_PROPERTY_LIMIT&quot;);</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">                if (stereotypes.size() == 1) extensions.put(&quot;stereotype&quot;, stereotypes.getFirst());</span>
+<span class="pc bpc" id="L82" title="1 of 4 branches missed.">                if (r.hasProperty(model.createProperty(SS + &quot;stereotype&quot;)) &amp;&amp; stereotypes.size() != 1) {</span>
+<span class="fc" id="L83">                    extensions.put(&quot;stereotypeMapping&quot;, &quot;UNMAPPED&quot;);</span>
+<span class="fc" id="L84">                    losses.add(loss(id, &quot;stereotype&quot;, &quot;SPARX_AM_STEREOTYPE_UNMAPPED&quot;, LossDisposition.PRESERVED_EXTENSION));</span>
+                }
+<span class="fc" id="L86">                properties(r, id, Set.of(DCT + &quot;identifier&quot;, DCT + &quot;title&quot;, DCT + &quot;description&quot;, DCT + &quot;type&quot;, SS + &quot;parentresourceidentifier&quot;), attributes, extensions, losses, preservation);</span>
+<span class="pc bpc" id="L87" title="1 of 4 branches missed.">                resources.add(new SparxSemanticExchangeAssembler.Resource(id, pkg ? ArtifactKind.SPECIFICATION : type.equals(&quot;Requirement&quot;) ? ArtifactKind.REQUIREMENT : ArtifactKind.ELEMENT,</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">                        type.equals(&quot;Requirement&quot;) ? &quot;Class&quot; : type, literal(r, DCT + &quot;title&quot;, true), description(r, id, losses),</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                        parent.isEmpty() ? null : prefixedGuid(parent, Set.of(&quot;pk_&quot;)), null, attributes, extensions));</span>
+<span class="fc" id="L90">            }</span>
+<span class="fc" id="L91">        }</span>
+<span class="fc" id="L92">        Set&lt;String&gt; collectionKeys = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L93">        long bytes = pages.stream().mapToLong(p -&gt; p.content().length).sum(), statements = 0;</span>
+<span class="fc" id="L94">        int responses = pages.size();</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        for (Page p : pages) statements += SparxOslcAmCodec.parse(p.content(), p.resource()).size();</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        for (SparxOslcAmCodec.Collection c : collections) {</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">            if (!collectionKeys.add(c.kind() + &quot;:&quot; + c.owner())) throw invalid(&quot;DUPLICATE_IDENTITY&quot;);</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            for (Page p : c.pages()) { bytes += p.content().length; statements += SparxOslcAmCodec.parse(p.content(), p.resource()).size(); responses++; }</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">            if (bytes &gt; ExchangeXml.MAX_BYTES) throw invalid(&quot;REMOTE_RESPONSE_LIMIT&quot;);</span>
+<span class="pc bpc" id="L100" title="2 of 4 branches missed.">            if (statements &gt; 100000 || features.size() + connectors.size() + resources.size() &gt; 10000) throw invalid(&quot;ITEM_LIMIT&quot;);</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">            if (responses &gt; 1024) throw invalid(&quot;SPARX_AM_REQUEST_LIMIT&quot;);</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            if (c.kind().equals(&quot;linkedresources&quot;)) connectors.addAll(parseConnectors(c, base, losses, preservation));</span>
+<span class="fc" id="L103">            else features.addAll(parseFeatures(c, base, losses, preservation));</span>
+<span class="fc" id="L104">        }</span>
+<span class="fc" id="L105">        Set&lt;String&gt; required = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        for (String root : roots(pages, base)) {</span>
+<span class="fc" id="L107">            required.add(&quot;linkedresources:&quot; + root); required.add(&quot;taggedvalues:&quot; + root);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            if (root.startsWith(&quot;el_&quot;)) { required.add(&quot;attributes:&quot; + root); required.add(&quot;operations:&quot; + root); }</span>
+<span class="fc" id="L109">        }</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        for (Feature feature : features) {</span>
+<span class="fc" id="L111">            String external = feature.extensions().get(&quot;externalIdentifier&quot;);</span>
+<span class="fc bfc" id="L112" title="All 4 branches covered.">            if (feature.type().equals(&quot;attribute&quot;) || feature.type().equals(&quot;operation&quot;)) required.add(&quot;taggedvalues:&quot; + external);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            if (feature.type().equals(&quot;operation&quot;)) required.add(&quot;parameters:&quot; + external);</span>
+<span class="fc" id="L114">        }</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        if (!required.equals(collectionKeys)) throw invalid(&quot;SPARX_AM_INCOMPLETE&quot;);</span>
+<span class="fc" id="L116">        String modelId = guid(UUID.nameUUIDFromBytes(base.toString().getBytes(StandardCharsets.UTF_8)).toString());</span>
+<span class="fc" id="L117">        Map&lt;String,String&gt; metadata = Map.of(&quot;identifier&quot;, modelId, &quot;resource&quot;, base.toString(),</span>
+<span class="fc" id="L118">                &quot;collectionEvidence&quot;, &quot;EXHAUSTED_COLLECTIONS_NOT_ATOMIC_OR_AUTHORITATIVE&quot;, &quot;resourceCount&quot;, &quot;&quot; + resources.size(),</span>
+<span class="fc" id="L119">                &quot;featureCount&quot;, &quot;&quot; + features.size(), &quot;connectorCount&quot;, &quot;&quot; + connectors.stream().map(Connector::id).distinct().count(),</span>
+                &quot;responseCount&quot;, &quot;&quot; + responses, &quot;byteCount&quot;, &quot;&quot; + bytes);
+<span class="fc" id="L121">        var evidence = new SparxAmReadEvidence(); pages.forEach(p -&gt; evidence.add(&quot;qc&quot;, &quot;ROOT&quot;, p));</span>
+<span class="fc" id="L122">        collections.forEach(c -&gt; c.pages().forEach(p -&gt; evidence.add(c.kind(), prefixedGuid(c.owner(), Set.of(&quot;pk_&quot;, &quot;el_&quot;, &quot;at_&quot;, &quot;op_&quot;)), p)));</span>
+<span class="fc" id="L123">        return assemble(SparxOslcAmCodec.PROFILE, evidence.version(), false, &quot;&quot;, metadata, resources, features, connectors, losses);</span>
+    }
+    private static Set&lt;String&gt; prefixes(SparxOslcAmCodec.Collection c) {
+<span class="pc bpc" id="L126" title="1 of 5 branches missed.">        return switch (c.kind()) {</span>
+<span class="fc" id="L127">            case &quot;attributes&quot; -&gt; Set.of(&quot;at_&quot;); case &quot;operations&quot; -&gt; Set.of(&quot;op_&quot;); case &quot;parameters&quot; -&gt; Set.of(&quot;pr_&quot;);</span>
+<span class="pc bpc" id="L128" title="2 of 4 branches missed.">            case &quot;taggedvalues&quot; -&gt; c.owner().startsWith(&quot;at_&quot;) ? Set.of(&quot;attv_&quot;) : c.owner().startsWith(&quot;op_&quot;) ? Set.of(&quot;optv_&quot;) : Set.of(&quot;tv_&quot;);</span>
+<span class="nc" id="L129">            default -&gt; throw invalid(&quot;SPARX_AM_RESOURCE&quot;);</span>
+        };
+    }
+    private static List&lt;Feature&gt; parseFeatures(SparxOslcAmCodec.Collection c, URI base, List&lt;MappingLoss&gt; losses, FragmentBudget preservation) {
+<span class="pc bpc" id="L133" title="1 of 4 branches missed.">        String owner = prefixedGuid(c.owner(), switch (c.kind()) {</span>
+<span class="fc" id="L134">            case &quot;attributes&quot;, &quot;operations&quot; -&gt; Set.of(&quot;el_&quot;); case &quot;parameters&quot; -&gt; Set.of(&quot;op_&quot;);</span>
+<span class="pc" id="L135">            case &quot;taggedvalues&quot; -&gt; Set.of(&quot;pk_&quot;, &quot;el_&quot;, &quot;at_&quot;, &quot;op_&quot;); default -&gt; throw invalid(&quot;SPARX_AM_RESOURCE&quot;);</span>
+        });
+<span class="fc" id="L137">        List&lt;Feature&gt; features = new ArrayList&lt;&gt;(); Set&lt;String&gt; seen = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L138" title="All 4 branches covered.">        for (Model model : chain(c.pages())) for (org.apache.jena.rdf.model.Resource r : model.listResourcesWithProperty(model.createProperty(DCT + &quot;identifier&quot;)).toList()) {</span>
+<span class="fc" id="L139">            String external = literal(r, DCT + &quot;identifier&quot;, true), id = prefixedGuid(external, prefixes(c));</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">            if (!seen.add(id)) throw invalid(&quot;DUPLICATE_IDENTITY&quot;);</span>
+<span class="fc" id="L141">            Map&lt;String,String&gt; attributes = new TreeMap&lt;&gt;(), extensions = new TreeMap&lt;&gt;(); extensions.put(&quot;externalIdentifier&quot;, external);</span>
+<span class="fc bfc" id="L142" title="All 4 branches covered.">            String type = switch(c.kind()) { case &quot;attributes&quot; -&gt; &quot;attribute&quot;; case &quot;operations&quot; -&gt; &quot;operation&quot;; case &quot;parameters&quot; -&gt; &quot;parameter&quot;; default -&gt; &quot;tagged-value&quot;; };</span>
+<span class="fc" id="L143">            String position = literal(r, SS + &quot;position&quot;, false);</span>
+<span class="fc" id="L144">            Integer order = null;</span>
+<span class="pc bpc" id="L145" title="1 of 4 branches missed.">            if (!position.isEmpty()) { if (!position.matches(&quot;0|[1-9][0-9]{0,3}&quot;)) throw invalid(&quot;SPARX_FEATURE_POSITION&quot;); order = Integer.valueOf(position); }</span>
+<span class="fc" id="L146">            String classifier = literal(r, SS + &quot;classifierresourceidentifier&quot;, false);</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">            if (!classifier.isEmpty()) extensions.put(&quot;classifier&quot;, prefixedGuid(classifier, Set.of(&quot;el_&quot;)));</span>
+<span class="fc" id="L148">            Set&lt;String&gt; known = new HashSet&lt;&gt;(Set.of(DCT + &quot;identifier&quot;, DCT + &quot;title&quot;, SS + &quot;value&quot;, SS + &quot;position&quot;, SS + &quot;classifierresourceidentifier&quot;));</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            if (!type.equals(&quot;tagged-value&quot;)) known.add(DCT + &quot;description&quot;);</span>
+<span class="fc" id="L150">            properties(r, id, known, attributes, extensions, losses, preservation);</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            features.add(new Feature(id, owner, type, literal(r, DCT + &quot;title&quot;, true), type.equals(&quot;tagged-value&quot;) ? literal(r, SS + &quot;value&quot;, false) : description(r, id, losses), order, attributes, extensions));</span>
+<span class="fc" id="L152">        }</span>
+<span class="fc" id="L153">        return features;</span>
+    }
+    private static List&lt;Connector&gt; parseConnectors(SparxOslcAmCodec.Collection c, URI base,
+            List&lt;MappingLoss&gt; losses, FragmentBudget preservation) {
+<span class="fc" id="L157">        String collectionOwner = prefixedGuid(c.owner(), Set.of(&quot;pk_&quot;, &quot;el_&quot;));</span>
+<span class="fc" id="L158">        List&lt;Connector&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        for (Model model : chain(c.pages())) {</span>
+<span class="fc" id="L160">            Set&lt;org.apache.jena.rdf.model.Resource&gt; consumedDescriptions = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">            for (org.apache.jena.rdf.model.Resource source : model.listResourcesWithProperty(</span>
+<span class="fc" id="L162">                    RDF.type, model.createResource(AM + &quot;Resource&quot;)).toList()) {</span>
+<span class="fc" id="L163">                String sourceId = literal(source, DCT + &quot;identifier&quot;, true);</span>
+<span class="fc" id="L164">                String sourceGuid = prefixedGuid(sourceId, Set.of(&quot;pk_&quot;, &quot;el_&quot;));</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">                if (source.isURIResource()) requireRootUri(source, base, sourceId);</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">                for (Statement link : source.listProperties().toList()) {</span>
+<span class="fc" id="L167">                    String predicate = link.getPredicate().getURI();</span>
+<span class="pc bpc" id="L168" title="1 of 4 branches missed.">                    if (!predicate.startsWith(SS) || !isRelation(predicate.substring(SS.length()))) continue;</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">                    if (!link.getObject().isURIResource()) throw invalid(&quot;SPARX_AM_ENDPOINT&quot;);</span>
+<span class="fc" id="L170">                    String target = endpoint(link.getResource().getURI(), base);</span>
+                    // rdf:ID on the dynamic property reifies the exact subject/predicate/object triple.
+<span class="fc" id="L172">                    var descriptions = model.listResourcesWithProperty(RDF.subject, source).toList().stream()</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">                            .filter(d -&gt; d.hasProperty(RDF.predicate, link.getPredicate())</span>
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">                                    &amp;&amp; d.hasProperty(RDF.object, link.getObject())).toList();</span>
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">                    if (descriptions.isEmpty()) throw invalid(&quot;SPARX_AM_CONNECTOR&quot;);</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">                    for (org.apache.jena.rdf.model.Resource detail : descriptions) {</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">                        for (Property property : List.of(RDF.subject, RDF.predicate, RDF.object)) {</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">                            if (detail.listProperties(property).toList().size() != 1)</span>
+<span class="nc" id="L179">                                throw invalid(&quot;SPARX_AM_CONNECTOR&quot;);</span>
+<span class="fc" id="L180">                        }</span>
+<span class="pc bpc" id="L181" title="1 of 4 branches missed.">                        if (!collectionOwner.equals(sourceGuid) &amp;&amp; !collectionOwner.equals(target))</span>
+<span class="nc" id="L182">                            throw invalid(&quot;SPARX_AM_CONNECTOR&quot;);</span>
+<span class="fc" id="L183">                        String external = literal(detail, DCT + &quot;identifier&quot;, true);</span>
+<span class="fc" id="L184">                        String id = prefixedGuid(external, Set.of(&quot;lt_&quot;));</span>
+<span class="fc" id="L185">                        Map&lt;String,String&gt; attributes = new TreeMap&lt;&gt;(), extensions = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L186">                        extensions.put(&quot;externalIdentifier&quot;, external);</span>
+<span class="fc" id="L187">                        String title = literal(detail, DCT + &quot;title&quot;, false);</span>
+<span class="fc" id="L188">                        String text = description(detail, id, losses);</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">                        if (!title.isEmpty()) attributes.put(&quot;name&quot;, title);</span>
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">                        if (!text.isEmpty()) attributes.put(&quot;description&quot;, text);</span>
+<span class="fc" id="L191">                        String direction = literal(detail, SS + &quot;direction&quot;, true);</span>
+<span class="fc" id="L192">                        properties(detail, id, Set.of(DCT + &quot;identifier&quot;, DCT + &quot;title&quot;, DCT + &quot;description&quot;,</span>
+<span class="fc" id="L193">                                SS + &quot;direction&quot;, RDF.subject.getURI(), RDF.predicate.getURI(), RDF.object.getURI()),</span>
+                                attributes, extensions, losses, preservation);
+<span class="fc" id="L195">                        result.add(new Connector(id, sourceGuid, target, predicate.substring(SS.length()),</span>
+                                direction, attributes, extensions));
+<span class="fc" id="L197">                        consumedDescriptions.add(detail);</span>
+<span class="fc" id="L198">                    }</span>
+<span class="fc" id="L199">                }</span>
+<span class="fc" id="L200">            }</span>
+            // Every declaration on this page must describe an associated connector on this page.
+            // Matching the RDF subject also catches an orphan reusing an already consumed GUID.
+<span class="fc bfc" id="L203" title="All 2 branches covered.">            for (Statement declaration : model.listStatements(null,</span>
+<span class="fc" id="L204">                    model.createProperty(DCT + &quot;identifier&quot;), (RDFNode) null).toList()) {</span>
+<span class="pc bpc" id="L205" title="1 of 4 branches missed.">                if (declaration.getObject().isLiteral() &amp;&amp; declaration.getString().startsWith(&quot;lt_&quot;)</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">                        &amp;&amp; !consumedDescriptions.contains(declaration.getSubject()))</span>
+<span class="fc" id="L207">                    throw invalid(&quot;SPARX_AM_CONNECTOR&quot;);</span>
+<span class="fc" id="L208">            }</span>
+<span class="fc" id="L209">        }</span>
+<span class="fc" id="L210">        return result;</span>
+    }
+    private static String endpoint(String uri, URI base) {
+<span class="pc" id="L213">        URI value; try { value = URI.create(uri); } catch (IllegalArgumentException e) { throw invalid(&quot;SPARX_AM_ENDPOINT&quot;); }</span>
+<span class="fc" id="L214">        String prefix = base.getPath() + &quot;resource/&quot;;</span>
+<span class="pc bpc" id="L215" title="4 of 8 branches missed.">        if (!Objects.equals(base.getScheme(), value.getScheme()) || !Objects.equals(base.getAuthority(), value.getAuthority()) || value.getQuery() != null || value.getFragment() != null</span>
+<span class="pc bpc" id="L216" title="2 of 4 branches missed.">                || !value.getPath().startsWith(prefix) || !value.getPath().endsWith(&quot;/&quot;)) throw invalid(&quot;SPARX_AM_ENDPOINT&quot;);</span>
+<span class="fc" id="L217">        return prefixedGuid(value.getPath().substring(prefix.length(), value.getPath().length() - 1), Set.of(&quot;pk_&quot;, &quot;el_&quot;));</span>
+    }
+    private static void requireRootUri(org.apache.jena.rdf.model.Resource r, URI base, String id) {
+<span class="pc bpc" id="L220" title="2 of 4 branches missed.">        if (!r.isURIResource() || !base.resolve(&quot;resource/&quot; + id.replace(&quot;{&quot;, &quot;%7B&quot;).replace(&quot;}&quot;, &quot;%7D&quot;) + &quot;/&quot;).equals(URI.create(r.getURI()))) throw invalid(&quot;SPARX_AM_IDENTITY&quot;);</span>
+<span class="fc" id="L221">    }</span>
+    private static String description(org.apache.jena.rdf.model.Resource r, String id, List&lt;MappingLoss&gt; losses) {
+<span class="fc" id="L223">        String value = literal(r, DCT + &quot;description&quot;, false); Statement s = r.getProperty(r.getModel().createProperty(DCT + &quot;description&quot;));</span>
+<span class="pc bpc" id="L224" title="1 of 4 branches missed.">        if (s != null &amp;&amp; RDF.dtXMLLiteral.getURI().equals(s.getLiteral().getDatatypeURI())) {</span>
+<span class="nc" id="L225">            value = ExchangeXml.parse((&quot;&lt;div&gt;&quot; + value + &quot;&lt;/div&gt;&quot;).getBytes(StandardCharsets.UTF_8)).getDocumentElement().getTextContent();</span>
+<span class="nc" id="L226">            losses.add(loss(id, &quot;description&quot;, &quot;SPARX_AM_TEXT_FLATTENED&quot;, LossDisposition.TRANSFORMED));</span>
+        }
+<span class="fc" id="L228">        return value;</span>
+    }
+    private static void properties(org.apache.jena.rdf.model.Resource r, String id, Set&lt;String&gt; known,
+            Map&lt;String,String&gt; attributes, Map&lt;String,String&gt; extensions, List&lt;MappingLoss&gt; losses, FragmentBudget preservation) {
+<span class="fc" id="L232">        Map&lt;String,List&lt;RDFNode&gt;&gt; unknown = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        for (Statement s : r.listProperties().toList()) {</span>
+<span class="fc bfc" id="L234" title="All 4 branches covered.">            String predicate = s.getPredicate().getURI(); if (known.contains(predicate) || predicate.equals(RDF.type.getURI())) continue;</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">            String scalar = predicate.startsWith(SS) ? FEATURE_SCALARS.stream().filter(k -&gt; k.equalsIgnoreCase(predicate.substring(SS.length()))).findFirst().orElse(null) : null;</span>
+<span class="pc bpc" id="L236" title="1 of 4 branches missed.">            if (scalar != null &amp;&amp; s.getObject().isLiteral()) {</span>
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">                if (attributes.putIfAbsent(&quot;ea:&quot; + scalar, s.getString()) != null) throw invalid(&quot;SPARX_AM_PROPERTY&quot;);</span>
+<span class="fc" id="L238">            } else unknown.computeIfAbsent(predicate, unused -&gt; new ArrayList&lt;&gt;()).add(s.getObject());</span>
+<span class="fc" id="L239">        }</span>
+<span class="fc" id="L240">        unknown.forEach((predicate, values) -&gt; {</span>
+<span class="fc bfc" id="L241" title="All 4 branches covered.">            if (values.size() == 1 &amp;&amp; values.getFirst().isLiteral()) attributes.put(&quot;attribute:&quot; + predicate, values.getFirst().asLiteral().getLexicalForm());</span>
+<span class="fc" id="L242">            else extensions.put(&quot;rdf:&quot; + predicate, values.stream().map(v -&gt; fragment(v, new HashSet&lt;&gt;(), 0, preservation)).sorted().collect(java.util.stream.Collectors.joining(&quot;,&quot;, &quot;[&quot;, &quot;]&quot;)));</span>
+<span class="fc" id="L243">            losses.add(loss(id, predicate, &quot;SPARX_PROPERTY_PRESERVED&quot;, LossDisposition.PRESERVED_EXTENSION));</span>
+<span class="fc" id="L244">        });</span>
+<span class="fc" id="L245">    }</span>
+    /** Canonical bounded RDF value tree: full URI, lexical form, language and datatype; never Jena blank-node labels. */
+    private static String fragment(RDFNode node, Set&lt;org.apache.jena.rdf.model.Resource&gt; visited, int depth, FragmentBudget budget) {
+<span class="pc bpc" id="L248" title="2 of 4 branches missed.">        if (depth &gt; 16 || ++budget.nodes &gt; 100000) throw invalid(&quot;SPARX_AM_PROPERTY_LIMIT&quot;);</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        if (node.isLiteral()) {</span>
+<span class="fc" id="L250">            Literal l = node.asLiteral();</span>
+<span class="fc" id="L251">            return budget.bound(&quot;L&quot; + field(l.getLexicalForm()) + field(l.getLanguage()) + field(Objects.toString(l.getDatatypeURI(), &quot;&quot;)));</span>
+        }
+<span class="fc" id="L253">        var r = node.asResource();</span>
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">        String identity = budget.bound(node.isURIResource() ? &quot;U&quot; + field(r.getURI()) : &quot;B&quot;);</span>
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">        if (!r.listProperties().hasNext()) return identity;</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        if (!visited.add(r)) throw invalid(&quot;SPARX_AM_STRUCTURED_CYCLE&quot;);</span>
+<span class="fc" id="L257">        List&lt;String&gt; parts = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        for (Statement s : r.listProperties().toList()) parts.add(budget.bound(field(s.getPredicate().getURI())) + fragment(s.getObject(), visited, depth + 1, budget));</span>
+<span class="fc" id="L259">        visited.remove(r); Collections.sort(parts); return identity + &quot;[&quot; + String.join(&quot;,&quot;, parts) + &quot;]&quot;;</span>
+    }
+    private static final class FragmentBudget {
+        int nodes, characters;
+        String bound(String value) {
+<span class="fc" id="L264">            characters += value.length();</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">            if (characters &gt; ExchangeXml.MAX_BYTES) throw invalid(&quot;SPARX_AM_PROPERTY_LIMIT&quot;);</span>
+<span class="fc" id="L266">            return value;</span>
+        }
+    }
+<span class="fc" id="L269">    private static String field(String value) { return value.length() + &quot;:&quot; + value; }</span>
+<span class="fc" id="L270">    private static ExchangeFormatException invalid(String code) { return ExchangeXml.invalid(code, &quot;Response does not satisfy the bounded Sparx AM v2 profile&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

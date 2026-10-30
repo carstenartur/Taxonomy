@@ -1,0 +1,667 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CatalogueOverlayService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">CatalogueOverlayService.java</span></div><h1>CatalogueOverlayService.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal.SourceUse;
+import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
+import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.ResourceLoader;
+import org.springframework.stereotype.Service;
+import tools.jackson.databind.ObjectMapper;
+
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Applies the checked-in JSON catalogue overlay to the Excel catalogue before persistence.
+ *
+ * &lt;p&gt;The Excel workbook remains the source of node identity, titles, descriptions and source
+ * provenance. The overlay contains explicit, reviewable corrections for parent relationships and
+ * analysis metadata that cannot safely be inferred at runtime. Overlay errors fail closed: an
+ * unknown node, unknown parent, cross-root parent, self-reference, cycle or incomplete strict
+ * coverage prevents the catalogue from being persisted.&lt;/p&gt;
+ */
+@Service
+public class CatalogueOverlayService {
+
+<span class="fc" id="L43">    private static final Logger log = LoggerFactory.getLogger(CatalogueOverlayService.class);</span>
+    private static final int SUPPORTED_SCHEMA_VERSION = 2;
+    private static final String SUPPORTED_MODE = &quot;OVERLAY&quot;;
+    private static final String ROLE_CATEGORY = &quot;CATEGORY&quot;;
+    private static final String ROLE_PRODUCT = &quot;PRODUCT&quot;;
+    private static final String ROLE_PRODUCT_FAMILY = &quot;PRODUCT_FAMILY&quot;;
+
+    private final ObjectMapper objectMapper;
+    private final ResourceLoader resourceLoader;
+    private final boolean enabled;
+    private final String overlayResource;
+
+    private volatile LoadedOverlay loadedOverlay;
+<span class="fc" id="L56">    private final Map&lt;String, NodeMetadata&gt; nodeMetadata = new ConcurrentHashMap&lt;&gt;();</span>
+
+<span class="fc" id="L58">    @Autowired</span>
+<span class="fc" id="L59">    private CatalogueRuntimePolicy catalogueRuntimePolicy = CatalogueRuntimePolicy.fullCatalogue();</span>
+
+    public CatalogueOverlayService(
+            ObjectMapper objectMapper,
+            ResourceLoader resourceLoader,
+            @Value(&quot;${taxonomy.catalogue.overlay.enabled:true}&quot;) boolean enabled,
+            @Value(&quot;${taxonomy.catalogue.overlay-resource:classpath:data/nato-taxonomy.json}&quot;)
+<span class="fc" id="L66">            String overlayResource) {</span>
+<span class="fc" id="L67">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L68">        this.resourceLoader = resourceLoader;</span>
+<span class="fc" id="L69">        this.enabled = enabled;</span>
+<span class="fc" id="L70">        this.overlayResource = overlayResource;</span>
+<span class="fc" id="L71">    }</span>
+
+    /**
+     * Applies parent patches and builds a strictly validated, level-consistent hierarchy.
+     *
+     * @param nodes             all virtual roots and workbook nodes, keyed by node code
+     * @param uuidToCode        source UUID to node-code lookup used to normalize workbook parents
+     * @param baseCataloguePath configured Excel catalogue resource
+     * @return auditable application statistics
+     */
+    public OverlayApplicationResult applyAndValidate(
+            Map&lt;String, TaxonomyNode&gt; nodes,
+            Map&lt;String, String&gt; uuidToCode,
+            String baseCataloguePath) {
+<span class="fc" id="L85">        catalogueRuntimePolicy.requireCurrentCatalogueAllowed();</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">        if (FrozenCatalogueContext.current() != null) {</span>
+<span class="nc" id="L87">            throw new IllegalStateException(&quot;Cannot mutate the overlay during a frozen catalogue read&quot;);</span>
+        }
+<span class="fc" id="L89">        Objects.requireNonNull(nodes, &quot;nodes&quot;);</span>
+<span class="fc" id="L90">        Objects.requireNonNull(uuidToCode, &quot;uuidToCode&quot;);</span>
+
+<span class="fc" id="L92">        resolveUuidParents(nodes, uuidToCode);</span>
+
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        LoadedOverlay overlay = enabled ? loadOverlay() : LoadedOverlay.disabled(overlayResource);</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (enabled) {</span>
+<span class="fc" id="L96">            validateBaseCatalogue(overlay.definition(), baseCataloguePath);</span>
+<span class="fc" id="L97">            applyPatches(nodes, overlay.definition());</span>
+<span class="fc" id="L98">            validateStrictCoverage(nodes, overlay.definition());</span>
+        } else {
+<span class="fc" id="L100">            nodeMetadata.clear();</span>
+<span class="fc" id="L101">            log.info(&quot;Taxonomy catalogue overlay is disabled.&quot;);</span>
+        }
+
+<span class="fc" id="L104">        HierarchyStats hierarchyStats = wireAndValidateHierarchy(nodes);</span>
+<span class="fc" id="L105">        validateAnalysisRoles(nodes);</span>
+
+<span class="fc" id="L107">        long productCount = nodeMetadata.values().stream()</span>
+<span class="fc" id="L108">                .filter(metadata -&gt; ROLE_PRODUCT.equals(metadata.analysisRole()))</span>
+<span class="fc" id="L109">                .count();</span>
+<span class="fc" id="L110">        long productFamilyCount = nodeMetadata.values().stream()</span>
+<span class="fc" id="L111">                .filter(metadata -&gt; ROLE_PRODUCT_FAMILY.equals(metadata.analysisRole()))</span>
+<span class="fc" id="L112">                .count();</span>
+
+<span class="fc" id="L114">        OverlayApplicationResult result = new OverlayApplicationResult(</span>
+<span class="fc" id="L115">                overlay.definition().getNodePatches().size(),</span>
+                productCount,
+                productFamilyCount,
+<span class="fc" id="L118">                hierarchyStats.maxDirectChildren(),</span>
+<span class="fc" id="L119">                hierarchyStats.maxDepth(),</span>
+<span class="fc" id="L120">                overlay.sha256(),</span>
+<span class="fc" id="L121">                overlay.definition().getMappingVersion(),</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                enabled ? SourceUse.applied(overlay.input()) : SourceUse.notUsed());</span>
+
+<span class="fc" id="L124">        log.info(&quot;Catalogue overlay applied: {} patches, {} products, {} product families, &quot;</span>
+                        + &quot;max direct children {}, max depth {}, digest {}.&quot;,
+<span class="fc" id="L126">                result.patchCount(), result.productCount(), result.productFamilyCount(),</span>
+<span class="fc" id="L127">                result.maxDirectChildren(), result.maxDepth(), abbreviate(result.overlaySha256()));</span>
+<span class="fc" id="L128">        return result;</span>
+    }
+
+    public boolean isEnabled() {
+<span class="nc" id="L132">        var frozen = FrozenCatalogueContext.current();</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        if (frozen != null) return frozen.overlayMetadata().enabled();</span>
+<span class="nc" id="L134">        return enabled;</span>
+    }
+
+    /** An overlay assignment is not evidence that the source defines semantic inheritance. */
+    public boolean hasParentPatch(String code) {
+<span class="fc" id="L139">        var frozen = FrozenCatalogueContext.current();</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (frozen != null) return frozen.requireNode(code).parentPatch();</span>
+<span class="fc" id="L141">        catalogueRuntimePolicy.requireCurrentCatalogueAllowed();</span>
+<span class="pc bpc" id="L142" title="1 of 4 branches missed.">        if (!enabled || code == null) return false;</span>
+<span class="fc" id="L143">        loadOverlay();</span>
+<span class="fc" id="L144">        return nodeMetadata.containsKey(code);</span>
+    }
+
+    public boolean isProduct(String code) {
+<span class="fc" id="L148">        return ROLE_PRODUCT.equals(getNodeMetadata(code).analysisRole());</span>
+    }
+
+    public boolean isProductFamily(String code) {
+<span class="fc" id="L152">        return ROLE_PRODUCT_FAMILY.equals(getNodeMetadata(code).analysisRole());</span>
+    }
+
+    public String analysisRole(String code) {
+<span class="fc" id="L156">        return getNodeMetadata(code).analysisRole();</span>
+    }
+
+    public NodeMetadata getNodeMetadata(String code) {
+<span class="fc" id="L160">        var frozen = FrozenCatalogueContext.current();</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (frozen != null) return frozen.requireNode(code).metadata();</span>
+<span class="fc" id="L162">        catalogueRuntimePolicy.requireCurrentCatalogueAllowed();</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        if (enabled) {</span>
+<span class="fc" id="L164">            loadOverlay();</span>
+        }
+<span class="fc" id="L166">        return nodeMetadata.getOrDefault(code, NodeMetadata.category());</span>
+    }
+
+    public OverlayMetadata getOverlayMetadata() {
+<span class="fc" id="L170">        var frozen = FrozenCatalogueContext.current();</span>
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">        if (frozen != null) return frozen.overlayMetadata();</span>
+<span class="fc" id="L172">        catalogueRuntimePolicy.requireCurrentCatalogueAllowed();</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        if (!enabled) {</span>
+<span class="fc" id="L174">            return new OverlayMetadata(false, overlayResource, null, null, null, 0);</span>
+        }
+<span class="fc" id="L176">        LoadedOverlay overlay = loadOverlay();</span>
+<span class="fc" id="L177">        return new OverlayMetadata(</span>
+                true,
+                overlayResource,
+<span class="fc" id="L180">                overlay.definition().getBaseCatalogue(),</span>
+<span class="fc" id="L181">                overlay.definition().getMappingVersion(),</span>
+<span class="fc" id="L182">                overlay.sha256(),</span>
+<span class="fc" id="L183">                overlay.definition().getNodePatches().size());</span>
+    }
+
+    private LoadedOverlay loadOverlay() {
+<span class="fc" id="L187">        LoadedOverlay current = loadedOverlay;</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        if (current != null) {</span>
+<span class="fc" id="L189">            return current;</span>
+        }
+<span class="fc" id="L191">        synchronized (this) {</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">            if (loadedOverlay == null) {</span>
+<span class="fc" id="L193">                LoadedOverlay complete = readOverlay();</span>
+<span class="fc" id="L194">                rebuildMetadataIndex(complete.definition());</span>
+                // Publish the digest only after every associated metadata entry is visible.
+<span class="fc" id="L196">                loadedOverlay = complete;</span>
+            }
+<span class="fc" id="L198">            return loadedOverlay;</span>
+        }
+    }
+
+    private LoadedOverlay readOverlay() {
+        CatalogueSourceBytes bytes;
+        OverlayDefinition definition;
+        try {
+<span class="fc" id="L206">            bytes = CatalogueSourceBytes.capture(() -&gt; resourceLoader.getResource(overlayResource).getInputStream());</span>
+<span class="fc" id="L207">            try (InputStream input = bytes.openStream()) { definition = objectMapper.readValue(input, OverlayDefinition.class); }</span>
+<span class="nc" id="L208">        } catch (Exception exception) {</span>
+<span class="nc" id="L209">            throw new IllegalStateException(&quot;Cannot load taxonomy catalogue overlay&quot;);</span>
+<span class="fc" id="L210">        }</span>
+<span class="fc" id="L211">        validateDefinition(definition);</span>
+<span class="fc" id="L212">        return new LoadedOverlay(definition, bytes.sha256(), bytes);</span>
+    }
+
+    private void validateDefinition(OverlayDefinition definition) {
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">        if (definition == null) {</span>
+<span class="nc" id="L217">            throw new IllegalStateException(&quot;Taxonomy catalogue overlay is empty&quot;);</span>
+        }
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">        if (definition.getSchemaVersion() != SUPPORTED_SCHEMA_VERSION) {</span>
+<span class="nc" id="L220">            throw new IllegalStateException(&quot;Unsupported taxonomy catalogue overlay schemaVersion &quot;</span>
+<span class="nc" id="L221">                    + definition.getSchemaVersion() + &quot;; expected &quot; + SUPPORTED_SCHEMA_VERSION);</span>
+        }
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">        if (!SUPPORTED_MODE.equals(normalize(definition.getMode()))) {</span>
+<span class="nc" id="L224">            throw new IllegalStateException(&quot;Unsupported taxonomy catalogue overlay mode '&quot;</span>
+<span class="nc" id="L225">                    + definition.getMode() + &quot;'; expected &quot; + SUPPORTED_MODE);</span>
+        }
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">        if (isBlank(definition.getBaseCatalogue())) {</span>
+<span class="nc" id="L228">            throw new IllegalStateException(&quot;Taxonomy catalogue overlay must declare baseCatalogue&quot;);</span>
+        }
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">        if (isBlank(definition.getMappingVersion())) {</span>
+<span class="nc" id="L231">            throw new IllegalStateException(&quot;Taxonomy catalogue overlay must declare mappingVersion&quot;);</span>
+        }
+
+<span class="fc" id="L234">        Set&lt;String&gt; codes = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        for (NodePatch patch : definition.getNodePatches()) {</span>
+<span class="pc bpc" id="L236" title="2 of 4 branches missed.">            if (patch == null || isBlank(patch.getCode())) {</span>
+<span class="nc" id="L237">                throw new IllegalStateException(&quot;Taxonomy catalogue overlay contains a patch without code&quot;);</span>
+            }
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">            if (!codes.add(patch.getCode())) {</span>
+<span class="nc" id="L240">                throw new IllegalStateException(&quot;Duplicate taxonomy catalogue overlay patch for code &quot;</span>
+<span class="nc" id="L241">                        + patch.getCode());</span>
+            }
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">            if (isBlank(patch.getExpectedTitle())) {</span>
+<span class="nc" id="L244">                throw new IllegalStateException(&quot;Patch &quot; + patch.getCode()</span>
+                        + &quot; must declare expectedTitle for source-drift detection&quot;);
+            }
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">            if (isBlank(patch.getExpectedState())) {</span>
+<span class="nc" id="L248">                throw new IllegalStateException(&quot;Patch &quot; + patch.getCode()</span>
+                        + &quot; must declare expectedState for source-drift detection&quot;);
+            }
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">            if (isBlank(patch.getParentCode())) {</span>
+<span class="nc" id="L252">                throw new IllegalStateException(&quot;Patch &quot; + patch.getCode() + &quot; has no parentCode&quot;);</span>
+            }
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">            if (patch.getCode().equals(patch.getParentCode())) {</span>
+<span class="nc" id="L255">                throw new IllegalStateException(&quot;Patch &quot; + patch.getCode()</span>
+                        + &quot; creates a self-parent reference&quot;);
+            }
+<span class="fc" id="L258">            Set&lt;String&gt; secondaryCodes = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">            for (String secondaryCode : patch.getSecondaryClassificationCodes()) {</span>
+<span class="pc bpc" id="L260" title="1 of 2 branches missed.">                if (isBlank(secondaryCode)) {</span>
+<span class="nc" id="L261">                    throw new IllegalStateException(&quot;Patch &quot; + patch.getCode()</span>
+                            + &quot; contains a blank secondary classification&quot;);
+                }
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">                if (!secondaryCodes.add(secondaryCode)) {</span>
+<span class="nc" id="L265">                    throw new IllegalStateException(&quot;Patch &quot; + patch.getCode()</span>
+                            + &quot; contains duplicate secondary classification &quot; + secondaryCode);
+                }
+<span class="fc" id="L268">            }</span>
+<span class="fc" id="L269">            String role = normalizeRole(patch.getAnalysisRole());</span>
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">            if (!Set.of(ROLE_PRODUCT, ROLE_PRODUCT_FAMILY).contains(role)) {</span>
+<span class="nc" id="L271">                throw new IllegalStateException(&quot;Patch &quot; + patch.getCode()</span>
+<span class="nc" id="L272">                        + &quot; has unsupported analysisRole '&quot; + patch.getAnalysisRole() + &quot;'&quot;);</span>
+            }
+<span class="pc bpc" id="L274" title="2 of 4 branches missed.">            if (patch.getConfidence() &lt; 0.0 || patch.getConfidence() &gt; 1.0) {</span>
+<span class="nc" id="L275">                throw new IllegalStateException(&quot;Patch &quot; + patch.getCode()</span>
+                        + &quot; confidence must be between 0 and 1&quot;);
+            }
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">            if (isBlank(patch.getJustification())) {</span>
+<span class="nc" id="L279">                throw new IllegalStateException(&quot;Patch &quot; + patch.getCode()</span>
+                        + &quot; must contain a justification&quot;);
+            }
+<span class="fc" id="L282">        }</span>
+<span class="fc" id="L283">    }</span>
+
+    private void rebuildMetadataIndex(OverlayDefinition definition) {
+<span class="fc" id="L286">        nodeMetadata.clear();</span>
+<span class="fc bfc" id="L287" title="All 2 branches covered.">        for (NodePatch patch : definition.getNodePatches()) {</span>
+<span class="fc" id="L288">            nodeMetadata.put(patch.getCode(), new NodeMetadata(</span>
+<span class="fc" id="L289">                    normalizeRole(patch.getAnalysisRole()),</span>
+<span class="fc" id="L290">                    List.copyOf(patch.getSecondaryClassificationCodes()),</span>
+<span class="fc" id="L291">                    patch.getConfidence(),</span>
+<span class="fc" id="L292">                    patch.isReviewRequired(),</span>
+<span class="fc" id="L293">                    patch.getJustification()));</span>
+<span class="fc" id="L294">        }</span>
+<span class="fc" id="L295">    }</span>
+
+    private void validateBaseCatalogue(OverlayDefinition definition, String baseCataloguePath) {
+<span class="fc" id="L298">        Resource base = resourceLoader.getResource(baseCataloguePath);</span>
+<span class="fc" id="L299">        String actualFilename = base.getFilename();</span>
+<span class="pc bpc" id="L300" title="1 of 2 branches missed.">        if (actualFilename == null) {</span>
+<span class="nc" id="L301">            actualFilename = baseCataloguePath.substring(baseCataloguePath.lastIndexOf('/') + 1);</span>
+        }
+<span class="pc bpc" id="L303" title="1 of 2 branches missed.">        if (!definition.getBaseCatalogue().equals(actualFilename)) {</span>
+<span class="nc" id="L304">            throw new IllegalStateException(&quot;Taxonomy catalogue overlay targets baseCatalogue '&quot;</span>
+<span class="nc" id="L305">                    + definition.getBaseCatalogue() + &quot;' but configured catalogue is '&quot;</span>
+                    + actualFilename + &quot;'&quot;);
+        }
+<span class="fc" id="L308">    }</span>
+
+    private void resolveUuidParents(Map&lt;String, TaxonomyNode&gt; nodes,
+                                    Map&lt;String, String&gt; uuidToCode) {
+<span class="fc bfc" id="L312" title="All 2 branches covered.">        for (TaxonomyNode node : nodes.values()) {</span>
+<span class="fc" id="L313">            String parentCode = node.getParentCode();</span>
+<span class="fc bfc" id="L314" title="All 4 branches covered.">            if (isBlank(parentCode) || nodes.containsKey(parentCode)) {</span>
+<span class="fc" id="L315">                continue;</span>
+            }
+<span class="fc" id="L317">            String resolved = uuidToCode.get(parentCode);</span>
+<span class="fc bfc" id="L318" title="All 2 branches covered.">            if (resolved != null) {</span>
+<span class="fc" id="L319">                node.setParentCode(resolved);</span>
+            }
+<span class="fc" id="L321">        }</span>
+<span class="fc" id="L322">    }</span>
+
+    private void applyPatches(Map&lt;String, TaxonomyNode&gt; nodes, OverlayDefinition definition) {
+<span class="fc bfc" id="L325" title="All 2 branches covered.">        for (NodePatch patch : definition.getNodePatches()) {</span>
+<span class="fc" id="L326">            TaxonomyNode node = nodes.get(patch.getCode());</span>
+<span class="pc bpc" id="L327" title="1 of 2 branches missed.">            if (node == null) {</span>
+<span class="nc" id="L328">                throw new IllegalStateException(&quot;Overlay patch references unknown node &quot;</span>
+<span class="nc" id="L329">                        + patch.getCode());</span>
+            }
+<span class="fc" id="L331">            TaxonomyNode parent = nodes.get(patch.getParentCode());</span>
+<span class="fc bfc" id="L332" title="All 2 branches covered.">            if (parent == null) {</span>
+<span class="fc" id="L333">                throw new IllegalStateException(&quot;Overlay patch &quot; + patch.getCode()</span>
+<span class="fc" id="L334">                        + &quot; references unknown parent &quot; + patch.getParentCode());</span>
+            }
+<span class="pc bpc" id="L336" title="1 of 2 branches missed.">            if (!isBlank(patch.getExpectedTitle())</span>
+<span class="fc" id="L337">                    &amp;&amp; !normalizeWhitespace(patch.getExpectedTitle())</span>
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">                            .equals(normalizeWhitespace(node.getName()))) {</span>
+<span class="nc" id="L339">                throw new IllegalStateException(&quot;Overlay patch &quot; + patch.getCode()</span>
+<span class="nc" id="L340">                        + &quot; expected title '&quot; + patch.getExpectedTitle()</span>
+<span class="nc" id="L341">                        + &quot;' but source title is '&quot; + node.getName() + &quot;'&quot;);</span>
+            }
+<span class="pc bpc" id="L343" title="1 of 2 branches missed.">            if (!isBlank(patch.getExpectedState())</span>
+<span class="pc bpc" id="L344" title="1 of 2 branches missed.">                    &amp;&amp; !patch.getExpectedState().equalsIgnoreCase(nullToEmpty(node.getState()))) {</span>
+<span class="nc" id="L345">                throw new IllegalStateException(&quot;Overlay patch &quot; + patch.getCode()</span>
+<span class="nc" id="L346">                        + &quot; expected state '&quot; + patch.getExpectedState()</span>
+<span class="nc" id="L347">                        + &quot;' but source state is '&quot; + node.getState() + &quot;'&quot;);</span>
+            }
+<span class="pc bpc" id="L349" title="1 of 2 branches missed.">            if (node == parent) {</span>
+<span class="nc" id="L350">                throw new IllegalStateException(&quot;Overlay patch &quot; + patch.getCode()</span>
+                        + &quot; creates a self-parent reference&quot;);
+            }
+<span class="pc bpc" id="L353" title="1 of 2 branches missed.">            if (!Objects.equals(node.getTaxonomyRoot(), parent.getTaxonomyRoot())) {</span>
+<span class="nc" id="L354">                throw new IllegalStateException(&quot;Overlay patch &quot; + patch.getCode()</span>
+<span class="nc" id="L355">                        + &quot; crosses taxonomy roots from &quot; + node.getTaxonomyRoot()</span>
+<span class="nc" id="L356">                        + &quot; to &quot; + parent.getTaxonomyRoot());</span>
+            }
+<span class="fc bfc" id="L358" title="All 2 branches covered.">            for (String secondaryCode : patch.getSecondaryClassificationCodes()) {</span>
+<span class="fc" id="L359">                TaxonomyNode secondary = nodes.get(secondaryCode);</span>
+<span class="pc bpc" id="L360" title="1 of 2 branches missed.">                if (secondary == null) {</span>
+<span class="nc" id="L361">                    throw new IllegalStateException(&quot;Overlay patch &quot; + patch.getCode()</span>
+                            + &quot; references unknown secondary classification &quot; + secondaryCode);
+                }
+<span class="pc bpc" id="L364" title="1 of 2 branches missed.">                if (!Objects.equals(node.getTaxonomyRoot(), secondary.getTaxonomyRoot())) {</span>
+<span class="nc" id="L365">                    throw new IllegalStateException(&quot;Overlay patch &quot; + patch.getCode()</span>
+                            + &quot; has cross-root secondary classification &quot; + secondaryCode);
+                }
+<span class="pc bpc" id="L368" title="1 of 2 branches missed.">                if (secondaryCode.equals(patch.getCode())</span>
+<span class="pc bpc" id="L369" title="1 of 2 branches missed.">                        || secondaryCode.equals(patch.getParentCode())) {</span>
+<span class="nc" id="L370">                    throw new IllegalStateException(&quot;Overlay patch &quot; + patch.getCode()</span>
+                            + &quot; contains a redundant secondary classification &quot; + secondaryCode);
+                }
+<span class="fc" id="L373">            }</span>
+<span class="fc" id="L374">            node.setParentCode(patch.getParentCode());</span>
+<span class="fc" id="L375">        }</span>
+<span class="fc" id="L376">    }</span>
+
+    private void validateStrictCoverage(Map&lt;String, TaxonomyNode&gt; nodes,
+                                        OverlayDefinition definition) {
+<span class="fc" id="L380">        OverlayValidation validation = definition.getValidation();</span>
+<span class="fc bfc" id="L381" title="All 2 branches covered.">        if (validation == null</span>
+<span class="pc bpc" id="L382" title="1 of 2 branches missed.">                || isBlank(validation.getRequireExplicitPatchForRoot())</span>
+<span class="pc bpc" id="L383" title="1 of 2 branches missed.">                || isBlank(validation.getRequireExplicitPatchForState())) {</span>
+<span class="fc" id="L384">            return;</span>
+        }
+<span class="fc" id="L386">        Set&lt;String&gt; patchedCodes = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L387" title="All 2 branches covered.">        for (NodePatch patch : definition.getNodePatches()) {</span>
+<span class="fc" id="L388">            patchedCodes.add(patch.getCode());</span>
+<span class="fc" id="L389">        }</span>
+<span class="fc" id="L390">        List&lt;String&gt; missing = nodes.values().stream()</span>
+<span class="fc" id="L391">                .filter(node -&gt; validation.getRequireExplicitPatchForRoot()</span>
+<span class="fc" id="L392">                        .equals(node.getTaxonomyRoot()))</span>
+<span class="fc" id="L393">                .filter(node -&gt; validation.getRequireExplicitPatchForState()</span>
+<span class="fc" id="L394">                        .equalsIgnoreCase(nullToEmpty(node.getState())))</span>
+<span class="fc" id="L395">                .map(TaxonomyNode::getCode)</span>
+<span class="pc bpc" id="L396" title="1 of 2 branches missed.">                .filter(code -&gt; !patchedCodes.contains(code))</span>
+<span class="fc" id="L397">                .sorted()</span>
+<span class="fc" id="L398">                .toList();</span>
+<span class="pc bpc" id="L399" title="1 of 2 branches missed.">        if (!missing.isEmpty()) {</span>
+<span class="nc" id="L400">            throw new IllegalStateException(&quot;Catalogue overlay does not explicitly classify &quot;</span>
+<span class="nc" id="L401">                    + missing.size() + &quot; node(s) required by strict validation: &quot;</span>
+<span class="nc" id="L402">                    + missing.stream().limit(20).toList());</span>
+        }
+<span class="fc" id="L404">    }</span>
+
+    private HierarchyStats wireAndValidateHierarchy(Map&lt;String, TaxonomyNode&gt; nodes) {
+<span class="fc" id="L407">        List&lt;TaxonomyNode&gt; roots = nodes.values().stream()</span>
+<span class="fc bfc" id="L408" title="All 2 branches covered.">                .filter(node -&gt; node.getLevel() == 0)</span>
+<span class="fc" id="L409">                .sorted(Comparator.comparing(TaxonomyNode::getCode))</span>
+<span class="fc" id="L410">                .toList();</span>
+<span class="pc bpc" id="L411" title="1 of 2 branches missed.">        if (roots.isEmpty()) {</span>
+<span class="nc" id="L412">            throw new IllegalStateException(&quot;Catalogue has no virtual taxonomy roots&quot;);</span>
+        }
+
+<span class="fc bfc" id="L415" title="All 2 branches covered.">        for (TaxonomyNode node : nodes.values()) {</span>
+<span class="fc" id="L416">            node.setParent(null);</span>
+<span class="fc bfc" id="L417" title="All 2 branches covered.">            if (node.getLevel() == 0) {</span>
+<span class="fc" id="L418">                node.setParentCode(null);</span>
+<span class="fc bfc" id="L419" title="All 2 branches covered.">            } else if (isBlank(node.getParentCode())) {</span>
+<span class="fc" id="L420">                TaxonomyNode root = nodes.get(node.getTaxonomyRoot());</span>
+<span class="pc bpc" id="L421" title="2 of 4 branches missed.">                if (root == null || root.getLevel() != 0) {</span>
+<span class="nc" id="L422">                    throw new IllegalStateException(&quot;Node &quot; + node.getCode()</span>
+<span class="nc" id="L423">                            + &quot; has no parent and unknown virtual root &quot; + node.getTaxonomyRoot());</span>
+                }
+<span class="fc" id="L425">                node.setParentCode(root.getCode());</span>
+            }
+<span class="fc" id="L427">        }</span>
+
+<span class="fc" id="L429">        Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenByParent = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L430" title="All 2 branches covered.">        for (TaxonomyNode node : nodes.values()) {</span>
+<span class="fc bfc" id="L431" title="All 2 branches covered.">            if (node.getLevel() == 0) {</span>
+<span class="fc" id="L432">                continue;</span>
+            }
+<span class="fc" id="L434">            TaxonomyNode parent = nodes.get(node.getParentCode());</span>
+<span class="pc bpc" id="L435" title="1 of 2 branches missed.">            if (parent == null) {</span>
+<span class="nc" id="L436">                throw new IllegalStateException(&quot;Node &quot; + node.getCode()</span>
+<span class="nc" id="L437">                        + &quot; references unresolved parent &quot; + node.getParentCode());</span>
+            }
+<span class="pc bpc" id="L439" title="1 of 2 branches missed.">            if (node == parent) {</span>
+<span class="nc" id="L440">                throw new IllegalStateException(&quot;Node &quot; + node.getCode()</span>
+                        + &quot; references itself as parent&quot;);
+            }
+<span class="pc bpc" id="L443" title="1 of 2 branches missed.">            if (!Objects.equals(node.getTaxonomyRoot(), parent.getTaxonomyRoot())) {</span>
+<span class="nc" id="L444">                throw new IllegalStateException(&quot;Node &quot; + node.getCode()</span>
+<span class="nc" id="L445">                        + &quot; crosses taxonomy roots via parent &quot; + parent.getCode());</span>
+            }
+<span class="fc" id="L447">            childrenByParent.computeIfAbsent(parent.getCode(), ignored -&gt; new ArrayList&lt;&gt;())</span>
+<span class="fc" id="L448">                    .add(node);</span>
+<span class="fc" id="L449">        }</span>
+<span class="fc" id="L450">        childrenByParent.values().forEach(children -&gt;</span>
+<span class="fc" id="L451">                children.sort(Comparator.comparing(TaxonomyNode::getCode)));</span>
+
+<span class="fc" id="L453">        Map&lt;String, VisitState&gt; states = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L454">        Set&lt;String&gt; visited = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L455">        int maxDepth = 0;</span>
+<span class="fc bfc" id="L456" title="All 2 branches covered.">        for (TaxonomyNode root : roots) {</span>
+<span class="fc" id="L457">            root.setLevel(0);</span>
+<span class="fc" id="L458">            maxDepth = Math.max(maxDepth, visit(root, 0, childrenByParent, states, visited));</span>
+<span class="fc" id="L459">        }</span>
+
+<span class="pc bpc" id="L461" title="1 of 2 branches missed.">        if (visited.size() != nodes.size()) {</span>
+<span class="nc" id="L462">            List&lt;String&gt; unreachable = nodes.keySet().stream()</span>
+<span class="nc bnc" id="L463" title="All 2 branches missed.">                    .filter(code -&gt; !visited.contains(code))</span>
+<span class="nc" id="L464">                    .sorted()</span>
+<span class="nc" id="L465">                    .limit(20)</span>
+<span class="nc" id="L466">                    .toList();</span>
+<span class="nc" id="L467">            throw new IllegalStateException(&quot;Catalogue hierarchy contains unreachable or cyclic nodes: &quot;</span>
+                    + unreachable);
+        }
+
+<span class="fc" id="L471">        int maxDirectChildren = childrenByParent.values().stream()</span>
+<span class="fc" id="L472">                .mapToInt(List::size)</span>
+<span class="fc" id="L473">                .max()</span>
+<span class="fc" id="L474">                .orElse(0);</span>
+<span class="fc" id="L475">        return new HierarchyStats(maxDirectChildren, maxDepth);</span>
+    }
+
+    private int visit(TaxonomyNode node,
+                      int level,
+                      Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenByParent,
+                      Map&lt;String, VisitState&gt; states,
+                      Set&lt;String&gt; visited) {
+<span class="fc" id="L483">        VisitState current = states.get(node.getCode());</span>
+<span class="pc bpc" id="L484" title="1 of 2 branches missed.">        if (current == VisitState.VISITING) {</span>
+<span class="nc" id="L485">            throw new IllegalStateException(&quot;Catalogue hierarchy contains a cycle at &quot;</span>
+<span class="nc" id="L486">                    + node.getCode());</span>
+        }
+<span class="pc bpc" id="L488" title="1 of 2 branches missed.">        if (current == VisitState.VISITED) {</span>
+<span class="nc" id="L489">            return level;</span>
+        }
+<span class="fc" id="L491">        states.put(node.getCode(), VisitState.VISITING);</span>
+<span class="fc" id="L492">        node.setLevel(level);</span>
+<span class="fc" id="L493">        visited.add(node.getCode());</span>
+<span class="fc" id="L494">        int maxDepth = level;</span>
+<span class="fc bfc" id="L495" title="All 2 branches covered.">        for (TaxonomyNode child : childrenByParent.getOrDefault(node.getCode(), List.of())) {</span>
+<span class="fc" id="L496">            child.setParent(node);</span>
+<span class="fc" id="L497">            maxDepth = Math.max(maxDepth,</span>
+<span class="fc" id="L498">                    visit(child, level + 1, childrenByParent, states, visited));</span>
+<span class="fc" id="L499">        }</span>
+<span class="fc" id="L500">        states.put(node.getCode(), VisitState.VISITED);</span>
+<span class="fc" id="L501">        return maxDepth;</span>
+    }
+
+    private void validateAnalysisRoles(Map&lt;String, TaxonomyNode&gt; nodes) {
+<span class="fc" id="L505">        Set&lt;String&gt; parentCodes = nodes.values().stream()</span>
+<span class="fc" id="L506">                .map(TaxonomyNode::getParentCode)</span>
+<span class="fc" id="L507">                .filter(Objects::nonNull)</span>
+<span class="fc" id="L508">                .collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc" id="L509">        List&lt;String&gt; productParents = nodeMetadata.entrySet().stream()</span>
+<span class="fc" id="L510">                .filter(entry -&gt; ROLE_PRODUCT.equals(entry.getValue().analysisRole()))</span>
+<span class="fc" id="L511">                .map(Map.Entry::getKey)</span>
+<span class="fc" id="L512">                .filter(parentCodes::contains)</span>
+<span class="fc" id="L513">                .sorted()</span>
+<span class="fc" id="L514">                .toList();</span>
+<span class="pc bpc" id="L515" title="1 of 2 branches missed.">        if (!productParents.isEmpty()) {</span>
+<span class="nc" id="L516">            throw new IllegalStateException(&quot;Nodes classified as PRODUCT must be leaves: &quot;</span>
+<span class="nc" id="L517">                    + productParents.stream().limit(20).toList());</span>
+        }
+<span class="fc" id="L519">    }</span>
+
+    private String normalizeWhitespace(String value) {
+<span class="fc" id="L522">        return nullToEmpty(value).trim().replaceAll(&quot;\\s+&quot;, &quot; &quot;);</span>
+    }
+
+    private String normalizeRole(String role) {
+<span class="fc" id="L526">        String normalized = normalize(role);</span>
+<span class="pc bpc" id="L527" title="1 of 2 branches missed.">        return normalized.isBlank() ? ROLE_CATEGORY : normalized;</span>
+    }
+
+    private String normalize(String value) {
+<span class="fc" id="L531">        return nullToEmpty(value).trim().toUpperCase(Locale.ROOT);</span>
+    }
+
+    private boolean isBlank(String value) {
+<span class="fc bfc" id="L535" title="All 4 branches covered.">        return value == null || value.isBlank();</span>
+    }
+
+    private String nullToEmpty(String value) {
+<span class="fc bfc" id="L539" title="All 2 branches covered.">        return value == null ? &quot;&quot; : value;</span>
+    }
+
+    private String abbreviate(String value) {
+<span class="pc bpc" id="L543" title="1 of 4 branches missed.">        return value == null || value.length() &lt;= 12 ? value : value.substring(0, 12);</span>
+    }
+
+<span class="fc" id="L546">    private enum VisitState { VISITING, VISITED }</span>
+
+<span class="fc" id="L548">    private record LoadedOverlay(OverlayDefinition definition, String sha256, CatalogueSourceBytes input) {</span>
+        static LoadedOverlay disabled(String resource) {
+<span class="fc" id="L550">            OverlayDefinition definition = new OverlayDefinition();</span>
+<span class="fc" id="L551">            definition.setSchemaVersion(SUPPORTED_SCHEMA_VERSION);</span>
+<span class="fc" id="L552">            definition.setMode(SUPPORTED_MODE);</span>
+<span class="fc" id="L553">            definition.setMappingVersion(&quot;disabled&quot;);</span>
+<span class="fc" id="L554">            definition.setBaseCatalogue(resource);</span>
+<span class="fc" id="L555">            return new LoadedOverlay(definition, null, null);</span>
+        }
+    }
+
+<span class="fc" id="L559">    private record HierarchyStats(int maxDirectChildren, int maxDepth) {}</span>
+
+<span class="fc" id="L561">    public record OverlayApplicationResult(</span>
+            int patchCount,
+            long productCount,
+            long productFamilyCount,
+            int maxDirectChildren,
+            int maxDepth,
+            String overlaySha256,
+            String mappingVersion,
+            SourceUse sourceUse) {}
+
+<span class="fc" id="L571">    public record OverlayMetadata(</span>
+            boolean enabled,
+            String resource,
+            String baseCatalogue,
+            String mappingVersion,
+            String sha256,
+            int patchCount) {}
+
+    public record NodeMetadata(
+            String analysisRole,
+            List&lt;String&gt; secondaryClassificationCodes,
+            double confidence,
+            boolean reviewRequired,
+            String justification) {
+<span class="fc" id="L585">        public NodeMetadata {</span>
+<span class="fc" id="L586">            secondaryClassificationCodes = List.copyOf(secondaryClassificationCodes);</span>
+<span class="fc" id="L587">        }</span>
+
+        static NodeMetadata category() {
+<span class="fc" id="L590">            return new NodeMetadata(ROLE_CATEGORY, List.of(), 1.0, false, null);</span>
+        }
+    }
+
+    /** Jackson-bound root object for schema version 2. */
+<span class="fc" id="L595">    public static class OverlayDefinition {</span>
+        private int schemaVersion;
+        private String mode;
+        private String baseCatalogue;
+        private String mappingVersion;
+        private String description;
+        private OverlayValidation validation;
+<span class="fc" id="L602">        private List&lt;NodePatch&gt; nodePatches = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L604">        public int getSchemaVersion() { return schemaVersion; }</span>
+<span class="fc" id="L605">        public void setSchemaVersion(int schemaVersion) { this.schemaVersion = schemaVersion; }</span>
+<span class="fc" id="L606">        public String getMode() { return mode; }</span>
+<span class="fc" id="L607">        public void setMode(String mode) { this.mode = mode; }</span>
+<span class="fc" id="L608">        public String getBaseCatalogue() { return baseCatalogue; }</span>
+<span class="fc" id="L609">        public void setBaseCatalogue(String baseCatalogue) { this.baseCatalogue = baseCatalogue; }</span>
+<span class="fc" id="L610">        public String getMappingVersion() { return mappingVersion; }</span>
+<span class="fc" id="L611">        public void setMappingVersion(String mappingVersion) { this.mappingVersion = mappingVersion; }</span>
+<span class="nc" id="L612">        public String getDescription() { return description; }</span>
+<span class="fc" id="L613">        public void setDescription(String description) { this.description = description; }</span>
+<span class="fc" id="L614">        public OverlayValidation getValidation() { return validation; }</span>
+<span class="fc" id="L615">        public void setValidation(OverlayValidation validation) { this.validation = validation; }</span>
+        public List&lt;NodePatch&gt; getNodePatches() {
+<span class="pc bpc" id="L617" title="1 of 2 branches missed.">            return nodePatches == null ? List.of() : nodePatches;</span>
+        }
+<span class="fc" id="L619">        public void setNodePatches(List&lt;NodePatch&gt; nodePatches) { this.nodePatches = nodePatches; }</span>
+    }
+
+<span class="fc" id="L622">    public static class OverlayValidation {</span>
+        private String requireExplicitPatchForRoot;
+        private String requireExplicitPatchForState;
+
+<span class="fc" id="L626">        public String getRequireExplicitPatchForRoot() { return requireExplicitPatchForRoot; }</span>
+<span class="fc" id="L627">        public void setRequireExplicitPatchForRoot(String value) { this.requireExplicitPatchForRoot = value; }</span>
+<span class="fc" id="L628">        public String getRequireExplicitPatchForState() { return requireExplicitPatchForState; }</span>
+<span class="fc" id="L629">        public void setRequireExplicitPatchForState(String value) { this.requireExplicitPatchForState = value; }</span>
+    }
+
+<span class="fc" id="L632">    public static class NodePatch {</span>
+        private String code;
+        private String expectedTitle;
+        private String expectedState;
+        private String parentCode;
+        private String analysisRole;
+<span class="fc" id="L638">        private List&lt;String&gt; secondaryClassificationCodes = new ArrayList&lt;&gt;();</span>
+        private double confidence;
+        private boolean reviewRequired;
+        private String justification;
+
+<span class="fc" id="L643">        public String getCode() { return code; }</span>
+<span class="fc" id="L644">        public void setCode(String code) { this.code = code; }</span>
+<span class="fc" id="L645">        public String getExpectedTitle() { return expectedTitle; }</span>
+<span class="fc" id="L646">        public void setExpectedTitle(String expectedTitle) { this.expectedTitle = expectedTitle; }</span>
+<span class="fc" id="L647">        public String getExpectedState() { return expectedState; }</span>
+<span class="fc" id="L648">        public void setExpectedState(String expectedState) { this.expectedState = expectedState; }</span>
+<span class="fc" id="L649">        public String getParentCode() { return parentCode; }</span>
+<span class="fc" id="L650">        public void setParentCode(String parentCode) { this.parentCode = parentCode; }</span>
+<span class="fc" id="L651">        public String getAnalysisRole() { return analysisRole; }</span>
+<span class="fc" id="L652">        public void setAnalysisRole(String analysisRole) { this.analysisRole = analysisRole; }</span>
+        public List&lt;String&gt; getSecondaryClassificationCodes() {
+<span class="pc bpc" id="L654" title="1 of 2 branches missed.">            return secondaryClassificationCodes == null ? List.of() : secondaryClassificationCodes;</span>
+        }
+        public void setSecondaryClassificationCodes(List&lt;String&gt; value) {
+<span class="fc" id="L657">            this.secondaryClassificationCodes = value;</span>
+<span class="fc" id="L658">        }</span>
+<span class="fc" id="L659">        public double getConfidence() { return confidence; }</span>
+<span class="fc" id="L660">        public void setConfidence(double confidence) { this.confidence = confidence; }</span>
+<span class="fc" id="L661">        public boolean isReviewRequired() { return reviewRequired; }</span>
+<span class="fc" id="L662">        public void setReviewRequired(boolean reviewRequired) { this.reviewRequired = reviewRequired; }</span>
+<span class="fc" id="L663">        public String getJustification() { return justification; }</span>
+<span class="fc" id="L664">        public void setJustification(String justification) { this.justification = justification; }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

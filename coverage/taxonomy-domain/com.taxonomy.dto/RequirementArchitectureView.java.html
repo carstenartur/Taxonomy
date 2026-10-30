@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementArchitectureView.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">RequirementArchitectureView.java</span></div><h1>RequirementArchitectureView.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class RequirementArchitectureView {
+
+    /**
+     * Optional captured analysis input for working-view handoff. Client-provided
+     * presentation data; it does not certify a saved requirement version or author.
+     */
+    private String originalRequirementText;
+<span class="fc" id="L13">    public String getOriginalRequirementText() { return originalRequirementText; }</span>
+<span class="fc" id="L14">    public void setOriginalRequirementText(String value) { originalRequirementText = value; }</span>
+
+    private AnalysisCoverage analysisCoverage;
+<span class="fc" id="L17">    public AnalysisCoverage getAnalysisCoverage() { return analysisCoverage; }</span>
+<span class="fc" id="L18">    public void setAnalysisCoverage(AnalysisCoverage value) { analysisCoverage = value; }</span>
+
+    /** Retains partial outcomes when legacy results have no node coverage. */
+    private String analysisStatus;
+<span class="fc" id="L22">    public String getAnalysisStatus() { return analysisStatus; }</span>
+<span class="fc" id="L23">    public void setAnalysisStatus(String value) { analysisStatus = value; }</span>
+
+    /** Full immutable evidence behind this proposal view; filters do not mutate this report. */
+    private RelationSearchReport relationSearchReport;
+<span class="fc" id="L27">    public RelationSearchReport getRelationSearchReport() { return relationSearchReport; }</span>
+<span class="fc" id="L28">    public void setRelationSearchReport(RelationSearchReport report) { this.relationSearchReport = report; }</span>
+
+
+<span class="fc" id="L31">    private List&lt;RequirementAnchor&gt; anchors = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L32">    private List&lt;RequirementElementView&gt; includedElements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L33">    private List&lt;RequirementRelationshipView&gt; includedRelationships = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L34">    private List&lt;String&gt; notes = new ArrayList&lt;&gt;();</span>
+
+    private int totalAnchors;
+    private int totalElements;
+    private int totalRelationships;
+    private int maxHopDistance;
+
+    // ── View metadata (generated from the active diagram policy) ────────
+    private String viewTitle;
+    private String viewDescription;
+    private boolean containmentEnabled;
+<span class="fc" id="L45">    private List&lt;String&gt; activeRules = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L47">    public RequirementArchitectureView() {}</span>
+
+<span class="fc" id="L49">    public List&lt;RequirementAnchor&gt; getAnchors() { return anchors; }</span>
+<span class="fc" id="L50">    public void setAnchors(List&lt;RequirementAnchor&gt; anchors) { this.anchors = anchors; }</span>
+
+<span class="fc" id="L52">    public List&lt;RequirementElementView&gt; getIncludedElements() { return includedElements; }</span>
+<span class="fc" id="L53">    public void setIncludedElements(List&lt;RequirementElementView&gt; includedElements) { this.includedElements = includedElements; }</span>
+
+<span class="fc" id="L55">    public List&lt;RequirementRelationshipView&gt; getIncludedRelationships() { return includedRelationships; }</span>
+<span class="fc" id="L56">    public void setIncludedRelationships(List&lt;RequirementRelationshipView&gt; includedRelationships) { this.includedRelationships = includedRelationships; }</span>
+
+<span class="fc" id="L58">    public List&lt;String&gt; getNotes() { return notes; }</span>
+<span class="fc" id="L59">    public void setNotes(List&lt;String&gt; notes) { this.notes = notes; }</span>
+
+<span class="fc" id="L61">    public int getTotalAnchors() { return totalAnchors; }</span>
+<span class="fc" id="L62">    public void setTotalAnchors(int totalAnchors) { this.totalAnchors = totalAnchors; }</span>
+
+<span class="fc" id="L64">    public int getTotalElements() { return totalElements; }</span>
+<span class="fc" id="L65">    public void setTotalElements(int totalElements) { this.totalElements = totalElements; }</span>
+
+<span class="fc" id="L67">    public int getTotalRelationships() { return totalRelationships; }</span>
+<span class="fc" id="L68">    public void setTotalRelationships(int totalRelationships) { this.totalRelationships = totalRelationships; }</span>
+
+<span class="fc" id="L70">    public int getMaxHopDistance() { return maxHopDistance; }</span>
+<span class="fc" id="L71">    public void setMaxHopDistance(int maxHopDistance) { this.maxHopDistance = maxHopDistance; }</span>
+
+    // ── View metadata accessors ─────────────────────────────────────────
+
+<span class="fc" id="L75">    public String getViewTitle() { return viewTitle; }</span>
+<span class="fc" id="L76">    public void setViewTitle(String viewTitle) { this.viewTitle = viewTitle; }</span>
+
+<span class="fc" id="L78">    public String getViewDescription() { return viewDescription; }</span>
+<span class="fc" id="L79">    public void setViewDescription(String viewDescription) { this.viewDescription = viewDescription; }</span>
+
+<span class="fc" id="L81">    public boolean isContainmentEnabled() { return containmentEnabled; }</span>
+<span class="fc" id="L82">    public void setContainmentEnabled(boolean containmentEnabled) { this.containmentEnabled = containmentEnabled; }</span>
+
+<span class="fc" id="L84">    public List&lt;String&gt; getActiveRules() { return activeRules; }</span>
+<span class="fc" id="L85">    public void setActiveRules(List&lt;String&gt; activeRules) { this.activeRules = activeRules; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

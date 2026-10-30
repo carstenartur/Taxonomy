@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementIntakeDtos.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.dto</a> &gt; <span class="el_source">RequirementIntakeDtos.java</span></div><h1>RequirementIntakeDtos.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.dto;
+
+import com.taxonomy.dto.AnalysisLanguage;
+import java.util.List;
+
+/** Read-only suggestions; none of these values authorizes or performs a mutation. */
+public final class RequirementIntakeDtos {
+    private RequirementIntakeDtos() { }
+<span class="fc" id="L9">    public enum Status { COMPLETE, PARTIAL, UNAVAILABLE, FAILED }</span>
+<span class="fc" id="L10">    public enum Classification { DUPLICATE, CHANGE, ADDITION, CONFLICT, NONE }</span>
+<span class="fc" id="L11">    public record Request(Long projectId, String title, String text, AnalysisLanguage analysisLanguage) { }</span>
+<span class="fc" id="L12">    public record Scope(String repositoryId, String workspaceId, String workspaceScopeKey, String branch) { }</span>
+<span class="fc" id="L13">    public record Coverage(int scanned, int admitted, boolean truncated) { }</span>
+    public record Candidate(String id, String kind, String repositoryId, String workspaceId, String branch,
+                            Long projectId, String projectKey, Long requirementId, Long requirementVersionId,
+                            String requirementKey, String title, String text, String contentHash,
+                            Classification classification, String rationale, List&lt;String&gt; quotes,
+                            List&lt;String&gt; actions, String sourceCommit, String sourceVersion) {
+<span class="fc" id="L19">        public Candidate { quotes = List.copyOf(quotes); actions = List.copyOf(actions); }</span>
+        public Candidate(String id, String kind, String repositoryId, String workspaceId, String branch,
+                         Long projectId, String projectKey, Long requirementId, Long requirementVersionId,
+                         String requirementKey, String title, String text, String contentHash,
+                         Classification classification, String rationale, List&lt;String&gt; quotes, List&lt;String&gt; actions) {
+<span class="fc" id="L24">            this(id, kind, repositoryId, workspaceId, branch, projectId, projectKey, requirementId,</span>
+                    requirementVersionId, requirementKey, title, text, contentHash, classification, rationale,
+                    quotes, actions, null, null);
+<span class="fc" id="L27">        }</span>
+        public Candidate assessed(Classification classification, String rationale, List&lt;String&gt; quotes) {
+<span class="fc" id="L29">            return new Candidate(id, kind, repositoryId, workspaceId, branch, projectId, projectKey,</span>
+                    requirementId, requirementVersionId, requirementKey, title, text, contentHash,
+                    classification, rationale, quotes, actions, sourceCommit, sourceVersion);
+        }
+    }
+    public record Response(Status status, String code, String inputHash, Scope scope, String provider,
+                           Coverage coverage, List&lt;Candidate&gt; candidates, boolean manualReviewRequired) {
+<span class="fc" id="L36">        public Response { candidates = List.copyOf(candidates); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitReflogProvenanceStore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">GitReflogProvenanceStore.java</span></div><h1>GitReflogProvenanceStore.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import javax.sql.DataSource;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.sql.*;
+import java.util.*;
+import static com.taxonomy.workspace.backup.GitTreeCapture.failure;
+import static com.taxonomy.workspace.backup.GitTreeCapture.sanitized;
+
+/** Workspace-owned immutable evidence, enlisted in the caller's verified target transaction. */
+public final class GitReflogProvenanceStore {
+    static final int MAX_EVENT_BYTES = 512 * 1_024;
+    private final DataSource database;
+<span class="fc" id="L17">    public GitReflogProvenanceStore(DataSource database) { this.database = Objects.requireNonNull(database); }</span>
+    /** Completed-owner readback must detect missing evidence, never reinsert it on a retry. */
+    public void requireStored(Connection target, BackupRepositoryKey key, String storage,
+            List&lt;GitReflogProvenance.Event&gt; evidence, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L22">            checkpoint.check();</span>
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">            if(target.getAutoCommit())throw failure(&quot;Original Git evidence requires a verified readback transaction&quot;);</span>
+<span class="fc" id="L24">            var expected=GitReflogProvenance.canonical(evidence,BackupLimits.MAX_ITEMS,checkpoint);</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">            if(!expected.equals(read(target,key,storage,BackupLimits.MAX_ITEMS,checkpoint)))</span>
+<span class="fc" id="L26">                throw failure(&quot;Completed original Git event evidence is missing or changed&quot;);</span>
+<span class="fc" id="L27">            checkpoint.check();</span>
+<span class="fc" id="L28">        } catch(IOException|SQLException|RuntimeException problem){throw sanitized(problem);}</span>
+<span class="fc" id="L29">    }</span>
+    public List&lt;GitReflogProvenance.Event&gt; read(BackupRepositoryKey key, String storage, int maximum,
+                                               BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L32">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L33">            connection.setReadOnly(true); connection.setAutoCommit(false);</span>
+<span class="fc" id="L34">            try (Rollback rollback=connection::rollback) { return read(connection, key, storage, maximum, checkpoint); }</span>
+<span class="fc" id="L35">        } catch (IOException | SQLException | RuntimeException problem) { throw sanitized(problem); }</span>
+    }
+    /** Does not commit: target data, provenance, owner proof and retry ledger share one transaction. */
+    public void retain(Connection target, BackupRepositoryKey key, String storage,
+                       List&lt;GitReflogProvenance.Event&gt; evidence, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L41">            requireRoute(key, storage); checkpoint.check();</span>
+<span class="pc bpc" id="L42" title="1 of 4 branches missed.">            if (target.getAutoCommit() || target.isReadOnly()) throw failure(&quot;Original Git events require the verified target transaction&quot;);</span>
+<span class="fc" id="L43">            var expected = GitReflogProvenance.canonical(evidence, BackupLimits.MAX_ITEMS, checkpoint);</span>
+<span class="fc" id="L44">            var actual = read(target, key, storage, BackupLimits.MAX_ITEMS, checkpoint);</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">            if (!actual.isEmpty()) {</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">                if (!actual.equals(expected)) throw failure(&quot;Original Git event evidence cannot be replaced&quot;);</span>
+<span class="fc" id="L47">                return;</span>
+            }
+<span class="fc" id="L49">            String repository = GitReflogProvenance.repositoryKey(key);</span>
+<span class="fc" id="L50">            String sql = &quot;insert into workspace_git_reflog_provenance(id,repository_key,repository_id,workspace_id,storage_repository_name,origin_id,event_ordinal,body_version,sha256,body) values(?,?,?,?,?,?,?,?,?,?)&quot;;</span>
+<span class="fc" id="L51">            try (var statement = target.prepareStatement(sql)) {</span>
+<span class="fc" id="L52">                statement.setQueryTimeout(60);</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">                for (var event : expected) {</span>
+<span class="fc" id="L54">                    checkpoint.check(); String origin = GitReflogProvenance.originId(event.origin()); byte[] body = GitReflogProvenance.encoded(event);</span>
+<span class="fc" id="L55">                    statement.setString(1, GitReflogProvenance.eventId(repository, origin, event.ordinal()));</span>
+<span class="fc" id="L56">                    statement.setString(2, repository); statement.setString(3, key.repositoryId()); statement.setString(4, key.workspaceId());</span>
+<span class="fc" id="L57">                    statement.setString(5, storage); statement.setString(6, origin); statement.setInt(7, event.ordinal()); statement.setInt(8, 1);</span>
+<span class="fc" id="L58">                    statement.setString(9, GitReflogProvenance.digest(body)); statement.setCharacterStream(10, new StringReader(new String(body, StandardCharsets.UTF_8)));</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">                    if (statement.executeUpdate() != 1) throw failure(&quot;Original Git event persistence was not confirmed&quot;);</span>
+<span class="fc" id="L60">                    checkpoint.check();</span>
+<span class="fc" id="L61">                }</span>
+            }
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">            if (!expected.equals(read(target, key, storage, BackupLimits.MAX_ITEMS, checkpoint)))</span>
+<span class="nc" id="L64">                throw failure(&quot;Original Git event persistence differs from its proof&quot;);</span>
+<span class="fc" id="L65">            checkpoint.check();</span>
+<span class="fc" id="L66">        } catch (IOException | SQLException | RuntimeException problem) { throw sanitized(problem); }</span>
+<span class="fc" id="L67">    }</span>
+    private static List&lt;GitReflogProvenance.Event&gt; read(Connection connection, BackupRepositoryKey key, String storage,
+            int maximum, BackupCheckpoint checkpoint) throws SQLException, IOException {
+<span class="fc" id="L70">        requireRoute(key, storage);</span>
+<span class="pc bpc" id="L71" title="2 of 4 branches missed.">        if (maximum &lt; 0 || maximum &gt; BackupLimits.MAX_ITEMS) throw failure(&quot;Invalid original Git event limit&quot;);</span>
+<span class="fc" id="L72">        var events = new ArrayList&lt;GitReflogProvenance.Event&gt;(); long total = 0;</span>
+<span class="fc" id="L73">        String repository = GitReflogProvenance.repositoryKey(key);</span>
+<span class="fc" id="L74">        String sql = &quot;select id,repository_key,repository_id,workspace_id,storage_repository_name,origin_id,event_ordinal,body_version,sha256,body from workspace_git_reflog_provenance where repository_key=? order by origin_id,event_ordinal&quot;;</span>
+<span class="fc" id="L75">        try (var statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L76">            statement.setQueryTimeout(60); statement.setMaxRows(maximum + 1); statement.setFetchSize(Math.min(200, maximum + 1));</span>
+<span class="fc" id="L77">            statement.setString(1, repository); checkpoint.check();</span>
+<span class="fc" id="L78">            try (var rows = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">                while (rows.next()) {</span>
+<span class="fc" id="L80">                    checkpoint.check();</span>
+<span class="pc bpc" id="L81" title="2 of 6 branches missed.">                    if (events.size() &gt;= maximum || !repository.equals(rows.getString(2)) || !key.repositoryId().equals(rows.getString(3))</span>
+<span class="pc bpc" id="L82" title="2 of 6 branches missed.">                            || !Objects.equals(key.workspaceId(), rows.getString(4)) || !storage.equals(rows.getString(5)) || rows.getInt(8) != 1)</span>
+<span class="fc" id="L83">                        throw failure(&quot;Original Git event scope, schema or bound differs&quot;);</span>
+<span class="fc" id="L84">                    byte[] body = body(rows.getCharacterStream(10), checkpoint);</span>
+<span class="pc bpc" id="L85" title="1 of 4 branches missed.">                    if (body.length &gt; GitHistoryReflogs.MAX_TOTAL_BYTES - total || !GitReflogProvenance.digest(body).equals(rows.getString(9)))</span>
+<span class="fc" id="L86">                        throw failure(&quot;Original Git event content differs or exceeds its bound&quot;);</span>
+<span class="fc" id="L87">                    total += body.length;</span>
+<span class="fc" id="L88">                    var event = PortableRows.json().readValue(body, GitReflogProvenance.Event.class);</span>
+<span class="fc" id="L89">                    String origin = GitReflogProvenance.originId(event.origin());</span>
+<span class="pc bpc" id="L90" title="2 of 4 branches missed.">                    if (!origin.equals(rows.getString(6)) || event.ordinal() != rows.getInt(7)</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">                            || !GitReflogProvenance.eventId(repository, origin, event.ordinal()).equals(rows.getString(1)))</span>
+<span class="nc" id="L92">                        throw failure(&quot;Original Git event position or origin differs&quot;);</span>
+<span class="fc" id="L93">                    events.add(event);</span>
+<span class="fc" id="L94">                }</span>
+            }
+        }
+<span class="fc" id="L97">        return GitReflogProvenance.canonical(events, maximum, checkpoint);</span>
+    }
+    private static byte[] body(Reader source, BackupCheckpoint checkpoint) throws IOException {
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">        if (source == null) throw failure(&quot;Original Git event content is missing&quot;);</span>
+<span class="fc" id="L101">        try (source) {</span>
+<span class="fc" id="L102">            var output = new StringBuilder(); var buffer = new char[4_096];</span>
+            for (;;) {
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                checkpoint.check(); int count = source.read(buffer); if (count &lt; 0) break;</span>
+<span class="pc bpc" id="L105" title="3 of 4 branches missed.">                if (count == 0) { int one = source.read(); if (one &lt; 0) break; buffer[0] = (char) one; count = 1; }</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">                if (count &gt; MAX_EVENT_BYTES - output.length()) throw failure(&quot;Original Git event content exceeds its bound&quot;);</span>
+<span class="fc" id="L107">                output.append(buffer, 0, count);</span>
+<span class="fc" id="L108">            }</span>
+<span class="fc" id="L109">            var encoded = StandardCharsets.UTF_8.newEncoder().encode(java.nio.CharBuffer.wrap(output));</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">            if (encoded.remaining() &gt; MAX_EVENT_BYTES) throw failure(&quot;Original Git event content exceeds its bound&quot;);</span>
+<span class="fc" id="L111">            var bytes = new byte[encoded.remaining()]; encoded.get(bytes); return bytes;</span>
+        }
+    }
+    private static void requireRoute(BackupRepositoryKey key, String storage) throws IOException {
+<span class="fc" id="L115">        Objects.requireNonNull(key);</span>
+<span class="pc bpc" id="L116" title="5 of 10 branches missed.">        if (storage == null || storage.isBlank() || !storage.equals(storage.strip()) || storage.length() &gt; 512 || storage.indexOf('\0') &gt;= 0)</span>
+<span class="nc" id="L117">            throw failure(&quot;Invalid original Git event target routing&quot;);</span>
+<span class="fc" id="L118">    }</span>
+    @FunctionalInterface private interface Rollback extends AutoCloseable {
+        @Override void close()throws SQLException;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

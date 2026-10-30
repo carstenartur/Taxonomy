@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RootAssessment.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">RootAssessment.java</span></div><h1>RootAssessment.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+/** A root decision distinguishes supported relevance from an unanswered requirement question. */
+public record RootAssessment(Status status, Double score, String reason, String question) {
+<span class="fc" id="L5">    public enum Status { RELEVANT, IRRELEVANT, UNRESOLVED }</span>
+
+<span class="fc" id="L7">    public RootAssessment {</span>
+<span class="pc bpc" id="L8" title="3 of 8 branches missed.">        if (status == null || reason == null || reason.isBlank() || reason.length() &gt; 2000)</span>
+<span class="fc" id="L9">            throw new IllegalArgumentException(&quot;A root assessment requires a status and a bounded nonempty reason&quot;);</span>
+<span class="fc" id="L10">        reason = reason.strip();</span>
+<span class="pc bpc" id="L11" title="1 of 2 branches missed.">        question = question == null ? &quot;&quot; : question.strip();</span>
+<span class="pc bpc" id="L12" title="1 of 2 branches missed.">        if (question.length() &gt; 1000)</span>
+<span class="nc" id="L13">            throw new IllegalArgumentException(&quot;A root clarification question must not exceed 1000 characters&quot;);</span>
+<span class="fc bfc" id="L14" title="All 3 branches covered.">        boolean valid = switch (status) {</span>
+<span class="pc bpc" id="L15" title="1 of 8 branches missed.">            case RELEVANT -&gt; score != null &amp;&amp; AnalysisPercentages.valid(score) &amp;&amp; score &gt; 0 &amp;&amp; question.isEmpty();</span>
+<span class="pc bpc" id="L16" title="1 of 6 branches missed.">            case IRRELEVANT -&gt; score != null &amp;&amp; score == 0 &amp;&amp; question.isEmpty();</span>
+<span class="fc bfc" id="L17" title="All 4 branches covered.">            case UNRESOLVED -&gt; score == null &amp;&amp; !question.isEmpty();</span>
+        };
+<span class="fc bfc" id="L19" title="All 2 branches covered.">        if (!valid) throw new IllegalArgumentException(&quot;Root assessment status, score and question disagree&quot;);</span>
+<span class="fc" id="L20">    }</span>
+
+<span class="fc bfc" id="L22" title="All 2 branches covered.">    public boolean unresolved() { return status == Status.UNRESOLVED; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

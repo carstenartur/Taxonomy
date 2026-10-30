@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>InventoryComparisonEntity.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.inventory</a> &gt; <span class="el_source">InventoryComparisonEntity.java</span></div><h1>InventoryComparisonEntity.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.inventory;
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+@Entity
+@Table(name=&quot;inventory_comparison&quot;,indexes=@Index(name=&quot;ix_inventory_comparison_scope&quot;,columnList=&quot;scope_key&quot;),uniqueConstraints=@UniqueConstraint(name=&quot;uq_inventory_scope_guard&quot;,columnNames=&quot;scope_guard_key&quot;))
+public class InventoryComparisonEntity {
+@Id @Column(name=&quot;id&quot;,length=200) String id;
+@Version @Column(name=&quot;row_version&quot;,nullable=false) @org.hibernate.annotations.ColumnDefault(&quot;0&quot;) long rowVersion;
+@Column(name=&quot;scope_guard_key&quot;,nullable=false,length=240) String scopeGuardKey;
+@Column(name=&quot;repository_id&quot;,nullable=false,length=320) String repositoryId;
+@Column(name=&quot;scope_key&quot;,nullable=false,length=1024) String scopeKey;
+@Column(name=&quot;branch_name&quot;,nullable=false,length=400) String branch;
+@Column(name=&quot;project_id&quot;,nullable=false) Long projectId;
+@Column(name=&quot;snapshot_id&quot;,nullable=false,length=100) String snapshotId;
+@Column(name=&quot;actor&quot;,nullable=false,length=160) String actor;
+@Column(name=&quot;fingerprint&quot;,nullable=false,length=128) String fingerprint;
+@JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name=&quot;comparison_json&quot;,nullable=false) String comparisonJson;
+<span class="fc" id="L19">protected InventoryComparisonEntity() {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

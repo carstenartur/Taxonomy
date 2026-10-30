@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisRequest.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">AnalysisRequest.java</span></div><h1>AnalysisRequest.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+public class AnalysisRequest {
+
+    /** Recorded content language; absent historical values stay unknown. */
+    private AnalysisLanguage analysisLanguage;
+<span class="fc" id="L7">    public AnalysisLanguage getAnalysisLanguage() { return analysisLanguage; }</span>
+<span class="fc" id="L8">    public void setAnalysisLanguage(AnalysisLanguage value) { analysisLanguage = value; }</span>
+
+    /** Omitted on a new request: capture the runtime preference once at admission. */
+    private AnalysisReasonLength analysisReasonLength;
+<span class="fc" id="L12">    public AnalysisReasonLength getAnalysisReasonLength() { return analysisReasonLength; }</span>
+<span class="fc" id="L13">    public void setAnalysisReasonLength(AnalysisReasonLength value) { analysisReasonLength = value; }</span>
+
+<span class="fc" id="L15">    private AnalysisScope analysisScope = AnalysisScope.full();</span>
+<span class="fc" id="L16">    public AnalysisScope getAnalysisScope() { return analysisScope; }</span>
+<span class="fc" id="L17">    public void setAnalysisScope(AnalysisScope value) { analysisScope = AnalysisScope.orDefault(value); }</span>
+
+    /** Explicit source of server-retained node evidence for a new relations-only continuation. */
+    private String relationSourceContinuationId;
+    private Long relationSourceVersion;
+    /** Server-derived node completeness, independent of temporary relation-attempt gaps. */
+    private boolean relationSourcePartial;
+<span class="fc" id="L24">    public boolean isRelationSourcePartial() { return relationSourcePartial; }</span>
+<span class="fc" id="L25">    public void setRelationSourcePartial(boolean value) { relationSourcePartial = value; }</span>
+    /** Server-captured provider/policy/catalogue authority; never accepted from a new client request. */
+    private String continuationAuthority;
+<span class="fc" id="L28">    public String getRelationSourceContinuationId() { return relationSourceContinuationId; }</span>
+<span class="fc" id="L29">    public void setRelationSourceContinuationId(String value) { relationSourceContinuationId = value; }</span>
+<span class="fc" id="L30">    public Long getRelationSourceVersion() { return relationSourceVersion; }</span>
+<span class="fc" id="L31">    public void setRelationSourceVersion(Long value) { relationSourceVersion = value; }</span>
+<span class="fc" id="L32">    public String getContinuationAuthority() { return continuationAuthority; }</span>
+<span class="fc" id="L33">    public void setContinuationAuthority(String value) { continuationAuthority = value; }</span>
+
+    private String businessText;
+    private boolean includeArchitectureView;
+    // Null means &quot;use the live server-side runtime preference&quot;. Keeping this
+    // nullable is essential: an explicit API value (including 0) must remain
+    // distinguishable from an omitted field.
+    private Integer maxArchitectureNodes;
+    private String provider;
+    private boolean resumable;
+    private String continuationId;
+    private Long continuationVersion;
+    private String continuationAction;
+    private String continuationQuestion;
+    /** Explicit, revision-bound batch decision; empty retains the legacy single-question field. */
+<span class="fc" id="L48">    private java.util.List&lt;String&gt; continuationQuestions = java.util.List.of();</span>
+<span class="fc" id="L49">    public java.util.List&lt;String&gt; getContinuationQuestions() { return continuationQuestions; }</span>
+    public void setContinuationQuestions(java.util.List&lt;String&gt; value) {
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        continuationQuestions = value == null ? java.util.List.of() : java.util.List.copyOf(value);</span>
+<span class="fc" id="L52">    }</span>
+<span class="fc" id="L53">    public boolean isResumable() { return resumable; }</span>
+<span class="fc" id="L54">    public void setResumable(boolean value) { resumable = value; }</span>
+<span class="fc" id="L55">    public String getContinuationId() { return continuationId; }</span>
+<span class="fc" id="L56">    public void setContinuationId(String value) { continuationId = value; }</span>
+<span class="fc" id="L57">    public Long getContinuationVersion() { return continuationVersion; }</span>
+<span class="fc" id="L58">    public void setContinuationVersion(Long value) { continuationVersion = value; }</span>
+<span class="fc" id="L59">    public String getContinuationAction() { return continuationAction; }</span>
+<span class="fc" id="L60">    public void setContinuationAction(String value) { continuationAction = value; }</span>
+<span class="fc" id="L61">    public String getContinuationQuestion() { return continuationQuestion; }</span>
+<span class="fc" id="L62">    public void setContinuationQuestion(String value) { continuationQuestion = value; }</span>
+
+<span class="fc" id="L64">    public AnalysisRequest() {}</span>
+
+<span class="fc" id="L66">    public AnalysisRequest(String businessText) {</span>
+<span class="fc" id="L67">        this.businessText = businessText;</span>
+<span class="fc" id="L68">    }</span>
+
+<span class="fc" id="L70">    public String getBusinessText() { return businessText; }</span>
+<span class="fc" id="L71">    public void setBusinessText(String businessText) { this.businessText = businessText; }</span>
+
+<span class="fc" id="L73">    public boolean isIncludeArchitectureView() { return includeArchitectureView; }</span>
+<span class="fc" id="L74">    public void setIncludeArchitectureView(boolean includeArchitectureView) { this.includeArchitectureView = includeArchitectureView; }</span>
+
+<span class="fc" id="L76">    public Integer getMaxArchitectureNodes() { return maxArchitectureNodes; }</span>
+<span class="fc" id="L77">    public void setMaxArchitectureNodes(Integer maxArchitectureNodes) { this.maxArchitectureNodes = maxArchitectureNodes; }</span>
+
+<span class="fc" id="L79">    public String getProvider() { return provider; }</span>
+<span class="fc" id="L80">    public void setProvider(String provider) { this.provider = provider; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

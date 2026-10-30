@@ -1,0 +1,611 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementRelationSearch.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.relations</a> &gt; <span class="el_source">RequirementRelationSearch.java</span></div><h1>RequirementRelationSearch.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.relations;
+
+import com.taxonomy.dto.RelationSearchReport;
+import com.taxonomy.analysis.assessment.ChildAssessmentContract;
+import com.taxonomy.analysis.recovery.AnalysisCheckpointSession;
+import com.taxonomy.dto.RelationSearchProgress.Step;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.service.RelationCompatibilityMatrix;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
+import java.util.function.Function;
+import static com.taxonomy.dto.RelationSearchModel.*;
+
+/** One bounded analysis session; no writes, catalogue entities or cross-user caches. */
+public final class RequirementRelationSearch {
+    public interface InputCatalogue extends Catalogue {
+        Node find(String id);
+        List&lt;Node&gt; roots();
+    }
+    /** Frozen execution envelope; later preference commits cannot change admitted work. */
+    public record BudgetPolicy(int callsPerSlice, int maxTotalCalls, int callsBeforeExecution,
+            boolean automatic, int sourcesPerSlice, int workItemsPerSlice, int sourceCohortSize) {
+<span class="fc" id="L25">        public BudgetPolicy {</span>
+<span class="fc" id="L26">            new com.taxonomy.dto.RelationSearchBudget(callsPerSlice, maxTotalCalls, 0, callsBeforeExecution,</span>
+                    automatic, 0, sourcesPerSlice, workItemsPerSlice, sourceCohortSize);
+<span class="fc" id="L28">        }</span>
+        com.taxonomy.dto.RelationSearchBudget usage(int calls, int sources, int work) {
+<span class="fc bfc" id="L30" title="All 2 branches covered.">            int sections = calls == 0 ? 0 : Math.max(1, (calls + Math.max(1, callsPerSlice) - 1) / Math.max(1, callsPerSlice));</span>
+<span class="fc" id="L31">            sections = Math.max(sections, (sources + sourcesPerSlice - 1) / sourcesPerSlice);</span>
+<span class="fc" id="L32">            sections = Math.max(sections, (work + workItemsPerSlice - 1) / workItemsPerSlice);</span>
+<span class="fc" id="L33">            return new com.taxonomy.dto.RelationSearchBudget(callsPerSlice, maxTotalCalls, calls,</span>
+                    callsBeforeExecution + calls, automatic, sections, sourcesPerSlice, workItemsPerSlice, sourceCohortSize);
+        }
+    }
+    public record Options(Limits limits, int maxSources, int maxPromptCharacters, BudgetPolicy budget) {
+<span class="fc" id="L38">        public Options(Limits limits, int maxSources) { this(limits, maxSources, 16_000); }</span>
+<span class="fc" id="L39">        public Options(Limits limits, int maxSources, int maxPromptCharacters) { this(limits, maxSources, maxPromptCharacters, null); }</span>
+<span class="fc" id="L40">        public Options {</span>
+<span class="fc" id="L41">            Objects.requireNonNull(limits);</span>
+<span class="pc bpc" id="L42" title="2 of 4 branches missed.">            if (maxSources &lt; 1 || maxSources &gt; 256) throw new IllegalArgumentException(&quot;maxSources must be 1..256&quot;);</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">            if (maxPromptCharacters == 0) maxPromptCharacters = 16_000; // Historical frozen plans.</span>
+<span class="pc bpc" id="L44" title="2 of 4 branches missed.">            if (maxPromptCharacters &lt; 1 || maxPromptCharacters &gt; 120_000) throw new IllegalArgumentException(&quot;Invalid relation prompt budget&quot;);</span>
+<span class="fc" id="L45">        }</span>
+    }
+    private final InputCatalogue catalogue;
+    private final RelationCompatibilityMatrix rules;
+    private final Function&lt;String, String&gt; completion;
+    private final String provider;
+    private final Runnable checkpoint;
+
+    public RequirementRelationSearch(InputCatalogue catalogue, RelationCompatibilityMatrix rules,
+                                     Function&lt;String, String&gt; complete, Runnable checkpoint) {
+<span class="fc" id="L55">        this(catalogue, rules, complete, checkpoint, &quot;unspecified&quot;);</span>
+<span class="fc" id="L56">    }</span>
+    public RequirementRelationSearch(InputCatalogue catalogue, RelationCompatibilityMatrix rules,
+<span class="fc" id="L58">                                     Function&lt;String, String&gt; complete, Runnable checkpoint, String provider) {</span>
+<span class="fc" id="L59">        this.catalogue = Objects.requireNonNull(catalogue);</span>
+<span class="fc" id="L60">        this.rules = Objects.requireNonNull(rules);</span>
+<span class="fc" id="L61">        this.completion = Objects.requireNonNull(complete);</span>
+<span class="fc" id="L62">        this.provider = Objects.requireNonNull(provider);</span>
+<span class="fc" id="L63">        this.checkpoint = Objects.requireNonNull(checkpoint);</span>
+<span class="fc" id="L64">    }</span>
+
+    /** No remote assessment is possible with an embedding-only provider. */
+    public static RelationSearchReport unassessed(String original, int maxCalls, String reason) {
+<span class="pc bpc" id="L68" title="2 of 4 branches missed.">        if (original == null || original.isBlank()) throw new IllegalArgumentException(&quot;Missing original requirement&quot;);</span>
+<span class="fc" id="L69">        return new RelationSearchReport(1, sha256(original),</span>
+                &quot;relation-downwalk-v1/root-compatibility-profile/contribution-round-robin&quot;,
+<span class="fc" id="L71">                List.of(), new Result(List.of(), List.of(), List.of(), 0, 0, 0),</span>
+<span class="fc" id="L72">                0, maxCalls, 0, List.of(reason), reason);</span>
+    }
+
+    public RelationSearchReport search(String original, Map&lt;String, ? extends Number&gt; inputScores, Options options) {
+<span class="fc" id="L76">        return search(original, inputScores, options, new Budget(options));</span>
+    }
+
+    /**
+     * Advance source sections inside the same execution and journal. Accepted
+     * answers, open questions, cancellation and cumulative admission remain owned
+     * by the original durable session when one is active.
+     */
+    public RelationSearchReport searchWithSourceContinuation(String original,
+            Map&lt;String, ? extends Number&gt; inputScores, Options options) {
+<span class="fc" id="L86">        return searchWithSourceContinuation(original, inputScores, options, 0);</span>
+    }
+
+    private RelationSearchReport searchWithSourceContinuation(String original,
+            Map&lt;String, ? extends Number&gt; inputScores, Options options, int callsAlreadySpent) {
+<span class="fc" id="L91">        Objects.requireNonNull(inputScores); Objects.requireNonNull(options);</span>
+<span class="fc" id="L92">        long started = System.nanoTime();</span>
+<span class="fc" id="L93">        var budget = new Budget(options);</span>
+<span class="fc" id="L94">        budget.calls = callsAlreadySpent;</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        var journal = AnalysisCheckpointSession.active() ? null : new LocalRelationJournal();</span>
+<span class="fc" id="L96">        var previous = new RelationSearchReport[] { AnalysisCheckpointSession.previousRelations() };</span>
+        RelationSearchReport report;
+<span class="fc" id="L98">        int assessed = 0;</span>
+        // A source-call boundary can precede the node-count boundary. Progress,
+        // the shared total budget and this finite source count bound continuation.
+<span class="fc" id="L101">        int maxCohorts = Math.max(1, inputScores.size());</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        try (var session = journal == null ? null : new AnalysisCheckpointSession(journal);</span>
+<span class="fc" id="L103">             var section = AnalysisCheckpointSession.withPreviousRelations(() -&gt; previous[0])) {</span>
+<span class="fc" id="L104">            report = search(original, inputScores, options, budget);</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            for (int cohort = 1; cohort &lt; maxCohorts; cohort++) {</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">                int nowAssessed = report.progress() == null ? 0 : report.progress().assessedSources();</span>
+<span class="pc bpc" id="L107" title="1 of 4 branches missed.">                if (!budget.sourceLimitReached || !report.stopReason().isEmpty()</span>
+<span class="pc bpc" id="L108" title="1 of 4 branches missed.">                        || budget.calls &gt;= options.limits().maxCalls() || nowAssessed &lt;= assessed) break;</span>
+                // Replaying accepted/clarification/failed answers preserves their
+                // meaning. Only the newly admitted sources consume this cohort.
+<span class="fc" id="L111">                previous[0] = report;</span>
+<span class="fc" id="L112">                assessed = nowAssessed;</span>
+<span class="fc" id="L113">                budget.nextSourceCohort();</span>
+<span class="fc" id="L114">                report = search(original, inputScores, options, budget);</span>
+            }
+        }
+<span class="fc" id="L117">        return new RelationSearchReport(report.schemaVersion(), report.originalSha256(), report.policy(),</span>
+<span class="fc" id="L118">                report.sources(), report.result(), report.totalCalls(), report.maxCalls(),</span>
+<span class="fc" id="L119">                (System.nanoTime() - started) / 1_000_000, report.warnings(), report.stopReason(),</span>
+<span class="fc" id="L120">                report.progress(), report.tasks(), report.budget());</span>
+    }
+
+    private RelationSearchReport search(String original, Map&lt;String, ? extends Number&gt; inputScores,
+                                         Options options, Budget budget) {
+<span class="pc bpc" id="L125" title="2 of 4 branches missed.">        if (original == null || original.isBlank()) throw new IllegalArgumentException(&quot;Missing original requirement&quot;);</span>
+<span class="fc" id="L126">        Objects.requireNonNull(inputScores); Objects.requireNonNull(options);</span>
+<span class="fc" id="L127">        Map&lt;String, Double&gt; scores = com.taxonomy.dto.AnalysisPercentages.copy(inputScores);</span>
+<span class="fc" id="L128">        long start = System.nanoTime();</span>
+<span class="fc" id="L129">        var previous = AnalysisCheckpointSession.previousRelations();</span>
+<span class="pc bpc" id="L130" title="1 of 4 branches missed.">        if (previous != null &amp;&amp; !previous.originalSha256().equals(sha256(original)))</span>
+<span class="nc" id="L131">            throw new IllegalArgumentException(&quot;Saved relation evidence belongs to another requirement&quot;);</span>
+<span class="fc" id="L132">        RelationWorkPlan plan = null;</span>
+<span class="fc" id="L133">        List&lt;Node&gt; nodes = List.of();</span>
+<span class="fc" id="L134">        List&lt;SourceAssessment&gt; sources = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L135">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L136">        Result result = new Result(List.of(), List.of(), List.of(), 0, 0, 0);</span>
+<span class="fc" id="L137">        String stop = &quot;&quot;;</span>
+        try {
+<span class="fc" id="L139">            checkpoint.run();</span>
+            // Catalogue validity is a precondition for extraction, not a late
+            // engine concern after the caller has already paid for model calls.
+<span class="fc" id="L142">            List&lt;Node&gt; offeredRoots = List.copyOf(catalogue.roots());</span>
+<span class="fc" id="L143">            ChildAssessmentContract.validateCandidates(offeredRoots.stream().map(Node::id).toList());</span>
+<span class="fc" id="L144">            List&lt;Node&gt; roots = offeredRoots.stream().sorted(Comparator.comparing(Node::id)).toList();</span>
+<span class="fc" id="L145">            nodes = sourceNodes(scores, warnings);</span>
+<span class="fc" id="L146">            budget.targetRoutes(hasTargetRoutes(nodes, roots));</span>
+<span class="fc" id="L147">            plan = new RelationWorkPlan(nodes, roots, rules, options.limits().maxCalls());</span>
+<span class="fc" id="L148">            plan.restore(previous);</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            if (options.budget() != null) plan.budget(() -&gt; options.budget().usage(budget.calls, budget.totalSources.size(), budget.newWork));</span>
+<span class="fc" id="L150">            budget.plan = plan;</span>
+<span class="fc" id="L151">            plan.calls(budget.calls);</span>
+<span class="fc" id="L152">            var protocol = new RelationSearchProtocol(budget::complete, provider, (step, ids) -&gt; {}, options.maxPromptCharacters());</span>
+<span class="fc" id="L153">            assessSources(original, nodes, options, protocol, plan, sources, warnings);</span>
+<span class="fc" id="L154">            List&lt;Intent&gt; intents = intents(sources, roots, warnings);</span>
+<span class="fc" id="L155">            Limits l = options.limits();</span>
+<span class="fc" id="L156">            plan.expect(intents);</span>
+<span class="fc" id="L157">            var engine = new RelationSearchEngine(node -&gt; {</span>
+<span class="fc" id="L158">                List&lt;Node&gt; children = catalogue.children(node);</span>
+<span class="pc bpc" id="L159" title="2 of 4 branches missed.">                if (children.stream().anyMatch(child -&gt; !child.root().equals(node.root()))) {</span>
+<span class="nc" id="L160">                    throw new IllegalStateException(&quot;CATALOGUE_ROOT_MISMATCH: child belongs to another taxonomy&quot;);</span>
+                }
+<span class="fc" id="L162">                return children;</span>
+<span class="fc" id="L163">            }, protocol::evaluateRecovering, checkpoint, plan, true, options.maxPromptCharacters());</span>
+<span class="fc" id="L164">            result = engine.search(original, intents, l);</span>
+<span class="fc" id="L165">        } catch (RelationSearchEngine.InterruptedSearchException interrupted) {</span>
+<span class="fc" id="L166">            result = interrupted.partialResult();</span>
+<span class="fc" id="L167">            stop = failureReason(interrupted.getCause());</span>
+<span class="fc" id="L168">        } catch (RuntimeException failure) {</span>
+<span class="fc" id="L169">            stop = failureReason(failure);</span>
+<span class="fc" id="L170">        }</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        if (previous != null) {</span>
+<span class="fc" id="L172">            var retainedSources = new LinkedHashMap&lt;String, SourceAssessment&gt;();</span>
+<span class="fc" id="L173">            previous.sources().forEach(source -&gt; retainedSources.put(source.node().id(), source));</span>
+<span class="fc" id="L174">            sources.forEach(source -&gt; retainedSources.put(source.node().id(), source));</span>
+<span class="fc" id="L175">            sources = new ArrayList&lt;&gt;(retainedSources.values());</span>
+<span class="fc" id="L176">            var edges = new LinkedHashSet&lt;&gt;(previous.result().edges()); edges.addAll(result.edges());</span>
+<span class="fc" id="L177">            var trace = new LinkedHashSet&lt;&gt;(previous.result().trace()); trace.addAll(result.trace());</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">            var currentTasks = plan == null ? List.&lt;com.taxonomy.dto.RelationSearchProgress.Task&gt;of() : plan.tasks();</span>
+<span class="fc" id="L179">            Set&lt;List&lt;String&gt;&gt; completedTasks = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L180">            Set&lt;String&gt; completedSources = new HashSet&lt;&gt;(), retainedLegacySources = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L181">            currentTasks.forEach(t -&gt; completedSources.add(t.sourceId()));</span>
+<span class="fc" id="L182">            currentTasks.forEach(t -&gt; {</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">                if (t.state() == com.taxonomy.dto.RelationSearchProgress.State.COMPLETED)</span>
+<span class="fc" id="L184">                    completedTasks.add(List.of(t.sourceId(), t.targetRoot()));</span>
+<span class="fc" id="L185">                else completedSources.remove(t.sourceId());</span>
+<span class="fc" id="L186">            });</span>
+<span class="fc" id="L187">            result = new Result(List.copyOf(edges), retainedUnfinished(previous.result(), result, completedTasks,</span>
+<span class="fc" id="L188">                    completedSources, retainedLegacySources), List.copyOf(trace), result.calls(), result.visitedBatches(), result.durationMillis());</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            if (plan != null) plan.retainUnresolved(previous.tasks(), retainedLegacySources);</span>
+        }
+<span class="fc" id="L191">        sortSourcesByRank(sources, nodes);</span>
+<span class="fc bfc" id="L192" title="All 8 branches covered.">        if (plan != null) plan.finish(warnings.isEmpty() &amp;&amp; stop.isEmpty() &amp;&amp; result.searchExhausted());</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        var progress = plan == null ? null : plan.snapshot();</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        var tasks = plan == null ? List.&lt;com.taxonomy.dto.RelationSearchProgress.Task&gt;of() : plan.tasks();</span>
+<span class="pc bpc" id="L195" title="1 of 6 branches missed.">        if (progress == null &amp;&amp; previous != null &amp;&amp; previous.progress() != null) {</span>
+<span class="fc" id="L196">            var p = previous.progress(); tasks = previous.tasks();</span>
+<span class="fc" id="L197">            progress = new com.taxonomy.dto.RelationSearchProgress(p.totalSources(), p.assessedSources(), p.totalSearches(),</span>
+<span class="fc" id="L198">                    p.completedSearches(), p.unresolvedSearches(), p.pendingSearches(), budget.calls,</span>
+<span class="fc" id="L199">                    options.limits().maxCalls(), p.verifiedRelations(), Step.PAUSED, null, p.taxonomies(), p.sourceTaxonomies());</span>
+        }
+<span class="fc" id="L201">        var report = new RelationSearchReport(2, sha256(original), &quot;relation-downwalk-v2/complete-plan/resumable-exchanges&quot;,</span>
+<span class="fc" id="L202">                sources, result, budget.calls, options.limits().maxCalls(),</span>
+<span class="fc" id="L203">                (System.nanoTime() - start) / 1_000_000, warnings, stop,</span>
+                progress, tasks);
+<span class="fc bfc" id="L205" title="All 2 branches covered.">        return options.budget() == null ? report : report.withBudget(options.budget().usage(budget.calls, budget.totalSources.size(), budget.newWork));</span>
+    }
+
+    static List&lt;Unfinished&gt; retainedUnfinished(Result previous, Result current, Set&lt;List&lt;String&gt;&gt; completedTasks,
+            Set&lt;String&gt; completedSources, Set&lt;String&gt; retainedLegacySources) {
+<span class="fc" id="L210">        Set&lt;List&lt;String&gt;&gt; unassessedTargets = new HashSet&lt;&gt;(), revisited = new HashSet&lt;&gt;();</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">        current.unfinished().stream().filter(q -&gt; q.contributionKey() != null</span>
+<span class="fc bfc" id="L212" title="All 4 branches covered.">                &amp;&amp; (q.question().startsWith(&quot;TECHNICAL_ASSESSMENT_FAILURE:&quot;) || q.question().equals(&quot;RELATION_LEFT_OPEN&quot;)))</span>
+<span class="fc" id="L213">                .forEach(q -&gt; q.targets().forEach(target -&gt; unassessedTargets.add(List.of(q.contributionKey(), target))));</span>
+<span class="pc bpc" id="L214" title="1 of 4 branches missed.">        current.trace().stream().filter(t -&gt; t.contributionKey() != null &amp;&amp; t.outcome() != Outcome.MATCH</span>
+<span class="fc bfc" id="L215" title="All 4 branches covered.">                &amp;&amp; !(t.outcome() == Outcome.UNRESOLVED &amp;&amp; unassessedTargets.contains(List.of(t.contributionKey(), t.targetId()))))</span>
+<span class="fc" id="L216">                .forEach(t -&gt; revisited.add(List.of(t.contributionKey(), t.targetId())));</span>
+<span class="fc" id="L217">        var retained = new LinkedHashSet&lt;Unfinished&gt;();</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        for (Unfinished question : previous.unfinished()) {</span>
+<span class="fc bfc" id="L219" title="All 4 branches covered.">            if (completedSources.contains(question.sourceId()) || question.targetRoot() != null</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">                    &amp;&amp; completedTasks.contains(List.of(question.sourceId(), question.targetRoot()))) continue;</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">            List&lt;String&gt; targets = question.targets().stream().filter(target -&gt; question.contributionKey() == null</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">                    || !revisited.contains(List.of(question.contributionKey(), target))).toList();</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">            if (!targets.isEmpty()) {</span>
+<span class="fc" id="L224">                retained.add(new Unfinished(question.sourceId(), question.type(), question.direction(), targets,</span>
+<span class="fc" id="L225">                        question.reason(), question.question(), question.contributionKey(), question.targetRoot()));</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">                if (question.targetRoot() == null) retainedLegacySources.add(question.sourceId());</span>
+            }
+<span class="fc" id="L228">        }</span>
+<span class="fc" id="L229">        retained.addAll(current.unfinished());</span>
+<span class="fc" id="L230">        return List.copyOf(retained);</span>
+    }
+
+    /**
+     * Extract source contributions once, from an immutable, complete source cohort.
+     * The caller persists this scalar plan before dispatching target work. The
+     * supplied catalogue must be bound to that cohort's exact frozen authority.
+     * A missing root result must remain a prerequisite, not a synthetic zero score.
+     */
+    public RelationSearchDistribution.Plan prepare(String preparationId, String original,
+            Map&lt;String, ? extends Number&gt; inputScores, List&lt;String&gt; sourceResultIds, Options options, boolean includeRelations) {
+<span class="fc" id="L241">        Objects.requireNonNull(options);</span>
+        // The uncommon source-overflow path continues in this preparation worker.
+        // It must reuse source answers even when the caller has no durable journal.
+<span class="fc bfc" id="L244" title="All 4 branches covered.">        var journal = AnalysisCheckpointSession.active() || options.budget() == null ? null : new LocalRelationJournal();</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">        try (var scope = journal == null ? null : new AnalysisCheckpointSession(journal)) {</span>
+<span class="fc" id="L246">            return prepareInternal(preparationId, original, inputScores, sourceResultIds, options, includeRelations);</span>
+        }
+    }
+
+    private RelationSearchDistribution.Plan prepareInternal(String preparationId, String original,
+            Map&lt;String, ? extends Number&gt; inputScores, List&lt;String&gt; sourceResultIds, Options options, boolean includeRelations) {
+<span class="pc bpc" id="L252" title="2 of 4 branches missed.">        if (original == null || original.isBlank()) throw new IllegalArgumentException(&quot;Missing original requirement&quot;);</span>
+<span class="fc" id="L253">        Objects.requireNonNull(inputScores); Objects.requireNonNull(options);</span>
+<span class="fc" id="L254">        Map&lt;String, Double&gt; scores = com.taxonomy.dto.AnalysisPercentages.copy(inputScores); Objects.requireNonNull(sourceResultIds);</span>
+<span class="fc" id="L255">        long started = System.nanoTime();</span>
+<span class="fc" id="L256">        List&lt;Node&gt; nodes = List.of(), roots = List.of();</span>
+<span class="fc" id="L257">        List&lt;SourceAssessment&gt; sources = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L258">        List&lt;RelationSearchDistribution.Item&gt; items = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L259">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L260">        String stop = &quot;&quot;;</span>
+<span class="fc" id="L261">        int[] charged = {0, 0}; // Immutable operation charges: calls, source nodes, including durable replay.</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">        if (includeRelations) try {</span>
+<span class="fc" id="L263">            checkpoint.run();</span>
+<span class="fc" id="L264">            List&lt;Node&gt; offered = List.copyOf(catalogue.roots());</span>
+<span class="fc" id="L265">            ChildAssessmentContract.validateCandidates(offered.stream().map(Node::id).toList());</span>
+<span class="fc" id="L266">            roots = offered.stream().sorted(Comparator.comparing(Node::id)).toList();</span>
+<span class="fc" id="L267">            nodes = sourceNodes(scores, warnings);</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">            int[] sourceAllowance = { hasTargetRoutes(nodes, roots)</span>
+<span class="fc" id="L269">                    ? sourceCallAllowance(options.limits().maxCalls()) : options.limits().maxCalls() };</span>
+<span class="fc" id="L270">            var progress = new RelationWorkPlan(nodes, roots, rules, options.limits().maxCalls());</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">            if (options.budget() != null) progress.budget(() -&gt; options.budget().usage(charged[0], charged[1], 0));</span>
+<span class="fc" id="L272">            Set&lt;String&gt; admittedSources = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L273">            var protocol = new RelationSearchProtocol((step, ids, prompt) -&gt; {</span>
+<span class="fc" id="L274">                beforeNewCall(options);</span>
+<span class="fc" id="L275">                return completion.apply(prompt);</span>
+            }, provider, (step, ids) -&gt; {
+<span class="fc bfc" id="L277" title="All 2 branches covered.">                if (charged[0] &gt;= options.limits().maxCalls())</span>
+<span class="fc" id="L278">                    throw new AnalysisCheckpointSession.DeferredException(callBudgetReason(options));</span>
+<span class="pc bpc" id="L279" title="1 of 6 branches missed.">                if (charged[0] &gt;= sourceAllowance[0] &amp;&amp; options.budget() != null &amp;&amp; options.budget().automatic()</span>
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">                        &amp;&amp; sources.stream().allMatch(source -&gt; source.contributions().isEmpty()))</span>
+<span class="nc" id="L281">                    sourceAllowance[0] += sourceCallAllowance(options.limits().maxCalls() - charged[0]);</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">                if (charged[0] &gt;= sourceAllowance[0])</span>
+<span class="fc" id="L283">                    throw new AnalysisCheckpointSession.DeferredException(&quot;SOURCE_LIMIT&quot;);</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">                long additional = ids.stream().filter(id -&gt; !admittedSources.contains(id)).count();</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">                if (admittedSources.size() + additional &gt; options.maxSources()) {</span>
+<span class="pc bpc" id="L286" title="1 of 4 branches missed.">                    if (options.budget() == null || !options.budget().automatic()</span>
+<span class="nc bnc" id="L287" title="All 2 branches missed.">                            || ids.size() &gt; options.budget().sourceCohortSize())</span>
+<span class="fc" id="L288">                        throw new AnalysisCheckpointSession.DeferredException(&quot;SOURCE_LIMIT&quot;);</span>
+<span class="nc" id="L289">                    admittedSources.clear();</span>
+                }
+<span class="fc" id="L291">                charged[0]++; admittedSources.addAll(ids); charged[1] = Math.toIntExact(charged[1] + additional); progress.calls(charged[0]);</span>
+<span class="fc" id="L292">            }, options.maxPromptCharacters());</span>
+<span class="fc" id="L293">            assessSources(original, nodes, options, protocol, progress, sources, warnings);</span>
+<span class="fc" id="L294">            List&lt;Intent&gt; intents = intents(sources, roots, warnings);</span>
+<span class="fc" id="L295">            Map&lt;String, Integer&gt; bounds = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L296">            int cap = Math.min(options.limits().maxCalls(), options.limits().maxWorkItems()) + 1;</span>
+<span class="fc bfc" id="L297" title="All 2 branches covered.">            for (Intent intent : intents) {</span>
+<span class="fc" id="L298">                Node root = intent.roots().getFirst();</span>
+<span class="fc" id="L299">                int bound = bounds.computeIfAbsent(root.root(), unused -&gt;</span>
+<span class="fc" id="L300">                        queryBound(List.of(root), 0, Set.of(), options.limits(), cap, new HashMap&lt;&gt;()));</span>
+<span class="fc" id="L301">                Contribution contribution = intent.contribution();</span>
+<span class="fc" id="L302">                int sourceIndex = -1, contributionIndex = -1;</span>
+<span class="pc bpc" id="L303" title="1 of 2 branches missed.">                for (int n = 0; n &lt; sources.size(); n++) {</span>
+<span class="fc" id="L304">                    int at = sources.get(n).contributions().indexOf(contribution);</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">                    if (at &gt;= 0) { sourceIndex = n; contributionIndex = at; break; }</span>
+                }
+<span class="fc" id="L307">                items.add(new RelationSearchDistribution.Item(items.size(), sourceIndex, contributionIndex,</span>
+<span class="fc" id="L308">                        intent.type(), intent.direction(), com.taxonomy.analysis.dag.TaxonomyShardRoot.of(root.root()), bound));</span>
+<span class="fc" id="L309">            }</span>
+<span class="fc" id="L310">        } catch (RuntimeException failure) { stop = failureReason(failure); }</span>
+<span class="fc" id="L311">        sortSourcesByRank(sources, nodes);</span>
+<span class="fc bfc" id="L312" title="All 4 branches covered.">        boolean sourceOverflow = sources.size() &lt; nodes.size() &amp;&amp; warnings.stream().anyMatch(w -&gt; w.startsWith(&quot;SOURCE_LIMIT&quot;));</span>
+<span class="fc bfc" id="L313" title="All 6 branches covered.">        if (includeRelations &amp;&amp; options.budget() != null &amp;&amp; stop.isEmpty()</span>
+<span class="fc bfc" id="L314" title="All 6 branches covered.">                &amp;&amp; (options.budget().automatic() &amp;&amp; sourceOverflow || charged[0] == options.limits().maxCalls())) {</span>
+            // Reservation for target workers must not strand funded source work.
+            // Continue under the same journal and full frozen catalogue, retaining
+            // charges already admitted above. At zero remaining calls this only
+            // reconstructs committed answers; every new request remains deferred.
+<span class="fc" id="L319">            var report = searchWithSourceContinuation(original, scores, options, charged[0]);</span>
+<span class="fc" id="L320">            return new RelationSearchDistribution.Plan(1, preparationId, sha256(original), sourceResultIds, options,</span>
+<span class="fc" id="L321">                    nodes, roots, report.sources(), List.of(), charged[0], (System.nanoTime() - started) / 1_000_000,</span>
+<span class="fc" id="L322">                    report.warnings(), report.stopReason(), true, report);</span>
+        }
+<span class="fc" id="L324">        return new RelationSearchDistribution.Plan(1, preparationId, sha256(original), sourceResultIds, options,</span>
+<span class="fc" id="L325">                nodes, roots, sources, items, charged[0], (System.nanoTime() - started) / 1_000_000,</span>
+                warnings, stop, includeRelations);
+    }
+
+    /**
+     * Evaluate a persisted grant using only its frozen target shard. Source
+     * catalogue reads and contribution extraction are deliberately absent here.
+     * Admission through RelationSearchDistribution.ready is the coordinator's
+     * durable responsibility; the worker enforces the admitted local allowance.
+     */
+    public RelationSearchDistribution.WorkResult evaluate(String original, RelationSearchDistribution.Plan plan,
+                                                          RelationSearchDistribution.Work work) {
+<span class="fc" id="L337">        Objects.requireNonNull(plan); Objects.requireNonNull(work);</span>
+<span class="pc bpc" id="L338" title="1 of 4 branches missed.">        if (original == null || !sha256(original).equals(plan.originalSha256())</span>
+<span class="pc bpc" id="L339" title="2 of 4 branches missed.">                || !work.preparationId().equals(plan.preparationId()) || work.ordinal() &gt;= plan.items().size())</span>
+<span class="fc" id="L340">            throw new IllegalArgumentException(&quot;Foreign relation work or original requirement&quot;);</span>
+<span class="fc" id="L341">        var item = plan.items().get(work.ordinal());</span>
+<span class="pc bpc" id="L342" title="2 of 4 branches missed.">        if (!work.targetRoot().equals(item.targetRoot()) || work.maxCalls() &gt; item.maxQueries()</span>
+<span class="pc bpc" id="L343" title="1 of 2 branches missed.">                || work.maxWorkItems() &gt; item.maxQueries()</span>
+<span class="pc bpc" id="L344" title="1 of 2 branches missed.">                || work.maxCalls() &gt; plan.options().limits().maxCalls() - plan.sourceCalls()</span>
+<span class="pc bpc" id="L345" title="1 of 2 branches missed.">                || work.maxWorkItems() &gt; plan.options().limits().maxWorkItems())</span>
+<span class="nc" id="L346">            throw new IllegalArgumentException(&quot;Invalid relation work grant&quot;);</span>
+<span class="fc" id="L347">        Intent intent = RelationSearchDistribution.intent(plan, item);</span>
+<span class="fc" id="L348">        Node target = intent.roots().getFirst();</span>
+<span class="fc" id="L349">        List&lt;Node&gt; offered = List.copyOf(catalogue.roots());</span>
+<span class="fc" id="L350">        ChildAssessmentContract.validateCandidates(offered.stream().map(Node::id).toList());</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">        if (offered.stream().noneMatch(target::equals))</span>
+<span class="fc" id="L352">            throw new IllegalArgumentException(&quot;Missing or different frozen relation target shard&quot;);</span>
+<span class="fc" id="L353">        int[] calls = {0};</span>
+<span class="fc" id="L354">        var progress = new RelationWorkPlan(List.of(intent.contribution().source()), List.of(target), rules, work.maxCalls());</span>
+<span class="fc" id="L355">        progress.assessed(plan.sources().get(item.sourceIndex()));</span>
+<span class="fc" id="L356">        progress.expect(List.of(intent));</span>
+<span class="fc" id="L357">        var protocol = new RelationSearchProtocol((step, ids, prompt) -&gt; {</span>
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">            if (step == Step.SOURCES) throw new IllegalStateException(&quot;Prepared source extraction cannot repeat&quot;);</span>
+<span class="fc" id="L359">            beforeNewCall(plan.options());</span>
+<span class="fc" id="L360">            return completion.apply(prompt);</span>
+        }, provider, (step, ids) -&gt; {
+<span class="fc bfc" id="L362" title="All 2 branches covered.">            if (calls[0] &gt;= work.maxCalls()) throw new AnalysisCheckpointSession.DeferredException(&quot;CALL_BUDGET&quot;);</span>
+<span class="fc bfc" id="L363" title="All 2 branches covered.">            if (calls[0] &gt;= work.maxWorkItems()) throw new AnalysisCheckpointSession.DeferredException(&quot;WORK_LIMIT&quot;);</span>
+<span class="fc" id="L364">            calls[0]++; progress.calls(calls[0]);</span>
+<span class="fc" id="L365">        }, plan.options().maxPromptCharacters());</span>
+<span class="fc" id="L366">        Limits limits = plan.options().limits();</span>
+<span class="fc" id="L367">        var engine = new RelationSearchEngine(node -&gt; {</span>
+<span class="pc bpc" id="L368" title="1 of 2 branches missed.">            if (!node.root().equals(work.targetRoot().code())) throw new IllegalArgumentException(&quot;Foreign target node&quot;);</span>
+<span class="fc" id="L369">            List&lt;Node&gt; children = List.copyOf(catalogue.children(node));</span>
+<span class="pc bpc" id="L370" title="2 of 4 branches missed.">            if (children.stream().anyMatch(child -&gt; !child.root().equals(work.targetRoot().code())))</span>
+<span class="nc" id="L371">                throw new IllegalStateException(&quot;CATALOGUE_ROOT_MISMATCH: child belongs to another taxonomy&quot;);</span>
+<span class="fc" id="L372">            return children;</span>
+<span class="fc" id="L373">        }, protocol::evaluateRecovering, checkpoint, progress, true, plan.options().maxPromptCharacters());</span>
+<span class="fc" id="L374">        Result result = new Result(List.of(), List.of(), List.of(), 0, 0, 0);</span>
+<span class="fc" id="L375">        String stop = &quot;&quot;;</span>
+        try {
+<span class="fc" id="L377">            result = engine.search(original, List.of(intent), limits);</span>
+<span class="nc" id="L378">        } catch (RelationSearchEngine.InterruptedSearchException interrupted) {</span>
+<span class="nc" id="L379">            result = interrupted.partialResult(); stop = failureReason(interrupted.getCause());</span>
+<span class="pc" id="L380">        } catch (RuntimeException failure) { stop = failureReason(failure); }</span>
+<span class="pc bpc" id="L381" title="1 of 4 branches missed.">        progress.finish(stop.isEmpty() &amp;&amp; result.searchExhausted());</span>
+<span class="fc" id="L382">        return new RelationSearchDistribution.WorkResult(work, result, calls[0], stop);</span>
+    }
+
+    /** A conservative branch bound, capped above any spendable operation budget. */
+    private int queryBound(List&lt;Node&gt; candidates, int depth, Set&lt;String&gt; path, Limits limits,
+                           int cap, Map&lt;String, List&lt;Node&gt;&gt; childrenCache) {
+<span class="fc" id="L388">        ChildAssessmentContract.validateCandidates(candidates.stream().map(Node::id).toList());</span>
+        // Whole-description packing can need one navigation request per node,
+        // plus its single corrective request. Grants must cover both even when
+        // the usual count-based batch would have fit in one request.
+<span class="fc" id="L392">        int total = (int) Math.min(cap, 2L * candidates.size());</span>
+<span class="fc bfc" id="L393" title="All 2 branches covered.">        for (Node node : candidates) {</span>
+<span class="fc bfc" id="L394" title="All 2 branches covered.">            if (total &gt;= cap) return cap;</span>
+<span class="fc" id="L395">            checkpoint.run();</span>
+<span class="fc bfc" id="L396" title="All 2 branches covered.">            int branch = node.container() ? 0 : 2; // Verification and at most one correction.</span>
+<span class="pc bpc" id="L397" title="1 of 2 branches missed.">            if (depth &lt; limits.maxDepth()) {</span>
+<span class="fc" id="L398">                List&lt;Node&gt; children = childrenCache.computeIfAbsent(node.id(), unused -&gt; List.copyOf(catalogue.children(node)));</span>
+<span class="fc" id="L399">                ChildAssessmentContract.validateCandidates(children.stream().map(Node::id).toList());</span>
+<span class="pc bpc" id="L400" title="2 of 4 branches missed.">                if (children.stream().anyMatch(child -&gt; !child.root().equals(node.root())))</span>
+<span class="nc" id="L401">                    throw new IllegalStateException(&quot;CATALOGUE_ROOT_MISMATCH: child belongs to another taxonomy&quot;);</span>
+<span class="fc" id="L402">                Set&lt;String&gt; next = new HashSet&lt;&gt;(path); next.add(node.id());</span>
+<span class="pc bpc" id="L403" title="1 of 2 branches missed.">                List&lt;Node&gt; safe = children.stream().filter(child -&gt; !next.contains(child.id())).toList();</span>
+<span class="fc bfc" id="L404" title="All 2 branches covered.">                if (!safe.isEmpty()) branch = Math.max(branch,</span>
+<span class="fc" id="L405">                        queryBound(safe, depth + 1, Set.copyOf(next), limits, cap, childrenCache));</span>
+            }
+<span class="fc" id="L407">            total = Math.min(cap, total + branch);</span>
+<span class="fc" id="L408">        }</span>
+<span class="fc" id="L409">        return total;</span>
+    }
+
+    private void assessSources(String original, List&lt;Node&gt; nodes, Options options, RelationSearchProtocol protocol,
+                               RelationWorkPlan plan, List&lt;SourceAssessment&gt; sources, List&lt;String&gt; warnings) {
+<span class="fc" id="L414">        int processed = 0;</span>
+<span class="fc" id="L415">        List&lt;List&lt;Node&gt;&gt; batches = new ArrayList&lt;&gt;();</span>
+        // Stable source cohorts preserve the partial last group at a source-limit
+        // boundary, including across replay. A group of three must not strand two
+        // available source slots or force already accepted requests to change keys.
+<span class="fc bfc" id="L419" title="All 2 branches covered.">        int cohortSize = options.budget() == null ? options.maxSources() : options.budget().sourceCohortSize();</span>
+<span class="fc bfc" id="L420" title="All 2 branches covered.">        for (int offset = 0; offset &lt; nodes.size(); offset += cohortSize) {</span>
+<span class="fc" id="L421">            var cohort = nodes.subList(offset, Math.min(offset + cohortSize, nodes.size()));</span>
+<span class="fc" id="L422">            Map&lt;String, List&lt;Node&gt;&gt; taxonomies = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L423" title="All 2 branches covered.">            for (Node node : cohort) taxonomies.computeIfAbsent(node.root(), unused -&gt; new ArrayList&lt;&gt;()).add(node);</span>
+<span class="fc bfc" id="L424" title="All 2 branches covered.">            for (List&lt;Node&gt; taxonomy : taxonomies.values()) {</span>
+<span class="fc" id="L425">                batches.addAll(RelationCandidateBatches.split(taxonomy, options.limits().batchSize(), options.maxPromptCharacters(),</span>
+<span class="fc" id="L426">                        offered -&gt; RelationSearchProtocol.requestCharacters(RelationSearchProtocol.sourcePrompt(original, offered, Map.of()))));</span>
+<span class="fc" id="L427">            }</span>
+        }
+<span class="fc bfc" id="L429" title="All 2 branches covered.">        for (var batch : batches) {</span>
+<span class="fc" id="L430">            checkpoint.run();</span>
+<span class="fc" id="L431">            plan.sourceBatch(batch.stream().map(Node::id).toList());</span>
+            try {
+<span class="fc" id="L433">                var result = protocol.contributionsRecovering(original, batch, assessment -&gt; {</span>
+<span class="fc" id="L434">                    sources.add(assessment);</span>
+<span class="fc" id="L435">                    plan.assessed(assessment);</span>
+<span class="fc bfc" id="L436" title="All 2 branches covered.">                    if (!assessment.question().isBlank()) warnings.add(&quot;SOURCE_UNRESOLVED &quot;</span>
+<span class="fc" id="L437">                            + assessment.node().id() + &quot;: &quot; + assessment.question());</span>
+<span class="fc" id="L438">                });</span>
+<span class="fc" id="L439">                result.failures().forEach((id, error) -&gt; warnings.add(</span>
+<span class="fc bfc" id="L440" title="All 2 branches covered.">                        (&quot;RELATION_LEFT_OPEN&quot;.equals(error) ? &quot;SOURCE_LEFT_OPEN&quot; : &quot;INVALID_SOURCE_RESPONSE&quot;)</span>
+                                + &quot; [&quot; + id + &quot;]: &quot; + error));
+<span class="pc bpc" id="L442" title="2 of 6 branches missed.">                result.failures().values().stream().filter(error -&gt; error.startsWith(&quot;CALL_BUDGET:&quot;) || error.startsWith(&quot;TOTAL_CALL_BUDGET:&quot;) || error.startsWith(&quot;SOURCE_LIMIT:&quot;)</span>
+<span class="pc bpc" id="L443" title="1 of 2 branches missed.">                        || error.startsWith(&quot;WORK_LIMIT:&quot;)).findFirst().ifPresent(warnings::add);</span>
+<span class="fc" id="L444">            } catch (AnalysisCheckpointSession.DeferredException deferred) {</span>
+<span class="fc" id="L445">                warnings.add(deferred.getMessage() + &quot;: &quot; + (nodes.size() - processed) + &quot; sources remain unassessed.&quot;);</span>
+<span class="fc" id="L446">                break;</span>
+<span class="nc" id="L447">            } catch (RelationSearchEngine.InvalidResponseException invalid) {</span>
+<span class="nc" id="L448">                warnings.add(&quot;INVALID_SOURCE_RESPONSE &quot; + batch.stream().map(Node::id).toList() + &quot;: &quot; + invalid.getMessage());</span>
+<span class="fc" id="L449">            }</span>
+<span class="fc" id="L450">            processed += batch.size();</span>
+<span class="fc" id="L451">        }</span>
+        // Packing combines interleaved taxonomies within the already ranked cohort.
+        // Search intents and returned evidence must still follow the original priority.
+<span class="fc" id="L454">        sortSourcesByRank(sources, nodes);</span>
+<span class="fc" id="L455">    }</span>
+
+    private static void sortSourcesByRank(List&lt;SourceAssessment&gt; sources, List&lt;Node&gt; nodes) {
+<span class="fc" id="L458">        Map&lt;String, Integer&gt; rank = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L459" title="All 2 branches covered.">        for (int i = 0; i &lt; nodes.size(); i++) rank.put(nodes.get(i).id(), i);</span>
+<span class="fc" id="L460">        sources.sort(Comparator.comparingInt(source -&gt; rank.getOrDefault(source.node().id(), Integer.MAX_VALUE)));</span>
+<span class="fc" id="L461">    }</span>
+
+    private List&lt;Intent&gt; intents(List&lt;SourceAssessment&gt; sources, List&lt;Node&gt; roots, List&lt;String&gt; warnings) {
+<span class="fc" id="L464">    List&lt;List&lt;Intent&gt;&gt; routesByContribution = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L465" title="All 4 branches covered.">    for (SourceAssessment assessment : sources) for (Contribution contribution : assessment.contributions()) {</span>
+<span class="fc" id="L466">        List&lt;Intent&gt; intents = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L467" title="All 2 branches covered.">        for (RelationType type : RelationType.values()) {</span>
+<span class="fc" id="L468">            Set&lt;String&gt; allowed = rules.allowedTargetRoots(contribution.source().root(), type);</span>
+<span class="fc" id="L469">            List&lt;Node&gt; outgoing = roots.stream().filter(n -&gt; allowed.contains(n.root())).toList();</span>
+<span class="fc bfc" id="L470" title="All 2 branches covered.">            for (Node root : outgoing) intents.add(new Intent(contribution, type.name(), Direction.OUTGOING, List.of(root)));</span>
+<span class="fc" id="L471">            List&lt;Node&gt; incoming = roots.stream().filter(n -&gt; rules.allowedTargetRoots(n.root(), type)</span>
+<span class="fc" id="L472">                    .contains(contribution.source().root())).toList();</span>
+<span class="fc bfc" id="L473" title="All 2 branches covered.">            for (Node root : incoming) intents.add(new Intent(contribution, type.name(), Direction.INCOMING, List.of(root)));</span>
+        }
+<span class="fc bfc" id="L475" title="All 2 branches covered.">        if (intents.isEmpty()) warnings.add(&quot;NO_STRUCTURAL_ROUTE &quot; + contribution.source().id()</span>
+                + &quot;: the current root profile cannot route this contribution; not evidence of absence.&quot;);
+<span class="fc" id="L477">        routesByContribution.add(intents);</span>
+<span class="fc" id="L478">    }</span>
+    // Complete an admitted branch, then give the next contribution a turn.
+    // One high-ranked source must not spend the entire budget on its types.
+<span class="fc" id="L481">    List&lt;Intent&gt; intents = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L482">    int rounds = routesByContribution.stream().mapToInt(List::size).max().orElse(0);</span>
+<span class="fc bfc" id="L483" title="All 2 branches covered.">    for (int round = 0; round &lt; rounds; round++) {</span>
+<span class="fc bfc" id="L484" title="All 2 branches covered.">        for (List&lt;Intent&gt; routes : routesByContribution) {</span>
+<span class="fc bfc" id="L485" title="All 2 branches covered.">            if (round &lt; routes.size()) intents.add(routes.get(round));</span>
+<span class="fc" id="L486">        }</span>
+    }
+<span class="fc" id="L488">        return List.copyOf(intents);</span>
+    }
+
+    private boolean hasTargetRoutes(List&lt;Node&gt; sources, List&lt;Node&gt; roots) {
+<span class="fc bfc" id="L492" title="All 6 branches covered.">        for (Node source : sources) for (Node root : roots) for (RelationType type : RelationType.values()) {</span>
+<span class="fc bfc" id="L493" title="All 2 branches covered.">            if (rules.allowedTargetRoots(source.root(), type).contains(root.root())</span>
+<span class="fc bfc" id="L494" title="All 2 branches covered.">                    || rules.allowedTargetRoots(root.root(), type).contains(source.root())) return true;</span>
+        }
+<span class="fc" id="L496">        return false;</span>
+    }
+
+    private final class Budget {
+        private final Options options;
+        private int calls, newWork, sourceCalls;
+        private int sourceAllowance;
+        private boolean sourceLimitReached;
+<span class="fc" id="L504">        private final Set&lt;String&gt; newSources = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L505">        private final Set&lt;String&gt; totalSources = new HashSet&lt;&gt;();</span>
+        private RelationWorkPlan plan;
+<span class="fc" id="L507">        Budget(Options options) {</span>
+<span class="fc" id="L508">            this.options = options;</span>
+<span class="fc" id="L509">            sourceAllowance = sourceCallAllowance(options.limits().maxCalls());</span>
+<span class="fc" id="L510">        }</span>
+        void targetRoutes(boolean available) {
+<span class="fc bfc" id="L512" title="All 2 branches covered.">            sourceAllowance = available ? sourceCallAllowance(options.limits().maxCalls() - calls)</span>
+<span class="fc" id="L513">                    : options.limits().maxCalls() - calls;</span>
+<span class="fc" id="L514">        }</span>
+        void nextSourceCohort() {
+<span class="fc" id="L516">            newSources.clear(); sourceLimitReached = false; sourceCalls = 0;</span>
+<span class="fc" id="L517">            sourceAllowance = sourceCallAllowance(options.limits().maxCalls() - calls);</span>
+<span class="fc" id="L518">        }</span>
+        String complete(Step step, List&lt;String&gt; nodes, String prompt) {
+<span class="fc bfc" id="L520" title="All 2 branches covered.">            if (calls &gt;= options.limits().maxCalls()) throw new AnalysisCheckpointSession.DeferredException(callBudgetReason(options));</span>
+<span class="fc bfc" id="L521" title="All 4 branches covered.">            if (step == Step.SOURCES &amp;&amp; sourceCalls &gt;= sourceAllowance) {</span>
+<span class="fc" id="L522">                sourceLimitReached = true;</span>
+<span class="fc" id="L523">                throw new AnalysisCheckpointSession.DeferredException(&quot;SOURCE_LIMIT&quot;);</span>
+            }
+<span class="fc bfc" id="L525" title="All 6 branches covered.">            if (step == Step.SOURCES &amp;&amp; newSources.size() + nodes.stream().filter(id -&gt; !newSources.contains(id)).count() &gt; options.maxSources()</span>
+<span class="fc bfc" id="L526" title="All 6 branches covered.">                    &amp;&amp; !(options.budget() != null &amp;&amp; options.budget().automatic() &amp;&amp; newSources.isEmpty()</span>
+<span class="pc bpc" id="L527" title="1 of 2 branches missed.">                         &amp;&amp; nodes.size() &lt;= options.budget().sourceCohortSize())) {</span>
+<span class="fc" id="L528">                sourceLimitReached = true;</span>
+<span class="fc" id="L529">                throw new AnalysisCheckpointSession.DeferredException(&quot;SOURCE_LIMIT&quot;);</span>
+            }
+<span class="fc bfc" id="L531" title="All 4 branches covered.">            if (step != Step.SOURCES &amp;&amp; newWork &gt;= options.limits().maxWorkItems())</span>
+<span class="fc" id="L532">                throw new AnalysisCheckpointSession.DeferredException(&quot;WORK_LIMIT&quot;);</span>
+<span class="fc" id="L533">            beforeNewCall(options);</span>
+<span class="fc bfc" id="L534" title="All 2 branches covered.">            if (step == Step.SOURCES) { newSources.addAll(nodes); totalSources.addAll(nodes); sourceCalls++; }</span>
+<span class="fc" id="L535">            else newWork++;</span>
+<span class="fc" id="L536">            calls++; plan.calls(calls);</span>
+<span class="fc" id="L537">            return completion.apply(prompt);</span>
+        }
+    }
+
+    static String callBudgetReason(Options options) {
+<span class="fc bfc" id="L542" title="All 2 branches covered.">        return options.budget() != null &amp;&amp; options.budget().callsBeforeExecution() + options.limits().maxCalls()</span>
+<span class="fc bfc" id="L543" title="All 2 branches covered.">                &gt;= options.budget().maxTotalCalls() ? &quot;TOTAL_CALL_BUDGET&quot; : &quot;CALL_BUDGET&quot;;</span>
+    }
+
+    private static void beforeNewCall(Options options) {
+<span class="fc bfc" id="L547" title="All 2 branches covered.">        if (options.budget() != null) AnalysisCheckpointSession.beforeRelationCall(options.budget().maxTotalCalls());</span>
+<span class="fc" id="L548">    }</span>
+
+    /** Leave at least half of the remaining calls for target navigation and verification. */
+    private static int sourceCallAllowance(int remainingCalls) {
+<span class="fc" id="L552">        return Math.min(remainingCalls, Math.max(1, remainingCalls / 2));</span>
+    }
+
+    /** Request-owned replay only; the enclosing run still checks cancellation and resources. */
+<span class="fc" id="L556">    private static final class LocalRelationJournal implements AnalysisCheckpointSession.Store {</span>
+<span class="fc" id="L557">        private final Map&lt;String, AnalysisCheckpointSession.Checkpoint&gt; answers = new HashMap&lt;&gt;();</span>
+        private RelationSearchReport previous;
+        public AnalysisCheckpointSession.Checkpoint prepare(AnalysisCheckpointSession.Question question) {
+<span class="fc" id="L560">            var saved = answers.get(question.key());</span>
+<span class="fc bfc" id="L561" title="All 2 branches covered.">            return saved == null ? new AnalysisCheckpointSession.Checkpoint(question, &quot;ATTEMPT&quot;, null) : saved;</span>
+        }
+        public void finish(AnalysisCheckpointSession.Question question, String state, com.taxonomy.dto.LlmCallDetail detail) {
+            // Deferred questions have no answer to retain; their identical input
+            // can be admitted by the next bounded cohort without a remote replay.
+<span class="fc bfc" id="L566" title="All 2 branches covered.">            if (&quot;READY&quot;.equals(state)) answers.remove(question.key());</span>
+<span class="fc" id="L567">            else answers.put(question.key(), new AnalysisCheckpointSession.Checkpoint(question, state, detail));</span>
+<span class="fc" id="L568">        }</span>
+<span class="fc" id="L569">        public void checkActive() { }</span>
+<span class="fc" id="L570">        public RelationSearchReport previousRelations() { return previous; }</span>
+    }
+
+    private List&lt;Node&gt; sourceNodes(Map&lt;String, Double&gt; scores, List&lt;String&gt; warnings) {
+<span class="fc" id="L574">        List&lt;Map.Entry&lt;String,Double&gt;&gt; positive = scores.entrySet().stream()</span>
+<span class="pc bpc" id="L575" title="1 of 4 branches missed.">                .filter(e -&gt; e.getValue() != null &amp;&amp; e.getValue() &gt; 0)</span>
+<span class="fc" id="L576">                .sorted(Map.Entry.&lt;String,Double&gt;comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))</span>
+<span class="fc" id="L577">                .toList();</span>
+<span class="fc bfc" id="L578" title="All 2 branches covered.">        if (positive.isEmpty()) warnings.add(&quot;SOURCE_DISCOVERY_REQUIRED: no positively assessed concrete source is available; &quot;</span>
+                + &quot;this is not proof that the requirement has no architectural dependencies.&quot;);
+<span class="fc" id="L580">        List&lt;Node&gt; nodes = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L581">        Set&lt;String&gt; concreteRoots = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L582">        Set&lt;String&gt; containerRoots = new TreeSet&lt;&gt;();</span>
+<span class="fc" id="L583">        int missing = 0;</span>
+<span class="fc bfc" id="L584" title="All 2 branches covered.">        for (var entry : positive) {</span>
+<span class="fc" id="L585">            checkpoint.run();</span>
+<span class="fc" id="L586">            Node node = catalogue.find(entry.getKey());</span>
+<span class="fc bfc" id="L587" title="All 2 branches covered.">            if (node == null) { missing++; continue; }</span>
+<span class="fc bfc" id="L588" title="All 2 branches covered.">            if (node.container()) { containerRoots.add(node.root()); continue; }</span>
+<span class="fc" id="L589">            concreteRoots.add(node.root()); nodes.add(node);</span>
+<span class="fc" id="L590">        }</span>
+<span class="fc bfc" id="L591" title="All 2 branches covered.">        if (missing &gt; 0) warnings.add(&quot;MISSING_SOURCE: &quot; + missing + &quot; scored IDs are absent from the catalogue.&quot;);</span>
+<span class="fc" id="L592">        containerRoots.removeAll(concreteRoots);</span>
+<span class="fc bfc" id="L593" title="All 2 branches covered.">        for (String root : containerRoots) warnings.add(&quot;ROOT_SOURCE_UNRESOLVED &quot; + root</span>
+                + &quot;: identify a concrete required contribution below this catalogue container.&quot;);
+<span class="fc" id="L595">        return List.copyOf(nodes);</span>
+    }
+
+    private static String failureReason(Throwable failure) {
+<span class="fc" id="L599">        com.taxonomy.analysis.service.AnalysisExecutionFailures.rethrow(failure);</span>
+        // Do not copy provider exception messages which can contain credentials or request bodies.
+<span class="fc bfc" id="L601" title="All 2 branches covered.">        if (failure instanceof com.taxonomy.analysis.service.AnalysisStoppedException stopped) {</span>
+<span class="fc" id="L602">            return stopped.reason().name() + &quot;: completed evidence retained; no further model evaluations.&quot;;</span>
+        }
+<span class="fc" id="L604">        return &quot;RELATION_SEARCH_STOPPED: &quot; + failure.getClass().getSimpleName();</span>
+    }
+    private static String sha256(String original) {
+<span class="fc" id="L607">        try { return HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(original.getBytes(StandardCharsets.UTF_8))); }</span>
+<span class="nc" id="L608">        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

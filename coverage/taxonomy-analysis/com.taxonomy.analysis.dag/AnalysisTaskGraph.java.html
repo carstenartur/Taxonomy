@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisTaskGraph.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag</a> &gt; <span class="el_source">AnalysisTaskGraph.java</span></div><h1>AnalysisTaskGraph.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+
+/**
+ * Explicit, immutable task graph of one analysis operation.
+ *
+ * &lt;p&gt;Tasks are stored in a deterministic topological order: the sub-taxonomy
+ * tasks in the requested root order, followed by relation tasks whose
+ * prerequisites are the sub-taxonomy tasks they read. Supported plans are
+ * &quot;all roots&quot;, &quot;selected roots&quot; and &quot;no relations&quot;.&lt;/p&gt;
+ */
+public record AnalysisTaskGraph(String operationId, List&lt;Node&gt; tasks) {
+
+    /** One executable unit and the units whose results it requires. */
+    public record Node(AnalysisTaskId id, AnalysisTaskType type, List&lt;TaxonomyShardRoot&gt; roots,
+                       List&lt;AnalysisTaskId&gt; prerequisites) {
+<span class="fc" id="L26">        public Node {</span>
+<span class="fc" id="L27">            Objects.requireNonNull(id, &quot;id&quot;);</span>
+<span class="fc" id="L28">            Objects.requireNonNull(type, &quot;type&quot;);</span>
+<span class="fc" id="L29">            roots = List.copyOf(roots);</span>
+<span class="fc" id="L30">            prerequisites = List.copyOf(prerequisites);</span>
+<span class="fc" id="L31">        }</span>
+    }
+
+<span class="fc" id="L34">    public AnalysisTaskGraph {</span>
+<span class="fc" id="L35">        AnalysisTaskId.requireOperationId(operationId);</span>
+<span class="fc" id="L36">        tasks = List.copyOf(tasks);</span>
+<span class="fc" id="L37">        Set&lt;AnalysisTaskId&gt; seen = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        for (Node node : tasks) {</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">            if (!node.id().operationId().equals(operationId)) {</span>
+<span class="fc" id="L40">                throw new IllegalArgumentException(&quot;Task belongs to another operation: &quot; + node.id());</span>
+            }
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            if (!seen.containsAll(node.prerequisites())) {</span>
+<span class="fc" id="L43">                throw new IllegalArgumentException(&quot;Task graph is not topologically ordered: &quot; + node.id());</span>
+            }
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">            if (!seen.add(node.id())) {</span>
+<span class="nc" id="L46">                throw new IllegalArgumentException(&quot;Duplicate task identity: &quot; + node.id());</span>
+            }
+<span class="fc" id="L48">        }</span>
+<span class="fc" id="L49">    }</span>
+
+    /**
+     * Plan one sub-taxonomy task per root (in the given order) and, when requested,
+     * one relation task that reads all of them.
+     */
+    public static AnalysisTaskGraph plan(String operationId, Collection&lt;TaxonomyShardRoot&gt; orderedRoots,
+                                         boolean includeRelations) {
+<span class="fc" id="L57">        List&lt;Node&gt; nodes = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L58">        Set&lt;TaxonomyShardRoot&gt; distinct = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        for (TaxonomyShardRoot root : orderedRoots) {</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            if (!distinct.add(root)) throw new IllegalArgumentException(&quot;Duplicate root: &quot; + root);</span>
+<span class="fc" id="L61">            nodes.add(new Node(AnalysisTaskId.subtaxonomy(operationId, root),</span>
+<span class="fc" id="L62">                    AnalysisTaskType.SUBTAXONOMY_ANALYSIS, List.of(root), List.of()));</span>
+<span class="fc" id="L63">        }</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (includeRelations) {</span>
+<span class="fc" id="L65">            nodes.add(relationNode(operationId, List.copyOf(orderedRoots),</span>
+<span class="fc" id="L66">                    nodes.stream().map(Node::id).toList()));</span>
+        }
+<span class="fc" id="L68">        return new AnalysisTaskGraph(operationId, nodes);</span>
+    }
+
+    /** Relation-only plan for operations whose scoring was produced outside this graph. */
+    public static AnalysisTaskGraph relationsOnly(String operationId, Collection&lt;TaxonomyShardRoot&gt; targetRoots) {
+<span class="fc" id="L73">        return new AnalysisTaskGraph(operationId,</span>
+<span class="fc" id="L74">                List.of(relationNode(operationId, List.copyOf(targetRoots), List.of())));</span>
+    }
+
+    private static Node relationNode(String operationId, List&lt;TaxonomyShardRoot&gt; targets,
+                                     List&lt;AnalysisTaskId&gt; prerequisites) {
+<span class="fc" id="L79">        List&lt;TaxonomyShardRoot&gt; sorted = targets.stream().sorted().toList();</span>
+<span class="fc" id="L80">        return new Node(AnalysisTaskId.relation(operationId, sorted), AnalysisTaskType.RELATION_ANALYSIS,</span>
+                sorted, prerequisites);
+    }
+
+    public List&lt;Node&gt; tasksOf(AnalysisTaskType type) {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        return tasks.stream().filter(node -&gt; node.type() == type).toList();</span>
+    }
+
+    public List&lt;TaxonomyShardRoot&gt; subtaxonomyRoots() {
+<span class="fc" id="L89">        return tasksOf(AnalysisTaskType.SUBTAXONOMY_ANALYSIS).stream()</span>
+<span class="fc" id="L90">                .map(node -&gt; node.roots().get(0)).toList();</span>
+    }
+
+    public boolean includesRelations() {
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        return !tasksOf(AnalysisTaskType.RELATION_ANALYSIS).isEmpty();</span>
+    }
+
+    public Optional&lt;Node&gt; node(AnalysisTaskId id) {
+<span class="fc" id="L98">        return tasks.stream().filter(node -&gt; node.id().equals(id)).findFirst();</span>
+    }
+
+    public int totalTasks() {
+<span class="fc" id="L102">        return tasks.size();</span>
+    }
+
+    /** Tasks of {@code type} whose prerequisites are complete and that were not yet dispatched. */
+    public List&lt;Node&gt; ready(AnalysisTaskType type, Set&lt;AnalysisTaskId&gt; completed, Set&lt;AnalysisTaskId&gt; dispatched) {
+<span class="fc" id="L107">        return tasksOf(type).stream()</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                .filter(node -&gt; !dispatched.contains(node.id()))</span>
+<span class="fc" id="L109">                .filter(node -&gt; completed.containsAll(node.prerequisites()))</span>
+<span class="fc" id="L110">                .toList();</span>
+    }
+
+    /** Root → task lookup in plan order. */
+    public Map&lt;TaxonomyShardRoot, AnalysisTaskId&gt; subtaxonomyTaskIds() {
+<span class="fc" id="L115">        Map&lt;TaxonomyShardRoot, AnalysisTaskId&gt; ids = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L116">        tasksOf(AnalysisTaskType.SUBTAXONOMY_ANALYSIS).forEach(node -&gt; ids.put(node.roots().get(0), node.id()));</span>
+<span class="fc" id="L117">        return ids;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

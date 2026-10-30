@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortableGitIndex.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">PortableGitIndex.java</span></div><h1>PortableGitIndex.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.BackupCheckpoint;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.util.sha1.SHA1;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+/**
+ * Streams the standard Git index v2 so exported worktrees need no local plaintext staging.
+ * JGit's in-core DirCache has no public streaming writer. This narrow format has no extensions;
+ * native Git and JGit both validate the generated index in interoperability tests.
+ * Format: https://git-scm.com/docs/gitformat-index
+ */
+final class PortableGitIndex {
+    private PortableGitIndex() { }
+    static void write(List&lt;GitTreeCapture.File&gt; files, OutputStream output, BackupCheckpoint check) throws IOException {
+<span class="fc" id="L19">        var ordered = files.stream().map(file -&gt; new Entry(file, file.path().getBytes(StandardCharsets.UTF_8)))</span>
+<span class="fc" id="L20">                .sorted((a, b) -&gt; Arrays.compareUnsigned(a.path(), b.path())).toList();</span>
+<span class="fc" id="L21">        var sha = SHA1.newInstance().setDetectCollision(true);</span>
+<span class="fc" id="L22">        var data = new DataOutputStream(new FilterOutputStream(output) {</span>
+            @Override public void write(int value) throws IOException {
+<span class="fc" id="L24">                out.write(value); sha.update(new byte[] { (byte) value });</span>
+<span class="fc" id="L25">            }</span>
+            @Override public void write(byte[] bytes, int offset, int length) throws IOException {
+<span class="fc" id="L27">                out.write(bytes, offset, length); sha.update(bytes, offset, length);</span>
+<span class="fc" id="L28">            }</span>
+        });
+<span class="fc" id="L30">        data.writeInt(0x44495243); data.writeInt(2); data.writeInt(ordered.size());</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        for (var entry : ordered) {</span>
+<span class="fc" id="L32">            check.check();</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">            for (int i = 0; i &lt; 6; i++) data.writeInt(0); // ctime, mtime, device and inode are target-specific.</span>
+<span class="fc" id="L34">            data.writeInt(entry.file().mode()); data.writeInt(0); data.writeInt(0); data.writeInt((int) entry.file().length());</span>
+<span class="fc" id="L35">            ObjectId.fromString(entry.file().objectId()).copyRawTo(data);</span>
+<span class="fc" id="L36">            data.writeShort(Math.min(entry.path().length, 0x0fff)); data.write(entry.path());</span>
+<span class="fc" id="L37">            data.write(new byte[8 - (62 + entry.path().length) % 8]);</span>
+<span class="fc" id="L38">        }</span>
+<span class="fc" id="L39">        data.flush(); output.write(sha.digest()); check.check();</span>
+<span class="fc" id="L40">    }</span>
+<span class="fc" id="L41">    private record Entry(GitTreeCapture.File file, byte[] path) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
