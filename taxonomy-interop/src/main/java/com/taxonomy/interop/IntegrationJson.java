@@ -37,7 +37,16 @@ public class IntegrationJson {
         }
         if (value.getClass().isRecord()) {
             Map<String, Object> result = new TreeMap<>();
-            try { for (var field : value.getClass().getRecordComponents()) result.put(field.getName(), canonical(field.getAccessor().invoke(value))); }
+            try { for (var field : value.getClass().getRecordComponents()) {
+                Object item=field.getAccessor().invoke(value);
+                // Optional additions cannot invalidate retained pre-extension evidence/review keys.
+                String owner=value.getClass().getName(),name=field.getName();
+                boolean inventory=owner.startsWith("com.taxonomy.extension.api.inventory.InventoryComparisonContracts$");
+                boolean empty=item==null || item instanceof Collection<?> c && c.isEmpty();
+                if(empty && ((inventory && Set.of("relationship","variantDecision","relationshipRequirements","relationshipFindings","variants").contains(name)) ||
+                        (owner.equals("com.taxonomy.interop.inventory.InventorySourceProfiles$Profile") && name.equals("relationships"))))continue;
+                result.put(name,canonical(item));
+            } }
             catch (ReflectiveOperationException failure) { throw new IllegalStateException("Cannot fingerprint integration value", failure); }
             return result;
         }

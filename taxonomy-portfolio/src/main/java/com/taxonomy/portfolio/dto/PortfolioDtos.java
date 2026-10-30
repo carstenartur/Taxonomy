@@ -526,7 +526,11 @@ public final class PortfolioDtos {
             Instant createdAt,
             Instant updatedAt,
             List<RequirementSolutionLinkView> requirements,
-            List<SolutionProductCandidateView> productCandidates) {
+            List<SolutionProductCandidateView> productCandidates,
+            String inventoryComparisonId,String inventoryFingerprint,String inventoryHardExclusions) {
+        public ProjectSolutionView(Long id,Long projectId,SolutionView solution,ProjectSolutionStatus status,ActionStatus actionStatus,int priority,String rationale,String createdBy,Instant createdAt,Instant updatedAt,List<RequirementSolutionLinkView> requirements,List<SolutionProductCandidateView> productCandidates) {
+            this(id,projectId,solution,status,actionStatus,priority,rationale,createdBy,createdAt,updatedAt,requirements,productCandidates,null,null,null);
+        }
     }
 
     // ── Products ────────────────────────────────────────────────────────────

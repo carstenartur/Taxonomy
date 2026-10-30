@@ -41,13 +41,20 @@ class SolutionCatalogPolicyContractTest {
         var request=mock(CreateSolutionRequest.class);when(request.solutionKey()).thenReturn("sol-one");when(request.title()).thenReturn("Solution");
         when(request.extensionAttributes()).thenReturn(null);when(request.maturityLevel()).thenReturn(null);service.createSolution(request,"alice",context);
         when(solutions.findByIdAndScopeKey(7L,PortfolioScope.key("alice",context))).thenReturn(Optional.of(solution));
-        var project=mock(ArchitectureProject.class);when(project.getId()).thenReturn(1L);when(projects.requireProject(1L,"alice",context)).thenReturn(project);
+        when(solutions.findByIdAndScopeKeyForUpdate(7L,PortfolioScope.key("alice",context))).thenReturn(Optional.of(solution));
+        var project=mock(ArchitectureProject.class);when(project.getId()).thenReturn(1L);when(projects.requireProject(1L,"alice",context)).thenReturn(project);when(projects.requireProjectForUpdate(1L,"alice",context)).thenReturn(project);
         decision=new ProjectSolution(project,solution,null,null,50,"initial","alice",Instant.EPOCH);ReflectionTestUtils.setField(decision,"id",3L);
         when(decisions.findByIdAndProjectId(3L,1L)).thenReturn(Optional.of(decision));
         requirement=mock(ProjectRequirement.class);when(requirement.getId()).thenReturn(2L);
         when(projects.requireRequirement(1L,2L,"alice",context)).thenReturn(requirement);
         when(nodes.findByCode("CP-1")).thenReturn(Optional.of(mock(TaxonomyNode.class)));
         clearInvocations(solutions);
+    }
+    @Test void retainedVariantExclusionSurvivesOrdinaryEditsAndPreventsSelection() {
+        service.applyInventoryVariant(1L,3L,ProjectSolutionStatus.REJECTED,ActionStatus.CHANGE,"reason","comparison-a","fingerprint-a","Confirmed incompatibility","alice",context);
+        service.updateProjectSolution(1L,3L,new UpdateProjectSolutionRequest(null,null,60,"edited rationale"),"alice",context);
+        assertThatThrownBy(()->service.updateProjectSolution(1L,3L,new UpdateProjectSolutionRequest(ProjectSolutionStatus.SELECTED,null,null,null),"alice",context)).hasMessageContaining("hard exclusions");
+        assertThat(decision.getInventoryComparisonId()).isEqualTo("comparison-a");assertThat(decision.getInventoryHardExclusions()).isEqualTo("Confirmed incompatibility");
     }
     @Test void explicitAndOmittedUpdateValuesPreserveReviewedMetadata() {
         assertThat(solution.getMaturityLevel()).isZero();assertThat(solution.getLifecycleStatus()).isEqualTo(LifecycleStatus.PLANNED);

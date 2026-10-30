@@ -1214,6 +1214,13 @@
     },
     {
       "fromContext": "interop",
+      "fromPackage": "com.taxonomy.interop.inventory",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "interop",
       "fromPackage": "com.taxonomy.interop.oslc",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
@@ -1560,7 +1567,7 @@
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 43
+      "classDependencyCount": 44
     },
     {
       "fromContext": "portfolio",

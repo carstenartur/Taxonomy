@@ -80,6 +80,7 @@ public class TaxonomySchemaMigrationConfig {
             // must still be complete before Hibernate validates it.
             com.taxonomy.security.persistence.PrincipalSchemaMigration.migrate(configuration.getDataSource());
             CatalogueSourceSchemaMigration.migrate(configuration.getDataSource());
+            InventoryDecisionSchemaMigration.migrate(configuration.getDataSource());
         };
     }
 

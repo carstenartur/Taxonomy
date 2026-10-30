@@ -158,7 +158,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45");
     }
 
     @Test
@@ -233,7 +233,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45");
         assertIntegrationSchema(dataSource);
         assertInventorySchema(dataSource);
         assertReformulationSchema(dataSource);
@@ -572,7 +572,8 @@ class TaxonomySchemaPostgresMigrationIT {
 
     private static void assertInventorySchema(DataSource dataSource) throws SQLException {
         var columns = java.util.Map.of(
-                "inventory_comparison", List.of("project_id", "snapshot_id", "actor", "fingerprint", "comparison_json"),
+                "inventory_comparison", List.of("project_id", "snapshot_id", "actor", "fingerprint", "comparison_json",
+                        "row_version", "scope_guard_key"),
                 "inventory_assertion", List.of("candidate_id", "assertion_json"),
                 "inventory_observation", List.of("profile_id", "profile_revision", "actor", "organization_id", "status",
                         "failure_code", "created_at", "observation_json"),
@@ -589,9 +590,11 @@ class TaxonomySchemaPostgresMigrationIT {
                         .as(table.getKey() + " retained evidence " + column).isTrue();
             }
         }
-        for (String column : List.of("inventory_comparison_id", "inventory_fingerprint", "inventory_hard_exclusions")) {
-            assertThat(columnExists(dataSource, "solution_product", column))
-                    .as("solution product retained inventory " + column).isTrue();
+        for (String table : List.of("project_solution", "solution_product")) {
+            for (String column : List.of("inventory_comparison_id", "inventory_fingerprint", "inventory_hard_exclusions")) {
+                assertThat(columnExists(dataSource, table, column))
+                        .as(table + " retained inventory " + column).isTrue();
+            }
         }
     }
 

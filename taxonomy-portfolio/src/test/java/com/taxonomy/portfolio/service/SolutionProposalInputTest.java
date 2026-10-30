@@ -11,6 +11,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -40,7 +41,7 @@ class SolutionProposalInputTest {
         assertThat(link.getValue().getReviewStatus()).isEqualTo(ReviewStatus.PROPOSED);
         assertThat(link.getValue().getRole()).isEqualTo(RequirementSolutionRole.USES);
         assertThat(link.getValue().getEvidence()).contains("BP-1000", "70%");
-        verify(f.mappings).findCurrentProposalInputsForProject(41L, PortfolioScope.key("owner", f.scope));
+        verify(f.mappings, times(2)).findCurrentProposalInputsForProject(41L, PortfolioScope.key("owner", f.scope));
     }
 
     @Test
@@ -76,6 +77,50 @@ class SolutionProposalInputTest {
         verify(f.projects, never()).requireRequirement(any(), any(), any(), any());
     }
 
+    @Test
+    void noEligibleCoverageKeepsProjectOwnershipCheckWithoutAcquiringAMutationFence() {
+        var f = new Fixture();
+        when(f.coverage.existsByNodeCodeAndReviewStatusAndSolutionScopeKey(
+                "BP-1000", ReviewStatus.CONFIRMED, PortfolioScope.key("owner", f.scope))).thenReturn(false);
+        when(f.coverage.findByNodeCode("BP-1000")).thenReturn(List.of());
+
+        assertThat(f.service.proposeFromCurrentMappings(41L, "owner", f.scope)).isEmpty();
+
+        verify(f.projects, never()).requireProjectForUpdate(any(), any(), any());
+        verify(f.projects).requireProject(41L, "owner", f.scope);
+        verifyNoInteractions(f.projectSolutions, f.links);
+        verify(f.coverage, never()).findByNodeCode(any());
+    }
+
+    @Test
+    void proposalUsesCurrentSnapshotAndScoresAfterAcquiringTheMutationFence() {
+        var f = new Fixture();
+        var current = new AtomicReference<>(List.of(
+                new CurrentElementMappingReadRow("snapshot-preflight", 7L, "BP-1000", 61.2, .7)));
+        when(f.mappings.findCurrentProposalInputsForProject(41L, PortfolioScope.key("owner", f.scope)))
+                .thenAnswer(ignored -> current.get());
+        when(f.projects.requireProjectForUpdate(41L, "owner", f.scope)).thenAnswer(ignored -> {
+            current.set(List.of(new CurrentElementMappingReadRow("snapshot-after-fence", 7L, "BP-1000", 93.4, .8)));
+            return f.project;
+        });
+        when(f.projectSolutions.findByProjectIdAndSolutionId(41L, 101L)).thenReturn(Optional.empty());
+        when(f.projectSolutions.save(any())).thenReturn(f.projectSolution);
+        when(f.links.findByProjectSolutionIdAndRequirementId(11L, 7L)).thenReturn(Optional.empty());
+        var requirement = mock(ProjectRequirement.class);
+        when(f.projects.requireRequirement(41L, 7L, "owner", f.scope)).thenReturn(requirement);
+
+        assertThat(f.service.proposeFromCurrentMappings(41L, "owner", f.scope)).hasSize(1);
+
+        var proposal = ArgumentCaptor.forClass(ProjectSolution.class);
+        verify(f.projectSolutions).save(proposal.capture());
+        assertThat(proposal.getValue().getPriority()).isEqualTo(94);
+        var link = ArgumentCaptor.forClass(RequirementSolutionLink.class);
+        verify(f.links).save(link.capture());
+        assertThat(link.getValue().getSnapshotId()).isEqualTo("snapshot-after-fence");
+        assertThat(link.getValue().getCoveragePercent()).isEqualTo(56d);
+        assertThat(link.getValue().getReviewStatus()).isEqualTo(ReviewStatus.PROPOSED);
+    }
+
     private static final class Fixture {
         final WorkspaceContext scope = new WorkspaceContext("owner", "owned-workspace", "draft", "repository");
         final ProjectPortfolioService projects = mock(ProjectPortfolioService.class);
@@ -84,6 +129,7 @@ class SolutionProposalInputTest {
         final ProjectSolutionRepository projectSolutions = mock(ProjectSolutionRepository.class);
         final RequirementSolutionLinkRepository links = mock(RequirementSolutionLinkRepository.class);
         final SolutionTaxonomyCoverage coverageRow = mock(SolutionTaxonomyCoverage.class);
+        final ArchitectureProject project = mock(ArchitectureProject.class);
         final ProjectSolution projectSolution = mock(ProjectSolution.class);
         final SolutionPortfolioService service = new SolutionPortfolioService(mock(SolutionDefinitionRepository.class), coverage,
                 projectSolutions, links, mappings, mock(RequirementAnalysisSnapshotRepository.class),
@@ -91,9 +137,9 @@ class SolutionProposalInputTest {
                 mock(ProductCatalogService.class), new PortfolioJsonCodec(JsonMapper.builder().build()));
 
         Fixture() {
-            var project = mock(ArchitectureProject.class);
             when(project.getId()).thenReturn(41L);
             when(projects.requireProject(41L, "owner", scope)).thenReturn(project);
+            when(projects.requireProjectForUpdate(41L, "owner", scope)).thenReturn(project);
             when(mappings.findCurrentProposalInputsForProject(41L, PortfolioScope.key("owner", scope)))
                     .thenReturn(List.of(new CurrentElementMappingReadRow("snapshot-current", 7L, "BP-1000", 61.2, .7)));
             var solution = mock(SolutionDefinition.class);
@@ -103,6 +149,8 @@ class SolutionProposalInputTest {
             when(coverageRow.getReviewStatus()).thenReturn(ReviewStatus.CONFIRMED);
             when(coverageRow.getCoveragePercent()).thenReturn(70);
             when(coverage.findByNodeCode("BP-1000")).thenReturn(List.of(coverageRow));
+            when(coverage.existsByNodeCodeAndReviewStatusAndSolutionScopeKey(
+                    "BP-1000", ReviewStatus.CONFIRMED, PortfolioScope.key("owner", scope))).thenReturn(true);
             when(projectSolution.getId()).thenReturn(11L);
             when(projectSolution.getProject()).thenReturn(project);
             when(projectSolution.getSolution()).thenReturn(solution);

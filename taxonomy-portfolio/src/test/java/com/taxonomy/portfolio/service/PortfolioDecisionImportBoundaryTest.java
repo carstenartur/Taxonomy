@@ -18,7 +18,7 @@ class PortfolioDecisionImportBoundaryTest {
     final ProductCatalogEntryRepository products=mock(ProductCatalogEntryRepository.class);
     final ProductTaxonomyCoverageRepository productCoverage=mock(ProductTaxonomyCoverageRepository.class);
     final SolutionProductCandidateRepository candidates=mock(SolutionProductCandidateRepository.class);
-    final PortfolioDecisionGitContributor contributor=new PortfolioDecisionGitContributor(projects,requirements,solutions,solutionCoverage,decisions,links,products,productCoverage,candidates);
+    final PortfolioDecisionGitContributor contributor=new PortfolioDecisionGitContributor(projects,requirements,solutions,solutionCoverage,decisions,links,products,productCoverage,candidates,mock(com.taxonomy.workspace.service.RepositoryMutationFence.class));
     final WorkspaceContext context=new WorkspaceContext("alice","ws-a","draft","repo-a");
 
     @Test void incompleteReferencesAreWarningsNotFabricatedDecisions() {
@@ -121,6 +121,7 @@ class PortfolioDecisionImportBoundaryTest {
         when(solutions.findByScopeKeyAndSolutionKeyIgnoreCase(anyString(),eq("SOL"))).thenReturn(java.util.Optional.of(solution));when(solutions.save(any())).thenReturn(solution);
         when(products.findByScopeKeyAndProductKeyIgnoreCase(anyString(),eq("PRODUCT"))).thenReturn(java.util.Optional.of(product));when(products.findByIdAndScopeKeyForUpdate(eq(9L),anyString())).thenReturn(java.util.Optional.of(product));when(products.save(any())).thenReturn(product);
         when(projects.findByScopeKeyOrderByUpdatedAtDesc(anyString())).thenReturn(java.util.List.of(project));
+        when(projects.findByIdAndScopeKeyForUpdate(eq(1L),anyString())).thenReturn(java.util.Optional.of(project));
         when(decisions.findByProjectIdAndSolutionId(1L,5L)).thenReturn(java.util.Optional.of(decision));when(decisions.save(any())).thenReturn(decision);
         when(candidates.findByProjectSolutionIdAndProductId(7L,9L)).thenReturn(java.util.Optional.of(candidate));
         var result=contributor.materialize("""
@@ -142,6 +143,37 @@ class PortfolioDecisionImportBoundaryTest {
         assertThat(candidate.getHardExclusions()).isEqualTo("AVAILABILITY:CONTRADICTED");
         assertThat(candidate.getInventoryHardExclusions()).isEqualTo("AVAILABILITY:CONTRADICTED");
         assertThat(result.warnings()).anyMatch(w->w.contains("cannot remain SELECTED"));
+    }
+
+    @Test void importedVariantFenceRetainsItsMatchingProvenanceAcrossCheckpoints() {
+        var definition=mock(SolutionDefinition.class);when(definition.getId()).thenReturn(5L);
+        var project=mock(ArchitectureProject.class);when(project.getId()).thenReturn(1L);when(project.getProjectKey()).thenReturn("P");
+        when(solutions.findByScopeKeyAndSolutionKeyIgnoreCase(anyString(),eq("SOL"))).thenReturn(java.util.Optional.of(definition));when(solutions.save(any())).thenReturn(definition);
+        when(projects.findByScopeKeyOrderByUpdatedAtDesc(anyString())).thenReturn(java.util.List.of(project));
+        when(projects.findByIdAndScopeKeyForUpdate(eq(1L),anyString())).thenReturn(java.util.Optional.of(project));
+        when(projects.findByIdAndScopeKeyForUpdate(eq(1L),anyString())).thenReturn(java.util.Optional.of(project));
+        when(solutions.findByIdAndScopeKeyForUpdate(eq(5L),anyString())).thenReturn(java.util.Optional.of(definition));
+        var saved=new java.util.concurrent.atomic.AtomicReference<ProjectSolution>();
+        when(decisions.save(any())).thenAnswer(call->{saved.set(call.getArgument(0));return call.getArgument(0);});
+        String document="""
+                solutionDefinition SOL {
+                  title: "Existing";
+                }
+                projectSolutionDecision P SOL {
+                  status: "SELECTED";
+                  inventoryComparisonId: "comparison-A";
+                  inventoryFingerprint: "fingerprint-A";
+                  inventoryHardExclusions: "Confirmed incompatibility";
+                }
+                """;
+        contributor.materialize(document,"alice",context);
+        assertThat(saved.get().getStatus()).isNotEqualTo(com.taxonomy.portfolio.model.PortfolioTypes.ProjectSolutionStatus.SELECTED);
+        assertThat(saved.get().getInventoryComparisonId()).isEqualTo("comparison-A");
+        when(decisions.findByProjectIdAndSolutionId(1L,5L)).thenAnswer(call->java.util.Optional.of(saved.get()));
+        contributor.materialize(document.replace("comparison-A","comparison-B").replace("fingerprint-A","fingerprint-B").replace("Confirmed incompatibility","Different checkpoint"),"alice",context);
+        assertThat(saved.get().getInventoryComparisonId()).isEqualTo("comparison-A");
+        assertThat(saved.get().getInventoryFingerprint()).isEqualTo("fingerprint-A");
+        assertThat(saved.get().getInventoryHardExclusions()).isEqualTo("Confirmed incompatibility");
     }
 
 }

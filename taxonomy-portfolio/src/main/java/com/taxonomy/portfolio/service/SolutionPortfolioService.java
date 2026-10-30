@@ -159,7 +159,7 @@ public class SolutionPortfolioService {
                                        String username,
                                        WorkspaceContext context) {
         if (request == null) throw PortfolioException.validation("solution update is required");
-        SolutionDefinition solution = requireSolution(solutionId, username, context);
+        SolutionDefinition solution = requireSolutionForUpdate(solutionId, username, context);
         var requestedAmount = request.costAmount() != null
                 ? PortfolioValueValidator.money(request.costAmount(), "costAmount") : null;
         String requestedCurrency = request.costCurrency() != null
@@ -207,7 +207,7 @@ public class SolutionPortfolioService {
                                                String username,
                                                WorkspaceContext context) {
         if (request == null) throw PortfolioException.validation("taxonomy coverage is required");
-        SolutionDefinition solution = requireSolution(solutionId, username, context);
+        SolutionDefinition solution = requireSolutionForUpdate(solutionId, username, context);
         String nodeCode = requireNodeCode(request.nodeCode());
         int coverage = normalizePercentage(request.coveragePercent(), "coveragePercent");
         Instant now = Instant.now();
@@ -239,7 +239,7 @@ public class SolutionPortfolioService {
                                                   String username,
                                                   WorkspaceContext context) {
         if (request == null) throw PortfolioException.validation("project solution request is required");
-        ArchitectureProject project = projectService.requireProject(projectId, username, context);
+        ArchitectureProject project = projectService.requireProjectForUpdate(projectId, username, context);
         SolutionDefinition solution = requireSolution(request.solutionId(), username, context);
         Instant now = Instant.now();
         ProjectSolution projectSolution = projectSolutionRepository
@@ -254,6 +254,7 @@ public class SolutionPortfolioService {
                         PortfolioScope.username(username, context),
                         now));
         if (projectSolution.getId() != null) {
+            requireUnblocked(projectSolution,request.status());
             projectSolution.update(
                     request.status(),
                     request.actionStatus(),
@@ -272,8 +273,9 @@ public class SolutionPortfolioService {
                                                      String username,
                                                      WorkspaceContext context) {
         if (request == null) throw PortfolioException.validation("project solution update is required");
-        projectService.requireProject(projectId, username, context);
+        projectService.requireProjectForUpdate(projectId, username, context);
         ProjectSolution projectSolution = requireProjectSolution(projectId, projectSolutionId);
+        requireUnblocked(projectSolution,request.status());
         projectSolution.update(
                 request.status(),
                 request.actionStatus(),
@@ -290,6 +292,7 @@ public class SolutionPortfolioService {
                                                String username,
                                                WorkspaceContext context) {
         if (request == null) throw PortfolioException.validation("requirement solution link is required");
+        projectService.requireProjectForUpdate(projectId,username,context);
         ProjectSolution projectSolution = requireProjectSolutionScoped(
                 projectId, projectSolutionId, username, context);
         ProjectRequirement requirement = projectService.requireRequirement(
@@ -336,10 +339,20 @@ public class SolutionPortfolioService {
     public List<ProjectSolutionView> proposeFromCurrentMappings(Long projectId,
                                                                 String username,
                                                                 WorkspaceContext context) {
-        ArchitectureProject project = projectService.requireProject(projectId, username, context);
+        projectService.requireProject(projectId, username, context);
         String scopeKey = PortfolioScope.key(username, context);
         List<CurrentElementMappingReadRow> mappings = elementMappingRepository
                 .findCurrentProposalInputsForProject(projectId, scopeKey);
+        // A read with no eligible catalogue coverage must not advance the project version.
+        // Scalar eligibility leaves mutable coverage entities out of the persistence context.
+        if (mappings.stream().noneMatch(element -> coverageRepository
+                .existsByNodeCodeAndReviewStatusAndSolutionScopeKey(
+                        element.nodeCode(), ReviewStatus.CONFIRMED, scopeKey))) {
+            return List.of();
+        }
+        ArchitectureProject project = projectService.requireProjectForUpdate(projectId, username, context);
+        // Preflight may have raced a writer; derive proposals from current inputs after the fence.
+        mappings = elementMappingRepository.findCurrentProposalInputsForProject(projectId, scopeKey);
         Map<Long, ProjectSolution> touched = new LinkedHashMap<>();
         Instant now = Instant.now();
 
@@ -407,6 +420,25 @@ public class SolutionPortfolioService {
                 .orElseThrow(() -> PortfolioException.notFound("Solution not found: " + solutionId));
     }
 
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public SolutionDefinition requireSolutionForUpdate(Long id,String username,WorkspaceContext context) {
+        if(id==null)throw PortfolioException.validation("solutionId is required");
+        try {return solutionRepository.findByIdAndScopeKeyForUpdate(id,PortfolioScope.key(username,context)).orElseThrow(()->PortfolioException.notFound("Solution not found: "+id));}
+        catch(jakarta.persistence.OptimisticLockException | org.springframework.dao.OptimisticLockingFailureException conflict) {throw PortfolioException.conflict("Solution inputs changed concurrently; retry against current evidence");}
+    }
+    @Transactional
+    public ProjectSolutionView applyInventoryVariant(Long projectId,Long id,ProjectSolutionStatus status,ActionStatus action,String rationale,String comparisonId,String fingerprint,String exclusions,String username,WorkspaceContext context) {
+        projectService.requireProjectForUpdate(projectId,username,context);
+        var solution=requireProjectSolution(projectId,id);
+        if((status==ProjectSolutionStatus.SELECTED || status==ProjectSolutionStatus.IMPLEMENTED) && exclusions!=null && !exclusions.isBlank())throw PortfolioException.validation("Inventory hard exclusions prevent selection");
+        solution.retainInventoryDecision(comparisonId,fingerprint,ProjectPortfolioService.limited(exclusions,4000,"inventory exclusions"));
+        solution.update(status,action,null,ProjectPortfolioService.limited(rationale,2000,"rationale"),Instant.now());
+        return toProjectSolutionView(solution);
+    }
+    private void requireUnblocked(ProjectSolution solution,ProjectSolutionStatus status) {
+        if((status==ProjectSolutionStatus.SELECTED || status==ProjectSolutionStatus.IMPLEMENTED) && solution.getInventoryHardExclusions()!=null && !solution.getInventoryHardExclusions().isBlank())throw PortfolioException.validation("Retained inventory hard exclusions prevent selection; review the retained comparison evidence");
+    }
+
     public SolutionView toSolutionView(SolutionDefinition solution) {
         List<TaxonomyCoverageView> coverage = coverageRepository
                 .findBySolutionIdOrderByNodeCodeAsc(solution.getId()).stream()
@@ -470,7 +502,7 @@ public class SolutionPortfolioService {
                 productCandidateRepository
                         .findByProjectSolutionIdOrderByCoveragePercentDesc(projectSolution.getId()).stream()
                         .map(productService::toCandidateView)
-                        .toList());
+                        .toList(),projectSolution.getInventoryComparisonId(),projectSolution.getInventoryFingerprint(),projectSolution.getInventoryHardExclusions());
     }
 
     private ProjectSolution requireProjectSolutionScoped(Long projectId,

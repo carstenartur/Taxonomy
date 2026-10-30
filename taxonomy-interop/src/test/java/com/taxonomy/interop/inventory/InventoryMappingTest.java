@@ -11,8 +11,8 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 class InventoryMappingTest {
     @Test void explicitMappingRetainsBothIdentitiesAndCannotCrossScopeOrChangeReusedId() throws Exception {
-        try(var fixture=new EditorPersistenceFixture("jdbc:hsqldb:mem:mapping-"+UUID.randomUUID(),InventoryMappingEntity.class)) {
-            var store=new InventoryJournal(fixture.factory,new JpaTransactionManager(fixture.factory),new IntegrationJson(JsonMapper.builder().build()));
+        try(var fixture=new EditorPersistenceFixture("jdbc:hsqldb:mem:mapping-"+UUID.randomUUID(),InventoryMappingEntity.class,com.taxonomy.workspace.model.SystemRepository.class,InventoryComparisonEntity.class)) {
+            var store=new InventoryJournal(fixture.factory,new JpaTransactionManager(fixture.factory),new IntegrationJson(JsonMapper.builder().build()),com.taxonomy.workspace.repository.RepositoryMutationFenceFixture.repositoryFence(fixture.factory,"repo"));
             var scope=new Scope("repo","scope","draft","alice");
             var mapping=new Mapping(UUID.randomUUID(),"external:object",9L,"target-product-v1","source-profile","revision","source-object-v1","Verified identity by documented reference","alice",Instant.now());
             store.map(scope,mapping);store.map(scope,mapping);

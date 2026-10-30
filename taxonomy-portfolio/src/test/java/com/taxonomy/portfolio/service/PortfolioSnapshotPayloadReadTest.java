@@ -329,7 +329,8 @@ class PortfolioSnapshotPayloadReadTest {
                 f.resetReads();
                 var operation = f.copilot.getOperation(f.projectId, Fixture.OPERATION, "owner", f.scope);
                 assertThat(operation.selectedSnapshotId()).isEqualTo(f.snapshotIds.get(1));
-                verify(f.coverage, times(read + 1)).findByNodeCode("BP-1000");
+                verify(f.coverage, times(read + 1)).existsByNodeCodeAndReviewStatusAndSolutionScopeKey(
+                        "BP-1000", ReviewStatus.CONFIRMED, PortfolioScope.key("owner", f.scope));
                 assertThat(f.payloadSelects()).as("Real enrichment must not hydrate snapshots just to check catalogue coverage")
                         .hasSize(2).allSatisfy(sql -> assertThat(sql).doesNotContain("gap_payload", "pattern_payload", "recommendation_payload"));
                 f.assertNoResultEntityLoads();

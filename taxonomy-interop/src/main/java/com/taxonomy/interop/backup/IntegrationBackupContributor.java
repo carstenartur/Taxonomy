@@ -126,6 +126,11 @@ public final class IntegrationBackupContributor implements BackupDataContributor
             if(!Objects.equals(value.demand().projectId(),r.getLong("project_id")) || !value.demand().snapshotId().equals(text(r,"snapshot_id")))throw new IOException("Inventory comparison demand reference differs");
             for(var source:value.sources()) rows.requireEmpty(new Query("select e.id from inventory_comparison e where e.id=? and not exists (select 1 from inventory_observation o where o.id=? and o.repository_id=e.repository_id and o.scope_key=e.scope_key and o.branch_name=e.branch_name and o.actor=e.actor and o.profile_id=? and o.profile_revision=? and o.organization_id=? and o.status='SUCCEEDED')",
                 List.of(text(r,"id"),source.observationId(),source.profileId(),source.revision(),value.demand().question().organization())));
+            for(var variant:value.variants()) {
+                if(variant.projectSolutionId()==null || variant.solutionId()==null || variant.input()==null || !variant.projectSolutionId().equals(variant.input().projectSolutionId()))throw new IOException("Inventory variant identity is missing or inconsistent");
+                rows.requireEmpty(new Query("select e.id from inventory_comparison e where e.id=? and not exists (select 1 from project_solution ps join arch_project p on p.id=ps.project_id join solution_definition sd on sd.id=ps.solution_id where ps.id=? and sd.id=? and p.id=e.project_id and p.repository_id=e.repository_id and p.scope_key=e.scope_key and p.branch_name=e.branch_name and sd.repository_id=e.repository_id and sd.scope_key=e.scope_key and sd.branch_name=e.branch_name)",
+                    List.of(text(r,"id"),variant.projectSolutionId(),variant.solutionId())));
+            }
             // Frozen IDs remain source provenance; they do not grant target access after restore.
             return new InventoryComparisonData(reference(r,"interop.inventory-comparison","id"),key,value,"REAUTHORIZE_AND_REVIEW_REQUIRED");
         });

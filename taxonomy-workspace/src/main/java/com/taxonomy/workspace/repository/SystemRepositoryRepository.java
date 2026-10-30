@@ -34,6 +34,12 @@ public interface SystemRepositoryRepository extends JpaRepository<SystemReposito
             + "where repository.repositoryId = :repositoryId")
     int recordLastPush(@Param("repositoryId") String repositoryId, @Param("publishedAt") Instant publishedAt);
 
+    // HSQL MVCC does not retain a SELECT FOR UPDATE fence. An actual no-op write
+    // holds the existing row without invalidating repository metadata loaded by Git.
+    @Modifying
+    @Query("update SystemRepository repository set repository.version = repository.version where repository.repositoryId = :repositoryId")
+    int lockForMutation(@Param("repositoryId") String repositoryId);
+
     Optional<SystemRepository> findBySlug(String slug);
 
     /** Serialize a retained creation claim across application instances. */
