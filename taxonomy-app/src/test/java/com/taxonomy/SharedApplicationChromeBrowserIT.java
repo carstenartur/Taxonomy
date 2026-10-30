@@ -271,7 +271,7 @@ class SharedApplicationChromeBrowserIT {
             summary.sendKeys(Keys.ENTER);
             assertThat(context.getDomProperty("open")).isEqualTo("false");
             assertThat(page.driver().switchTo().activeElement()).isEqualTo(summary);
-        } else assertThat(context.getDomProperty("open")).isEqualTo("true");
+        } else assertThat(context.getDomProperty("open")).isEqualTo("false");
         assertThat(page.requests()).noneMatch(request -> request.method().equals("POST")
                 && (request.path().endsWith("/api/analyze") || request.path().endsWith("/api/copilot")));
     }

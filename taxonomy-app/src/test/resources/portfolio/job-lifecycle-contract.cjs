@@ -1,10 +1,13 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import vm from 'node:vm';
-import {readFile} from 'node:fs/promises';
+'use strict';
 
-const api = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/api/portfolio-api.js',import.meta.url),'utf8');
-const source = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio-async.js',import.meta.url),'utf8');
+// JUnit owns each case and passes the packaged production modules to this VM driver.
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+const {readFileSync} = require('node:fs');
+
+const [caseName, apiPath, sourcePath] = process.argv.slice(2);
+const api = readFileSync(apiPath, 'utf8');
+const source = readFileSync(sourcePath, 'utf8');
 const jobUrl='https://example.test/taxonomy/api/projects/1/analysis-jobs/retained-job';
 const storageKey='taxonomy.portfolio.analysisJobs.v2';
 
@@ -32,16 +35,16 @@ function fixture(fetcher=async()=>({ok:true,json:async()=>({id:'retained-job',st
     };
 }
 
-test('leaving the portfolio cancels a scheduled poll without deleting the server job history',async()=>{
+async function departureCancelsScheduledPoll() {
     const f=fixture();assert.equal(f.register(),true);assert.equal(f.timers.size,1);
     f.event('pagehide',{persisted:false});
     await f.runNext();
     assert.equal(f.requests.length,0,'The departing document must not begin another background job request');
     assert.equal(f.timers.size,0);
     assert.equal(f.saved()[0].job.id,'retained-job');
-});
+}
 
-test('leaving the portfolio aborts an in-flight poll without scheduling an error retry',async()=>{
+async function departureAbortsInFlightPoll() {
     let finish;
     const f=fixture((_url,options)=>new Promise((resolve,reject)=>{
         finish=()=>resolve({ok:true,json:async()=>({id:'retained-job',status:'RUNNING'})});
@@ -55,9 +58,9 @@ test('leaving the portfolio aborts an in-flight poll without scheduling an error
     } finally {finish();await poll;}
     assert.equal(f.timers.size,0);assert.equal(f.saved()[0].lastPollError,undefined);
     assert.equal(f.saved()[0].job.status,'RUNNING');
-});
+}
 
-test('a late response body from a departed document cannot rewrite retained job state',async()=>{
+async function departedResponseCannotRewriteHistory() {
     let finishBody;
     const f=fixture(async()=>({ok:true,json:()=>new Promise(resolve=>{finishBody=resolve;})}));
     f.register();const poll=f.runNext();
@@ -66,9 +69,9 @@ test('a late response body from a departed document cannot rewrite retained job 
     finishBody({id:'retained-job',status:'SUCCESS'});await poll;
     assert.equal(f.saved()[0].job.status,'RUNNING','A response belonging to the previous document cannot publish completion');
     assert.equal(f.timers.size,0);
-});
+}
 
-test('returning from the back-forward cache resumes the retained job exactly once',async()=>{
+async function backForwardCacheResumesOnce() {
     const f=fixture();f.register();f.event('pagehide',{persisted:true});
     assert.equal(f.timers.size,0);
     f.event('pageshow',{persisted:true});f.event('pageshow',{persisted:true});
@@ -76,10 +79,27 @@ test('returning from the back-forward cache resumes the retained job exactly onc
     await f.runNext();
     assert.equal(f.requests.length,1);assert.equal(f.timers.size,1);
     assert.equal(f.saved()[0].job.id,'retained-job');
-});
+}
 
-test('an active portfolio still reports a real polling failure and schedules its bounded retry',async()=>{
+async function activeFailureRetainsBoundedRetry() {
     const f=fixture(async()=>({ok:false,status:503}));f.register();await f.runNext();
     assert.equal(f.saved()[0].lastPollError,'HTTP 503');
     assert.equal(f.timers.size,1);assert.equal([...f.timers.values()][0].delay,4500);
+}
+
+const cases = {
+    departureCancelsScheduledPoll,
+    departureAbortsInFlightPoll,
+    departedResponseCannotRewriteHistory,
+    backForwardCacheResumesOnce,
+    activeFailureRetainsBoundedRetry
+};
+
+(async function () {
+    assert.equal(Object.hasOwn(cases, caseName), true, "Unknown JUnit contract: " + caseName);
+    await cases[caseName]();
+    process.stdout.write("PORTFOLIO_JOB_LIFECYCLE_OK " + caseName + "\n");
+})().catch(error => {
+    console.error(error);
+    process.exitCode = 1;
 });

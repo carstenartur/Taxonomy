@@ -31,9 +31,9 @@ Architekturansicht, Editor und Versionierung. Der Kontext nennt Architektur,
 Projekt und Anforderung mit lesbaren Namen und Fachschlüsseln. Aktuelle Textversion,
 Quellversion und gewählter Modellstand haben verschiedene Bedeutungen.
 
-Die Projektübersicht zeigt diesen Kontext zunächst auf allen Bildschirmgrößen
-eingeklappt. Die Analyse klappt ihn auf schmalen Bildschirmen zunächst ein und auf
-breiteren aus. Die Zeile mit Architekturtitel und aktueller Auswahl öffnen, um
+Projektübersicht und Analyse zeigen diesen Kontext zunächst auf allen Bildschirmgrößen
+eingeklappt. Gewählter Stand sowie Hinweise zu Schreibschutz, ausstehender Veröffentlichung,
+Konflikten oder notwendiger Prüfung bleiben sichtbar. Die Zeile mit Architekturtitel und aktueller Auswahl öffnen, um
 Kontext und **Anforderungen, Realisierung und Historie** einzusehen. Ohne
 Architekturkontext steht dort **Ausgewählter Kontext**. Anforderungsdetail,
 gespeicherte Architekturansicht, Editor und Versionierung zeigen den Kontext ausgeklappt.

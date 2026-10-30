@@ -52,22 +52,21 @@
 .taxonomy-app-context .taxonomy-entity-details dt { color: #526174; }
 .taxonomy-app-context .taxonomy-entity-details dd { color: #17243a; }
 .taxonomy-app-context-disclosure > summary { display: none; }
-.taxonomy-app-context-disclosure[data-compact-context="projects"] > summary { display: list-item; }
+.taxonomy-app-context-disclosure[data-compact-context] > summary { display: list-item; }
 .taxonomy-app-context-disclosure > summary { min-height: 44px; padding: .5rem 1.25rem; cursor: pointer; background: #f5f7fb; color: #17243a; border-bottom: 1px solid #c8d1dd; overflow-wrap: anywhere; }
 .taxonomy-app-context-disclosure > summary strong { font-weight: 650; }
 #applicationContextSummarySelection:not(:empty)::before, #applicationContextSummaryStand:not(:empty)::before { content: ' · '; }
 .taxonomy-app-summary-statuses { display: inline-flex; flex-wrap: wrap; gap: .35rem; vertical-align: middle; }
 .taxonomy-app-context-disclosure > summary:focus-visible { outline: 3px solid #ac5100; outline-offset: -3px; }
 @media (max-width: 640px) {
-    .taxonomy-app-context-disclosure[data-compact-context="analysis"] > summary { display: list-item; }
     .taxonomy-app-context-disclosure > summary { padding: .5rem .65rem; }
 }
 @media (max-width: 42rem) {
     .taxonomy-app-navigation { padding: .4rem .65rem; }
-    .taxonomy-app-mainrow { gap: .3rem .5rem; }
+    .taxonomy-app-mainrow { gap: .3rem .25rem; }
     .taxonomy-app-primary { order: 3; width: 100%; }
     .taxonomy-app-primary a { flex: 1 1 0; padding-inline: .4rem; font-size: .9rem; }
-    .taxonomy-app-utilities { gap: .25rem; }
+    .taxonomy-app-utilities, .taxonomy-app-languages { gap: 0; }
     .taxonomy-app-navigation .context-help { font-size: .75rem; padding-inline: .4rem; }
     .taxonomy-app-context { padding: .55rem .65rem; gap: .35rem; }
     .taxonomy-app-context-group { flex-basis: 100%; }

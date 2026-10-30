@@ -35,9 +35,9 @@ workbench, editor and versioning connected. The context identifies the architect
 project and requirement with readable names and business keys. The current text
 version, source version and selected model stand have separate meanings.
 
-The project overview initially collapses this context on all screen sizes. Analysis
-initially collapses it on narrow screens and expands it on wider screens. Open the
-summary line showing the architecture title and current selection to reveal the
+The project overview and analysis initially collapse this context on all screen sizes.
+The summary keeps the selected stand and read-only, pending publication, conflict or
+review indicators visible. Open the line showing the architecture title and current selection to reveal the
 context and **Requirements, realization and history**. Without an architecture context,
 the line uses **Selected context**. Requirement detail, the saved architecture
 workbench, editor and versioning show the context expanded.

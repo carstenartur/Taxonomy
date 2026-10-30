@@ -62,7 +62,11 @@ class ContextualHelpTest {
     @ParameterizedTest
     @ValueSource(strings = {"en", "de"})
     void workspacePanesAndAllTaxonomyModesHaveRealSectionTargets(String language) {
-        String html = render("index", ".view-help", language);
+        String header = render("index", "header", language);
+        assertTrue(header.contains("/taxonomy/?lang=" + language + "#help/USER_GUIDE/guide-section-4\""),
+                "Analysis help remains in the shared header without a duplicate pane action");
+        assertTrue(header.contains("target=\"_blank\""), "Opening analysis help must preserve the active work");
+        String html = header + render("index", ".view-help", language);
         for (String target : Set.of("USER_GUIDE/guide-section-4", "USER_GUIDE/guide-section-7",
                 "USER_GUIDE/guide-section-13", "USER_GUIDE/guide-section-10", "USER_GUIDE/guide-section-8",
                 "USER_GUIDE/guide-section-19", "USER_GUIDE/guide-section-18", "USER_GUIDE/guide-section-21", "PREFERENCES")) {

@@ -167,11 +167,9 @@
         if (node('projectFilter')) {
             disclosure.dataset.compactContext = 'projects';
             disclosure.open = false;
-        } else if (node('mainNavTabs') && typeof window.matchMedia === 'function') {
+        } else if (node('mainNavTabs')) {
             disclosure.dataset.compactContext = 'analysis';
-            var narrow = window.matchMedia('(max-width: 640px)');
-            disclosure.open = !narrow.matches;
-            narrow.addEventListener('change', function (event) { disclosure.open = !event.matches; });
+            disclosure.open = false;
         }
     }
     function navigationUrl(route) {

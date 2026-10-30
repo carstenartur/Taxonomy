@@ -31,10 +31,10 @@ Formulierungen bedeuten nicht automatisch dieselbe Anforderung.
 
 Die gemeinsame Navigation verbindet Analyse, Projekte, Anforderungsdetail,
 gespeicherte Architekturansicht, Architektureditor und Versionierung. Der Kontext
-verbindet Architektur, Projekt, Anforderung und gewählten Modellstand. Auf der
-Projektübersicht erscheint er zunächst eingeklappt als Zeile mit Architekturtitel
-und aktueller Auswahl. Diese Zeile für Kontextdetails und Lifecycle-Aktionen öffnen;
-auch die Analyse startet auf schmalen Bildschirmen eingeklappt. Lesbare Namen und
+verbindet Architektur, Projekt, Anforderung und gewählten Modellstand. Projektübersicht
+und Analyse zeigen ihn zunächst auf allen Bildschirmgrößen eingeklappt.
+Architekturtitel, aktuelle Auswahl, gewählter Stand sowie Schreibschutz- oder Problemhinweise
+bleiben sichtbar. Diese Zeile für Kontextdetails und Lifecycle-Aktionen öffnen. Lesbare Namen und
 Fachschlüssel stehen im Vordergrund. **Technische Details** zeigt innerhalb des
 Kontexts bei Bedarf Repository-, Workspace-, vollständige Commit-, Snapshot- und Versionskennungen,
 soweit vorhanden. Die bestehenden Hilfelinks führen zum passenden Abschnitt dieses

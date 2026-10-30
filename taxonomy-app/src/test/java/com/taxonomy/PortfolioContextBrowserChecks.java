@@ -83,7 +83,7 @@ final class PortfolioContextBrowserChecks {
             fixtures.projectsAvailable = true;
             driver.navigate().refresh();
             pageReady("selectedProjectKey", "QA-CONTEXT-A", "portfolioBusy");
-            wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("applicationCurrentContext"), "QA context architecture"));
+            wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("applicationContextSummaryTitle"), "QA context architecture"));
             verifyPortfolioSpacePriority();
             verifyProjectNavigation(1366, 768);
             verifyProjectNavigation(1920, 1080);
@@ -98,7 +98,10 @@ final class PortfolioContextBrowserChecks {
             assertThat(fixtures.submittedVersions).hasSize(1);
         } catch (IOException | RuntimeException | Error error) {
             failure = error;
-            try { screenshot("failure"); } catch (IOException | RuntimeException diagnostic) { error.addSuppressed(diagnostic); }
+            try {
+                screenshot("failure");
+                Files.writeString(evidence.resolve("failure.html"), driver.getPageSource());
+            } catch (IOException | RuntimeException diagnostic) { error.addSuppressed(diagnostic); }
             throw error;
         } finally {
             Throwable cleanupFailure = null;

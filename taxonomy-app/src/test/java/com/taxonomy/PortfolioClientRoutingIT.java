@@ -239,7 +239,7 @@ class PortfolioClientRoutingIT {
         By workbenchLink = By.cssSelector("#snapshotResultOverview a[href*='/architecture/workbench']");
         wait.until(ignored -> !driver.findElements(workbenchLink).isEmpty() && hidden("detailBusy"));
         click(By.id("analyses-tab"));
-        String workspaceQuery = workspaceId == null ? null : "workspaceId=" + workspaceId;
+        String workspaceQuery = workspaceId == null ? null : "workspaceId=" + workspaceId + workspaceScopeAssertion(workspaceId);
         for (String snapshotId : List.of("snapshot-current", "snapshot-previous")) {
             if (snapshotId.equals("snapshot-previous")) {
                 click(By.cssSelector("#snapshotList [data-snapshot-id='snapshot-previous']"));
@@ -249,7 +249,7 @@ class PortfolioClientRoutingIT {
             assertThat(text("detailError")).isEmpty();
             assertThat(driver.findElement(workbenchLink).getDomAttribute("href"))
                     .isEqualTo(prefix + "/architecture/workbench?projectId=42&snapshotId=" + snapshotId
-                            + "&lang=de" + (workspaceQuery == null ? "" : "&" + workspaceQuery + workspaceScopeAssertion(workspaceId)));
+                            + "&lang=de" + (workspaceQuery == null ? "" : "&" + workspaceQuery));
             assertThat(requests("GET", prefix + "/api/projects/42/snapshots/" + snapshotId)).singleElement()
                     .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
         }
@@ -349,9 +349,9 @@ class PortfolioClientRoutingIT {
     void importCompletionStoresAUsableAnalysisJobAndReturnsToContext(String prefix, String workspaceId) {
         installRoutes(prefix);
         prepareImport(prefix, "/api/projects/42/analysis-jobs/job-7", workspaceId);
-        String workspaceQuery = workspaceId == null ? null : "workspaceId=" + workspaceId;
+        String workspaceQuery = workspaceId == null ? null : "workspaceId=" + workspaceId + workspaceScopeAssertion(workspaceId);
         String portfolioReturn = prefix + "/projects?projectId=42&lang=de"
-                + (workspaceQuery == null ? "" : "&" + workspaceQuery + workspaceScopeAssertion(workspaceId));
+                + (workspaceQuery == null ? "" : "&" + workspaceQuery);
         assertThat(href("portfolioBack")).isEqualTo(portfolioReturn);
         assertThat(requests("GET", prefix + "/api/projects/42")).singleElement()
                 .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
