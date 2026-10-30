@@ -463,9 +463,10 @@ class PortfolioUiAcceptanceIT {
     }
 
     private static void captureModalFailure(String modalId, RuntimeException failure) {
+        Path directory = Path.of("target", "portfolio-workflow-evidence");
+        String name = modalId.replaceAll("[^A-Za-z0-9_-]", "_") + "-" + System.nanoTime();
         try {
-            Path directory = Files.createDirectories(Path.of("target", "portfolio-workflow-evidence"));
-            String name = modalId.replaceAll("[^A-Za-z0-9_-]", "_") + "-" + System.nanoTime();
+            Files.createDirectories(directory);
             Files.writeString(directory.resolve(name + ".html"), driver.getPageSource());
             Files.write(directory.resolve(name + ".png"), driver.getScreenshotAs(OutputType.BYTES));
             String state = (String) javascript().executeScript("""
@@ -503,6 +504,31 @@ class PortfolioUiAcceptanceIT {
             failure.addSuppressed(new IllegalStateException("Modal save state: " + state));
         } catch (Exception diagnosticFailure) {
             failure.addSuppressed(diagnosticFailure);
+        }
+        try {
+            String provisioning = (String) javascript().executeAsyncScript("""
+                    const done=arguments[arguments.length-1];
+                    const url=new URL(window.TaxonomyI18n.resolveUrl('/api/workspace/provisioning-status'),location.href);
+                    const scope=window.TaxonomyArchitectureWorkflow?.getScope()||{};
+                    if(Object.prototype.hasOwnProperty.call(scope,'workspaceId'))url.searchParams.set('workspaceId',scope.workspaceId);
+                    fetch(url,{method:'GET',credentials:'same-origin',signal:AbortSignal.timeout(5000)})
+                        .then(async response=>({path:url.pathname+url.search,status:response.status,
+                            body:response.headers.get('content-type')?.includes('json')?await response.json():null}))
+                        .then(result=>done(JSON.stringify(result,null,2)),error=>done(JSON.stringify({error:error.message})));
+                    """);
+            Files.createDirectories(directory);
+            Files.writeString(directory.resolve(name + ".provisioning.json"), provisioning);
+            failure.addSuppressed(new IllegalStateException("Workspace provisioning state: " + provisioning));
+        } catch (Exception diagnosticFailure) {
+            failure.addSuppressed(diagnosticFailure);
+        }
+        if (application != null) {
+            try {
+                Files.createDirectories(directory);
+                Files.writeString(directory.resolve(name + ".application.log"), application.getLogs());
+            } catch (Exception diagnosticFailure) {
+                failure.addSuppressed(diagnosticFailure);
+            }
         }
     }
 

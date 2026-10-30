@@ -23,6 +23,8 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -429,6 +431,9 @@ public class WorkspaceManager {
         if (workspace == null || !workspace.isDefault()) {
             throw new AccessDeniedException("No automatic default workspace was selected");
         }
+        if (!username.equals(workspace.getUsername()) || workspace.isArchived() || workspace.isShared()) {
+            throw new AccessDeniedException("Workspace is not available to the authenticated user");
+        }
         // A concurrent implicit reader may have observed PROVISIONING before
         // obtaining this monitor. Re-read here, but never turn the winner's
         // failure into an unrequested automatic retry.
@@ -440,7 +445,44 @@ public class WorkspaceManager {
         if (branch == null || branch.isBlank()) {
             throw new IllegalStateException("Default workspace has no current branch");
         }
+        if (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED
+                && (workspace.getBaseCommit() == null || workspace.getBaseCommit().isBlank())
+                && defaultSourceHeadIsMissing(workspace)) {
+            // Bootstrap publishes the initial source checkpoint after application
+            // readiness. No allocation has started, so keep this UUID retryable.
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Source repository is still initializing; retry when its initial checkpoint is available");
+        }
         return provisionWorkspaceRepository(username, workspace, branch);
+    }
+
+    private boolean defaultSourceHeadIsMissing(UserWorkspace workspace) {
+        String sourceRepositoryId = workspace.getSourceRepositoryId();
+        boolean recordedSource = sourceRepositoryId != null && !sourceRepositoryId.isBlank();
+        var source = recordedSource
+                ? systemRepositoryService.getRepository(sourceRepositoryId.strip())
+                : systemRepositoryService.getPrimaryRepository();
+        if (source.getLifecycleState() != RepositoryLifecycleState.ACTIVE) {
+            throw new IllegalStateException("Source repository is not active: " + source.getRepositoryId());
+        }
+        if (repositoryFactory == null && recordedSource
+                && !sourceRepositoryId.strip().equals(
+                        systemRepositoryService.getPrimaryRepository().getRepositoryId())) {
+            throw new IllegalStateException("Legacy storage cannot open the recorded source repository");
+        }
+        String sourceBranch = workspace.getSourceBranch();
+        String baseBranch = sourceBranch != null && !sourceBranch.isBlank()
+                ? sourceBranch.strip() : source.getDefaultBranch();
+        DslGitRepository sourceGit = repositoryFactory == null ? gitRepository
+                : recordedSource ? repositoryFactory.getCentralRepository(sourceRepositoryId.strip())
+                : repositoryFactory.getSystemRepository();
+        try {
+            return sourceGit.getHeadCommit(baseBranch) == null;
+        } catch (IOException failure) {
+            // A failed read is not evidence of a missing bootstrap checkpoint.
+            // Preserve its cause without claiming a workspace allocation.
+            throw new UncheckedIOException("Could not inspect the default workspace source checkpoint", failure);
+        }
     }
 
     private UserWorkspace provisionWorkspaceRepository(String username, UserWorkspace workspace) {
