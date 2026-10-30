@@ -107,6 +107,43 @@ class GitNativeSyncPortfolioAtomicityTest {
         else incoming=incoming.replace("requirementVersion ORDERS RETENTION 2 {",
                     "requirementVersion ORDERS RETENTION 2 {\n  "+invalidField+": -1;");
         assertThat(incoming).contains(com.taxonomy.identity.StableIdentityHash.sha256("Valid new immutable body"));
+        assertRejectedBeforeImport(fixture,incoming);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings={"project","requirement","version"})
+    void normalizedPortableIdentityAliasesAreRejectedBeforeAnyGitRefOrDatabaseStateChanges(String kind) throws Exception {
+        Fixture fixture=fixture(false,DivergedStrategy.TAKE_SHARED);
+        String aliases=switch(kind) {
+            case "project" -> """
+                    project ALIAS {
+                      title: "First project identity";
+                    }
+                    project   alias   {
+                      title: "Aliased project identity";
+                    }
+                    """;
+            case "requirement" -> requirementSource("NEW","First requirement")
+                    +requirementSource("new","Aliased requirement")
+                    +versionSource("NEW","First valid immutable body")+versionSource("new","Different valid immutable body");
+            case "version" -> requirementSource("NEW","One business requirement")
+                    +versionSource("NEW","First valid immutable body")+versionSource("new","Different valid immutable body");
+            default -> throw new IllegalArgumentException(kind);
+        };
+        String incoming=fixture.source().getDslAtHead("main")+"\n"+aliases;
+        assertRejectedBeforeImport(fixture,incoming);
+    }
+
+    private static String requirementSource(String key,String title) {
+        return "projectRequirement ORDERS "+key+" {\n  title: \""+title+"\";\n  currentVersionNumber: 1;\n}\n";
+    }
+
+    private static String versionSource(String key,String text) {
+        return "requirementVersion ORDERS "+key+" 1 {\n  text: \""+text+"\";\n  contentHash: \""
+                +com.taxonomy.identity.StableIdentityHash.sha256(text)+"\";\n}\n";
+    }
+
+    private void assertRejectedBeforeImport(Fixture fixture,String incoming) throws Exception {
         fixture.source().commitDsl("main",incoming,"shared","Prospective invalid import");
         String localHead=fixture.working().commitDsl("main",fixture.working().getDslAtHead("main")
                 +"\nelement local-note type Component {\n  title: \"Local reviewed note\";\n}\n","alice","Local divergence");

@@ -30,9 +30,12 @@ original project. A similarly worded requirement is not automatically the same o
 
 The shared navigation connects analysis, projects, requirement detail, the saved
 architecture workbench, the architecture editor and versioning. The context keeps
-the architecture, project, requirement and selected model stand visible. Readable
-names and business keys appear first; expand **Technical details** for repository,
-workspace, full commit, snapshot and requirement-version identifiers when available.
+the architecture, project, requirement and selected model stand together. On the
+project overview it initially appears as a collapsed summary with the architecture
+title and current selection. Open that line to access context details and lifecycle
+actions; the analysis page also starts collapsed on narrow screens. Readable names
+and business keys appear first; expand **Technical details** within the context for
+repository, workspace, full commit, snapshot and requirement-version identifiers when available.
 The existing help links open the relevant section of this guide or the
 [editor guide](ARCHITECTURE_EDITOR.md).
 

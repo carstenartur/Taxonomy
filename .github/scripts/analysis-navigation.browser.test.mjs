@@ -8,19 +8,34 @@ import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {chromium} from 'playwright';
 const resources=process.env.TAXONOMY_TEST_RESOURCE_ROOT||path.resolve('taxonomy-app/src/main/resources');
-let browser,template,bootstrapCss;
+let browser,template,chromeTemplate,helpTemplate,bootstrapCss;
 before(async()=>{
     assert.ok(process.env.BOOTSTRAP_CSS,'Supply BOOTSTRAP_CSS from the pinned project WebJar');
     bootstrapCss=await readFile(process.env.BOOTSTRAP_CSS,'utf8');
     template=await readFile(path.join(resources,'templates/index.html'),'utf8');
+    chromeTemplate=await readFile(path.join(resources,'templates/fragments/application-chrome.html'),'utf8');
+    helpTemplate=await readFile(path.join(resources,'templates/fragments/context-help.html'),'utf8');
     browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE?{executablePath:process.env.CHROMIUM_EXECUTABLE}:{}),args:['--no-sandbox','--disable-dev-shm-usage']});
 });
 after(async()=>{await browser?.close();});
+function headerMarkup(locale){
+    const host=template.match(/<header\b[^>]*th:replace="~\{fragments\/application-chrome :: navigation\('analysis', ~\{:: localActions\}, '([^']+)', '([^']+)'\)\}"[^>]*>([\s\S]*?)<\/header>/);
+    const local=host?.[3].match(/<th:block\b[^>]*th:fragment="localActions"[^>]*>([\s\S]*?)<\/th:block>/);
+    const navigation=chromeTemplate.match(/<header\b[^>]*th:fragment="navigation\([^"]*\)"[^>]*>[\s\S]*?<\/header>/);
+    const help=helpTemplate.match(/<a\b[^>]*th:fragment="button\([^"]*\)"[^>]*>[\s\S]*?<\/a>/);
+    assert.ok(host&&local&&navigation&&help,'Compose the production analysis header and its shared fragments');
+    const helpLink=help[0].replace('<a ',`<a href="/taxonomy/?lang=${locale}#help/${host[1]}/${host[2]}" `);
+    const localSlot=/<th:block\b[^>]*th:replace="\$\{localActions\}"[^>]*><\/th:block>/;
+    const helpSlot=/<a\b[^>]*th:replace="~\{fragments\/context-help :: button\([^"]*\)\}"[^>]*><\/a>/;
+    assert.match(navigation[0],localSlot);assert.match(navigation[0],helpSlot);
+    const header=navigation[0].replace(localSlot,()=>local[1]).replace(helpSlot,()=>helpLink);
+    const afterHeader=host.index+host[0].length,end=template.indexOf('<!-- Global startup loading banner');
+    assert.ok(end>afterHeader,'Retain the production operational-status staging area');
+    return header+template.slice(afterHeader,end);
+}
 async function fixture(locale='de',width=1366){
     const page=await browser.newPage({viewport:{width,height:768}});page.setDefaultTimeout(2500);
     page.uiErrors=[]; page.on('pageerror',error=>page.uiErrors.push(error.message));
-    const start=template.search(/<nav\b[^>]*class="navbar/),end=template.indexOf('<!-- Global startup loading banner');
-    assert.ok(start>=0&&end>start);
     let dict={};
     for(const name of ['messages.properties',...(locale==='de'?['messages_de.properties']:[])]){
         for(const line of (await readFile(path.join(resources,'i18n',name),'utf8')).split('\n')){
@@ -28,7 +43,7 @@ async function fixture(locale='de',width=1366){
         }
     }
     const pages=['analyze','architecture','graph','versions','dsl-editor','help','admin','preferences'];
-    await page.setContent(`<html lang="${locale}"><head><link data-taxonomy-ergonomics></head><body>${template.slice(start,end)}
+    await page.setContent(`<html lang="${locale}"><head><link data-taxonomy-ergonomics></head><body>${headerMarkup(locale)}
         <main id="mainContent" class="container-fluid px-3"><div class="row"><div id="leftPanel"></div><div id="rightPanel">${pages.map(p=>`<section id="tab-${p}" class="${p==='analyze'?'':'d-none'}"><h1>${p}</h1>${p==='analyze'?'<div class="card"><div class="card-body"><textarea id="businessText"></textarea><button id="analyzeBtn">Analyze</button><div id="statusArea"></div></div></div>':''}</section>`).join('')}</div></div></main></body></html>`);
     await page.evaluate(dict=>{
         const store=new Map([['taxonomy_onboarded','true']]);
@@ -40,7 +55,8 @@ async function fixture(locale='de',width=1366){
         window.TaxonomyApiClient={getJson:()=>window.accountError?Promise.reject(new Error('Account unavailable')):Promise.resolve(window.account)};
     },dict);
     await page.addStyleTag({content:bootstrapCss});
-    for(const css of ['taxonomy.css','taxonomy-ergonomics.css']) await page.addStyleTag({path:path.join(resources,'static/css',css)});
+    for(const css of ['taxonomy.css','taxonomy-ergonomics.css','context-help.css','application-chrome.css','architecture-lifecycle.css'])
+        await page.addStyleTag({path:path.join(resources,'static/css',css)});
     await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-state.js')});
     await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-utils.js')});
     const nav=template.match(/<!-- Page Navigation Script -->\s*<script>([\s\S]*?)<\/script>/);
@@ -54,8 +70,9 @@ for(const locale of ['de','en']){
             const h=await help.boundingBox(),a=await about.boundingBox();
             assert.ok(h&&a);assert.ok(Math.abs((h.y+h.height/2)-(a.y+a.height/2))<=2,'Help/About occupy different rows');
             assert.ok(a.x>=h.x+h.width&&a.x-h.x-h.width<24,'Help/About must be adjacent');
-            assert.equal((await page.locator('.navbar-brand').textContent()).trim(),'Taxonomy');
-            const header=await page.locator('nav.navbar').boundingBox();assert.ok(header.height<=64,JSON.stringify(header));
+            assert.equal((await page.locator('.taxonomy-app-brand').textContent()).trim(),'Taxonomy');
+            const header=await page.locator('#applicationNavigation .application-shell').boundingBox();
+            assert.ok(header.height<=64,'The analysis action row stays compact: '+JSON.stringify(header));
             assert.ok(h.x>900,'Help belongs on the right');
         }finally{await finish(page);}
     });

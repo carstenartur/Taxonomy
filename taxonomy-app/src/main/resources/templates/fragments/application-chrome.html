@@ -27,6 +27,14 @@
         </div>
         <div class="taxonomy-app-local"><th:block th:replace="${localActions}"></th:block></div>
     </nav>
+    <details id="applicationContextDisclosure" class="taxonomy-app-context-disclosure" open>
+    <summary id="applicationContextSummary">
+        <strong id="applicationContextSummaryTitle" th:text="#{app.context.label}">Selected context</strong>
+        <span id="applicationContextSummarySelection"></span>
+        <span id="applicationContextSummaryStand"></span>
+        <span id="applicationContextSummaryStates" class="taxonomy-app-summary-statuses"></span>
+    </summary>
+    <div class="taxonomy-app-context-body">
     <section id="applicationContext" class="taxonomy-app-context" th:aria-label="#{app.context.label}" aria-label="Selected context" hidden>
         <div id="applicationCurrentContext" class="taxonomy-app-context-group" aria-labelledby="applicationCurrentContextTitle" hidden>
             <h2 id="applicationCurrentContextTitle" class="taxonomy-app-context-title" th:text="#{app.context.current}">Current selection</h2>
@@ -43,6 +51,8 @@
         </details>
     </section>
     <section id="architectureLifecycle" class="taxonomy-lifecycle" hidden></section>
+    </div>
+    </details>
 </header>
 <th:block th:fragment="scripts">
     <script th:src="@{/js/shared/application-chrome.js}" src="/js/shared/application-chrome.js"></script>

@@ -12,7 +12,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.openqa.selenium.By;
-import org.openqa.selenium.Dimension;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.chromium.HasCdp;
@@ -64,6 +63,15 @@ class SharedApplicationChromeBrowserIT {
 
     @AfterAll static void closeBrowser() { if (page != null) page.close(); }
 
+    private static void viewport(int width, int height) {
+        var cdp = (HasCdp) new Augmenter().augment(page.driver());
+        cdp.executeCdpCommand("Emulation.setDeviceMetricsOverride", Map.of(
+                "width", width, "height", height, "deviceScaleFactor", 1, "mobile", false));
+        assertThat(page.driver().executeScript("return [innerWidth,innerHeight];"))
+                .as("The layout contract uses CSS viewport pixels, independent of browser window decorations")
+                .isEqualTo(List.of((long) width, (long) height));
+    }
+
     private static void open(View view, String locale, int width) {
         open(view, locale, width, List.of("portfolio", "architecture"));
     }
@@ -71,7 +79,7 @@ class SharedApplicationChromeBrowserIT {
     private static void open(View view, String locale, int width, List<String> features) {
         page.clearRoutes();
         page.clearRequests();
-        page.driver().manage().window().setSize(new Dimension(width, 1000));
+        viewport(width, 1000);
         page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of()));
         page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", features)));
         page.openAt(view.template(), "/taxonomy", "/taxonomy" + view.path(), locale,
@@ -200,10 +208,78 @@ class SharedApplicationChromeBrowserIT {
         }
     }
 
+    @ParameterizedTest @ValueSource(ints = {1366, 1024, 390})
+    void loadedGermanAnalysisKeepsTheEmptyInputAndPrimaryActionInTheViewport(int width) throws IOException {
+        page.clearRoutes(); page.clearRequests();
+        viewport(width, width == 390 ? 844 : 768);
+        page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", List.of("portfolio", "architecture", "analysis"))));
+        page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of()));
+        page.route("GET", "/taxonomy/api/taxonomy", request -> json(200, List.of(
+                Map.of("code", "BP", "name", "Business Processes", "children", List.of(
+                        Map.of("code", "BP-1000", "name", "Business Processes", "children", List.of()))))));
+        page.route("GET", "/taxonomy/api/ai-status", request -> json(200,
+                Map.of("available", false, "provider", "NONE", "availableProviders", List.of())));
+        page.route("GET", "/taxonomy/api/architecture/lifecycle", request -> json(200, Map.of(
+                "context", Map.of("repositoryId", COMPACT_REPOSITORY, "workspaceScopeKey", "__shared__",
+                        "branch", "draft", "commit", COMPACT_COMMIT, "revision", 0),
+                "architectureTitle", "Shared Architecture Repository", "source", "GIT_CHECKPOINT", "projectionState", "READY",
+                "publicationState", "CHECKPOINTED", "mayEdit", false,
+                "projects", List.of(), "dependencies", List.of(), "requirements", List.of())));
+        page.open("index", "/taxonomy", "/", "de", """
+                localStorage.clear();sessionStorage.clear();
+                history.replaceState(null,'','?lang=de&repositoryId=%s&workspaceId=&workspaceScopeKey=__shared__&branch=draft#analyze');
+                """.formatted(COMPACT_REPOSITORY));
+        wait.until(ExpectedConditions.elementToBeClickable(By.id("onboardingDismiss"))).click();
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("onboardingOverlay")));
+        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("""
+                return window.TaxonomyAppChrome?.getContext()?.architecture?.title==='Shared Architecture Repository'
+                    && document.getElementById('copilotBtn').classList.contains('analysis-primary-action')
+                    && window.TaxonomyState?.taxonomyData?.length===1;
+                """)));
+        var input = page.driver().findElement(By.id("businessText"));
+        assertThat(input.getDomProperty("value")).isEmpty();
+        page.driver().executeScript("scrollTo(0,0);");
+        var geometry = (Map<?, ?>) page.driver().executeScript("""
+                const bounds=selector=>{const r=document.querySelector(selector).getBoundingClientRect();
+                    return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,height:r.height};};
+                const input=bounds('#businessText'),action=bounds('#copilotBtn'),progress=bounds('#analysisTaskProgress');
+                return {innerWidth,innerHeight,input,action,progress,header:bounds('.taxonomy-app-chrome'),
+                    valid:input.top+80<innerHeight && action.bottom<=innerHeight && action.height>=44
+                        && progress.height<200 && document.documentElement.scrollWidth<=innerWidth+1};
+                """);
+        if (!Boolean.TRUE.equals(geometry.get("valid"))) {
+            Path evidence = Path.of("target", "coherent-lifecycle", "loaded-analysis-" + width);
+            Files.createDirectories(evidence);
+            Files.write(evidence.resolve("viewport.png"), page.driver().getScreenshotAs(OutputType.BYTES));
+            Files.writeString(evidence.resolve("geometry.json"), PortfolioClientTestPage.json(geometry));
+            Files.writeString(evidence.resolve("page.html"), page.driver().getPageSource());
+        }
+        assertThat(geometry.get("valid")).as("The loaded German analysis preserves the existing CI useful-input and primary-action viewport gates: %s", geometry).isEqualTo(true);
+        var context = page.driver().findElement(By.id("applicationContextDisclosure"));
+        if (width == 390) {
+            assertThat(context.getDomProperty("open")).isEqualTo("false");
+            var summary = page.driver().findElement(By.id("applicationContextSummary"));
+            assertThat(summary.getText()).contains("Shared Architecture Repository", "draft", COMPACT_COMMIT.substring(0, 12));
+            assertThat(summary.findElement(By.cssSelector(".taxonomy-status[data-state='READ_ONLY']")).isDisplayed()).isTrue();
+            summary.sendKeys(Keys.ENTER);
+            assertThat(context.getDomProperty("open")).isEqualTo("true");
+            assertThat(page.driver().findElement(By.id("applicationCurrentContext")).isDisplayed()).isTrue();
+            assertThat(page.driver().findElement(By.id("architectureLifecycle")).isDisplayed()).isTrue();
+            var technical = page.driver().findElement(By.id("applicationTechnicalContext"));
+            technical.findElement(By.tagName("summary")).sendKeys(Keys.ENTER);
+            assertThat(technical.getText()).contains(COMPACT_REPOSITORY, COMPACT_COMMIT);
+            summary.sendKeys(Keys.ENTER);
+            assertThat(context.getDomProperty("open")).isEqualTo("false");
+            assertThat(page.driver().switchTo().activeElement()).isEqualTo(summary);
+        } else assertThat(context.getDomProperty("open")).isEqualTo("true");
+        assertThat(page.requests()).noneMatch(request -> request.method().equals("POST")
+                && (request.path().endsWith("/api/analyze") || request.path().endsWith("/api/copilot")));
+    }
+
     @ParameterizedTest @ValueSource(ints = {1920, 1366, 1024, 390})
     void loadedWorkbenchReservesDiagramSpaceWithCurrentAndSourceContext(int width) throws IOException {
         page.clearRoutes(); page.clearRequests();
-        page.driver().manage().window().setSize(new Dimension(width, width == 1920 ? 1080 : width == 390 ? 844 : 768));
+        viewport(width, width == 1920 ? 1080 : width == 390 ? 844 : 768);
         page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", List.of("portfolio", "architecture"))));
         var project = Map.of("id", 42, "projectKey", "QA-PROJECT", "title", "Communication architecture contribution", "status", "ACTIVE");
         page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of(project)));
@@ -324,7 +400,7 @@ class SharedApplicationChromeBrowserIT {
 
     @Test void selectingProjectSnapshotsSeparatesCurrentTextFromEvidenceAndClearsPreviousSource() {
         page.clearRoutes(); page.clearRequests();
-        page.driver().manage().window().setSize(new Dimension(1440, 1000));
+        viewport(1440, 1000);
         var first = Map.of("id", 42, "projectKey", "P-42", "title", "Current contribution", "status", "ACTIVE",
                 "requirementCount", 2, "solutionCount", 0);
         var later = Map.of("id", 63, "projectKey", "P-63", "title", "Later contribution", "status", "ACTIVE",
@@ -473,7 +549,7 @@ class SharedApplicationChromeBrowserIT {
                 const summary=arguments[0].getBoundingClientRect();
                 const heading=document.getElementById('requirementHeading').getBoundingClientRect();
                 const action=document.getElementById('newVersionButton').getBoundingClientRect();
-                const valid=summary.height>=44 && (innerWidth>=768 || action.height>=44)
+                const valid=summary.height>=44 && action.height>=44
                     && document.documentElement.scrollWidth<=innerWidth+1
                     && scrollY===0 && (innerWidth<1000 ||
                         (heading.top>=0 && heading.top<=innerHeight/2 && heading.bottom<=innerHeight
@@ -524,7 +600,7 @@ class SharedApplicationChromeBrowserIT {
 
     private static void openCompactRequirement(String locale, int width, boolean withSource) {
         var fixture = new PortfolioRequirementFixture(page);
-        page.driver().manage().window().setSize(new Dimension(width, width < 1000 ? 844 : 768));
+        viewport(width, width < 1000 ? 844 : 768);
         var currentVersion = PortfolioRequirementFixture.version(912345, 2, "Current control requirement");
         var previousVersion = PortfolioRequirementFixture.version(812345, 1, "Earlier control requirement");
         var requirement = new java.util.LinkedHashMap<>(fixture.requirement.get());

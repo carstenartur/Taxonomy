@@ -33,9 +33,17 @@ The system evaluates the selected taxonomy scope hierarchically and preserves pa
 The shared navigation keeps analysis, projects, requirement detail, architecture
 workbench, editor and versioning connected. The context identifies the architecture,
 project and requirement with readable names and business keys. The current text
-version, source version and selected model stand have separate meanings. Expand
-**Technical details** for exact repository/workspace identities, the full commit
-and available snapshot/version IDs. Existing contextual help links explain the
+version, source version and selected model stand have separate meanings.
+
+The project overview initially collapses this context on all screen sizes. Analysis
+initially collapses it on narrow screens and expands it on wider screens. Open the
+summary line showing the architecture title and current selection to reveal the
+context and **Requirements, realization and history**. Without an architecture context,
+the line uses **Selected context**. Requirement detail, the saved architecture
+workbench, editor and versioning show the context expanded.
+
+Inside the context, expand **Technical details** for exact repository/workspace
+identities, the full commit and available snapshot/version IDs. Existing contextual help links explain the
 currently selected workflow.
 
 | View | Which source or stand it represents |

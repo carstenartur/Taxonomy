@@ -134,6 +134,45 @@
         node('applicationTechnicalContext').hidden = !technical.length;
         renderDetails('applicationTechnicalDetails', technical);
         root.hidden = !current.length && !source.length && !statuses.childElementCount && !technical.length;
+        var summaryTitle = node('applicationContextSummaryTitle'), summarySelection = node('applicationContextSummarySelection');
+        if (summaryTitle) summaryTitle.textContent = architectureName(architecture) || t('app.context.label');
+        if (summarySelection) {
+            var selected = [state.project?.key || state.project?.title,
+                requirement.key || requirement.title,
+                present(requirement.version) ? t('app.entity.version', requirement.version) : null].filter(present);
+            summarySelection.textContent = selected.join(' · ');
+        }
+        var summaryStand = node('applicationContextSummaryStand');
+        if (summaryStand) {
+            var revision = present(architecture.revision) ? t('editor.revision', architecture.revision) : null;
+            var selectedStand = revision && architecture.modelStand === revision ? revision
+                : architecture.commit?.slice(0, 12) || architecture.modelStand;
+            summaryStand.textContent = [architecture.branch, selectedStand].filter(present).join(' · ');
+        }
+        var summaryStates = node('applicationContextSummaryStates');
+        if (summaryStates) {
+            summaryStates.replaceChildren();
+            if (state.editable === false) summaryStates.append(setStatus(create('span'), 'READ_ONLY'));
+            ['publicationState', 'realizationStatus'].forEach(function (key) {
+                var value = state[key];
+                if (/^(CHECKPOINT_REQUIRED|CHECKPOINT_PENDING|PORTFOLIO_CHANGES_PENDING|VERSION_CHANGED|RECONCILIATION_REQUIRED|HISTORICAL|REVIEW_REQUIRED|PARTIAL|FAILED|ERROR|CONFLICT|UNRESOLVED)$/.test(value || '')) {
+                    summaryStates.append(setStatus(create('span'), value, t('app.context.' + key) + ': ' + statusLabel(value)));
+                }
+            });
+        }
+    }
+    function initializeContextDisclosure() {
+        var disclosure = node('applicationContextDisclosure');
+        if (!disclosure) return;
+        if (node('projectFilter')) {
+            disclosure.dataset.compactContext = 'projects';
+            disclosure.open = false;
+        } else if (node('mainNavTabs') && typeof window.matchMedia === 'function') {
+            disclosure.dataset.compactContext = 'analysis';
+            var narrow = window.matchMedia('(max-width: 640px)');
+            disclosure.open = !narrow.matches;
+            narrow.addEventListener('change', function (event) { disclosure.open = !event.matches; });
+        }
     }
     function navigationUrl(route) {
         var target = new URL(window.TaxonomyI18n.resolveUrl(routes[route]), window.location.href);
@@ -197,5 +236,6 @@
     window.TaxonomyAppChrome = Object.freeze({updateContext: updateContext, getContext: getContext,
         refreshNavigation: refreshNavigation, renderEntity: renderEntity, renderDetails: renderDetails,
         setStatus: setStatus, statusLabel: statusLabel});
+    initializeContextDisclosure();
     refreshNavigation();
 }());

@@ -716,7 +716,7 @@ public class ProjectPortfolioService {
         return normalized;
     }
 
-    private static String normalizeBusinessKey(String value, String field) {
+    static String normalizeBusinessKey(String value, String field) {
         String normalized = requireText(value, field, 64).toUpperCase(Locale.ROOT);
         if (!BUSINESS_KEY.matcher(normalized).matches()) {
             throw PortfolioException.validation(

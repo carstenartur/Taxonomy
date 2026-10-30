@@ -30,8 +30,9 @@ const elements = new Map([
     ...['portfolioBack', 'matrixLink', 'requirementKey', 'requirementStatus',
         'requirementReview', 'requirementHeading', 'requirementMeta'].map(id => [id, {}])
 ]);
-const pending = [];
-const state = {busy: 0, readGeneration: 0, versionFormDirty: false};
+const pending = [], contextUpdates = [];
+const state = {busy: 0, readGeneration: 0, versionFormDirty: false,
+    versionDraftBase: {projectId: 1, requirementId: 2, requirementVersionId: 6, contentHash: 'opened-base'}};
 const api = () => ({
     getProject: async () => ({id: 1}),
     getRequirement: () => new Promise(resolve => pending.push(resolve)),
@@ -40,6 +41,10 @@ const api = () => ({
 });
 const context = vm.createContext({
     state, projectId: 1, requirementId: 2, locale: 'en', api,
+    window: {TaxonomyAppChrome: {
+        updateContext: value => contextUpdates.push(value),
+        setStatus() {}
+    }},
     document: {
         getElementById: id => {
             assert.ok(elements.has(id), `Expected detail element ${id}`);
@@ -61,7 +66,8 @@ const context = vm.createContext({
 // production boundary must fail this existing JUnit-owned unit contract.
 vm.runInContext(section('loadAll', 'renderAll') + '\n'
     + section('renderAll', 'renderCurrentText') + '\n'
-    + section('renderCurrentText', 'renderVersions'), context);
+    + section('renderCurrentText', 'renderVersions') + '\n'
+    + section('captureVersionDraftBase', 'versionRetryLabel'), context);
 
 function requirement(id, value) {
     return {currentVersion: {id, text: value, source: {
@@ -81,6 +87,8 @@ function requirement(id, value) {
     assert.equal(fields.get('sourceOriginal').value, 'unsaved source');
     assert.equal(elements.get('currentText').textContent, 'adopted');
     assert.equal(state.requirement.currentVersion.id, 7);
+    assert.equal(state.versionDraftBase.requirementVersionId, 6, 'Read-only refresh must retain the opened draft base');
+    assert.equal(contextUpdates.at(-1).requirement.versionId, 7);
 
     const old = vm.runInContext('loadAll(true)', context), oldResolve = pending.shift();
     const next = vm.runInContext('loadAll(true)', context), nextResolve = pending.shift();
@@ -89,6 +97,8 @@ function requirement(id, value) {
     assert.equal(state.requirement.currentVersion.id, 9, 'Older refresh overwrote newer version');
     assert.equal(elements.get('currentText').textContent, 'newer response');
     assert.equal(renders, 2);
+    assert.equal(contextUpdates.length, 2, 'Late reads must not relabel the shared requirement identity');
+    assert.equal(contextUpdates.at(-1).requirement.versionId, 9);
     assert.equal(state.busy, 0);
 
     const clean = vm.runInContext('loadAll(false)', context);
@@ -99,6 +109,7 @@ function requirement(id, value) {
     assert.equal(fields.get('sourcePage').value, 4);
     assert.equal(fields.get('sourceOriginal').value, 'persisted source');
     assert.equal(renders, 3);
+    assert.equal(state.versionDraftBase.requirementVersionId, 10);
     assert.equal(state.busy, 0);
     assert.match(text, /refreshAfterAdoption:\s*\(\)\s*=>\s*loadAll\(true\)/,
         'Read-only refresh must be exposed to adoption');

@@ -349,6 +349,12 @@ class PortfolioUiAcceptanceIT {
 
     private static void openLifecycle() {
         wait.until(browser->!lifecycleOverview().path("context").isMissingNode());
+        var context = driver.findElement(By.id("applicationContextDisclosure"));
+        if (context.getDomAttribute("open") == null) {
+            var summary = context.findElement(By.id("applicationContextSummary"));
+            summary.sendKeys(Keys.ENTER);
+            wait.until(browser -> context.getDomAttribute("open") != null);
+        }
         var disclosure=driver.findElement(By.cssSelector("#architectureLifecycle details"));
         if(disclosure.getDomAttribute("open")==null) click(disclosure.findElement(By.tagName("summary")));
     }

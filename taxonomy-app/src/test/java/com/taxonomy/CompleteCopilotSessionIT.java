@@ -621,6 +621,10 @@ class CompleteCopilotSessionIT {
         new Select(modal.findElement(By.id("requirementType"))).selectByValue("SECURITY");
         fill(modal, "requirementText", text);
         modal.findElement(By.cssSelector("button[type='submit']")).click();
+        WebElement choice = wait.until(ExpectedConditions.elementToBeClickable(
+                By.cssSelector("#requirementModal .requirement-intake-review > [data-intake-choice='NEW']")));
+        javascript().executeScript("arguments[0].scrollIntoView({block:'center',behavior:'instant'});", choice);
+        choice.click();
         waitForModalClosed("requirementModal");
         wait.until(textPresent(By.cssSelector("#requirementsTable tbody"), key));
     }

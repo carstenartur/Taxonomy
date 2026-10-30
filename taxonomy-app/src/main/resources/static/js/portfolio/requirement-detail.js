@@ -928,7 +928,7 @@
             if ([400,403,404,409,412,422].includes(error?.status)) { state.versionAttempt=null;versionRetryLabel(false); }
             else if (state.versionAttempt) versionRetryLabel(true);
             const target = document.getElementById('newVersionError');
-            target.textContent = error?.message || t('failed');
+            target.textContent = error?.responseBody?.detail || error?.responseBody?.message || error?.message || t('failed');
             target.classList.remove('d-none');
             target.focus();
         } finally {

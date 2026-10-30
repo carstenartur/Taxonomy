@@ -263,7 +263,9 @@ public class ArchitectureEditorController {
             description = "Reads both original sources at the exact workspace revision. Shared block or document annotation changes require LOCAL/INCOMING choices and a fresh preview of those choices. Does not write the journal or Git.")
     public ResponseEntity<ArchitectureEditorService.ReconciliationPreview> previewReconciliation(
             @RequestBody ArchitectureEditorService.ReconciliationRequest request,
+            @Parameter(description = "Required ETag of the request context's exact semantic revision, in the form \"workspace-revision-N\"; a missing header returns 428", required = true, schema = @Schema(type = "string", pattern = "\"workspace-revision-[0-9]+\""))
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Parameter(description = "Not supported for reconciliation; supplying this header is rejected and cannot replace If-Match")
             @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
         requireRevision(request.context(), ifMatch, ifNoneMatch);
         var result = service.previewReconciliation(resolver.resolveCurrentRepositoryContext(), request);
@@ -276,7 +278,9 @@ public class ArchitectureEditorController {
             description = "Binds the source choices to the repository, workspace, revision, Git HEAD and preview fingerprint. Appends one durable reconciliation and checkpoints through the existing retryable publication boundary. No client-supplied replacement document is accepted.")
     public ResponseEntity<CheckpointAccepted> acceptReconciliation(
             @RequestBody ArchitectureEditorService.ReconciliationRequest request,
+            @Parameter(description = "Required ETag of the request context's exact semantic revision, in the form \"workspace-revision-N\"; a missing header returns 428", required = true, schema = @Schema(type = "string", pattern = "\"workspace-revision-[0-9]+\""))
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Parameter(description = "Not supported for reconciliation; supplying this header is rejected and cannot replace If-Match")
             @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
         requireRevision(request.context(), ifMatch, ifNoneMatch);
         var result = service.acceptReconciliation(resolver.resolveCurrentRepositoryContext(), request);

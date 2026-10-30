@@ -19,6 +19,8 @@
     const maximumHistory = 20;
     const maximumRenderedItems = 100;
     const jobs = new Map();
+    const jobPolls = new Map();
+    let pageActive = true;
     let account = null;
     let locale = 'en';
     let dialogResolve = null;
@@ -125,6 +127,21 @@
     installGuidedReviewHandlers();
     exposeJobRegistration();
     document.addEventListener('DOMContentLoaded', initializeEnhancements);
+    window.addEventListener('pagehide', stopJobPolling);
+    window.addEventListener('pageshow', function (event) {
+        if (!event.persisted) return;
+        pageActive = true;
+        pollActiveJobs();
+    });
+
+    function stopJobPolling() {
+        pageActive = false;
+        jobPolls.forEach(function (poll) {
+            if (poll.timer !== null) window.clearTimeout(poll.timer);
+            if (poll.controller) poll.controller.abort();
+        });
+        jobPolls.clear();
+    }
 
     /**
      * Stable entry point for the server-backed job synchronizer. Job storage,
@@ -439,39 +456,57 @@
 
     function schedulePoll(url, delay) {
         const entry = jobs.get(url);
-        if (!entry || entry.pollScheduled || terminalStatuses.has(entry.job.status)) return;
-        entry.pollScheduled = true;
-        window.setTimeout(async function () {
+        if (!pageActive || !entry || jobPolls.has(url) || terminalStatuses.has(entry.job.status)) return;
+        const poll = {timer: null, controller: null};
+        jobPolls.set(url, poll);
+        poll.timer = window.setTimeout(async function () {
+            poll.timer = null;
             const current = jobs.get(url);
-            if (!current) return;
-            current.pollScheduled = false;
+            if (!pageActive || jobPolls.get(url) !== poll || !current || terminalStatuses.has(current.job.status)) {
+                if (jobPolls.get(url) === poll) jobPolls.delete(url);
+                return;
+            }
+            poll.controller = new AbortController();
+            let retryDelay = pollIntervalMs;
+            function stillCurrent() {
+                return pageActive && jobPolls.get(url) === poll && jobs.get(url) === current && !poll.controller.signal.aborted;
+            }
             try {
                 const response = await originalFetch(url, {
                     method: 'GET',
                     headers: { Accept: 'application/json' },
                     credentials: 'same-origin',
-                    cache: 'no-store'
+                    cache: 'no-store',
+                    signal: poll.controller.signal
                 });
+                if (!stillCurrent()) return;
                 if (!response.ok) throw new Error('HTTP ' + response.status);
+                const nextJob = await response.json();
+                if (!stillCurrent()) return;
                 const previousStatus = current.job.status;
-                current.job = await response.json();
+                current.job = nextJob;
                 delete current.lastPollError;
                 current.updatedAt = Date.now();
                 persistJobs();
                 renderJobs();
                 if (terminalStatuses.has(current.job.status)) {
+                    retryDelay = null;
                     announceTerminal(current.job);
                     refreshCurrentProject(current.projectId);
-                } else {
-                    schedulePoll(url);
                 }
                 if (previousStatus !== current.job.status) announce(statusLabel(current.job.status));
             } catch (error) {
+                if (!stillCurrent()) return;
                 current.lastPollError = String(error && error.message || error);
                 current.updatedAt = Date.now();
                 persistJobs();
                 renderJobs();
-                schedulePoll(url, Math.min(10000, pollIntervalMs * 3));
+                retryDelay = Math.min(10000, pollIntervalMs * 3);
+            } finally {
+                if (jobPolls.get(url) === poll) {
+                    jobPolls.delete(url);
+                    if (pageActive && retryDelay !== null) schedulePoll(url, retryDelay);
+                }
             }
         }, delay == null ? pollIntervalMs : delay);
     }

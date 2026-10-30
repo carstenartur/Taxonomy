@@ -181,6 +181,10 @@ class RequirementLifecycleBrowserIT {
         page.open("projects", "", "/projects", locale, bootstrap(locale, "&projectId=1") + OBSERVE_HISTORY);
         wait.until(ExpectedConditions.textToBe(By.id("selectedProjectKey"), "PROJECT"));
         wait.until(ignored -> lifecycleRows().size() == 12);
+        var context = page.driver().findElement(By.id("applicationContextDisclosure"));
+        if (!"true".equals(context.getDomProperty("open"))) {
+            page.driver().findElement(By.id("applicationContextSummary")).sendKeys(Keys.ENTER);
+        }
     }
 
     private static String bootstrap(String locale, String additional) {

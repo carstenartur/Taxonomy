@@ -165,6 +165,7 @@ final class PortfolioContextBrowserChecks {
                     """);
             Files.writeString(evidence.resolve("space-priority-" + size[0] + ".json"),
                     new ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(geometry));
+            Files.writeString(evidence.resolve("space-priority-" + size[0] + ".html"), driver.getPageSource());
             screenshot("space-priority-" + size[0]);
             noOverflow();
             checks.assertThat(number(geometry, "scroll", "x")).isZero();

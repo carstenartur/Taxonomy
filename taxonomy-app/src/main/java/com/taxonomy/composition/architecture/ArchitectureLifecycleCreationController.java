@@ -32,7 +32,8 @@ public class ArchitectureLifecycleCreationController {
     public record WorkingCopy(String workspaceId,String sourceRepositoryId,String sourceBranch,String currentBranch,
                               String displayName,WorkspaceProvisioningStatus provisioningStatus) {}
     @GetMapping
-    @Operation(summary="List readable persistent architectures for requirement intake")
+    @Operation(summary="List readable persistent architectures for requirement intake",
+            description="Lists active architectures readable by the authenticated user and that user's incomplete private creations. Includes lifecycle state so an interrupted creation can be recovered.")
     public ResponseEntity<List<Architecture>> list() {
         String user=resolver.resolveCurrentUsername();
         var readable=new ArrayList<>(repositories.listActiveRepositories().stream().filter(repo->membership.canRead(repo,user)).toList());
@@ -49,7 +50,8 @@ public class ArchitectureLifecycleCreationController {
                 .body(view(result.repository(),user));
     }
     @GetMapping("/{repositoryId}/workspaces")
-    @Operation(summary="Recover an owned architecture working copy after an interrupted response")
+    @Operation(summary="Recover an owned architecture working copy after an interrupted response",
+            description="Lists the authenticated user's unarchived private working copies of a readable architecture, including source branch, current branch and provisioning status. This read does not create or provision a working copy.")
     public ResponseEntity<List<WorkingCopy>> copies(@PathVariable String repositoryId) {
         String user=resolver.resolveCurrentUsername();var repo=repositories.getRepository(repositoryId);
         if(!membership.canRead(repo,user)) throw problem("NOT_FOUND","Architecture unavailable");

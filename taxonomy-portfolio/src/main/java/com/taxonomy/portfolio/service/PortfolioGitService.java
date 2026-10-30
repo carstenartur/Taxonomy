@@ -45,6 +45,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -253,6 +254,7 @@ public class PortfolioGitService {
     @Transactional
     public void validateMaterialization(String dsl, String username, WorkspaceContext context) {
         DocumentAst document = parser.parse(dsl, "portfolio-preflight.taxdsl");
+        validateNormalizedIdentities(document);
         List<String> warnings = new ArrayList<>();
         String scope = PortfolioScope.key(username, context);
         Map<String, BlockAst> projectBlocks = keyed(document, PROJECT_BLOCK, 1, warnings);
@@ -302,6 +304,7 @@ public class PortfolioGitService {
                                          String username,
                                          WorkspaceContext context) {
         DocumentAst document = parser.parse(dsl, "portfolio-materialize.taxdsl");
+        validateNormalizedIdentities(document);
         List<String> warnings = new ArrayList<>();
         Map<String, BlockAst> projectBlocks = keyed(document, PROJECT_BLOCK, 1, warnings);
         Map<String, BlockAst> requirementBlocks = keyed(document, REQUIREMENT_BLOCK, 2, warnings);
@@ -568,6 +571,32 @@ public class PortfolioGitService {
         return parser.parse(dsl, "architecture.taxdsl");
     }
 
+    /** Reject source aliases before separate raw blocks can address the same owner identity. */
+    protected final void validateNormalizedIdentities(DocumentAst document) {
+        Set<String> identities = new HashSet<>();
+        for (BlockAst block : document.getBlocks()) {
+            List<String> header = block.getHeaderTokens();
+            String normalized = switch (block.getKind()) {
+                case PROJECT_BLOCK -> header.isEmpty() ? null
+                        : ProjectPortfolioService.normalizeBusinessKey(header.getFirst(), "projectKey");
+                case REQUIREMENT_BLOCK -> header.size() < 2 ? null
+                        : normalizedRequirementIdentity(header.get(0), header.get(1));
+                case VERSION_BLOCK -> header.size() < 3 ? null
+                        : normalizedRequirementIdentity(header.get(0), header.get(1)) + '\u0000' + versionNumber(block);
+                default -> null;
+            };
+            if (normalized != null && !identities.add(block.getKind() + '\u0000' + normalized)) {
+                throw PortfolioException.conflict("Duplicate normalized " + block.getKind()
+                        + " identity: " + normalized.replace('\u0000', '/'));
+            }
+        }
+    }
+
+    protected static String normalizedRequirementIdentity(String project, String requirement) {
+        return ProjectPortfolioService.normalizeBusinessKey(project, "projectKey") + '\u0000'
+                + ProjectPortfolioService.normalizeBusinessKey(requirement, "requirementKey");
+    }
+
     private Map<String, BlockAst> keyed(DocumentAst document,
                                         String kind,
                                         int headerSize,
@@ -602,7 +631,7 @@ public class PortfolioGitService {
         return result;
     }
 
-    private int versionNumber(BlockAst block) {
+    protected final int versionNumber(BlockAst block) {
         try {
             int number = Integer.parseInt(block.getHeaderTokens().get(2));
             if (number > 0) return number;

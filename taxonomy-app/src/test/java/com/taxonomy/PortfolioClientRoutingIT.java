@@ -249,7 +249,7 @@ class PortfolioClientRoutingIT {
             assertThat(text("detailError")).isEmpty();
             assertThat(driver.findElement(workbenchLink).getDomAttribute("href"))
                     .isEqualTo(prefix + "/architecture/workbench?projectId=42&snapshotId=" + snapshotId
-                            + "&lang=de" + (workspaceQuery == null ? "" : "&" + workspaceQuery));
+                            + "&lang=de" + (workspaceQuery == null ? "" : "&" + workspaceQuery + workspaceScopeAssertion(workspaceId)));
             assertThat(requests("GET", prefix + "/api/projects/42/snapshots/" + snapshotId)).singleElement()
                     .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
         }
@@ -351,7 +351,7 @@ class PortfolioClientRoutingIT {
         prepareImport(prefix, "/api/projects/42/analysis-jobs/job-7", workspaceId);
         String workspaceQuery = workspaceId == null ? null : "workspaceId=" + workspaceId;
         String portfolioReturn = prefix + "/projects?projectId=42&lang=de"
-                + (workspaceQuery == null ? "" : "&" + workspaceQuery);
+                + (workspaceQuery == null ? "" : "&" + workspaceQuery + workspaceScopeAssertion(workspaceId));
         assertThat(href("portfolioBack")).isEqualTo(portfolioReturn);
         assertThat(requests("GET", prefix + "/api/projects/42")).singleElement()
                 .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
@@ -378,6 +378,43 @@ class PortfolioClientRoutingIT {
         wait.until(ignored -> readJobs().get(0).path("job").path("status").asText().equals("SUCCESS"));
         assertThat(requests("GET", prefix + "/api/projects/42/analysis-jobs/job-7")).hasSize(1);
         assertSameOriginCredentials(page.origin() + prefix + "/api/projects/42/analysis-jobs/job-7");
+    }
+
+    @Test void leavingPortfolioAbortsItsPendingJobReadAndRetainsTheServerJob() {
+        String prefix="/taxonomy";
+        installRoutes(prefix);
+        page.route("GET",prefix + "/left-job-page",request -> new PortfolioClientTestPage.Response(200,"text/html; charset=utf-8",
+                "<!doctype html><html lang=\"en\"><body><h1 id=\"leftJobPage\">Left portfolio</h1></body></html>"));
+        openJobPage(prefix,"""
+                sessionStorage.removeItem('portfolioPendingBody');sessionStorage.removeItem('portfolioReadAborted');
+                const jobFetch=window.fetch.bind(window);
+                window.fetch=async function(input,init){
+                    const response=await jobFetch(input,init);
+                    if(new URL(input instanceof Request?input.url:String(input),location.href).pathname.endsWith('/analysis-jobs/job-7')){
+                        init?.signal?.addEventListener('abort',()=>sessionStorage.setItem('portfolioReadAborted','true'),{once:true});
+                        const readBody=response.json.bind(response);
+                        response.json=async function(){
+                            sessionStorage.setItem('portfolioPendingBody','true');
+                            // Hold consumption after the actual HTTP response, so the
+                            // native departure deterministically owns an unfinished read.
+                            await new Promise(()=>{});return readBody();
+                        };
+                    }
+                    return response;
+                };
+                const leave=document.createElement('a');leave.id='leaveJobPage';leave.href='/taxonomy/left-job-page';
+                leave.textContent='Leave portfolio';document.body.append(leave);
+                """);
+        assertThat(registerJob("/api/projects/42/analysis-jobs/job-7",runningJob())).isTrue();
+        wait.until(ignored -> "true".equals(driver.executeScript("return sessionStorage.getItem('portfolioPendingBody');")));
+        click(By.id("leaveJobPage"));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("leftJobPage")));
+        assertThat(driver.executeScript("return sessionStorage.getItem('portfolioReadAborted');"))
+                .as("Native navigation aborts the pending portfolio job read").isEqualTo("true");
+        assertThat(readJobs().get(0).path("job").path("id").asText()).isEqualTo("job-7");
+        assertThat(readJobs().get(0).path("job").path("status").asText()).isEqualTo("RUNNING");
+        assertThat(readJobs().get(0).has("lastPollError")).isFalse();
+        assertThat(requests("GET",prefix + "/api/projects/42/analysis-jobs/job-7")).hasSize(1);
     }
 
     @Test void routeMatchingRemovesOnlyTheExactMountedPrefix() {
@@ -944,6 +981,10 @@ class PortfolioClientRoutingIT {
         wait.until(ignored -> !hidden("reviewStep"));
         click(By.id("reviewSummaryButton"));
         wait.until(ignored -> !hidden("summaryStep"));
+    }
+
+    private static String workspaceScopeAssertion(String workspaceId) {
+        return "&workspaceScopeKey=" + (workspaceId.isEmpty() ? "__shared__" : workspaceId);
     }
 
     private static String workspaceSetup(String workspaceId) {

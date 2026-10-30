@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
 
+@com.taxonomy.shared.features.ConditionalOnFeature("portfolio")
 @RestControllerAdvice(assignableTypes={ArchitectureLifecycleController.class,ArchitectureRequirementController.class,
         ArchitectureRequirementHistoryController.class,ArchitectureLifecycleCreationController.class})
 public class ArchitectureLifecycleExceptionHandler {

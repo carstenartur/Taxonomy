@@ -40,13 +40,16 @@ class ContextualHelpTest {
             Map.entry("browser-sessions", "SECURITY/browser-sessions"),
             Map.entry("backup-jobs", "OPERATIONS_GUIDE/portable-exports"),
             Map.entry("fragments/user-management-layout", "SECURITY/user-management"));
+    // Selection happens in the source view before Thymeleaf resolves a shared header's th:replace.
+    private static final Set<String> HEADER_VIEWS = Set.of(
+            "projects", "requirement-detail", "portfolio-versioning",
+            "architecture-editor", "architecture-workbench", "integrations");
 
     @ParameterizedTest
     @ValueSource(strings = {"en", "de"})
     void standaloneViewsOpenTheirOwnLocalizedHelpWithoutReplacingWork(String language) {
         for (var view : VIEWS.entrySet()) {
-            String selector = view.getKey().equals("architecture-editor") || view.getKey().equals("integrations")
-                    || view.getKey().equals("architecture-workbench") ? "header" : "nav";
+            String selector = HEADER_VIEWS.contains(view.getKey()) ? "header" : "nav";
             String html = render(view.getKey(), selector, language);
             assertTrue(html.contains("/taxonomy/?lang=" + language + "#help/" + view.getValue() + "\""), view.getKey());
             assertTrue(html.contains("target=\"_blank\""), view.getKey() + " must preserve unsaved work");

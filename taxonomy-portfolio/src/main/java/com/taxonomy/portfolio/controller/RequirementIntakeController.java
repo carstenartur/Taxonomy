@@ -5,6 +5,7 @@ import com.taxonomy.model.WorkspaceOverlayScope;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.RequirementIntakeService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.web.bind.annotation.*;
 
 /** Intake is a read-only review. Applying a choice is a separate architecture command. */
@@ -17,6 +18,8 @@ public class RequirementIntakeController {
         this.intake = intake; this.resolver = resolver;
     }
     @PostMapping("/intake-review")
+    @Operation(summary="Review requirement text against authorized existing candidates",
+            description="Reviews bounded requirement text against captured, authorized candidates and reports match coverage and provider availability. Supplied repository, workspace and branch pins must match the authenticated selected context. The review does not create or change a requirement or architecture.")
     public Response review(@RequestBody Request request,
                            @RequestParam(required = false) String repositoryId,
                            @RequestParam(required = false) String workspaceId,

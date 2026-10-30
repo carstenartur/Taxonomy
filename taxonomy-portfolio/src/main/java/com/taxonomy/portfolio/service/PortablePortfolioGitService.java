@@ -25,7 +25,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -121,6 +120,8 @@ public class PortablePortfolioGitService extends PortfolioGitService {
 
     /** Read-only source checks used by reconciliation previews and the actual materialization boundary. */
     public void validatePortfolio(String localDsl, String candidateDsl) {
+        DocumentAst source = parser.parse(candidateDsl, "portfolio-reconciliation.taxdsl");
+        validateNormalizedIdentities(source);
         if (localDsl != null) for (var change : ArchitectureSemanticPatch.between(localDsl, candidateDsl)) {
             if (change.before() != null && change.after() != null && change.id().startsWith(VERSION_BLOCK + ":")) {
                 BlockAst version = ArchitectureSemanticPatch.index(change.before()).values().iterator().next();
@@ -129,24 +130,23 @@ public class PortablePortfolioGitService extends PortfolioGitService {
                         + " has different source content; keep its local source and create a new requirement version for a changed decision");
             }
         }
-        DocumentAst source = parser.parse(candidateDsl, "portfolio-reconciliation.taxdsl");
         Map<String, BlockAst> requirements = new HashMap<>(), versions = new HashMap<>();
         for (BlockAst block : source.getBlocks()) {
             List<String> header = block.getHeaderTokens();
             if (REQUIREMENT_BLOCK.equals(block.getKind()) && header.size() == 2)
-                requirements.put(portableIdentity(header.get(0), header.get(1)), block);
+                requirements.put(normalizedRequirementIdentity(header.get(0), header.get(1)), block);
             else if (VERSION_BLOCK.equals(block.getKind()) && header.size() == 3) {
                 String text = block.property("text"), hash = block.property("contentHash");
                 if (text == null || hash != null && !hash.equals(RequirementRealization.textHash(text)))
                     throw PortfolioException.conflict("Immutable requirement version " + String.join(" ", header)
                             + " does not match its SHA-256 content hash");
-                versions.put(portableIdentity(header.get(0), header.get(1)) + '\u0000' + header.get(2), block);
+                versions.put(normalizedRequirementIdentity(header.get(0), header.get(1)) + '\u0000' + versionNumber(block), block);
             }
         }
         for (BlockAst canonical : source.blocksOfKind("requirement")) {
             if (!"true".equalsIgnoreCase(canonical.property(MANAGED_PROPERTY))) continue;
             String project = canonical.property("x-project-key"), requirement = canonical.property("x-requirement-key");
-            String identity = project == null || requirement == null ? null : portableIdentity(project, requirement);
+            String identity = project == null || requirement == null ? null : normalizedRequirementIdentity(project, requirement);
             BlockAst business = requirements.get(identity);
             Integer current = business == null ? null : parseVersionNumber(business.property(CURRENT_VERSION_NUMBER));
             BlockAst version = current == null ? null : versions.get(identity + '\u0000' + current);
@@ -157,10 +157,6 @@ public class PortablePortfolioGitService extends PortfolioGitService {
                 throw PortfolioException.conflict("Canonical requirement " + String.join(" ", canonical.getHeaderTokens())
                         + " contradicts its portable current immutable version; choose matching requirement and version source blocks");
         }
-    }
-
-    private static String portableIdentity(String project, String requirement) {
-        return composite(project, requirement).toUpperCase(Locale.ROOT);
     }
 
     /** Source agreement alone cannot detect versions retained only in the target database. */
