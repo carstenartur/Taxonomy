@@ -200,7 +200,17 @@ export async function runLocalePrintWorkflow({ page, baseUrl, evidence, outputDi
 
     // Inspect authenticated server-rendered attributes without triggering unrelated
     // requirement/import API workflows or modifying any real portfolio data.
+    const sharedNavigationChecks = [
+      { selector: '#applicationNavigation', attribute: 'aria-label', text: 'Anwendungsnavigation' },
+      { selector: '#applicationNavigation .taxonomy-app-languages[role="group"]', attribute: 'aria-label', text: 'Sprache' },
+      { selector: '#applicationNavigation [data-app-locale="en"]', attribute: 'aria-label', text: 'Englisch' },
+      { selector: '#applicationNavigation [data-app-locale="de"]', attribute: 'aria-label', text: 'Deutsch' }
+    ];
     const renderedSurfaces = [
+      { url: '/?lang=de', checks: sharedNavigationChecks },
+      { url: '/projects?lang=de', checks: sharedNavigationChecks },
+      { url: '/projects/73101/versioning?lang=de', checks: sharedNavigationChecks },
+      { url: '/architecture/workbench?lang=de', checks: sharedNavigationChecks },
       { url: '/change-password?lang=de', checks: [
         { selector: 'a[href="#changePasswordForm"]', text: 'Zum Passwortformular springen' }
       ] },
@@ -217,8 +227,7 @@ export async function runLocalePrintWorkflow({ page, baseUrl, evidence, outputDi
         { selector: '#summaryHeading', text: 'Import bestätigen' }
       ] },
       { url: '/projects/73101/requirements/1?lang=de', checks: [
-        { selector: 'nav.navbar', attribute: 'aria-label', text: 'Navigation zur Anforderung' },
-        { selector: 'nav .btn-group[role="group"]', attribute: 'aria-label', text: 'Sprache' },
+        ...sharedNavigationChecks,
         { selector: '#newVersionTitle', text: 'Unveränderliche Anforderungsversion erstellen' },
         { selector: 'label[for="versionText"]', text: 'Anforderungstext' },
         { selector: 'label[for="changeReason"]', text: 'Änderungsgrund' },
@@ -232,6 +241,7 @@ export async function runLocalePrintWorkflow({ page, baseUrl, evidence, outputDi
         { selector: '#architectureWorkbenchLink', text: 'Architekturansicht öffnen' }
       ] },
       { url: '/architecture/editor?lang=de', checks: [
+        ...sharedNavigationChecks,
         { selector: '#editorElementStatus option[value="draft"]', text: 'Entwurf' },
         { selector: '#editorElementStatus option[value="active"]', text: 'Aktiv' },
         { selector: '#editorElementStatus option[value="retired"]', text: 'Außer Betrieb' }
