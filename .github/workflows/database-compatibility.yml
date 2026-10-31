@@ -52,7 +52,8 @@ jobs:
   database:
     name: ${{ matrix.database }}
     needs: [change-scope]
-    if: always()
+    # Reject a failed scope plan, but let a newer head cancel this expensive matrix.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
