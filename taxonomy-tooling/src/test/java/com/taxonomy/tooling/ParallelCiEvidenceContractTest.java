@@ -77,9 +77,9 @@ class ParallelCiEvidenceContractTest {
         assertThat(uiShardsStart).isGreaterThan(observabilityStart);
         assertThat(finalGateStart).isGreaterThan(uiShardsStart);
 
-        String application = workflow.substring(applicationStart, coreStart);
+        String application = workflow.substring(applicationStart, productionImageStart);
         assertThat(application)
-                .contains("run: bash .github/scripts/package-ui-application.sh")
+                .contains("bash .github/scripts/package-ui-application.sh")
                 .contains("run: bash .github/scripts/stage-ui-application.sh")
                 .contains("name: taxonomy-ui-application");
 
