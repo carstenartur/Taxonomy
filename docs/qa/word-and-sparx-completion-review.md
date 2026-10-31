@@ -1,5 +1,11 @@
 # Word export and #1075 completion review
 
+The outstanding external environments and evidence are now tracked in
+[EXT-03: Microsoft Word](../internal/TODO-EXTERNAL-INPUT.md#ext-03) and
+[EXT-08: Sparx EA/PCS](../internal/TODO-EXTERNAL-INPUT.md#ext-08).
+This tracking change does not alter the historical results or product-acceptance
+status below.
+
 Assessment updated 2026-09-20 for the accepted frozen Word/native foundations,
 Visio graphical completion and implemented conditional publication. Current exact
 source/CI and remaining release gates are recorded in [completion evidence](1075-completion-evidence.md). Structural tests and LibreOffice output do not establish Microsoft

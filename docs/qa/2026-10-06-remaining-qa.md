@@ -1,5 +1,11 @@
 # Remaining QA implementation — 2026-10-06
 
+> **Tracking update — 31 October 2026:** The unresolved deployment-specific
+> evidence for #1100 is now retained in
+> [EXT-01](../internal/TODO-EXTERNAL-INPUT.md#ext-01). Its administrative transfer
+> replaces the historical instruction to keep the issue open, without resolving
+> the reported defect or changing the acceptance results recorded below.
+
 Base: `1de21a0a202b4f7f92ce0dbcee6afeb8237697b7` (`main`, includes PR #1174).
 Implemented and packaged source: `f40a75a79da4745148485a136a1f3b73a8430be3` on
 `qa/remaining-20261006`. The later evidence-only documentation commit does not

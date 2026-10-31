@@ -40,6 +40,10 @@ Of the 853 concrete-product mappings, 504 are currently accepted by the determin
 rules and 349 remain explicitly provisional for domain-expert review. Provisional mappings are
 active primary parents so the hierarchy is usable, but their review metadata is exposed through the
 API and must not be confused with an externally approved catalogue decision.
+The actual domain review and its required version-bound decisions are tracked in
+[EXT-09](../internal/TODO-EXTERNAL-INPUT.md#ext-09). The optional review-queue
+implementation remains independently assignable in
+[#920](https://github.com/carstenartur/Taxonomy/issues/920).
 
 ## Schema contract
 

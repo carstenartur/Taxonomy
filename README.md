@@ -591,7 +591,11 @@ German documentation is available under [`docs/de`](docs/de/).
 
 The project is under active development. Compatibility, persistence, security, and migration behavior should be evaluated against the release notes and the exact version deployed. Do not infer production readiness solely from a successful demonstration or an individual quality badge.
 
-Open defects and planned improvements are tracked in [GitHub Issues](https://github.com/carstenartur/Taxonomy/issues).
+Assignable implementation work and reproducible defects are tracked in
+[GitHub Issues](https://github.com/carstenartur/Taxonomy/issues). Missing external
+input, deployment evidence and human or licensed-product acceptance are tracked
+in the [external-input TODO](docs/internal/TODO-EXTERNAL-INPUT.md), with the
+required input and a condition for returning concrete code work to an issue.
 
 ## Contributing
 

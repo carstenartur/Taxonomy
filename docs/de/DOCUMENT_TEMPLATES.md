@@ -33,6 +33,10 @@ Medientyp, Dateiname, Dateigröße und SHA-256-Prüfsumme. Dieser Test belegt de
 Containerstart, die Erstanlage der Vorlage, die Browseroberfläche und den
 Berichtsdownload. Er ersetzt nicht die getrennte Abnahme mit einer real installierten
 Microsoft-Word-Version über öffentliches HTTPS und WebDAV.
+Die dafür benötigte Umgebung und die Nachweise stehen in
+[EXT-03](../internal/TODO-EXTERNAL-INPUT.md#ext-03); gemeinsame Sperren und
+Wiederanlauf bleiben Implementierungsaufgaben in
+[#828](https://github.com/carstenartur/Taxonomy/issues/828).
 
 ## Standardvorlage für den Bewertungsbericht
 

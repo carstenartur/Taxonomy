@@ -59,6 +59,10 @@ missing gate is not a pass.
 
 ## Separate real-provider and human-quality gate
 
+Provider access/authorization and the separate human assessment are tracked in
+[EXT-05](../internal/TODO-EXTERNAL-INPUT.md#ext-05). Deterministic application tests
+and evaluation-tooling implementation do not wait for those inputs.
+
 Configure a supported generative provider using the application's existing provider
 settings, then opt in explicitly:
 

@@ -1,5 +1,11 @@
 # Preferences state investigation — 2026-10-06
 
+> **Tracking update — 31 October 2026:** The unresolved original deployment and
+> reproduction evidence from #1100 is now tracked in
+> [EXT-01](../internal/TODO-EXTERNAL-INPUT.md#ext-01). The issue is transferred
+> administratively, not closed as a completed fix. The historical findings below
+> remain unchanged; a reproduced defect returns to a bounded implementation issue.
+
 The investigation starts at `1de21a0a202b4f7f92ce0dbcee6afeb8237697b7`,
 which already includes [PR #1174](https://github.com/carstenartur/Taxonomy/pull/1174).
 The original [issue #1100](https://github.com/carstenartur/Taxonomy/issues/1100)

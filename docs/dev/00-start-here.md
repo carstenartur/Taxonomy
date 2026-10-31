@@ -3,6 +3,13 @@
 This guide helps you find the **smallest safe change area** for a concrete task
 without reading the full architecture reference first.
 
+Use open [implementation issues](https://github.com/carstenartur/Taxonomy/issues)
+for assignable code and test work. The
+[external-input TODO](../internal/TODO-EXTERNAL-INPUT.md) records missing real
+deployment evidence, authoritative identities, licensed-product access and human
+acceptance separately. Controlled fixtures and integration tests remain engineering
+work; external acceptance must not be inferred from them.
+
 ---
 
 ## How to use this guide
