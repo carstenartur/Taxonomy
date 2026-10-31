@@ -33,6 +33,22 @@ See [the user guide](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/e
 [the project portfolio guide](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/en/PROJECT_REQUIREMENT_PORTFOLIO.md) and
 [the German portfolio guide](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/de/PROJECT_REQUIREMENT_PORTFOLIO.md).
 
+Reviewed workspace synchronization now transfers the original Git objects and
+preserves their ancestry. Integration uses an expected-head fast-forward or a
+real two-parent merge after semantic review. This completes the bounded
+synchronization scope in [#747](https://github.com/carstenartur/Taxonomy/issues/747).
+Initial workspace/fork provisioning still creates a content-derived seed commit;
+retaining the original source commit and independent initial history remains
+required in [#1356](https://github.com/carstenartur/Taxonomy/issues/1356).
+
+The durable observation and saved-result recovery slice is now recorded as
+completed in [#808](https://github.com/carstenartur/Taxonomy/issues/808). Its
+persisted full-snapshot checkpoint supports reconnect and explicit result
+retrieval; the second-tab correction belongs to this release. Remaining adapter
+identity, stored-event/status retention and expired-recovery work is tracked in
+[#1354](https://github.com/carstenartur/Taxonomy/issues/1354). This closure does not
+claim that every lifecycle adapter or retention case is complete.
+
 ## Scoped inventory evidence
 
 Saved requirement analyses can be compared with curated product evidence and
@@ -133,6 +149,35 @@ migration contract. SQL Server and Oracle retain their documented evaluation
 and compatibility scope. Database migration, native recovery and portable
 cross-database restoration are separate operations; changing a Spring profile
 does not migrate stored data.
+
+## Issue completion and remaining work
+
+The 31 October backlog review separates implemented delivery from unfinished
+acceptance and optional expansion. Closing an old issue now does not make its
+implementation new in 1.5.3. The following earlier deliveries are recorded for
+traceability alongside the new synchronization and second-tab work above.
+
+| Completed issue | Earlier delivered scope | Remaining work |
+|---|---|---|
+| [#630](https://github.com/carstenartur/Taxonomy/issues/630) | Bounded search-result windows, orientation controls and measured Chromium result budgets; merged #819 in August | Additional real-corpus/browser evidence and graph-readability verification: [#1353](https://github.com/carstenartur/Taxonomy/issues/1353) |
+| [#638](https://github.com/carstenartur/Taxonomy/issues/638) | Constrained Kubernetes/Artemis recovery foundation; merged #815/#1201/#1273 | Selected workload/resource, provider-HTTP/TLS failure and deployment evidence: [#1351](https://github.com/carstenartur/Taxonomy/issues/1351) |
+| [#793](https://github.com/carstenartur/Taxonomy/issues/793) | Branch-scoped hypotheses/evidence and data-retaining migrations; merged #1296 before v1.5.2 | Broader indexing, recovery and identity keep their existing owners |
+| [#836](https://github.com/carstenartur/Taxonomy/issues/836) | Revision-pinned browser editing and immutable template comparison; merged #1012/#1022 in September | Rich layouts and staged candidate preflight: [#832](https://github.com/carstenartur/Taxonomy/issues/832) |
+| [#1179](https://github.com/carstenartur/Taxonomy/issues/1179) | German/English server-rendered local login with framework security; merged #1244 on 17 October | Focused bilingual anonymous-login browser acceptance: [#1355](https://github.com/carstenartur/Taxonomy/issues/1355) |
+| [#1184](https://github.com/carstenartur/Taxonomy/issues/1184) | Guided replay demo inside the application, explicit review/adoption and labelled Markdown report; merged #1203/#1269 | Transport-wide isolation, offered exports at both iterations and remaining integrated acceptance: [#1352](https://github.com/carstenartur/Taxonomy/issues/1352) |
+
+The product-gap analysis and frozen-report foundation is implemented, while
+project-wide aggregation and reviewer triage remain in
+[#914](https://github.com/carstenartur/Taxonomy/issues/914). The original report
+of a cleared workspace after saving Preferences remains open in
+[#1100](https://github.com/carstenartur/Taxonomy/issues/1100); related race fixes
+do not establish that report's cause.
+
+Rich Word authoring, broad template capacity measurements and the in-app
+Information Product classification queue are explicitly lower-priority
+extensions. Existing validation, authorization, source identity and data
+preservation remain required. The open follow-ups are not completed release
+features, and this issue review is not a new runtime or capacity certification.
 
 ## Release evidence
 
