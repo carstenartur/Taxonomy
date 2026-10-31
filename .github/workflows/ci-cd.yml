@@ -89,7 +89,13 @@ jobs:
             ${{ runner.os }}-taxonomy-maven-build-cache-app-v3-
       - name: Package commit-bound UI application
         shell: bash
-        run: bash .github/scripts/package-ui-application.sh 2>&1 | tee "$RUNNER_TEMP/application-package.log"
+        run: |
+          set +e
+          bash .github/scripts/package-ui-application.sh 2>&1 | tee "$RUNNER_TEMP/application-package.log"
+          statuses=("${PIPESTATUS[@]}")
+          # Preserve build failures and cancellation even if the metrics log also fails.
+          if (( statuses[0] != 0 )); then exit "${statuses[0]}"; fi
+          exit "${statuses[1]}"
       - name: Record Maven cache effectiveness
         if: always()
         env:

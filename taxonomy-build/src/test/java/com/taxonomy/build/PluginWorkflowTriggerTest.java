@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Prevent extracted plugin inputs from silently bypassing the existing CI lanes. */
 class PluginWorkflowTriggerTest {
@@ -62,23 +63,75 @@ class PluginWorkflowTriggerTest {
     void consumerInputsTriggerTheirChecks(String workflow, String event, String changedPath)
             throws Exception {
         assertThat(root.resolve(changedPath)).isRegularFile();
+        assertThat(includesPath(triggerPaths(workflow, event), changedPath))
+                .as("%s / %s must run for an isolated change to %s", workflow, event, changedPath)
+                .isTrue();
+    }
+
+    @ParameterizedTest(name = "{0} / {1} excludes only plugin-root README files")
+    @CsvSource({
+            "kubernetes-constrained-smoke.yml, pull_request",
+            "security-scan.yml, pull_request",
+            "codeql.yml, pull_request",
+            "codeql.yml, push"
+    })
+    void pluginReadmeExclusionsPreserveNestedResourcesAndCode(String workflow, String event)
+            throws Exception {
+        List<String> paths = triggerPaths(workflow, event);
+        assertThat(paths).containsSubsequence("plugins/**", "!plugins/*/README.md", "!plugins/*/README_DE.md");
+        for (String readme : List.of("README.md", "README_DE.md")) {
+            assertThat(includesPath(paths, "plugins/taxonomy-mermaid-plugin/" + readme))
+                    .as("plugin-root prose: %s / %s / %s", workflow, event, readme).isFalse();
+            assertThat(includesPath(paths, "plugins/taxonomy-mermaid-plugin/src/main/resources/" + readme))
+                    .as("nested packaged resource: %s / %s / %s", workflow, event, readme).isTrue();
+        }
+        for (String input : List.of("pom.xml", "src/main/java/com/taxonomy/plugins/mermaid/MermaidPlugin.java",
+                "src/main/resources/META-INF/services/com.taxonomy.extension.api.plugin.TaxonomyPlugin")) {
+            assertThat(includesPath(paths, "plugins/taxonomy-mermaid-plugin/" + input))
+                    .as("plugin implementation: %s / %s / %s", workflow, event, input).isTrue();
+        }
+    }
+
+    @Test
+    void supportedPathFiltersApplyEveryMatchInOrderAndRejectUnknownSyntax() {
+        String readme = "plugins/example/README.md";
+        assertThat(includesPath(List.of("plugins/**", "!plugins/*/README.md"), readme)).isFalse();
+        assertThat(includesPath(List.of("!plugins/*/README.md", "plugins/**"), readme)).isTrue();
+        assertThat(includesPath(List.of("plugins/**", "!plugins/*/README.md", readme), readme)).isTrue();
+        assertThat(includesPath(List.of("plugins/**", "!plugins/*/README.md"), "unrelated/pom.xml")).isFalse();
+        for (String unsupported : List.of("plugins/?", "plugins/+", "plugins/[ab]", "plugins/{a,b}",
+                "!!plugins/**", "plugins/!README.md", "!")) {
+            assertThatThrownBy(() -> includesPath(List.of("plugins/**", unsupported), readme))
+                    .as("unknown filter syntax must not silently pass: %s", unsupported)
+                    .isInstanceOf(AssertionError.class);
+        }
+    }
+
+    private List<String> triggerPaths(String workflow, String event) throws Exception {
         Map<?, ?> document = workflow(workflow);
         // SnakeYAML's YAML 1.1 resolver also accepts the GitHub key "on" as Boolean.TRUE.
         Map<?, ?> events = map(document.containsKey("on") ? document.get("on") : document.get(true));
-        Map<?, ?> trigger = map(events.get(event));
-        assertThat(trigger.get("paths")).as("%s / %s path filters", workflow, event)
-                .isInstanceOf(List.class);
-        List<?> paths = (List<?>) trigger.get("paths");
-        assertThat(paths).allSatisfy(pattern -> {
+        Object paths = map(events.get(event)).get("paths");
+        assertThat(paths).as("%s / %s path filters", workflow, event).isInstanceOf(List.class);
+        return ((List<?>) paths).stream().map(pattern -> {
             assertThat(pattern).isInstanceOf(String.class);
-            // These workflows use only positive literal, * and ** filters. Fail closed
-            // if their syntax evolves instead of claiming full GitHub glob compatibility.
-            assertThat((String) pattern).doesNotContain("!", "?", "+", "[", "{", "\\");
-        });
-        assertThat(paths.stream().map(String.class::cast).anyMatch(pattern ->
-                FileSystems.getDefault().getPathMatcher("glob:" + pattern).matches(Path.of(changedPath))))
-                .as("%s / %s must run for an isolated change to %s", workflow, event, changedPath)
-                .isTrue();
+            return (String) pattern;
+        }).toList();
+    }
+
+    private static boolean includesPath(List<String> patterns, String changedPath) {
+        boolean included = false;
+        for (String pattern : patterns) {
+            boolean negative = pattern.startsWith("!");
+            String glob = negative ? pattern.substring(1) : pattern;
+            // Only the checked-in literal/*/** subset, with optional leading negation.
+            // The last matching filter wins; a later positive filter can re-include a path.
+            assertThat(glob).isNotBlank().doesNotContain("!", "?", "+", "[", "{", "\\");
+            if (FileSystems.getDefault().getPathMatcher("glob:" + glob).matches(Path.of(changedPath))) {
+                included = !negative;
+            }
+        }
+        return included;
     }
 
     @ParameterizedTest(name = "performance scope: {0} -> {1}")
@@ -93,6 +146,8 @@ class PluginWorkflowTriggerTest {
             "plugins/taxonomy-mermaid-plugin/src/main/java/com/taxonomy/plugins/mermaid/MermaidPlugin.java, true",
             "plugins/taxonomy-mermaid-plugin/src/main/resources/META-INF/services/com.taxonomy.extension.api.plugin.TaxonomyPlugin, true",
             "README.md, false",
+            "plugins/taxonomy-mermaid-plugin/README.md, false",
+            "plugins/taxonomy-mermaid-plugin/README_DE.md, false",
             "taxonomy-app/src/main/resources/static/css/taxonomy.css, false",
             "taxonomy-app/src/main/resources/templates/index.html, false"
     })
@@ -131,12 +186,13 @@ class PluginWorkflowTriggerTest {
     }
 
     @Test
-    void fullPluginProfileIsAnUnconditionalMavenOwnedPrerequisite() throws Exception {
+    void fullPluginProfileIsAMandatoryMavenOwnedPrerequisiteForFullScope() throws Exception {
         Map<?, ?> jobs = map(workflow("ci-cd.yml").get("jobs"));
         assertThat(jobs.containsKey("plugin-profile"))
                 .as("the full plugin-packaging-tests lifecycle needs a Docker-capable CI owner").isTrue();
         Map<?, ?> profile = map(jobs.get("plugin-profile"));
-        assertThat(profile.get("if")).isNull();
+        assertThat(profile.get("needs")).isEqualTo(List.of("change-scope"));
+        assertThat(profile.get("if")).isEqualTo("needs.change-scope.outputs.scope == 'full'");
         assertThat(profile.get("continue-on-error")).isNull();
         List<?> steps = (List<?>) profile.get("steps");
         assertThat(steps.stream().map(PluginWorkflowTriggerTest::map)
@@ -153,8 +209,42 @@ class PluginWorkflowTriggerTest {
                 .doesNotContain("-Dtest=", "-Dit.test=", "-Dskip", "-DexcludedGroups=", "-Dtaxonomy.quality.skip=");
         Map<?, ?> verification = map(jobs.get("verify"));
         assertThat(((List<?>) verification.get("needs")).contains("plugin-profile")).isTrue();
+        assertThat(((List<?>) verification.get("needs")).contains("change-scope")).isTrue();
+        assertThat(verification.get("if")).isEqualTo("always()");
+        assertThat(authoritativeLaneGate().get("if")).isEqualTo("needs.change-scope.outputs.scope == 'full'");
         assertThat(map(authoritativeLaneGate().get("env")).get("PLUGIN_PROFILE_RESULT"))
                 .isEqualTo("${{ needs.plugin-profile.result }}");
+    }
+
+    @Test
+    void draftHeadsFailAndEveryReadyScopeMustPassTheMavenOwnedGate() throws Exception {
+        Map<?, ?> document = workflow("ci-cd.yml");
+        Map<?, ?> events = map(document.containsKey("on") ? document.get("on") : document.get(true));
+        assertThat(((List<?>) map(events.get("pull_request")).get("types")).stream()
+                .map(String.class::cast).toList())
+                .contains("ready_for_review", "converted_to_draft");
+        Map<?, ?> verification = map(map(document.get("jobs")).get("verify"));
+        List<?> steps = (List<?>) verification.get("steps");
+        Map<?, ?> draft = steps.stream().map(PluginWorkflowTriggerTest::map)
+                .filter(step -> "Keep draft heads non-mergeable".equals(step.get("name")))
+                .findFirst().orElseThrow();
+        assertThat(draft.get("if"))
+                .isEqualTo("github.event_name == 'pull_request' && github.event.pull_request.draft == true");
+        assertThat(draft.get("continue-on-error")).isNull();
+        runExpectingExit(temporary, Map.of(), 1,
+                "bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", (String) draft.get("run"));
+        Map<?, ?> gate = steps.stream().map(PluginWorkflowTriggerTest::map)
+                .filter(step -> "Require the complete selected verification scope".equals(step.get("name")))
+                .findFirst().orElseThrow();
+        assertThat(gate.get("if")).isNull();
+        assertThat(gate.get("continue-on-error")).isNull();
+        assertThat(gate.get("run")).isEqualTo("java -cp taxonomy-tooling/target/classes "
+                + "com.taxonomy.tooling.TaxonomyTooling check-ci-verification-gate");
+        assertThat(map(gate.get("env")).get("CI_NEEDS_JSON")).isEqualTo("${{ toJSON(needs) }}");
+        assertThat(map(gate.get("env")).get("PR_DRAFT"))
+                .isEqualTo("${{ github.event.pull_request.draft || false }}");
+        assertThat(map(gate.get("env")).get("PR_BASE_SHA"))
+                .isEqualTo("${{ github.event.pull_request.base.sha }}");
     }
 
     @Test
