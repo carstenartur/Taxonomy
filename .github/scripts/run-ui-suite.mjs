@@ -6,7 +6,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-import { groupScenarios } from './ui-suite-plan.mjs';
+import { applicationConfiguration, groupScenarios } from './ui-suite-plan.mjs';
 import { UI_READINESS_GROUP, waitForApplication } from './ui-application-readiness.mjs';
 import {
   scenarioKey,
@@ -35,7 +35,9 @@ const uiProfiles = [
   { id: 'desktop-chromium', browser: 'chromium', width: 1440, height: 1000, mode: 'full' },
   { id: 'desktop-firefox', browser: 'firefox', width: 1440, height: 1000, mode: 'full' },
   { id: 'tablet-chromium', browser: 'chromium', width: 1024, height: 768, mode: 'responsive' },
-  { id: 'mobile-chromium', browser: 'chromium', width: 390, height: 844, mode: 'responsive' }
+  { id: 'mobile-chromium', browser: 'chromium', width: 390, height: 844, mode: 'responsive' },
+  { id: 'login-context-chromium', browser: 'chromium', width: 1440, height: 1000,
+    mode: 'login-no-js', contextPath: '/taxonomy' }
 ];
 const accessibilityProfiles = [
   { id: 'desktop', width: 1440, height: 1000 },
@@ -110,9 +112,10 @@ async function stopApplication(application) {
   if (application.exitCode === null) application.kill('SIGKILL');
 }
 
-function applicationEnvironment() {
+function applicationEnvironment(configuration) {
   return {
     ...process.env,
+    ...configuration.environment,
     TAXONOMY_ADMIN_PASSWORD: adminPassword,
     TAXONOMY_REQUIRE_PASSWORD_CHANGE: 'false',
     TAXONOMY_EMBEDDING_ENABLED: 'false',
@@ -123,10 +126,10 @@ function applicationEnvironment() {
   };
 }
 
-function scenarioEnvironment(scenario) {
+function scenarioEnvironment(scenario, applicationBaseUrl) {
   return {
     ...process.env,
-    TAXONOMY_BASE_URL: baseUrl,
+    TAXONOMY_BASE_URL: applicationBaseUrl,
     TAXONOMY_UI_USERNAME: 'admin',
     TAXONOMY_UI_PASSWORD: adminPassword,
     TAXONOMY_A11Y_USERNAME: 'admin',
@@ -141,7 +144,7 @@ function safeFileName(value) {
   return value.replace(/[^a-zA-Z0-9._-]+/g, '-');
 }
 
-async function runScenario(application, scenario, applicationLog, groupTiming) {
+async function runScenario(application, scenario, applicationLog, groupTiming, applicationBaseUrl) {
   if (application.exitCode !== null) {
     throw new Error(
       `Taxonomy application exited before ${scenario.suite}/${scenario.id}; see ${applicationLog}`);
@@ -166,7 +169,7 @@ async function runScenario(application, scenario, applicationLog, groupTiming) {
   try {
     await runProcess(process.execPath, [path.join(scriptDir, scenario.script)], {
       cwd: repoRoot,
-      env: scenarioEnvironment(scenario)
+      env: scenarioEnvironment(scenario, applicationBaseUrl)
     });
     timing.outcome = 'passed';
   } catch (error) {
@@ -178,12 +181,12 @@ async function runScenario(application, scenario, applicationLog, groupTiming) {
   }
 }
 
-async function runAnalysisUxBrowserTests(group) {
+async function runAnalysisUxBrowserTests(group, applicationBaseUrl) {
   if (!group.scenarios.some(
     scenario => scenario.suite === 'special-modes'
       && scenario.id === 'text-spacing-and-offline')) return;
 
-  const bootstrapUrl = `${baseUrl.replace(/\/+$/, '')}`
+  const bootstrapUrl = `${applicationBaseUrl.replace(/\/+$/, '')}`
     + '/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css';
   const response = await fetch(bootstrapUrl);
   if (!response.ok) {
@@ -219,6 +222,8 @@ async function runAnalysisUxBrowserTests(group) {
 }
 
 async function runGroup(group, jar, report) {
+  const configuration = applicationConfiguration(group, baseUrl);
+  const applicationEnv = applicationEnvironment(configuration);
   const applicationDirectory = path.join(outputRoot, '_applications');
   await mkdir(applicationDirectory, { recursive: true });
   const logPath = path.join(applicationDirectory, `${safeFileName(group.id)}.log`);
@@ -226,6 +231,7 @@ async function runGroup(group, jar, report) {
   const groupStarted = performance.now();
   const groupTiming = {
     id: group.id,
+    contextPath: applicationEnv.SERVER_SERVLET_CONTEXT_PATH || '',
     applicationLog: path.relative(outputRoot, logPath),
     scenarioCount: group.scenarios.length,
     startedAt: new Date().toISOString(),
@@ -237,20 +243,22 @@ async function runGroup(group, jar, report) {
 
   const application = spawn('java', [`-Dloader.path=${path.join(path.dirname(jar), 'features')}`, '-jar', jar, `--taxonomy.plugins.directory=${path.join(path.dirname(jar), 'plugins')}`], {
     cwd: repoRoot,
-    env: applicationEnvironment(),
+    env: applicationEnv,
     stdio: ['ignore', logHandle, logHandle]
   });
 
   try {
     const startupStarted = performance.now();
-    await waitForApplication(application, { baseUrl, evidence: groupTiming.readiness });
+    await waitForApplication(application, {
+      baseUrl: configuration.baseUrl, evidence: groupTiming.readiness
+    });
     groupTiming.startupMs = Math.round(performance.now() - startupStarted);
     console.log(
       `\n=== UI application group ${group.id}: ${group.scenarios.length} scenario(s), `
       + `startup ${groupTiming.startupMs} ms ===`);
-    await runAnalysisUxBrowserTests(group);
+    await runAnalysisUxBrowserTests(group, configuration.baseUrl);
     for (const scenario of group.scenarios) {
-      await runScenario(application, scenario, logPath, groupTiming);
+      await runScenario(application, scenario, logPath, groupTiming, configuration.baseUrl);
     }
     groupTiming.outcome = 'passed';
   } catch (error) {
@@ -267,7 +275,8 @@ async function runGroup(group, jar, report) {
 const scenarios = [];
 for (const profile of uiProfiles) {
   if (selected('ui', profile.id)) scenarios.push({
-    suite: 'ui', id: profile.id, script: 'ui-acceptance.mjs', env: {
+    suite: 'ui', id: profile.id, script: 'ui-acceptance.mjs',
+    contextPath: profile.contextPath || '', env: {
       TAXONOMY_BROWSER: profile.browser,
       TAXONOMY_UI_PROFILE: profile.id,
       TAXONOMY_VIEWPORT_WIDTH: String(profile.width),

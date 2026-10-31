@@ -9,7 +9,8 @@
         "ui/desktop-chromium",
         "ui/desktop-firefox",
         "ui/tablet-chromium",
-        "ui/mobile-chromium"
+        "ui/mobile-chromium",
+        "ui/login-context-chromium"
       ]
     },
     {

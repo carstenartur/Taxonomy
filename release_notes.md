@@ -107,6 +107,14 @@ records installed-consumer evidence and its limits.
 
 ## Model evaluation and verification
 
+The existing browser suite now verifies anonymous German and English local
+sign-in: accessible labels, visible keyboard focus, the skip link, generic
+failure feedback, saved-request login and logout with the selected locale
+retained. A separate application context exercises the same forms without
+JavaScript under `/taxonomy`; both anonymous pages also enter the existing
+accessibility audit. This completes the focused verification follow-up
+[#1355](https://github.com/carstenartur/Taxonomy/issues/1355).
+
 Model-comparison evidence and manual review are bound to a validated run and its
 original and reformulated requirements, source revision, provider/model
 identity, output hashes and actual execution results. Mismatched or incomplete

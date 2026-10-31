@@ -449,14 +449,17 @@ selected document integration test with normal test execution enabled.
 The Maven-owned launcher executes every selected browser scenario but does not
 restart the packaged application when scenarios have the same isolation needs:
 
-- read-only `ui` and `accessibility` checks share one application;
+- read-only `ui` and `accessibility` checks share one application at the same servlet context;
+- `ui/login-context-chromium` uses a separate application mounted at `/taxonomy`
+  and runs the DE/EN login flow with browser JavaScript disabled;
 - the special-modes suite keeps a fresh application because it performs a real
   analysis before testing partial-result, text-spacing and offline states;
 - role/state profiles share one application only with profiles for the same role;
 - each primary mutation workflow keeps its own fresh application.
 
-The complete default matrix therefore retains all 18 scenarios while reducing
-application starts from 18 to 8. Execution remains sequential. Scenarios that
+The complete default matrix contains 19 scenarios in 9 application starts: the
+18 existing scenarios retain their eight groups, and the context-path login
+profile adds one group. Execution remains sequential. Scenarios that
 mutate application state are not allowed to share with read-only browser checks,
 primary mutation workflows remain isolated, and a role/state scenario can never
 share an application with another role. These rules are executable contracts in
@@ -464,7 +467,7 @@ share an application with another role. These rules are executable contracts in
 
 Each scenario contains `application-log.txt`, which points to the log of its
 isolation group. The launcher also writes `target/ui-verification/timings.json`
-with application startup duration, scenario duration, group duration, total
+with the actual servlet context, application startup duration, scenario duration, group duration, total
 duration and pass/fail outcome. This report is produced even when a scenario
 fails, so performance and startup regressions can be compared without reading
 the full Maven log.
