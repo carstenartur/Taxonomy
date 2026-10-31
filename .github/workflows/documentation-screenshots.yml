@@ -36,6 +36,13 @@ jobs:
           java-version: '25'
           distribution: temurin
           cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
 
       - name: Configure and verify Docker Hub cache
         run: bash .github/scripts/configure-docker-mirror.sh

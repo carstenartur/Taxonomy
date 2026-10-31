@@ -32,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @Tag("docker-required")
+@Tag("ci-app-shard-runtime")
 class DiagnosticsWithApiKeyContainerIT {
 
     private static final ObjectMapper MAPPER = JsonMapper.builder().build();

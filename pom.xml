@@ -143,9 +143,11 @@
         <releaseCheckCurrentState>development</releaseCheckCurrentState>
         <releaseCheckRequireClean>true</releaseCheckRequireClean>
         <taxonomy.model.revision>e8f8c211226b894fcb81acc59f3b34ba3efd5f42</taxonomy.model.revision>
+        <runOnnxTests>false</runOnnxTests>
         <taxonomy.model.download.skip>true</taxonomy.model.download.skip>
         <taxonomy.app.architectureAnchorPhase>test</taxonomy.app.architectureAnchorPhase>
         <taxonomy.app.shard.coverageMergePhase>none</taxonomy.app.shard.coverageMergePhase>
+        <taxonomy.coverage.reportPhase>verify</taxonomy.coverage.reportPhase>
         <taxonomy.app.shard.coverageInclude>**/disabled-jacoco.exec</taxonomy.app.shard.coverageInclude>
         <taxonomy.app.shard.coverageAggregateSkip>false</taxonomy.app.shard.coverageAggregateSkip>
         <taxonomy.app.shard.coverage.enabled>false</taxonomy.app.shard.coverage.enabled>
@@ -456,6 +458,14 @@
     </build>
     <profiles>
         <profile>
+            <id>ci-ui-application-package</id>
+            <properties>
+                <!-- Consumers need the application runtime BOM; core verification owns
+                     the complete reactor/security aggregate. -->
+                <cyclonedx.skip>true</cyclonedx.skip>
+            </properties>
+        </profile>
+        <profile>
             <id>skip-java-test-runtime</id>
             <activation><property><name>maven.test.skip</name><value>true</value></property></activation>
             <properties><taxonomy.frontend.skip>true</taxonomy.frontend.skip></properties>
@@ -734,7 +744,7 @@
                 <taxonomy.interoperability.skip>true</taxonomy.interoperability.skip>
                 <taxonomy.production.image.skip>true</taxonomy.production.image.skip>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
-                <excludedGroups>real-llm,db-mssql,db-oracle,ci-app-shard-recovery,ci-app-shard-browser,ci-app-shard-scenario</excludedGroups>
+                <excludedGroups>real-llm,db-mssql,db-oracle,ci-app-shard-recovery,ci-app-shard-browser,ci-app-shard-scenario,ci-app-shard-runtime,ci-app-shard-domain-integration</excludedGroups>
                 <taxonomy.app.shard.coverageAggregateSkip>true</taxonomy.app.shard.coverageAggregateSkip>
                 <taxonomy.coverage.policy.exclude>**/ReactorCoveragePolicyIT.java</taxonomy.coverage.policy.exclude>
             </properties>
@@ -786,6 +796,40 @@
             </properties>
         </profile>
         <profile>
+            <id>ci-app-test-shard-runtime</id>
+            <properties>
+                <taxonomy.observability.performance.enabled>false</taxonomy.observability.performance.enabled>
+                <taxonomy.interoperability.skip>true</taxonomy.interoperability.skip>
+                <taxonomy.production.image.skip>true</taxonomy.production.image.skip>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+                <groups>ci-app-shard-runtime</groups>
+                <!-- PostgreSQL and ONNX remain required in this owner. -->
+                <excludedGroups>real-llm,db-mssql,db-oracle</excludedGroups>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.app.architectureAnchorPhase>none</taxonomy.app.architectureAnchorPhase>
+                <taxonomy.quality.skip>true</taxonomy.quality.skip>
+                <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+                <taxonomy.ui.skip>true</taxonomy.ui.skip>
+            </properties>
+        </profile>
+        <profile>
+            <id>ci-app-test-shard-domain-integration</id>
+            <properties>
+                <taxonomy.observability.performance.enabled>false</taxonomy.observability.performance.enabled>
+                <taxonomy.interoperability.skip>true</taxonomy.interoperability.skip>
+                <taxonomy.production.image.skip>true</taxonomy.production.image.skip>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+                <groups>ci-app-shard-domain-integration</groups>
+                <!-- PostgreSQL and ONNX remain required in this owner. -->
+                <excludedGroups>real-llm,db-mssql,db-oracle</excludedGroups>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.app.architectureAnchorPhase>none</taxonomy.app.architectureAnchorPhase>
+                <taxonomy.quality.skip>true</taxonomy.quality.skip>
+                <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+                <taxonomy.ui.skip>true</taxonomy.ui.skip>
+            </properties>
+        </profile>
+        <profile>
             <id>ci-app-test-shards-coverage</id>
             <properties>
                 <taxonomy.observability.performance.enabled>false</taxonomy.observability.performance.enabled>
@@ -795,7 +839,8 @@
                 <cyclonedx.skip>true</cyclonedx.skip>
                 <taxonomy.frontend.skip>true</taxonomy.frontend.skip>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
-                <taxonomy.app.shard.coverageMergePhase>verify</taxonomy.app.shard.coverageMergePhase>
+                <taxonomy.app.shard.coverageMergePhase>process-test-classes</taxonomy.app.shard.coverageMergePhase>
+                <taxonomy.coverage.reportPhase>process-test-classes</taxonomy.coverage.reportPhase>
                 <taxonomy.app.shard.coverageInclude>**/jacoco-shards-merged.exec</taxonomy.app.shard.coverageInclude>
                 <taxonomy.app.shard.coverageAggregateSkip>false</taxonomy.app.shard.coverageAggregateSkip>
                 <taxonomy.app.shard.coverage.enabled>true</taxonomy.app.shard.coverage.enabled>
@@ -804,7 +849,20 @@
                 <taxonomy.app.unit.tests.skip>true</taxonomy.app.unit.tests.skip>
                 <taxonomy.model.download.skip>true</taxonomy.model.download.skip>
             </properties>
-            <build><pluginManagement><plugins>
+            <build><plugins>
+                <!-- Restored source-bound bytecode is immutable input. Compiler skip goals retain
+                     Maven reactor lifecycle markers so downstream dependencies resolve classes.
+                     Stop at process-test-classes:
+                     ordinary Surefire/Failsafe executions and application packaging never run. -->
+                <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId>
+                    <executions><execution><id>default-compile</id><configuration><skipMain>true</skipMain></configuration></execution>
+                        <execution><id>default-testCompile</id><configuration><skip>true</skip></configuration></execution></executions>
+                </plugin>
+                <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-resources-plugin</artifactId>
+                    <executions><execution><id>default-resources</id><phase>none</phase></execution>
+                        <execution><id>default-testResources</id><phase>none</phase></execution></executions>
+                </plugin>
+            </plugins><pluginManagement><plugins>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>

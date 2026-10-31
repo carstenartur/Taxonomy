@@ -1,5 +1,7 @@
 package com.taxonomy.interop;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.editor.persistence.EditorJournal;
@@ -23,6 +25,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest(properties = "OSLC_REFERENCE_TOKEN=reference-fixture-token")
+@Tag("ci-app-shard-domain-integration")
 class IntegrationFlowTest {
     @Autowired IntegrationService integrations;
     @Autowired ProjectPortfolioService projects;

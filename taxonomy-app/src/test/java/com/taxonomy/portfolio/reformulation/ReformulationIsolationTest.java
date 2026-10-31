@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
@@ -32,6 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(username="architect", roles="ARCHITECT")
+@Tag("ci-app-shard-domain-integration")
 class ReformulationIsolationTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;

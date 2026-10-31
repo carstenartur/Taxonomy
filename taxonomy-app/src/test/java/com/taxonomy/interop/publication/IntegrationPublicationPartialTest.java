@@ -1,11 +1,14 @@
 package com.taxonomy.interop.publication;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.extension.api.integration.PublicationContracts.*;
 import org.junit.jupiter.api.Test;
 import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
+@Tag("ci-app-shard-domain-integration")
 class IntegrationPublicationPartialTest extends PublicationIntegrationFixture {
 
     @org.junit.jupiter.params.ParameterizedTest

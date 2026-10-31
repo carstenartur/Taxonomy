@@ -1,5 +1,7 @@
 package com.taxonomy.composition.analysis.artemis;
 
+import org.junit.jupiter.api.Tag;
+
 import com.sun.net.httpserver.HttpServer;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.ProviderConcurrencyPermits;
@@ -36,6 +38,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Real persistent broker and real independent worker JVM/loopback HTTP; no paid inference. */
 @Timeout(45)
+@Tag("ci-app-shard-domain-integration")
 class ArtemisProviderPermitQuarantineTest {
     private static final String PREFIX = "taxonomy.analysis.provider-permits";
     private static final String GROUP = "quarantine-fixture";

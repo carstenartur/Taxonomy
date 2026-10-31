@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
@@ -30,6 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties={"llm.mock=false","llm.provider=CUSTOM_OPENAI","custom.llm.url=http://localhost:9999/v1/chat/completions","custom.llm.model=reformulation-test","custom.llm.api.key="})
 @AutoConfigureMockMvc
 @WithMockUser(username="architect", roles="ARCHITECT")
+@Tag("ci-app-shard-domain-integration")
 class ReformulationSynthesisTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;

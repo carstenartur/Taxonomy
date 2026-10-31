@@ -17,6 +17,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  */
 @Testcontainers
 @Tag("db-postgres")
+@Tag("ci-app-shard-runtime")
 class DiagnosticsPostgresContainerIT extends AbstractExternalDatabaseContainerIT {
 
     static Network network = Network.newNetwork();

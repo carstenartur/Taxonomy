@@ -41,8 +41,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@EnabledIfSystemProperty(named = "runOnnxTests", matches = ".*")
+@EnabledIfSystemProperty(named = "runOnnxTests", matches = "true")
 @Tag("docker-required")
+@Tag("ci-app-shard-runtime")
 class OnnxSeleniumIT {
 
     private static final JsonMapper MAPPER = JsonMapper.builder().build();

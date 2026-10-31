@@ -1,4 +1,6 @@
 package com.taxonomy.portfolio.reformulation;
+
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -10,6 +12,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 @SpringBootTest @AutoConfigureMockMvc @WithMockUser(username="architect",roles="ARCHITECT")
+@Tag("ci-app-shard-domain-integration")
 class ReformulationQuestionWorkflowTest extends ReformulationWorkflowFixture {
     tools.jackson.databind.JsonNode answer(String id,long revision,String q,String action,List<String> values,String other,int status) throws Exception {
         return json.readTree(mvc.perform(post(base()+"/"+id+"/answers").with(csrf()).header("If-Match","\""+revision+"\"")

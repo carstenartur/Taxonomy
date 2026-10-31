@@ -1,5 +1,7 @@
 package com.taxonomy.interop.publication;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.extension.api.integration.PublicationContracts.*;
@@ -13,6 +15,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
+@Tag("ci-app-shard-domain-integration")
 class IntegrationPublicationRecoveryTest extends PublicationIntegrationFixture {
 
     @Test

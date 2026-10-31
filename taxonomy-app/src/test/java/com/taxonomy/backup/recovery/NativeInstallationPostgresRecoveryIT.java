@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.*;
 /** Existing PostgreSQL database owner: real pg_dump/psql plus the full native application recovery oracle. */
 @Tag("db-postgres")
 @Tag("docker-required")
+@Tag("ci-app-shard-runtime")
 class NativeInstallationPostgresRecoveryIT {
     @TempDir Path temporary;
 

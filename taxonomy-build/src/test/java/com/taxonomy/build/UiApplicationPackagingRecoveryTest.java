@@ -6,12 +6,15 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -71,7 +74,7 @@ class UiApplicationPackagingRecoveryTest {
     @Test void successfulPackagingRunsOnce() throws Exception {
         Result result = run("success");
         assertThat(result.exit()).as(result.output()).isZero();
-        assertThat(result.calls()).containsExactly("-B -ntp -DskipTests package");
+        assertThat(result.calls()).containsExactly("-B -ntp -Pci-ui-application-package -Dmaven.test.skip=true package");
     }
 
     private Result run(String scenario) throws Exception {
@@ -80,9 +83,16 @@ class UiApplicationPackagingRecoveryTest {
 
     private Result run(String scenario, boolean failLog) throws Exception {
         Path root = repositoryRoot();
-        String workflow = Files.readString(root.resolve(".github/workflows/ci-cd.yml"));
-        var command = Pattern.compile("- name: Package commit-bound UI application\\R\\s+run: ([^\\r\\n]+)").matcher(workflow);
-        assertThat(command.find()).as("actual application packaging command").isTrue();
+        Map<?, ?> workflow = new Yaml(new SafeConstructor(new LoaderOptions()))
+                .load(Files.readString(root.resolve(".github/workflows/ci-cd.yml")));
+        Map<?, ?> application = (Map<?, ?>) ((Map<?, ?>) workflow.get("jobs")).get("application");
+        Map<?, ?> packaging = ((List<?>) application.get("steps")).stream()
+                .map(step -> (Map<?, ?>) step)
+                .filter(step -> "Package commit-bound UI application".equals(step.get("name")))
+                .findFirst().orElseThrow();
+        assertThat(packaging.get("shell")).as("workflow shell and failure handling").isEqualTo("bash");
+        String command = (String) packaging.get("run");
+        assertThat(command).as("actual application packaging command").isNotBlank();
         Path helper = Path.of(".github/scripts/package-ui-application.sh");
         if (Files.exists(root.resolve(helper))) {
             Files.createDirectories(checkout.resolve(helper).getParent());
@@ -124,9 +134,10 @@ class UiApplicationPackagingRecoveryTest {
                 """);
         assertThat(maven.toFile().setExecutable(true)).isTrue();
         Path output = checkout.resolve("output.txt");
-        ProcessBuilder builder = new ProcessBuilder("bash", "-c", command.group(1))
+        ProcessBuilder builder = new ProcessBuilder("bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", command)
                 .directory(checkout.toFile()).redirectErrorStream(true).redirectOutput(output.toFile());
         builder.environment().put("PACKAGING_SCENARIO", scenario);
+        builder.environment().put("RUNNER_TEMP", Files.createDirectories(checkout.resolve("runner-temp")).toString());
         if (failLog) {
             Path bin = Files.createDirectories(checkout.resolve("bin"));
             Path tee = bin.resolve("tee");

@@ -333,7 +333,7 @@
                         <inherited>false</inherited>
                         <executions><execution>
                             <id>verify-complete-app-test-shard-inventory</id>
-                            <phase>test</phase>
+                            <phase>validate</phase>
                             <goals><goal>exec</goal></goals>
                             <configuration>
                                 <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
@@ -355,6 +355,7 @@
                         <executions>
                             <execution>
                                 <id>coverage-policy-only</id>
+                                <phase>process-test-classes</phase>
                                 <goals>
                                     <goal>integration-test</goal>
                                     <goal>verify</goal>

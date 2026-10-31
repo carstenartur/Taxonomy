@@ -56,6 +56,13 @@ jobs:
           java-version: '25'
           distribution: temurin
           cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
 
       - name: Preserve Java release tooling
         shell: bash

@@ -43,7 +43,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-dependency-submission-maven-${{ hashFiles('**/pom.xml') }}
+          key: ${{ runner.os }}-dependency-submission-maven-${{ hashFiles('**/pom.xml', '.github/ui-verification-pom.xml', '**/*-pom.xml', '**/pom-*.xml', '**/.mvn/wrapper/maven-wrapper.properties', '**/.mvn/extensions.xml') }}
           restore-keys: |
             ${{ runner.os }}-dependency-submission-maven-
 

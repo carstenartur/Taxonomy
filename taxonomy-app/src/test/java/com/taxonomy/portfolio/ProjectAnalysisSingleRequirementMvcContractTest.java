@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
@@ -41,6 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "llama.api.key=",
         "mistral.api.key="
 })
+@Tag("ci-app-shard-domain-integration")
 class ProjectAnalysisSingleRequirementMvcContractTest {
 
     private static final WorkspaceContext CONTEXT =

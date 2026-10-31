@@ -1,5 +1,7 @@
 package com.taxonomy.composition.analysis.artemis;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.analysis.dag.AnalysisCompletionMessage;
 import com.taxonomy.analysis.dag.AnalysisMessage;
 import com.taxonomy.analysis.dag.AnalysisMessageFactory;
@@ -86,6 +88,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * external service, Docker or model provider is involved.
  */
 @Timeout(value = 120, unit = TimeUnit.SECONDS)
+@Tag("ci-app-shard-domain-integration")
 class ArtemisAnalysisTransportTest {
 
     private static final String DLQ = "taxonomy.analysis.dlq";

@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio;
 
+import org.junit.jupiter.api.Tag;
+
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "llama.api.key=",
         "mistral.api.key="
 })
+@Tag("ci-app-shard-domain-integration")
 class PortfolioApiContractTest {
 
     @Autowired

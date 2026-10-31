@@ -158,6 +158,31 @@ and compatibility scope. Database migration, native recovery and portable
 cross-database restoration are separate operations; changing a Spring profile
 does not migrate stored data.
 
+## Build verification
+
+CI distributes 10 measured runtime suites and 45 domain-integration suites into
+explicit Maven groups while retaining the complete test inventory, ONNX and
+PostgreSQL checks. Coverage aggregation reuses verified producer bytecode and
+probes without recompilation or repeated ordinary tests, then executes its
+coverage policy freshly. Two service fixtures avoid unused embedded servers;
+real persistence, security, provider HTTP and process isolation remain.
+
+Ready PRs containing only allowlisted internal/developer prose can verify the
+actual packaged documentation with original JUnit and source/digest evidence.
+That result is explicitly scoped and carries no full-product coverage claim.
+Draft PRs avoid expensive PR verification and cannot pass the required gate;
+ready-for-review resumes verification. Independent CodeQL push analysis remains
+an explicit exception because push events lack draft context.
+
+Dependency keys now include standalone Maven descriptors, application cache
+archives are written only by successful daily main pushes, and image builds can
+reuse persistent Docker layers. The early application package avoids test
+compilation and duplicate aggregate SBOM work while retaining its fresh runtime
+SBOM. Full verification remains required for main, tags, manual runs and mixed
+or unrecognized changes. These changes still need a complete fresh CI timing;
+see [CI performance](docs/dev/CI_PERFORMANCE.md) for the measured baseline and
+limits of the local evidence.
+
 ## Issue completion and remaining work
 
 The 31 October backlog review separates implemented delivery from unfinished

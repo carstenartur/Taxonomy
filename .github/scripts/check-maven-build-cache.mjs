@@ -45,14 +45,20 @@ for (const pom of ['taxonomy-coverage/pom.xml', 'taxonomy-build/pom.xml', '.gith
 }
 
 const appPom = read('taxonomy-app/pom.xml');
+// The catalogue is the shard authority. New runtime/domain-integration groups
+// must receive the same fresh-evidence cache guards without a second name list.
+const catalogue = JSON.parse(read('.mvn/verification-suites.json'));
 const testEvidenceProfiles = [
-  'ci-app-test-shards-core',
-  'ci-app-test-shard-recovery',
-  'ci-app-test-shard-browser',
+  ...Object.values(catalogue.applicationTestShards.groups).map(group => group.profile),
   'ci-app-test-shards-coverage',
   'ci-plugin-packaging',
 ];
 const rootPom = read('pom.xml');
+const packagingStart = appPom.indexOf('<id>ci-ui-application-package</id>');
+const packagingEnd = appPom.indexOf('</profile>', packagingStart);
+requireContract(packagingStart >= 0 && packagingEnd > packagingStart
+    && appPom.slice(packagingStart, packagingEnd).includes('<maven.build.cache.enabled>false</maven.build.cache.enabled>'),
+  'early application distribution and runtime SBOM must be materialized freshly; upstream modules remain cacheable');
 for (const profile of testEvidenceProfiles) {
   const rootStart = rootPom.indexOf(`<id>${profile}</id>`);
   const rootEnd = rootPom.indexOf('</profile>', rootStart);

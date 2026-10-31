@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
@@ -34,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** End-to-end evidence that a recovered claim invalidates every late worker result. */
 @SpringBootTest
+@Tag("ci-app-shard-domain-integration")
 class PortfolioAnalysisClaimPersistenceServiceTest {
 
     @Autowired

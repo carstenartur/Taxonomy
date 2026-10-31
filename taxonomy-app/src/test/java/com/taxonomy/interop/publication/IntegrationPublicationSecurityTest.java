@@ -1,5 +1,7 @@
 package com.taxonomy.interop.publication;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.dsl.command.ArchitectureCommand.CreateArchitectureElement;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.extension.api.integration.PublicationContracts.*;
@@ -21,6 +23,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 
 @AutoConfigureMockMvc
 @ExtendWith(OutputCaptureExtension.class)
+@Tag("ci-app-shard-domain-integration")
 class IntegrationPublicationSecurityTest extends PublicationIntegrationFixture {
     @Autowired MockMvc mvc;
     @Autowired EntityManagerFactory factory;

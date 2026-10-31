@@ -75,6 +75,12 @@ public final class TaxonomyTooling {
                     commandArguments, workingDirectory, output, error);
             case "check-app-test-shards" -> AppTestShardVerifier.run(
                     commandArguments, environment, workingDirectory, output, error);
+            case "plan-ci-verification" -> CiVerificationScope.run(
+                    commandArguments, environment, workingDirectory, output, error, false);
+            case "check-ci-verification-gate" -> CiVerificationScope.run(
+                    commandArguments, environment, workingDirectory, output, error, true);
+            case "check-ci-documentation" -> CiDocumentationVerifier.run(
+                    commandArguments, environment, workingDirectory, output, error);
             case "check-junit-outcomes" -> JunitOutcomeVerifier.run(
                     commandArguments, workingDirectory, output, error);
             case "check-junit-reports" -> JunitReportVerifier.run(

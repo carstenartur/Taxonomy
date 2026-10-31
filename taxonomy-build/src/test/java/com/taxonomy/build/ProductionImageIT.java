@@ -22,14 +22,12 @@ class ProductionImageIT {
   assertTrue(commit.matches("[0-9a-f]{40}"),"Production image requires exact source commit");
   image=System.getenv().getOrDefault("IMAGE_TAG","taxonomy-ci:"+commit);
   onnxImage=image+"-onnx";
-  build(image,List.of(),"production-image.log");
-  // Same daemon/BuildKit cache and build arguments reuse the common application layers.
-  build(onnxImage,List.of("--target","onnx","--cache-from",image),"production-image-onnx.log");
+  build(image,"standard","production-image.log");
+  // A cache only accelerates building; both real images still undergo all assertions.
+  build(onnxImage,"onnx","production-image-onnx.log");
  }
- private void build(String tag,List<String> extra,String log) throws Exception {
-  var command=new ArrayList<>(List.of("docker","build","--progress=plain","--build-arg","BUILD_DATE=1970-01-01T00:00:00Z","--build-arg","VCS_REF="+commit,"--build-arg","VERSION=ci-"+commit,"--tag",tag));
-  command.addAll(extra); command.add(".");
-  ExternalDriverSupport.command(command,log,25);
+ private void build(String tag,String target,String log) throws Exception {
+  ExternalDriverSupport.command(List.of("bash",".github/scripts/build-production-image.sh",tag,commit,target),log,25);
  }
  @Test void imageRevisionIdentifiesTheVerifiedSourceCommit() throws Exception {
   for(String tag:List.of(image,onnxImage)) assertEquals(commit,inspect(tag,"{{ index .Config.Labels \"org.opencontainers.image.revision\" }}","revision"));

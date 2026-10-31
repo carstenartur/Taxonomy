@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
@@ -26,6 +28,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
+@Tag("ci-app-shard-domain-integration")
 class PortfolioAnalysisWorkQueueClaimTest {
 
     @Autowired

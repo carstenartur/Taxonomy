@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
@@ -10,6 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 /** Registered in the normal application suite; no model or transport is mocked. */
 @SpringBootTest(properties = {"embedding.enabled=false", "embedding.allow-download=false"})
+@Tag("ci-app-shard-domain-integration")
 class PortfolioPartialDiagnosticsTest {
     @Autowired ProjectPortfolioService projects;
     @Autowired PortfolioAnalysisPersistenceService persistence;

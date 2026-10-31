@@ -1,5 +1,7 @@
 package com.taxonomy;
 
+import org.junit.jupiter.api.Tag;
+
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.GenericContainer;
@@ -27,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Default HSQL diagnostics and browser-session lifecycle against the same application container. */
 @Testcontainers
+@Tag("ci-app-shard-runtime")
 class DiagnosticsContainerIT extends AbstractDatabaseContainerIT {
 
     private static final String SESSION_USER = "session-inventory-admin";

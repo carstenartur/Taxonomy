@@ -2,11 +2,14 @@ name: Security Scan
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main, feat/artemis-execution-base, 'implementation/**' ]
     paths:
       - '**/pom.xml'
       - 'taxonomy-*/src/**'
       - 'plugins/**'
+      - '!plugins/*/README.md'
+      - '!plugins/*/README_DE.md'
       - 'Dockerfile'
       - 'docker-compose*.yml'
       - 'deploy/helm/**'
@@ -26,6 +29,7 @@ concurrency:
 
 jobs:
   trivy:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: Trivy dependencies, secrets, configuration, and supply chain
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -40,6 +44,13 @@ jobs:
           java-version: '25'
           distribution: temurin
           cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
 
       - name: Build application for packaged dependency inspection
         id: package

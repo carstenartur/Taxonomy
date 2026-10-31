@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 
+import org.junit.jupiter.api.Tag;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.lang.management.ManagementFactory;
@@ -8,6 +10,7 @@ import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 
+@Tag("ci-app-shard-domain-integration")
 class ReformulationEncodingTest {
     @TempDir Path directory;
     @Test void newEncodingNeverReusesLossyHistoryButKeepsItsOwnCache() throws Exception {

@@ -1,5 +1,7 @@
 package com.taxonomy.workspace.controller;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "llama.api.key=",
         "mistral.api.key="
 })
+@Tag("ci-app-shard-domain-integration")
 class WorkspaceScopedEndpointIsolationTest {
 
     @Autowired

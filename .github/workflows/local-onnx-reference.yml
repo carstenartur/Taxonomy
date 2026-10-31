@@ -2,6 +2,7 @@ name: Local ONNX reference evaluation
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - '.github/scripts/configure-docker-mirror.sh'
       - '.github/workflows/local-onnx-reference.yml'
@@ -24,6 +25,7 @@ concurrency:
 
 jobs:
   reference:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     # Keep the full reactor build and the selected model/reference test suites.
     timeout-minutes: 120
@@ -38,6 +40,13 @@ jobs:
           java-version: '25'
           distribution: temurin
           cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
       - name: Install verified Helm 3.21.0
         run: bash .github/scripts/install-helm.sh
 

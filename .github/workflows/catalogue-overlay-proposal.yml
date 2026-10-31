@@ -2,6 +2,7 @@ name: Catalogue Overlay Proposal
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'taxonomy-tooling/**'
       - 'tools/catalogue-overlay/**'
@@ -29,6 +30,7 @@ concurrency:
 
 jobs:
   proposal:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: Deterministic proposal and review report
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -45,6 +47,13 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
 
       - name: Build and test repository tooling
         run: >-

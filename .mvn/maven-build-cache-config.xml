@@ -11,7 +11,8 @@
              cannot come from an otherwise identical earlier release. -->
         <projectVersioning calculateProjectVersionChecksum="true"/>
         <local>
-            <maxBuildsCached>4</maxBuildsCached>
+            <!-- Bound per-module history inside each daily packaging snapshot. -->
+            <maxBuildsCached>2</maxBuildsCached>
         </local>
         <attachedOutputs>
             <!-- Cached modules must restore the physical reactor outputs consumed

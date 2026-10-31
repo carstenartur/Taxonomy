@@ -32,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Real-browser budgets for representative and 1,000-result taxonomy searches. */
 @Tag("ui-acceptance")
 @Tag("docker-required")
+@Tag("ci-app-shard-runtime")
 class TaxonomyLargeResultBudgetIT {
 
     private static final String ADMIN_PASSWORD = "Large-Result-Budget-2026!";

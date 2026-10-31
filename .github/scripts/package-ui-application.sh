@@ -6,7 +6,7 @@ attempt_log=$(mktemp)
 trap 'rm -f "$attempt_log"' EXIT
 
 for attempt in 1 2; do
-  arguments=(-B -ntp -DskipTests)
+  arguments=(-B -ntp -Pci-ui-application-package -Dmaven.test.skip=true)
   if (( attempt == 2 )); then
     # Maven caches failed transfers. A fresh process with -U checks missing releases again.
     arguments+=(-U)

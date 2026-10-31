@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 
+import org.junit.jupiter.api.Tag;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -11,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Tag("ci-app-shard-domain-integration")
 class ReformulationDispatchClaimTest {
     @TempDir Path directory;
 

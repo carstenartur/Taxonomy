@@ -41,7 +41,7 @@ class ApplicationTestShardRepositoryTest {
         assertTrue(Boolean.TRUE.equals(object(object(plan.get("groups")).get("recovery")).get("requiresEmbeddingModel")));
         Element app = pom("taxonomy-app"), build = pom("taxonomy-build"), coverage = pom("taxonomy-coverage");
         assertTrue(XmlSupport.descendants(app, "execution").stream().anyMatch(element -> "stage-core-app-test-shard".equals(XmlSupport.childText(element, "id")) && "post-integration-test".equals(XmlSupport.childText(element, "phase"))));
-        assertTrue(XmlSupport.descendants(build, "execution").stream().anyMatch(element -> "verify-complete-app-test-shard-inventory".equals(XmlSupport.childText(element, "id")) && "test".equals(XmlSupport.childText(element, "phase"))));
+        assertTrue(XmlSupport.descendants(build, "execution").stream().anyMatch(element -> "verify-complete-app-test-shard-inventory".equals(XmlSupport.childText(element, "id")) && "validate".equals(XmlSupport.childText(element, "phase"))));
         assertTrue(XmlSupport.descendants(app, "phase").stream().anyMatch(element -> element.getTextContent().equals("${taxonomy.app.architectureAnchorPhase}")));
         assertTrue(XmlSupport.descendants(coverage, "goal").stream().anyMatch(element -> element.getTextContent().equals("merge")));
         assertTrue(XmlSupport.descendants(coverage, "dataFileInclude").stream().anyMatch(element -> element.getTextContent().equals("${taxonomy.app.shard.coverageInclude}")));
@@ -110,4 +110,26 @@ class ApplicationTestShardRepositoryTest {
         assertTrue(workflow.contains("requiresModel: (.value.requiresEmbeddingModel == true)")); assertTrue(workflow.contains("if: matrix.requiresModel == true"));
     }
     boolean depends(Map<String, Set<String>> jobs, String job, String prerequisite, Set<String> seen) { return seen.add(job) && jobs.getOrDefault(job, Set.of()).stream().anyMatch(dependency -> prerequisite.equals(dependency) || depends(jobs, dependency, prerequisite, seen)); }
+    @Test void newShardProfilesRetainOfflineModelOnnxAndPostgresContracts() throws Exception {
+        var project = pom("");
+        for (String name : List.of("runtime", "domain-integration")) {
+            String id = "ci-app-test-shard-" + name;
+            var properties = XmlSupport.child(profile(project, id), "properties");
+            assertEquals("ci-app-shard-" + name, XmlSupport.childText(properties, "groups"));
+            assertEquals(Set.of("real-llm", "db-mssql", "db-oracle"), Set.of(XmlSupport.childText(properties,"excludedGroups").split(",")));
+            assertEquals("false", XmlSupport.childText(properties,"taxonomy.model.download.skip"));
+            assertEquals("none", XmlSupport.childText(properties,"taxonomy.productDemo.testPhase"));
+            assertEquals("none", XmlSupport.childText(properties,"taxonomy.app.architectureAnchorPhase"));
+            for (String module : List.of("", "taxonomy-app")) assertEquals("false", XmlSupport.childText(XmlSupport.child(profile(pom(module),id),"properties"),"maven.build.cache.enabled"));
+        }
+        var failsafe = XmlSupport.children(XmlSupport.child(pom("taxonomy-app"),"build"),"plugins").stream()
+                .flatMap(plugins -> XmlSupport.children(plugins,"plugin").stream())
+                .filter(plugin -> "maven-failsafe-plugin".equals(XmlSupport.childText(plugin,"artifactId"))).findFirst().orElseThrow();
+        assertEquals("${runOnnxTests}", XmlSupport.childText(XmlSupport.child(XmlSupport.child(failsafe,"configuration"),"systemPropertyVariables"),"runOnnxTests"));
+        String workflow=Files.readString(root.resolve(".github/workflows/ci-cd.yml"));
+        String shards=workflow.substring(workflow.indexOf("  app-test-shards:"),workflow.indexOf("  core:"));
+        assertTrue(shards.contains("-P\"ci,$APP_TEST_PROFILE\" -DrunOnnxTests=true"));
+        assertTrue(shards.contains("TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'"));
+        assertTrue(Files.readString(root.resolve(".mvn/maven.config")).contains("-DrunKeycloakTests=true"));
+    }
 }

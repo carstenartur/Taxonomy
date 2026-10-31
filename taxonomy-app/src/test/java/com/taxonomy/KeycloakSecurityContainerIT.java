@@ -47,6 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @EnabledIfSystemProperty(named = "runKeycloakTests", matches = "true")
 @Tag("docker-required")
+@Tag("ci-app-shard-runtime")
 class KeycloakSecurityContainerIT {
 
     private static final JsonMapper MAPPER = JsonMapper.builder().build();

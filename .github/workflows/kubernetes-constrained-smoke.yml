@@ -2,6 +2,7 @@ name: Kubernetes Constrained Smoke
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main, feat/artemis-execution-base, 'implementation/**' ]
     paths:
       - '.github/scripts/configure-docker-mirror.sh'
@@ -18,6 +19,8 @@ on:
       - 'taxonomy-templates/**'
       - 'taxonomy-templates-api/**'
       - 'plugins/**'
+      - '!plugins/*/README.md'
+      - '!plugins/*/README_DE.md'
       - 'taxonomy-interop/**'
       - 'taxonomy-analysis/**'
       - 'taxonomy-knowledge/**'
@@ -66,6 +69,7 @@ concurrency:
 
 jobs:
   constrained-smoke:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: ResourceQuota, readiness and restricted egress
     runs-on: ubuntu-latest
     timeout-minutes: 90

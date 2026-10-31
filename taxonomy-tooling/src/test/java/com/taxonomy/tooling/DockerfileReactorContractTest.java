@@ -99,8 +99,7 @@ class DockerfileReactorContractTest {
                 "<include>**/ProductionImageIT.java</include>",
                 "<taxonomy.production.image.skip>false</taxonomy.production.image.skip>");
         assertThat(Files.readString(root.resolve("taxonomy-build/src/test/java/com/taxonomy/build/ProductionImageIT.java")))
-                .contains("\"docker\",\"build\"")
-                .contains("VCS_REF=")
+                .contains("build-production-image.sh")
                 .contains("org.opencontainers.image.revision")
                 .contains("10001:10001");
 

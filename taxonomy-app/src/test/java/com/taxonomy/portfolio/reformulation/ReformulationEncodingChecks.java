@@ -1,6 +1,5 @@
 package com.taxonomy.portfolio.reformulation;
 
-import com.taxonomy.TaxonomyApplication;
 import com.taxonomy.analysis.reformulation.ReformulationPromptBuilder;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.composition.reformulation.ReformulationExecutionService;
@@ -11,7 +10,6 @@ import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
 import com.taxonomy.reformulation.*;
 import com.taxonomy.workspace.service.*;
-import org.springframework.boot.builder.SpringApplicationBuilder;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.SerializationFeature;
 
@@ -26,8 +24,8 @@ public final class ReformulationEncodingChecks {
     private ReformulationEncodingChecks() {}
 
     public static void main(String[] args) throws Exception {
-        try (var app = new SpringApplicationBuilder(TaxonomyApplication.class).run(
-                "--server.port=0", "--spring.datasource.url=jdbc:hsqldb:mem:encoding-" + UUID.randomUUID(),
+        try (var app = ReformulationServiceApplication.run(
+                "--spring.datasource.url=jdbc:hsqldb:mem:encoding-" + UUID.randomUUID(),
                 "--spring.datasource.username=SA", "--spring.datasource.password=",
                 "--spring.datasource.driver-class-name=org.hsqldb.jdbc.JDBCDriver", "--spring.jpa.hibernate.ddl-auto=update",
                 "--spring.jpa.properties.hibernate.search.backend.directory.type=local-heap",

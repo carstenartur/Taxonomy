@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.composition.reformulation.ReformulationExecutionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +20,7 @@ import static org.springframework.test.web.client.ExpectedCount.manyTimes;
 
 @SpringBootTest(properties={"llm.mock=false","llm.provider=CUSTOM_OPENAI","custom.llm.url=http://localhost:9999/v1/chat/completions","custom.llm.model=reformulation-test","custom.llm.api.key="})
 @AutoConfigureMockMvc @WithMockUser(username="architect",roles="ARCHITECT")
+@Tag("ci-app-shard-domain-integration")
 class ReformulationTargetedSynthesisTest extends ReformulationWorkflowFixture {
     @Autowired RestTemplate transport;
     @Autowired ReformulationExecutionService execution;

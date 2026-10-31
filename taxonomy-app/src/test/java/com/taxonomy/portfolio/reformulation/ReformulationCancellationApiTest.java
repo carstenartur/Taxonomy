@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(username = "architect", roles = "ARCHITECT")
+@Tag("ci-app-shard-domain-integration")
 class ReformulationCancellationApiTest extends ReformulationWorkflowFixture {
     @Autowired WebApplicationContext webContext;
 

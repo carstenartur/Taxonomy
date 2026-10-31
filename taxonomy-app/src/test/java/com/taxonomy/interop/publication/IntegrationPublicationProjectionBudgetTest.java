@@ -1,5 +1,7 @@
 package com.taxonomy.interop.publication;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.extension.api.integration.PublicationContracts.*;
 import com.taxonomy.interop.IntegrationProblem;
@@ -12,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Journal contract boundary: bounded planner inputs, real database reservation, no mocked domain success. */
 @org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+@Tag("ci-app-shard-domain-integration")
 class IntegrationPublicationProjectionBudgetTest extends PublicationIntegrationFixture {
     @Test void aggregateReadProjectionMustFitBeforeTheJournalAcceptsEffects() throws Exception {
         edit(new com.taxonomy.dsl.command.ArchitectureCommand.CreateArchitectureElement("budget-anchor", "System", Map.of("title", "Real local anchor")));
