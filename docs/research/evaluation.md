@@ -14,6 +14,31 @@ The main goals are:
 4. compare export artefacts with existing architecture-management workflows;
 5. verify that results can be reproduced from a specific release, configuration, and input.
 
+## Separate software behavior from model quality
+
+Use three complementary kinds of evidence:
+
+| Evidence | Suitable execution | What it can establish |
+|---|---|---|
+| Functional correctness | Prepared/recorded responses and explicit malformed or interrupted cases | Tested state transitions, human review, versioning, export and recovery behavior |
+| Live integration | A smaller real generative model with bounded representative inputs | Whether the configured model/server can complete the tested contracts and workflows |
+| Architecture quality | Common scenarios with selected models and human assessment | Completeness, contradictions, supported reasoning, usefulness and correction effort |
+
+A smaller model can support most application development even when its proposals
+need substantial correction. Size development resources for the necessary
+response format, context and latency. Better architecture quality is a separate
+evaluation question; a successful software milestone need not achieve the best
+available model quality.
+
+Keep functional and semantic results separate in reports. Authored model playback
+is not a live inference result. A stronger model's measured quality does not
+transfer automatically to a smaller one, and neither result establishes capacity
+or failover behavior on a different deployment.
+
+See [provider guidance](../en/AI_PROVIDERS.md#development-and-result-quality),
+[scenario evidence](../testing/scenario-acceptance.md) and
+[reformulation verification boundaries](../testing/requirement-reformulation.md).
+
 ## Suggested evaluation tasks
 
 A practical study can use requirements such as:
@@ -24,7 +49,17 @@ A practical study can use requirements such as:
 - crisis-management coordination platform;
 - knowledge-conservation workflow for architecture documentation.
 
-For each task, participants can be asked to identify affected architecture layers, relevant taxonomy nodes, and required relations.
+These examples cover particular workflows. The intended planning and procurement
+scope also includes goods, services and organizational change in public
+administration and larger enterprises. Additional authored cases could examine a
+vehicle fleet or building operations, with explicit assumptions about needs,
+components and responsibilities. Validate their mapping to the current catalogue
+before claiming domain coverage or successful field use.
+
+For each task, participants can be asked to identify affected architecture layers,
+relevant taxonomy nodes, required relations and unresolved responsibilities.
+Public or authored inputs can support development and initial evaluation without
+access to an organization's internal ERP or procurement systems.
 
 ## Baselines
 
@@ -43,9 +78,9 @@ The comparison should focus on traceability and architectural usefulness, not on
 ### Technical metrics
 
 - build success from a clean checkout;
-- test success with `./mvnw test` and `./mvnw verify` where Docker is available;
+- results from the documented Maven verification profiles, with selected scope and missing prerequisites recorded; see [Maven Verification Authority](../dev/MAVEN_VERIFICATION.md);
 - export validity for ArchiMate, Visio, Mermaid, JSON, Markdown, HTML, and DOCX;
-- stability of local/offline provider runs;
+- stability of self-hosted generative runs, embedding-only checks and authored playback, reported separately;
 - response time for representative taxonomy sizes.
 
 ### Architecture-analysis metrics
@@ -81,14 +116,19 @@ For each scenario, store:
 
 - the input requirement;
 - the taxonomy version;
-- provider configuration;
+- provider, exact model revision where available, quantization and serving runtime;
+- prompt/settings versions, context/output limits and whether responses are live, recorded or authored;
 - generated scores;
-- accepted and rejected relations;
+- proposed, accepted and rejected relations, unresolved questions and human corrections;
 - exported artefacts;
 - commit or release identifier;
 - participant feedback where applicable.
 
-No private or sensitive input data should be required for public reproducibility examples.
+No private or sensitive input data should be required for public reproducibility
+examples. Keep the input, catalogue and evaluation rubric fixed when comparing
+models, and retain differences in settings and resource limits. Include cases
+not used to tune prompts; report semantic quality separately from latency and
+resource use.
 
 ## Current status
 

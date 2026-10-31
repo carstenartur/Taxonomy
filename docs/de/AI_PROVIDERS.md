@@ -5,6 +5,7 @@ Der Taxonomy Architecture Analyzer unterstützt mehrere LLM-Anbieter (Large Lang
 ## Inhaltsverzeichnis
 
 - [Überblick](#überblick)
+- [Entwicklung und Ergebnisqualität](#entwicklung-und-ergebnisqualität)
 - [Unterstützte Anbieter](#unterstützte-anbieter)
 - [Eigener OpenAI-kompatibler Endpunkt](#eigener-openai-kompatibler-endpunkt)
 - [Anbieterauswahl](#anbieterauswahl)
@@ -24,6 +25,43 @@ Der Taxonomy Architecture Analyzer unterstützt mehrere LLM-Anbieter (Large Lang
 ## Überblick
 
 Der `LlmService` ist die zentrale Komponente für KI-Analysen. Er unterstützt acht Laufzeitprovider sowie budgetbeschränkte Bewertung, Streaming-Analyse, Ratenbegrenzung, Diagnose und die Providerauswahl pro Anfrage.
+
+---
+
+## Entwicklung und Ergebnisqualität
+
+Das Modell wird passend zur untersuchten Aufgabe gewählt. Ein kleineres
+generatives Modell kann Analyse, Klärung, Prüfung, Speicherung und Export
+durchlaufen, auch wenn seine Architekturvorschläge mehr menschliche Korrektur
+benötigen. Die Funktionsentwicklung setzt weder die höchstmögliche Modellqualität
+noch eine bestimmte GPU-Klasse voraus.
+
+| Untersuchung | Geeignete Eingaben | Aussage |
+|---|---|---|
+| Deterministische Softwareprüfung | Vorbereitete oder aufgezeichnete Modellantworten und gezielte Fehlerfälle | Verhalten der geprüften Zustandswechsel, Validierung, Prüfschritte und Exporte |
+| Prüfung mit einem realen Modell | Kleineres reales Modell mit repräsentativen, begrenzten Anforderungen | Kompatibilität dieses Modells/Servers mit dem geprüften Ablauf, Antwortformat und Eingabeumfang |
+| Bewertung der Architekturqualität | Gleiche Fälle mit ausgewählten Modellen und menschlicher Prüfung | Vollständigkeit, Widersprüche, unbelegte Annahmen, Nutzen und Korrekturaufwand |
+
+Vorbereitete Antworten und der [Mock-Modus](#mock-modus) messen keine reale
+Modellqualität. Der einfache Mock-Modus liefert vorbereitete Bewertungen;
+die vorhandenen [Szenario-Fixtures](../testing/scenario-acceptance.md) decken
+jeweils weitergehende Abläufe ab. Ein leistungsfähigeres Modell kann bessere
+Vorschläge liefern; dies ist an den tatsächlichen Aufgaben zu untersuchen und
+folgt nicht allein aus Parameterzahl oder Hardware.
+
+Für die Entwicklung mit einem realen Modell sind ausreichender Kontext für
+repräsentative Eingaben, das erwartete strukturierte Antwortformat und vertretbare
+Laufzeiten erforderlich. Den [Schnittstellenvertrag des eigenen Modellservers](../dev/custom-llm-de.md)
+und seine Kontextgrenzen aufeinander abstimmen. Fehlerhafte oder unvollständige
+Antworten bleiben als Fehler sichtbar und werden nicht als gültige negative
+Befunde übernommen. Modellabhängiges Verhalten ist nach einem Modellwechsel
+erneut zu prüfen. `LOCAL_ONNX` liefert Embeddings und keine generativen Antworten;
+es ersetzt diese Prüfungen mit einem generativen Modell nicht.
+
+Der [Evaluationsplan](../research/evaluation.md) trennt technische Nachweise von
+Architekturqualität. [Copilot und Autopilot](COPILOT_AUTOPILOT.md) beschreibt die
+geltenden Automatisierungs- und Kostenregeln; ein selbst betriebener Endpunkt gilt
+nicht automatisch als ohne aufruf- oder tokenabhängige Abrechnung betrieben.
 
 ---
 
