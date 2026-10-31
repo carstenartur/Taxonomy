@@ -123,6 +123,8 @@ Maven repository and checks packaged-host loading/absence. These checks do not
 establish real product compatibility. **Live Alfabet execution: NOT_EXECUTED.**
 Acceptance requires the actual edition/version, approved report definitions and
 permissions, multi-page objects, a relation report, denied access and failed refresh.
+The required installation/report access and real-product evidence are tracked in
+[EXT-07](../../docs/internal/TODO-EXTERNAL-INPUT.md#ext-07).
 
 Manufacturer references:
 

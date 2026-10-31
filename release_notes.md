@@ -177,9 +177,12 @@ traceability alongside the new synchronization and second-tab work above.
 The product-gap analysis and frozen-report foundation is implemented, while
 project-wide aggregation and reviewer triage remain in
 [#914](https://github.com/carstenartur/Taxonomy/issues/914). The original report
-of a cleared workspace after saving Preferences remains open in
-[#1100](https://github.com/carstenartur/Taxonomy/issues/1100); related race fixes
-do not establish that report's cause.
+of a cleared workspace after saving Preferences remains unresolved. Its required
+deployment evidence and reproduction input are tracked in the
+[external-input TODO](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/internal/TODO-EXTERNAL-INPUT.md#ext-01),
+linked from [#1100](https://github.com/carstenartur/Taxonomy/issues/1100). This
+administrative transfer and the related race fixes do not establish the original
+cause or constitute a completed repair.
 
 Rich Word authoring, broad template capacity measurements and the in-app
 Information Product classification queue are explicitly lower-priority

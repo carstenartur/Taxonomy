@@ -152,6 +152,8 @@ arguments/paging**, token permissions and workspace binding. Execute at least a
 multi-page object read, relation read, known nonmatch, permission error and failed
 refresh with authorized real data. Public example shapes do not establish every
 workspace's GraphQL schema. Live LeanIX acceptance remains **NOT_EXECUTED**.
+The required workspace access and real-installation evidence are tracked in
+[EXT-06](../../docs/internal/TODO-EXTERNAL-INPUT.md#ext-06).
 
 Not included: vendor reference-catalog support dates, transformations/target-architecture
 simulation, initiatives, organizational relationships, user interface, persistent

@@ -33,6 +33,9 @@ filename, file size, and SHA-256 digest. This test proves container startup, def
 seeding, the browser surface, and the report-download path. It does not replace the
 separate acceptance test with an installed Microsoft Word version through public HTTPS
 and WebDAV.
+The required environment and evidence are tracked in
+[EXT-03](../internal/TODO-EXTERNAL-INPUT.md#ext-03); shared-lock and recovery
+implementation remains in [#828](https://github.com/carstenartur/Taxonomy/issues/828).
 
 ## Default decision-rationale report template
 

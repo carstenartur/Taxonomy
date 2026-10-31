@@ -42,7 +42,8 @@ Nur Administratoren dürfen speichern. Browser-Anmeldung, CSRF-Schutz,
 Größenbeschränkung, OOXML-Sicherheitsprüfung, Pflichtplatzhalterprüfung und atomare
 Git-Versionsprüfung bleiben im bestehenden API-/Service-Pfad. Erfolgreiche Uploads
 sind unmittelbar aktive Versionen; ein gesonderter Entwurfs-/Freigabeprozess bleibt
-Teil von #836. Das allgemeine Uploadformular legt nur zusätzliche neue Vorlagen an.
+Teil von [#832](https://github.com/carstenartur/Taxonomy/issues/832). Das allgemeine
+Uploadformular legt nur zusätzliche neue Vorlagen an.
 WebDAV bleibt optional; Windows-Richtlinien werden nicht geändert. Es wurde kein
 zusätzlicher Übertragungsclient integriert oder als kompatibel zertifiziert.
 
@@ -73,7 +74,8 @@ another tab and return to the original editing address.
 Existing administrator authorization, browser session, CSRF, size bounds, OOXML
 validation, required-placeholder checks and atomic Git preconditions remain in the
 shared API/service. Valid uploads become active immediately; staging and a separate
-publication gate remain part of #836. The generic upload form is create-only.
+publication gate remain part of [#832](https://github.com/carstenartur/Taxonomy/issues/832).
+The generic upload form is create-only.
 WebDAV remains optional; this does not change Windows security policies or certify
 any external transfer client.
 
@@ -85,6 +87,8 @@ in both existing UI contract entry points. `DocumentTemplateDetailControllerLoca
 checks immutable server-side reload behavior and rejects mutable/abbreviated refs.
 These tests do not replace the full Maven/database/security/browser/deployment gates
 or a test with the installed Microsoft Word version on the affected workstation.
+That external client acceptance is tracked in
+[EXT-03](internal/TODO-EXTERNAL-INPUT.md#ext-03).
 
 ## Packaged-application browser acceptance
 

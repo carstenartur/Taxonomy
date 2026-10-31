@@ -1,6 +1,11 @@
 # VSDX handoff profile and acceptance
 
-Status: **experimental, Microsoft Visio desktop certification pending** ([#965](https://github.com/carstenartur/Taxonomy/issues/965)). The format is intended for an editable visual handoff. It does not replace canonical snapshots or semantic interchange through ArchiMate Exchange and authorized JSON evidence. No supported Microsoft Visio desktop version has been certified yet.
+Status: **experimental, Microsoft Visio desktop certification pending**
+([external TODO EXT-04](../internal/TODO-EXTERNAL-INPUT.md#ext-04), historical
+[#965](https://github.com/carstenartur/Taxonomy/issues/965)). The format is intended
+for an editable visual handoff. It does not replace canonical snapshots or
+semantic interchange through ArchiMate Exchange and authorized JSON evidence.
+No supported Microsoft Visio desktop version has been certified yet.
 
 ## Download and authority
 
@@ -110,7 +115,7 @@ Run this procedure on a supported licensed Windows/Microsoft Visio desktop insta
 4. Move and resize `CP-01` and `BP-02`, change a display label, and edit connector routing. Verify attached endpoints follow their selected connection points and that `taxonomy.id` remains unchanged. Add an instance from the document stencil and inspect its editability. Separately exercise a container fixture: move the container and a member and inspect reciprocal membership. Record screenshots before and after.
 5. Save to a new VSDX, close the document and Visio, reopen the saved file and repeat label, identity, metadata, direction, attachment and page checks. Record repairs, lost data or geometry explicitly.
 6. Retain the original bundle, edited VSDX, screenshots, a version screenshot and the result record below, including SHA-256 for each file. Document whether Visio preserves the two custom JSON parts; if it drops them, retain the outer manifest and report that loss.
-7. Review the evidence for this exact SHA before changing experimental wording or closing #965. Repeat certification when the supported profile changes. A successful secondary consumer does not replace these steps.
+7. Review the evidence for this exact SHA before changing experimental wording or completing [EXT-04](../internal/TODO-EXTERNAL-INPUT.md#ext-04). Record any reproduced implementation defect in a linked issue. Repeat certification when the supported profile changes. A successful secondary consumer does not replace these steps.
 
 Example result record (unexecuted fields must remain `null`, never assumed successful):
 
