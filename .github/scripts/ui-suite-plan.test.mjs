@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { groupScenarios, isolationGroupId } from './ui-suite-plan.mjs';
+import { applicationConfiguration, groupScenarios, isolationGroupId } from './ui-suite-plan.mjs';
 
 function scenario(suite, id, role) {
   return {
@@ -23,6 +23,74 @@ test('groups read-only browser suites into one shared application', () => {
     'desktop-chromium',
     'mobile'
   ]);
+});
+
+test('context-path browser scenarios cannot share the root application', () => {
+  const groups = groupScenarios([
+    scenario('ui', 'desktop-chromium'),
+    { ...scenario('ui', 'login-context-chromium'), contextPath: '/taxonomy' },
+    scenario('accessibility', 'mobile')
+  ]);
+
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups.map(group => ({
+    contextPath: group.contextPath,
+    scenarios: group.scenarios.map(item => item.id)
+  })), [
+    { contextPath: '', scenarios: ['desktop-chromium', 'mobile'] },
+    { contextPath: '/taxonomy', scenarios: ['login-context-chromium'] }
+  ]);
+});
+
+test('context paths preserve role-state isolation and group equal contexts together', () => {
+  const groups = groupScenarios([
+    scenario('role-state', 'root-user', 'USER'),
+    { ...scenario('role-state', 'context-user', 'USER'), contextPath: '/taxonomy' },
+    { ...scenario('role-state', 'context-user-repeat', 'USER'), contextPath: '/taxonomy' },
+    { ...scenario('role-state', 'context-architect', 'ARCHITECT'), contextPath: '/taxonomy' }
+  ]);
+
+  assert.deepEqual(groups.map(group => group.scenarios.map(item => item.id)), [
+    ['root-user'], ['context-user', 'context-user-repeat'], ['context-architect']
+  ]);
+});
+
+test('context paths reject ambiguous URL components before application startup', () => {
+  for (const contextPath of ['taxonomy', '//example.test', '/taxonomy?lang=en', '/taxonomy#login', '/..']) {
+    assert.throws(() => groupScenarios([
+      { ...scenario('ui', 'invalid-context'), contextPath }
+    ]), /Invalid UI servlet context path/);
+  }
+});
+
+test('application configuration binds the real servlet context to the browser base URL', () => {
+  assert.deepEqual(applicationConfiguration(
+    { contextPath: '/taxonomy' }, 'http://127.0.0.1:8080/'), {
+    baseUrl: 'http://127.0.0.1:8080/taxonomy',
+    environment: { SERVER_SERVLET_CONTEXT_PATH: '/taxonomy' }
+  });
+  assert.deepEqual(applicationConfiguration(
+    { contextPath: '' }, 'http://127.0.0.1:8080'), {
+    baseUrl: 'http://127.0.0.1:8080',
+    environment: {}
+  });
+});
+
+test('ordinary application groups preserve a caller-configured servlet context', () => {
+  const configuration = applicationConfiguration(
+    { contextPath: '' }, 'http://127.0.0.1:8080/custom');
+  assert.equal(configuration.baseUrl, 'http://127.0.0.1:8080/custom');
+  assert.deepEqual({ SERVER_SERVLET_CONTEXT_PATH: '/custom', ...configuration.environment },
+    { SERVER_SERVLET_CONTEXT_PATH: '/custom' });
+});
+
+test('explicit context application configuration replaces the caller path without double-prefixing', () => {
+  for (const baseUrl of ['http://127.0.0.1:8080/custom', 'http://127.0.0.1:8080/taxonomy']) {
+    assert.deepEqual(applicationConfiguration({ contextPath: '/taxonomy' }, baseUrl), {
+      baseUrl: 'http://127.0.0.1:8080/taxonomy',
+      environment: { SERVER_SERVLET_CONTEXT_PATH: '/taxonomy' }
+    });
+  }
 });
 
 test('isolates special modes because partial analysis mutates application state', () => {
@@ -71,12 +139,13 @@ test('keeps every primary mutation workflow isolated', () => {
   ]);
 });
 
-test('maps the complete current matrix from eighteen scenarios to eight starts', () => {
+test('maps nineteen scenarios to the eight existing starts plus one context application', () => {
   const scenarios = [
     scenario('ui', 'desktop-chromium'),
     scenario('ui', 'desktop-firefox'),
     scenario('ui', 'tablet-chromium'),
     scenario('ui', 'mobile-chromium'),
+    { ...scenario('ui', 'login-context-chromium'), contextPath: '/taxonomy' },
     scenario('accessibility', 'desktop'),
     scenario('accessibility', 'tablet'),
     scenario('accessibility', 'mobile'),
@@ -95,10 +164,11 @@ test('maps the complete current matrix from eighteen scenarios to eight starts',
 
   const groups = groupScenarios(scenarios);
 
-  assert.equal(scenarios.length, 18);
-  assert.equal(groups.length, 8);
+  assert.equal(scenarios.length, 19);
+  assert.equal(groups.length, 9);
   assert.deepEqual(groups.map(group => group.id), [
     'shared-browser-nonmutating',
+    'shared-browser-nonmutating-context-taxonomy',
     'special-modes-text-spacing-and-offline',
     'primary-primary-user-chromium',
     'primary-primary-architect-chromium',

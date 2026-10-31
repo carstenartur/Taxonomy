@@ -42,6 +42,7 @@ const expectedScenarios = [
   'ui/desktop-firefox',
   'ui/tablet-chromium',
   'ui/mobile-chromium',
+  'ui/login-context-chromium',
   'accessibility/desktop',
   'accessibility/tablet',
   'accessibility/mobile',

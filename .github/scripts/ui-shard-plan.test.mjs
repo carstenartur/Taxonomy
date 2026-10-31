@@ -25,6 +25,7 @@ const expected = [
   'ui/desktop-firefox',
   'ui/tablet-chromium',
   'ui/mobile-chromium',
+  'ui/login-context-chromium',
   'accessibility/desktop',
   'accessibility/tablet',
   'accessibility/mobile',
@@ -35,10 +36,27 @@ const expected = [
   'special-modes/text-spacing-and-offline'
 ];
 
-test('authoritative shard plan covers all eighteen browser scenarios exactly once', () => {
+test('authoritative shard plan covers all nineteen browser scenarios exactly once', () => {
   assert.doesNotThrow(() => validateShardPlan(plan, expected));
-  assert.equal(expected.length, 18);
+  assert.equal(expected.length, 19);
   assert.equal(plan.shards.length, 6);
+});
+
+test('JUnit discovery includes the context login profile in the existing browser shard', () => {
+  const result = spawnSync(process.execPath,
+    [path.join(scriptDir, 'run-ui-suite.mjs'), '--list-scenarios'], {
+      cwd: repoRoot, encoding: 'utf8',
+      env: { ...process.env, TAXONOMY_UI_SUITE: 'all', TAXONOMY_UI_PROFILE_FILTER: '',
+        TAXONOMY_UI_SHARD: 'mobile-admin-and-browser',
+        TAXONOMY_UI_SOURCE_SHA: 'a'.repeat(40), TAXONOMY_UI_ARTIFACT_SHA256: 'b'.repeat(64) }
+    });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, result.stderr);
+  const discovered = JSON.parse(result.stdout.trim().replace(/^JUNIT_UI_SCENARIOS /, ''));
+  assert.deepEqual(discovered.sort(), [
+    'role-state/mobile-admin-webkit', 'ui/desktop-chromium', 'ui/desktop-firefox',
+    'ui/tablet-chromium', 'ui/mobile-chromium', 'ui/login-context-chromium'
+  ].sort());
 });
 
 test('only the shard containing a WebKit scenario requests WebKit packages and binaries', () => {

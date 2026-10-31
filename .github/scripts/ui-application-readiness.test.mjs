@@ -213,7 +213,7 @@ test('reject invalid budgets and credential-bearing base URLs without reflecting
 test('runner and Maven-owned npm contract both use the readiness gate', async () => {
   const runner = await readFile(new URL('./run-ui-suite.mjs', import.meta.url), 'utf8');
   assert.match(runner, /import \{ UI_READINESS_GROUP, waitForApplication \} from '\.\/ui-application-readiness\.mjs'/);
-  assert.match(runner, /await waitForApplication\(application, \{ baseUrl, evidence: groupTiming.readiness \}\)/);
+  assert.match(runner, /await waitForApplication\(application, \{\s*baseUrl: configuration\.baseUrl, evidence: groupTiming\.readiness\s*\}\)/);
   assert.match(runner, /MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE: UI_READINESS_GROUP/);
   assert.doesNotMatch(runner, /fetch\(`\$\{baseUrl\}\/login`/);
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
