@@ -3,6 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { observeHttpFailures } from './ui-http-failure-evidence.mjs';
+import { signInWithKeyboard, verifyAnonymousLocalLogin } from './ui-local-login.mjs';
 
 const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
 const username = process.env.TAXONOMY_UI_USERNAME || 'admin';
@@ -10,6 +11,7 @@ const password = process.env.TAXONOMY_UI_PASSWORD || 'ui-acceptance-password';
 const browserName = process.env.TAXONOMY_BROWSER || 'chromium';
 const profile = process.env.TAXONOMY_UI_PROFILE || 'desktop-chromium';
 const mode = process.env.TAXONOMY_UI_MODE || 'full';
+const javaScriptEnabled = mode !== 'login-no-js';
 const viewport = {
   width: Number.parseInt(process.env.TAXONOMY_VIEWPORT_WIDTH || '1440', 10),
   height: Number.parseInt(process.env.TAXONOMY_VIEWPORT_HEIGHT || '1000', 10)
@@ -31,7 +33,7 @@ function assert(condition, message) {
 }
 
 const browser = await browserType.launch({ headless: true });
-const context = await browser.newContext({ viewport, reducedMotion: 'reduce' });
+const context = await browser.newContext({ viewport, reducedMotion: 'reduce', javaScriptEnabled });
 const page = await context.newPage();
 const externalRequests = [];
 const consoleErrors = [];
@@ -82,19 +84,14 @@ page.on('console', message => {
 });
 page.on('pageerror', error => consoleErrors.push(error.message));
 
-let auditError = null;
-try {
+async function auditApplication() {
+  await verifyAnonymousLocalLogin(page, {
+    baseUrl, username, password, javaScriptEnabled, passed
+  });
+  if (!javaScriptEnabled) return;
+
   await page.goto(`${baseUrl}/login`, { waitUntil: 'networkidle' });
-  const usernameInput = page.locator('input[name="username"]');
-  const passwordInput = page.locator('input[name="password"]');
-  await usernameInput.focus();
-  await usernameInput.fill(username);
-  await passwordInput.focus();
-  await passwordInput.fill(password);
-  await Promise.all([
-    page.waitForURL(url => !url.pathname.endsWith('/login'), { timeout: 30_000 }),
-    page.keyboard.press('Enter')
-  ]);
+  await signInWithKeyboard(page, username, password);
   passed('keyboard login');
 
   await page.locator('#taxonomyTree [role="treeitem"]').first()
@@ -248,7 +245,11 @@ try {
   assert(overflow.scrollWidth <= overflow.clientWidth + 2,
     `Page overflows viewport: ${overflow.scrollWidth} > ${overflow.clientWidth}`);
   passed('viewport reflow');
+}
 
+let auditError = null;
+try {
+  await auditApplication();
   assert(externalRequests.length === 0,
     `Application made external browser requests: ${externalRequests.join(', ')}`);
   assert(consoleErrors.length === 0,
@@ -260,7 +261,8 @@ try {
 } finally {
   await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
   await writeFile(reportPath, JSON.stringify({
-    profile, browser: browserName, mode, viewport, checks,
+    profile, browser: browserName, mode, viewport, javaScriptEnabled,
+    contextPath: new URL(baseUrl).pathname.replace(/\/+$/, ''), checks,
     externalRequests, consoleErrors, httpFailures, auditError
   }, null, 2) + '\n', 'utf8');
   await context.close();

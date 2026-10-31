@@ -59,8 +59,18 @@ const page = await context.newPage();
 const findings = [];
 let auditError = null;
 
+async function auditPage(section) {
+  const result = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+  findings.push({ section, violations: result.violations });
+}
+
 try {
-  await page.goto(`${baseUrl}/login`, { waitUntil: 'networkidle' });
+  for (const language of ['de', 'en']) {
+    await page.goto(`${baseUrl}/login?lang=${language}`, { waitUntil: 'networkidle' });
+    await auditPage(`login-${language}`);
+  }
   await page.locator('input[name="username"]').fill(username);
   await page.locator('input[name="password"]').fill(password);
   await Promise.all([
@@ -82,10 +92,7 @@ try {
     if (section === 'dsl-editor') {
       await page.locator('#dslEditorContainer .cm-content').waitFor({ state: 'visible', timeout: 30_000 });
     }
-    const result = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-      .analyze();
-    findings.push({ section, violations: result.violations });
+    await auditPage(section);
   }
 } catch (error) {
   auditError = error?.stack || String(error);
