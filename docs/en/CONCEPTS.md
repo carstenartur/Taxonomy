@@ -6,6 +6,7 @@ This document explains the key terms used throughout the Taxonomy Architecture A
 
 ## Table of Contents
 
+- [Planning, procurement and architecture](#planning-procurement-and-architecture)
 - [Taxonomy Node](#taxonomy-node)
 - [Taxonomy Sheet](#taxonomy-sheet)
 - [Relation](#relation)
@@ -38,6 +39,37 @@ This document explains the key terms used throughout the Taxonomy Architecture A
 - [Conflict Resolution](#conflict-resolution)
 - [Diverged State](#diverged-state)
 - [Operation Result Feedback](#operation-result-feedback)
+
+---
+
+## Planning, procurement and architecture
+
+Taxonomy is intended for public authorities at local, regional and national levels
+and for larger enterprises worldwide. Its planning approach applies to goods,
+services and organizational change: describe the need, identify interacting parts,
+make responsibilities visible and retain the reasons for decisions. Potential
+benefits include less repeated clarification and earlier discovery of gaps; cost
+and time savings need evaluation in use.
+
+| Concept | Role in the workflow |
+|---|---|
+| Requirement | Describes a need and its constraints; revised wording has a separate version and can be analyzed again |
+| Architecture | Connects elements, relationships and recorded ownership; its working model and history can continue across successive projects |
+| Project | Groups requirements and their implementation work while referring to the architecture being developed |
+| Responsibility | A proposed or recorded organizational assignment that people must review and confirm |
+
+For example, planning a vehicle fleet can require agreement on operating needs,
+maintenance, information flows and responsible teams. This is an illustrative
+planning question, not a validated procurement scenario or a catalogue of vehicle
+products. The implemented analysis uses the C3 catalogue; domain coverage and
+mappings must be checked for each application. Examples about communication
+systems show particular workflows and do not restrict the intended audience.
+
+See the [source and architecture context](USER_GUIDE.md#architecture-source-context)
+for the implemented requirement/project/history workflow. A smaller real model can
+support its functional development even when the generated architecture needs
+correction. [Development and result quality](AI_PROVIDERS.md#development-and-result-quality)
+explains how to evaluate these separately.
 
 ---
 
@@ -83,7 +115,12 @@ Relations form the edges of the [Architecture Knowledge Graph](#architecture-kno
 
 ## Requirement Analysis
 
-The process of scoring every taxonomy node against a free-text business requirement. An AI language model evaluates how relevant each node is and returns a match percentage (0–100) for each.
+The hierarchical assessment of the selected taxonomy scope against a free-text
+requirement. The configured provider evaluates relevant paths within the run's
+scope and budget; not every node receives an independent model assessment.
+Assessed, excluded, unresolved and unselected nodes have different meanings.
+A full analysis can add requirement-scoped relationship evidence; a completed run
+does not prove that the proposed architecture is semantically complete.
 
 ---
 
@@ -96,19 +133,30 @@ A numeric value (0–100) that represents how relevant a taxonomy node is to a g
 | **70–100** | Dark green | Strong match |
 | **50–69** | Medium green | Moderate match |
 | **1–49** | Light green | Weak match |
-| **0** | No highlight | No match |
+| **0** | No highlight | No relevance assigned in an assessed result |
+
+A missing assessment is not a zero score or proof of irrelevance. Read the saved
+scope and progress together with the score; see [analysis scope and progress](USER_GUIDE.md#analysis-scope-and-progress).
 
 ---
 
 ## Anchor Node
 
-A node selected as a starting point for building an architecture view. By default, nodes with a score ≥ 70 are chosen as anchors. If fewer than three anchors are found, the threshold falls back to ≥ 50 (top 3).
+A starting node for the anchor/propagation view path. That path selects nodes
+with a score ≥ 70, with a fallback to ≥ 50 (top 3) when fewer than three anchors
+are found. This is distinct from the full analysis path that builds its view
+from requirement-scoped relationship evidence.
 
 ---
 
 ## Relevance Propagation
 
-After anchor nodes are selected, the system follows taxonomy relations outward from each anchor and assigns derived relevance scores to connected nodes. This expands the architecture view to include elements that are indirectly but meaningfully related to the original requirement.
+In the anchor/propagation view path, the system follows taxonomy relations from
+selected anchors and assigns derived relevance to connected nodes. Keep these
+derived values separate from original provider assessments. The current full
+analysis instead projects its requirement-scoped relationship evidence; the
+existence of a catalogue relation alone does not establish its relevance to the
+requirement.
 
 ---
 
@@ -116,8 +164,12 @@ After anchor nodes are selected, the system follows taxonomy relations outward f
 
 A structured model generated from scored analysis results. It contains:
 
-- **Elements** — the taxonomy nodes selected as relevant (anchors plus propagated nodes).
-- **Relationships** — the relations connecting those elements.
+- **Elements** — the nodes selected from the saved analysis context.
+- **Relationships** — the relations supported by that view's retained evidence.
+
+The full analysis uses requirement-scoped relationship evidence. The separate
+anchor/propagation path derives a view from scored anchors and graph traversal.
+Inspect the recorded input and provenance to distinguish these paths.
 
 Architecture views can be exported to ArchiMate XML, Visio `.vsdx`, Mermaid flowcharts, or JSON.
 

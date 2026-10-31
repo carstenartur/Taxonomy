@@ -6,6 +6,7 @@ Dieses Dokument erläutert die zentralen Begriffe, die im gesamten Taxonomy Arch
 
 ## Inhaltsverzeichnis
 
+- [Planung, Beschaffung und Architektur](#planung-beschaffung-und-architektur)
 - [Taxonomie-Knoten](#taxonomie-knoten)
 - [Taxonomie-Blatt](#taxonomie-blatt)
 - [Beziehung](#beziehung)
@@ -38,6 +39,39 @@ Dieses Dokument erläutert die zentralen Begriffe, die im gesamten Taxonomy Arch
 - [Konfliktlösung](#konfliktlösung)
 - [Divergierter Zustand](#divergierter-zustand)
 - [Rückmeldung zu Operationsergebnissen](#rückmeldung-zu-operationsergebnissen)
+
+---
+
+## Planung, Beschaffung und Architektur
+
+Taxonomy richtet sich an Kommunal-, Landes- und Bundesbehörden sowie an größere
+Unternehmen weltweit. Der Planungsansatz ist auf Güter, Dienstleistungen und
+organisatorische Veränderungen ausgerichtet: den Bedarf klären, zusammenwirkende
+Bestandteile erkennen, Zuständigkeiten sichtbar machen und Entscheidungsgründe
+erhalten. Erwartete Vorteile sind weniger wiederholte Abstimmungen und früher
+erkannte Lücken; Kosten- und Zeitersparnisse müssen in der Anwendung untersucht werden.
+
+| Begriff | Rolle im Arbeitsablauf |
+|---|---|
+| Anforderung | Beschreibt einen Bedarf und seine Randbedingungen; überarbeitete Formulierungen erhalten eine eigene Version und können erneut analysiert werden |
+| Architektur | Verbindet Elemente, Beziehungen und hinterlegte Zuständigkeiten; Arbeitsmodell und Historie können über aufeinanderfolgende Projekte hinweg bestehen bleiben |
+| Projekt | Fasst Anforderungen und ihre Umsetzung zusammen und bezieht sich auf die weiterentwickelte Architektur |
+| Zuständigkeit | Vorgeschlagene oder hinterlegte organisatorische Zuordnung, die Menschen prüfen und bestätigen müssen |
+
+Bei der Planung einer Fahrzeugflotte können beispielsweise Einsatzanforderungen,
+Wartung, Informationsflüsse und verantwortliche Teams abzustimmen sein. Dies ist
+eine illustrative Planungsfrage, kein validiertes Beschaffungsszenario und kein
+Fahrzeugkatalog. Die implementierte Analyse verwendet den C3-Katalog; fachliche
+Abdeckung und Zuordnungen sind für den jeweiligen Einsatz zu prüfen. Beispiele
+zu Kommunikationssystemen zeigen bestimmte Abläufe und begrenzen die Zielgruppe
+nicht.
+
+Der [Anforderungs- und Architekturkontext](USER_GUIDE.md#architecture-source-context)
+erläutert den implementierten Zusammenhang von Anforderungen, Projekten und Historie.
+Ein kleineres reales Modell kann die Funktionsentwicklung unterstützen, auch wenn
+die erzeugte Architektur überarbeitet werden muss.
+[Entwicklung und Ergebnisqualität](AI_PROVIDERS.md#entwicklung-und-ergebnisqualität)
+erklärt die getrennte Bewertung.
 
 ---
 
@@ -83,7 +117,13 @@ Beziehungen bilden die Kanten des [Architektur-Wissensgraphen](#architektur-wiss
 
 ## Anforderungsanalyse
 
-Der Prozess, bei dem jeder Taxonomie-Knoten anhand einer Freitextanforderung bewertet wird. Ein KI-Sprachmodell beurteilt die Relevanz jedes Knotens und gibt für jeden einen Übereinstimmungsprozentsatz (0–100) zurück.
+Die hierarchische Bewertung des ausgewählten Taxonomieumfangs anhand einer
+Freitextanforderung. Der konfigurierte Provider untersucht relevante Pfade
+innerhalb des gewählten Umfangs und Budgets; nicht jeder Knoten erhält eine
+eigene Modellbewertung. Bewertete, ausgeschlossene, ungeklärte und nicht
+gewählte Knoten haben unterschiedliche Bedeutungen. Eine vollständige Analyse
+kann anforderungsbezogene Beziehungsnachweise ergänzen; ein abgeschlossener
+Lauf beweist keine fachlich vollständige Architektur.
 
 ---
 
@@ -96,19 +136,31 @@ Ein numerischer Wert (0–100), der die Relevanz eines Taxonomie-Knotens für ei
 | **70–100** | Dunkelgrün | Starke Übereinstimmung |
 | **50–69** | Mittelgrün | Moderate Übereinstimmung |
 | **1–49** | Hellgrün | Schwache Übereinstimmung |
-| **0** | Keine Hervorhebung | Keine Übereinstimmung |
+| **0** | Keine Hervorhebung | In einer erfolgten Bewertung keine Relevanz zugeordnet |
+
+Eine fehlende Bewertung ist weder ein Nullwert noch ein Beleg für Irrelevanz.
+Gespeicherten Umfang und Fortschritt zusammen mit dem Wert lesen; siehe
+[Analyseumfang und Fortschritt](USER_GUIDE.md#analysis-scope-and-progress).
 
 ---
 
 ## Ankerknoten
 
-Ein Knoten, der als Ausgangspunkt für den Aufbau einer Architekturansicht ausgewählt wird. Standardmäßig werden Knoten mit einer Bewertung ≥ 70 als Anker gewählt. Werden weniger als drei Anker gefunden, fällt der Schwellenwert auf ≥ 50 zurück (Top 3).
+Ein Ausgangsknoten für den Ansichtsaufbau über Anker und Relevanzpropagierung.
+Dieser Pfad wählt Knoten mit einer Bewertung ≥ 70; bei weniger als drei Ankern
+fällt die Auswahl auf ≥ 50 (Top 3) zurück. Davon zu unterscheiden ist die
+vollständige Analyse, deren Ansicht anforderungsbezogene Beziehungsnachweise
+verwendet.
 
 ---
 
 ## Relevanzpropagierung
 
-Nach der Auswahl der Ankerknoten folgt das System den Taxonomie-Beziehungen von jedem Anker nach außen und weist verbundenen Knoten abgeleitete Relevanzbewertungen zu. Dadurch wird die Architekturansicht um Elemente erweitert, die indirekt, aber sinnvoll mit der ursprünglichen Anforderung zusammenhängen.
+Beim Ansichtsaufbau über Anker folgt das System den Taxonomie-Beziehungen und
+weist verbundenen Knoten abgeleitete Relevanzwerte zu. Diese sind von den
+ursprünglichen Providerbewertungen zu unterscheiden. Die aktuelle vollständige
+Analyse projiziert stattdessen ihre anforderungsbezogenen Beziehungsnachweise;
+eine vorhandene Katalogbeziehung allein belegt keine Relevanz für die Anforderung.
 
 ---
 
@@ -116,8 +168,13 @@ Nach der Auswahl der Ankerknoten folgt das System den Taxonomie-Beziehungen von 
 
 Ein strukturiertes Modell, das aus den bewerteten Analyseergebnissen generiert wird. Es enthält:
 
-- **Elemente** — die als relevant ausgewählten Taxonomie-Knoten (Anker plus propagierte Knoten).
-- **Beziehungen** — die Relationen, die diese Elemente verbinden.
+- **Elemente** — die aus dem gespeicherten Analysekontext ausgewählten Knoten.
+- **Beziehungen** — die durch die erhaltenen Nachweise dieser Ansicht gestützten Relationen.
+
+Die vollständige Analyse verwendet anforderungsbezogene Beziehungsnachweise.
+Der getrennte Anker-/Propagierungspfad leitet seine Ansicht aus bewerteten Ankern
+und Graphdurchläufen ab. Gespeicherte Eingaben und Herkunftsnachweise zeigen,
+welcher Pfad verwendet wurde.
 
 Architekturansichten können nach ArchiMate XML, Visio `.vsdx`, Mermaid-Flussdiagramme oder JSON exportiert werden.
 

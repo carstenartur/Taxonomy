@@ -1,6 +1,11 @@
 # Research Overview
 
-Taxonomy Architecture Analyzer is a research-oriented software prototype for turning requirements into traceable architecture views. It combines a layered architecture taxonomy, AI-assisted hierarchical scoring, relation discovery, graph exploration, export formats, and repository-backed architecture versioning.
+Taxonomy Architecture Analyzer is an open-source workbench for turning requirements
+and source documents into reviewable architecture proposals. Its intended users
+include public authorities and larger enterprises worldwide, with planning and
+procurement of goods, services and organizational changes as application domains.
+It combines hierarchical catalogue analysis, relation evidence, human review,
+exports and versioned architecture models.
 
 ## Research problem
 
@@ -11,17 +16,25 @@ Architecture knowledge is often distributed across requirements, catalogues, dia
 - Which relations should be proposed, reviewed, accepted, rejected, or exported?
 - How can architecture work remain auditable and reproducible when AI is used as an assistant?
 
-The project explores how an architecture-analysis workbench can make these steps explicit and inspectable.
+The project explores how an architecture-analysis workbench can make these steps
+explicit and inspectable. Clearer requirements, components and responsibilities
+could reduce repeated coordination and make decisions easier to explain. These
+benefits, including any cost or time savings, are research goals rather than
+established field-study outcomes. The current C3 catalogue and each domain's
+concept coverage remain part of the evaluation.
 
 ## Core idea
 
-Instead of matching a requirement directly to final leaf nodes, the analyzer performs hierarchical scoring:
+The analyzer traverses the selected catalogue scope hierarchically:
 
-1. Score root architecture categories.
-2. Distribute relevance into child nodes.
-3. Preserve intermediate scores as part of the explanation trace.
-4. Derive architecture impact elements and relations.
-5. Let users inspect, review, export, and version the result.
+1. Assess selected root categories and relevant paths within the configured budget.
+2. Retain intermediate assessments, reasons and unresolved work.
+3. Search for requirement-scoped relationships when the selected analysis mode includes that stage.
+4. Build reviewable architecture proposals and clarification questions from the retained evidence.
+5. Let users inspect, correct, export and explicitly adopt or version the result.
+
+Unvisited nodes are not negative findings. Technical completion of a run does not
+establish semantic completeness of its architecture proposal.
 
 This treats the taxonomy as an architectural reasoning structure rather than as a flat keyword index.
 
@@ -31,7 +44,7 @@ The current prototype contributes:
 
 - a GUI-first architecture-analysis workflow for requirements-to-architecture mapping;
 - hierarchical scoring traces from root categories to intermediate and leaf nodes;
-- multi-layer architecture impact views with anchors, hotspots, propagated relevance, and relation traces;
+- multi-layer architecture views with requirement-scoped relation evidence, alongside the separately documented anchor/propagation view path;
 - an architecture DSL with JGit-backed versioning, branching, merge, rebase, cherry-pick, and history-oriented workflows;
 - export paths for architecture artefacts, including ArchiMate, Visio, Mermaid, JSON, Markdown, HTML, and DOCX;
 - documentation for deployment, AI transparency, digital sovereignty, security, and reproducibility.
@@ -47,10 +60,22 @@ The project can support evaluation around questions such as:
 3. How well can users trace AI-assisted suggestions back to taxonomy paths and relation evidence?
 4. Which export formats are most useful for handoff into existing architecture-management workflows?
 5. How can repository-backed architecture workspaces improve reproducibility and auditability?
+6. How do model capability, input quality and human correction affect the usefulness and completeness of architecture proposals?
+7. Which parts of planning and procurement benefit from shared requirements, components, responsibilities and decision history across projects?
 
 ## Evaluation status
 
-The repository contains implemented functionality and documentation suitable for initial qualitative and technical evaluation. A full empirical user study is not yet included. The proposed evaluation plan is documented in [Evaluation](docs/research/evaluation.md).
+The repository contains implemented functionality, deterministic scenario evidence
+and documented validation boundaries. Prepared model responses demonstrate the
+software paths they exercise; they do not establish the quality of live model
+output. A full empirical user study is not yet included.
+
+Functional development can use a smaller real generative model plus targeted
+response fixtures. Architecture quality is evaluated separately on common cases
+with recorded model/settings and human review. A more capable model may improve
+results without being a prerequisite for developing persistence, review, exports
+or distributed execution. The [evaluation plan](docs/research/evaluation.md)
+describes these separate evidence levels.
 
 ## Reproducibility
 
@@ -60,7 +85,9 @@ The project is designed to be reproducible at several levels:
 - explicit software metadata in `CITATION.cff`, `codemeta.json`, and `.zenodo.json`;
 - Maven-based build instructions;
 - Docker-based deployment instructions;
-- optional local/offline LLM provider mode;
+- self-hosted generative models through a compatible endpoint, with model-specific capacity and licensing;
+- separate opt-in local ONNX embeddings for similarity scoring/search;
+- prepared-response fixtures for repeatable software checks, distinct from live-model evaluation;
 - documented architecture examples and export formats.
 
 See [Reproducibility](docs/research/reproducibility.md).

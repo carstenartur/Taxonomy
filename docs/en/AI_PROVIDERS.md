@@ -5,6 +5,7 @@ The Taxonomy Architecture Analyzer supports multiple LLM (Large Language Model) 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Development and result quality](#development-and-result-quality)
 - [Supported Providers](#supported-providers)
 - [Custom OpenAI-Compatible Endpoint](#custom-openai-compatible-endpoint)
 - [Provider Selection](#provider-selection)
@@ -24,6 +25,40 @@ The Taxonomy Architecture Analyzer supports multiple LLM (Large Language Model) 
 ## Overview
 
 The `LlmService` is the central component for AI analysis. It supports eight runtime providers and implements budget-constrained scoring, streaming analysis, rate limiting, diagnostics, and per-request provider selection.
+
+---
+
+## Development and result quality
+
+Choose a model for the work being tested. A smaller generative model can exercise
+analysis, clarification, review, persistence and export workflows even when its
+architecture proposals need more human correction. Functional development does
+not require the highest available model quality or a particular GPU class.
+
+| Evaluation | Suitable input | What it establishes |
+|---|---|---|
+| Deterministic software checks | Prepared or recorded model responses and explicit error cases | Behavior of the tested state changes, validation, review controls and exports |
+| Live integration checks | A smaller real model with representative bounded requirements | Compatibility of that model/server with the tested workflow, response contract and input size |
+| Architecture-quality assessment | The same cases evaluated with selected models and human review | Completeness, contradictions, unsupported assumptions, usefulness and correction effort |
+
+Prepared responses and the [mock mode](#mock-mode) do not measure live-model
+quality. The simple mock mode supplies prepared scores; use the existing
+[scenario fixtures](../testing/scenario-acceptance.md) for the richer workflows
+they cover. A stronger model may improve proposals, but this needs evaluation on
+the actual tasks rather than inference from parameter count or hardware alone.
+
+For live development, require enough context for representative inputs, the
+expected structured responses and acceptable latency. Match the
+[custom endpoint contract and context limits](../dev/custom-llm.md#completion-and-context-limits)
+to the served model. Keep malformed or incomplete responses visible as errors;
+do not turn them into valid negative findings. Recheck model-dependent behavior
+when changing models. `LOCAL_ONNX` supplies embeddings rather than generative
+responses and cannot substitute for these live generative checks.
+
+The [evaluation plan](../research/evaluation.md) separates technical evidence from
+architectural quality. [Copilot and Autopilot](COPILOT_AUTOPILOT.md) documents the
+existing automation and cost-policy requirements; choosing a self-hosted endpoint
+does not automatically declare it unmetered.
 
 ---
 

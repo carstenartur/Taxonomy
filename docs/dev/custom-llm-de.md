@@ -137,6 +137,39 @@ Der nur für Administratoren verfügbare Endpunkt `/api/diagnostics` unterscheid
 
 Konfigurations- und Aufruffehler nennen ihre tatsächliche Ursache, darunter fehlende `CUSTOM_LLM_URL`, fehlendes `CUSTOM_LLM_MODEL`, ungültige URI oder Pfad, nicht erreichbarer Endpunkt und HTTP 401/403. Authentifizierungsfehler nennen ausschließlich die optionale Variable `CUSTOM_LLM_API_KEY`.
 
+## Antwort- und Kontextgrenzen
+
+Anfragen zur Beziehungssuche verwenden ein striktes JSON-Schema,
+`temperature=0` und eine ausdrückliche Grenze für Ausgabetokens. Andere Anfragen
+behalten ihr bisheriges Übertragungsformat. Für den eigenen Endpunkt gelten:
+
+| Umgebungsvariable | Spring-Property | Standard | Bedeutung |
+|---|---|---|---|
+| `CUSTOM_LLM_CONTEXT_WINDOW_TOKENS` | `custom.llm.context-window-tokens` | `0` | Kontextgröße des Modells; der Wert `0` bedeutet unbekannt |
+| `CUSTOM_LLM_MAX_OUTPUT_TOKENS` | `custom.llm.max-output-tokens` | `4096` | Reservierter Ausgabeumfang und Obergrenze für entsprechend konfigurierte Anfragen |
+| `CUSTOM_LLM_STRUCTURED_OUTPUT_ENABLED` | `custom.llm.structured-output-enabled` | `true` | `response_format.type=json_schema` für diese Anfragen senden; für inkompatible Server ausdrücklich deaktivieren |
+
+Die Kontextgröße muss zum Modellserver passen, beispielsweise `8192` für eine
+kleinere Konfiguration. Das Eingabebudget reserviert zuerst den Ausgabeumfang und
+schätzt Eingabetokens mit vier Zeichen je Token. Dies ersetzt keinen Tokenizer;
+mehrsprachiger Text, Schema und Modellvorlage können zusätzliche Tokens benötigen.
+Die tatsächliche Kontextprüfung des Modellservers bleibt maßgeblich.
+
+Für den Kontext sind `0` bis `1000000000`, für die Ausgabe `1` bis `1000000`
+zulässig. Ein bekanntes Kontextfenster muss größer als der reservierte
+Ausgabeumfang sein. Ungültige Werte machen den Provider mit einer konkreten
+Konfigurationsmeldung unverfügbar; ausdrückliche Anfragen werden vor HTTP abgewiesen.
+
+Nicht unterstützte Schema-Anfragen führen zum begrenzten Providerfehler. Andere
+HTTP-400-Fehler und Authentifizierungsfehler werden nicht automatisch ohne Schema
+wiederholt. Die Finish-Gründe `length`, `content_filter` und Fehler kennzeichnen
+unvollständige Antworten; ihr Teiltext bleibt Diagnosematerial und wird nicht
+als erfolgreiche Beziehungsbewertung übernommen.
+
+Diese Einstellungen ermöglichen die Anpassung an kleinere Modelle. Ob deren
+Vorschläge fachlich ausreichen, wird unabhängig von der technischen
+Funktionsprüfung bewertet; siehe [Entwicklung und Ergebnisqualität](../de/AI_PROVIDERS.md#entwicklung-und-ergebnisqualität).
+
 ## Rate Limit und Timeout
 
 Für den eigenen Provider gilt standardmäßig keine ausgehende RPM-Begrenzung. Bei Bedarf kann sie über folgende Laufzeiteinstellung gesetzt werden:

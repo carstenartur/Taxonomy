@@ -8,7 +8,7 @@
 [![DOI](https://zenodo.org/badge/1172765819.svg)](https://zenodo.org/badge/latestdoi/1172765819)
 [![GitHub release](https://img.shields.io/github/v/release/carstenartur/Taxonomy?style=flat-square)](https://github.com/carstenartur/Taxonomy/releases/latest)
 
-**Generate plausible, traceable architecture prototypes from requirements—rapidly, with AI assistance and human control.**
+**Turn requirements and source documents into reviewable architecture proposals for planning and procurement, with AI assistance and human control.**
 
 Taxonomy Architecture Analyzer uses hierarchical AI-assisted analysis to turn requirements, regulations, and source documents into plausible cross-layer architecture prototypes. It traverses the architecture catalogue, scores relevant paths, proposes elements and relations, and produces inspectable views and exportable models.
 
@@ -16,9 +16,10 @@ The primary goal is to shorten the path from an unstructured need to a useful fi
 
 By externalizing taxonomy paths, scores, relations, provenance, and history, the workbench also reduces the amount of architecture context users must reconstruct and keep in mind at once.
 
-Taxonomy addresses architecture work in federal, state and local public administration
-and in enterprises. Example scenarios describe test coverage, not a restriction of
-the intended users or application domains.
+Taxonomy is intended for planning and procurement in federal, state and local
+public administration and in larger enterprises worldwide. It helps make needs,
+components, relationships and responsibilities explicit so that participants can
+review a shared model and retain the reasons for changes.
 
 ## Why use Taxonomy?
 
@@ -45,6 +46,37 @@ Start with the browser workflows in the [English user guide](docs/en/USER_GUIDE.
 or [German user guide](docs/de/USER_GUIDE.md). The [reformulation contract](docs/features/requirement-reformulation.md)
 and [verification boundaries](docs/testing/requirement-reformulation.md) describe
 what is implemented and what has not been established by live-model evaluation.
+
+## Planning and procurement
+
+Procurement brings together people who understand different parts of a need.
+Taxonomy aims to make their assumptions, dependencies and open questions visible
+before those details become difficult or expensive to change.
+
+| Planning question | How the workbench helps |
+|---|---|
+| What do we need, and what remains unclear? | Retains requirements and source evidence, proposes clarification questions and keeps adopted wording as a separate version |
+| Which parts must work together? | Makes proposed components and relationships inspectable in a shared architecture model |
+| Which roles and responsibilities need agreement? | Places business roles, processes and recorded ownership alongside the affected elements for human review |
+| Why was the plan changed? | Keeps reviewed proposals, decisions, model history and contextual exports available for later work |
+
+The intended scope includes goods, services and organizational changes, such as
+vehicle procurement, building operations or shared services. These are possible
+application domains, not claims of completed field trials. The current analysis
+uses the C3 catalogue and its capabilities, roles, processes, information,
+applications and services; each new domain needs suitable concepts and reviewed
+mappings. Existing IT-oriented examples demonstrate particular workflows rather
+than defining the project's audience.
+
+The expected benefits are less duplicated clarification, earlier discovery of
+gaps, better coordination and more understandable decisions. Effects on costs,
+processing time and public accountability still need evaluation in actual use.
+External-system connections can add current-state data; development and initial
+evaluation can also use entered requirements and public or authored examples.
+
+See the concepts guide in [English](docs/en/CONCEPTS.md#planning-procurement-and-architecture)
+or [German](docs/de/CONCEPTS.md#planung-beschaffung-und-architektur) for the
+relationship between requirements, projects and enduring architecture models.
 
 ## What the application provides
 
@@ -462,9 +494,30 @@ Document registration and candidate confirmation are transactional. A failed ope
 
 For the actual grouping criteria, score calculations, limitations and rationale for each of the eight sub-taxonomies, see [Grouping and scoring](docs/en/TAXONOMY_SCORING.md) ([Deutsch](docs/de/TAXONOMY_SCORING.md)). It separates implemented arithmetic, remaining navigation/provenance restrictions, and relevance from necessity.
 
-The application can use Gemini, OpenAI-compatible providers, or a local ONNX embedding model. Provider configuration is optional for catalogue browsing, DSL editing, version navigation, deterministic validation, and many search and export functions.
+Generative analysis can use a configured hosted provider or a self-hosted model
+server through `CUSTOM_OPENAI`. The model server is a separate service; Taxonomy
+does not bundle a generative LLM in its application image. Provider configuration
+is optional for catalogue browsing, DSL editing, version navigation, deterministic
+validation, and many search and export functions.
 
-Local embedding configuration:
+A smaller generative model can support development of workflows, review controls,
+persistence, exports and failure handling even when its architecture proposals
+need substantial correction. Choose a development model that supports the
+required response contract and representative input sizes. Evaluate architectural
+completeness and usefulness separately, including comparisons with more capable
+models when available. Neither a high-end GPU nor a particular provider is a
+general prerequisite for contributing to these application features.
+
+For self-hosted generative analysis, start a compatible model server and configure
+`LLM_PROVIDER=CUSTOM_OPENAI`, `CUSTOM_LLM_URL` and `CUSTOM_LLM_MODEL`.
+See [AI providers and development evaluation](docs/en/AI_PROVIDERS.md#development-and-result-quality)
+([Deutsch](docs/de/AI_PROVIDERS.md#entwicklung-und-ergebnisqualität)) and the
+[custom model-server guide](docs/dev/custom-llm.md) for the protocol, context
+limits, network configuration and authentication.
+
+Local ONNX embeddings are a separate capability for similarity scoring and
+semantic search. They do not generate relation assessments or requirement wording.
+To use local embedding-based scoring on its own:
 
 ```bash
 export LLM_PROVIDER=LOCAL_ONNX
@@ -479,6 +532,11 @@ pinned files with `.github/scripts/download-embedding-model.sh`; inference can
 then run offline. Existing BGE installations must explicitly select
 `TAXONOMY_EMBEDDING_MODEL_PROFILE=BGE_SMALL_EN`. See
 [model provisioning and migration](docs/testing/multilingual-model-provisioning.md).
+
+When using a generative LLM together with local semantic search, keep its
+`LLM_PROVIDER` selection and enable the embedding settings separately. Functional
+tests with prepared responses establish software behavior; they do not establish
+live-model quality. See the [evaluation plan](docs/research/evaluation.md).
 
 For deployment provenance and model-policy details, see:
 
@@ -513,6 +571,8 @@ See [Accessibility](docs/en/ACCESSIBILITY.md) for the evidence matrix, manual ch
 | Document | Purpose |
 |---|---|
 | [User guide](docs/en/USER_GUIDE.md) | Main workflows and UI concepts |
+| [Concepts and planning scope](docs/en/CONCEPTS.md) / [Deutsch](docs/de/CONCEPTS.md) | Requirements, responsibilities, projects and architecture models |
+| [AI providers](docs/en/AI_PROVIDERS.md) / [Deutsch](docs/de/AI_PROVIDERS.md) | Hosted/self-hosted generative models, embeddings and development versus result quality |
 | [API reference](docs/en/API_REFERENCE.md) | REST endpoints and integration details |
 | [Architecture](docs/en/ARCHITECTURE.md) | Components, boundaries, and runtime design |
 | [Configuration reference](docs/en/CONFIGURATION_REFERENCE.md) | Environment variables and profiles |
