@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementVersionRequest;
@@ -33,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** End-to-end evidence that requirement identities and versions cannot cross exact tenants. */
 @SpringBootTest
 @Transactional
+@Tag("ci-app-shard-domain-integration")
 class RequirementTenantIsolationTest {
 
     @Autowired

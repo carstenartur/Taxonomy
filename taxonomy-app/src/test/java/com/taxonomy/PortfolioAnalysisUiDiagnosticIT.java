@@ -31,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Tag("ui-acceptance")
 @Tag("docker-required")
+@Tag("ci-app-shard-runtime")
 class PortfolioAnalysisUiDiagnosticIT {
 
     private static final String ADMIN_PASSWORD = "Portfolio-Analysis-Diagnostic-2026!";

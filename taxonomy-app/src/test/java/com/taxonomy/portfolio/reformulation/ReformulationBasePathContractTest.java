@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.testsupport.IgnoreInheritedTests;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -13,6 +15,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @IgnoreInheritedTests
+@Tag("ci-app-shard-domain-integration")
 class ReformulationBasePathContractTest extends ReformulationIsolationTest {
     @Test
     void createdOfferLocationRetainsTheServletContextPath() throws Exception {

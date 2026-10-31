@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.reformulation.ReformulationBaseline;
 import tools.jackson.databind.node.ObjectNode;
@@ -38,6 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = "llm.mock=true")
 @AutoConfigureMockMvc
 @WithMockUser(username = "architect", roles = "ARCHITECT")
+@Tag("ci-app-shard-domain-integration")
 class ReformulationReportTest extends ReformulationWorkflowFixture {
     @Autowired TaxonomyService catalogue;
     @Autowired ReformulationReportService reports;

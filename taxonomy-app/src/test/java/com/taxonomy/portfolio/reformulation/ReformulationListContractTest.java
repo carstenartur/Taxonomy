@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.testsupport.IgnoreInheritedTests;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -14,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /** Reuses the live HTTP/database fixture; scope-isolation checks run in the base class. */
 @IgnoreInheritedTests
+@Tag("ci-app-shard-domain-integration")
 class ReformulationListContractTest extends ReformulationIsolationTest {
 
     @Test

@@ -1,5 +1,7 @@
 package com.taxonomy.composition.analysis.artemis;
 
+import org.junit.jupiter.api.Tag;
+
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.core.config.impl.ConfigurationImpl;
 import org.apache.activemq.artemis.core.server.embedded.EmbeddedActiveMQ;
@@ -20,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Runs the real administrative main with an isolated environment and TCP broker. */
 @Timeout(60)
+@Tag("ci-app-shard-domain-integration")
 class ArtemisProviderPermitProvisionerTest {
     private static final String TLS_ENV = "TAXONOMY_ANALYSIS_ARTEMIS_REQUIRE_TLS";
     private static final String PREFIX = "taxonomy.analysis.provider-permits";

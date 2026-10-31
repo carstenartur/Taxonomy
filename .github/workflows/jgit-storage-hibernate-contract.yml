@@ -3,6 +3,7 @@ name: JGit Storage Consumer Contract
 on:
   workflow_dispatch:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main, feat/artemis-execution-base, 'implementation/**' ]
     paths:
       - '.github/scripts/configure-docker-mirror.sh'
@@ -64,6 +65,7 @@ permissions:
 
 jobs:
   baseline:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: PostgreSQL migration, validate-startup and indexed-history contract
     runs-on: ubuntu-latest
     timeout-minutes: 70
@@ -78,8 +80,12 @@ jobs:
           java-version: '25'
           cache: maven
           cache-dependency-path: |
-            pom.xml
-            taxonomy-app/pom.xml
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
 
       - name: Configure and verify Docker Hub cache
         run: bash .github/scripts/configure-docker-mirror.sh

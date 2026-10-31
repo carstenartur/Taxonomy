@@ -1,4 +1,6 @@
 package com.taxonomy.portfolio.inventory;
+
+import org.junit.jupiter.api.Tag;
 import com.taxonomy.extension.api.inventory.*;
 import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.*;
 import com.taxonomy.extension.api.inventory.InventoryEvidencePort.*;
@@ -23,6 +25,7 @@ import java.util.concurrent.*;
 import java.util.function.Supplier;
 import static org.mockito.Mockito.*;
 
+@Tag("ci-app-shard-domain-integration")
 class InventoryReviewConcurrencyTest {
   static Assertion assertion(String id,String candidate,boolean positive,String start,String end) {
     return new Assertion(id,candidate,Criterion.AVAILABILITY,null,positive,

@@ -30,8 +30,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** End-to-end REST verification for the explicitly enabled local ONNX pipeline. */
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@EnabledIfSystemProperty(named = "runOnnxTests", matches = ".*")
+@EnabledIfSystemProperty(named = "runOnnxTests", matches = "true")
 @Tag("docker-required")
+@Tag("ci-app-shard-runtime")
 class LocalOnnxPipelineIT {
 
     private static final JsonMapper MAPPER = JsonMapper.builder().build();

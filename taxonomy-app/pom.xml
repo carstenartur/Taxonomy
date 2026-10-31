@@ -637,6 +637,7 @@
                     </includes>
                     <excludedGroups>${excludedGroups}</excludedGroups>
                     <systemPropertyVariables>
+                        <runOnnxTests>${runOnnxTests}</runOnnxTests>
                         <!-- Pass the module basedir so tests can resolve paths relative to the repo root.
                              ScreenshotGeneratorIT uses this to write docs/images/ at the repo root
                              instead of inside the module directory (Failsafe forks with
@@ -663,6 +664,25 @@
     </build>
 
     <profiles>
+        <profile>
+            <id>ci-ui-application-package</id>
+            <!-- Module caching cannot restore the root-level runtime SBOM or the
+                 external distribution directories. Keep those fresh while the
+                 preceding reactor modules still benefit from the output cache. -->
+            <properties><maven.build.cache.enabled>false</maven.build.cache.enabled></properties>
+            <build><plugins><plugin>
+                <groupId>org.cyclonedx</groupId><artifactId>cyclonedx-maven-plugin</artifactId>
+                <executions><execution><id>ui-runtime-sbom</id>
+                    <phase>initialize</phase><goals><goal>makeBom</goal></goals>
+                    <configuration>
+                    <!-- Keep /api/about/sbom.{json,xml} backed by a fresh runtime
+                         dependency graph before copy-legal packages both resources. -->
+                    <skip>false</skip>
+                    <outputDirectory>${maven.multiModuleProjectDirectory}/target</outputDirectory>
+                    <outputName>taxonomy-sbom</outputName><outputFormat>all</outputFormat>
+                </configuration></execution></executions>
+            </plugin></plugins></build>
+        </profile>
         <!-- The memory-sensitive A0-to-A1 demo must not inherit the heap retained
              by earlier Spring contexts. Explicit -Dtest selections stay unchanged. -->
         <profile>
@@ -837,10 +857,40 @@
             </properties>
         </profile>
         <profile>
+            <id>ci-app-test-shard-runtime</id>
+            <properties>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+            </properties>
+        </profile>
+        <profile>
+            <id>ci-app-test-shard-domain-integration</id>
+            <properties>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+            </properties>
+        </profile>
+        <profile>
             <id>ci-app-test-shards-coverage</id>
             <properties>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
             </properties>
+            <build><plugins>
+                <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId>
+                    <executions><execution><id>default</id><phase>none</phase></execution></executions>
+                </plugin>
+                <plugin><groupId>io.github.git-commit-id</groupId><artifactId>git-commit-id-maven-plugin</artifactId>
+                    <executions><execution><id>default</id><phase>none</phase></execution></executions>
+                </plugin>
+                <plugin><groupId>org.codehaus.mojo</groupId><artifactId>license-maven-plugin</artifactId>
+                    <executions><execution><id>generate-runtime-third-party-report</id><phase>none</phase></execution></executions>
+                </plugin>
+                <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-resources-plugin</artifactId>
+                    <executions><execution><id>copy-docs</id><phase>none</phase></execution>
+                        <execution><id>copy-legal</id><phase>none</phase></execution></executions>
+                </plugin>
+                <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-dependency-plugin</artifactId>
+                    <executions><execution><id>stage-standard-external-plugins</id><phase>none</phase></execution></executions>
+                </plugin>
+            </plugins></build>
         </profile>
         <profile>
             <id>ci-plugin-packaging</id>

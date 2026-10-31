@@ -1,5 +1,7 @@
 package com.taxonomy.interop;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
 import com.taxonomy.editor.persistence.EditorJournal;
@@ -35,6 +37,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** The complete captured scenario graph must fit the unchanged integration JSON request deadline. */
 @SpringBootTest
+@Tag("ci-app-shard-domain-integration")
 class ScenarioArchiMateImportTest {
     private static final String SOURCE = "/scenarios/pr1251-complete-architecture.archimate.xml.gz";
     private static final int SOURCE_BYTES = 1_826_654;

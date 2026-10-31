@@ -1,4 +1,6 @@
 package com.taxonomy.portfolio.reformulation;
+
+import org.junit.jupiter.api.Tag;
 import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.*;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
@@ -20,6 +22,7 @@ import static org.mockito.Mockito.*;
 
 /** Real service writers must not commit between frozen variant validation and its application. */
 @SpringBootTest @AutoConfigureMockMvc @WithMockUser(username="architect",roles="ARCHITECT")
+@Tag("ci-app-shard-domain-integration")
 class InventoryVariantConcurrencyTest extends ReformulationWorkflowFixture {
     @Autowired InventoryComparisonService comparisons;
     @Autowired ProductCatalogService products;

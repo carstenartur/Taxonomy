@@ -81,6 +81,50 @@ Do not apply the annotation to suites that intentionally rerun a shared contract
 against another configuration or implementation. This uses the public launcher
 approach recommended in [JUnit discussion 4570](https://github.com/junit-team/junit-framework/discussions/4570).
 
+## Full, documentation and draft PR scopes
+
+The Maven-owned scope classifier checks the complete base-to-head change and
+binds its decision to the source commit/tree. Full verification remains required
+for main, tags, manual runs, unknown or empty diffs, and mixed changes. It also
+remains required for public help, executable architecture/performance documents,
+and deleted or renamed files.
+
+Only a ready PR containing additions/modifications of ordinary `100644` Markdown
+files from this explicit allowlist may use documentation scope:
+
+- `README_DE.md` and `release_notes.md`;
+- Markdown under `docs/internal/`, `docs/dev/` and `docs/superpowers/`;
+- plugin-root `README.md` and `README_DE.md` files.
+
+Root `README.md` and `docs/dev/OBSERVABILITY_PERFORMANCE.md` are explicit
+exceptions requiring full verification because they carry executable contracts.
+Malformed paths, symlinks, non-regular files and unavailable base information
+cannot authorize documentation scope. A rename is conservatively detected as a
+delete/add and requires full verification.
+
+Documentation scope still builds the actual executable application JAR through
+`ci-ui-application-package`. Maven's standalone `documentation` profile checks
+changed prose, the existing local-link/naming rules and the complete packaged
+`docs/` inventory against the checkout. `DocumentationPackageIT` lives under
+`.github/src/test/java/com/taxonomy/build` and is compiled by
+`-f .github/ui-verification-pom.xml -Pdocumentation`, alongside the existing
+`DocumentationLinkPolicy` and `ScenarioAcceptanceNamingContract` helpers.
+Original positive JUnit evidence, source
+commit/tree, application manifest/JAR digests and document hashes are retained.
+The final required gate verifies those originals and expected lane outcomes.
+Its distinct `documentation-verification` artifact explicitly records
+`fullVerification=false` and `coverageExecuted=false`; it publishes no full
+quality or coverage result. A successful producer from an earlier attempt of the
+same workflow run may be reused with its original identity; evidence from another
+run or a later attempt is rejected.
+
+Draft PRs skip expensive jobs in the main CI workflow and ancillary PR workflows. The always-run
+`Maven verification` gate intentionally fails for a draft; converting it to ready
+triggers classification and the applicable verification scope. There is one
+explicit design exception: independent CodeQL **push** source analysis remains
+eligible because push events lack PR draft context. Draft handling therefore
+does not promise that every workflow associated with a branch is cheap or skipped.
+
 ## Toolchain
 
 - Java 25
@@ -223,14 +267,14 @@ owned by the canonical CI aggregate. Standalone `-Ponnx` and canonical `-Pci`
 retain their full App test scope and product demo.
 
 `./mvnw -B verify -Pci -DrunOnnxTests=true` is the local combined lifecycle
-when the reference model is provisioned. The pull-request
-workflow runs this profile in the core reactor with `-DrunOnnxTests=true`
+when the reference model is provisioned. The full-scope pull-request
+workflow adds `ci-app-test-shards-core` in the core reactor with `-DrunOnnxTests=true`
 and `-Dtaxonomy.ui.skip=true`, then independently requires the commit-bound UI
 application, UI contracts, Maven-owned UI shard matrix, observability and
 interoperability lanes. The final `verify` job checks every lane and verifies
 digest-bound shard evidence. Together they form the canonical pull-request
-gate; no single core Maven log proves the browser matrix passed. The core
-profile runs:
+gate; no single core Maven log proves the browser matrix passed. The combined
+unsharded profile runs:
 
 1. all normal unit, Spring, architecture and contract tests;
 2. core, PostgreSQL and imported-realm Keycloak Testcontainers integration tests;
@@ -258,8 +302,11 @@ The standalone `./mvnw -B verify -Pci -DrunOnnxTests=true` command does not acti
 sharding and continues to run the complete suite. In GitHub Actions, the
 `.mvn/verification-suites.json` `applicationTestShards` plan assigns measured
 recovery/restart, browser acceptance and architecture scenario classes to isolated
-Maven runners. Their
-JUnit tags and Maven profiles are checked against the catalogue; app tests not
+Maven runners. The 31 October extension adds exactly 10 measured classes to
+`ci-app-test-shard-runtime` and 45 to `ci-app-test-shard-domain-integration`.
+Both groups retain pinned model provisioning; runtime retains PostgreSQL and
+ONNX execution. The explicit `runOnnxTests` condition treats `false` as disabled,
+not merely as a present property. Their JUnit tags and Maven profiles are checked against the catalogue; app tests not
 listed for a shard—including newly added test classes—remain in the core group.
 The product-demo isolated Surefire execution and the required architecture gates
 remain in the core reactor with their existing fail-on-empty behavior.
@@ -272,11 +319,28 @@ full-reactor class outputs and complete class inventory, and validates every
 artifact before JaCoCo merges all isolated execution data into a separate
 application execution file. Its full-reactor aggregate report consumes that file
 together with core module execution data before unchanged coverage policies run.
-Missing, duplicate, wrong-source or wrong-tree evidence fails the required
-coverage-aggregate job.
+The canonical join command is:
+
+```bash
+./mvnw -B process-test-classes -Pci,ci-app-test-shards-coverage \
+  -DrunOnnxTests=true -Dtaxonomy.ui.skip=true
+```
+
+It requires the verified producer archives; it is not a command to generate
+missing test evidence. Compiler lifecycle markers remain for Maven reactor
+resolution, but javac, resource regeneration, ordinary unit/integration tests and
+full application packaging do not run. Two small dependency attachments remain
+for the external Mermaid plugin and workspace test fixtures. Full inventory
+verification runs before the freshly executed `ReactorCoveragePolicyIT`; the
+unchanged thresholds consume every shipped module and all original probes.
+Policy/fixture bytecode is transferred with the same per-file integrity checks,
+and original inputs are checked again after replay. Missing, duplicate,
+wrong-source, wrong-tree or changed evidence fails the required coverage job.
 Legitimate skips and profile exclusions are counted separately from missing
 reports. Machine timings and a concise slow-suite inventory are retained in
-`target/app-test-shards/timings.json` and the CI summary.
+`target/app-test-shards/timings.json` and the CI summary. Source-class totals,
+slow classes and comparison with the audited 55-class baseline are informational;
+reported suite seconds and baseline-subset deltas are not runner wall time.
 
 The inventory verifier is the Java `taxonomy-tooling` command
 `check-app-test-shards`; its source discovery, evidence validation and actual
@@ -285,17 +349,33 @@ lifecycle. All isolated app runners also build `taxonomy-tooling` with
 `-pl taxonomy-tooling,taxonomy-app -am`. No separate Node test runner is needed
 for this application-test partitioning.
 
-All groups run on each CI commit and have individually visible GitHub checks.
-The required `Maven verification` gate rejects failed, cancelled or skipped
-groups and missing aggregate coverage. This is parallel execution of the same
+All groups run for full verification and have individually visible GitHub checks.
+For full scope, the required `Maven verification` gate rejects failed, cancelled
+or skipped groups and missing aggregate coverage. This is parallel execution of the same
 verification scope, not a nightly-only slow-test profile. The single unsharded
 local command above remains the way to execute all of these JUnit tests together.
 
 Production Docker image verification runs as a separate job and remains a
-required final-gate prerequisite. Shard and CI packaging profiles disable Maven
-module build-cache reuse so a warm result from another test scope cannot satisfy
+required full-scope final-gate prerequisite. Shard profiles and CI plugin-verification
+companions disable Maven module build-cache reuse so a warm result from another test scope cannot satisfy
 their evidence checks. GitHub's Maven dependency-download cache remains enabled;
 the standalone unsharded lifecycle retains its configured module cache behavior.
+
+### Early application package and selected Spring fixtures
+
+`.github/scripts/package-ui-application.sh` uses `ci-ui-application-package` with
+`maven.test.skip=true`, avoiding test compilation and redundant aggregate SBOM
+work for the early browser/documentation consumer. A fresh application runtime
+SBOM is produced before resource copying and embedded in both JSON and XML
+formats. Full core/release/security aggregate SBOM production remains authoritative.
+
+`ReformulationEncodingTest` and `ReformulationDispatchClaimTest` retain their
+isolated JVMs, real database/JGit state, original assertions and actual outbound
+provider HTTP. Their service-only drivers use the complete production application
+with a mock servlet context, avoiding unused embedded HTTP listeners. The fixture
+requires the production security filter chain. Tests that drive inbound HTTP,
+real analysis or recovery keep their existing boundaries; Spring context cache
+size remains 1 and browser forks remain isolated.
 
 ### Remaining gaps in the Java/Maven-only provisioning requirement
 
@@ -528,7 +608,7 @@ CodeQL, Trivy, publishing and deployment are deliberately not described as
 locally equivalent tests. Their evidence remains separate from Maven test
 reports.
 
-### Measured critical-path remediation (17 October 2026)
+### Historical critical-path remediation (17 October 2026)
 
 The audited run spent 58m49s in core plus 8m22s aggregating coverage. Eleven
 existing source suites moved, without changing any assertions, into the existing
@@ -564,3 +644,12 @@ owners read repository and JavaScript inputs outside that module's cache key.
 The auxiliary UI/image/product POM imports the pinned Boot dependency BOM and has
 independent version `1`, so application release/next-development bumps cannot
 leave a stale parent reference.
+
+### Latest performance baseline (31 October 2026)
+
+Successful run `41216530274` measured 81m05 overall, 75m44 core, 57m04 in the
+application module and 3m47 for coverage aggregation. The new grouping, replay,
+fixture, scope and cache changes still require a complete fresh exact-head CI
+measurement. The two changed Spring suites alone measured 63.023 s before and
+56.948 s after locally; that single paired result does not establish an overall
+CI or cold/warm Docker improvement. See [CI performance](CI_PERFORMANCE.md).

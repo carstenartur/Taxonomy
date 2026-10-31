@@ -1,11 +1,54 @@
 # Authoritative CI performance
 
 Taxonomy reduces CI wall-clock time by running independent verification lanes in
-parallel while keeping one fail-closed required result. The optimisation changes
-scheduling and evidence transport, not the set of product, quality or browser
-checks.
+parallel while keeping one fail-closed required result. Full-scope optimisation preserves the product, quality and browser inventory.
+Reduced documentation scope is explicit and carries its own evidence contract.
 
-## Validated result
+## Current measured baseline and implementation status
+
+The latest successful measured baseline is
+[`41216530274`](https://github.com/carstenartur/Taxonomy/actions/runs/41216530274)
+on source `e1e8d19e8d9be57ae98f3b448cd01233a6515842`:
+
+| Measurement | Baseline |
+| --- | ---: |
+| Complete workflow | 81m 05s |
+| Core job | 75m 44s |
+| `taxonomy-app` module | 57m 04s |
+| Coverage aggregation job | 3m 47s |
+
+The 31 October implementation addresses five measured costs:
+
+1. Move the exact 10 audited runtime classes and 45 domain-integration classes
+   into separate Maven-owned groups. Existing recovery, browser and scenario
+   owners remain; unassigned tests remain core. Runtime selection retains
+   PostgreSQL, pinned ONNX provisioning and `runOnnxTests=true`.
+2. Replay verified coverage inputs at `process-test-classes`, with no javac or
+   ordinary test execution, while running a fresh `ReactorCoveragePolicyIT`.
+   The full module inventory, original probes and source/digest checks remain.
+3. Remove unused embedded HTTP servers from the encoding and dispatch-claim
+   service fixtures while retaining the complete Spring application, production
+   security, real persistence and outbound HTTP. Context cache size remains 1;
+   browser JVM isolation remains unchanged.
+4. Classify ready PRs conservatively for packaged-documentation verification and
+   avoid expensive main-workflow and ancillary PR jobs while a PR is draft. The required gate
+   rejects draft heads; `ready_for_review` resumes verification.
+5. Separate dependency, output and image-layer caches; reduce large archive
+   writes; and package the early UI application without test compilation or
+   duplicate aggregate SBOM work. Its own fresh runtime SBOM stays embedded.
+
+These changes have focused local regression evidence, but a new complete
+exact-head CI run has **not yet established an overall improvement**. The two
+changed Spring suites measured 63.023 s before and 56.948 s after (6.075 s,
+9.6% less) in one paired local run. That observation applies only to those two
+suites. Hosted-runner contention and cache state can change results; no cold/warm
+Docker timing improvement has been measured locally.
+
+See [verification scope and evidence](MAVEN_VERIFICATION.md) and
+[cache authority and policy](MAVEN_INCREMENTAL_BUILDS.md). The earlier 28m 43s
+result below is historical and is not the current runtime or a performance promise.
+
+## Historical validated parallel result
 
 The first complete green run of the parallel architecture was pull-request run
 [`33057152744`](https://github.com/carstenartur/Taxonomy/actions/runs/33057152744)
@@ -36,11 +79,12 @@ Security Scan, Document Template Report E2E and Kubernetes Constrained Smoke.
 The final gate accepted the complete 18-scenario inventory, application commit,
 source tree, JAR digest and consolidated quality and coverage evidence.
 
-This run proves the implemented topology and the material wall-clock reduction.
+This historical comparison proved that topology and its wall-clock reduction
+at that source revision.
 Median and p95 values still require multiple comparable green runs; hosted-runner
 load and cache state can vary.
 
-## Measured baseline
+## Historical sequential baseline
 
 The successful `main` run
 [`33010052124`](https://github.com/carstenartur/Taxonomy/actions/runs/33010052124)
@@ -59,20 +103,22 @@ for every hosted runner.
 
 ## Parallel evidence architecture
 
-The `CI / CD` workflow separates work that has no correctness dependency:
+For full verification, the `CI / CD` workflow separates work that has no
+correctness dependency:
 
 1. **Commit-bound UI application** packages the executable application early and
    publishes a manifest containing the exact source commit, source tree, filename
    and SHA-256 digest.
-2. **Core reactor verification** runs the canonical Maven reactor with browser
-   execution disabled. Unit, Spring, architecture, container, ONNX, coverage,
-   dependency, supply-chain and other Maven-owned checks remain enabled.
+2. **Core and application-test groups** partition the existing Maven-owned tests
+   through the explicit catalogue. Separate runtime and domain-integration groups
+   join recovery, browser and scenario groups. A subsequent coverage job consumes
+   their verified outputs and runs the full-reactor coverage policy freshly.
 3. **OpenTelemetry performance budget** runs the existing Maven-owned script and
    thresholds in a parallel job. The existing path-scope rule is unchanged for
    pull requests; `main` and tag runs still execute the measurement.
 4. **UI contract verification** runs the non-browser Node contracts through a
-   standalone Maven POM and prepares the pinned browser binary cache while the
-   application and core jobs are running.
+   standalone Maven POM while the application and core jobs are running. Browser
+   binaries are restored by browser consumers, not this browser-free job.
 5. **UI shards** start as soon as the application artifact and UI contracts are
    ready; they do not wait for the core reactor. Every shard verifies the JAR
    SHA-256, source commit and source tree before starting the application.
@@ -85,8 +131,9 @@ and the delivery workflow continue to consume one stable result.
 
 ## Authoritative UI shard plan
 
-`.github/ui-shards.json` is the only CI shard assignment. It covers all 18
-scenarios exactly once. `.github/scripts/ui-shard-plan.test.mjs` rejects:
+`.github/ui-shards.json` owns CI browser shard assignment;
+`.mvn/verification-suites.json` separately owns application Java test groups.
+The browser plan covers all 19 current scenarios exactly once. `.github/scripts/ui-shard-plan.test.mjs` rejects:
 
 - unknown scenario IDs;
 - duplicate shard IDs;
@@ -131,8 +178,10 @@ Maven-owned gate verifies:
 - the per-shard scenario list equals the repository plan.
 
 Only then is a consolidated `summary.json` produced and included in the final
-quality report. Missing, skipped, cancelled, corrupted or mismatched evidence
-therefore makes `Maven verification` fail.
+quality report. Missing, unexpectedly skipped, cancelled, corrupted or mismatched evidence
+therefore makes full-scope `Maven verification` fail. Documentation scope has its
+own explicit expected-lane outcomes and original evidence; it cannot satisfy a
+full-scope result.
 
 ## Artifacts and retention
 
@@ -146,18 +195,26 @@ the workflow commit.
 The traditional complete local command remains valid and sequential:
 
 ```bash
-./mvnw -B verify -Pci
+./mvnw -B verify -Pci -DrunOnnxTests=true
 ```
 
 The new lanes can also be reproduced independently:
 
 ```bash
 # Package the commit-bound UI application
-./mvnw -B -ntp -DskipTests package
+bash .github/scripts/package-ui-application.sh
 bash .github/scripts/stage-ui-application.sh
 
-# Core reactor without browser execution
-./mvnw -B verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true
+# Core group without browser execution
+./mvnw -B verify -Pci,ci-app-test-shards-core -DrunOnnxTests=true -Dtaxonomy.ui.skip=true
+
+# One measured application group (runtime or domain-integration)
+./mvnw -B -pl taxonomy-tooling,taxonomy-app -am verify \
+  -Pci,ci-app-test-shard-runtime -DrunOnnxTests=true -Dtaxonomy.ui.skip=true
+
+# Coverage join: requires the original verified core and every shard artifact
+./mvnw -B process-test-classes -Pci,ci-app-test-shards-coverage \
+  -DrunOnnxTests=true -Dtaxonomy.ui.skip=true
 
 # UI and transport contracts
 ./mvnw -B -f .github/ui-verification-pom.xml verify -Pcontracts
@@ -183,5 +240,15 @@ TAXONOMY_OBSERVABILITY_PERFORMANCE_ENFORCE=true \
 The first complete green comparison satisfies issue #906's material-speedup
 criterion without reducing verification inventory. Future comparable runs should
 be tracked for median and p95 durations. Parallelism may increase aggregate
-hosted-runner minutes; further optimisation should target the current critical
-path: the 27m 29s core lane, especially its 24m 05s canonical Maven verification.
+hosted-runner minutes; the latest measured critical path is now the 75m 44s core
+job and its
+57m 04s application module. Compare a fresh complete run of the current changes
+against run `41216530274`, keeping runner/cache conditions and verification scope
+visible. JUnit suite seconds and baseline-subset timing drift are diagnostic
+measurements, not elapsed workflow time.
+
+The early application module is always packaged freshly; its upstream modules
+retain output-cache reuse. A local warm-cache probe found the app entry but the
+pinned extension rejected its root-level SBOM attachment and rebuilt it. The
+profile now avoids that futile app restore and cache write while retaining the
+complete plugin/feature distribution and a fresh runtime SBOM.

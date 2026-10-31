@@ -1,5 +1,7 @@
 package com.taxonomy.interop.publication;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.extension.api.integration.PublicationContracts.*;
 import com.taxonomy.dsl.command.ArchitectureCommand.CreateArchitectureElement;
 import org.junit.jupiter.api.Test;
@@ -14,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.*;
 
 @AutoConfigureMockMvc
+@Tag("ci-app-shard-domain-integration")
 class IntegrationPublicationApiTest extends PublicationIntegrationFixture {
     @Autowired MockMvc mvc;
     MockHttpServletRequestBuilder scoped(MockHttpServletRequestBuilder r) {

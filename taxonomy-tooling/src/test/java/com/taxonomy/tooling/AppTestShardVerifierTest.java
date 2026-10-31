@@ -208,12 +208,19 @@ class AppTestShardVerifierTest {
         Path coverage = evidence.resolve("restart/coverage.exec"); Files.delete(coverage); Files.createSymbolicLink(coverage, put("outside.exec", "bytes")); fails("coverage execution is missing");
     }
     @Test void cliWritesTimingsAndNeverDropsRequiredExecutions() throws Exception {
+        plan.put("timingBaseline", map("sourceCommit",COMMIT,"classes",map("com.taxonomy.CoreTest",1.0)));
         write(root.resolve(".mvn/verification-suites.json"), map("applicationTestShards", plan));
         var out = new ByteArrayOutputStream(); var err = new ByteArrayOutputStream();
         String[] args = {"check-app-test-shards", "--root", root.toString(), "--verify", "true", "--commit", COMMIT, "--source-tree", TREE};
         assertEquals(0, TaxonomyTooling.run(args, Map.of("GITHUB_STEP_SUMMARY", root.resolve("summary.md").toString()), root, new PrintStream(out), new PrintStream(err)), err.toString());
         assertEquals(2L, object(read(evidence.resolve("timings.json")).get("tests")).get("classes"));
-        assertTrue(Files.readString(root.resolve("summary.md")).contains("Application test shards"));
+        String summary = Files.readString(root.resolve("summary.md"));
+        assertTrue(summary.contains("Application test shards"));
+        assertTrue(summary.contains("Slowest source classes"));
+        assertTrue(summary.contains("Timing drift from `" + COMMIT + "`"));
+        assertTrue(summary.contains("| core | 1 | 1.0 | 1.25 | 0.25 | 25.0 |"));
+        assertTrue(summary.contains("Largest class timing changes"));
+        assertTrue(out.toString().contains("timing drift core: 1 classes, 0.25s (25.0%)"));
         plan.put("requiredExecutions", List.of(map("className", "com.taxonomy.CoreTest", "identities", List.of("default", "module-gate-ci-anchor")))); write(root.resolve(".mvn/verification-suites.json"), map("applicationTestShards", plan));
         assertEquals(1, TaxonomyTooling.run(args, root, new PrintStream(out), new PrintStream(err))); assertTrue(err.toString().contains("execution identities mismatch"));
     }
@@ -238,6 +245,31 @@ class AppTestShardVerifierTest {
         assertTrue(strings(object(object(actual.get("groups")).get("browser")).get("tests")).contains("com.taxonomy.portfolio.reformulation.InventoryComparisonUiIT"));
         assertTrue(inventory.contains("com.taxonomy.ArchitectureExceptionLedgerTest"));
         assertTrue(inventory.contains("com.taxonomy.composition.demo.ProductDemoEndToEndTest"));
+    }
+    @Test void inheritedShardTagsRequireExplicitCatalogueOwnership() throws Exception {
+        source("InheritedRestartTest", "class InheritedRestartTest extends RestartTest { @Test void extra() {} }");
+        fails("InheritedRestartTest shard tag is missing");
+        object(object(plan.get("groups")).get("restart")).put("tests", List.of("com.taxonomy.RestartTest", "com.taxonomy.InheritedRestartTest"));
+        assertEquals("restart",catalogueAssignments(sources,plan).get("com.taxonomy.InheritedRestartTest"));
+    }
+    @Test void timingDriftAggregatesNestedAndRepeatedSuitesByClassWithoutReruns() throws Exception {
+        source("CoreTest", "class CoreTest { @Test void test() {} @Nested class Nested { @Test void child() {} } }");
+        addReport("core", "CoreTest$Nested", "com.taxonomy.CoreTest$Nested", xml("com.taxonomy.CoreTest$Nested", "<testcase/>", 1, 0));
+        addReport("core", "CoreTest-module-gate-ci-anchor", "com.taxonomy.CoreTest", xml("com.taxonomy.CoreTest(module-gate-ci-anchor)", "<testcase/>", 1, 0));
+        plan.put("requiredExecutions", List.of(map("className", "com.taxonomy.CoreTest", "identities", List.of("default", "module-gate-ci-anchor"))));
+        plan.put("timingBaseline", map("sourceCommit",COMMIT,"classes",map("com.taxonomy.CoreTest",1.0,"com.taxonomy.RestartTest",2.0)));
+        var result=verify();
+        assertTrue(result.containsKey("slowClasses"), "Missing aggregated class timing evidence");
+        var classes=listOfObjects(result.get("slowClasses"));
+        assertEquals("com.taxonomy.CoreTest",classes.getFirst().get("className"));
+        assertEquals(3.75,classes.getFirst().get("durationSeconds"));
+        assertEquals(275.0,classes.getFirst().get("changePercent"));
+        assertEquals(2.75,classes.getFirst().get("changeSeconds"));
+        assertEquals(3.75,object(object(result.get("timingDrift")).get("core")).get("durationSeconds"));
+        assertEquals(1,object(object(result.get("timingDrift")).get("core")).get("comparedClasses"));
+        assertEquals(4,object(result.get("tests")).get("reports"));
+        assertEquals(4,list(result.get("slowSuites")).size());
+        assertEquals("com.taxonomy.CoreTest",listOfObjects(result.get("classTimingChanges")).getFirst().get("className"));
     }
     static Path repository() { Path path = Path.of("").toAbsolutePath(); while (!Files.exists(path.resolve(".mvn/verification-suites.json"))) path = Objects.requireNonNull(path.getParent()); return path; }
 }

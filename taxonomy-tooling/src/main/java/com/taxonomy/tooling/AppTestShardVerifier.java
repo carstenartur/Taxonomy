@@ -70,6 +70,30 @@ final class AppTestShardVerifier {
                     out.println("  " + suite.get("group") + ": " + suite.get("className") + " " + suite.get("durationSeconds") + "s");
                     markdown.append("- ").append(suite.get("group")).append(": `").append(suite.get("className")).append("` (").append(suite.get("durationSeconds")).append("s)\n");
                 }
+                markdown.append("\nSlowest source classes (nested and isolated executions combined):\n\n| Group | Class | Suite seconds |\n|---|---|---:|\n");
+                for (Map<String, Object> row : listOfObjects(result.get("slowClasses"))) {
+                    out.println("  class " + row.get("group") + ": " + row.get("className") + " " + row.get("durationSeconds") + "s");
+                    markdown.append("| ").append(row.get("group")).append(" | `").append(row.get("className")).append("` | ")
+                            .append(row.get("durationSeconds")).append(" |\n");
+                }
+                if (!object(result.get("timingDrift")).isEmpty()) {
+                    markdown.append("\nTiming drift from `").append(result.get("timingBaselineSourceCommit"))
+                            .append("` (only baseline classes; JUnit suite seconds, not runner wall time):\n\n")
+                            .append("| Group | Compared classes | Baseline seconds | Current seconds | Change seconds | Change % |\n|---|---:|---:|---:|---:|---:|\n");
+                    for (var entry : object(result.get("timingDrift")).entrySet()) {
+                        Map<String, Object> row = object(entry.getValue());
+                        out.println("  timing drift " + entry.getKey() + ": " + row.get("comparedClasses") + " classes, "
+                                + row.get("changeSeconds") + "s (" + row.get("changePercent") + "%)");
+                        markdown.append("| ").append(entry.getKey()).append(" | ").append(row.get("comparedClasses"))
+                                .append(" | ").append(row.get("baselineSeconds")).append(" | ").append(row.get("durationSeconds"))
+                                .append(" | ").append(row.get("changeSeconds")).append(" | ").append(row.get("changePercent")).append(" |\n");
+                    }
+                    markdown.append("\nLargest class timing changes:\n\n| Group | Class | Current seconds | Change seconds | Change % |\n|---|---|---:|---:|---:|\n");
+                    for (Map<String, Object> row : listOfObjects(result.get("classTimingChanges"))) markdown.append("| ")
+                            .append(row.get("group")).append(" | `").append(row.get("className")).append("` | ")
+                            .append(row.get("durationSeconds")).append(" | ").append(row.get("changeSeconds"))
+                            .append(" | ").append(row.get("changePercent")).append(" |\n");
+                }
                 if (env.containsKey("GITHUB_STEP_SUMMARY")) Files.writeString(Path.of(env.get("GITHUB_STEP_SUMMARY")), markdown, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
             }
             return 0;
@@ -207,7 +231,57 @@ final class AppTestShardVerifier {
         for (Source source : sources.values()) if (!reportedSources.contains(source.name) && !Collections.disjoint(source.tags, excludedTags)) excluded++;
         timings.sort(Comparator.comparingDouble(row -> -((Number) row.get("durationSeconds")).doubleValue()));
         if (preflight) return map("groups", requiredGroups.stream().sorted().toList(), "classes", reports.keySet().stream().sorted().toList(), "slowSuites", timings);
-        return map("commit", commit, "sourceTree", tree, "tests", map("classes", reportedSources.size(), "suites", reports.size(), "reports", count, "cases", cases, "skipped", skipped, "excludedClasses", excluded), "coverage", requiredGroups, "durationSeconds", round(duration), "slowSuites", timings.stream().limit(10).toList(), "groupDurations", groupDurations, "groupStatistics", groupStatistics);
+        Map<String, Object> result = map("commit", commit, "sourceTree", tree, "tests", map("classes", reportedSources.size(), "suites", reports.size(), "reports", count, "cases", cases, "skipped", skipped, "excludedClasses", excluded), "coverage", requiredGroups, "durationSeconds", round(duration), "slowSuites", timings.stream().limit(10).toList(), "groupDurations", groupDurations, "groupStatistics", groupStatistics);
+        addClassTimings(result, timings, sources, plan);
+        return result;
+    }
+
+    /** Reuse the digest-verified JUnit observations; sum nested and isolated executions by source class. */
+    private static void addClassTimings(Map<String, Object> result, List<Map<String, Object>> suites,
+                                        Map<String, Source> sources, Map<String, Object> plan) {
+        Map<String, Map<String, Object>> classes = new LinkedHashMap<>();
+        for (Map<String, Object> suite : suites) {
+            String name = sourceFor(text(suite.get("className")), sources);
+            Map<String, Object> row = classes.computeIfAbsent(name, key -> map("className", name,
+                    "group", suite.get("group"), "durationSeconds", 0.0));
+            row.put("durationSeconds", ((Number) row.get("durationSeconds")).doubleValue()
+                    + ((Number) suite.get("durationSeconds")).doubleValue());
+        }
+        Map<String, Object> baseline = plan.containsKey("timingBaseline") ? object(plan.get("timingBaseline")) : Map.of();
+        Map<String, Object> expected = baseline.containsKey("classes") ? object(baseline.get("classes")) : Map.of();
+        Map<String, Object> drift = new LinkedHashMap<>();
+        for (Map<String, Object> row : classes.values()) {
+            double duration = round(((Number) row.get("durationSeconds")).doubleValue());
+            row.put("durationSeconds", duration);
+            Object value = expected.get(text(row.get("className")));
+            if (!(value instanceof Number number) || !Double.isFinite(number.doubleValue()) || number.doubleValue() <= 0) continue;
+            double before = number.doubleValue();
+            row.put("baselineSeconds", before);
+            row.put("changeSeconds", round(duration - before));
+            row.put("changePercent", round(100 * (duration / before - 1)));
+            Map<String, Object> group = object(drift.computeIfAbsent(text(row.get("group")), key ->
+                    map("comparedClasses", 0, "baselineSeconds", 0.0, "durationSeconds", 0.0)));
+            group.put("comparedClasses", ((Number) group.get("comparedClasses")).intValue() + 1);
+            group.put("baselineSeconds", ((Number) group.get("baselineSeconds")).doubleValue() + before);
+            group.put("durationSeconds", ((Number) group.get("durationSeconds")).doubleValue() + duration);
+        }
+        for (Object value : drift.values()) {
+            Map<String, Object> group = object(value);
+            double before = ((Number) group.get("baselineSeconds")).doubleValue();
+            double duration = ((Number) group.get("durationSeconds")).doubleValue();
+            group.put("baselineSeconds", round(before));
+            group.put("durationSeconds", round(duration));
+            group.put("changeSeconds", round(duration - before));
+            group.put("changePercent", round(100 * (duration / before - 1)));
+        }
+        Comparator<Map<String, Object>> slowest = Comparator.<Map<String, Object>>comparingDouble(row ->
+                -((Number) row.get("durationSeconds")).doubleValue()).thenComparing(row -> text(row.get("className")));
+        result.put("slowClasses", classes.values().stream().sorted(slowest).limit(10).toList());
+        result.put("timingBaselineSourceCommit", baseline.getOrDefault("sourceCommit", ""));
+        result.put("timingDrift", drift);
+        result.put("classTimingChanges", classes.values().stream().filter(row -> row.containsKey("changeSeconds"))
+                .sorted(Comparator.<Map<String, Object>>comparingDouble(row -> -Math.abs(((Number) row.get("changeSeconds")).doubleValue()))
+                        .thenComparing(row -> text(row.get("className")))).limit(10).toList());
     }
 
     static Map<String, String> catalogueAssignments(Path sourceRoot, Map<String, Object> plan) throws IOException {
@@ -280,7 +354,7 @@ final class AppTestShardVerifier {
         boolean changed;
         do {
             changed = false;
-            for (Source source : types.values()) if (!source.hasTests && !source.parent.isEmpty()) {
+            for (Source source : types.values()) if (!source.parent.isEmpty()) {
                 String parent = source.parent.replaceAll("<.*>", "");
                 Source inherited = types.get(parent);
                 if (inherited == null) inherited = types.get(source.pkg + "." + parent);
@@ -288,7 +362,11 @@ final class AppTestShardVerifier {
                     List<Source> matches = types.values().stream().filter(candidate -> candidate.simple.equals(parent)).toList();
                     if (matches.size() == 1) inherited = matches.getFirst();
                 }
-                if (inherited != null && inherited.hasTests) { source.hasTests = true; changed = true; }
+                if (inherited != null) {
+                    if (!source.hasTests && inherited.hasTests) { source.hasTests = true; changed = true; }
+                    // JUnit @Tag is @Inherited even when the subclass declares its own tests.
+                    if (source.tags.addAll(inherited.tags)) changed = true;
+                }
             }
         } while (changed);
         Map<String, Source> result = new LinkedHashMap<>();

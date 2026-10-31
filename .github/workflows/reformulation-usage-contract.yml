@@ -3,6 +3,7 @@ name: Reformulation usage contract
 # Supplemental regression verification; canonical full-reactor gates stay required.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'pom.xml'
       - '.mvn/verification-suites.json'
@@ -22,6 +23,7 @@ concurrency:
 
 jobs:
   transport-contract:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -34,6 +36,13 @@ jobs:
           java-version: '25'
           distribution: temurin
           cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
       - name: Compile dependency-free report verifier
         run: |
           mkdir -p taxonomy-tooling/target/classes

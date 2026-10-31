@@ -106,6 +106,14 @@ jobs:
       - name: Configure and verify Docker Hub cache
         run: bash .github/scripts/configure-docker-mirror.sh
 
+      - name: Set up delivery image builder
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+        with:
+          driver: docker-container
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
@@ -135,6 +143,8 @@ jobs:
         with:
           context: .
           push: true
+          cache-from: type=gha,scope=taxonomy-production-standard-v1,version=2
+          cache-to: type=gha,scope=taxonomy-production-standard-v1,version=2,mode=max,ignore-error=true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
@@ -168,6 +178,8 @@ jobs:
           context: .
           target: onnx
           push: true
+          cache-from: type=gha,scope=taxonomy-production-onnx-v1,version=2
+          cache-to: type=gha,scope=taxonomy-production-onnx-v1,version=2,mode=max,ignore-error=true
           tags: ${{ steps.meta_onnx.outputs.tags }}
           labels: |
             ${{ steps.meta.outputs.labels }}

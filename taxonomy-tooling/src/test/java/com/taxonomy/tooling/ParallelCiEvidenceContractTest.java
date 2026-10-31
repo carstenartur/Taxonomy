@@ -48,7 +48,7 @@ class ParallelCiEvidenceContractTest {
                 .contains("plugin-profile:\n    name: Complete plugin packaging profile")
                 .contains("verify:\n    name: Maven verification")
                 .contains("needs: [application, ui-plan, ui-contracts]")
-                .contains("needs: [application, production-image, app-test-shards, core, coverage-aggregate, observability, ui-contracts, ui-shards, interoperability-products, plugin-profile]")
+                .contains("needs: [application, production-image, app-test-shards, core, coverage-aggregate, observability, ui-contracts, ui-shards, interoperability-products, plugin-profile, change-scope, documentation]")
                 .contains("if: always()")
                 .contains("name: taxonomy-ui-application")
                 .contains("pattern: app-test-shard-*")
@@ -102,7 +102,8 @@ class ParallelCiEvidenceContractTest {
                 .contains("--verify true")
                 .contains("--verify-inputs true")
                 .contains("com.taxonomy.tooling.TaxonomyTooling check-app-test-shards")
-                .contains("./mvnw -B verify -Pci,ci-app-test-shards-coverage")
+                .contains("./mvnw -B process-test-classes -Pci,ci-app-test-shards-coverage")
+                .contains("sha256sum --check target/core-reactor-files.sha256")
                 .contains("name: quality-reports-coverage")
                 .contains("core-reactor-outputs.tar.gz")
                 .doesNotContain("./mvnw -B -pl taxonomy-coverage");
@@ -115,7 +116,7 @@ class ParallelCiEvidenceContractTest {
         assertThat(appShardsStart).isGreaterThan(planStart);
         String image = workflow.substring(imageStart, planStart);
         assertThat(image).contains("verify -Pimage");
-        assertThat(Files.readString(root.resolve("taxonomy-build/src/test/java/com/taxonomy/build/ProductionImageIT.java"))).contains("\"docker\",\"build\"").contains("org.opencontainers.image.revision");
+        assertThat(Files.readString(root.resolve("taxonomy-build/src/test/java/com/taxonomy/build/ProductionImageIT.java"))).contains(".github/scripts/build-production-image.sh").contains("org.opencontainers.image.revision");
         String appShards = workflow.substring(appShardsStart, coreStart);
         assertThat(appShards)
                 .contains("matrix: ${{ fromJSON(needs.app-test-plan.outputs.matrix) }}")
@@ -137,7 +138,7 @@ class ParallelCiEvidenceContractTest {
                 .contains("<phase>post-integration-test</phase>");
         assertThat(buildPom)
                 .contains("<id>verify-complete-app-test-shard-inventory</id>")
-                .contains("<phase>test</phase>")
+                .contains("<phase>validate</phase>")
                 .contains("<argument>check-app-test-shards</argument>");
         assertThat(buildPom)
                 .contains("<id>coverage-policy-only</id>")

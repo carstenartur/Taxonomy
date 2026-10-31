@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.portfolio.dto.CopilotDtos.CopilotRunRequest;
 import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
@@ -22,6 +24,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Real persisted post-adoption analysis; only outbound provider HTTP replies are replaced. */
+@Tag("ci-app-shard-domain-integration")
 class AdoptedLineageRealReanalysisTest {
     @Test void adoptionThenRealAnalysisSnapshotNewOfferAndCheckpointPreserveFrozenLineage() throws Exception {
         AdoptedLineageReanalysisProcess.verify();

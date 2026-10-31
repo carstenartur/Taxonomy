@@ -1,5 +1,7 @@
 package com.taxonomy.interop;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
 import com.taxonomy.editor.persistence.EditorJournal;
 import com.taxonomy.exchange.sparx.*;
@@ -22,6 +24,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
+@Tag("ci-app-shard-domain-integration")
 class SparxIntegrationFlowTest {
     @Autowired IntegrationService integrations;
     @Autowired ArchitectureRepositoryProvisioningService repositories;

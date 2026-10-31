@@ -3,6 +3,7 @@ name: Database Compatibility
 on:
   pull_request:
     branches: [ main, feat/artemis-execution-base, 'implementation/**' ]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   push:
     tags:
       - 'v*'
@@ -18,8 +19,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  change-scope:
+    name: Plan Maven verification scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs: { scope: '${{ steps.scope.outputs.scope }}' }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - name: Set up Java 25
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
+      - name: Compile Maven-owned scope planner
+        run: ./mvnw -B -ntp -pl taxonomy-tooling -am compile -Dtaxonomy.frontend.skip=true -Dmaven.build.cache.enabled=false
+      - name: Classify the complete source change
+        id: scope
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_DRAFT: ${{ github.event.pull_request.draft || false }}
+        run: java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling plan-ci-verification
+
   database:
     name: ${{ matrix.database }}
+    needs: [change-scope]
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
@@ -36,24 +69,47 @@ jobs:
             profile: database-oracle
             command: ./mvnw -B verify -Pdatabase-oracle,ci-database-compatibility
     steps:
+      - name: Require a successful source scope plan
+        env:
+          SCOPE_RESULT: ${{ needs.change-scope.result }}
+          VERIFICATION_SCOPE: ${{ needs.change-scope.outputs.scope }}
+        run: |
+          [[ "$SCOPE_RESULT" == success ]] || { echo '::error::Database scope planning failed'; exit 1; }
+          case "$VERIFICATION_SCOPE" in full|documentation|draft) ;; *) exit 1 ;; esac
+          echo "Database verification scope: $VERIFICATION_SCOPE"
+          if [[ "$VERIFICATION_SCOPE" != full ]]; then
+            echo 'Database tests are outside this scope; the required Maven gate validates the documentation/draft decision.'
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: needs.change-scope.outputs.scope == 'full'
         with:
           persist-credentials: false
 
       - name: Set up Java 25
+        if: needs.change-scope.outputs.scope == 'full'
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           java-version: '25'
           distribution: temurin
           cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
 
       - name: Install verified Helm 3.21.0
+        if: needs.change-scope.outputs.scope == 'full'
         run: bash .github/scripts/install-helm.sh
 
       - name: Configure and verify Docker Hub cache
+        if: needs.change-scope.outputs.scope == 'full'
         run: bash .github/scripts/configure-docker-mirror.sh
 
       - name: Run Maven-owned database suite
+        if: needs.change-scope.outputs.scope == 'full'
         env:
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
           # Container image pulls on hosted runners occasionally exceed the two-minute
@@ -67,7 +123,7 @@ jobs:
           ${{ matrix.command }} 2>&1 | tee "target/database-${{ matrix.profile }}.log"
 
       - name: Upload database evidence
-        if: always()
+        if: always() && needs.change-scope.outputs.scope == 'full'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: database-${{ matrix.profile }}

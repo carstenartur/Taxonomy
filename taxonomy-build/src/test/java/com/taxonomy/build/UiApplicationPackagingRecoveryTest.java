@@ -71,7 +71,7 @@ class UiApplicationPackagingRecoveryTest {
     @Test void successfulPackagingRunsOnce() throws Exception {
         Result result = run("success");
         assertThat(result.exit()).as(result.output()).isZero();
-        assertThat(result.calls()).containsExactly("-B -ntp -DskipTests package");
+        assertThat(result.calls()).containsExactly("-B -ntp -Pci-ui-application-package -Dmaven.test.skip=true package");
     }
 
     private Result run(String scenario) throws Exception {

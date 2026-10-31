@@ -19,8 +19,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  change-scope:
+    name: Plan Maven verification scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs: { scope: '${{ steps.scope.outputs.scope }}' }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - name: Set up Java 25
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
+      - name: Compile Maven-owned scope planner
+        run: ./mvnw -B -ntp -pl taxonomy-tooling -am compile -Dtaxonomy.frontend.skip=true -Dmaven.build.cache.enabled=false
+      - name: Classify the complete source change
+        id: scope
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_DRAFT: ${{ github.event.pull_request.draft || false }}
+        run: java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling plan-ci-verification
+      - name: Upload source-bound verification scope
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with: { name: ci-change-scope, path: target/ci-change-scope.json, if-no-files-found: error, retention-days: 7 }
+
   application:
     name: Commit-bound UI application
+    needs: [change-scope]
+    if: needs.change-scope.outputs.scope == 'full' || needs.change-scope.outputs.scope == 'documentation'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -28,16 +63,54 @@ jobs:
         with: { persist-credentials: false, fetch-depth: 0 }
       - name: Set up Java 25
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with: { java-version: '25', distribution: temurin, cache: maven }
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
+      - name: Identify daily cache snapshot
+        id: cache-day
+        run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      # Restored archives are only seeds: Maven still validates every module input.
+      # Only main writes one snapshot per UTC day, rather than ~1.47 GB per SHA/PR.
       - name: Restore Maven build cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        id: application-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.m2/build-cache
-          key: ${{ runner.os }}-taxonomy-maven-build-cache-app-v2-${{ github.sha }}
+          key: ${{ runner.os }}-taxonomy-maven-build-cache-app-v3-${{ steps.cache-day.outputs.day }}
           restore-keys: |
-            ${{ runner.os }}-taxonomy-maven-build-cache-app-v2-
+            ${{ runner.os }}-taxonomy-maven-build-cache-app-v3-
       - name: Package commit-bound UI application
-        run: bash .github/scripts/package-ui-application.sh
+        shell: bash
+        run: bash .github/scripts/package-ui-application.sh 2>&1 | tee "$RUNNER_TEMP/application-package.log"
+      - name: Record Maven cache effectiveness
+        if: always()
+        env:
+          CACHE_EXACT_HIT: ${{ steps.application-cache.outputs.cache-hit }}
+          CACHE_MATCHED_KEY: ${{ steps.application-cache.outputs.cache-matched-key }}
+        run: |
+          {
+            echo '### Maven application cache'
+            echo "Exact archive hit: ${CACHE_EXACT_HIT:-false}; restored key: ${CACHE_MATCHED_KEY:-none}"
+            echo "Cache entries found: $(grep -c 'Found cached build' "$RUNNER_TEMP/application-package.log" || true)"
+            echo "Rejected artifact restorations: $(grep -c 'Cannot restore project artifacts' "$RUNNER_TEMP/application-package.log" || true)"
+            echo "Cached plugin executions: $(grep -c 'Skipping plugin execution' "$RUNNER_TEMP/application-package.log" || true)"
+            du -sh "$HOME/.m2/build-cache" 2>/dev/null || true
+            echo 'Packaging cache only; authoritative test lanes always execute freshly.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Save daily main Maven cache snapshot
+        if: success() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.application-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.m2/build-cache
+          key: ${{ steps.application-cache.outputs.cache-primary-key }}
       - name: Stage commit-bound UI application
         run: bash .github/scripts/stage-ui-application.sh
       - name: Upload commit-bound UI application
@@ -46,6 +119,8 @@ jobs:
 
   production-image:
     name: Production Docker image verification
+    needs: [change-scope]
+    if: needs.change-scope.outputs.scope == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 75
     outputs: { executed: "${{ github.event_name != 'pull_request' || steps.production-image-scope.outputs.run == 'true' }}" }
@@ -54,7 +129,17 @@ jobs:
         with: { persist-credentials: false, fetch-depth: 0 }
       - name: Set up Java 25
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with: { java-version: '25', distribution: temurin, cache: maven }
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
       - name: Configure and verify Docker Hub cache
         run: bash .github/scripts/configure-docker-mirror.sh
       - name: Detect production-image changes
@@ -70,6 +155,7 @@ jobs:
               taxonomy-build/src/test/java/com/taxonomy/build/ExternalDriverSupport.java \
               .github/ui-verification-pom.xml \
               .github/scripts/configure-docker-mirror.sh \
+              .github/scripts/build-production-image.sh \
               .github/scripts/download-embedding-model.sh \
               deploy/container/onnx \
               .dockerignore \
@@ -86,10 +172,41 @@ jobs:
           else
             echo 'run=true' >> "$GITHUB_OUTPUT"
           fi
+      - name: Set up production image builder
+        if: github.event_name != 'pull_request' || steps.production-image-scope.outputs.run == 'true'
+        id: image-builder
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+        with:
+          driver: docker-container
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
+      - name: Identify Docker cache snapshot
+        id: docker-cache-day
+        run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      - name: Restore Docker layers
+        if: github.event_name != 'pull_request' || steps.production-image-scope.outputs.run == 'true'
+        id: docker-layer-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ runner.temp }}/taxonomy-docker-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-taxonomy-docker-v1-${{ steps.docker-cache-day.outputs.day }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-taxonomy-docker-v1-
       - name: Verify production Docker image build
         if: github.event_name != 'pull_request' || steps.production-image-scope.outputs.run == 'true'
-        env: { IMAGE_TAG: 'taxonomy-ci:${{ github.sha }}' }
+        env:
+          IMAGE_TAG: taxonomy-ci:${{ github.sha }}
+          TAXONOMY_DOCKER_BUILDER: ${{ steps.image-builder.outputs.name }}
+          TAXONOMY_DOCKER_CACHE_DIRECTORY: ${{ runner.temp }}/taxonomy-docker-cache
         run: ./mvnw -B -f .github/ui-verification-pom.xml verify -Pimage
+
+      - name: Save daily main Docker cache snapshot
+        if: success() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.docker-layer-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ runner.temp }}/taxonomy-docker-cache
+          key: ${{ steps.docker-layer-cache.outputs.cache-primary-key }}
 
       - name: Upload JUnit production image evidence
         if: always() && (github.event_name != 'pull_request' || steps.production-image-scope.outputs.run == 'true')
@@ -98,6 +215,8 @@ jobs:
 
   app-test-plan:
     name: Plan Maven-owned application test shards
+    needs: [change-scope]
+    if: needs.change-scope.outputs.scope == 'full'
     runs-on: ubuntu-latest
     outputs: { matrix: '${{ steps.matrix.outputs.matrix }}' }
     steps:
@@ -122,7 +241,8 @@ jobs:
 
   app-test-shards:
     name: Application test shard / ${{ matrix.shard }}
-    needs: [app-test-plan]
+    needs: [app-test-plan, change-scope]
+    if: needs.change-scope.outputs.scope == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -133,7 +253,17 @@ jobs:
         with: { persist-credentials: false, fetch-depth: 0 }
       - name: Set up Java 25
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with: { java-version: '25', distribution: temurin, cache: maven }
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
       - name: Restore pinned embedding model
         if: matrix.requiresModel == true
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -152,7 +282,7 @@ jobs:
           VERSION_STATE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
         run: |
           set -euo pipefail
-          ./mvnw -B -pl taxonomy-tooling,taxonomy-app -am verify -P"ci,$APP_TEST_PROFILE"
+          ./mvnw -B -pl taxonomy-tooling,taxonomy-app -am verify -P"ci,$APP_TEST_PROFILE" -DrunOnnxTests=true
       - name: Publish shard JUnit results
         uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3
         if: always()
@@ -198,6 +328,8 @@ jobs:
 
   core:
     name: Core reactor verification
+    needs: [change-scope]
+    if: needs.change-scope.outputs.scope == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -208,7 +340,17 @@ jobs:
         with: { persist-credentials: false, fetch-depth: 0 }
       - name: Set up Java 25
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with: { java-version: '25', distribution: temurin, cache: maven }
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
       # Clean before any root target/ evidence exists. A clean in the later
       # tee pipeline would unlink the log and delete the rendered Helm files.
       - name: Clean reactor before producing evidence
@@ -311,6 +453,15 @@ jobs:
           ((${#execution_files[@]} > 0))
           find "${class_directories[@]}" -type f -print0 > target/reactor-output-files
           printf '%s\0' "${execution_files[@]}" >> target/reactor-output-files
+          # Fresh policy execution and the workspace test-fixture dependency use
+          # core's verified bytecode; neither consumer recompiles source files.
+          for replay_tests in taxonomy-build/target/test-classes taxonomy-workspace/target/test-classes; do
+            if [[ ! -d "$replay_tests" ]] || ! find "$replay_tests" -type f -name '*.class' -print -quit | grep -q .; then
+              echo "::error::Missing coverage replay test classes: $replay_tests" >&2
+              exit 1
+            fi
+            find "$replay_tests" -type f -print0 >> target/reactor-output-files
+          done
           mapfile -d '' -t reactor_outputs < target/reactor-output-files
           sha256sum -- "${reactor_outputs[@]}" > target/core-reactor-files.sha256
           printf '%s\0' target/core-reactor-files.sha256 >> target/reactor-output-files
@@ -348,7 +499,17 @@ jobs:
         with: { persist-credentials: false, fetch-depth: 0 }
       - name: Set up Java 25
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with: { java-version: '25', distribution: temurin, cache: maven }
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
       - name: Download all isolated application test evidence
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -377,8 +538,10 @@ jobs:
           GITHUB_BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
-          ./mvnw -B verify -Pci,ci-app-test-shards-coverage -DrunOnnxTests=true \
+          ./mvnw -B process-test-classes -Pci,ci-app-test-shards-coverage -DrunOnnxTests=true \
             -Dtaxonomy.ui.skip=true 2>&1 | tee target/coverage-aggregation.log
+          # Reporting must not mutate the original production classes/probes or policy bytecode.
+          sha256sum --check target/core-reactor-files.sha256
       - name: Stage complete coverage and shard evidence
         if: success()
         run: |
@@ -423,6 +586,8 @@ jobs:
 
   observability:
     name: OpenTelemetry performance budget
+    needs: [change-scope]
+    if: needs.change-scope.outputs.scope == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -430,7 +595,17 @@ jobs:
         with: { persist-credentials: false, fetch-depth: 0 }
       - name: Set up Java 25
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with: { java-version: '25', distribution: temurin, cache: maven }
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
       - name: Detect performance-sensitive changes
         id: observability-performance-scope
         if: github.event_name == 'pull_request'
@@ -438,7 +613,7 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- pom.xml Dockerfile taxonomy-workspace/pom.xml taxonomy-workspace/src/main taxonomy-templates/pom.xml taxonomy-templates/src/main taxonomy-templates-api/pom.xml taxonomy-templates-api/src/main taxonomy-extension-api/pom.xml taxonomy-extension-api/src/main taxonomy-extension-runtime/pom.xml taxonomy-extension-runtime/src/main plugins taxonomy-interop/pom.xml taxonomy-interop/src/main taxonomy-knowledge/pom.xml taxonomy-knowledge/src/main taxonomy-architecture/pom.xml taxonomy-architecture/src/main taxonomy-reporting/pom.xml taxonomy-reporting/src/main taxonomy-reporting-api/pom.xml taxonomy-reporting-api/src/main taxonomy-analysis/pom.xml taxonomy-analysis/src/main taxonomy-portfolio/pom.xml taxonomy-portfolio/src/main taxonomy-app/pom.xml taxonomy-app/src/main ':(exclude)taxonomy-app/src/main/resources/static/**' ':(exclude)taxonomy-app/src/main/resources/templates/**' taxonomy-app/src/test/java/com/taxonomy/ObservabilityContainerIT.java taxonomy-app/src/test/java/com/taxonomy/ObservabilityPerformanceIT.java taxonomy-app/src/test/resources/observability observability .github/scripts/run-observability-performance.sh .github/scripts/configure-docker-mirror.sh docs/dev/OBSERVABILITY_PERFORMANCE.md; then
+          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- pom.xml Dockerfile taxonomy-workspace/pom.xml taxonomy-workspace/src/main taxonomy-templates/pom.xml taxonomy-templates/src/main taxonomy-templates-api/pom.xml taxonomy-templates-api/src/main taxonomy-extension-api/pom.xml taxonomy-extension-api/src/main taxonomy-extension-runtime/pom.xml taxonomy-extension-runtime/src/main plugins ':(glob,exclude)plugins/*/README.md' ':(glob,exclude)plugins/*/README_DE.md' taxonomy-interop/pom.xml taxonomy-interop/src/main taxonomy-knowledge/pom.xml taxonomy-knowledge/src/main taxonomy-architecture/pom.xml taxonomy-architecture/src/main taxonomy-reporting/pom.xml taxonomy-reporting/src/main taxonomy-reporting-api/pom.xml taxonomy-reporting-api/src/main taxonomy-analysis/pom.xml taxonomy-analysis/src/main taxonomy-portfolio/pom.xml taxonomy-portfolio/src/main taxonomy-app/pom.xml taxonomy-app/src/main ':(exclude)taxonomy-app/src/main/resources/static/**' ':(exclude)taxonomy-app/src/main/resources/templates/**' taxonomy-app/src/test/java/com/taxonomy/ObservabilityContainerIT.java taxonomy-app/src/test/java/com/taxonomy/ObservabilityPerformanceIT.java taxonomy-app/src/test/resources/observability observability .github/scripts/run-observability-performance.sh .github/scripts/configure-docker-mirror.sh docs/dev/OBSERVABILITY_PERFORMANCE.md; then
             echo 'run=false' >> "$GITHUB_OUTPUT"
           else
             echo 'run=true' >> "$GITHUB_OUTPUT"
@@ -462,6 +637,8 @@ jobs:
 
   ui-plan:
     name: Plan authoritative UI shards
+    needs: [change-scope]
+    if: needs.change-scope.outputs.scope == 'full'
     runs-on: ubuntu-latest
     outputs: { matrix: '${{ steps.matrix.outputs.matrix }}' }
     steps:
@@ -475,6 +652,8 @@ jobs:
 
   ui-contracts:
     name: UI contract verification
+    needs: [change-scope]
+    if: needs.change-scope.outputs.scope == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -482,18 +661,24 @@ jobs:
         with: { persist-credentials: false }
       - name: Set up Java 25
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with: { java-version: '25', distribution: temurin, cache: maven }
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.npm
             .cache/ui-frontend
           key: ${{ runner.os }}-taxonomy-ui-node-${{ hashFiles('.github/package-lock.json', '.github/ui-verification-pom.xml') }}
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-taxonomy-playwright-${{ hashFiles('.github/package-lock.json', '.github/scripts/install-playwright-github.sh') }}
-      - name: Run Maven-owned UI contracts and prepare browser runtime
+      - name: Run Maven-owned UI contracts
         run: ./mvnw -B -f .github/ui-verification-pom.xml verify -Pcontracts
       - name: Upload JUnit contract evidence
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -512,7 +697,17 @@ jobs:
         with: { persist-credentials: false }
       - name: Set up Java 25
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with: { java-version: '25', distribution: temurin, cache: maven }
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
@@ -611,7 +806,8 @@ jobs:
 
   interoperability-products:
     name: Interoperability product compatibility
-    needs: [application]
+    needs: [application, change-scope]
+    if: needs.change-scope.outputs.scope == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -648,6 +844,8 @@ jobs:
 
   plugin-profile:
     name: Complete plugin packaging profile
+    needs: [change-scope]
+    if: needs.change-scope.outputs.scope == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -655,7 +853,17 @@ jobs:
         with: { persist-credentials: false, fetch-depth: 0 }
       - name: Set up Java 25
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with: { java-version: '25', distribution: temurin, cache: maven }
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
       - name: Install verified Helm 3.21.0
         run: bash .github/scripts/install-helm.sh
       - name: Configure and verify Docker Hub cache
@@ -706,9 +914,46 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  documentation:
+    name: Packaged documentation verification
+    needs: [change-scope, application]
+    if: needs.change-scope.outputs.scope == 'documentation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      PR_DRAFT: ${{ github.event.pull_request.draft || false }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - name: Set up Java 25
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: ci-change-scope, path: target }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: taxonomy-ui-application, path: target/ui-application }
+      - name: Verify exact packaged documentation through Maven
+        run: ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pdocumentation
+      - name: Stage original documentation test evidence
+        run: java -cp .github/target/classes com.taxonomy.tooling.TaxonomyTooling check-ci-documentation --stage true
+      - name: Upload explicitly scoped documentation evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with: { name: documentation-verification, path: target/documentation-verification, if-no-files-found: error, retention-days: 7 }
+
   verify:
     name: Maven verification
-    needs: [application, production-image, app-test-shards, core, coverage-aggregate, observability, ui-contracts, ui-shards, interoperability-products, plugin-profile]
+    needs: [application, production-image, app-test-shards, core, coverage-aggregate, observability, ui-contracts, ui-shards, interoperability-products, plugin-profile, change-scope, documentation]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -721,6 +966,7 @@ jobs:
           echo "::error::Draft pull-request heads intentionally do not satisfy required Maven verification."
           exit 1
       - name: Require every authoritative lane
+        if: needs.change-scope.outputs.scope == 'full'
         env:
           APPLICATION_RESULT: ${{ needs.application.result }}
           PRODUCTION_IMAGE_RESULT: ${{ needs.production-image.result }}
@@ -740,8 +986,30 @@ jobs:
         with: { persist-credentials: false, fetch-depth: 0 }
       - name: Set up Java 25
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with: { java-version: '25', distribution: temurin, cache: maven }
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
+      - name: Compile the Maven-owned final scope gate
+        run: ./mvnw -B -ntp -pl taxonomy-tooling -am compile -Dtaxonomy.frontend.skip=true -Dmaven.build.cache.enabled=false
+      - name: Download the source-bound verification scope
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: ci-change-scope, path: target }
+      - name: Require the complete selected verification scope
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_DRAFT: ${{ github.event.pull_request.draft || false }}
+          CI_NEEDS_JSON: ${{ toJSON(needs) }}
+        run: java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-ci-verification-gate
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        if: needs.change-scope.outputs.scope == 'full'
         with:
           path: .cache/ui-frontend
           key: ${{ runner.os }}-taxonomy-ui-node-${{ hashFiles('.github/package-lock.json', '.github/ui-verification-pom.xml') }}
@@ -749,41 +1017,66 @@ jobs:
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: taxonomy-ui-application, path: target/ui-application }
       - name: Download all UI shard evidence
+        if: needs.change-scope.outputs.scope == 'full'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { pattern: 'ui-verification-*', path: target/ui-verification, merge-multiple: true }
       - name: Download observability evidence
+        if: needs.change-scope.outputs.scope == 'full'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: observability-performance, path: target/observability-performance }
       - name: Download core quality reports
+        if: needs.change-scope.outputs.scope == 'full'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: quality-reports-core, path: target/quality-reports }
       - name: Download complete coverage and app shard reports
+        if: needs.change-scope.outputs.scope == 'full'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: quality-reports-coverage, path: target/quality-reports }
       - name: Download source-bound original plugin reports
+        if: needs.change-scope.outputs.scope == 'full'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: junit-plugin-profile, path: target/plugin-profile-evidence }
       - name: Download JUnit contract evidence
+        if: needs.change-scope.outputs.scope == 'full'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: junit-ui-contracts, path: target/quality-reports/tests/ui-contracts/target/surefire-reports }
       - name: Download JUnit production image evidence
-        if: needs.production-image.outputs.executed == 'true'
+        if: needs.change-scope.outputs.scope == 'full' && (needs.production-image.outputs.executed == 'true')
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: junit-production-image, path: target/quality-reports/tests/production-image/target/failsafe-reports }
       - name: Download JUnit product evidence
+        if: needs.change-scope.outputs.scope == 'full'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: junit-interoperability-products, path: target/quality-reports/tests/interoperability-products/target/failsafe-reports }
       - name: Verify complete digest-bound UI evidence
+        if: needs.change-scope.outputs.scope == 'full'
         env:
           TAXONOMY_UI_EXPECTED_COMMIT: ${{ github.sha }}
           TAXONOMY_UI_SHARD_RESULTS_ROOT: ${{ github.workspace }}/target/ui-verification
           TAXONOMY_UI_APPLICATION_MANIFEST: ${{ github.workspace }}/target/ui-application/manifest.json
         run: ./mvnw -B -f .github/ui-verification-pom.xml verify -Pevidence-gate
       - name: Finalize commit-bound quality evidence
+        if: needs.change-scope.outputs.scope == 'full'
         run: bash .github/scripts/finalize-quality-evidence.sh
       - name: Upload verified reports
+        if: needs.change-scope.outputs.scope == 'full'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with: { name: quality-reports, path: 'target/quality-reports/**', if-no-files-found: error, include-hidden-files: true, retention-days: 90, overwrite: true }
       - name: Upload consolidated UI verification evidence
+        if: needs.change-scope.outputs.scope == 'full'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with: { name: ui-verification, path: 'target/ui-verification/**', if-no-files-found: error, retention-days: 90, overwrite: true }
+      - name: Download documentation evidence
+        if: needs.change-scope.outputs.scope == 'documentation'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: documentation-verification, path: target/documentation-verification }
+      - name: Verify original source-bound documentation results
+        if: needs.change-scope.outputs.scope == 'documentation'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_DRAFT: ${{ github.event.pull_request.draft || false }}
+        run: java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-ci-documentation --verify true
+      - name: Publish verified documentation scope
+        if: needs.change-scope.outputs.scope == 'documentation'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with: { name: documentation-verification, path: target/documentation-verification, if-no-files-found: error, retention-days: 90, overwrite: true }

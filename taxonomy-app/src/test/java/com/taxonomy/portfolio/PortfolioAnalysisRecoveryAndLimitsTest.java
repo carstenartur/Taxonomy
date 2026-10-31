@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalyzeProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
@@ -31,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(properties = "taxonomy.portfolio.max-analysis-batch=2")
+@Tag("ci-app-shard-domain-integration")
 class PortfolioAnalysisRecoveryAndLimitsTest {
 
     @Autowired

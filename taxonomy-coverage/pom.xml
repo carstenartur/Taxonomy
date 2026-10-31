@@ -133,7 +133,7 @@
                     </execution>
                     <execution>
                         <id>reactor-report</id>
-                        <phase>verify</phase>
+                        <phase>${taxonomy.coverage.reportPhase}</phase>
                         <goals>
                             <goal>report-aggregate</goal>
                         </goals>

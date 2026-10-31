@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementResult;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementUseCase;
@@ -70,6 +72,7 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest
+@Tag("ci-app-shard-domain-integration")
 class SolutionProductPortfolioIntegrationTest {
 
     @Autowired

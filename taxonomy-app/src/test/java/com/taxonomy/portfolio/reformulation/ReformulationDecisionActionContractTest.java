@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 
+import org.junit.jupiter.api.Tag;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -17,6 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(username = "architect", roles = "ARCHITECT")
+@Tag("ci-app-shard-domain-integration")
 class ReformulationDecisionActionContractTest extends ReformulationWorkflowFixture {
     @Test
     void notApplicableCannotBeSilentlyConvertedToOpenDeferral() throws Exception {

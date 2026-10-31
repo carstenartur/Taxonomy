@@ -4,8 +4,6 @@
 # Tag retained for readability and automated update discovery; digest is authoritative.
 FROM maven:3.9.16-eclipse-temurin-25@sha256:93b8a14ea2f412782e4e842651273b4d903e35cc496284f178fbbe2d67d00976 AS build
 WORKDIR /workspace
-ARG BUILD_DATE=unknown
-ARG VCS_REF=unknown
 
 # The Maven Wrapper validates the ZIP distribution. The minimal Maven builder
 # image does not provide unzip, and mvnw would otherwise silently switch to the
@@ -43,6 +41,15 @@ COPY taxonomy-app/pom.xml taxonomy-app/pom.xml
 COPY taxonomy-coverage/pom.xml taxonomy-coverage/pom.xml
 COPY taxonomy-build/pom.xml taxonomy-build/pom.xml
 
+# Unlike a RUN cache mount, these dependency bytes are part of the exported
+# BuildKit layer. Source-only changes can reuse them on a fresh hosted runner.
+# Exclude reactor siblings: they are built from this checkout by package below.
+# Prefetch is optional; missing/unavailable seed dependencies fall back to the
+# real reactor build, which remains the authority for successful packaging.
+RUN ./mvnw -B -ntp org.apache.maven.plugins:maven-dependency-plugin:3.11.0:go-offline \
+      -DexcludeReactor=true -DexcludeGroupIds=com.taxonomy \
+    || echo 'Dependency prefetch incomplete; reactor package will resolve required dependencies.' >&2
+
 # Copy all inputs required by the packaged application. In particular, the app
 # Maven module embeds Markdown help, screenshots and legal notices in the JAR.
 COPY taxonomy-tooling/src taxonomy-tooling/src
@@ -66,6 +73,10 @@ COPY taxonomy-app/src taxonomy-app/src
 COPY docs docs
 COPY LICENSE NOTICE THIRD-PARTY-NOTICES.md ./
 
+# Volatile image identity must not invalidate the dependency seed layer.
+ARG BUILD_DATE=unknown
+ARG VCS_REF=unknown
+
 # The Docker context intentionally excludes .git. Materialize the immutable
 # source revision supplied by the delivery workflow so Spring Boot's GitInfoContributor
 # and /api/about still report the exact code running in the container.
@@ -73,11 +84,9 @@ RUN printf 'git.branch=container\ngit.commit.id=%s\ngit.commit.id.abbrev=%s\ngit
       "$VCS_REF" "$VCS_REF" "$BUILD_DATE" \
       > taxonomy-app/src/main/resources/git.properties
 
-# Do not run dependency:go-offline against this multi-module reactor before its
-# internal SNAPSHOT artifacts exist. A single reactor package resolves and builds
-# sibling modules correctly while the BuildKit Maven cache retains all downloads.
-RUN --mount=type=cache,target=/root/.m2/repository \
-    ./mvnw -q -DskipTests package
+# Resolve anything not covered by the seed and always build the actual checkout.
+# Keep the repository in the layer, so external exporters retain its bytes.
+RUN ./mvnw -q -DskipTests package
 
 # ---- optional OpenTelemetry Java agent stage ----
 # Tag retained for automated update discovery; the multi-platform index digest is

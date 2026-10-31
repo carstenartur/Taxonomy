@@ -42,6 +42,20 @@
     <!-- Only split CI companions omit unit execution already owned by core.
          The independent SDK verification invokes standalone verify without these profiles. -->
     <profiles>
+        <!-- Independent POM: the parent replay profile cannot disable these compilers. -->
+        <profile><id>ci-app-test-shards-coverage</id>
+            <properties><maven.build.cache.enabled>false</maven.build.cache.enabled></properties>
+            <build><plugins>
+                <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId>
+                    <executions><execution><id>default-compile</id><configuration><skipMain>true</skipMain></configuration></execution>
+                        <execution><id>default-testCompile</id><configuration><skip>true</skip></configuration></execution></executions>
+                </plugin>
+                <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-resources-plugin</artifactId>
+                    <executions><execution><id>default-resources</id><phase>none</phase></execution>
+                        <execution><id>default-testResources</id><phase>none</phase></execution></executions>
+                </plugin>
+            </plugins></build>
+        </profile>
         <profile>
             <id>ci-database-compatibility</id>
             <properties><maven.build.cache.enabled>false</maven.build.cache.enabled></properties>

@@ -38,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Tag("docker-required")
+@Tag("ci-app-shard-runtime")
 class ObservabilityContainerIT {
 
     private static final String AGENT_IMAGE =

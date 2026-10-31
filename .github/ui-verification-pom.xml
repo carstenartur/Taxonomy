@@ -17,6 +17,8 @@
         <spring-boot.version>4.1.2</spring-boot.version>
         <frontend-maven-plugin.version>2.0.2</frontend-maven-plugin.version>
         <node.version>v24.18.0</node.version>
+        <taxonomy.ui.test.source.directory>${project.basedir}/../taxonomy-build/src/test/java</taxonomy.ui.test.source.directory>
+        <taxonomy.ui.source.directory>${project.basedir}/src/main/java</taxonomy.ui.source.directory>
         <taxonomy.ui.junit.directory>${project.build.directory}/failsafe-reports</taxonomy.ui.junit.directory>
     </properties>
 
@@ -28,13 +30,14 @@
         <dependency><groupId>tools.jackson.core</groupId><artifactId>jackson-databind</artifactId><scope>test</scope></dependency>
     </dependencies>
     <build>
+        <sourceDirectory>${taxonomy.ui.source.directory}</sourceDirectory>
         <pluginManagement><plugins>
             <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-resources-plugin</artifactId><version>3.5.0</version></plugin>
             <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.5.1</version></plugin>
             <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.6</version></plugin>
             <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId><version>3.5.6</version></plugin>
         </plugins></pluginManagement>
-        <testSourceDirectory>${project.basedir}/../taxonomy-build/src/test/java</testSourceDirectory>
+        <testSourceDirectory>${taxonomy.ui.test.source.directory}</testSourceDirectory>
         <plugins>
             <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.15.0</version>
                 <configuration><testIncludes><testInclude>**/ExternalDriverSupport.java</testInclude><testInclude>**/DriverOutcomeChecksTest.java</testInclude><testInclude>**/UiScenarioIT.java</testInclude><testInclude>**/InteroperabilityProductsIT.java</testInclude><testInclude>**/ProductionImageIT.java</testInclude></testIncludes></configuration>
@@ -42,6 +45,35 @@
         </plugins>
     </build>
     <profiles>
+        <profile>
+            <id>documentation</id>
+            <properties>
+                <taxonomy.ui.source.directory>${project.basedir}/../taxonomy-tooling/src/main/java</taxonomy.ui.source.directory>
+                <taxonomy.ui.test.source.directory>${project.basedir}/..</taxonomy.ui.test.source.directory>
+            </properties>
+            <dependencies><dependency><groupId>org.springframework</groupId><artifactId>spring-web</artifactId><scope>test</scope></dependency></dependencies>
+            <build>
+                <plugins>
+                    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId>
+                        <configuration><testIncludes combine.self="override">
+                            <testInclude>.github/src/test/java/com/taxonomy/build/DocumentationPackageIT.java</testInclude>
+                            <testInclude>taxonomy-build/src/test/java/com/taxonomy/build/ScenarioAcceptanceNamingContract.java</testInclude>
+                            <testInclude>taxonomy-app/src/test/java/com/taxonomy/build/DocumentationLinkPolicy.java</testInclude>
+                        </testIncludes></configuration>
+                    </plugin>
+                    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId>
+                        <configuration><skipTests>true</skipTests></configuration>
+                    </plugin>
+                    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId>
+                        <executions><execution><goals><goal>integration-test</goal><goal>verify</goal></goals></execution></executions>
+                        <configuration><skipITs>false</skipITs><includes><include>**/DocumentationPackageIT.java</include></includes>
+                            <failIfNoTests>true</failIfNoTests><failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
+                            <systemPropertyVariables><taxonomy.documentation.verify>true</taxonomy.documentation.verify></systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
         <profile>
             <id>contracts</id>
             <build>

@@ -2,12 +2,15 @@ name: CodeQL Source Analysis
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main, feat/artemis-execution-base, 'implementation/**' ]
     paths:
       - 'pom.xml'
       - 'taxonomy-*/pom.xml'
       - 'taxonomy-*/src/**'
       - 'plugins/**'
+      - '!plugins/*/README.md'
+      - '!plugins/*/README_DE.md'
       - '.github/scripts/**'
       - '.github/codeql-sarif-baseline.json'
       - '.github/workflows/codeql.yml'
@@ -19,6 +22,8 @@ on:
       - 'taxonomy-*/pom.xml'
       - 'taxonomy-*/src/**'
       - 'plugins/**'
+      - '!plugins/*/README.md'
+      - '!plugins/*/README_DE.md'
       - '.github/scripts/**'
       - '.github/codeql-sarif-baseline.json'
       - '.github/workflows/codeql.yml'
@@ -39,7 +44,7 @@ jobs:
     name: CodeQL / Java
     if: >-
       github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+      (github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
@@ -57,6 +62,13 @@ jobs:
           java-version: '25'
           distribution: temurin
           cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
@@ -120,7 +132,7 @@ jobs:
     name: CodeQL / JavaScript
     if: >-
       github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+      (github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -137,6 +149,13 @@ jobs:
           java-version: '25'
           distribution: temurin
           cache: maven
+          cache-dependency-path: |
+            **/pom.xml
+            .github/ui-verification-pom.xml
+            **/*-pom.xml
+            **/pom-*.xml
+            **/.mvn/wrapper/maven-wrapper.properties
+            **/.mvn/extensions.xml
 
       - name: Build and preserve Java SARIF gate
         shell: bash

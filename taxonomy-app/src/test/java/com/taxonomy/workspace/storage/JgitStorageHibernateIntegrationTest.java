@@ -1,5 +1,7 @@
 package com.taxonomy.workspace.storage;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.editor.ArchitectureCommandPort;
 import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.dsl.command.ArchitectureCommand;
@@ -35,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "mistral.api.key=",
         "embedding.enabled=false"
 })
+@Tag("ci-app-shard-domain-integration")
 class JgitStorageHibernateIntegrationTest {
 
     @Autowired

@@ -1,5 +1,7 @@
 package com.taxonomy.composition.analysis.artemis;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.analysis.cluster.*;
 import com.taxonomy.analysis.dag.*;
 import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
@@ -55,6 +57,7 @@ import static org.mockito.Mockito.*;
 
 /** Production handlers, durable database records and persistent TCP delivery; no provider HTTP. */
 @Timeout(value = 120, unit = TimeUnit.SECONDS)
+@Tag("ci-app-shard-domain-integration")
 class ArtemisProductionExecutionTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String TEXT = "Provide a communication application that reads treatment records.";

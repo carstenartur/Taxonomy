@@ -1,7 +1,6 @@
 package com.taxonomy.portfolio.reformulation;
 
 import com.sun.net.httpserver.HttpServer;
-import com.taxonomy.TaxonomyApplication;
 import com.taxonomy.analysis.reformulation.CrossTaxonomyReconciler;
 import com.taxonomy.analysis.reformulation.FrozenReformulationEngine;
 import com.taxonomy.analysis.service.LlmProviderConfig;
@@ -12,7 +11,6 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
 import com.taxonomy.workspace.service.*;
-import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.core.task.AsyncTaskExecutor;
 import tools.jackson.databind.ObjectMapper;
 
@@ -73,8 +71,8 @@ public final class ReformulationDispatchClaimDriver {
         });
         remote.start();
         var workers = Executors.newSingleThreadExecutor();
-        try (var app = new SpringApplicationBuilder(TaxonomyApplication.class).run(
-                "--server.port=0", "--spring.datasource.url=jdbc:hsqldb:mem:dispatch-claim-" + UUID.randomUUID(),
+        try (var app = ReformulationServiceApplication.run(
+                "--spring.datasource.url=jdbc:hsqldb:mem:dispatch-claim-" + UUID.randomUUID(),
                 "--spring.datasource.username=SA", "--spring.datasource.password=",
                 "--spring.datasource.driver-class-name=org.hsqldb.jdbc.JDBCDriver", "--spring.jpa.hibernate.ddl-auto=update",
                 "--spring.jpa.properties.hibernate.search.backend.directory.type=local-heap",

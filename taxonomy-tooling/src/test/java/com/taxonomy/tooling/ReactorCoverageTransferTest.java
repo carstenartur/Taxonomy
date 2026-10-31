@@ -34,6 +34,8 @@ class ReactorCoverageTransferTest {
         put("taxonomy-app/target/classes/com/taxonomy/Fixture.class", "class-fixture");
         put("taxonomy-domain/target/classes/com/taxonomy/Upstream.class", "upstream-class-fixture");
         put("taxonomy-domain/target/surefire-reports/TEST-com.taxonomy.UpstreamTest.xml", "<testsuite/>");
+        put("taxonomy-build/target/test-classes/com/taxonomy/build/ReactorCoveragePolicyIT.class", "policy-class");
+        put("taxonomy-workspace/target/test-classes/com/taxonomy/editor/EditorPersistenceFixture.class", "fixture-class");
         upstream = put("taxonomy-domain/target/jacoco.exec", "upstream-only-probes");
         Path classes = Path.of(TaxonomyTooling.class.getProtectionDomain().getCodeSource().getLocation().toURI());
         try (var files = Files.walk(classes)) {
@@ -78,6 +80,28 @@ class ReactorCoverageTransferTest {
     }
     @Test void restoresUpstreamModuleProbesAndClassesLosslessly() throws Exception {
         prepare(); byte[] original = Files.readAllBytes(upstream); delete(root.resolve("taxonomy-domain/target")); Result result = consume(); assertEquals(0, result.status, result.text); assertArrayEquals(original, Files.readAllBytes(upstream)); assertEquals("upstream-class-fixture", Files.readString(root.resolve("taxonomy-domain/target/classes/com/taxonomy/Upstream.class")));
+    }
+    @Test void restoresPolicyAndFixtureClassesWithoutRecompilation() throws Exception {
+        prepare(); delete(root.resolve("taxonomy-build/target")); delete(root.resolve("taxonomy-workspace/target"));
+        Result result = consume(); assertEquals(0, result.status, result.text);
+        assertEquals("policy-class", Files.readString(root.resolve("taxonomy-build/target/test-classes/com/taxonomy/build/ReactorCoveragePolicyIT.class")));
+        assertEquals("fixture-class", Files.readString(root.resolve("taxonomy-workspace/target/test-classes/com/taxonomy/editor/EditorPersistenceFixture.class")));
+    }
+    @Test void consumerRejectsChangedPolicyBytecodeDespiteRefreshedArchiveDigest() throws Exception {
+        prepare();
+        put("taxonomy-build/target/test-classes/com/taxonomy/build/ReactorCoveragePolicyIT.class", "changed-policy");
+        Result archive = shell("""
+                tar --null -T target/reactor-output-files -czf target/core-reactor-outputs.tar.gz
+                sha256sum target/core-reactor-outputs.tar.gz > target/core-reactor-outputs.sha256
+                """);
+        assertEquals(0, archive.status, archive.text);
+        Result result = consume(); assertNotEquals(0, result.status, result.text);
+        assertTrue(result.text.contains("ReactorCoveragePolicyIT.class: FAILED"), result.text);
+    }
+    @Test void producerRejectsMissingFreshPolicyBytecode() throws Exception {
+        delete(root.resolve("taxonomy-build/target/test-classes"));
+        Result result = stageArchive(); assertNotEquals(0, result.status, result.text);
+        assertTrue(result.text.contains("Missing coverage replay test classes"), result.text);
     }
     @Test void producerRejectsMissingExecutionDataForTestedProductionModule() throws Exception {
         Files.delete(upstream); Result result = stageArchive(); assertNotEquals(0, result.status); assertTrue(result.text.contains("Missing JaCoCo execution data for tested module: ./taxonomy-domain/target"), result.text);

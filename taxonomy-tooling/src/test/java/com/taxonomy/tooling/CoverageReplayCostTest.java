@@ -2,6 +2,43 @@ package com.taxonomy.tooling;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 class CoverageReplayCostTest {
+ @Test void replayEndsBeforeOrdinaryTestsAndDisablesCompilersInBothInheritanceTrees() throws Exception {
+  var root=JavascriptJUnitBridge.root();
+  var workflow=java.nio.file.Files.readString(root.resolve(".github/workflows/ci-cd.yml"));
+  assertTrue(workflow.contains("./mvnw -B process-test-classes -Pci,ci-app-test-shards-coverage"), "Replay must not enter test/package/integration-test phases");
+  for (String path: java.util.List.of("pom.xml", "plugins/taxonomy-mermaid-plugin/pom.xml")) {
+   var project=XmlSupport.parse(root.resolve(path)).getDocumentElement();
+   var profile=XmlSupport.descendants(project,"profile").stream().filter(e->"ci-app-test-shards-coverage".equals(XmlSupport.childText(e,"id"))).findFirst().orElseThrow();
+   for (String id: java.util.List.of("default-compile", "default-testCompile", "default-resources", "default-testResources")) {
+    var execution=XmlSupport.descendants(profile,"execution").stream().filter(e->id.equals(XmlSupport.childText(e,"id"))).findFirst().orElseThrow();
+    if (id.equals("default-compile") || id.equals("default-testCompile")) {
+     assertEquals("true",XmlSupport.childText(XmlSupport.child(execution,"configuration"),id.equals("default-compile")?"skipMain":"skip"),path+" "+id);
+    } else assertEquals("none",XmlSupport.childText(execution,"phase"), path+" "+id);
+   }
+  }
+  var build=XmlSupport.parse(root.resolve("taxonomy-build/pom.xml")).getDocumentElement();
+  for(String id: java.util.List.of("coverage-policy-only", "verify-complete-app-test-shard-inventory")) {
+   var execution=XmlSupport.descendants(build,"execution").stream().filter(e->id.equals(XmlSupport.childText(e,"id"))).findFirst().orElseThrow();
+   assertEquals(id.equals("coverage-policy-only")?"process-test-classes":"validate",XmlSupport.childText(execution,"phase"));
+  }
+ }
+ @Test void uiPackagingKeepsFreshDownloadableRuntimeSbomWhileFullVerificationKeepsAggregate() throws Exception {
+  var root=JavascriptJUnitBridge.root();
+  var project=XmlSupport.parse(root.resolve("pom.xml")).getDocumentElement();
+  var ui=XmlSupport.descendants(project,"profile").stream().filter(e->"ci-ui-application-package".equals(XmlSupport.childText(e,"id"))).findFirst().orElseThrow();
+  assertEquals("true",XmlSupport.childText(XmlSupport.child(ui,"properties"),"cyclonedx.skip"));
+  assertNotEquals("true",XmlSupport.childText(XmlSupport.child(project,"properties"),"cyclonedx.skip"));
+  var app=XmlSupport.parse(root.resolve("taxonomy-app/pom.xml")).getDocumentElement();
+  var appUi=XmlSupport.descendants(app,"profile").stream().filter(e->"ci-ui-application-package".equals(XmlSupport.childText(e,"id"))).findFirst().orElseThrow();
+  var bom=XmlSupport.descendants(appUi,"execution").stream().filter(e->"ui-runtime-sbom".equals(XmlSupport.childText(e,"id"))).findFirst().orElseThrow();
+  assertEquals("initialize",XmlSupport.childText(bom,"phase"),"Generate before copy-legal; same-phase plugin ordering copies no BOM on a clean checkout");
+  assertEquals("makeBom",XmlSupport.text(XmlSupport.child(XmlSupport.child(bom,"goals"),"goal")));
+  var config=XmlSupport.child(bom,"configuration");
+  assertEquals("false",XmlSupport.childText(config,"skip"));
+  assertEquals("taxonomy-sbom",XmlSupport.childText(config,"outputName"));
+  assertEquals("all",XmlSupport.childText(config,"outputFormat"));
+  assertEquals("${maven.multiModuleProjectDirectory}/target",XmlSupport.childText(config,"outputDirectory"));
+ }
  @Test void coldNpmDependenciesAreProvisionedEvenWhenRootCacheIsWarm() throws Exception {
   var root=JavascriptJUnitBridge.root();
   var cache=XmlSupport.parse(root.resolve(".mvn/maven-build-cache-config.xml")).getDocumentElement();

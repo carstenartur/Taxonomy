@@ -24,6 +24,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 /** Actual persistent TCP broker; physical admission callback is never a paid provider. */
 @Timeout(60)
+@Tag("ci-app-shard-domain-integration")
 class ArtemisProviderRateQuotasTest {
     static final String PREFIX = "taxonomy.analysis.provider-quotas", GROUP = "credential-a", QUEUE = PREFIX + "." + GROUP;
     @TempDir Path data;

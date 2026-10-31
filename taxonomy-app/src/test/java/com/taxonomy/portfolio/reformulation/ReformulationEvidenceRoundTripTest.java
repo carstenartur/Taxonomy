@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.ast.DocumentAst;
 import com.taxonomy.dsl.ast.PropertyAst;
@@ -25,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest(properties = "llm.mock=true")
 @org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 @WithMockUser(username = "architect", roles = "ARCHITECT")
+@Tag("ci-app-shard-domain-integration")
 class ReformulationEvidenceRoundTripTest extends ReformulationWorkflowFixture {
     private static final String EVIDENCE_BLOCK = "reformulationEvidence";
     private static final String CURRENT_SCHEMA = "reformulation-evidence-v1";

@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.ast.DocumentAst;
 import com.taxonomy.dsl.ast.PropertyAst;
@@ -38,6 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = "llm.mock=true")
 @org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 @WithMockUser(username = "architect", roles = "ARCHITECT")
+@Tag("ci-app-shard-domain-integration")
 class ReformulationPositiveReviewGuardTest extends ReformulationWorkflowFixture {
     @Autowired ReformulationAdoptionService adoption;
     @Autowired PortablePortfolioGitService git;
