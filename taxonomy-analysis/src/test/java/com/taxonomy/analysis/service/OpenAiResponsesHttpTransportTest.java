@@ -5,6 +5,9 @@ import org.junit.jupiter.api.*;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.client.ResourceAccessException;
 import java.net.InetSocketAddress;
+import java.io.IOException;
+import java.net.SocketTimeoutException;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -18,6 +21,14 @@ class OpenAiResponsesHttpTransportTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         workers = Executors.newVirtualThreadPerTaskExecutor(); server.setExecutor(workers);
         server.createContext("/count", handler); server.start(); url = "http://127.0.0.1:" + server.getAddress().getPort() + "/count";
+    }
+    @Test void wrappedHttpTimeoutIsClassifiedAsSocketTimeoutForGatewayRetry() {
+        var failure = new ExecutionException(new IOException(new HttpTimeoutException("request timed out")));
+
+        var mapped = OpenAiResponsesHttpTransport.transportFailure(failure);
+
+        assertThat(mapped).isInstanceOf(ResourceAccessException.class);
+        assertThat(mapped.getCause()).isInstanceOf(SocketTimeoutException.class);
     }
     @Test void realHttpPreservesUtf8RequestAndReturnsOnlyABoundedResponse() throws Exception {
         var request = new AtomicReference<String>();

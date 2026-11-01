@@ -631,9 +631,9 @@ class GitCommitSignatureServiceTest {
         var repository = directory.resolve("git");
         assertThat(run(List.of("git", "init", "--bare", repository.toString()), null).exit()).isZero();
         var commit = commit(); service.sign(commit, "project", "main");
-        var hash = run(List.of("git", "-C", repository.toString(), "hash-object", "-w", "-t", "commit", "--stdin"), commit.build());
+        var hash = run(List.of("git", "--git-dir", repository.toString(), "hash-object", "-w", "-t", "commit", "--stdin"), commit.build());
         assertThat(hash.exit()).isZero();
-        var verify = run(List.of("git", "-C", repository.toString(), "-c", "gpg.program=gpg", "verify-commit", hash.output().trim()), null, home);
+        var verify = run(List.of("git", "--git-dir", repository.toString(), "-c", "gpg.program=gpg", "verify-commit", hash.output().trim()), null, home);
         assertThat(verify.exit()).withFailMessage(verify.output()).isZero();
     }
 

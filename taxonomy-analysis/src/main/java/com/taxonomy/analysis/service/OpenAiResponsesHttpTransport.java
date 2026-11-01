@@ -50,15 +50,14 @@ class OpenAiResponsesHttpTransport {
                     } catch (TimeoutException pending) { /* poll only the scoped cancellation/deadline */ }
                 }
             } catch (ExecutionException failure) {
-                if (failure.getCause() instanceof ResponseLimitException) {
+                if (causedBy(failure, ResponseLimitException.class)) {
                     var info = responseInfo.get();
                     // Even an oversized 429 remains an actual 429 with its bounded headers. Its
                     // omitted body must not bypass shared cooldown or imply known provider usage.
                     if (info != null && info.statusCode() >= 400) return result(info.statusCode(), info.headers().map(), new byte[0]);
                     throw rejected();
                 }
-                if (failure.getCause() instanceof java.net.http.HttpTimeoutException) throw timeout();
-                throw new ResourceAccessException("Responses transport unavailable");
+                throw transportFailure(failure);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);
@@ -76,8 +75,19 @@ class OpenAiResponsesHttpTransport {
         if (!code.is2xxSuccessful()) throw rejected();
         return new ResponseEntity<>(new String(body, StandardCharsets.UTF_8), headers, code);
     }
+    // Some JDKs wrap subscriber failures in an IOException before they reach the future.
+    private static boolean causedBy(Throwable failure, Class<? extends Throwable> type) {
+        for (Throwable cause = failure.getCause(); cause != null; cause = cause.getCause()) {
+            if (type.isInstance(cause)) return true;
+        }
+        return false;
+    }
     private static ResourceAccessException timeout() {
         return new ResourceAccessException("Responses transport time limit exceeded", new SocketTimeoutException("Responses transport deadline"));
+    }
+    static ResourceAccessException transportFailure(Throwable failure) {
+        if (causedBy(failure, java.net.http.HttpTimeoutException.class)) return timeout();
+        return new ResourceAccessException("Responses transport unavailable");
     }
     private static LlmProviderException rejected() {
         return new LlmProviderException(LlmProviderException.Reason.REQUEST_REJECTED, "Responses transport byte contract exceeded");
