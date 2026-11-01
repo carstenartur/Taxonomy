@@ -280,10 +280,14 @@ final class ReleaseResourceSampler {
             try (var lines = Files.lines(metrics)) { samples = lines.limit(MAX_SAMPLES + 1L).count(); }
         }
         boolean complete = false;
-        if (regular(status) && Files.size(status) < 4096 && samples > 0 && samples <= MAX_SAMPLES) {
-            Map<String, Object> state = FlatJson.parseObject(Files.readString(status));
-            complete = Boolean.TRUE.equals(state.get("complete"))
-                    && Long.toString(samples).equals(String.valueOf(state.get("samples")));
+        try {
+            if (regular(status) && Files.size(status) < 4096 && samples > 0 && samples <= MAX_SAMPLES) {
+                Map<String, Object> state = FlatJson.parseObject(Files.readString(status));
+                complete = Boolean.TRUE.equals(state.get("complete"))
+                        && Long.toString(samples).equals(String.valueOf(state.get("samples")));
+            }
+        } catch (IOException | IllegalArgumentException incompleteMarker) {
+            // Optional terminal evidence may be interrupted or unreadable; still emit the manifest.
         }
         var manifest = new LinkedHashMap<String, Object>();
         manifest.put("schema", 1);

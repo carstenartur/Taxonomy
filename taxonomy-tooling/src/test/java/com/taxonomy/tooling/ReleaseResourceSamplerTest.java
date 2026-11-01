@@ -1,6 +1,8 @@
 package com.taxonomy.tooling;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -49,6 +51,7 @@ class ReleaseResourceSamplerTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"INT", "TERM"})
+    @EnabledOnOs(OS.LINUX)
     void stopsOnlyItsOwnMonitorAndFinalizesNumericEvidence(String signal,
             @TempDir Path temporary) throws Exception {
         Path root = ReleaseOrchestrationChecks.repositoryRoot();
@@ -68,15 +71,31 @@ class ReleaseResourceSamplerTest {
         try {
             Path metrics = output.resolve("metrics.jsonl");
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-            while ((!Files.exists(metrics) || Files.size(metrics) == 0)
-                    && monitor.isAlive() && System.nanoTime() < deadline) Thread.sleep(20);
+            String firstRecord = null;
+            String workloadPidRecord = null;
+            while ((firstRecord == null || workloadPidRecord == null)
+                    && monitor.isAlive() && workload.isAlive() && System.nanoTime() < deadline) {
+                if (firstRecord == null && Files.exists(metrics)) {
+                    String content = Files.readString(metrics);
+                    int newline = content.indexOf('\n');
+                    if (newline >= 0) firstRecord = content.substring(0, newline);
+                }
+                if (workloadPidRecord == null && Files.exists(visibleWorkloadPid)) {
+                    String content = Files.readString(visibleWorkloadPid);
+                    int newline = content.indexOf('\n');
+                    if (newline >= 0) workloadPidRecord = content.substring(0, newline);
+                }
+                if (firstRecord == null || workloadPidRecord == null) Thread.sleep(20);
+            }
             assertThat(monitor.isAlive()).as(Files.readString(temporary.resolve("monitor.log"))).isTrue();
-            assertThat(Files.size(metrics)).isPositive();
-            Map<String, Object> first = FlatJson.parseObject(Files.readAllLines(metrics).getFirst());
+            assertThat(firstRecord).as("first complete metrics record").isNotNull();
+            assertThat(workloadPidRecord).as("workload PID readiness").isNotNull();
+            String expectedWorkloadPid = workloadPidRecord.strip();
+            Map<String, Object> first = FlatJson.parseObject(firstRecord);
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> processes = (List<Map<String, Object>>) first.get("processes");
             assertThat(processes).anySatisfy(row ->
-                    assertThat(row.get("pid").toString()).isEqualTo(Files.readString(visibleWorkloadPid).strip()));
+                    assertThat(row.get("pid").toString()).isEqualTo(expectedWorkloadPid));
             assertThat(processes).anySatisfy(row ->
                     assertThat(row.get("pid").toString()).isEqualTo(first.get("monitor_pid").toString()));
 
@@ -131,6 +150,42 @@ class ReleaseResourceSamplerTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> metrics = (Map<String, Object>) manifest.get("metrics");
         assertThat(metrics.get("sha256")).isNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "{\"samples\":1,\"complete\":",
+            "{\"SECRET_MARKER\":1,\"SECRET_MARKER\":2}",
+            "{\"samples\":1,\"complete\":true} SECRET_MARKER"})
+    void malformedTerminalMarkerStillProducesIncompleteManifest(String marker,
+            @TempDir Path temporary) throws Exception {
+        assertIncompleteManifestForMarker(temporary, marker.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void unreadableTerminalMarkerStillProducesIncompleteManifest(@TempDir Path temporary) throws Exception {
+        assertIncompleteManifestForMarker(temporary, new byte[]{(byte) 0xc3, (byte) 0x28});
+    }
+
+    private static void assertIncompleteManifestForMarker(Path temporary, byte[] marker) throws Exception {
+        Path root = ReleaseOrchestrationChecks.repositoryRoot();
+        Path output = temporary.resolve("resources");
+        assertThat(command(root, output, "init", "--release-version", "1.5.3")).isZero();
+        Files.writeString(output.resolve("metrics.jsonl"), "{\"sample\":0}\n");
+        Files.write(output.resolve("status.json"), marker);
+        ByteArrayOutputStream console = new ByteArrayOutputStream();
+        PrintStream log = new PrintStream(console);
+        int result = TaxonomyTooling.run(new String[]{"release-resources", "--mode", "finalize",
+                "--output", output.toString()}, ENVIRONMENT, root, log, log);
+        assertThat(output.resolve("manifest.json")).exists();
+        assertThat(result).as(console.toString()).isZero();
+        Map<String, Object> manifest = FlatJson.parseObject(Files.readString(output.resolve("manifest.json")));
+        assertThat(manifest).containsEntry("complete", false);
+        assertThat(manifest.get("samples").toString()).isEqualTo("1");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metrics = (Map<String, Object>) manifest.get("metrics");
+        assertThat(metrics.get("sha256")).isNull();
+        assertThat(console.toString()).isEqualTo("::warning::Release resource diagnostics are incomplete."
+                + System.lineSeparator());
     }
 
     @Test
