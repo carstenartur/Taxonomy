@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -43,6 +44,56 @@ def forbid(text: str, needle: str, source: Path, failures: list[str]) -> None:
         failures.append(f"{source.relative_to(ROOT)} still contains {needle!r}")
 
 
+def resource_diagnostic_failures(workflow: str) -> list[str]:
+    """Keep observation independent of release status and archive only numeric data."""
+    steps = re.split(r"(?m)^      - ", workflow)[1:]
+    names = (
+        "Prepare numeric release diagnostics",
+        "Observe release resources",
+        "Build and stage release, then prepare next development version",
+        "Stop resource observation",
+        "Finalize numeric release diagnostics",
+        "Archive numeric release diagnostics",
+    )
+    blocks = []
+    positions = []
+    for name in names:
+        matches = [(index, block) for index, block in enumerate(steps)
+                   if block.startswith("name: " + name + "\n")]
+        if len(matches) != 1:
+            return ["Release resource diagnostics require exactly one step: " + name]
+        positions.append(matches[0][0])
+        blocks.append(matches[0][1])
+    failures = []
+    if positions != sorted(positions):
+        failures.append("Release resource diagnostics must surround only the canonical build step")
+    prepare, observe, build, cancel, finalize, archive = blocks
+    for block in (prepare, observe, finalize, archive):
+        if "        continue-on-error: true\n" not in block:
+            failures.append("Diagnostic failure must not replace the release result")
+    for block in (finalize, archive):
+        if "        if: always()\n" not in block:
+            failures.append("Numeric diagnostic finalization and archival must run on failure and dry run")
+    if "        background: true\n" not in observe or "        id: release_resources\n" not in observe:
+        failures.append("Release resource observation must be a native background step")
+    if "        cancel: release_resources\n" not in cancel or "        if:" in cancel:
+        failures.append("The native resource cancel step must be unconditional")
+    if ('        run: "$RUNNER_TEMP/release.sh"\n' not in build
+            or any(token in build for token in ("continue-on-error:", "background:", "tee ", "trap "))):
+        failures.append("Canonical release execution must remain direct and retain its own result")
+    for block, mode in ((prepare, "init"), (observe, "sample"), (finalize, "finalize")):
+        if "release-resources --mode " + mode not in block or "-Xms16m -Xmx64m" not in block:
+            failures.append("Diagnostic commands must use the bounded Java release tooling")
+    prefix = "${{ runner.temp }}/release-resources-${{ github.run_id }}-${{ github.run_attempt }}/"
+    paths = [line.strip() for line in archive.splitlines()
+             if line.startswith("            ")]
+    if paths != [prefix + name for name in ("identity.json", "metrics.jsonl", "manifest.json")]:
+        failures.append("Release resource archive must contain only the three fixed numeric files")
+    if "          retention-days: 7\n" not in archive:
+        failures.append("Release resource evidence must have bounded retention")
+    return failures
+
+
 def main() -> int:
     pom = ROOT_POM.read_text(encoding="utf-8")
     tooling_pom = TOOLING_POM.read_text(encoding="utf-8")
@@ -55,6 +106,7 @@ def main() -> int:
     workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
     ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     failures: list[str] = []
+    failures.extend(resource_diagnostic_failures(workflow))
 
     image_gate = subprocess.run(
         [sys.executable, str(RELEASE_IMAGE_GATE)],

@@ -139,6 +139,24 @@ jobs:
           bash -n deploy/helm/taxonomy/verify.sh
           python3 .github/scripts/check-release-delivery-contract.py
 
+      - name: Prepare numeric release diagnostics
+        continue-on-error: true
+        env:
+          RELEASE_VERSION: ${{ steps.release_parameters.outputs.release_version }}
+        run: |
+          java -Xms16m -Xmx64m -jar "$RUNNER_TEMP/taxonomy-tooling.jar" release-resources --mode init \
+            --root "$GITHUB_WORKSPACE" --release-version "$RELEASE_VERSION" \
+            --output "$RUNNER_TEMP/release-resources-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+
+      - name: Observe release resources
+        id: release_resources
+        background: true
+        continue-on-error: true
+        run: |
+          exec java -Xms16m -Xmx64m -jar "$RUNNER_TEMP/taxonomy-tooling.jar" release-resources --mode sample \
+            --root "$GITHUB_WORKSPACE" \
+            --output "$RUNNER_TEMP/release-resources-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+
       - name: Build and stage release, then prepare next development version
         if: steps.release_parameters.outputs.resume_staged_release != 'true'
         env:
@@ -156,6 +174,29 @@ jobs:
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/multilingual-minilm
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
         run: "$RUNNER_TEMP/release.sh"
+
+      - name: Stop resource observation
+        cancel: release_resources
+
+      - name: Finalize numeric release diagnostics
+        if: always()
+        continue-on-error: true
+        run: |
+          java -Xms16m -Xmx64m -jar "$RUNNER_TEMP/taxonomy-tooling.jar" release-resources --mode finalize \
+            --output "$RUNNER_TEMP/release-resources-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+
+      - name: Archive numeric release diagnostics
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-resources-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/release-resources-${{ github.run_id }}-${{ github.run_attempt }}/identity.json
+            ${{ runner.temp }}/release-resources-${{ github.run_id }}-${{ github.run_attempt }}/metrics.jsonl
+            ${{ runner.temp }}/release-resources-${{ github.run_id }}-${{ github.run_attempt }}/manifest.json
 
       - name: Validate staged release for resume
         if: steps.release_parameters.outputs.resume_staged_release == 'true'
