@@ -57,8 +57,7 @@ class OpenAiResponsesHttpTransport {
                     if (info != null && info.statusCode() >= 400) return result(info.statusCode(), info.headers().map(), new byte[0]);
                     throw rejected();
                 }
-                if (causedBy(failure, java.net.http.HttpTimeoutException.class)) throw timeout();
-                throw new ResourceAccessException("Responses transport unavailable");
+                throw transportFailure(failure);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);
@@ -85,6 +84,10 @@ class OpenAiResponsesHttpTransport {
     }
     private static ResourceAccessException timeout() {
         return new ResourceAccessException("Responses transport time limit exceeded", new SocketTimeoutException("Responses transport deadline"));
+    }
+    static ResourceAccessException transportFailure(Throwable failure) {
+        if (causedBy(failure, java.net.http.HttpTimeoutException.class)) return timeout();
+        return new ResourceAccessException("Responses transport unavailable");
     }
     private static LlmProviderException rejected() {
         return new LlmProviderException(LlmProviderException.Reason.REQUEST_REJECTED, "Responses transport byte contract exceeded");
