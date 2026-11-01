@@ -69,6 +69,42 @@ evidence gate as separate jobs. A single local Maven command does not by
 itself reproduce that complete split CI evidence. It creates no tag, branch,
 GitHub Release, container image or deployment.
 
+## Diagnosing interrupted release builds
+
+The existing release job observes the build in a separate native Actions
+background step. The preserved `release.sh` still runs directly and determines
+its own exit status. Diagnostic failures produce warnings and do not turn a
+failed release into a successful one.
+
+The dependency-free Java release tooling samples every 30 seconds, with at most
+601 samples and the 512 largest resident processes owned by the monitor’s user
+per sample. Its own JVM is
+limited to a 64 MiB heap. Numeric measurements include UTC time, the checked-out
+commit, PID/parent PID, CPU ticks, resident pages, available host memory, current
+cgroup v2 memory counters, and available disk bytes/inodes. Initial identity
+records the source commit, release version, run/attempt, page size and clock tick
+frequency. The current checkout may advance to a local release commit; it does
+not replace the original source identity. Procfs and local namespace monitor PIDs
+are recorded separately when they differ.
+
+Missing or unsupported counters are `null`, not zero. Cgroup measurements describe
+the monitor's current cgroup, not a claimed effective ancestor limit. Process
+names, command arguments, environment variables and arbitrary file contents are
+not captured. Compact numeric summaries also appear in the monitor's live log.
+
+The native cancel step stops only observation. Finalization and upload run on
+failure and in dry runs while the runner remains available. The seven-day
+`release-resources-<run>-<attempt>` artifact contains exactly `identity.json`,
+`metrics.jsonl` and `manifest.json`, stored under `RUNNER_TEMP` so Maven `clean`
+and checkout transitions do not remove them. The manifest reports completeness
+and hashes closed, finalized files. Without a terminal marker, metrics remain
+explicitly incomplete and have no claimed final checksum. A lost runner may
+prevent upload altogether. This evidence helps investigate an interruption; it
+does not itself establish an OOM, timeout, or successful release verification.
+
+Full build output and scenario/test logs remain subject to their existing
+retention; this numeric artifact does not archive them.
+
 ## States used by the publication state machine
 
 The profile defaults to `development`:
