@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PublicationProjectionBudget.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.publication</a> &gt; <span class="el_source">PublicationProjectionBudget.java</span></div><h1>PublicationProjectionBudget.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.publication;
+
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.extension.api.integration.PublicationContracts.*;
+import com.taxonomy.interop.IntegrationProblem;
+import com.taxonomy.interop.publication.PublicationEvidence.PublicationPreviewEnvelope;
+import java.time.Instant;
+import java.util.*;
+import static com.taxonomy.extension.api.integration.PublicationBounds.*;
+
+/** Reserves the bounded public evidence envelope before the journal accepts any effects. */
+public final class PublicationProjectionBudget {
+    private PublicationProjectionBudget() {}
+    public static void require(PublicationPreviewEnvelope preview, PublicationReview review, PublicationPlan plan) {
+        try {
+            // Quotes are legal opaque token characters and require two JSON bytes each.
+            // Identities/provider/scope are already frozen; only genuinely variable token fields
+            // reserve their contract maximum. Receipts occur in outcomes and completion.
+<span class="fc" id="L19">            String token = &quot;\&quot;&quot;.repeat(2048), digest = &quot;f&quot;.repeat(64), code = &quot;X&quot;.repeat(100);</span>
+<span class="fc" id="L20">            var resources = new TreeMap&lt;String, ResourceState&gt;();</span>
+<span class="fc" id="L21">            plan.remoteBefore().resources().forEach((id, state) -&gt; resources.put(id, state));</span>
+<span class="fc" id="L22">            PublicationDigests.items(plan.remoteTarget()).values().forEach(a -&gt; resources.put(a.id(), new ResourceState(a.id(), true, token, digest)));</span>
+<span class="fc" id="L23">            var receipts = new ArrayList&lt;PublicationReceipt&gt;(); var outcomes = new ArrayList&lt;PublicationItemOutcome&gt;();</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">            for (var item : plan.items()) {</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">                var resource = item.mutation() == MutationKind.DELETE ? new ResourceState(item.resourceId(), false, null, null) : resources.get(item.resourceId());</span>
+<span class="fc" id="L26">                resources.put(item.resourceId(), resource);</span>
+<span class="fc" id="L27">                var receipt = new PublicationReceipt(1, plan.capabilities().contractVersion(), plan.capabilities().provider(), plan.capabilities().scope(), plan.operationId(), item.itemId(), item.idempotencyKey(), plan.planFingerprint(), digest, ReceiptState.APPLIED, Long.MAX_VALUE, true, token, token, resource, code, Instant.MAX);</span>
+<span class="fc" id="L28">                receipts.add(receipt); outcomes.add(new PublicationItemOutcome(item.itemId(), item.resourceId(), item.mutation(), ItemState.ACKNOWLEDGED, MAX_ATTEMPTS, code, receipt));</span>
+<span class="fc" id="L29">            }</span>
+<span class="fc" id="L30">            var after = new ScopeSnapshot(1, plan.capabilities().provider(), plan.capabilities().scope(), token, digest, true, plan.remoteTarget(), resources);</span>
+<span class="fc" id="L31">            var completion = new PublicationCompletion(1, plan.operationId(), plan.planFingerprint(), receipts, after, plan.context().internalState(), digest);</span>
+<span class="fc" id="L32">            var maximum = new PublicationOperation(1, plan.operationId(), plan.context().connectionId(), plan.operationId(), plan.mode(), PublicationPhase.LOCAL_CHECKPOINT_PENDING, OperationStatus.COMPLETED, plan.planFingerprint(), plan.reviewFingerprint(), preview.publicPreview(), outcomes, completion, plan.operationId(), plan.operationId(), plan.context().internalState(), outcomes.size(), 0, 0, Set.of(PublicationAction.values()), code, review, preview.request().scope(), preview.request().expectedExternalRevision(), plan.requestFingerprint());</span>
+            // Room for the resulting local checkpoint token and fixed scalar state changes.
+<span class="fc" id="L34">            bounded(MAX_DOCUMENT_BYTES - 8192, maximum);</span>
+<span class="fc" id="L35">        } catch (IllegalArgumentException tooLarge) {</span>
+<span class="fc" id="L36">            throw new IntegrationProblem(&quot;PUBLICATION_PROJECTION_LIMIT&quot;, 422, &quot;The complete publication evidence exceeds the bounded response budget&quot;);</span>
+<span class="fc" id="L37">        }</span>
+<span class="fc" id="L38">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

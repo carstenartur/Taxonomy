@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>InProcessAnalysisOperation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag.inprocess</a> &gt; <span class="el_source">InProcessAnalysisOperation.java</span></div><h1>InProcessAnalysisOperation.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag.inprocess;
+
+import com.taxonomy.analysis.dag.AnalysisCompletionMessage;
+import com.taxonomy.analysis.dag.AnalysisEventPublisher;
+import com.taxonomy.analysis.dag.AnalysisMessageFactory;
+import com.taxonomy.analysis.dag.AnalysisOperationContext;
+import com.taxonomy.analysis.dag.AnalysisProgressPhase;
+import com.taxonomy.analysis.dag.AnalysisTaskGraph;
+import com.taxonomy.analysis.dag.AnalysisTaskHandler;
+import com.taxonomy.analysis.dag.AnalysisTaskId;
+import com.taxonomy.analysis.dag.AnalysisTaskType;
+import com.taxonomy.analysis.dag.RelationAnalysisCompleted;
+import com.taxonomy.analysis.dag.RelationAnalysisTask;
+import com.taxonomy.analysis.dag.SubtaxonomyAnalysisCompleted;
+import com.taxonomy.analysis.dag.SubtaxonomyAnalysisTask;
+import com.taxonomy.analysis.dag.TaxonomyShardRoot;
+
+import java.time.Clock;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+
+/**
+ * Thread-confined coordinator of one analysis operation's task graph for the
+ * single-node compatibility path.
+ *
+ * &lt;p&gt;The coordinator dispatches ready tasks in deterministic graph order through
+ * an {@link InProcessAnalysisTaskTransport}, records completions idempotently by
+ * task identity, emits known-total progress and stops dispatching after a
+ * cooperative stop. It is bound to the creating thread like
+ * {@code AnalysisRunControl}; it is not a cluster authority.&lt;/p&gt;
+ */
+public final class InProcessAnalysisOperation implements AutoCloseable {
+
+<span class="fc" id="L41">    private static final ThreadLocal&lt;InProcessAnalysisOperation&gt; CURRENT = new ThreadLocal&lt;&gt;();</span>
+
+    private final InProcessAnalysisOperation previous;
+    private final AnalysisMessageFactory messages;
+    private final AnalysisEventPublisher events;
+<span class="fc" id="L46">    private final Map&lt;AnalysisTaskId, AnalysisCompletionMessage&gt; completions = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L47">    private final Set&lt;AnalysisTaskId&gt; dispatched = new LinkedHashSet&lt;&gt;();</span>
+    private AnalysisTaskGraph graph;
+    private long sequence;
+    private boolean stopped;
+    private boolean closed;
+
+<span class="fc" id="L53">    private InProcessAnalysisOperation(AnalysisOperationContext context, AnalysisEventPublisher events, Clock clock) {</span>
+<span class="fc" id="L54">        this.messages = new AnalysisMessageFactory(context, clock);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        this.events = events == null ? AnalysisEventPublisher.NONE : events;</span>
+<span class="fc" id="L56">        this.previous = CURRENT.get();</span>
+<span class="fc" id="L57">        CURRENT.set(this);</span>
+<span class="fc" id="L58">    }</span>
+
+    /** Bind a new operation to the current thread until {@link #close()}. */
+    public static InProcessAnalysisOperation open(AnalysisOperationContext context, AnalysisEventPublisher events) {
+<span class="fc" id="L62">        return open(context, events, Clock.systemUTC());</span>
+    }
+
+    public static InProcessAnalysisOperation open(AnalysisOperationContext context, AnalysisEventPublisher events,
+                                                  Clock clock) {
+<span class="fc" id="L67">        return new InProcessAnalysisOperation(Objects.requireNonNull(context, &quot;context&quot;), events, clock);</span>
+    }
+
+    public static Optional&lt;InProcessAnalysisOperation&gt; current() {
+<span class="fc" id="L71">        return Optional.ofNullable(CURRENT.get());</span>
+    }
+
+    public AnalysisOperationContext context() {
+<span class="fc" id="L75">        return messages.operation();</span>
+    }
+
+    public Optional&lt;AnalysisTaskGraph&gt; graph() {
+<span class="fc" id="L79">        return Optional.ofNullable(graph);</span>
+    }
+
+    /** True when this operation has not yet planned scoring work and can therefore adopt a plan. */
+    public boolean canPlan() {
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        return graph == null;</span>
+    }
+
+    /** Plan the operation's graph exactly once. */
+    public AnalysisTaskGraph plan(Collection&lt;TaxonomyShardRoot&gt; orderedRoots, boolean includeRelations) {
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (graph != null) throw new IllegalStateException(&quot;Operation graph is already planned&quot;);</span>
+<span class="fc" id="L90">        graph = AnalysisTaskGraph.plan(context().operationId(), orderedRoots, includeRelations);</span>
+<span class="fc" id="L91">        progress(AnalysisProgressPhase.PLANNED, null);</span>
+<span class="fc" id="L92">        return graph;</span>
+    }
+
+    /**
+     * Dispatch all ready sub-taxonomy tasks in plan order; stop dispatching after a
+     * completion that stops the operation. Returns the completions observed.
+     */
+    public List&lt;SubtaxonomyAnalysisCompleted&gt; runSubtaxonomyTasks(
+            AnalysisTaskHandler&lt;SubtaxonomyAnalysisTask, SubtaxonomyAnalysisCompleted&gt; handler) {
+<span class="fc" id="L101">        requirePlanned();</span>
+<span class="fc" id="L102">        var observed = new ArrayList&lt;SubtaxonomyAnalysisCompleted&gt;();</span>
+<span class="fc" id="L103">        var transport = new InProcessAnalysisTaskTransport(handler, null, completion -&gt; {</span>
+<span class="fc" id="L104">            record(completion);</span>
+<span class="fc" id="L105">            observed.add((SubtaxonomyAnalysisCompleted) completion);</span>
+<span class="fc" id="L106">        });</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        for (AnalysisTaskGraph.Node node : graph.ready(AnalysisTaskType.SUBTAXONOMY_ANALYSIS,</span>
+<span class="fc" id="L108">                completions.keySet(), dispatched)) {</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            if (stopped) break;</span>
+<span class="fc" id="L110">            dispatch(transport, node);</span>
+<span class="fc" id="L111">        }</span>
+<span class="fc" id="L112">        return List.copyOf(observed);</span>
+    }
+
+    /**
+     * Dispatch ready relation tasks. When scoring was produced outside this graph,
+     * a relation-only plan over {@code targetRoots} is adopted first.
+     */
+    public List&lt;RelationAnalysisCompleted&gt; runRelationTasks(
+            Collection&lt;TaxonomyShardRoot&gt; targetRoots,
+            AnalysisTaskHandler&lt;RelationAnalysisTask, RelationAnalysisCompleted&gt; handler) {
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        if (graph == null) {</span>
+<span class="fc" id="L123">            graph = AnalysisTaskGraph.relationsOnly(context().operationId(), targetRoots);</span>
+<span class="fc" id="L124">            progress(AnalysisProgressPhase.PLANNED, null);</span>
+        }
+<span class="fc" id="L126">        var observed = new ArrayList&lt;RelationAnalysisCompleted&gt;();</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (stopped) return List.of();</span>
+<span class="fc" id="L128">        var transport = new InProcessAnalysisTaskTransport(null, handler, completion -&gt; {</span>
+<span class="fc" id="L129">            record(completion);</span>
+<span class="fc" id="L130">            observed.add((RelationAnalysisCompleted) completion);</span>
+<span class="fc" id="L131">        });</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        for (AnalysisTaskGraph.Node node : graph.ready(AnalysisTaskType.RELATION_ANALYSIS,</span>
+<span class="fc" id="L133">                completions.keySet(), dispatched)) {</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">            if (stopped) break;</span>
+<span class="fc" id="L135">            dispatch(transport, node);</span>
+<span class="fc" id="L136">        }</span>
+<span class="fc" id="L137">        return List.copyOf(observed);</span>
+    }
+
+    private void dispatch(InProcessAnalysisTaskTransport transport, AnalysisTaskGraph.Node node) {
+<span class="fc" id="L141">        dispatched.add(node.id());</span>
+<span class="fc" id="L142">        progress(AnalysisProgressPhase.TASK_DISPATCHED, node);</span>
+<span class="fc" id="L143">        transport.publish(messages.task(node));</span>
+<span class="fc" id="L144">    }</span>
+
+    private void record(AnalysisCompletionMessage completion) {
+<span class="fc" id="L147">        AnalysisCompletionMessage existing = completions.putIfAbsent(completion.taskId(), completion);</span>
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">        if (existing != null) return;</span>
+<span class="fc" id="L149">        var node = graph.node(completion.taskId()).orElseThrow(</span>
+<span class="nc" id="L150">                () -&gt; new IllegalStateException(&quot;Completion for an unplanned task&quot;));</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        if (completion.stopsOperation()) {</span>
+<span class="fc" id="L152">            stopped = true;</span>
+<span class="fc" id="L153">            progress(AnalysisProgressPhase.TASK_COMPLETED, node);</span>
+<span class="fc" id="L154">            progress(AnalysisProgressPhase.OPERATION_STOPPED, null);</span>
+<span class="fc" id="L155">            return;</span>
+        }
+<span class="fc" id="L157">        progress(AnalysisProgressPhase.TASK_COMPLETED, node);</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        if (completions.size() == graph.totalTasks()) {</span>
+<span class="fc" id="L159">            progress(AnalysisProgressPhase.OPERATION_COMPLETED, null);</span>
+        }
+<span class="fc" id="L161">    }</span>
+
+    private void progress(AnalysisProgressPhase phase, AnalysisTaskGraph.Node node) {
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">        int total = graph == null ? 0 : graph.totalTasks();</span>
+<span class="fc" id="L165">        events.progress(messages.progress(++sequence, phase, node, Math.min(completions.size(), total), total));</span>
+<span class="fc" id="L166">    }</span>
+
+    private void requirePlanned() {
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">        if (graph == null) throw new IllegalStateException(&quot;Operation graph is not planned&quot;);</span>
+<span class="fc" id="L170">    }</span>
+
+    public AnalysisMessageFactory messages() {
+<span class="fc" id="L173">        return messages;</span>
+    }
+
+    /** Recorded completions in completion order. */
+    public Map&lt;AnalysisTaskId, AnalysisCompletionMessage&gt; completions() {
+<span class="fc" id="L178">        return java.util.Collections.unmodifiableMap(new LinkedHashMap&lt;&gt;(completions));</span>
+    }
+
+    /** Dispatched task identities in dispatch order. */
+    public Set&lt;AnalysisTaskId&gt; dispatched() {
+<span class="fc" id="L183">        return java.util.Collections.unmodifiableSet(new LinkedHashSet&lt;&gt;(dispatched));</span>
+    }
+
+    public boolean stopped() {
+<span class="fc" id="L187">        return stopped;</span>
+    }
+
+    @Override
+    public void close() {
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">        if (closed) return;</span>
+<span class="fc" id="L193">        closed = true;</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">        if (CURRENT.get() == this) {</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">            if (previous == null) CURRENT.remove();</span>
+<span class="fc" id="L196">            else CURRENT.set(previous);</span>
+        }
+<span class="fc" id="L198">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

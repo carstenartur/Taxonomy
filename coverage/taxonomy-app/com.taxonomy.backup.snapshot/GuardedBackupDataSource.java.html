@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GuardedBackupDataSource.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.snapshot</a> &gt; <span class="el_source">GuardedBackupDataSource.java</span></div><h1>GuardedBackupDataSource.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.snapshot;
+
+import com.taxonomy.backup.BackupScope;
+import com.taxonomy.backup.BackupWriteBarrier;
+import org.springframework.jdbc.datasource.AbstractDataSource;
+
+import javax.sql.DataSource;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.sql.*;
+import java.util.Locale;
+import java.util.Objects;
+
+/**
+ * Covers ORM and independent native/JGit transactions at the common JDBC boundary.
+ * Autocommit mutations become a short explicit transaction so the generation check
+ * and commit cannot race maintenance acquisition. Runtime DDL and SQL transaction
+ * commands are rejected; schema migration is a separate startup maintenance step.
+ */
+public final class GuardedBackupDataSource extends AbstractDataSource implements AutoCloseable {
+    private final DataSource database;
+    private final BackupMaintenanceLease barrier;
+    private volatile BackupMaintenanceLease.StartupMaintenance startup;
+
+    public GuardedBackupDataSource(DataSource database, BackupMaintenanceLease barrier) {
+<span class="fc" id="L28">        this(database, barrier, null);</span>
+<span class="fc" id="L29">    }</span>
+
+    public GuardedBackupDataSource(DataSource database, BackupMaintenanceLease barrier,
+<span class="fc" id="L32">                                  BackupMaintenanceLease.StartupMaintenance startup) {</span>
+<span class="fc" id="L33">        this.database = Objects.requireNonNull(database); this.barrier = Objects.requireNonNull(barrier);</span>
+<span class="fc" id="L34">        this.startup = startup;</span>
+<span class="fc" id="L35">    }</span>
+
+    public void finishStartup() {
+<span class="fc" id="L38">        var held = startup;</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">        if (held == null) return;</span>
+<span class="fc" id="L40">        held.successful(); startup = null;</span>
+<span class="fc" id="L41">    }</span>
+
+<span class="fc" id="L43">    BackupMaintenanceLease coordinator() { return barrier; }</span>
+
+    org.springframework.boot.jdbc.metadata.DataSourcePoolMetadata poolMetadata() {
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">        return database instanceof com.zaxxer.hikari.HikariDataSource pool</span>
+<span class="pc" id="L47">                ? new org.springframework.boot.jdbc.metadata.HikariDataSourcePoolMetadata(pool) : null;</span>
+    }
+
+    @Override public void close() throws Exception {
+        // Failed initialization deliberately does not release its non-expiring DDL hold.
+<span class="nc bnc" id="L52" title="All 2 branches missed.">        if (database instanceof AutoCloseable closeable) closeable.close();</span>
+<span class="nc" id="L53">    }</span>
+
+<span class="fc" id="L55">    @Override public Connection getConnection() throws SQLException { return guard(database.getConnection()); }</span>
+<span class="nc" id="L56">    @Override public Connection getConnection(String username, String password) throws SQLException { return guard(database.getConnection(username, password)); }</span>
+    @Override public &lt;T&gt; T unwrap(Class&lt;T&gt; type) throws SQLException {
+<span class="nc bnc" id="L58" title="All 2 branches missed.">        if (type.isInstance(this)) return type.cast(this);</span>
+<span class="nc" id="L59">        throw new SQLException(&quot;Unwrapping the backup persistence boundary is not supported&quot;);</span>
+    }
+<span class="fc" id="L61">    @Override public boolean isWrapperFor(Class&lt;?&gt; type) { return type.isInstance(this); }</span>
+
+    private Connection guard(Connection raw) {
+<span class="fc" id="L64">        var handler = new GuardedConnection(raw);</span>
+<span class="fc" id="L65">        handler.proxy = proxy(Connection.class, handler);</span>
+<span class="fc" id="L66">        return handler.proxy;</span>
+    }
+
+    private final class GuardedConnection implements InvocationHandler {
+        private final Connection raw;
+        private Connection proxy;
+        private BackupWriteBarrier.Section section;
+        private final BackupMaintenanceLease.StartupMaintenance bootstrap;
+        private boolean bootstrapWrites;
+<span class="fc" id="L75">        GuardedConnection(Connection raw) { this.raw = raw; this.bootstrap = startup; }</span>
+
+        @Override public Object invoke(Object receiver, Method method, Object[] args) throws Throwable {
+<span class="fc" id="L78">            String name = method.getName();</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">            if (name.equals(&quot;unwrap&quot;)) return unwrapProxy(receiver, (Class&lt;?&gt;) args[0]);</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">            if (name.equals(&quot;isWrapperFor&quot;)) return ((Class&lt;?&gt;) args[0]).isInstance(receiver);</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">            if (name.equals(&quot;toString&quot;)) return &quot;BackupGuardedConnection&quot;;</span>
+<span class="fc bfc" id="L82" title="All 8 branches covered.">            if (name.equals(&quot;commit&quot;) || (name.equals(&quot;setAutoCommit&quot;) &amp;&amp; Boolean.TRUE.equals(args[0]) &amp;&amp; !raw.getAutoCommit())) {</span>
+                try {
+<span class="fc bfc" id="L84" title="All 2 branches covered.">                    if (section != null) barrier.fenceCommit(raw, section);</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                    if (bootstrapWrites) barrier.fenceStartupCommit(raw, bootstrap);</span>
+<span class="fc" id="L86">                    return call(raw, method, args);</span>
+<span class="fc" id="L87">                } catch (Throwable failure) {</span>
+<span class="pc" id="L88">                    try { raw.rollback(); } catch (SQLException rollback) { failure.addSuppressed(rollback); }</span>
+<span class="fc" id="L89">                    throw sqlFailure(failure);</span>
+<span class="fc" id="L90">                } finally { release(); }</span>
+            }
+<span class="pc bpc" id="L92" title="3 of 6 branches missed.">            if (name.equals(&quot;rollback&quot;) &amp;&amp; (args == null || args.length == 0)) {</span>
+<span class="fc" id="L93">                try { return call(raw, method, args); } finally { release(); }</span>
+            }
+<span class="pc bpc" id="L95" title="1 of 4 branches missed.">            if (name.equals(&quot;close&quot;) || name.equals(&quot;abort&quot;)) {</span>
+                // Return the application connection before lease cleanup borrows another.
+<span class="fc" id="L97">                try { return call(raw, method, args); } finally { release(); }</span>
+            }
+<span class="fc" id="L99">            Object result = call(raw, method, args);</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            if (result instanceof Statement statement) {</span>
+<span class="pc bpc" id="L101" title="2 of 6 branches missed.">                String sql = args != null &amp;&amp; args.length &gt; 0 &amp;&amp; args[0] instanceof String text ? text : null;</span>
+<span class="fc" id="L102">                return guardStatement(statement, sql);</span>
+            }
+<span class="fc bfc" id="L104" title="All 2 branches covered.">            if (result instanceof DatabaseMetaData metadata) {</span>
+<span class="fc" id="L105">                return proxy(DatabaseMetaData.class, (metadataProxy, operation, values) -&gt; {</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">                    if (operation.getName().equals(&quot;getConnection&quot;)) return proxy;</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">                    if (operation.getName().equals(&quot;unwrap&quot;)) return unwrapProxy(metadataProxy, (Class&lt;?&gt;) values[0]);</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">                    if (operation.getName().equals(&quot;isWrapperFor&quot;)) return ((Class&lt;?&gt;) values[0]).isInstance(metadataProxy);</span>
+<span class="fc" id="L109">                    Object value = call(metadata, operation, values);</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">                    return value instanceof ResultSet rows</span>
+<span class="fc" id="L111">                            ? guardRows(rows, guardStatement(rows.getStatement(), null)) : value;</span>
+                });
+            }
+<span class="fc" id="L114">            return result;</span>
+        }
+
+        private Statement guardStatement(Statement statement, String sql) {
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">            if (statement == null) return null;</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            Class&lt;? extends Statement&gt; type = statement instanceof CallableStatement ? CallableStatement.class</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                    : statement instanceof PreparedStatement ? PreparedStatement.class : Statement.class;</span>
+<span class="fc" id="L121">            return proxy(type, (statementProxy, operation, values) -&gt; statement(statement, statementProxy, sql, operation, values));</span>
+        }
+
+        private Object statement(Statement rawStatement, Object statementProxy, String preparedSql, Method operation, Object[] args) throws Throwable {
+<span class="fc" id="L125">            String name = operation.getName();</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            if (name.equals(&quot;getConnection&quot;)) return proxy;</span>
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">            if (name.equals(&quot;unwrap&quot;)) return unwrapProxy(statementProxy, (Class&lt;?&gt;) args[0]);</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">            if (name.equals(&quot;isWrapperFor&quot;)) return ((Class&lt;?&gt;) args[0]).isInstance(statementProxy);</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">            if (name.equals(&quot;toString&quot;)) return &quot;BackupGuardedStatement&quot;;</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">            String sql = preparedSql != null ? preparedSql</span>
+<span class="pc bpc" id="L131" title="1 of 6 branches missed.">                    : args != null &amp;&amp; args.length &gt; 0 &amp;&amp; args[0] instanceof String text ? text : null;</span>
+<span class="fc bfc" id="L132" title="All 4 branches covered.">            if (name.equals(&quot;addBatch&quot;) &amp;&amp; bootstrap == null) requireRuntimeSql(sql);</span>
+<span class="fc" id="L133">            boolean execute = name.startsWith(&quot;execute&quot;);</span>
+<span class="fc bfc" id="L134" title="All 6 branches covered.">            boolean mutating = execute &amp;&amp; (name.contains(&quot;Batch&quot;) || !readOnly(sql));</span>
+<span class="fc bfc" id="L135" title="All 4 branches covered.">            if (execute &amp;&amp; bootstrap == null) requireRuntimeSql(sql);</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">            Object result = mutating ? mutation(() -&gt; call(rawStatement, operation, args)) : call(rawStatement, operation, args);</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">            if (result instanceof ResultSet rows) return guardRows(rows, statementProxy);</span>
+<span class="fc" id="L138">            return result;</span>
+        }
+
+        private ResultSet guardRows(ResultSet rows, Object statement) {
+<span class="fc" id="L142">            return proxy(ResultSet.class, (rowsProxy, operation, args) -&gt; {</span>
+<span class="fc" id="L143">                String name = operation.getName();</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                if (name.equals(&quot;getStatement&quot;)) return statement;</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">                if (name.equals(&quot;unwrap&quot;)) return unwrapProxy(rowsProxy, (Class&lt;?&gt;) args[0]);</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">                if (name.equals(&quot;isWrapperFor&quot;)) return ((Class&lt;?&gt;) args[0]).isInstance(rowsProxy);</span>
+<span class="pc bpc" id="L147" title="3 of 6 branches missed.">                if (name.startsWith(&quot;update&quot;) || name.equals(&quot;insertRow&quot;) || name.equals(&quot;deleteRow&quot;))</span>
+<span class="nc" id="L148">                    throw new SQLException(&quot;Use a guarded prepared statement for database writes&quot;);</span>
+<span class="fc" id="L149">                return guardLocator(call(rows, operation, args));</span>
+            });
+        }
+
+        private Object guardLocator(Object value) {
+<span class="pc bpc" id="L154" title="1 of 4 branches missed.">            Class&lt;?&gt; type = value instanceof NClob ? NClob.class : value instanceof Clob ? Clob.class</span>
+<span class="pc bpc" id="L155" title="1 of 4 branches missed.">                    : value instanceof Blob ? Blob.class : value instanceof SQLXML ? SQLXML.class</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">                    : value instanceof java.sql.Array ? java.sql.Array.class : null;</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (type == null) return value;</span>
+<span class="fc" id="L158">            return proxy(type, (locator, operation, args) -&gt; {</span>
+<span class="fc" id="L159">                String name = operation.getName();</span>
+<span class="pc bpc" id="L160" title="1 of 4 branches missed.">                if (name.startsWith(&quot;set&quot;) || name.equals(&quot;truncate&quot;))</span>
+<span class="fc" id="L161">                    throw new SQLException(&quot;Use a guarded prepared statement for database writes&quot;);</span>
+<span class="fc" id="L162">                Object result = call(value, operation, args);</span>
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">                return result instanceof ResultSet rows</span>
+<span class="pc" id="L164">                        ? guardRows(rows, guardStatement(rows.getStatement(), null)) : result;</span>
+            });
+        }
+
+        private Object mutation(Execution execution) throws Throwable {
+<span class="fc" id="L169">            boolean auto = raw.getAutoCommit();</span>
+            try {
+<span class="fc bfc" id="L171" title="All 2 branches covered.">                if (bootstrap != null) {</span>
+<span class="fc" id="L172">                    bootstrap.checkValid(); bootstrapWrites = true;</span>
+                } else {
+<span class="fc bfc" id="L174" title="All 2 branches covered.">                    if (section == null) section = barrier.enter(new BackupScope.Installation());</span>
+<span class="fc" id="L175">                    section.checkValid();</span>
+                }
+<span class="fc bfc" id="L177" title="All 2 branches covered.">                if (auto) raw.setAutoCommit(false);</span>
+<span class="fc" id="L178">                Object result = execution.run();</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">                if (auto) {</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">                    if (bootstrap != null) barrier.fenceStartupCommit(raw, bootstrap);</span>
+<span class="fc" id="L181">                    else barrier.fenceCommit(raw, section);</span>
+<span class="fc" id="L182">                    raw.commit();</span>
+                }
+<span class="fc" id="L184">                return result;</span>
+<span class="fc" id="L185">            } catch (Throwable failure) {</span>
+<span class="pc" id="L186">                try { raw.rollback(); } catch (SQLException rollback) { failure.addSuppressed(rollback); }</span>
+<span class="fc" id="L187">                release();</span>
+<span class="fc" id="L188">                throw sqlFailure(failure);</span>
+            } finally {
+<span class="fc bfc" id="L190" title="All 2 branches covered.">                if (auto) { try { raw.setAutoCommit(true); } finally { release(); } }</span>
+            }
+        }
+
+        private void release() throws SQLException {
+<span class="fc" id="L195">            bootstrapWrites = false;</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">            if (section == null) return;</span>
+<span class="fc" id="L197">            var previous = section; section = null;</span>
+<span class="fc" id="L198">            try { previous.close(); }</span>
+<span class="pc" id="L199">            catch (RuntimeException failure) { throw new SQLException(&quot;Cannot release backup writer lease&quot;, failure); }</span>
+<span class="fc" id="L200">        }</span>
+    }
+
+    private static boolean readOnly(String sql) {
+<span class="fc" id="L204">        String command = command(sql);</span>
+<span class="pc bpc" id="L205" title="2 of 6 branches missed.">        return command.startsWith(&quot;SELECT &quot;) || command.startsWith(&quot;VALUES &quot;) || command.startsWith(&quot;VALUES(&quot;);</span>
+    }
+
+    private static void requireRuntimeSql(String sql) throws SQLException {
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">        if (sql == null) return; // Prepared batch: each added command has already been checked.</span>
+<span class="fc" id="L210">        String command = command(sql);</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">        if (!command.matches(&quot;(?s)^(SELECT|VALUES|INSERT|UPDATE|DELETE|MERGE|WITH)\\b.*&quot;)</span>
+<span class="fc bfc" id="L212" title="All 4 branches covered.">                || command.contains(&quot;;&quot;) || command.matches(&quot;(?s)^SELECT\\b.*\\bINTO\\b.*&quot;))</span>
+<span class="fc" id="L213">            throw new SQLException(&quot;Native procedures, schema and SQL transaction commands require startup maintenance&quot;);</span>
+<span class="fc" id="L214">    }</span>
+
+    private static String command(String sql) {
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">        if (sql == null) return &quot;&quot;;</span>
+<span class="fc" id="L218">        String command = sql.stripLeading();</span>
+        while (true) {
+<span class="fc bfc" id="L220" title="All 2 branches covered.">            if (command.startsWith(&quot;/*&quot;)) {</span>
+<span class="fc" id="L221">                int end = command.indexOf(&quot;*/&quot;, 2);</span>
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">                if (end &lt; 0) return &quot;&quot;;</span>
+<span class="fc" id="L223">                command = command.substring(end + 2).stripLeading();</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">            } else if (command.startsWith(&quot;--&quot;)) {</span>
+<span class="fc" id="L225">                int end = command.indexOf('\n');</span>
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">                if (end &lt; 0) return &quot;&quot;;</span>
+<span class="fc" id="L227">                command = command.substring(end + 1).stripLeading();</span>
+<span class="fc" id="L228">            } else return command.toUpperCase(Locale.ROOT).replaceAll(&quot;\\s+&quot;, &quot; &quot;);</span>
+        }
+    }
+
+    private static Object unwrapProxy(Object proxy, Class&lt;?&gt; type) throws SQLException {
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">        if (type.isInstance(proxy)) return proxy;</span>
+<span class="nc" id="L234">        throw new SQLException(&quot;Unwrapping the backup persistence boundary is not supported&quot;);</span>
+    }
+    private static Throwable sqlFailure(Throwable failure) {
+<span class="fc bfc" id="L237" title="All 2 branches covered.">        return failure instanceof RuntimeException ? new SQLException(failure.getMessage(), &quot;55000&quot;, failure) : failure;</span>
+    }
+    private static Object call(Object receiver, Method method, Object[] args) throws Throwable {
+<span class="fc" id="L240">        try { return method.invoke(receiver, args); }</span>
+<span class="fc" id="L241">        catch (InvocationTargetException failure) { throw failure.getCause(); }</span>
+    }
+    private static &lt;T&gt; T proxy(Class&lt;T&gt; type, InvocationHandler handler) {
+<span class="fc" id="L244">        return type.cast(Proxy.newProxyInstance(GuardedBackupDataSource.class.getClassLoader(), new Class&lt;?&gt;[]{type},</span>
+                (receiver, method, args) -&gt; {
+<span class="fc bfc" id="L246" title="All 2 branches covered.">                    if (method.getDeclaringClass() == Object.class) {</span>
+<span class="pc bpc" id="L247" title="3 of 4 branches missed.">                        return switch (method.getName()) {</span>
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">                            case &quot;equals&quot; -&gt; receiver == args[0];</span>
+<span class="nc" id="L249">                            case &quot;hashCode&quot; -&gt; System.identityHashCode(receiver);</span>
+                            // Driver strings may contain SQL, credentials or LOB contents.
+<span class="nc" id="L251">                            case &quot;toString&quot; -&gt; &quot;BackupGuarded&quot; + type.getSimpleName();</span>
+<span class="nc" id="L252">                            default -&gt; throw new IllegalStateException(&quot;Unknown Object method&quot;);</span>
+                        };
+                    }
+<span class="fc" id="L255">                    return handler.invoke(receiver, method, args);</span>
+                }));
+    }
+    @FunctionalInterface private interface Execution { Object run() throws Throwable; }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

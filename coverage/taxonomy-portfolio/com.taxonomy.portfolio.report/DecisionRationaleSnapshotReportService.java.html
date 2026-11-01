@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionRationaleSnapshotReportService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.report</a> &gt; <span class="el_source">DecisionRationaleSnapshotReportService.java</span></div><h1>DecisionRationaleSnapshotReportService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.report;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions;
+import com.taxonomy.architecture.decision.DecisionRationaleReportService;
+import com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter;
+import com.taxonomy.architecture.decision.DecisionRationaleReportService.AnalysisSnapshotProvenance;
+import com.taxonomy.architecture.decision.DecisionRationaleReportService.DecisionAnalysisInput;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisLanguage;
+import com.taxonomy.reporting.render.decision.DecisionReportLanguage;
+import com.taxonomy.dto.AnalysisScoreDetail;
+import com.taxonomy.dto.ViewContext;
+import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
+import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.PortfolioJsonCodec;
+import com.taxonomy.portfolio.service.PortfolioScope;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Replays one immutable, tenant-scoped requirement-analysis snapshot into the
+ * decision-rationale report family.
+ *
+ * &lt;p&gt;The hierarchy is read from the serialized {@link AnalysisResult}, not from the
+ * current catalogue. This keeps old reports reproducible after taxonomy updates and
+ * prevents a historical score map from being silently combined with a newer hierarchy.&lt;/p&gt;
+ */
+@Service
+public class DecisionRationaleSnapshotReportService {
+
+    private final RequirementAnalysisSnapshotRepository snapshotRepository;
+    private final PortfolioJsonCodec jsonCodec;
+    private final DecisionRationaleReportService reportService;
+    private final DecisionRationaleScoreSemanticsAdapter scoreSemanticsAdapter;
+
+    /** Backward-compatible constructor for focused unit tests. */
+    public DecisionRationaleSnapshotReportService(
+            RequirementAnalysisSnapshotRepository snapshotRepository,
+            PortfolioJsonCodec jsonCodec,
+            DecisionRationaleReportService reportService) {
+<span class="fc" id="L51">        this(snapshotRepository, jsonCodec, reportService,</span>
+                new DecisionRationaleScoreSemanticsAdapter());
+<span class="fc" id="L53">    }</span>
+
+    @Autowired
+    public DecisionRationaleSnapshotReportService(
+            RequirementAnalysisSnapshotRepository snapshotRepository,
+            PortfolioJsonCodec jsonCodec,
+            DecisionRationaleReportService reportService,
+<span class="fc" id="L60">            DecisionRationaleScoreSemanticsAdapter scoreSemanticsAdapter) {</span>
+<span class="fc" id="L61">        this.snapshotRepository = snapshotRepository;</span>
+<span class="fc" id="L62">        this.jsonCodec = jsonCodec;</span>
+<span class="fc" id="L63">        this.reportService = reportService;</span>
+<span class="fc" id="L64">        this.scoreSemanticsAdapter = scoreSemanticsAdapter;</span>
+<span class="fc" id="L65">    }</span>
+
+    @Transactional(readOnly = true)
+    public DecisionRationaleReport generate(
+            Long projectId,
+            String snapshotId,
+            String username,
+            WorkspaceContext workspaceContext,
+            Locale locale) {
+<span class="fc" id="L74">        return generate(projectId, snapshotId, username, workspaceContext, locale, null);</span>
+    }
+
+    @Transactional(readOnly = true)
+    public DecisionRationaleReport generate(Long projectId, String snapshotId, String username,
+            WorkspaceContext workspaceContext, Locale locale, DecisionReportOptions options) {
+<span class="fc" id="L80">        RequirementAnalysisSnapshot snapshot = loadSnapshot(projectId, snapshotId, username, workspaceContext);</span>
+<span class="fc" id="L81">        AnalysisResult analysis = jsonCodec.read(</span>
+<span class="fc" id="L82">                snapshot.getAnalysisPayload(), AnalysisResult.class);</span>
+<span class="pc bpc" id="L83" title="1 of 6 branches missed.">        if (analysis == null || analysis.getScores() == null || analysis.getScores().isEmpty()) {</span>
+<span class="fc" id="L84">            throw PortfolioException.conflict(</span>
+                    &quot;The analysis snapshot does not contain reportable score evidence&quot;);
+        }
+<span class="pc bpc" id="L87" title="1 of 4 branches missed.">        if (analysis.getTree() == null || analysis.getTree().isEmpty()) {</span>
+<span class="fc" id="L88">            throw PortfolioException.conflict(</span>
+                    &quot;The analysis snapshot predates frozen taxonomy-hierarchy evidence and cannot be rendered reproducibly&quot;);
+        }
+
+<span class="fc" id="L92">        Locale effectiveLocale = DecisionReportLanguage.resolve(locale, analysis.getAnalysisLanguage());</span>
+<span class="fc" id="L93">        Map&lt;String, AnalysisScoreDetail&gt; scoreDetails = analysis.getScoreDetails();</span>
+<span class="fc" id="L94">        ViewContext historicalViewContext = historicalViewContext(snapshot, analysis);</span>
+<span class="fc" id="L95">        AnalysisSnapshotProvenance provenance = new AnalysisSnapshotProvenance(</span>
+<span class="fc" id="L96">                snapshot.getId(),</span>
+<span class="fc" id="L97">                snapshot.getProjectId(),</span>
+<span class="fc" id="L98">                snapshot.getRequirementId(),</span>
+<span class="fc" id="L99">                snapshot.getRequirementVersionId(),</span>
+<span class="fc" id="L100">                snapshot.getRequirementVersion().getVersionNumber(),</span>
+<span class="fc" id="L101">                snapshot.getCreatedAt(),</span>
+<span class="fc" id="L102">                snapshot.getCreatedBy(),</span>
+<span class="fc" id="L103">                snapshot.getModelName(),</span>
+<span class="fc" id="L104">                snapshot.getTaxonomyFingerprint(),</span>
+<span class="fc" id="L105">                snapshot.getPromptFingerprint());</span>
+<span class="fc" id="L106">        DecisionAnalysisInput input = new DecisionAnalysisInput(</span>
+<span class="fc" id="L107">                snapshot.getRequirementVersion().getText(),</span>
+<span class="fc" id="L108">                analysis.getScores(),</span>
+<span class="fc" id="L109">                scoreSemanticsAdapter.enrichReasons(</span>
+<span class="fc" id="L110">                        analysis.getReasons(), scoreDetails, effectiveLocale),</span>
+<span class="fc" id="L111">                firstNonBlank(snapshot.getProvider(), analysis.getProvider()),</span>
+<span class="fc" id="L112">                snapshot.getStatus().name(),</span>
+<span class="fc" id="L113">                analysis.getDiscrepancies(),</span>
+<span class="fc" id="L114">                analysis.getProductCoverageGaps(),</span>
+<span class="fc" id="L115">                analysis.getTree(),</span>
+                provenance,
+<span class="fc" id="L117">                scoreDetails, analysis.getAnalysisDurationMillis()).withRecordedReasons(analysis.getReasons())</span>
+<span class="fc" id="L118">                .withScope(jsonCodec.readField(snapshot.getAnalysisPayload(), &quot;analysisScope&quot;, com.taxonomy.dto.AnalysisScope.class), analysis.getAnalysisCoverage())</span>
+<span class="fc" id="L119">                .withAnalysisReasonLength(analysis.getAnalysisReasonLength());</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        DecisionRationaleReport report = options == null</span>
+<span class="fc" id="L121">                ? reportService.generate(input, workspaceContext, historicalViewContext, effectiveLocale)</span>
+<span class="fc" id="L122">                : reportService.generate(input, workspaceContext, historicalViewContext, effectiveLocale, options);</span>
+<span class="fc" id="L123">        return scoreSemanticsAdapter.adapt(report, scoreDetails, effectiveLocale);</span>
+    }
+
+    /** Optional provenance for the export dialog; historical absence remains unknown. */
+    @Transactional(readOnly = true)
+    public AnalysisLanguage recordedAnalysisLanguage(Long projectId, String snapshotId, String username,
+            WorkspaceContext context) {
+<span class="nc" id="L130">        var snapshot = loadSnapshot(projectId, snapshotId, username, context);</span>
+<span class="nc" id="L131">        return jsonCodec.readField(snapshot.getAnalysisPayload(), &quot;analysisLanguage&quot;, AnalysisLanguage.class);</span>
+    }
+
+    private RequirementAnalysisSnapshot loadSnapshot(Long projectId, String snapshotId, String username,
+            WorkspaceContext context) {
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (projectId == null) throw PortfolioException.validation(&quot;projectId is required&quot;);</span>
+<span class="pc bpc" id="L137" title="1 of 4 branches missed.">        if (snapshotId == null || snapshotId.isBlank()) throw PortfolioException.validation(&quot;snapshotId is required&quot;);</span>
+<span class="fc" id="L138">        Objects.requireNonNull(context, &quot;workspaceContext must not be null&quot;);</span>
+<span class="fc" id="L139">        return snapshotRepository.findByIdAndProjectIdAndScopeKey(snapshotId.strip(), projectId, PortfolioScope.key(username, context))</span>
+<span class="fc" id="L140">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Analysis snapshot not found: &quot; + snapshotId));</span>
+    }
+
+    private ViewContext historicalViewContext(
+            RequirementAnalysisSnapshot snapshot,
+            AnalysisResult analysis) {
+<span class="fc" id="L146">        ViewContext original = analysis.getViewContext();</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        boolean matchingOriginal = original != null</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">                &amp;&amp; Objects.equals(original.basedOnCommit(), snapshot.getCommitSha())</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(original.basedOnBranch(), snapshot.getBranchName());</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">        Instant commitTimestamp = matchingOriginal ? original.commitTimestamp() : null;</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        boolean includesProvisional = matchingOriginal</span>
+<span class="fc" id="L152">                ? original.includesProvisionalRelations()</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">                : analysis.getProvisionalRelations() != null</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">                        &amp;&amp; !analysis.getProvisionalRelations().isEmpty();</span>
+<span class="fc" id="L155">        return new ViewContext(</span>
+<span class="fc" id="L156">                valueOrUnknown(snapshot.getCommitSha()),</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">                valueOrUnknown(snapshot.getBranchName()),</span>
+                commitTimestamp,
+                includesProvisional,
+<span class="fc bfc" id="L160" title="All 4 branches covered.">                matchingOriginal &amp;&amp; original.projectionStale(),</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">                matchingOriginal &amp;&amp; original.indexStale());</span>
+    }
+
+    private String firstNonBlank(String... values) {
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">        for (String value : values) {</span>
+<span class="pc bpc" id="L166" title="1 of 4 branches missed.">            if (value != null &amp;&amp; !value.isBlank()) {</span>
+<span class="fc" id="L167">                return value.strip();</span>
+            }
+        }
+<span class="nc" id="L170">        return &quot;unknown&quot;;</span>
+    }
+
+    private String valueOrUnknown(String value) {
+<span class="pc bpc" id="L174" title="1 of 4 branches missed.">        return value == null || value.isBlank() ? &quot;unknown&quot; : value.strip();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

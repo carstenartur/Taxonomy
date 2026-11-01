@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisSnapshotAdoption.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.command</a> &gt; <span class="el_source">AnalysisSnapshotAdoption.java</span></div><h1>AnalysisSnapshotAdoption.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.command;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.PropertyAst;
+import com.taxonomy.dsl.command.ArchitectureCommand.*;
+import com.taxonomy.dsl.model.TaxonomyRootTypes;
+import java.util.*;
+
+/** Frozen-source adoption only. Nothing here reads renderer or review-overlay state. */
+final class AnalysisSnapshotAdoption {
+    static final String RELATIONS = &quot;x-analysis-relation-members&quot;;
+    private AnalysisSnapshotAdoption() {}
+
+    static String apply(ArchitectureDslCommands commands, String source, AdoptAnalysisSnapshot adoption) {
+<span class="pc bpc" id="L15" title="3 of 6 branches missed.">        if (adoption.elements().isEmpty() || adoption.elements().size() &gt; 2000 || adoption.relations().size() &gt; 10000)</span>
+<span class="nc" id="L16">            throw problem(&quot;ITEM_LIMIT&quot;, &quot;Snapshot must contain 1–2000 elements and at most 10000 relations&quot;);</span>
+<span class="pc bpc" id="L17" title="2 of 4 branches missed.">        if (adoption.viewId() == null || !adoption.viewId().matches(&quot;analysis-[A-Za-z0-9.-]{1,100}&quot;)</span>
+<span class="pc bpc" id="L18" title="2 of 4 branches missed.">                || adoption.graphFingerprint() == null || !adoption.graphFingerprint().matches(&quot;[a-f0-9]{64}&quot;))</span>
+<span class="nc" id="L19">            throw problem(&quot;INVALID_VALUE&quot;, &quot;Snapshot view identity and graph fingerprint are required&quot;);</span>
+<span class="pc bpc" id="L20" title="1 of 2 branches missed.">        if (adoption.provenance().size() &gt; 32) throw problem(&quot;ITEM_LIMIT&quot;, &quot;Too much source metadata&quot;);</span>
+<span class="fc" id="L21">        adoption.provenance().forEach((key, value) -&gt; {</span>
+<span class="pc bpc" id="L22" title="3 of 6 branches missed.">            if (!key.matches(&quot;x-analysis-[a-z-]{1,60}&quot;) || value.length() &gt; 8000 || value.chars().anyMatch(Character::isISOControl))</span>
+<span class="nc" id="L23">                throw problem(&quot;INVALID_VALUE&quot;, &quot;Source metadata must be bounded analysis provenance&quot;);</span>
+<span class="fc" id="L24">        });</span>
+        // Validate strings even when an existing edited object will be reused.
+<span class="pc bpc" id="L26" title="3 of 6 branches missed.">        if (adoption.title() == null || adoption.title().isBlank() || adoption.title().length() &gt; 8000</span>
+<span class="pc bpc" id="L27" title="2 of 4 branches missed.">                || adoption.description() == null || adoption.description().length() &gt; 8000)</span>
+<span class="nc" id="L28">            throw problem(&quot;INVALID_VALUE&quot;, &quot;Snapshot title and description must be bounded&quot;);</span>
+<span class="fc" id="L29">        Map&lt;String, SnapshotElement&gt; elements = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        for (var element : adoption.elements()) {</span>
+<span class="pc bpc" id="L31" title="3 of 8 branches missed.">            if (element.id() == null || element.type() == null || element.title() == null || element.description() == null)</span>
+<span class="fc" id="L32">                throw problem(&quot;INVALID_VALUE&quot;, &quot;Snapshot element identity, type, title and description must be present&quot;);</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">            if (elements.putIfAbsent(element.id(), element) != null)</span>
+<span class="fc" id="L34">                throw problem(&quot;AMBIGUOUS_SNAPSHOT_IDENTITY&quot;, &quot;Duplicate snapshot element identity&quot;);</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">            if (!TaxonomyRootTypes.TYPE_TO_ROOT.containsKey(element.type()))</span>
+<span class="nc" id="L36">                throw problem(&quot;UNKNOWN_TYPE&quot;, &quot;Unsupported snapshot element type&quot;);</span>
+<span class="fc" id="L37">            commands.apply(&quot;&quot;, new CreateArchitectureElement(element.id(), element.type(),</span>
+<span class="fc" id="L38">                    Map.of(&quot;title&quot;, element.title(), &quot;description&quot;, element.description())));</span>
+<span class="fc" id="L39">        }</span>
+<span class="fc" id="L40">        Set&lt;String&gt; relations = new TreeSet&lt;&gt;();</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        for (var relation : adoption.relations()) {</span>
+<span class="pc bpc" id="L42" title="1 of 4 branches missed.">            if (!elements.containsKey(relation.sourceId()) || !elements.containsKey(relation.targetId()))</span>
+<span class="fc" id="L43">                throw problem(&quot;MISSING_SNAPSHOT_ENDPOINT&quot;, &quot;Snapshot relation references a missing snapshot endpoint&quot;);</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">            if (!relations.add(relation.id())) throw problem(&quot;AMBIGUOUS_SNAPSHOT_IDENTITY&quot;, &quot;Duplicate snapshot relation identity&quot;);</span>
+<span class="fc" id="L45">        }</span>
+<span class="fc" id="L46">        Map&lt;String, BlockAst&gt; blocks = ArchitectureSemanticPatch.index(source);</span>
+<span class="fc" id="L47">        var existingView = blocks.get(&quot;view:&quot; + adoption.viewId());</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (existingView != null) {</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">            if (!adoption.graphFingerprint().equals(existingView.property(&quot;x-analysis-graph-fingerprint&quot;))</span>
+<span class="fc bfc" id="L50" title="All 4 branches covered.">                    || adoption.provenance().entrySet().stream().anyMatch(entry -&gt; !entry.getValue().equals(existingView.property(entry.getKey()))))</span>
+<span class="fc" id="L51">                throw problem(&quot;SNAPSHOT_IDENTITY_CONFLICT&quot;, &quot;The exact source identity already has a different frozen graph&quot;);</span>
+<span class="fc" id="L52">            return source; // Later ordinary edits remain authoritative; reopening never reapplies the graph.</span>
+        }
+<span class="fc" id="L54">        String next = source;</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        for (var element : elements.values()) {</span>
+<span class="fc" id="L56">            var existing = blocks.get(&quot;element:&quot; + element.id());</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            if (existing != null) {</span>
+<span class="fc" id="L58">                var header = existing.getHeaderTokens();</span>
+<span class="pc bpc" id="L59" title="2 of 6 branches missed.">                if (header.size() != 3 || !&quot;type&quot;.equals(header.get(1)) || !element.type().equals(header.get(2)))</span>
+<span class="fc" id="L60">                    throw problem(&quot;SNAPSHOT_TYPE_CONFLICT&quot;, &quot;Existing element identity has a different type: &quot; + element.id());</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">                if (existing.getProperties().stream().map(PropertyAst::key).distinct().count() != existing.getProperties().size())</span>
+<span class="nc" id="L62">                    throw problem(&quot;DUPLICATE_PROPERTY&quot;, &quot;Existing element has ambiguous properties&quot;);</span>
+<span class="fc" id="L63">            } else next = commands.apply(next, new CreateArchitectureElement(element.id(), element.type(),</span>
+<span class="fc" id="L64">                    Map.of(&quot;title&quot;, element.title(), &quot;description&quot;, element.description()))).dsl();</span>
+<span class="fc" id="L65">        }</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        for (var relation : adoption.relations().stream().sorted(Comparator.comparing(RelationKey::id)).toList()) {</span>
+<span class="fc" id="L67">            ArchitectureDslCommands.validateRelation(ArchitectureSemanticPatch.index(next), relation);</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            if (!blocks.containsKey(&quot;relation:&quot; + relation.id()))</span>
+<span class="fc" id="L69">                next = commands.apply(next, new CreateArchitectureRelation(relation, &quot;proposed&quot;)).dsl();</span>
+<span class="fc" id="L70">        }</span>
+<span class="fc" id="L71">        Map&lt;String, String&gt; properties = new TreeMap&lt;&gt;(adoption.provenance());</span>
+<span class="fc" id="L72">        properties.put(&quot;x-analysis-graph-fingerprint&quot;, adoption.graphFingerprint());</span>
+<span class="fc" id="L73">        properties.put(RELATIONS, String.join(&quot;\n&quot;, relations));</span>
+<span class="fc" id="L74">        List&lt;PropertyAst&gt; values = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L75">        values.add(new PropertyAst(&quot;title&quot;, adoption.title(), null));</span>
+<span class="fc" id="L76">        values.add(new PropertyAst(&quot;description&quot;, adoption.description(), null));</span>
+<span class="fc" id="L77">        elements.keySet().forEach(id -&gt; values.add(new PropertyAst(&quot;include&quot;, id, null)));</span>
+<span class="fc" id="L78">        properties.forEach((key, value) -&gt; values.add(new PropertyAst(key, value, null)));</span>
+<span class="fc" id="L79">        return ArchitectureSemanticPatch.replace(next, null,</span>
+<span class="fc" id="L80">                new BlockAst(&quot;view&quot;, List.of(adoption.viewId()), values, List.of(), properties, null));</span>
+    }
+
+    static boolean isAdoptionView(ArchitectureSemanticPatch.BlockChange change) {
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (!change.id().startsWith(&quot;view:analysis-&quot;)) return false;</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        String source = change.after() == null ? change.before() : change.after();</span>
+<span class="fc" id="L86">        var view = ArchitectureSemanticPatch.index(source).get(change.id());</span>
+<span class="pc bpc" id="L87" title="2 of 4 branches missed.">        return view != null &amp;&amp; view.property(&quot;x-analysis-graph-fingerprint&quot;) != null;</span>
+    }
+    static Set&lt;String&gt; relationMembers(BlockAst view) {
+<span class="fc" id="L90">        String value = view.property(RELATIONS);</span>
+<span class="pc bpc" id="L91" title="1 of 4 branches missed.">        return value == null || value.isEmpty() ? Set.of() : Set.copyOf(Arrays.asList(value.split(&quot;\n&quot;)));</span>
+    }
+    private static ArchitectureDslCommands.CommandProblem problem(String code, String message) {
+<span class="fc" id="L94">        return new ArchitectureDslCommands.CommandProblem(code, &quot;snapshot&quot;, message, List.of());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

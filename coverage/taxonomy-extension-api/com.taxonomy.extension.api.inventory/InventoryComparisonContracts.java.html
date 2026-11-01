@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>InventoryComparisonContracts.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.api.inventory</a> &gt; <span class="el_source">InventoryComparisonContracts.java</span></div><h1>InventoryComparisonContracts.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.api.inventory;
+
+import com.taxonomy.extension.api.inventory.InventoryReadContracts.AssertionKind;
+import java.time.*;
+import java.util.*;
+
+/** Immutable product-neutral comparison evidence; never an implementation or procurement decision. */
+public final class InventoryComparisonContracts {
+    private InventoryComparisonContracts() { }
+<span class="fc" id="L10">    public enum Outcome { SUPPORTED, CONTRADICTED, UNKNOWN, CONFLICT, UNEXAMINED }</span>
+<span class="fc" id="L11">    public enum Criterion { CAPABILITY, AVAILABILITY, SUPPORT, ORGANIZATION, ENVIRONMENT, RELATIONSHIPS }</span>
+<span class="fc" id="L12">    public enum TimeMode { EXACT_DATE, START_WINDOW, CONTINUOUS_PERIOD }</span>
+<span class="fc" id="L13">    public enum RelationshipKind { INTERFACE, DEPENDENCY, ALTERNATIVE, HARD_EXCLUSION }</span>
+<span class="fc" id="L14">    public enum VariantAction { SATISFIED_AS_IS, REUSE, CHANGE, CREATE, PROCURE, ORGANIZATIONAL, RETIRE_OR_REPLACE, UNDECIDED }</span>
+<span class="fc" id="L15">    public enum AssessmentStatus { OPEN, SATISFIED, BLOCKING }</span>
+<span class="fc" id="L16">    public enum VariantOutcome { EVALUATED, SELECTED, REJECTED }</span>
+    public record Relationship(String targetCandidateId, RelationshipKind kind, String qualifier) {
+<span class="fc bfc" id="L18" title="All 2 branches covered.">        public Relationship { text(targetCandidateId,3000); Objects.requireNonNull(kind); if(qualifier!=null)text(qualifier,200); }</span>
+    }
+    public record RelationshipRequirement(String id,String sourceCandidateId,String targetCandidateId,RelationshipKind kind,String qualifier,boolean required) {
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        public RelationshipRequirement { text(id,200);text(sourceCandidateId,3000);text(targetCandidateId,3000);Objects.requireNonNull(kind);if(qualifier!=null)text(qualifier,200); }</span>
+    }
+<span class="fc" id="L23">    public record RelationshipFinding(String requirementId,String sourceCandidateId,String targetCandidateId,RelationshipKind kind,String qualifier,boolean required,Finding finding) { }</span>
+    public record AssessmentNote(String text, AssessmentStatus status, String citation) {
+<span class="fc" id="L25">        public AssessmentNote { InventoryComparisonContracts.text(text,1800);Objects.requireNonNull(status);InventoryComparisonContracts.text(citation,1800); }</span>
+    }
+    /** Exact decimal wire value: JavaScript numbers cannot preserve this contract. */
+    public record CostAssumption(String amount,String currency,String basis,String citation) {
+<span class="fc" id="L29">        public CostAssumption {</span>
+<span class="fc" id="L30">            text(amount,24);text(currency,3);text(basis,400);text(citation,1800);</span>
+<span class="pc bpc" id="L31" title="1 of 4 branches missed.">            if(!amount.matches(&quot;[0-9]+(\\.[0-9]{1,4})?&quot;) || !currency.matches(&quot;[A-Z]{3}&quot;))throw new IllegalArgumentException(&quot;Invalid cost assumption&quot;);</span>
+<span class="fc" id="L32">            var decimal=new java.math.BigDecimal(amount);</span>
+<span class="pc bpc" id="L33" title="1 of 4 branches missed.">            if(decimal.precision()&gt;18 || decimal.scale()&gt;4)throw new IllegalArgumentException(&quot;Cost precision exceeds 18 digits / 4 decimal places&quot;);</span>
+<span class="fc" id="L34">            amount=decimal.toPlainString();</span>
+<span class="fc" id="L35">        }</span>
+    }
+    public record VariantInput(Long projectSolutionId,VariantAction action,List&lt;String&gt; candidateIds,List&lt;AssessmentNote&gt; prerequisites,List&lt;AssessmentNote&gt; risks,List&lt;CostAssumption&gt; costs) {
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">        public VariantInput { Objects.requireNonNull(projectSolutionId);Objects.requireNonNull(action);candidateIds=bounded(candidateIds,100);prerequisites=bounded(prerequisites,20);risks=bounded(risks,20);costs=bounded(costs,20);if(new HashSet&lt;&gt;(candidateIds).size()!=candidateIds.size())throw new IllegalArgumentException(&quot;Duplicate evidence candidate&quot;); }</span>
+    }
+    public record VariantAssessment(Long projectSolutionId,Long solutionId,String solutionKey,String title,String fingerprint,String frozenSolutionJson,VariantInput input,List&lt;Finding&gt; findings,List&lt;String&gt; hardExclusions,List&lt;String&gt; openQuestions) {
+<span class="fc" id="L41">        public VariantAssessment { findings=List.copyOf(findings);hardExclusions=List.copyOf(hardExclusions);openQuestions=List.copyOf(openQuestions); }</span>
+    }
+    public record VariantDecision(Long projectSolutionId,VariantOutcome outcome,boolean acknowledgeUnknowns) {
+<span class="fc" id="L44">        public VariantDecision { Objects.requireNonNull(projectSolutionId);Objects.requireNonNull(outcome); }</span>
+    }
+<span class="pc bpc" id="L46" title="2 of 4 branches missed.">    private static &lt;T&gt; List&lt;T&gt; bounded(List&lt;T&gt; values,int max) {var result=values==null?List.&lt;T&gt;of():List.copyOf(values);if(result.size()&gt;max)throw new IllegalArgumentException(&quot;Too many assessment inputs&quot;);return result;}</span>
+<span class="fc" id="L47">    public enum Precision { DATE, YEAR }</span>
+    public record Boundary(String value, Precision precision) {
+<span class="fc" id="L49">        public Boundary {</span>
+<span class="fc" id="L50">            Objects.requireNonNull(precision); text(value, 10);</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            if (precision == Precision.YEAR) Year.parse(value); else LocalDate.parse(value);</span>
+<span class="fc" id="L52">        }</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        public LocalDate earliest() { return precision == Precision.YEAR ? Year.parse(value).atDay(1) : LocalDate.parse(value); }</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        public LocalDate latest() { return precision == Precision.YEAR ? Year.parse(value).atMonth(12).atEndOfMonth() : LocalDate.parse(value); }</span>
+    }
+    public record Question(TimeMode mode, LocalDate start, LocalDate endExclusive, String organization, String environment) {
+<span class="fc" id="L57">        public Question {</span>
+<span class="fc" id="L58">            Objects.requireNonNull(mode); Objects.requireNonNull(start); text(organization, 400);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            if (environment != null) text(environment, 200);</span>
+<span class="pc bpc" id="L60" title="1 of 4 branches missed.">            if (mode == TimeMode.EXACT_DATE &amp;&amp; endExclusive != null) throw new IllegalArgumentException(&quot;Exact-date question has no end&quot;);</span>
+<span class="pc bpc" id="L61" title="2 of 6 branches missed.">            if (mode != TimeMode.EXACT_DATE &amp;&amp; (endExclusive == null || !endExclusive.isAfter(start))) throw new IllegalArgumentException(&quot;Invalid half-open question interval&quot;);</span>
+<span class="fc" id="L62">        }</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        public LocalDate end() { return mode == TimeMode.EXACT_DATE ? start.plusDays(1) : endExclusive; }</span>
+    }
+    public record Assertion(String id, String candidateId, Criterion criterion, String nodeCode, boolean positive,
+                            Boundary start, Boundary endExclusive, String organization, String environment,
+                            AssertionKind kind, String citation, Instant recordedAt, Relationship relationship) {
+        public Assertion(String id,String candidateId,Criterion criterion,String nodeCode,boolean positive,Boundary start,Boundary endExclusive,String organization,String environment,AssertionKind kind,String citation,Instant recordedAt) {
+<span class="fc" id="L69">            this(id,candidateId,criterion,nodeCode,positive,start,endExclusive,organization,environment,kind,citation,recordedAt,null);</span>
+<span class="fc" id="L70">        }</span>
+<span class="fc" id="L71">        public Assertion {</span>
+<span class="pc bpc" id="L72" title="1 of 4 branches missed.">            if(relationship!=null &amp;&amp; criterion!=Criterion.RELATIONSHIPS)throw new IllegalArgumentException(&quot;Directed evidence requires RELATIONSHIPS criterion&quot;);</span>
+<span class="fc" id="L73">            text(id, 200); text(candidateId, 3000); Objects.requireNonNull(criterion); Objects.requireNonNull(kind);</span>
+<span class="fc" id="L74">            text(citation, 4000); Objects.requireNonNull(recordedAt);</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            if (nodeCode != null) text(nodeCode, 80);</span>
+<span class="fc bfc" id="L76" title="All 4 branches covered.">            if (organization != null) text(organization, 400); if (environment != null) text(environment, 200);</span>
+<span class="pc bpc" id="L77" title="1 of 6 branches missed.">            if (start != null &amp;&amp; endExclusive != null &amp;&amp; !endExclusive.latest().isAfter(start.earliest())) throw new IllegalArgumentException(&quot;Invalid assertion interval&quot;);</span>
+<span class="fc" id="L78">        }</span>
+    }
+    public record Finding(String candidateId, Criterion criterion, String nodeCode, Outcome outcome,
+                          List&lt;String&gt; evidenceIds, Set&lt;AssertionKind&gt; assertionKinds, Set&lt;String&gt; limitations,
+                          String nextClarification, boolean hardExclusion) {
+<span class="fc" id="L83">        public Finding { evidenceIds=List.copyOf(evidenceIds); assertionKinds=Set.copyOf(assertionKinds); limitations=Set.copyOf(limitations); }</span>
+    }
+    public record Demand(String repositoryId, String scopeKey, String branch, Long projectId, Long requirementId,
+                         Long requirementVersionId, String snapshotId, String taxonomyFingerprint,
+                         String snapshotFingerprint, List&lt;String&gt; selectedNodes, Question question,
+                         String requirementText,Map&lt;String,String&gt; frozenNodes,Long observedRequirementVersionId) {
+        public Demand(String repositoryId,String scopeKey,String branch,Long projectId,Long requirementId,Long requirementVersionId,String snapshotId,String taxonomyFingerprint,String snapshotFingerprint,List&lt;String&gt; selectedNodes,Question question) {
+<span class="fc" id="L90">            this(repositoryId,scopeKey,branch,projectId,requirementId,requirementVersionId,snapshotId,taxonomyFingerprint,snapshotFingerprint,selectedNodes,question,null,Map.of(),requirementVersionId);</span>
+<span class="fc" id="L91">        }</span>
+<span class="pc bpc" id="L92" title="2 of 4 branches missed.">        public Demand { frozenNodes=Map.copyOf(frozenNodes);selectedNodes=List.copyOf(selectedNodes); Objects.requireNonNull(question); if(selectedNodes.isEmpty() || selectedNodes.size()&gt;100) throw new IllegalArgumentException(&quot;Select 1–100 recorded nodes&quot;); }</span>
+    }
+    public record Candidate(String id, Long productId, String name, String kind, String fingerprint,
+                            Map&lt;String,String&gt; metadata, List&lt;Assertion&gt; assertions) {
+<span class="fc" id="L96">        public Candidate { text(id,3000); metadata=Map.copyOf(metadata); assertions=List.copyOf(assertions); }</span>
+    }
+    public record SourceEvidence(String profileId, String revision, String observationId, Instant observedAt,
+                                 String selectorFingerprint, String status, Set&lt;String&gt; limitations,String profileFingerprint,String extensionArtifact) {
+        public SourceEvidence(String profileId,String revision,String observationId,Instant observedAt,String selectorFingerprint,String status,Set&lt;String&gt; limitations) {
+<span class="fc" id="L101">            this(profileId,revision,observationId,observedAt,selectorFingerprint,status,limitations,null,null);</span>
+<span class="fc" id="L102">        }</span>
+<span class="fc" id="L103">        public SourceEvidence { limitations=Set.copyOf(limitations); }</span>
+    }
+    public record Comparison(UUID id, Demand demand, String evaluatorVersion, Instant createdAt,
+                             List&lt;Candidate&gt; candidates, List&lt;Finding&gt; findings, List&lt;SourceEvidence&gt; sources, String fingerprint,
+                             List&lt;RelationshipRequirement&gt; relationshipRequirements,List&lt;RelationshipFinding&gt; relationshipFindings,List&lt;VariantAssessment&gt; variants) {
+<span class="fc" id="L108">        public Comparison(UUID id,Demand demand,String evaluatorVersion,Instant createdAt,List&lt;Candidate&gt; candidates,List&lt;Finding&gt; findings,List&lt;SourceEvidence&gt; sources,String fingerprint) {this(id,demand,evaluatorVersion,createdAt,candidates,findings,sources,fingerprint,List.of(),List.of(),List.of());}</span>
+<span class="fc" id="L109">        public Comparison { candidates=List.copyOf(candidates); findings=List.copyOf(findings); sources=List.copyOf(sources);relationshipRequirements=bounded(relationshipRequirements,100);relationshipFindings=bounded(relationshipFindings,100);variants=bounded(variants,20); }</span>
+    }
+    public record Review(UUID id, String comparisonFingerprint, String candidateId, String rationale,
+                         Long projectSolutionId, boolean selectProduct,Integer coveragePercent,VariantDecision variantDecision) {
+<span class="fc" id="L113">        public Review(UUID id,String comparisonFingerprint,String candidateId,String rationale,Long projectSolutionId,boolean selectProduct,Integer coveragePercent) {this(id,comparisonFingerprint,candidateId,rationale,projectSolutionId,selectProduct,coveragePercent,null);}</span>
+        public Review(UUID id,String comparisonFingerprint,String candidateId,String rationale,Long projectSolutionId,boolean selectProduct) {
+<span class="fc" id="L115">            this(id,comparisonFingerprint,candidateId,rationale,projectSolutionId,selectProduct,null);</span>
+<span class="fc" id="L116">        }</span>
+<span class="pc bpc" id="L117" title="7 of 20 branches missed.">        public Review { if(coveragePercent!=null &amp;&amp; (coveragePercent&lt;0 || coveragePercent&gt;100))throw new IllegalArgumentException(&quot;Reviewed coverage must be 0–100&quot;); Objects.requireNonNull(id); text(comparisonFingerprint,128); if(variantDecision==null)text(candidateId,3000);else if(candidateId!=null || selectProduct || (projectSolutionId!=null &amp;&amp; !projectSolutionId.equals(variantDecision.projectSolutionId())))throw new IllegalArgumentException(&quot;Product and variant decisions are exclusive&quot;); text(rationale,1800); if(selectProduct &amp;&amp; projectSolutionId==null) throw new IllegalArgumentException(&quot;Selection requires an existing project solution&quot;); }</span>
+    }
+    public record Mapping(UUID id,String candidateId,Long productId,String productFingerprint,
+                          String sourceProfile,String sourceRevision,String sourceIdentityFingerprint,
+                          String rationale,String actor,Instant mappedAt) {
+<span class="fc" id="L122">        public Mapping { Objects.requireNonNull(id); Objects.requireNonNull(productId); text(candidateId,3000); text(productFingerprint,128); text(rationale,1800); text(actor,160); }</span>
+    }
+<span class="fc" id="L124">    public record Reviewed(Review review, Instant reviewedAt, String actor) { }</span>
+    private static void text(String value,int max) {
+<span class="pc bpc" id="L126" title="4 of 8 branches missed.">        if(value==null || value.isBlank() || value.length()&gt;max || value.chars().anyMatch(Character::isISOControl)) throw new IllegalArgumentException(&quot;Invalid comparison metadata&quot;);</span>
+<span class="fc" id="L127">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

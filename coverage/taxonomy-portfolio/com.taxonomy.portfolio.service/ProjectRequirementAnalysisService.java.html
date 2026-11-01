@@ -1,0 +1,516 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectRequirementAnalysisService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">ProjectRequirementAnalysisService.java</span></div><h1>ProjectRequirementAnalysisService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementUseCase;
+import com.taxonomy.architecture.service.AnalysisCopilotService;
+import com.taxonomy.architecture.service.ArchitectureGapService;
+import com.taxonomy.architecture.service.ArchitecturePatternService;
+import com.taxonomy.architecture.service.ArchitectureRecommendationService;
+import com.taxonomy.dto.AnalysisProvenance;
+import com.taxonomy.dto.AnalysisCopilotResult;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.ArchitectureRecommendation;
+import com.taxonomy.dto.GapAnalysisView;
+import com.taxonomy.dto.PatternDetectionView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisContinuationView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalyzeProjectRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ContinueAnalysisRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
+import com.taxonomy.portfolio.dto.SnapshotSelection;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDiff;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.task.AsyncTaskExecutor;
+import org.springframework.core.task.TaskRejectedException;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.UUID;
+
+/** Orchestrates independent analyses while keeping LLM calls outside persistence transactions. */
+@Service
+public class ProjectRequirementAnalysisService {
+
+<span class="fc" id="L44">    private static final Logger LOGGER = LoggerFactory.getLogger(ProjectRequirementAnalysisService.class);</span>
+    private static final int DEFAULT_ARCHITECTURE_NODES = 25;
+
+    private final ProjectPortfolioService projectService;
+    private final PortfolioAnalysisPersistenceService persistenceService;
+    private final PortfolioAnalysisClaimPersistenceService claimPersistenceService;
+    private final PortfolioAnalysisWorkQueue workQueue;
+    private final PortfolioAnalysisRecoveryService recoveryService;
+    private final AnalyzeRequirementUseCase analyzeRequirementUseCase;
+    private final AnalysisCopilotService copilotService;
+    private final PortfolioFingerprintService fingerprintService;
+    private final LlmService llmService;
+    private final AsyncTaskExecutor analysisExecutor;
+    private final int maximumArchitectureNodes;
+    private final int maximumBatchRequirements;
+    private final long claimTimeoutSeconds;
+    private ProjectAnalysisContinuationService budgetContinuations;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void budgetContinuations(ProjectAnalysisContinuationService service) {
+<span class="fc" id="L64">        this.budgetContinuations = service;</span>
+<span class="fc" id="L65">    }</span>
+
+    public ProjectRequirementAnalysisService(
+            ProjectPortfolioService projectService,
+            PortfolioAnalysisPersistenceService persistenceService,
+            PortfolioAnalysisClaimPersistenceService claimPersistenceService,
+            PortfolioAnalysisWorkQueue workQueue,
+            PortfolioAnalysisRecoveryService recoveryService,
+            AnalyzeRequirementUseCase analyzeRequirementUseCase,
+            ArchitectureGapService gapService,
+            ArchitecturePatternService patternService,
+            ArchitectureRecommendationService recommendationService,
+            PortfolioFingerprintService fingerprintService,
+            LlmService llmService,
+            @Qualifier(&quot;portfolioAnalysisExecutor&quot;)
+            AsyncTaskExecutor analysisExecutor,
+            @Value(&quot;${taxonomy.limits.max-architecture-nodes:100}&quot;)
+            int maximumArchitectureNodes,
+            @Value(&quot;${taxonomy.portfolio.max-analysis-batch:100}&quot;)
+            int maximumBatchRequirements,
+            @Value(&quot;${taxonomy.portfolio.analysis-claim-timeout-seconds:900}&quot;)
+            long claimTimeoutSeconds) {
+<span class="fc" id="L87">        this(projectService, persistenceService, claimPersistenceService, workQueue, recoveryService,</span>
+                analyzeRequirementUseCase, new AnalysisCopilotService(), fingerprintService, llmService,
+                analysisExecutor, maximumArchitectureNodes, maximumBatchRequirements, claimTimeoutSeconds);
+<span class="fc" id="L90">    }</span>
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ProjectRequirementAnalysisService(
+            ProjectPortfolioService projectService,
+            PortfolioAnalysisPersistenceService persistenceService,
+            PortfolioAnalysisClaimPersistenceService claimPersistenceService,
+            PortfolioAnalysisWorkQueue workQueue,
+            PortfolioAnalysisRecoveryService recoveryService,
+            AnalyzeRequirementUseCase analyzeRequirementUseCase,
+            AnalysisCopilotService copilotService,
+            PortfolioFingerprintService fingerprintService,
+            LlmService llmService,
+            @Qualifier(&quot;portfolioAnalysisExecutor&quot;)
+            AsyncTaskExecutor analysisExecutor,
+            @Value(&quot;${taxonomy.limits.max-architecture-nodes:100}&quot;)
+            int maximumArchitectureNodes,
+            @Value(&quot;${taxonomy.portfolio.max-analysis-batch:100}&quot;)
+            int maximumBatchRequirements,
+            @Value(&quot;${taxonomy.portfolio.analysis-claim-timeout-seconds:900}&quot;)
+<span class="fc" id="L110">            long claimTimeoutSeconds) {</span>
+<span class="fc" id="L111">        this.projectService = projectService;</span>
+<span class="fc" id="L112">        this.persistenceService = persistenceService;</span>
+<span class="fc" id="L113">        this.claimPersistenceService = claimPersistenceService;</span>
+<span class="fc" id="L114">        this.workQueue = workQueue;</span>
+<span class="fc" id="L115">        this.recoveryService = recoveryService;</span>
+<span class="fc" id="L116">        this.analyzeRequirementUseCase = analyzeRequirementUseCase;</span>
+<span class="fc" id="L117">        this.copilotService = Objects.requireNonNull(copilotService);</span>
+<span class="fc" id="L118">        this.fingerprintService = fingerprintService;</span>
+<span class="fc" id="L119">        this.llmService = llmService;</span>
+<span class="fc" id="L120">        this.analysisExecutor = analysisExecutor;</span>
+<span class="fc" id="L121">        this.maximumArchitectureNodes = Math.max(1, maximumArchitectureNodes);</span>
+<span class="fc" id="L122">        this.maximumBatchRequirements = Math.max(1, maximumBatchRequirements);</span>
+<span class="fc" id="L123">        this.claimTimeoutSeconds = Math.max(60L, claimTimeoutSeconds);</span>
+<span class="fc" id="L124">    }</span>
+
+    /** Executes a persisted job in the caller thread. Kept for internal batch use and deterministic tests. */
+    public AnalysisJobView analyzeProject(Long projectId,
+                                          AnalyzeProjectRequest request,
+                                          String username,
+                                          WorkspaceContext context) {
+<span class="fc" id="L131">        AnalysisJobView job = prepareJob(projectId, request, username, context);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (job.status() != AnalysisStatus.PENDING) {</span>
+<span class="fc" id="L133">            return job;</span>
+        }
+<span class="fc" id="L135">        return executePendingItems(job.id(), projectId, username, context);</span>
+    }
+
+    /** Persists and dispatches a job, returning before any LLM request is made. */
+    public AnalysisJobView enqueueProject(Long projectId,
+                                          AnalyzeProjectRequest request,
+                                          String username,
+                                          WorkspaceContext context) {
+<span class="fc" id="L143">        AnalysisJobView job = prepareJob(projectId, request, username, context);</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        if (job.status() == AnalysisStatus.PENDING) {</span>
+<span class="fc" id="L145">            dispatch(job.id(), projectId, username, context);</span>
+        }
+<span class="fc" id="L147">        return job;</span>
+    }
+
+    public AnalysisJobView analyzeRequirement(Long projectId,
+                                              Long requirementId,
+                                              String provider,
+                                              Integer maxArchitectureNodes,
+                                              String idempotencyKey,
+                                              String username,
+                                              WorkspaceContext context) {
+<span class="fc" id="L157">        return analyzeProject(projectId,</span>
+<span class="fc" id="L158">                requestForRequirement(requirementId, provider, maxArchitectureNodes, idempotencyKey),</span>
+                username,
+                context);
+    }
+
+    public AnalysisJobView enqueueRequirement(Long projectId,
+                                              Long requirementId,
+                                              String provider,
+                                              Integer maxArchitectureNodes,
+                                              String idempotencyKey,
+                                              String username,
+                                              WorkspaceContext context) {
+<span class="fc" id="L170">        return enqueueProject(projectId,</span>
+<span class="fc" id="L171">                requestForRequirement(requirementId, provider, maxArchitectureNodes, idempotencyKey),</span>
+                username,
+                context);
+    }
+
+    public AnalysisJobView enqueueRequirement(Long projectId, Long requirementId, String provider,
+                                              Integer maxArchitectureNodes, String idempotencyKey, String username,
+                                              WorkspaceContext context, com.taxonomy.dto.AnalysisLanguage language) {
+<span class="nc" id="L179">        return enqueueProject(projectId, new AnalyzeProjectRequest(List.of(requirementId), false, provider,</span>
+                maxArchitectureNodes, idempotencyKey, language), username, context);
+    }
+
+    public AnalysisJobView retryFailed(String jobId,
+                                       Long projectId,
+                                       String username,
+                                       WorkspaceContext context) {
+<span class="fc" id="L187">        recoveryService.prepareRetryableItems(</span>
+                jobId,
+                projectId,
+                username,
+                context,
+<span class="fc" id="L192">                Instant.now().minusSeconds(claimTimeoutSeconds));</span>
+<span class="fc" id="L193">        return executePendingItems(jobId, projectId, username, context);</span>
+    }
+
+    /** Re-dispatches pending jobs or recovers failed/expired claims without holding the HTTP request. */
+    public AnalysisJobView enqueueRetryFailed(String jobId,
+                                              Long projectId,
+                                              String username,
+                                              WorkspaceContext context) {
+<span class="fc" id="L201">        AnalysisJobView job = persistenceService.getJob(jobId, projectId, username, context);</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        if (job.status() == AnalysisStatus.PENDING) {</span>
+<span class="fc" id="L203">            requireJobProviderBinding(job, username, context);</span>
+        } else {
+<span class="fc" id="L205">            recoveryService.prepareRetryableItems(</span>
+                    jobId,
+                    projectId,
+                    username,
+                    context,
+<span class="fc" id="L210">                    Instant.now().minusSeconds(claimTimeoutSeconds));</span>
+<span class="fc" id="L211">            job = persistenceService.getJob(jobId, projectId, username, context);</span>
+        }
+<span class="fc" id="L213">        dispatch(jobId, projectId, username, context);</span>
+<span class="fc" id="L214">        return job;</span>
+    }
+
+    public AnalysisJobView getJob(String jobId,
+                                  Long projectId,
+                                  String username,
+                                  WorkspaceContext context) {
+<span class="fc" id="L221">        return persistenceService.getJob(jobId, projectId, username, context);</span>
+    }
+
+    public AnalysisContinuationView getContinuation(String jobId, Long projectId, Long itemId,
+            String username, WorkspaceContext context) {
+<span class="fc" id="L226">        return requireContinuations().read(jobId, projectId, itemId, username, context);</span>
+    }
+
+    /** One explicit action authorizes one further ordinary, bounded worker attempt. */
+    public AnalysisJobView enqueueContinuation(String jobId, Long projectId, Long itemId,
+            ContinueAnalysisRequest request, String username, WorkspaceContext context) {
+<span class="fc" id="L232">        requireContinuations().prepare(jobId, projectId, itemId, request, username, context);</span>
+<span class="fc" id="L233">        AnalysisJobView prepared = persistenceService.getJob(jobId, projectId, username, context);</span>
+<span class="fc" id="L234">        dispatch(jobId, projectId, username, context);</span>
+<span class="fc" id="L235">        return prepared;</span>
+    }
+
+    private ProjectAnalysisContinuationService requireContinuations() {
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">        if (budgetContinuations == null) throw PortfolioException.conflict(&quot;Project budget continuation is unavailable&quot;);</span>
+<span class="fc" id="L240">        return budgetContinuations;</span>
+    }
+
+    public List&lt;AnalysisJobView&gt; listJobs(Long projectId,
+                                          String username,
+                                          WorkspaceContext context) {
+<span class="fc" id="L246">        return persistenceService.listJobs(projectId, username, context);</span>
+    }
+
+    public List&lt;SnapshotSummary&gt; listSnapshots(Long projectId,
+                                               Long requirementId,
+                                               String username,
+                                               WorkspaceContext context) {
+<span class="fc" id="L253">        return persistenceService.listRequirementSnapshots(</span>
+                projectId, requirementId, username, context);
+    }
+
+    public SnapshotDetail getSnapshot(Long projectId,
+                                      String snapshotId,
+                                      String username,
+                                      WorkspaceContext context) {
+<span class="fc" id="L261">        return persistenceService.getSnapshot(projectId, snapshotId, username, context);</span>
+    }
+
+    public SnapshotSelection getSnapshotSelection(Long projectId, String snapshotId,
+                                                   String username, WorkspaceContext context) {
+<span class="fc" id="L266">        return persistenceService.getSnapshotSelection(projectId, snapshotId, username, context);</span>
+    }
+
+    public SnapshotDiff diffSnapshots(Long projectId,
+                                      String olderSnapshotId,
+                                      String newerSnapshotId,
+                                      String username,
+                                      WorkspaceContext context) {
+<span class="fc" id="L274">        return persistenceService.diffSnapshots(</span>
+                projectId, olderSnapshotId, newerSnapshotId, username, context);
+    }
+
+    private AnalysisJobView prepareJob(Long projectId,
+                                       AnalyzeProjectRequest request,
+                                       String username,
+                                       WorkspaceContext context) {
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        if (request == null) throw PortfolioException.validation(&quot;analysis request is required&quot;);</span>
+<span class="fc" id="L283">        projectService.requireProject(projectId, username, context);</span>
+
+<span class="fc" id="L285">        List&lt;Long&gt; requirementIds = selectRequirementIds(projectId, request, username, context);</span>
+<span class="fc" id="L286">        int maxNodes = normalizeMaxNodes(request.maxArchitectureNodes());</span>
+<span class="pc bpc" id="L287" title="1 of 2 branches missed.">        if (request.analysisLanguage() != null) return persistenceService.createOrReuseJob(</span>
+<span class="nc" id="L288">                projectId, requirementIds, normalizeProvider(request.provider()), maxNodes, request.idempotencyKey(),</span>
+<span class="nc" id="L289">                username, context, request.analysisLanguage());</span>
+<span class="fc" id="L290">        return persistenceService.createOrReuseJob(</span>
+                projectId,
+                requirementIds,
+<span class="fc" id="L293">                normalizeProvider(request.provider()),</span>
+                maxNodes,
+<span class="fc" id="L295">                request.idempotencyKey(),</span>
+                username,
+                context);
+    }
+
+    private static AnalyzeProjectRequest requestForRequirement(Long requirementId,
+                                                               String provider,
+                                                               Integer maxArchitectureNodes,
+                                                               String idempotencyKey) {
+<span class="fc" id="L304">        return new AnalyzeProjectRequest(</span>
+<span class="fc" id="L305">                List.of(requirementId), false, provider, maxArchitectureNodes, idempotencyKey);</span>
+    }
+
+    private void dispatch(String jobId,
+                          Long projectId,
+                          String username,
+                          WorkspaceContext context) {
+        try {
+<span class="fc" id="L313">            analysisExecutor.execute(() -&gt; {</span>
+                try {
+<span class="fc" id="L315">                    executePendingItems(jobId, projectId, username, context);</span>
+<span class="nc" id="L316">                } catch (RuntimeException failure) {</span>
+<span class="nc" id="L317">                    LOGGER.error(&quot;Asynchronous portfolio analysis job {} for project {} stopped unexpectedly&quot;,</span>
+                            jobId, projectId, failure);
+<span class="fc" id="L319">                }</span>
+<span class="fc" id="L320">            });</span>
+<span class="fc" id="L321">        } catch (TaskRejectedException rejected) {</span>
+<span class="fc" id="L322">            throw PortfolioException.unavailable(</span>
+                    &quot;Portfolio analysis capacity is currently exhausted; persisted job &quot;
+                            + jobId + &quot; can be submitted again&quot;,
+                    rejected);
+<span class="fc" id="L326">        }</span>
+<span class="fc" id="L327">    }</span>
+
+    private void requireJobProviderBinding(AnalysisJobView job, String username, WorkspaceContext context) {
+<span class="fc" id="L330">        var targets = job.items().stream().map(item -&gt; new ProjectProviderBinding.Target(</span>
+<span class="fc" id="L331">                item.requirementId(), item.requirementVersionId())).toList();</span>
+<span class="fc" id="L332">        persistenceService.requireRetainedProviderBinding(job.projectId(), job.id(), job.provider(),</span>
+                targets, username, context);
+<span class="fc" id="L334">    }</span>
+
+    private AnalysisJobView executePendingItems(String jobId,
+                                                Long projectId,
+                                                String username,
+                                                WorkspaceContext context) {
+<span class="fc" id="L340">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L341">        AnalysisJobView job = persistenceService.getJob(jobId, projectId, username, context);</span>
+<span class="fc" id="L342">        String taxonomyFingerprint = fingerprintService.taxonomyFingerprint();</span>
+<span class="fc" id="L343">        String promptFingerprint = fingerprintService.promptFingerprint();</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        if (job.analysisLanguage() != null) promptFingerprint = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(</span>
+<span class="fc" id="L345">                promptFingerprint, com.taxonomy.analysis.service.AnalysisLanguageContext.POLICY, job.analysisLanguage().value());</span>
+<span class="pc bpc" id="L346" title="1 of 2 branches missed.">        String effectiveProvider = job.provider() != null</span>
+<span class="pc" id="L347">                ? job.provider() : llmService.getActiveProviderName();</span>
+
+<span class="fc" id="L349">        List&lt;PortfolioAnalysisWorkQueue.WorkItem&gt; workItems =</span>
+<span class="fc" id="L350">                workQueue.pending(jobId, projectId, scopeKey);</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">        if (workItems.isEmpty()) {</span>
+<span class="fc" id="L352">            return reconcileJobState(jobId, projectId, username, context, scopeKey);</span>
+        }
+<span class="fc" id="L354">        persistenceService.markJobRunning(jobId, projectId, scopeKey);</span>
+
+<span class="fc bfc" id="L356" title="All 2 branches covered.">        for (PortfolioAnalysisWorkQueue.WorkItem workItem : workItems) {</span>
+<span class="fc" id="L357">            String snapshotId = UUID.randomUUID().toString();</span>
+<span class="fc" id="L358">            String analysisSessionId = &quot;portfolio:&quot; + snapshotId;</span>
+<span class="fc" id="L359">            long startedAt = System.nanoTime();</span>
+<span class="fc" id="L360">            try (var providerScope = llmService.withProviderBinding(job.provider(), job.providerBinding());</span>
+<span class="fc" id="L361">                 var languageScope = com.taxonomy.analysis.service.AnalysisLanguageContext.open(job.analysisLanguage())) {</span>
+                // A rejection after dispatch belongs to this claim's normal failure and reconciliation path.
+<span class="fc" id="L363">                persistenceService.requireRetainedProviderBinding(workItem.projectId(), workItem.jobId(), job.provider(),</span>
+<span class="fc" id="L364">                        List.of(new ProjectProviderBinding.Target(workItem.requirementId(), workItem.requirementVersionId())),</span>
+                        username, context);
+<span class="fc" id="L366">                AnalyzeRequirementCommand command = new AnalyzeRequirementCommand(</span>
+<span class="fc" id="L367">                                workItem.requirementText(),</span>
+                                true,
+<span class="fc" id="L369">                                job.maxArchitectureNodes(),</span>
+<span class="fc" id="L370">                                job.provider(),</span>
+                                username,
+                                context,
+                                new AnalysisProvenance(
+                                        projectId,
+<span class="fc" id="L375">                                        workItem.requirementId(),</span>
+                                        snapshotId,
+<span class="fc" id="L377">                                        analysisSessionId), com.taxonomy.dto.AnalysisScope.full(), job.providerBinding())</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">                                .withAnalysisReasonLength(job.analysisReasonLength() == null</span>
+<span class="fc" id="L379">                                        ? com.taxonomy.dto.AnalysisReasonLength.STANDARD : job.analysisReasonLength())</span>
+<span class="fc" id="L380">                                .withAnalysisLanguage(job.analysisLanguage());</span>
+                AnalysisResult analysis;
+                // Close the question journal before optional snapshot enrichment. Only
+                // the actual classification/relation procedure owns these checkpoints.
+<span class="fc bfc" id="L384" title="All 2 branches covered.">                try (var continuation = budgetContinuations == null ? null</span>
+<span class="fc" id="L385">                        : budgetContinuations.begin(workItem, job, username, context)) {</span>
+<span class="fc bfc" id="L386" title="All 2 branches covered.">                    if (continuation == null) {</span>
+<span class="fc" id="L387">                        analysis = analyzeRequirementUseCase.analyze(command).analysisResult();</span>
+<span class="pc bpc" id="L388" title="1 of 2 branches missed.">                    } else if (continuation.replay() != null) {</span>
+<span class="nc" id="L389">                        analysis = continuation.replay();</span>
+                    } else {
+<span class="fc" id="L391">                        analysis = continuation.complete(analyzeRequirementUseCase</span>
+<span class="fc" id="L392">                                .analyze(continuation.bind(command)).analysisResult());</span>
+                    }
+                }
+<span class="pc bpc" id="L395" title="1 of 4 branches missed.">                if (analysis == null || analysis.getScores() == null</span>
+<span class="fc bfc" id="L396" title="All 2 branches covered.">                        || &quot;ERROR&quot;.equalsIgnoreCase(analysis.getStatus())) {</span>
+<span class="pc bpc" id="L397" title="1 of 4 branches missed.">                    throw new IllegalStateException(analysis != null &amp;&amp; analysis.getErrorMessage() != null</span>
+<span class="fc" id="L398">                            ? analysis.getErrorMessage() : &quot;Analysis produced no usable scores&quot;);</span>
+                }
+
+<span class="fc" id="L401">                AnalysisCopilotResult copilot = analysis.getCopilot();</span>
+<span class="fc bfc" id="L402" title="All 2 branches covered.">                if (copilot == null) {</span>
+                    // Historical/local producers may not have a report yet. Use their
+                    // retained evidence, never a newer global catalogue or model call.
+<span class="fc" id="L405">                    copilot = copilotService.analyze(analysis, workItem.requirementText());</span>
+<span class="fc" id="L406">                    analysis.setCopilot(copilot);</span>
+                }
+<span class="fc" id="L408">                GapAnalysisView gaps = copilot.gaps();</span>
+<span class="fc" id="L409">                PatternDetectionView patterns = copilot.patterns();</span>
+<span class="fc" id="L410">                ArchitectureRecommendation recommendation = copilot.recommendation();</span>
+<span class="fc" id="L411">                long durationMs = (System.nanoTime() - startedAt) / 1_000_000L;</span>
+<span class="fc" id="L412">                claimPersistenceService.persistSnapshot(</span>
+                        workItem,
+                        snapshotId,
+                        analysisSessionId,
+                        analysis,
+                        gaps,
+                        patterns,
+                        recommendation,
+                        effectiveProvider,
+                        null,
+                        promptFingerprint,
+                        taxonomyFingerprint,
+                        username,
+                        context,
+                        durationMs);
+<span class="fc" id="L427">            } catch (Exception failure) {</span>
+                try {
+<span class="fc" id="L429">                    claimPersistenceService.failItem(workItem, failure);</span>
+<span class="nc" id="L430">                } catch (PortfolioException claimFailure) {</span>
+<span class="nc bnc" id="L431" title="All 2 branches missed.">                    if (claimFailure.getKind() != PortfolioException.Kind.CONFLICT) {</span>
+<span class="nc" id="L432">                        throw claimFailure;</span>
+                    }
+<span class="nc" id="L434">                    LOGGER.info(</span>
+                            &quot;Discarded late result for analysis item {} attempt {} because its claim is no longer active&quot;,
+<span class="nc" id="L436">                            workItem.itemId(),</span>
+<span class="nc" id="L437">                            workItem.attempt());</span>
+<span class="fc" id="L438">                }</span>
+<span class="fc" id="L439">            }</span>
+<span class="fc" id="L440">        }</span>
+<span class="fc" id="L441">        return reconcileJobState(jobId, projectId, username, context, scopeKey);</span>
+    }
+
+    private AnalysisJobView reconcileJobState(String jobId,
+                                              Long projectId,
+                                              String username,
+                                              WorkspaceContext context,
+                                              String scopeKey) {
+<span class="fc" id="L449">        AnalysisJobView current = persistenceService.getJob(</span>
+                jobId, projectId, username, context);
+<span class="fc bfc" id="L451" title="All 2 branches covered.">        if (isTerminal(current.status())) {</span>
+<span class="fc" id="L452">            return current;</span>
+        }
+<span class="pc bpc" id="L454" title="1 of 2 branches missed.">        if (recoveryService.markPendingWhenOnlyPreparedItemsRemain(</span>
+                jobId, projectId, scopeKey)) {
+<span class="nc" id="L456">            return persistenceService.getJob(jobId, projectId, username, context);</span>
+        }
+<span class="fc" id="L458">        return persistenceService.completeJob(jobId, projectId, scopeKey);</span>
+    }
+
+    private static boolean isTerminal(AnalysisStatus status) {
+<span class="pc bpc" id="L462" title="1 of 8 branches missed.">        return status == AnalysisStatus.SUCCESS</span>
+                || status == AnalysisStatus.PARTIAL
+                || status == AnalysisStatus.FAILED
+                || status == AnalysisStatus.CANCELLED;
+    }
+
+    private List&lt;Long&gt; selectRequirementIds(Long projectId,
+                                            AnalyzeProjectRequest request,
+                                            String username,
+                                            WorkspaceContext context) {
+<span class="fc bfc" id="L472" title="All 2 branches covered.">        if (request.analyzeAll()) {</span>
+<span class="fc" id="L473">            List&lt;Long&gt; ids = projectService.listRequirements(projectId, username, context).stream()</span>
+<span class="fc" id="L474">                    .map(requirement -&gt; requirement.id())</span>
+<span class="fc" id="L475">                    .toList();</span>
+<span class="fc bfc" id="L476" title="All 2 branches covered.">            if (ids.isEmpty()) throw PortfolioException.validation(&quot;Project has no requirements to analyze&quot;);</span>
+<span class="fc" id="L477">            return requireAllowedBatch(ids);</span>
+        }
+<span class="pc bpc" id="L479" title="1 of 4 branches missed.">        if (request.requirementIds() == null || request.requirementIds().isEmpty()) {</span>
+<span class="fc" id="L480">            throw PortfolioException.validation(&quot;requirementIds must be supplied unless all=true&quot;);</span>
+        }
+<span class="fc" id="L482">        List&lt;Long&gt; ids = request.requirementIds().stream()</span>
+<span class="fc" id="L483">                .filter(java.util.Objects::nonNull)</span>
+<span class="fc" id="L484">                .distinct()</span>
+<span class="fc" id="L485">                .toList();</span>
+<span class="fc bfc" id="L486" title="All 2 branches covered.">        if (ids.isEmpty()) {</span>
+<span class="fc" id="L487">            throw PortfolioException.validation(&quot;At least one valid requirementId is required&quot;);</span>
+        }
+<span class="fc" id="L489">        return requireAllowedBatch(ids);</span>
+    }
+
+    private List&lt;Long&gt; requireAllowedBatch(List&lt;Long&gt; requirementIds) {
+<span class="fc bfc" id="L493" title="All 2 branches covered.">        if (requirementIds.size() &gt; maximumBatchRequirements) {</span>
+<span class="fc" id="L494">            throw PortfolioException.validation(</span>
+<span class="fc" id="L495">                    &quot;Analysis batch contains &quot; + requirementIds.size()</span>
+                            + &quot; requirements; maximum is &quot; + maximumBatchRequirements);
+        }
+<span class="fc" id="L498">        return requirementIds;</span>
+    }
+
+    private int normalizeMaxNodes(Integer requested) {
+<span class="fc bfc" id="L502" title="All 2 branches covered.">        int value = requested != null ? requested : DEFAULT_ARCHITECTURE_NODES;</span>
+<span class="fc bfc" id="L503" title="All 4 branches covered.">        if (value &lt; 1 || value &gt; maximumArchitectureNodes) {</span>
+<span class="fc" id="L504">            throw PortfolioException.validation(</span>
+                    &quot;maxArchitectureNodes must be between 1 and &quot; + maximumArchitectureNodes);
+        }
+<span class="fc" id="L507">        return value;</span>
+    }
+
+    private static String normalizeProvider(String provider) {
+<span class="pc bpc" id="L511" title="1 of 4 branches missed.">        if (provider == null || provider.isBlank()) return null;</span>
+<span class="fc" id="L512">        return provider.strip().toUpperCase(Locale.ROOT);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

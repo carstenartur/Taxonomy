@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArtemisProviderQuotaPolicy.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">ArtemisProviderQuotaPolicy.java</span></div><h1>ArtemisProviderQuotaPolicy.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import com.taxonomy.analysis.service.ProviderRateQuotas;
+
+/** Public scalar admin/binding contract; contains neither URLs nor credentials. */
+public record ArtemisProviderQuotaPolicy(int rpm,long tpm,int rpd,long inputUpperBound,int outputCap,
+                                        String tokenAdapter,Long clockSkewMillis,Integer maximumReservations) {
+<span class="fc" id="L8">    public ArtemisProviderQuotaPolicy {</span>
+<span class="fc bfc" id="L9" title="All 2 branches covered.">        clockSkewMillis=clockSkewMillis==null?1000L:clockSkewMillis;</span>
+<span class="fc bfc" id="L10" title="All 2 branches covered.">        maximumReservations=maximumReservations==null?20000:maximumReservations;</span>
+<span class="fc" id="L11">        new ProviderQuotaLedger.Policy(rpm,tpm,rpd,inputUpperBound,outputCap,clockSkewMillis,maximumReservations);</span>
+<span class="fc bfc" id="L12" title="All 2 branches covered.">        if(tpm&gt;0) new ProviderRateQuotas.TokenBudget(tokenAdapter,inputUpperBound,outputCap);</span>
+<span class="pc bpc" id="L13" title="3 of 4 branches missed.">        else if(tokenAdapter!=null&amp;&amp;!tokenAdapter.isBlank()) throw new IllegalArgumentException(&quot;RPM/RPD-only quota must not declare a token adapter&quot;);</span>
+<span class="fc" id="L14">    }</span>
+    ProviderQuotaLedger.Policy ledgerPolicy() {
+<span class="fc" id="L16">        return new ProviderQuotaLedger.Policy(rpm,tpm,rpd,inputUpperBound,outputCap,clockSkewMillis,maximumReservations);</span>
+    }
+    ProviderRateQuotas.TokenBudget tokenBudget() {
+<span class="fc bfc" id="L19" title="All 2 branches covered.">        return tpm==0?null:new ProviderRateQuotas.TokenBudget(tokenAdapter,inputUpperBound,outputCap);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

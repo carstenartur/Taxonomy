@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureCommand.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.command</a> &gt; <span class="el_source">ArchitectureCommand.java</span></div><h1>ArchitectureCommand.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.command;
+
+import java.util.Map;
+import java.util.Objects;
+import java.util.LinkedHashMap;
+import java.util.List;
+
+/** Renderer- and framework-independent semantic intents. Identity is never an editable property. */
+public sealed interface ArchitectureCommand {
+    /** The server supplies actor and time after exact-context authorization. */
+    record ReviewRequirementRealization(String requirementId,
+                                        com.taxonomy.dsl.requirements.RequirementRealization.Review review)
+            implements ArchitectureCommand {
+<span class="fc" id="L14">        public ReviewRequirementRealization { Objects.requireNonNull(requirementId); Objects.requireNonNull(review); }</span>
+    }
+    /** Internal frozen-source intent. The server builds this; it is absent from the public wire union. */
+<span class="fc" id="L17">    record SnapshotElement(String id, String type, String title, String description) {}</span>
+    record AdoptAnalysisSnapshot(String viewId, String title, String description, String graphFingerprint,
+                                 List&lt;SnapshotElement&gt; elements, List&lt;RelationKey&gt; relations,
+                                 Map&lt;String, String&gt; provenance) implements ArchitectureCommand {
+<span class="fc" id="L21">        public AdoptAnalysisSnapshot {</span>
+<span class="fc" id="L22">            elements = List.copyOf(elements); relations = List.copyOf(relations); provenance = copyProperties(provenance);</span>
+<span class="fc" id="L23">        }</span>
+    }
+    record SetRequirementPlanning(String requirementId, com.taxonomy.dsl.planning.PlanningEntry entry)
+            implements ArchitectureCommand {
+<span class="fc" id="L27">        public SetRequirementPlanning { Objects.requireNonNull(requirementId); Objects.requireNonNull(entry); }</span>
+    }
+    /** Internal reviewed import only. Not exposed as a public editor wire command. */
+    record ImportRequirementPlanning(String requirementId, com.taxonomy.dsl.planning.PlanningEntry entry)
+            implements ArchitectureCommand {
+<span class="fc" id="L32">        public ImportRequirementPlanning { Objects.requireNonNull(requirementId); Objects.requireNonNull(entry); }</span>
+    }
+    record DeleteRequirementPlanning(String requirementId, String entryId) implements ArchitectureCommand {
+<span class="fc" id="L35">        public DeleteRequirementPlanning { Objects.requireNonNull(requirementId); Objects.requireNonNull(entryId); }</span>
+    }
+
+    record CreateArchitectureElement(String id, String type, Map&lt;String, String&gt; properties)
+            implements ArchitectureCommand {
+<span class="fc" id="L40">        public CreateArchitectureElement { properties = copyProperties(properties); }</span>
+    }
+
+    record UpdateArchitectureElement(String id, String type, Map&lt;String, String&gt; properties)
+            implements ArchitectureCommand {
+<span class="fc" id="L45">        public UpdateArchitectureElement { properties = copyProperties(properties); }</span>
+    }
+
+    record CreateArchitecturePackage(String id, Map&lt;String, String&gt; properties) implements ArchitectureCommand {
+<span class="fc" id="L49">        public CreateArchitecturePackage { properties = copyProperties(properties); }</span>
+    }
+    record UpdateArchitecturePackage(String id, Map&lt;String, String&gt; properties) implements ArchitectureCommand {
+<span class="fc" id="L52">        public UpdateArchitecturePackage { properties = copyProperties(properties); }</span>
+    }
+<span class="fc" id="L54">    enum PackageMemberKind { PACKAGE, ELEMENT }</span>
+    /** Empty parent is root; null/-1 explicitly detaches an ELEMENT. */
+<span class="fc" id="L56">    record PackagePlacement(PackageMemberKind kind, String memberId, String parentPackageId, int position) {}</span>
+    record SetArchitecturePackagePlacements(List&lt;PackagePlacement&gt; placements,
+                                           java.util.Set&lt;String&gt; completeParentScopes) implements ArchitectureCommand {
+<span class="fc" id="L59">        public SetArchitecturePackagePlacements {</span>
+<span class="fc" id="L60">            placements = List.copyOf(placements); completeParentScopes = java.util.Set.copyOf(completeParentScopes);</span>
+<span class="fc" id="L61">        }</span>
+    }
+<span class="fc" id="L63">    record DeleteArchitecturePackage(String id) implements ArchitectureCommand {}</span>
+    record UpsertRequirementMapping(String requirementIdentity, String elementId, String rationale,
+                                    Map&lt;String, String&gt; exchangeProperties) implements ArchitectureCommand {
+<span class="fc" id="L66">        public UpsertRequirementMapping { exchangeProperties = copyProperties(exchangeProperties); }</span>
+    }
+<span class="fc" id="L68">    record DeleteRequirementMapping(String requirementIdentity, String elementId) implements ArchitectureCommand {}</span>
+
+<span class="fc" id="L70">    record DeleteArchitectureElement(String id) implements ArchitectureCommand {}</span>
+
+    private static Map&lt;String, String&gt; copyProperties(Map&lt;String, String&gt; properties) {
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        if (properties == null) throw new ArchitectureDslCommands.CommandProblem(&quot;INVALID_VALUE&quot;, &quot;properties&quot;,</span>
+<span class="fc" id="L74">                &quot;Properties must be a map of non-null strings&quot;, List.of());</span>
+<span class="fc" id="L75">        Map&lt;String, String&gt; snapshot = new LinkedHashMap&lt;&gt;(properties);</span>
+<span class="fc" id="L76">        snapshot.forEach((key, value) -&gt; {</span>
+<span class="fc bfc" id="L77" title="All 4 branches covered.">            if (key == null || value == null) throw new ArchitectureDslCommands.CommandProblem(&quot;INVALID_VALUE&quot;,</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">                    key == null ? &quot;properties&quot; : key, &quot;Property names and values must be non-null strings&quot;, List.of());</span>
+<span class="fc" id="L79">        });</span>
+<span class="fc" id="L80">        return Map.copyOf(snapshot);</span>
+    }
+
+    record RelationKey(String sourceId, String relationType, String targetId) {
+<span class="fc" id="L84">        public RelationKey {</span>
+<span class="fc" id="L85">            Objects.requireNonNull(sourceId);</span>
+<span class="fc" id="L86">            Objects.requireNonNull(relationType);</span>
+<span class="fc" id="L87">            Objects.requireNonNull(targetId);</span>
+<span class="fc" id="L88">        }</span>
+<span class="fc" id="L89">        public String id() { return sourceId + &quot; &quot; + relationType + &quot; &quot; + targetId; }</span>
+    }
+
+    record CreateArchitectureRelation(RelationKey relation, String status, Map&lt;String, String&gt; properties)
+            implements ArchitectureCommand {
+<span class="fc" id="L94">        public CreateArchitectureRelation {</span>
+<span class="fc" id="L95">            properties = copyProperties(properties);</span>
+<span class="fc" id="L96">            var allowed = java.util.Set.of(&quot;provenance&quot;, &quot;x-focus-rationale&quot;, &quot;x-focus-evidence&quot;,</span>
+                    &quot;x-focus-revision&quot;, &quot;x-focus-method&quot;, &quot;x-focus-source-hash&quot;);
+<span class="fc" id="L98">            properties.forEach((key, value) -&gt; {</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">                if (!allowed.contains(key)) throw new ArchitectureDslCommands.CommandProblem(&quot;READ_ONLY_PROPERTY&quot;, key,</span>
+<span class="fc" id="L100">                        &quot;Property is not editable on a created relation&quot;, List.of());</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">                if (value.length() &gt; 8000) throw new ArchitectureDslCommands.CommandProblem(&quot;VALUE_TOO_LONG&quot;, key,</span>
+<span class="fc" id="L102">                        &quot;Property exceeds 8000 characters&quot;, List.of());</span>
+<span class="pc bpc" id="L103" title="1 of 8 branches missed.">                if (value.chars().anyMatch(character -&gt; Character.isISOControl(character)</span>
+                        || character == 0xfffe || character == 0xffff)) {
+<span class="fc" id="L105">                    throw new ArchitectureDslCommands.CommandProblem(&quot;INVALID_VALUE&quot;, key,</span>
+<span class="fc" id="L106">                            &quot;Property contains unsupported control characters&quot;, List.of());</span>
+                }
+<span class="fc" id="L108">            });</span>
+<span class="fc" id="L109">        }</span>
+
+        public CreateArchitectureRelation(RelationKey relation, String status) {
+<span class="fc" id="L112">            this(relation, status, Map.of());</span>
+<span class="fc" id="L113">        }</span>
+    }
+<span class="fc" id="L115">    record UpdateArchitectureRelation(RelationKey relation, String status) implements ArchitectureCommand {}</span>
+<span class="fc" id="L116">    record DeleteArchitectureRelation(RelationKey relation) implements ArchitectureCommand {}</span>
+
+    /** Semantic containment; visual coordinates never enter this command. Null parent means ungroup. */
+<span class="fc" id="L119">    record MoveOrGroupElement(String id, String parentId) implements ArchitectureCommand {}</span>
+
+    /** Reviewed integration metadata is a bounded extension of an existing semantic object. */
+    record SetExchangeProperties(String objectKind, String id, Map&lt;String, String&gt; properties) implements ArchitectureCommand {
+<span class="fc" id="L123">        public SetExchangeProperties { properties = copyProperties(properties); }</span>
+    }
+    record ClearArchitectureElementProperties(String id, java.util.Set&lt;String&gt; properties) implements ArchitectureCommand {
+<span class="fc" id="L126">        public ClearArchitectureElementProperties { properties = java.util.Set.copyOf(properties); }</span>
+    }
+    record UpsertArchitectureView(String id, String title, String description, List&lt;String&gt; members, Map&lt;String, String&gt; properties) implements ArchitectureCommand {
+<span class="fc" id="L129">        public UpsertArchitectureView { members = List.copyOf(members); properties = copyProperties(properties); }</span>
+    }
+<span class="fc" id="L131">    record DeleteArchitectureView(String id) implements ArchitectureCommand {}</span>
+    /** Safe, reviewed interchange evidence belongs to its explicit integration/version boundary. */
+<span class="fc" id="L133">    record StoreExchangeEvidence(String id, String profile, String profileVersion, String fingerprint, String source) implements ArchitectureCommand {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

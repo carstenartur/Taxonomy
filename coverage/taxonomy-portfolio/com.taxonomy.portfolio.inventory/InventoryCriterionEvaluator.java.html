@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>InventoryCriterionEvaluator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.inventory</a> &gt; <span class="el_source">InventoryCriterionEvaluator.java</span></div><h1>InventoryCriterionEvaluator.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.inventory;
+
+import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.*;
+import com.taxonomy.extension.api.inventory.InventoryReadContracts.AssertionKind;
+import java.util.*;
+import java.time.LocalDate;
+
+/** Deterministic conservative interval evaluator. Missing boundaries are never infinity. */
+<span class="fc" id="L9">public final class InventoryCriterionEvaluator {</span>
+    public static final String VERSION = &quot;inventory-criteria/3&quot;;
+    public Finding evaluate(String candidate, Criterion criterion, String node, Question question, List&lt;Assertion&gt; assertions, boolean examined) {
+<span class="fc bfc" id="L12" title="All 2 branches covered.">        if (!examined) return new Finding(candidate,criterion,node,Outcome.UNEXAMINED,List.of(),Set.of(),Set.of(&quot;NOT_EXAMINED&quot;),&quot;Examine the required relationship evidence&quot;,false);</span>
+<span class="fc bfc" id="L13" title="All 2 branches covered.">        if(criterion==Criterion.RELATIONSHIPS) return new Finding(candidate,criterion,node,Outcome.UNKNOWN,List.of(),Set.of(),Set.of(&quot;DIRECTED_REQUIREMENT_REQUIRED&quot;),&quot;Specify exact directed relationship requirements&quot;,false);</span>
+<span class="fc" id="L14">        boolean positive=false,negative=false;</span>
+<span class="fc" id="L15">        var ids=new ArrayList&lt;String&gt;(); var kinds=EnumSet.noneOf(AssertionKind.class); var limits=new TreeSet&lt;String&gt;();var excludedStarts=new ArrayList&lt;Interval&gt;();</span>
+<span class="fc bfc" id="L16" title="All 2 branches covered.">        for(var assertion:assertions) {</span>
+<span class="pc bpc" id="L17" title="2 of 6 branches missed.">            if(!candidate.equals(assertion.candidateId()) || assertion.criterion()!=criterion || !Objects.equals(node,assertion.nodeCode())) continue;</span>
+<span class="pc bpc" id="L18" title="4 of 10 branches missed.">            boolean semanticMapping=criterion==Criterion.CAPABILITY &amp;&amp; assertion.organization()==null &amp;&amp; assertion.environment()==null &amp;&amp; assertion.start()==null &amp;&amp; assertion.endExclusive()==null;</span>
+<span class="pc bpc" id="L19" title="1 of 6 branches missed.">            if(!semanticMapping &amp;&amp; (assertion.organization()==null || !assertion.organization().equals(question.organization()) ||</span>
+<span class="pc bpc" id="L20" title="1 of 4 branches missed.">                    (question.environment()!=null &amp;&amp; !question.environment().equals(assertion.environment())))) continue;</span>
+<span class="fc" id="L21">            ids.add(assertion.id()); kinds.add(assertion.kind());</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">            if(assertion.kind()==AssertionKind.PLANNED) limits.add(&quot;PLANNED_NOT_ACTUAL&quot;);</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">            if(semanticMapping) {</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">                if(assertion.positive())positive=true;else negative=true;</span>
+<span class="fc" id="L25">                limits.add(&quot;SEMANTIC_MAPPING_NOT_AVAILABILITY&quot;);continue;</span>
+            }
+<span class="fc" id="L27">            var start=assertion.start(); var end=assertion.endExclusive();</span>
+<span class="pc bpc" id="L28" title="3 of 8 branches missed.">            if(!assertion.positive() &amp;&amp; start!=null &amp;&amp; end!=null &amp;&amp; end.earliest().isAfter(start.latest()))excludedStarts.add(new Interval(start.latest(),end.earliest()));</span>
+<span class="fc bfc" id="L29" title="All 8 branches covered.">            boolean covers=start!=null &amp;&amp; end!=null &amp;&amp; !start.latest().isAfter(question.start()) &amp;&amp; !end.earliest().isBefore(question.end());</span>
+<span class="pc bpc" id="L30" title="2 of 8 branches missed.">            boolean excluded=(end!=null &amp;&amp; !end.latest().isAfter(question.start())) || (start!=null &amp;&amp; !start.earliest().isBefore(question.end()));</span>
+<span class="fc bfc" id="L31" title="All 4 branches covered.">            if(covers) { if(assertion.positive()) positive=true; else negative=true; }</span>
+<span class="fc bfc" id="L32" title="All 8 branches covered.">            else if(assertion.positive() &amp;&amp; (excluded || (question.mode()==TimeMode.CONTINUOUS_PERIOD &amp;&amp;</span>
+<span class="pc bpc" id="L33" title="1 of 6 branches missed.">                    ((end!=null &amp;&amp; end.latest().isBefore(question.end())) || (start!=null &amp;&amp; start.earliest().isAfter(question.start())))))) negative=true;</span>
+<span class="pc bpc" id="L34" title="4 of 12 branches missed.">            else if(!assertion.positive() &amp;&amp; question.mode()==TimeMode.CONTINUOUS_PERIOD &amp;&amp; start!=null &amp;&amp; end!=null &amp;&amp; start.latest().isBefore(question.end()) &amp;&amp; end.earliest().isAfter(question.start())) negative=true;</span>
+<span class="pc bpc" id="L35" title="1 of 4 branches missed.">            else limits.add(start==null || end==null ? &quot;MISSING_BOUNDARY&quot; : &quot;PARTIAL_OR_IMPRECISE_COVERAGE&quot;);</span>
+<span class="fc" id="L36">        }</span>
+<span class="fc bfc" id="L37" title="All 4 branches covered.">        if(question.mode()==TimeMode.START_WINDOW &amp;&amp; excludesAllStarts(question,excludedStarts)) {negative=true;limits.add(&quot;ALL_STARTS_EXPLICITLY_EXCLUDED&quot;);}</span>
+<span class="pc bpc" id="L38" title="3 of 10 branches missed.">        if(positive &amp;&amp; question.mode()==TimeMode.START_WINDOW &amp;&amp; excludedStarts.stream().anyMatch(i-&gt;i.start().isBefore(question.end()) &amp;&amp; i.end().isAfter(question.start()))) {</span>
+<span class="fc" id="L39">            negative=true;limits.add(&quot;OVERLAPPING_POSITIVE_AND_EXPLICIT_EXCLUSION&quot;);</span>
+        }
+<span class="fc bfc" id="L41" title="All 8 branches covered.">        var outcome=positive &amp;&amp; negative?Outcome.CONFLICT:negative?Outcome.CONTRADICTED:positive?Outcome.SUPPORTED:Outcome.UNKNOWN;</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        if(ids.isEmpty()) limits.add(&quot;NO_ADMISSIBLE_ASSERTION&quot;);</span>
+<span class="fc" id="L43">        return new Finding(candidate,criterion,node,outcome,ids,kinds,limits,</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">                outcome==Outcome.SUPPORTED?&quot;Review the cited assertion and its planned/actual status&quot;:&quot;Obtain explicit dated evidence for this criterion, organization and environment&quot;,negative);</span>
+    }
+<span class="fc" id="L46">    private record Interval(LocalDate start,LocalDate end) { }</span>
+    private boolean excludesAllStarts(Question question,List&lt;Interval&gt; intervals) {
+<span class="fc" id="L48">        intervals.sort(Comparator.comparing(Interval::start));LocalDate cursor=question.start();</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        for(var interval:intervals) {</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            if(interval.start().isAfter(cursor))return false;</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">            if(interval.end().isAfter(cursor))cursor=interval.end();</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            if(!cursor.isBefore(question.end()))return true;</span>
+<span class="fc" id="L53">        }</span>
+<span class="fc" id="L54">        return false;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

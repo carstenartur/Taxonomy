@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>JdbcClobReaders.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">JdbcClobReaders.java</span></div><h1>JdbcClobReaders.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import java.io.IOException;
+import java.io.Reader;
+import java.sql.Clob;
+import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.util.Objects;
+
+/** Complete JDBC text with bounded driver windows; the caller still owns and frees the locator. */
+final class JdbcClobReaders {
+    // Aligns HSQL's compressed 512-KiB parts without its default one-MiB output arrays.
+    private static final int RANGE_CHARACTERS = 262_144;
+    private JdbcClobReaders() { }
+
+    static Reader open(Clob clob) throws SQLException {
+<span class="fc" id="L17">        long length = clob.length();</span>
+<span class="pc bpc" id="L18" title="1 of 2 branches missed.">        if (length &lt; 0) throw new SQLException(&quot;Negative JDBC CLOB length&quot;);</span>
+<span class="fc bfc" id="L19" title="All 2 branches covered.">        if (length &lt;= RANGE_CHARACTERS) return clob.getCharacterStream();</span>
+        Reader first;
+<span class="fc" id="L21">        try { first = clob.getCharacterStream(1, RANGE_CHARACTERS); }</span>
+<span class="fc" id="L22">        catch (SQLFeatureNotSupportedException unsupported) {</span>
+            // Some drivers implement only the ordinary stream. No text has been consumed yet.
+<span class="fc" id="L24">            return clob.getCharacterStream();</span>
+<span class="fc" id="L25">        }</span>
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">        if (first == null) throw new SQLException(&quot;JDBC CLOB range returned no stream&quot;);</span>
+<span class="fc" id="L27">        return new Ranges(clob, length, first);</span>
+    }
+
+    private static final class Ranges extends Reader {
+        private final Clob clob;
+        private final long length;
+<span class="fc" id="L33">        private final char[] single = new char[1];</span>
+        private Reader current;
+        private long consumed;
+<span class="fc" id="L36">        private int remaining = RANGE_CHARACTERS;</span>
+        private boolean closed;
+        private Throwable failure;
+
+<span class="fc" id="L40">        Ranges(Clob clob, long length, Reader first) {</span>
+<span class="fc" id="L41">            this.clob = clob; this.length = length; current = first;</span>
+<span class="fc" id="L42">        }</span>
+
+        @Override public int read() throws IOException {
+<span class="fc bfc" id="L45" title="All 2 branches covered.">            return read(single, 0, 1) &lt; 0 ? -1 : single[0];</span>
+        }
+
+        @Override public int read(char[] buffer, int offset, int count) throws IOException {
+<span class="fc" id="L49">            Objects.checkFromIndexSize(offset, count, buffer.length);</span>
+<span class="fc" id="L50">            checkOpen();</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            if (count == 0) return 0;</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            if (consumed == length) return -1;</span>
+            try {
+<span class="fc bfc" id="L54" title="All 2 branches covered.">                if (current == null) {</span>
+<span class="fc" id="L55">                    remaining = (int) Math.min(RANGE_CHARACTERS, length - consumed);</span>
+<span class="fc" id="L56">                    try { current = clob.getCharacterStream(consumed + 1, remaining); }</span>
+<span class="fc" id="L57">                    catch (SQLException exception) { throw new IOException(&quot;Could not open JDBC CLOB range&quot;, exception); }</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">                    if (current == null) throw new IOException(&quot;JDBC CLOB range returned no stream&quot;);</span>
+                }
+<span class="fc" id="L60">                int requested = Math.min(count, remaining);</span>
+<span class="fc" id="L61">                int actual = current.read(buffer, offset, requested);</span>
+<span class="pc bpc" id="L62" title="1 of 4 branches missed.">                if (actual &lt;= 0 || actual &gt; requested) throw new IOException(&quot;Incomplete JDBC CLOB range&quot;);</span>
+<span class="fc" id="L63">                consumed += actual; remaining -= actual;</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">                if (remaining == 0) {</span>
+                    // Validate and close before publishing even the final chars of a complete JSON
+                    // root: a parser may otherwise close without observing an EOF/close failure.
+<span class="fc bfc" id="L67" title="All 2 branches covered.">                    if (current.read() != -1) throw new IOException(&quot;JDBC CLOB range exceeds its declared length&quot;);</span>
+<span class="fc" id="L68">                    Reader finished = current; current = null; finished.close();</span>
+                }
+<span class="fc" id="L70">                return actual;</span>
+<span class="fc" id="L71">            } catch (IOException | RuntimeException | Error exception) {</span>
+<span class="fc" id="L72">                remember(exception); throw exception;</span>
+            }
+        }
+
+        private void checkOpen() throws IOException {
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            if (failure instanceof IOException exception) throw exception;</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">            if (failure instanceof RuntimeException exception) throw exception;</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">            if (failure instanceof Error exception) throw exception;</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            if (closed) throw new IOException(&quot;JDBC CLOB reader is closed&quot;);</span>
+<span class="fc" id="L81">        }</span>
+
+        private void remember(Throwable exception) {
+<span class="fc" id="L84">            failure = exception;</span>
+<span class="fc" id="L85">            Reader failed = current; current = null;</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            if (failed != null) {</span>
+<span class="fc" id="L87">                try { failed.close(); }</span>
+<span class="pc bnc" id="L88" title="All 2 branches missed.">                catch (Exception | Error cleanup) { if (cleanup != exception) exception.addSuppressed(cleanup); }</span>
+            }
+<span class="fc" id="L90">        }</span>
+
+        @Override public void close() throws IOException {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            if (closed) return;</span>
+<span class="fc" id="L94">            closed = true;</span>
+<span class="fc" id="L95">            Reader closing = current; current = null;</span>
+            // Never rethrow a latched read failure from close (including the same exception).
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            if (closing != null) closing.close();</span>
+<span class="fc" id="L98">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

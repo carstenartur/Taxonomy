@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchiveIO.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.archive</a> &gt; <span class="el_source">ArchiveIO.java</span></div><h1>ArchiveIO.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.archive;
+
+import java.io.*;
+import java.nio.channels.FileChannel;
+import java.nio.file.*;
+import java.security.*;
+import java.util.HexFormat;
+
+final class ArchiveIO {
+<span class="fc" id="L10">    static final byte[] CONTEXT = &quot;taxonomy.taxbackup.archive.v1&quot;.getBytes(java.nio.charset.StandardCharsets.UTF_8);</span>
+    private ArchiveIO() { }
+    static MessageDigest sha256() {
+<span class="fc" id="L13">        try { return MessageDigest.getInstance(&quot;SHA-256&quot;); }</span>
+<span class="nc" id="L14">        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+    static String digest(java.nio.channels.SeekableByteChannel input, long limit, Guard guard) throws IOException {
+<span class="fc" id="L17">        var digest = sha256(); var buffer = java.nio.ByteBuffer.allocate(65536); long count = 0;</span>
+<span class="fc" id="L18">        long position = input.position(); input.position(0);</span>
+        try {
+<span class="fc bfc" id="L20" title="All 2 branches covered.">            for (int n; (n = input.read(buffer)) != -1;) {</span>
+<span class="pc bpc" id="L21" title="1 of 2 branches missed.">                if (n &gt; limit - count) throw new IOException(&quot;Archive byte limit exceeded&quot;);</span>
+<span class="fc" id="L22">                count += n; guard.advance(n); buffer.flip(); digest.update(buffer); buffer.clear();</span>
+            }
+<span class="fc" id="L24">            return HexFormat.of().formatHex(digest.digest());</span>
+<span class="fc" id="L25">        } finally { input.position(position); }</span>
+    }
+    static void forceDirectory(Path directory) throws IOException {
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">        if (Files.getFileStore(directory).supportsFileAttributeView(&quot;posix&quot;))</span>
+<span class="fc" id="L29">            try (var channel = FileChannel.open(directory, StandardOpenOption.READ)) { channel.force(true); }</span>
+<span class="fc" id="L30">    }</span>
+    /** Local read limits cannot invoke worker callbacks or update durable job state. */
+    static final class ReadGuard {
+        private final long deadline;
+<span class="fc" id="L34">        ReadGuard(ArchiveLimits limits) { deadline = System.nanoTime() + limits.maxDuration().toNanos(); }</span>
+        void check() throws IOException {
+<span class="fc bfc" id="L36" title="All 2 branches covered.">            if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException(&quot;Backup processing cancelled&quot;);</span>
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">            if (System.nanoTime() - deadline &gt;= 0) throw new IOException(&quot;Archive runtime limit exceeded&quot;);</span>
+<span class="fc" id="L38">        }</span>
+    }
+    static final class Guard {
+        private final ReadGuard reads;
+        private final ArchiveProgress progress;
+        private long bytes;
+<span class="fc" id="L44">        Guard(ArchiveLimits limits, ArchiveProgress progress) { reads = new ReadGuard(limits); this.progress = progress; }</span>
+<span class="fc" id="L45">        ReadGuard readGuard() { return reads; }</span>
+        void check() throws IOException {
+<span class="fc" id="L47">            reads.check();</span>
+<span class="fc" id="L48">            try { progress.check(bytes); }</span>
+<span class="fc" id="L49">            catch (InterruptedIOException cancelled) {</span>
+<span class="fc" id="L50">                Thread.currentThread().interrupt();</span>
+<span class="fc" id="L51">                throw cancelled;</span>
+<span class="fc" id="L52">            }</span>
+<span class="fc" id="L53">        }</span>
+<span class="fc" id="L54">        void advance(long count) throws IOException { bytes = Math.addExact(bytes, count); check(); }</span>
+<span class="fc" id="L55">        void report(long count) throws IOException { bytes = count; check(); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

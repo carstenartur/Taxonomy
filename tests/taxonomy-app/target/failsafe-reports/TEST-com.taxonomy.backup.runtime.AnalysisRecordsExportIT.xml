@@ -1,0 +1,1290 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-failsafe-plugin/xsd/failsafe-test-report.xsd" version="3.0.2" name="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="24.636" tests="70" errors="0" skipped="0" failures="0" flakes="0">
+  <properties>
+    <property name="git.tags" value=""/>
+    <property name="java.specification.version" value="25"/>
+    <property name="sun.jnu.encoding" value="UTF-8"/>
+    <property name="git.build.host" value="runnervm48cm3"/>
+    <property name="sun.arch.data.model" value="64"/>
+    <property name="java.vendor.url" value="https://adoptium.net/"/>
+    <property name="catalina.useNaming" value="false"/>
+    <property name="git.build.number.unique" value="41355023584.9442.1"/>
+    <property name="APPLICATION_NAME" value="taxonomy-analyzer"/>
+    <property name="sun.boot.library.path" value="/usr/lib/jvm/temurin-25-jdk-amd64/lib"/>
+    <property name="project.basedir" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-app"/>
+    <property name="sun.java.command" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/surefire/surefirebooter-20261101223425364_24.jar /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/surefire 2026-11-01T22-09-53_801-jvmRun1 surefire-20261101223425364_22tmp surefire_1-20261101223425364_23tmp"/>
+    <property name="jdk.debug" value="release"/>
+    <property name="git.closest.tag.commit.count" value="1115"/>
+    <property name="java.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.version.date" value="2026-10-20"/>
+    <property name="java.home" value="/usr/lib/jvm/temurin-25-jdk-amd64"/>
+    <property name="git.total.commit.count" value="1968"/>
+    <property name="basedir" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-app"/>
+    <property name="file.separator" value="/"/>
+    <property name="java.vm.compressedOopsMode" value="Zero based"/>
+    <property name="line.separator" value="&#10;"/>
+    <property name="java.specification.name" value="Java Platform API Specification"/>
+    <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
+    <property name="taxonomy.test.browser.cache" value="/home/runner/work/Taxonomy/Taxonomy/target/test-runtime/selenium"/>
+    <property name="git.tag" value=""/>
+    <property name="git.closest.tag.name" value="v1.3.1"/>
+    <property name="git.build.time" value="2026-11-01T22:16:55Z"/>
+    <property name="git.commit.message.full" value="QA: fix Responses transport cause-chain handling and bare-repo signature test (#1363)"/>
+    <property name="taxonomy.ui.skip" value="true"/>
+    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
+    <property name="java.runtime.version" value="25.0.5+8-LTS"/>
+    <property name="user.name" value="runner"/>
+    <property name="file.encoding" value="UTF-8"/>
+    <property name="jnidispatch.path" value="/home/runner/.cache/JNA/temp/jna986936297649056770.tmp"/>
+    <property name="java.vendor.version" value="Temurin-25.0.5+8"/>
+    <property name="localRepository" value="/home/runner/.m2/repository"/>
+    <property name="jna.loaded" value="true"/>
+    <property name="otel.logs.exporter" value="none"/>
+    <property name="selenium.container.image" value="selenium/standalone-chrome:4.46.0-20260707"/>
+    <property name="java.io.tmpdir" value="/tmp"/>
+    <property name="com.zaxxer.hikari.pool_number" value="2"/>
+    <property name="java.version" value="25.0.5"/>
+    <property name="taxonomy.node.executable" value="/home/runner/work/Taxonomy/Taxonomy/target/test-runtime/frontend/node/node"/>
+    <property name="java.vm.specification.name" value="Java Virtual Machine Specification"/>
+    <property name="PID" value="33088"/>
+    <property name="CONSOLE_LOG_CHARSET" value="UTF-8"/>
+    <property name="git.commit.id.describe" value="v1.3.1-1115-gcec668a"/>
+    <property name="native.encoding" value="UTF-8"/>
+    <property name="java.library.path" value="/usr/java/packages/lib:/usr/lib64:/lib64:/lib:/usr/lib"/>
+    <property name="java.vendor" value="Eclipse Adoptium"/>
+    <property name="stderr.encoding" value="UTF-8"/>
+    <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
+    <property name="LOGGED_APPLICATION_NAME" value="[taxonomy-analyzer] "/>
+    <property name="git.remote.origin.url" value="https://github.com/carstenartur/Taxonomy"/>
+    <property name="git.build.version" value="1.5.3-SNAPSHOT"/>
+    <property name="java.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/test-classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling/target/taxonomy-tooling-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-templates-api/target/taxonomy-templates-api-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/plugins/taxonomy-mermaid-plugin/target/taxonomy-mermaid-plugin-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/target/taxonomy-extension-runtime-1.5.3-SNAPSHOT.jar:/home/runner/.m2/repository/org/pf4j/pf4j/3.16.0/pf4j-3.16.0.jar:/home/runner/.m2/repository/com/github/zafarkhaja/java-semver/0.10.2/java-semver-0.10.2.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting/target/taxonomy-reporting-1.5.3-SNAPSHOT.jar:/home/runner/.m2/repository/org/springdoc/springdoc-openapi-starter-common/3.2.0/springdoc-openapi-starter-common-3.2.0.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-autoconfigure/4.1.2/spring-boot-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-validation/4.1.2/spring-boot-validation-4.1.2.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-el/11.0.27/tomcat-embed-el-11.0.27.jar:/home/runner/.m2/repository/org/hibernate/validator/hibernate-validator/9.1.5.Final/hibernate-validator-9.1.5.Final.jar:/home/runner/.m2/repository/com/fasterxml/classmate/1.7.3/classmate-1.7.3.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-core-jakarta/2.2.55/swagger-core-jakarta-2.2.55.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-annotations-jakarta/2.2.55/swagger-annotations-jakarta-2.2.55.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-models-jakarta/2.2.55/swagger-models-jakarta-2.2.55.jar:/home/runner/.m2/repository/jakarta/validation/jakarta.validation-api/3.1.1/jakarta.validation-api-3.1.1.jar:/home/runner/.m2/repository/com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.22.4/jackson-dataformat-yaml-2.22.4.jar:/home/runner/.m2/repository/com/fasterxml/jackson/datatype/jackson-datatype-jsr310/2.22.4/jackson-datatype-jsr310-2.22.4.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jackson/4.1.2/spring-boot-jackson-4.1.2.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting-api/target/taxonomy-reporting-api-1.5.3-SNAPSHOT.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar:/home/runner/.m2/repository/com/google/crypto/tink/tink/1.24.0/tink-1.24.0.jar:/home/runner/.m2/repository/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar:/home/runner/.m2/repository/com/google/code/gson/gson/2.13.2/gson-2.13.2.jar:/home/runner/.m2/repository/com/google/errorprone/error_prone_annotations/2.41.0/error_prone_annotations-2.41.0.jar:/home/runner/.m2/repository/com/google/protobuf/protobuf-java/4.36.2/protobuf-java-4.36.2.jar:/home/runner/.m2/repository/org/apache/commons/commons-compress/1.28.0/commons-compress-1.28.0.jar:/home/runner/.m2/repository/commons-codec/commons-codec/1.21.0/commons-codec-1.21.0.jar:/home/runner/.m2/repository/commons-io/commons-io/2.20.0/commons-io-2.20.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-lang3/3.20.0/commons-lang3-3.20.0.jar:/home/runner/.m2/repository/com/structurizr/structurizr-dsl/6.2.3/structurizr-dsl-6.2.3.jar:/home/runner/.m2/repository/com/structurizr/structurizr-client/6.2.3/structurizr-client-6.2.3.jar:/home/runner/.m2/repository/javax/xml/bind/jaxb-api/2.4.0-b180830.0359/jaxb-api-2.4.0-b180830.0359.jar:/home/runner/.m2/repository/javax/activation/javax.activation-api/1.2.0/javax.activation-api-1.2.0.jar:/home/runner/.m2/repository/com/structurizr/structurizr-core/6.2.3/structurizr-core-6.2.3.jar:/home/runner/.m2/repository/com/structurizr/structurizr-import/6.2.3/structurizr-import-6.2.3.jar:/home/runner/.m2/repository/com/structurizr/structurizr-export/6.2.3/structurizr-export-6.2.3.jar:/home/runner/.m2/repository/com/structurizr/structurizr-component/6.2.3/structurizr-component-6.2.3.jar:/home/runner/.m2/repository/org/apache/bcel/bcel/6.12.0/bcel-6.12.0.jar:/home/runner/.m2/repository/com/github/javaparser/javaparser-symbol-solver-core/3.28.2/javaparser-symbol-solver-core-3.28.2.jar:/home/runner/.m2/repository/com/github/javaparser/javaparser-core/3.28.2/javaparser-core-3.28.2.jar:/home/runner/.m2/repository/org/javassist/javassist/3.31.0-GA/javassist-3.31.0-GA.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/target/taxonomy-analysis-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-portfolio/target/taxonomy-portfolio-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-architecture/target/taxonomy-architecture-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/target/taxonomy-knowledge-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/target/taxonomy-interop-1.5.3-SNAPSHOT.jar:/home/runner/.m2/repository/org/apache/httpcomponents/client5/httpclient5/5.6.5/httpclient5-5.6.5.jar:/home/runner/.m2/repository/org/apache/httpcomponents/core5/httpcore5/5.4.4/httpcore5-5.4.4.jar:/home/runner/.m2/repository/org/apache/httpcomponents/core5/httpcore5-h2/5.4.4/httpcore5-h2-5.4.4.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-templates/target/taxonomy-templates-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/taxonomy-workspace-1.5.3-SNAPSHOT.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit.gpg.bc/7.8.0.202609011348-r/org.eclipse.jgit.gpg.bc-7.8.0.202609011348-r.jar:/home/runner/.m2/repository/org/bouncycastle/bcpg-jdk18on/1.85/bcpg-jdk18on-1.85.jar:/home/runner/.m2/repository/org/bouncycastle/bcprov-jdk18on/1.85.2/bcprov-jdk18on-1.85.2.jar:/home/runner/.m2/repository/org/bouncycastle/bcutil-jdk18on/1.85/bcutil-jdk18on-1.85.jar:/home/runner/.m2/repository/org/bouncycastle/bcpkix-jdk18on/1.85/bcpkix-jdk18on-1.85.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/target/taxonomy-domain-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/target/taxonomy-dsl-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-export/target/taxonomy-export-1.5.3-SNAPSHOT.jar:/home/runner/.m2/repository/org/apache/jena/jena-arq/6.2.0/jena-arq-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-core/6.2.0/jena-core-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-base/6.2.0/jena-base-6.2.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-csv/1.14.1/commons-csv-1.14.1.jar:/home/runner/.m2/repository/com/github/andrewoma/dexx/collection/0.7/collection-0.7.jar:/home/runner/.m2/repository/org/apache/jena/jena-iri3986/6.2.0/jena-iri3986-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-langtag/6.2.0/jena-langtag-6.2.0.jar:/home/runner/.m2/repository/org/roaringbitmap/RoaringBitmap/1.6.15/RoaringBitmap-1.6.15.jar:/home/runner/.m2/repository/org/slf4j/jcl-over-slf4j/2.0.20/jcl-over-slf4j-2.0.20.jar:/home/runner/.m2/repository/com/apicatalog/titanium-json-ld/1.7.0/titanium-json-ld-1.7.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-jcs/1.1.1/titanium-jcs-1.1.1.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-api/1.0.0/titanium-rdf-api-1.0.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-n-quads/1.0.2/titanium-rdf-n-quads-1.0.2.jar:/home/runner/.m2/repository/org/glassfish/jakarta.json/2.0.1/jakarta.json-2.0.1.jar:/home/runner/.m2/repository/org/apache/thrift/libthrift/0.24.0/libthrift-0.24.0.jar:/home/runner/.m2/repository/com/thoughtworks/xstream/xstream/1.4.21/xstream-1.4.21.jar:/home/runner/.m2/repository/io/github/x-stream/mxparser/1.2.2/mxparser-1.2.2.jar:/home/runner/.m2/repository/xmlpull/xmlpull/1.1.3.1/xmlpull-1.1.3.1.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml-full/6.0.0/poi-ooxml-full-6.0.0.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.22.4/jackson-databind-2.22.4.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.22.4/jackson-core-2.22.4.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/target/taxonomy-extension-api-1.5.3-SNAPSHOT.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-web/4.1.2/spring-boot-starter-web-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jackson/4.1.2/spring-boot-starter-jackson-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat/4.1.2/spring-boot-starter-tomcat-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat-runtime/4.1.2/spring-boot-starter-tomcat-runtime-4.1.2.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-core/11.0.27/tomcat-embed-core-11.0.27.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-websocket/11.0.27/tomcat-embed-websocket-11.0.27.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-tomcat/4.1.2/spring-boot-tomcat-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-http-converter/4.1.2/spring-boot-http-converter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot/4.1.2/spring-boot-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-web/7.0.10/spring-web-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-webmvc/4.1.2/spring-boot-webmvc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-servlet/4.1.2/spring-boot-servlet-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-webmvc/7.0.10/spring-webmvc-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-thymeleaf/4.1.2/spring-boot-starter-thymeleaf-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter/4.1.2/spring-boot-starter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-logging/4.1.2/spring-boot-starter-logging-4.1.2.jar:/home/runner/.m2/repository/ch/qos/logback/logback-classic/1.5.38/logback-classic-1.5.38.jar:/home/runner/.m2/repository/ch/qos/logback/logback-core/1.5.38/logback-core-1.5.38.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-to-slf4j/2.25.5/log4j-to-slf4j-2.25.5.jar:/home/runner/.m2/repository/org/slf4j/jul-to-slf4j/2.0.20/jul-to-slf4j-2.0.20.jar:/home/runner/.m2/repository/jakarta/annotation/jakarta.annotation-api/3.0.0/jakarta.annotation-api-3.0.0.jar:/home/runner/.m2/repository/org/yaml/snakeyaml/2.6/snakeyaml-2.6.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-thymeleaf/4.1.2/spring-boot-thymeleaf-4.1.2.jar:/home/runner/.m2/repository/org/thymeleaf/thymeleaf-spring6/3.1.5.RELEASE/thymeleaf-spring6-3.1.5.RELEASE.jar:/home/runner/.m2/repository/org/thymeleaf/thymeleaf/3.1.5.RELEASE/thymeleaf-3.1.5.RELEASE.jar:/home/runner/.m2/repository/org/attoparser/attoparser/2.0.7.RELEASE/attoparser-2.0.7.RELEASE.jar:/home/runner/.m2/repository/org/unbescape/unbescape/1.1.6.RELEASE/unbescape-1.1.6.RELEASE.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-data-jpa/4.1.2/spring-boot-starter-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jdbc/4.1.2/spring-boot-starter-jdbc-4.1.2.jar:/home/runner/.m2/repository/com/zaxxer/HikariCP/7.0.2/HikariCP-7.0.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-jpa/4.1.2/spring-boot-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-commons/4.1.2/spring-boot-data-commons-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-persistence/4.1.2/spring-boot-persistence-4.1.2.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-commons/4.1.2/spring-data-commons-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-hibernate/4.1.2/spring-boot-hibernate-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jpa/4.1.2/spring-boot-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-orm/7.0.10/spring-orm-7.0.10.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-jpa/4.1.2/spring-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-tx/7.0.10/spring-tx-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-aspects/7.0.10/spring-aspects-7.0.10.jar:/home/runner/.m2/repository/org/aspectj/aspectjweaver/1.9.25.1/aspectjweaver-1.9.25.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jdbc/4.1.2/spring-boot-jdbc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-sql/4.1.2/spring-boot-sql-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-transaction/4.1.2/spring-boot-transaction-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-jdbc/7.0.10/spring-jdbc-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-flyway/4.1.2/spring-boot-starter-flyway-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-flyway/4.1.2/spring-boot-flyway-4.1.2.jar:/home/runner/.m2/repository/org/flywaydb/flyway-database-hsqldb/12.4.0/flyway-database-hsqldb-12.4.0.jar:/home/runner/.m2/repository/org/flywaydb/flyway-core/12.4.0/flyway-core-12.4.0.jar:/home/runner/.m2/repository/org/flywaydb/flyway-database-postgresql/12.4.0/flyway-database-postgresql-12.4.0.jar:/home/runner/.m2/repository/org/hsqldb/hsqldb/2.7.3/hsqldb-2.7.3.jar:/home/runner/.m2/repository/org/flywaydb/flyway-sqlserver/12.4.0/flyway-sqlserver-12.4.0.jar:/home/runner/.m2/repository/org/flywaydb/flyway-database-oracle/12.4.0/flyway-database-oracle-12.4.0.jar:/home/runner/.m2/repository/org/postgresql/postgresql/42.7.14/postgresql-42.7.14.jar:/home/runner/.m2/repository/org/checkerframework/checker-qual/3.54.0/checker-qual-3.54.0.jar:/home/runner/.m2/repository/com/microsoft/sqlserver/mssql-jdbc/13.4.0.jre11/mssql-jdbc-13.4.0.jre11.jar:/home/runner/.m2/repository/com/oracle/database/jdbc/ojdbc11/23.26.3.0.0/ojdbc11-23.26.3.0.0.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml/6.0.0/poi-ooxml-6.0.0.jar:/home/runner/.m2/repository/org/apache/poi/poi/6.0.0/poi-6.0.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar:/home/runner/.m2/repository/com/zaxxer/SparseBitSet/1.3/SparseBitSet-1.3.jar:/home/runner/.m2/repository/org/apache/xmlbeans/xmlbeans/5.4.1/xmlbeans-5.4.1.jar:/home/runner/.m2/repository/com/github/virtuald/curvesapi/1.08/curvesapi-1.08.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-api/2.25.5/log4j-api-2.25.5.jar:/home/runner/.m2/repository/org/apache/commons/commons-collections4/4.6.0/commons-collections4-4.6.0.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox/3.0.8/pdfbox-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox-io/3.0.8/pdfbox-io-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/fontbox/3.0.8/fontbox-3.0.8.jar:/home/runner/.m2/repository/commons-logging/commons-logging/1.3.6/commons-logging-1.3.6.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-core/9.12.3/lucene-core-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-analysis-common/9.12.3/lucene-analysis-common-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-queryparser/9.12.3/lucene-queryparser-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-queries/9.12.3/lucene-queries-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-sandbox/9.12.3/lucene-sandbox-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-facet/9.12.3/lucene-facet-9.12.3.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-orm/8.4.0.Final/hibernate-search-mapper-orm-8.4.0.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-engine/8.4.0.Final/hibernate-search-engine-8.4.0.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-pojo-base/8.4.0.Final/hibernate-search-mapper-pojo-base-8.4.0.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-util-common/8.4.0.Final/hibernate-search-util-common-8.4.0.Final.jar:/home/runner/.m2/repository/org/hibernate/orm/hibernate-core/7.4.13.Final/hibernate-core-7.4.13.Final.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-runtime/4.0.9/jaxb-runtime-4.0.9.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-core/4.0.9/jaxb-core-4.0.9.jar:/home/runner/.m2/repository/org/eclipse/angus/angus-activation/2.0.3/angus-activation-2.0.3.jar:/home/runner/.m2/repository/org/glassfish/jaxb/txw2/4.0.9/txw2-4.0.9.jar:/home/runner/.m2/repository/com/sun/istack/istack-commons-runtime/4.1.2/istack-commons-runtime-4.1.2.jar:/home/runner/.m2/repository/jakarta/inject/jakarta.inject-api/2.0.1/jakarta.inject-api-2.0.1.jar:/home/runner/.m2/repository/org/antlr/antlr4-runtime/4.13.2/antlr4-runtime-4.13.2.jar:/home/runner/.m2/repository/org/hibernate/models/hibernate-models/1.1.1/hibernate-models-1.1.1.jar:/home/runner/.m2/repository/jakarta/persistence/jakarta.persistence-api/3.2.0/jakarta.persistence-api-3.2.0.jar:/home/runner/.m2/repository/jakarta/transaction/jakarta.transaction-api/2.0.1/jakarta.transaction-api-2.0.1.jar:/home/runner/.m2/repository/io/smallrye/jandex/3.3.2/jandex-3.3.2.jar:/home/runner/.m2/repository/org/jboss/logging/jboss-logging/3.6.3.Final/jboss-logging-3.6.3.Final.jar:/home/runner/.m2/repository/jakarta/xml/bind/jakarta.xml.bind-api/4.0.5/jakarta.xml.bind-api-4.0.5.jar:/home/runner/.m2/repository/jakarta/activation/jakarta.activation-api/2.1.4/jakarta.activation-api-2.1.4.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-backend-lucene/8.4.0.Final/hibernate-search-backend-lucene-8.4.0.Final.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-join/9.12.3/lucene-join-9.12.3.jar:/home/runner/.m2/repository/com/carrotsearch/hppc/0.10.0/hppc-0.10.0.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-highlighter/9.12.3/lucene-highlighter-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-memory/9.12.3/lucene-memory-9.12.3.jar:/home/runner/.m2/repository/ai/djl/api/0.39.0/api-0.39.0.jar:/home/runner/.m2/repository/net/java/dev/jna/jna/5.17.0/jna-5.17.0.jar:/home/runner/.m2/repository/ai/djl/huggingface/tokenizers/0.39.0/tokenizers-0.39.0.jar:/home/runner/.m2/repository/ai/djl/onnxruntime/onnxruntime-engine/0.39.0/onnxruntime-engine-0.39.0.jar:/home/runner/.m2/repository/com/microsoft/onnxruntime/onnxruntime/1.21.1/onnxruntime-1.21.1.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit/7.8.0.202609011348-r/org.eclipse.jgit-7.8.0.202609011348-r.jar:/home/runner/.m2/repository/com/googlecode/javaewah/JavaEWAH/1.2.3/JavaEWAH-1.2.3.jar:/home/runner/.m2/repository/io/github/carstenartur/jgit-storage-hibernate-core/0.11.8/jgit-storage-hibernate-core-0.11.8.jar:/home/runner/.m2/repository/io/github/carstenartur/jgit-storage-hibernate-smart-http/0.11.8/jgit-storage-hibernate-smart-http-0.11.8.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit.http.server/7.8.0.202609011348-r/org.eclipse.jgit.http.server-7.8.0.202609011348-r.jar:/home/runner/.m2/repository/org/springdoc/springdoc-openapi-starter-webmvc-ui/3.2.0/springdoc-openapi-starter-webmvc-ui-3.2.0.jar:/home/runner/.m2/repository/org/springdoc/springdoc-openapi-starter-webmvc-api/3.2.0/springdoc-openapi-starter-webmvc-api-3.2.0.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-web-server/4.1.2/spring-boot-web-server-4.1.2.jar:/home/runner/.m2/repository/org/webjars/swagger-ui/5.34.0/swagger-ui-5.34.0.jar:/home/runner/.m2/repository/org/webjars/webjars-locator-lite/1.1.5/webjars-locator-lite-1.1.5.jar:/home/runner/.m2/repository/org/webjars/npm/bootstrap/5.3.8/bootstrap-5.3.8.jar:/home/runner/.m2/repository/org/webjars/npm/d3/7.9.0/d3-7.9.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-brush/3.0.0/d3-brush-3.0.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-selection/3.0.0/d3-selection-3.0.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-color/3.1.0/d3-color-3.1.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-polygon/3.0.1/d3-polygon-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-time-format/4.1.0/d3-time-format-4.1.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-ease/3.0.1/d3-ease-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-axis/3.0.0/d3-axis-3.0.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-force/3.0.0/d3-force-3.0.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-hierarchy/3.1.2/d3-hierarchy-3.1.2.jar:/home/runner/.m2/repository/org/webjars/npm/d3-format/3.1.2/d3-format-3.1.2.jar:/home/runner/.m2/repository/org/webjars/npm/d3-drag/3.0.0/d3-drag-3.0.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-contour/4.0.2/d3-contour-4.0.2.jar:/home/runner/.m2/repository/org/webjars/npm/d3-scale/4.0.2/d3-scale-4.0.2.jar:/home/runner/.m2/repository/org/webjars/npm/d3-array/3.2.4/d3-array-3.2.4.jar:/home/runner/.m2/repository/org/webjars/npm/internmap/2.0.3/internmap-2.0.3.jar:/home/runner/.m2/repository/org/webjars/npm/d3-quadtree/3.0.1/d3-quadtree-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-path/3.1.0/d3-path-3.1.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-interpolate/3.0.1/d3-interpolate-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-geo/3.1.1/d3-geo-3.1.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-transition/3.0.1/d3-transition-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-scale-chromatic/3.1.0/d3-scale-chromatic-3.1.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-chord/3.0.1/d3-chord-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-zoom/3.0.0/d3-zoom-3.0.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-time/3.1.0/d3-time-3.1.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-shape/3.2.0/d3-shape-3.2.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-delaunay/6.0.4/d3-delaunay-6.0.4.jar:/home/runner/.m2/repository/org/webjars/npm/delaunator/5.1.0/delaunator-5.1.0.jar:/home/runner/.m2/repository/org/webjars/npm/robust-predicates/3.0.3/robust-predicates-3.0.3.jar:/home/runner/.m2/repository/org/webjars/npm/d3-dsv/3.0.1/d3-dsv-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/commander/7.2.0/commander-7.2.0.jar:/home/runner/.m2/repository/org/webjars/npm/iconv-lite/0.6.3/iconv-lite-0.6.3.jar:/home/runner/.m2/repository/org/webjars/npm/safer-buffer/2.1.2/safer-buffer-2.1.2.jar:/home/runner/.m2/repository/org/webjars/npm/rw/1.3.3/rw-1.3.3.jar:/home/runner/.m2/repository/org/webjars/npm/d3-dispatch/3.0.1/d3-dispatch-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-random/3.0.1/d3-random-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-fetch/3.0.1/d3-fetch-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-timer/3.0.1/d3-timer-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/jspdf/4.2.1/jspdf-4.2.1.jar:/home/runner/.m2/repository/org/webjars/npm/babel__runtime/8.0.0-alpha.6/babel__runtime-8.0.0-alpha.6.jar:/home/runner/.m2/repository/org/webjars/npm/regenerator-runtime/0.14.1/regenerator-runtime-0.14.1.jar:/home/runner/.m2/repository/org/webjars/npm/fflate/0.8.3/fflate-0.8.3.jar:/home/runner/.m2/repository/org/webjars/npm/fast-png/6.4.0/fast-png-6.4.0.jar:/home/runner/.m2/repository/org/webjars/npm/pako/2.2.0/pako-2.2.0.jar:/home/runner/.m2/repository/org/webjars/npm/iobuffer/5.4.0/iobuffer-5.4.0.jar:/home/runner/.m2/repository/org/webjars/npm/types__pako/2.0.4/types__pako-2.0.4.jar:/home/runner/.m2/repository/org/webjars/npm/svg2pdf.js/2.2.0/svg2pdf.js-2.2.0.jar:/home/runner/.m2/repository/org/webjars/npm/cssesc/3.0.0/cssesc-3.0.0.jar:/home/runner/.m2/repository/org/webjars/npm/font-family-papandreou/0.2.0-patch2/font-family-papandreou-0.2.0-patch2.jar:/home/runner/.m2/repository/org/webjars/npm/svgpath/2.6.0/svgpath-2.6.0.jar:/home/runner/.m2/repository/org/webjars/npm/specificity/0.4.1/specificity-0.4.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-security/4.1.2/spring-boot-starter-security-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-security/4.1.2/spring-boot-security-4.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-config/7.1.2/spring-security-config-7.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-aop/7.0.10/spring-aop-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-beans/7.0.10/spring-beans-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-oauth2-client/4.1.2/spring-boot-starter-oauth2-client-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-security-oauth2-client/4.1.2/spring-boot-security-oauth2-client-4.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-oauth2-client/7.1.2/spring-security-oauth2-client-7.1.2.jar:/home/runner/.m2/repository/com/nimbusds/oauth2-oidc-sdk/11.38.2/oauth2-oidc-sdk-11.38.2.jar:/home/runner/.m2/repository/com/github/stephenc/jcip/jcip-annotations/1.0-1/jcip-annotations-1.0-1.jar:/home/runner/.m2/repository/com/nimbusds/content-type/2.3/content-type-2.3.jar:/home/runner/.m2/repository/com/nimbusds/lang-tag/1.7/lang-tag-1.7.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-oauth2-jose/7.1.2/spring-security-oauth2-jose-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-oauth2-core/7.1.2/spring-security-oauth2-core-7.1.2.jar:/home/runner/.m2/repository/com/nimbusds/nimbus-jose-jwt/10.9.1/nimbus-jose-jwt-10.9.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-oauth2-resource-server/4.1.2/spring-boot-starter-oauth2-resource-server-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-security-oauth2-resource-server/4.1.2/spring-boot-security-oauth2-resource-server-4.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-oauth2-resource-server/7.1.2/spring-security-oauth2-resource-server-7.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-actuator/4.1.2/spring-boot-starter-actuator-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-micrometer-metrics/4.1.2/spring-boot-starter-micrometer-metrics-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-micrometer-metrics/4.1.2/spring-boot-micrometer-metrics-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-micrometer-observation/4.1.2/spring-boot-micrometer-observation-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-actuator-autoconfigure/4.1.2/spring-boot-actuator-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-actuator/4.1.2/spring-boot-actuator-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-health/4.1.2/spring-boot-health-4.1.2.jar:/home/runner/.m2/repository/io/micrometer/micrometer-observation/1.17.2/micrometer-observation-1.17.2.jar:/home/runner/.m2/repository/io/micrometer/micrometer-commons/1.17.2/micrometer-commons-1.17.2.jar:/home/runner/.m2/repository/io/micrometer/micrometer-jakarta9/1.17.2/micrometer-jakarta9-1.17.2.jar:/home/runner/.m2/repository/io/micrometer/micrometer-registry-prometheus/1.17.2/micrometer-registry-prometheus-1.17.2.jar:/home/runner/.m2/repository/org/jspecify/jspecify/1.0.1/jspecify-1.0.1.jar:/home/runner/.m2/repository/io/micrometer/micrometer-core/1.17.2/micrometer-core-1.17.2.jar:/home/runner/.m2/repository/org/hdrhistogram/HdrHistogram/2.2.2/HdrHistogram-2.2.2.jar:/home/runner/.m2/repository/io/prometheus/prometheus-metrics-core/1.7.0/prometheus-metrics-core-1.7.0.jar:/home/runner/.m2/repository/io/prometheus/prometheus-metrics-model/1.7.0/prometheus-metrics-model-1.7.0.jar:/home/runner/.m2/repository/io/prometheus/prometheus-metrics-config/1.7.0/prometheus-metrics-config-1.7.0.jar:/home/runner/.m2/repository/io/prometheus/prometheus-metrics-tracer-common/1.7.0/prometheus-metrics-tracer-common-1.7.0.jar:/home/runner/.m2/repository/io/prometheus/prometheus-metrics-exposition-formats/1.7.0/prometheus-metrics-exposition-formats-1.7.0.jar:/home/runner/.m2/repository/io/prometheus/prometheus-metrics-exposition-textformats/1.7.0/prometheus-metrics-exposition-textformats-1.7.0.jar:/home/runner/.m2/repository/org/apache/artemis/artemis-jakarta-client/2.53.0/artemis-jakarta-client-2.53.0.jar:/home/runner/.m2/repository/org/apache/artemis/artemis-core-client/2.53.0/artemis-core-client-2.53.0.jar:/home/runner/.m2/repository/org/jgroups/jgroups/5.3.13.Final/jgroups-5.3.13.Final.jar:/home/runner/.m2/repository/io/netty/netty-handler-proxy/4.2.19.Final/netty-handler-proxy-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-codec-socks/4.2.19.Final/netty-codec-socks-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-resolver/4.2.19.Final/netty-resolver-4.2.19.Final.jar:/home/runner/.m2/repository/de/dentrassi/crypto/pem-keystore/3.0.0/pem-keystore-3.0.0.jar:/home/runner/.m2/repository/com/hierynomus/asn-one/0.6.0/asn-one-0.6.0.jar:/home/runner/.m2/repository/org/apache/artemis/artemis-commons/2.53.0/artemis-commons-2.53.0.jar:/home/runner/.m2/repository/org/apache/artemis/artemis-selector/2.53.0/artemis-selector-2.53.0.jar:/home/runner/.m2/repository/jakarta/jms/jakarta.jms-api/3.1.0/jakarta.jms-api-3.1.0.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-test/4.1.2/spring-boot-starter-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test/4.1.2/spring-boot-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test-autoconfigure/4.1.2/spring-boot-test-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/com/jayway/jsonpath/json-path/2.10.0/json-path-2.10.0.jar:/home/runner/.m2/repository/net/minidev/json-smart/2.6.0/json-smart-2.6.0.jar:/home/runner/.m2/repository/net/minidev/accessors-smart/2.6.0/accessors-smart-2.6.0.jar:/home/runner/.m2/repository/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar:/home/runner/.m2/repository/org/assertj/assertj-core/3.27.7/assertj-core-3.27.7.jar:/home/runner/.m2/repository/org/awaitility/awaitility/4.3.0/awaitility-4.3.0.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest/3.0/hamcrest-3.0.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter/6.0.3/junit-jupiter-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.0.3/junit-jupiter-api-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.0.3/junit-jupiter-params-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.0.3/junit-jupiter-engine-6.0.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.18.15/byte-buddy-agent-1.18.15.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.3/objenesis-3.3.jar:/home/runner/.m2/repository/org/mockito/mockito-junit-jupiter/5.23.0/mockito-junit-jupiter-5.23.0.jar:/home/runner/.m2/repository/org/skyscreamer/jsonassert/1.5.3/jsonassert-1.5.3.jar:/home/runner/.m2/repository/com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar:/home/runner/.m2/repository/org/springframework/spring-core/7.0.10/spring-core-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-test/7.0.10/spring-test-7.0.10.jar:/home/runner/.m2/repository/org/xmlunit/xmlunit-core/2.11.0/xmlunit-core-2.11.0.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-launcher/6.0.3/junit-platform-launcher-6.0.3.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-engine/6.0.3/junit-platform-engine-6.0.3.jar:/home/runner/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-commons/6.0.3/junit-platform-commons-6.0.3.jar:/home/runner/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-webmvc-test/4.1.2/spring-boot-starter-webmvc-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jackson-test/4.1.2/spring-boot-starter-jackson-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-webmvc/4.1.2/spring-boot-starter-webmvc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-webmvc-test/4.1.2/spring-boot-webmvc-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-resttestclient/4.1.2/spring-boot-resttestclient-4.1.2.jar:/home/runner/.m2/repository/org/apache/artemis/artemis-server/2.53.0/artemis-server-2.53.0.jar:/home/runner/.m2/repository/com/github/ben-manes/caffeine/caffeine/3.2.4/caffeine-3.2.4.jar:/home/runner/.m2/repository/org/apache/artemis/artemis-journal/2.53.0/artemis-journal-2.53.0.jar:/home/runner/.m2/repository/org/apache/activemq/activemq-artemis-native/2.0.0/activemq-artemis-native-2.0.0.jar:/home/runner/.m2/repository/org/apache/artemis/artemis-jdbc-store/2.53.0/artemis-jdbc-store-2.53.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-dbcp2/2.14.0/commons-dbcp2-2.14.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-pool2/2.13.1/commons-pool2-2.13.1.jar:/home/runner/.m2/repository/org/apache/artemis/artemis-lockmanager-api/2.53.0/artemis-lockmanager-api-2.53.0.jar:/home/runner/.m2/repository/org/jctools/jctools-core/4.0.6/jctools-core-4.0.6.jar:/home/runner/.m2/repository/io/netty/netty-buffer/4.2.19.Final/netty-buffer-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-transport/4.2.19.Final/netty-transport-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-codec-http/4.2.19.Final/netty-codec-http-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-codec-base/4.2.19.Final/netty-codec-base-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-codec-compression/4.2.19.Final/netty-codec-compression-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-codec-haproxy/4.2.19.Final/netty-codec-haproxy-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-common/4.2.19.Final/netty-common-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-handler/4.2.19.Final/netty-handler-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-transport-native-unix-common/4.2.19.Final/netty-transport-native-unix-common-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-transport-native-epoll/4.2.19.Final/netty-transport-native-epoll-4.2.19.Final-linux-x86_64.jar:/home/runner/.m2/repository/io/netty/netty-transport-classes-epoll/4.2.19.Final/netty-transport-classes-epoll-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-transport-native-kqueue/4.2.19.Final/netty-transport-native-kqueue-4.2.19.Final-osx-x86_64.jar:/home/runner/.m2/repository/io/netty/netty-transport-classes-kqueue/4.2.19.Final/netty-transport-classes-kqueue-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-codec/4.2.19.Final/netty-codec-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-codec-protobuf/4.2.19.Final/netty-codec-protobuf-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-codec-marshalling/4.2.19.Final/netty-codec-marshalling-4.2.19.Final.jar:/home/runner/.m2/repository/commons-beanutils/commons-beanutils/1.11.0/commons-beanutils-1.11.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-configuration2/2.15.1/commons-configuration2-2.15.1.jar:/home/runner/.m2/repository/org/apache/commons/commons-text/1.15.0/commons-text-1.15.0.jar:/home/runner/.m2/repository/commons-collections/commons-collections/3.2.2/commons-collections-3.2.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-test/7.1.2/spring-security-test-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-core/7.1.2/spring-security-core-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-crypto/7.1.2/spring-security-crypto-7.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-context/7.0.10/spring-context-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-expression/7.0.10/spring-expression-7.0.10.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-web/7.1.2/spring-security-web-7.1.2.jar:/home/runner/.m2/repository/org/testcontainers/testcontainers/2.0.5/testcontainers-2.0.5.jar:/home/runner/.m2/repository/org/rnorth/duct-tape/duct-tape/1.0.8/duct-tape-1.0.8.jar:/home/runner/.m2/repository/org/jetbrains/annotations/17.0.0/annotations-17.0.0.jar:/home/runner/.m2/repository/com/github/docker-java/docker-java-api/3.7.1/docker-java-api-3.7.1.jar:/home/runner/.m2/repository/com/github/docker-java/docker-java-transport-zerodep/3.7.1/docker-java-transport-zerodep-3.7.1.jar:/home/runner/.m2/repository/com/github/docker-java/docker-java-transport/3.7.1/docker-java-transport-3.7.1.jar:/home/runner/.m2/repository/org/testcontainers/testcontainers-junit-jupiter/2.0.5/testcontainers-junit-jupiter-2.0.5.jar:/home/runner/.m2/repository/org/testcontainers/testcontainers-selenium/2.0.5/testcontainers-selenium-2.0.5.jar:/home/runner/.m2/repository/org/testcontainers/testcontainers-postgresql/2.0.5/testcontainers-postgresql-2.0.5.jar:/home/runner/.m2/repository/org/testcontainers/testcontainers-jdbc/2.0.5/testcontainers-jdbc-2.0.5.jar:/home/runner/.m2/repository/org/testcontainers/testcontainers-database-commons/2.0.5/testcontainers-database-commons-2.0.5.jar:/home/runner/.m2/repository/org/testcontainers/testcontainers-mssqlserver/2.0.5/testcontainers-mssqlserver-2.0.5.jar:/home/runner/.m2/repository/org/testcontainers/testcontainers-oracle-free/2.0.5/testcontainers-oracle-free-2.0.5.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-chrome-driver/4.46.0/selenium-chrome-driver-4.46.0.jar:/home/runner/.m2/repository/com/google/auto/service/auto-service-annotations/1.1.1/auto-service-annotations-1.1.1.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-api/4.46.0/selenium-api-4.46.0.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-chromium-driver/4.46.0/selenium-chromium-driver-4.46.0.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-json/4.46.0/selenium-json-4.46.0.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-manager/4.46.0/selenium-manager-4.46.0.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-os/4.46.0/selenium-os-4.46.0.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-remote-driver/4.46.0/selenium-remote-driver-4.46.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-api/1.62.0/opentelemetry-api-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-context/1.62.0/opentelemetry-context-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-common/1.62.0/opentelemetry-common-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-exporter-logging/1.62.0/opentelemetry-exporter-logging-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-sdk-common/1.62.0/opentelemetry-sdk-common-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-sdk-extension-autoconfigure-spi/1.62.0/opentelemetry-sdk-extension-autoconfigure-spi-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-sdk-extension-autoconfigure/1.62.0/opentelemetry-sdk-extension-autoconfigure-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-sdk-trace/1.62.0/opentelemetry-sdk-trace-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-sdk/1.62.0/opentelemetry-sdk-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-sdk-metrics/1.62.0/opentelemetry-sdk-metrics-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-sdk-logs/1.62.0/opentelemetry-sdk-logs-1.62.0.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-http/4.46.0/selenium-http-4.46.0.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-support/4.46.0/selenium-support-4.46.0.jar:/home/runner/.m2/repository/com/google/guava/guava/33.7.2-jre/guava-33.7.2-jre.jar:/home/runner/.m2/repository/com/google/guava/failureaccess/1.0.3/failureaccess-1.0.3.jar:/home/runner/.m2/repository/com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar:/home/runner/.m2/repository/com/google/j2objc/j2objc-annotations/3.1/j2objc-annotations-3.1.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.18.15/byte-buddy-1.18.15.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit-junit5/1.5.1/archunit-junit5-1.5.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit-junit5-api/1.5.1/archunit-junit5-api-1.5.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit/1.5.1/archunit-1.5.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit-junit5-engine/1.5.1/archunit-junit5-engine-1.5.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit-junit5-engine-api/1.5.1/archunit-junit5-engine-api-1.5.1.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark/0.64.8/flexmark-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-ast/0.64.8/flexmark-util-ast-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-builder/0.64.8/flexmark-util-builder-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-collection/0.64.8/flexmark-util-collection-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-data/0.64.8/flexmark-util-data-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-dependency/0.64.8/flexmark-util-dependency-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-format/0.64.8/flexmark-util-format-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-html/0.64.8/flexmark-util-html-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-misc/0.64.8/flexmark-util-misc-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-sequence/0.64.8/flexmark-util-sequence-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-visitor/0.64.8/flexmark-util-visitor-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-ext-autolink/0.64.8/flexmark-ext-autolink-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util/0.64.8/flexmark-util-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-options/0.64.8/flexmark-util-options-0.64.8.jar:/home/runner/.m2/repository/org/nibor/autolink/autolink/0.6.0/autolink-0.6.0.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-ext-gfm-strikethrough/0.64.8/flexmark-ext-gfm-strikethrough-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-ext-tables/0.64.8/flexmark-ext-tables-0.64.8.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/taxonomy-workspace-1.5.3-SNAPSHOT-test-fixtures.jar:/home/runner/.m2/repository/com/networknt/json-schema-validator/3.0.8/json-schema-validator-3.0.8.jar:/home/runner/.m2/repository/com/ethlo/time/itu/1.14.0/itu-1.14.0.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-databind/3.1.7/jackson-databind-3.1.7.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-core/3.1.7/jackson-core-3.1.7.jar:/home/runner/.m2/repository/tools/jackson/dataformat/jackson-dataformat-yaml/3.1.7/jackson-dataformat-yaml-3.1.7.jar:/home/runner/.m2/repository/org/snakeyaml/snakeyaml-engine/3.0.1/snakeyaml-engine-3.0.1.jar:"/>
+    <property name="git.branch" value="main"/>
+    <property name="java.vm.vendor" value="Eclipse Adoptium"/>
+    <property name="git.build.number" value="9442.1"/>
+    <property name="git.commit.id" value="cec668ade2eb0436d9954a44549f10ca47e82f84"/>
+    <property name="user.timezone" value="Etc/UTC"/>
+    <property name="org.jboss.logging.provider" value="slf4j"/>
+    <property name="java.vm.specification.version" value="25"/>
+    <property name="os.name" value="Linux"/>
+    <property name="keycloak.container.image" value="quay.io/keycloak/keycloak:26.7.0"/>
+    <property name="taxonomy.test.browser.offline" value="maven:false"/>
+    <property name="git.commit.author.time" value="2026-11-01T22:01:58Z"/>
+    <property name="sun.java.launcher" value="SUN_STANDARD"/>
+    <property name="git.build.user.name" value=""/>
+    <property name="runKeycloakTests" value="true"/>
+    <property name="surefire.test.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/test-classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling/target/taxonomy-tooling-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-templates-api/target/taxonomy-templates-api-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/plugins/taxonomy-mermaid-plugin/target/taxonomy-mermaid-plugin-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/target/taxonomy-extension-runtime-1.5.3-SNAPSHOT.jar:/home/runner/.m2/repository/org/pf4j/pf4j/3.16.0/pf4j-3.16.0.jar:/home/runner/.m2/repository/com/github/zafarkhaja/java-semver/0.10.2/java-semver-0.10.2.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting/target/taxonomy-reporting-1.5.3-SNAPSHOT.jar:/home/runner/.m2/repository/org/springdoc/springdoc-openapi-starter-common/3.2.0/springdoc-openapi-starter-common-3.2.0.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-autoconfigure/4.1.2/spring-boot-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-validation/4.1.2/spring-boot-validation-4.1.2.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-el/11.0.27/tomcat-embed-el-11.0.27.jar:/home/runner/.m2/repository/org/hibernate/validator/hibernate-validator/9.1.5.Final/hibernate-validator-9.1.5.Final.jar:/home/runner/.m2/repository/com/fasterxml/classmate/1.7.3/classmate-1.7.3.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-core-jakarta/2.2.55/swagger-core-jakarta-2.2.55.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-annotations-jakarta/2.2.55/swagger-annotations-jakarta-2.2.55.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-models-jakarta/2.2.55/swagger-models-jakarta-2.2.55.jar:/home/runner/.m2/repository/jakarta/validation/jakarta.validation-api/3.1.1/jakarta.validation-api-3.1.1.jar:/home/runner/.m2/repository/com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.22.4/jackson-dataformat-yaml-2.22.4.jar:/home/runner/.m2/repository/com/fasterxml/jackson/datatype/jackson-datatype-jsr310/2.22.4/jackson-datatype-jsr310-2.22.4.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jackson/4.1.2/spring-boot-jackson-4.1.2.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting-api/target/taxonomy-reporting-api-1.5.3-SNAPSHOT.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar:/home/runner/.m2/repository/com/google/crypto/tink/tink/1.24.0/tink-1.24.0.jar:/home/runner/.m2/repository/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar:/home/runner/.m2/repository/com/google/code/gson/gson/2.13.2/gson-2.13.2.jar:/home/runner/.m2/repository/com/google/errorprone/error_prone_annotations/2.41.0/error_prone_annotations-2.41.0.jar:/home/runner/.m2/repository/com/google/protobuf/protobuf-java/4.36.2/protobuf-java-4.36.2.jar:/home/runner/.m2/repository/org/apache/commons/commons-compress/1.28.0/commons-compress-1.28.0.jar:/home/runner/.m2/repository/commons-codec/commons-codec/1.21.0/commons-codec-1.21.0.jar:/home/runner/.m2/repository/commons-io/commons-io/2.20.0/commons-io-2.20.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-lang3/3.20.0/commons-lang3-3.20.0.jar:/home/runner/.m2/repository/com/structurizr/structurizr-dsl/6.2.3/structurizr-dsl-6.2.3.jar:/home/runner/.m2/repository/com/structurizr/structurizr-client/6.2.3/structurizr-client-6.2.3.jar:/home/runner/.m2/repository/javax/xml/bind/jaxb-api/2.4.0-b180830.0359/jaxb-api-2.4.0-b180830.0359.jar:/home/runner/.m2/repository/javax/activation/javax.activation-api/1.2.0/javax.activation-api-1.2.0.jar:/home/runner/.m2/repository/com/structurizr/structurizr-core/6.2.3/structurizr-core-6.2.3.jar:/home/runner/.m2/repository/com/structurizr/structurizr-import/6.2.3/structurizr-import-6.2.3.jar:/home/runner/.m2/repository/com/structurizr/structurizr-export/6.2.3/structurizr-export-6.2.3.jar:/home/runner/.m2/repository/com/structurizr/structurizr-component/6.2.3/structurizr-component-6.2.3.jar:/home/runner/.m2/repository/org/apache/bcel/bcel/6.12.0/bcel-6.12.0.jar:/home/runner/.m2/repository/com/github/javaparser/javaparser-symbol-solver-core/3.28.2/javaparser-symbol-solver-core-3.28.2.jar:/home/runner/.m2/repository/com/github/javaparser/javaparser-core/3.28.2/javaparser-core-3.28.2.jar:/home/runner/.m2/repository/org/javassist/javassist/3.31.0-GA/javassist-3.31.0-GA.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/target/taxonomy-analysis-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-portfolio/target/taxonomy-portfolio-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-architecture/target/taxonomy-architecture-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/target/taxonomy-knowledge-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/target/taxonomy-interop-1.5.3-SNAPSHOT.jar:/home/runner/.m2/repository/org/apache/httpcomponents/client5/httpclient5/5.6.5/httpclient5-5.6.5.jar:/home/runner/.m2/repository/org/apache/httpcomponents/core5/httpcore5/5.4.4/httpcore5-5.4.4.jar:/home/runner/.m2/repository/org/apache/httpcomponents/core5/httpcore5-h2/5.4.4/httpcore5-h2-5.4.4.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-templates/target/taxonomy-templates-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/taxonomy-workspace-1.5.3-SNAPSHOT.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit.gpg.bc/7.8.0.202609011348-r/org.eclipse.jgit.gpg.bc-7.8.0.202609011348-r.jar:/home/runner/.m2/repository/org/bouncycastle/bcpg-jdk18on/1.85/bcpg-jdk18on-1.85.jar:/home/runner/.m2/repository/org/bouncycastle/bcprov-jdk18on/1.85.2/bcprov-jdk18on-1.85.2.jar:/home/runner/.m2/repository/org/bouncycastle/bcutil-jdk18on/1.85/bcutil-jdk18on-1.85.jar:/home/runner/.m2/repository/org/bouncycastle/bcpkix-jdk18on/1.85/bcpkix-jdk18on-1.85.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/target/taxonomy-domain-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/target/taxonomy-dsl-1.5.3-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-export/target/taxonomy-export-1.5.3-SNAPSHOT.jar:/home/runner/.m2/repository/org/apache/jena/jena-arq/6.2.0/jena-arq-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-core/6.2.0/jena-core-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-base/6.2.0/jena-base-6.2.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-csv/1.14.1/commons-csv-1.14.1.jar:/home/runner/.m2/repository/com/github/andrewoma/dexx/collection/0.7/collection-0.7.jar:/home/runner/.m2/repository/org/apache/jena/jena-iri3986/6.2.0/jena-iri3986-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-langtag/6.2.0/jena-langtag-6.2.0.jar:/home/runner/.m2/repository/org/roaringbitmap/RoaringBitmap/1.6.15/RoaringBitmap-1.6.15.jar:/home/runner/.m2/repository/org/slf4j/jcl-over-slf4j/2.0.20/jcl-over-slf4j-2.0.20.jar:/home/runner/.m2/repository/com/apicatalog/titanium-json-ld/1.7.0/titanium-json-ld-1.7.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-jcs/1.1.1/titanium-jcs-1.1.1.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-api/1.0.0/titanium-rdf-api-1.0.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-n-quads/1.0.2/titanium-rdf-n-quads-1.0.2.jar:/home/runner/.m2/repository/org/glassfish/jakarta.json/2.0.1/jakarta.json-2.0.1.jar:/home/runner/.m2/repository/org/apache/thrift/libthrift/0.24.0/libthrift-0.24.0.jar:/home/runner/.m2/repository/com/thoughtworks/xstream/xstream/1.4.21/xstream-1.4.21.jar:/home/runner/.m2/repository/io/github/x-stream/mxparser/1.2.2/mxparser-1.2.2.jar:/home/runner/.m2/repository/xmlpull/xmlpull/1.1.3.1/xmlpull-1.1.3.1.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml-full/6.0.0/poi-ooxml-full-6.0.0.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.22.4/jackson-databind-2.22.4.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.22.4/jackson-core-2.22.4.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/target/taxonomy-extension-api-1.5.3-SNAPSHOT.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-web/4.1.2/spring-boot-starter-web-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jackson/4.1.2/spring-boot-starter-jackson-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat/4.1.2/spring-boot-starter-tomcat-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat-runtime/4.1.2/spring-boot-starter-tomcat-runtime-4.1.2.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-core/11.0.27/tomcat-embed-core-11.0.27.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-websocket/11.0.27/tomcat-embed-websocket-11.0.27.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-tomcat/4.1.2/spring-boot-tomcat-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-http-converter/4.1.2/spring-boot-http-converter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot/4.1.2/spring-boot-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-web/7.0.10/spring-web-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-webmvc/4.1.2/spring-boot-webmvc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-servlet/4.1.2/spring-boot-servlet-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-webmvc/7.0.10/spring-webmvc-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-thymeleaf/4.1.2/spring-boot-starter-thymeleaf-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter/4.1.2/spring-boot-starter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-logging/4.1.2/spring-boot-starter-logging-4.1.2.jar:/home/runner/.m2/repository/ch/qos/logback/logback-classic/1.5.38/logback-classic-1.5.38.jar:/home/runner/.m2/repository/ch/qos/logback/logback-core/1.5.38/logback-core-1.5.38.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-to-slf4j/2.25.5/log4j-to-slf4j-2.25.5.jar:/home/runner/.m2/repository/org/slf4j/jul-to-slf4j/2.0.20/jul-to-slf4j-2.0.20.jar:/home/runner/.m2/repository/jakarta/annotation/jakarta.annotation-api/3.0.0/jakarta.annotation-api-3.0.0.jar:/home/runner/.m2/repository/org/yaml/snakeyaml/2.6/snakeyaml-2.6.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-thymeleaf/4.1.2/spring-boot-thymeleaf-4.1.2.jar:/home/runner/.m2/repository/org/thymeleaf/thymeleaf-spring6/3.1.5.RELEASE/thymeleaf-spring6-3.1.5.RELEASE.jar:/home/runner/.m2/repository/org/thymeleaf/thymeleaf/3.1.5.RELEASE/thymeleaf-3.1.5.RELEASE.jar:/home/runner/.m2/repository/org/attoparser/attoparser/2.0.7.RELEASE/attoparser-2.0.7.RELEASE.jar:/home/runner/.m2/repository/org/unbescape/unbescape/1.1.6.RELEASE/unbescape-1.1.6.RELEASE.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-data-jpa/4.1.2/spring-boot-starter-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jdbc/4.1.2/spring-boot-starter-jdbc-4.1.2.jar:/home/runner/.m2/repository/com/zaxxer/HikariCP/7.0.2/HikariCP-7.0.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-jpa/4.1.2/spring-boot-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-commons/4.1.2/spring-boot-data-commons-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-persistence/4.1.2/spring-boot-persistence-4.1.2.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-commons/4.1.2/spring-data-commons-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-hibernate/4.1.2/spring-boot-hibernate-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jpa/4.1.2/spring-boot-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-orm/7.0.10/spring-orm-7.0.10.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-jpa/4.1.2/spring-data-jpa-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-tx/7.0.10/spring-tx-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-aspects/7.0.10/spring-aspects-7.0.10.jar:/home/runner/.m2/repository/org/aspectj/aspectjweaver/1.9.25.1/aspectjweaver-1.9.25.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jdbc/4.1.2/spring-boot-jdbc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-sql/4.1.2/spring-boot-sql-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-transaction/4.1.2/spring-boot-transaction-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-jdbc/7.0.10/spring-jdbc-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-flyway/4.1.2/spring-boot-starter-flyway-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-flyway/4.1.2/spring-boot-flyway-4.1.2.jar:/home/runner/.m2/repository/org/flywaydb/flyway-database-hsqldb/12.4.0/flyway-database-hsqldb-12.4.0.jar:/home/runner/.m2/repository/org/flywaydb/flyway-core/12.4.0/flyway-core-12.4.0.jar:/home/runner/.m2/repository/org/flywaydb/flyway-database-postgresql/12.4.0/flyway-database-postgresql-12.4.0.jar:/home/runner/.m2/repository/org/hsqldb/hsqldb/2.7.3/hsqldb-2.7.3.jar:/home/runner/.m2/repository/org/flywaydb/flyway-sqlserver/12.4.0/flyway-sqlserver-12.4.0.jar:/home/runner/.m2/repository/org/flywaydb/flyway-database-oracle/12.4.0/flyway-database-oracle-12.4.0.jar:/home/runner/.m2/repository/org/postgresql/postgresql/42.7.14/postgresql-42.7.14.jar:/home/runner/.m2/repository/org/checkerframework/checker-qual/3.54.0/checker-qual-3.54.0.jar:/home/runner/.m2/repository/com/microsoft/sqlserver/mssql-jdbc/13.4.0.jre11/mssql-jdbc-13.4.0.jre11.jar:/home/runner/.m2/repository/com/oracle/database/jdbc/ojdbc11/23.26.3.0.0/ojdbc11-23.26.3.0.0.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml/6.0.0/poi-ooxml-6.0.0.jar:/home/runner/.m2/repository/org/apache/poi/poi/6.0.0/poi-6.0.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar:/home/runner/.m2/repository/com/zaxxer/SparseBitSet/1.3/SparseBitSet-1.3.jar:/home/runner/.m2/repository/org/apache/xmlbeans/xmlbeans/5.4.1/xmlbeans-5.4.1.jar:/home/runner/.m2/repository/com/github/virtuald/curvesapi/1.08/curvesapi-1.08.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-api/2.25.5/log4j-api-2.25.5.jar:/home/runner/.m2/repository/org/apache/commons/commons-collections4/4.6.0/commons-collections4-4.6.0.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox/3.0.8/pdfbox-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox-io/3.0.8/pdfbox-io-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/fontbox/3.0.8/fontbox-3.0.8.jar:/home/runner/.m2/repository/commons-logging/commons-logging/1.3.6/commons-logging-1.3.6.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-core/9.12.3/lucene-core-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-analysis-common/9.12.3/lucene-analysis-common-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-queryparser/9.12.3/lucene-queryparser-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-queries/9.12.3/lucene-queries-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-sandbox/9.12.3/lucene-sandbox-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-facet/9.12.3/lucene-facet-9.12.3.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-orm/8.4.0.Final/hibernate-search-mapper-orm-8.4.0.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-engine/8.4.0.Final/hibernate-search-engine-8.4.0.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-pojo-base/8.4.0.Final/hibernate-search-mapper-pojo-base-8.4.0.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-util-common/8.4.0.Final/hibernate-search-util-common-8.4.0.Final.jar:/home/runner/.m2/repository/org/hibernate/orm/hibernate-core/7.4.13.Final/hibernate-core-7.4.13.Final.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-runtime/4.0.9/jaxb-runtime-4.0.9.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-core/4.0.9/jaxb-core-4.0.9.jar:/home/runner/.m2/repository/org/eclipse/angus/angus-activation/2.0.3/angus-activation-2.0.3.jar:/home/runner/.m2/repository/org/glassfish/jaxb/txw2/4.0.9/txw2-4.0.9.jar:/home/runner/.m2/repository/com/sun/istack/istack-commons-runtime/4.1.2/istack-commons-runtime-4.1.2.jar:/home/runner/.m2/repository/jakarta/inject/jakarta.inject-api/2.0.1/jakarta.inject-api-2.0.1.jar:/home/runner/.m2/repository/org/antlr/antlr4-runtime/4.13.2/antlr4-runtime-4.13.2.jar:/home/runner/.m2/repository/org/hibernate/models/hibernate-models/1.1.1/hibernate-models-1.1.1.jar:/home/runner/.m2/repository/jakarta/persistence/jakarta.persistence-api/3.2.0/jakarta.persistence-api-3.2.0.jar:/home/runner/.m2/repository/jakarta/transaction/jakarta.transaction-api/2.0.1/jakarta.transaction-api-2.0.1.jar:/home/runner/.m2/repository/io/smallrye/jandex/3.3.2/jandex-3.3.2.jar:/home/runner/.m2/repository/org/jboss/logging/jboss-logging/3.6.3.Final/jboss-logging-3.6.3.Final.jar:/home/runner/.m2/repository/jakarta/xml/bind/jakarta.xml.bind-api/4.0.5/jakarta.xml.bind-api-4.0.5.jar:/home/runner/.m2/repository/jakarta/activation/jakarta.activation-api/2.1.4/jakarta.activation-api-2.1.4.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-backend-lucene/8.4.0.Final/hibernate-search-backend-lucene-8.4.0.Final.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-join/9.12.3/lucene-join-9.12.3.jar:/home/runner/.m2/repository/com/carrotsearch/hppc/0.10.0/hppc-0.10.0.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-highlighter/9.12.3/lucene-highlighter-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-memory/9.12.3/lucene-memory-9.12.3.jar:/home/runner/.m2/repository/ai/djl/api/0.39.0/api-0.39.0.jar:/home/runner/.m2/repository/net/java/dev/jna/jna/5.17.0/jna-5.17.0.jar:/home/runner/.m2/repository/ai/djl/huggingface/tokenizers/0.39.0/tokenizers-0.39.0.jar:/home/runner/.m2/repository/ai/djl/onnxruntime/onnxruntime-engine/0.39.0/onnxruntime-engine-0.39.0.jar:/home/runner/.m2/repository/com/microsoft/onnxruntime/onnxruntime/1.21.1/onnxruntime-1.21.1.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit/7.8.0.202609011348-r/org.eclipse.jgit-7.8.0.202609011348-r.jar:/home/runner/.m2/repository/com/googlecode/javaewah/JavaEWAH/1.2.3/JavaEWAH-1.2.3.jar:/home/runner/.m2/repository/io/github/carstenartur/jgit-storage-hibernate-core/0.11.8/jgit-storage-hibernate-core-0.11.8.jar:/home/runner/.m2/repository/io/github/carstenartur/jgit-storage-hibernate-smart-http/0.11.8/jgit-storage-hibernate-smart-http-0.11.8.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit.http.server/7.8.0.202609011348-r/org.eclipse.jgit.http.server-7.8.0.202609011348-r.jar:/home/runner/.m2/repository/org/springdoc/springdoc-openapi-starter-webmvc-ui/3.2.0/springdoc-openapi-starter-webmvc-ui-3.2.0.jar:/home/runner/.m2/repository/org/springdoc/springdoc-openapi-starter-webmvc-api/3.2.0/springdoc-openapi-starter-webmvc-api-3.2.0.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-web-server/4.1.2/spring-boot-web-server-4.1.2.jar:/home/runner/.m2/repository/org/webjars/swagger-ui/5.34.0/swagger-ui-5.34.0.jar:/home/runner/.m2/repository/org/webjars/webjars-locator-lite/1.1.5/webjars-locator-lite-1.1.5.jar:/home/runner/.m2/repository/org/webjars/npm/bootstrap/5.3.8/bootstrap-5.3.8.jar:/home/runner/.m2/repository/org/webjars/npm/d3/7.9.0/d3-7.9.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-brush/3.0.0/d3-brush-3.0.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-selection/3.0.0/d3-selection-3.0.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-color/3.1.0/d3-color-3.1.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-polygon/3.0.1/d3-polygon-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-time-format/4.1.0/d3-time-format-4.1.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-ease/3.0.1/d3-ease-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-axis/3.0.0/d3-axis-3.0.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-force/3.0.0/d3-force-3.0.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-hierarchy/3.1.2/d3-hierarchy-3.1.2.jar:/home/runner/.m2/repository/org/webjars/npm/d3-format/3.1.2/d3-format-3.1.2.jar:/home/runner/.m2/repository/org/webjars/npm/d3-drag/3.0.0/d3-drag-3.0.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-contour/4.0.2/d3-contour-4.0.2.jar:/home/runner/.m2/repository/org/webjars/npm/d3-scale/4.0.2/d3-scale-4.0.2.jar:/home/runner/.m2/repository/org/webjars/npm/d3-array/3.2.4/d3-array-3.2.4.jar:/home/runner/.m2/repository/org/webjars/npm/internmap/2.0.3/internmap-2.0.3.jar:/home/runner/.m2/repository/org/webjars/npm/d3-quadtree/3.0.1/d3-quadtree-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-path/3.1.0/d3-path-3.1.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-interpolate/3.0.1/d3-interpolate-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-geo/3.1.1/d3-geo-3.1.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-transition/3.0.1/d3-transition-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-scale-chromatic/3.1.0/d3-scale-chromatic-3.1.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-chord/3.0.1/d3-chord-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-zoom/3.0.0/d3-zoom-3.0.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-time/3.1.0/d3-time-3.1.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-shape/3.2.0/d3-shape-3.2.0.jar:/home/runner/.m2/repository/org/webjars/npm/d3-delaunay/6.0.4/d3-delaunay-6.0.4.jar:/home/runner/.m2/repository/org/webjars/npm/delaunator/5.1.0/delaunator-5.1.0.jar:/home/runner/.m2/repository/org/webjars/npm/robust-predicates/3.0.3/robust-predicates-3.0.3.jar:/home/runner/.m2/repository/org/webjars/npm/d3-dsv/3.0.1/d3-dsv-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/commander/7.2.0/commander-7.2.0.jar:/home/runner/.m2/repository/org/webjars/npm/iconv-lite/0.6.3/iconv-lite-0.6.3.jar:/home/runner/.m2/repository/org/webjars/npm/safer-buffer/2.1.2/safer-buffer-2.1.2.jar:/home/runner/.m2/repository/org/webjars/npm/rw/1.3.3/rw-1.3.3.jar:/home/runner/.m2/repository/org/webjars/npm/d3-dispatch/3.0.1/d3-dispatch-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-random/3.0.1/d3-random-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-fetch/3.0.1/d3-fetch-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/d3-timer/3.0.1/d3-timer-3.0.1.jar:/home/runner/.m2/repository/org/webjars/npm/jspdf/4.2.1/jspdf-4.2.1.jar:/home/runner/.m2/repository/org/webjars/npm/babel__runtime/8.0.0-alpha.6/babel__runtime-8.0.0-alpha.6.jar:/home/runner/.m2/repository/org/webjars/npm/regenerator-runtime/0.14.1/regenerator-runtime-0.14.1.jar:/home/runner/.m2/repository/org/webjars/npm/fflate/0.8.3/fflate-0.8.3.jar:/home/runner/.m2/repository/org/webjars/npm/fast-png/6.4.0/fast-png-6.4.0.jar:/home/runner/.m2/repository/org/webjars/npm/pako/2.2.0/pako-2.2.0.jar:/home/runner/.m2/repository/org/webjars/npm/iobuffer/5.4.0/iobuffer-5.4.0.jar:/home/runner/.m2/repository/org/webjars/npm/types__pako/2.0.4/types__pako-2.0.4.jar:/home/runner/.m2/repository/org/webjars/npm/svg2pdf.js/2.2.0/svg2pdf.js-2.2.0.jar:/home/runner/.m2/repository/org/webjars/npm/cssesc/3.0.0/cssesc-3.0.0.jar:/home/runner/.m2/repository/org/webjars/npm/font-family-papandreou/0.2.0-patch2/font-family-papandreou-0.2.0-patch2.jar:/home/runner/.m2/repository/org/webjars/npm/svgpath/2.6.0/svgpath-2.6.0.jar:/home/runner/.m2/repository/org/webjars/npm/specificity/0.4.1/specificity-0.4.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-security/4.1.2/spring-boot-starter-security-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-security/4.1.2/spring-boot-security-4.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-config/7.1.2/spring-security-config-7.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-aop/7.0.10/spring-aop-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-beans/7.0.10/spring-beans-7.0.10.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-oauth2-client/4.1.2/spring-boot-starter-oauth2-client-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-security-oauth2-client/4.1.2/spring-boot-security-oauth2-client-4.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-oauth2-client/7.1.2/spring-security-oauth2-client-7.1.2.jar:/home/runner/.m2/repository/com/nimbusds/oauth2-oidc-sdk/11.38.2/oauth2-oidc-sdk-11.38.2.jar:/home/runner/.m2/repository/com/github/stephenc/jcip/jcip-annotations/1.0-1/jcip-annotations-1.0-1.jar:/home/runner/.m2/repository/com/nimbusds/content-type/2.3/content-type-2.3.jar:/home/runner/.m2/repository/com/nimbusds/lang-tag/1.7/lang-tag-1.7.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-oauth2-jose/7.1.2/spring-security-oauth2-jose-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-oauth2-core/7.1.2/spring-security-oauth2-core-7.1.2.jar:/home/runner/.m2/repository/com/nimbusds/nimbus-jose-jwt/10.9.1/nimbus-jose-jwt-10.9.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-oauth2-resource-server/4.1.2/spring-boot-starter-oauth2-resource-server-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-security-oauth2-resource-server/4.1.2/spring-boot-security-oauth2-resource-server-4.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-oauth2-resource-server/7.1.2/spring-security-oauth2-resource-server-7.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-actuator/4.1.2/spring-boot-starter-actuator-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-micrometer-metrics/4.1.2/spring-boot-starter-micrometer-metrics-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-micrometer-metrics/4.1.2/spring-boot-micrometer-metrics-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-micrometer-observation/4.1.2/spring-boot-micrometer-observation-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-actuator-autoconfigure/4.1.2/spring-boot-actuator-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-actuator/4.1.2/spring-boot-actuator-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-health/4.1.2/spring-boot-health-4.1.2.jar:/home/runner/.m2/repository/io/micrometer/micrometer-observation/1.17.2/micrometer-observation-1.17.2.jar:/home/runner/.m2/repository/io/micrometer/micrometer-commons/1.17.2/micrometer-commons-1.17.2.jar:/home/runner/.m2/repository/io/micrometer/micrometer-jakarta9/1.17.2/micrometer-jakarta9-1.17.2.jar:/home/runner/.m2/repository/io/micrometer/micrometer-registry-prometheus/1.17.2/micrometer-registry-prometheus-1.17.2.jar:/home/runner/.m2/repository/org/jspecify/jspecify/1.0.1/jspecify-1.0.1.jar:/home/runner/.m2/repository/io/micrometer/micrometer-core/1.17.2/micrometer-core-1.17.2.jar:/home/runner/.m2/repository/org/hdrhistogram/HdrHistogram/2.2.2/HdrHistogram-2.2.2.jar:/home/runner/.m2/repository/io/prometheus/prometheus-metrics-core/1.7.0/prometheus-metrics-core-1.7.0.jar:/home/runner/.m2/repository/io/prometheus/prometheus-metrics-model/1.7.0/prometheus-metrics-model-1.7.0.jar:/home/runner/.m2/repository/io/prometheus/prometheus-metrics-config/1.7.0/prometheus-metrics-config-1.7.0.jar:/home/runner/.m2/repository/io/prometheus/prometheus-metrics-tracer-common/1.7.0/prometheus-metrics-tracer-common-1.7.0.jar:/home/runner/.m2/repository/io/prometheus/prometheus-metrics-exposition-formats/1.7.0/prometheus-metrics-exposition-formats-1.7.0.jar:/home/runner/.m2/repository/io/prometheus/prometheus-metrics-exposition-textformats/1.7.0/prometheus-metrics-exposition-textformats-1.7.0.jar:/home/runner/.m2/repository/org/apache/artemis/artemis-jakarta-client/2.53.0/artemis-jakarta-client-2.53.0.jar:/home/runner/.m2/repository/org/apache/artemis/artemis-core-client/2.53.0/artemis-core-client-2.53.0.jar:/home/runner/.m2/repository/org/jgroups/jgroups/5.3.13.Final/jgroups-5.3.13.Final.jar:/home/runner/.m2/repository/io/netty/netty-handler-proxy/4.2.19.Final/netty-handler-proxy-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-codec-socks/4.2.19.Final/netty-codec-socks-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-resolver/4.2.19.Final/netty-resolver-4.2.19.Final.jar:/home/runner/.m2/repository/de/dentrassi/crypto/pem-keystore/3.0.0/pem-keystore-3.0.0.jar:/home/runner/.m2/repository/com/hierynomus/asn-one/0.6.0/asn-one-0.6.0.jar:/home/runner/.m2/repository/org/apache/artemis/artemis-commons/2.53.0/artemis-commons-2.53.0.jar:/home/runner/.m2/repository/org/apache/artemis/artemis-selector/2.53.0/artemis-selector-2.53.0.jar:/home/runner/.m2/repository/jakarta/jms/jakarta.jms-api/3.1.0/jakarta.jms-api-3.1.0.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-test/4.1.2/spring-boot-starter-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test/4.1.2/spring-boot-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test-autoconfigure/4.1.2/spring-boot-test-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/com/jayway/jsonpath/json-path/2.10.0/json-path-2.10.0.jar:/home/runner/.m2/repository/net/minidev/json-smart/2.6.0/json-smart-2.6.0.jar:/home/runner/.m2/repository/net/minidev/accessors-smart/2.6.0/accessors-smart-2.6.0.jar:/home/runner/.m2/repository/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar:/home/runner/.m2/repository/org/assertj/assertj-core/3.27.7/assertj-core-3.27.7.jar:/home/runner/.m2/repository/org/awaitility/awaitility/4.3.0/awaitility-4.3.0.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest/3.0/hamcrest-3.0.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter/6.0.3/junit-jupiter-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.0.3/junit-jupiter-api-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.0.3/junit-jupiter-params-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.0.3/junit-jupiter-engine-6.0.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.18.15/byte-buddy-agent-1.18.15.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.3/objenesis-3.3.jar:/home/runner/.m2/repository/org/mockito/mockito-junit-jupiter/5.23.0/mockito-junit-jupiter-5.23.0.jar:/home/runner/.m2/repository/org/skyscreamer/jsonassert/1.5.3/jsonassert-1.5.3.jar:/home/runner/.m2/repository/com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar:/home/runner/.m2/repository/org/springframework/spring-core/7.0.10/spring-core-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-test/7.0.10/spring-test-7.0.10.jar:/home/runner/.m2/repository/org/xmlunit/xmlunit-core/2.11.0/xmlunit-core-2.11.0.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-launcher/6.0.3/junit-platform-launcher-6.0.3.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-engine/6.0.3/junit-platform-engine-6.0.3.jar:/home/runner/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-commons/6.0.3/junit-platform-commons-6.0.3.jar:/home/runner/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-webmvc-test/4.1.2/spring-boot-starter-webmvc-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jackson-test/4.1.2/spring-boot-starter-jackson-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-webmvc/4.1.2/spring-boot-starter-webmvc-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-webmvc-test/4.1.2/spring-boot-webmvc-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-resttestclient/4.1.2/spring-boot-resttestclient-4.1.2.jar:/home/runner/.m2/repository/org/apache/artemis/artemis-server/2.53.0/artemis-server-2.53.0.jar:/home/runner/.m2/repository/com/github/ben-manes/caffeine/caffeine/3.2.4/caffeine-3.2.4.jar:/home/runner/.m2/repository/org/apache/artemis/artemis-journal/2.53.0/artemis-journal-2.53.0.jar:/home/runner/.m2/repository/org/apache/activemq/activemq-artemis-native/2.0.0/activemq-artemis-native-2.0.0.jar:/home/runner/.m2/repository/org/apache/artemis/artemis-jdbc-store/2.53.0/artemis-jdbc-store-2.53.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-dbcp2/2.14.0/commons-dbcp2-2.14.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-pool2/2.13.1/commons-pool2-2.13.1.jar:/home/runner/.m2/repository/org/apache/artemis/artemis-lockmanager-api/2.53.0/artemis-lockmanager-api-2.53.0.jar:/home/runner/.m2/repository/org/jctools/jctools-core/4.0.6/jctools-core-4.0.6.jar:/home/runner/.m2/repository/io/netty/netty-buffer/4.2.19.Final/netty-buffer-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-transport/4.2.19.Final/netty-transport-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-codec-http/4.2.19.Final/netty-codec-http-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-codec-base/4.2.19.Final/netty-codec-base-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-codec-compression/4.2.19.Final/netty-codec-compression-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-codec-haproxy/4.2.19.Final/netty-codec-haproxy-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-common/4.2.19.Final/netty-common-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-handler/4.2.19.Final/netty-handler-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-transport-native-unix-common/4.2.19.Final/netty-transport-native-unix-common-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-transport-native-epoll/4.2.19.Final/netty-transport-native-epoll-4.2.19.Final-linux-x86_64.jar:/home/runner/.m2/repository/io/netty/netty-transport-classes-epoll/4.2.19.Final/netty-transport-classes-epoll-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-transport-native-kqueue/4.2.19.Final/netty-transport-native-kqueue-4.2.19.Final-osx-x86_64.jar:/home/runner/.m2/repository/io/netty/netty-transport-classes-kqueue/4.2.19.Final/netty-transport-classes-kqueue-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-codec/4.2.19.Final/netty-codec-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-codec-protobuf/4.2.19.Final/netty-codec-protobuf-4.2.19.Final.jar:/home/runner/.m2/repository/io/netty/netty-codec-marshalling/4.2.19.Final/netty-codec-marshalling-4.2.19.Final.jar:/home/runner/.m2/repository/commons-beanutils/commons-beanutils/1.11.0/commons-beanutils-1.11.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-configuration2/2.15.1/commons-configuration2-2.15.1.jar:/home/runner/.m2/repository/org/apache/commons/commons-text/1.15.0/commons-text-1.15.0.jar:/home/runner/.m2/repository/commons-collections/commons-collections/3.2.2/commons-collections-3.2.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-test/7.1.2/spring-security-test-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-core/7.1.2/spring-security-core-7.1.2.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-crypto/7.1.2/spring-security-crypto-7.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-context/7.0.10/spring-context-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-expression/7.0.10/spring-expression-7.0.10.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-web/7.1.2/spring-security-web-7.1.2.jar:/home/runner/.m2/repository/org/testcontainers/testcontainers/2.0.5/testcontainers-2.0.5.jar:/home/runner/.m2/repository/org/rnorth/duct-tape/duct-tape/1.0.8/duct-tape-1.0.8.jar:/home/runner/.m2/repository/org/jetbrains/annotations/17.0.0/annotations-17.0.0.jar:/home/runner/.m2/repository/com/github/docker-java/docker-java-api/3.7.1/docker-java-api-3.7.1.jar:/home/runner/.m2/repository/com/github/docker-java/docker-java-transport-zerodep/3.7.1/docker-java-transport-zerodep-3.7.1.jar:/home/runner/.m2/repository/com/github/docker-java/docker-java-transport/3.7.1/docker-java-transport-3.7.1.jar:/home/runner/.m2/repository/org/testcontainers/testcontainers-junit-jupiter/2.0.5/testcontainers-junit-jupiter-2.0.5.jar:/home/runner/.m2/repository/org/testcontainers/testcontainers-selenium/2.0.5/testcontainers-selenium-2.0.5.jar:/home/runner/.m2/repository/org/testcontainers/testcontainers-postgresql/2.0.5/testcontainers-postgresql-2.0.5.jar:/home/runner/.m2/repository/org/testcontainers/testcontainers-jdbc/2.0.5/testcontainers-jdbc-2.0.5.jar:/home/runner/.m2/repository/org/testcontainers/testcontainers-database-commons/2.0.5/testcontainers-database-commons-2.0.5.jar:/home/runner/.m2/repository/org/testcontainers/testcontainers-mssqlserver/2.0.5/testcontainers-mssqlserver-2.0.5.jar:/home/runner/.m2/repository/org/testcontainers/testcontainers-oracle-free/2.0.5/testcontainers-oracle-free-2.0.5.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-chrome-driver/4.46.0/selenium-chrome-driver-4.46.0.jar:/home/runner/.m2/repository/com/google/auto/service/auto-service-annotations/1.1.1/auto-service-annotations-1.1.1.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-api/4.46.0/selenium-api-4.46.0.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-chromium-driver/4.46.0/selenium-chromium-driver-4.46.0.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-json/4.46.0/selenium-json-4.46.0.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-manager/4.46.0/selenium-manager-4.46.0.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-os/4.46.0/selenium-os-4.46.0.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-remote-driver/4.46.0/selenium-remote-driver-4.46.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-api/1.62.0/opentelemetry-api-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-context/1.62.0/opentelemetry-context-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-common/1.62.0/opentelemetry-common-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-exporter-logging/1.62.0/opentelemetry-exporter-logging-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-sdk-common/1.62.0/opentelemetry-sdk-common-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-sdk-extension-autoconfigure-spi/1.62.0/opentelemetry-sdk-extension-autoconfigure-spi-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-sdk-extension-autoconfigure/1.62.0/opentelemetry-sdk-extension-autoconfigure-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-sdk-trace/1.62.0/opentelemetry-sdk-trace-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-sdk/1.62.0/opentelemetry-sdk-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-sdk-metrics/1.62.0/opentelemetry-sdk-metrics-1.62.0.jar:/home/runner/.m2/repository/io/opentelemetry/opentelemetry-sdk-logs/1.62.0/opentelemetry-sdk-logs-1.62.0.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-http/4.46.0/selenium-http-4.46.0.jar:/home/runner/.m2/repository/org/seleniumhq/selenium/selenium-support/4.46.0/selenium-support-4.46.0.jar:/home/runner/.m2/repository/com/google/guava/guava/33.7.2-jre/guava-33.7.2-jre.jar:/home/runner/.m2/repository/com/google/guava/failureaccess/1.0.3/failureaccess-1.0.3.jar:/home/runner/.m2/repository/com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar:/home/runner/.m2/repository/com/google/j2objc/j2objc-annotations/3.1/j2objc-annotations-3.1.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.18.15/byte-buddy-1.18.15.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit-junit5/1.5.1/archunit-junit5-1.5.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit-junit5-api/1.5.1/archunit-junit5-api-1.5.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit/1.5.1/archunit-1.5.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit-junit5-engine/1.5.1/archunit-junit5-engine-1.5.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit-junit5-engine-api/1.5.1/archunit-junit5-engine-api-1.5.1.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark/0.64.8/flexmark-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-ast/0.64.8/flexmark-util-ast-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-builder/0.64.8/flexmark-util-builder-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-collection/0.64.8/flexmark-util-collection-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-data/0.64.8/flexmark-util-data-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-dependency/0.64.8/flexmark-util-dependency-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-format/0.64.8/flexmark-util-format-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-html/0.64.8/flexmark-util-html-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-misc/0.64.8/flexmark-util-misc-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-sequence/0.64.8/flexmark-util-sequence-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-visitor/0.64.8/flexmark-util-visitor-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-ext-autolink/0.64.8/flexmark-ext-autolink-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util/0.64.8/flexmark-util-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-util-options/0.64.8/flexmark-util-options-0.64.8.jar:/home/runner/.m2/repository/org/nibor/autolink/autolink/0.6.0/autolink-0.6.0.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-ext-gfm-strikethrough/0.64.8/flexmark-ext-gfm-strikethrough-0.64.8.jar:/home/runner/.m2/repository/com/vladsch/flexmark/flexmark-ext-tables/0.64.8/flexmark-ext-tables-0.64.8.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/taxonomy-workspace-1.5.3-SNAPSHOT-test-fixtures.jar:/home/runner/.m2/repository/com/networknt/json-schema-validator/3.0.8/json-schema-validator-3.0.8.jar:/home/runner/.m2/repository/com/ethlo/time/itu/1.14.0/itu-1.14.0.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-databind/3.1.7/jackson-databind-3.1.7.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-core/3.1.7/jackson-core-3.1.7.jar:/home/runner/.m2/repository/tools/jackson/dataformat/jackson-dataformat-yaml/3.1.7/jackson-dataformat-yaml-3.1.7.jar:/home/runner/.m2/repository/org/snakeyaml/snakeyaml-engine/3.0.1/snakeyaml-engine-3.0.1.jar:"/>
+    <property name="sun.cpu.endian" value="little"/>
+    <property name="user.home" value="/home/runner"/>
+    <property name="user.language" value="en"/>
+    <property name="git.commit.committer.time" value="2026-11-01T22:01:58Z"/>
+    <property name="git.build.user.email" value=""/>
+    <property name="FILE_LOG_CHARSET" value="UTF-8"/>
+    <property name="java.awt.headless" value="true"/>
+    <property name="git.local.branch.ahead" value="0"/>
+    <property name="surefire.real.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/surefire/surefirebooter-20261101223425364_24.jar"/>
+    <property name="polyglot.engine.WarnInterpreterOnly" value="false"/>
+    <property name="stdout.encoding" value="UTF-8"/>
+    <property name="path.separator" value=":"/>
+    <property name="otel.metrics.exporter" value="none"/>
+    <property name="os.version" value="7.0.0-1017-azure"/>
+    <property name="java.runtime.name" value="OpenJDK Runtime Environment"/>
+    <property name="otel.traces.exporter" value="none"/>
+    <property name="taxonomy.test.browser.version" value="149.0.7827.55"/>
+    <property name="git.commit.user.email" value="carsten.hammer@t-online.de"/>
+    <property name="java.vm.name" value="OpenJDK 64-Bit Server VM"/>
+    <property name="jna.platform.library.path" value="/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:/usr/lib64:/lib64:/usr/lib:/lib:/lib32:/usr/local/lib:/usr/lib/x86_64-linux-gnu/libfakeroot"/>
+    <property name="git.local.branch.behind" value="0"/>
+    <property name="git.dirty" value="false"/>
+    <property name="java.vendor.url.bug" value="https://github.com/adoptium/adoptium-support/issues"/>
+    <property name="taxonomy.observability.performance.enabled" value="false"/>
+    <property name="catalina.home" value="/tmp/tomcat.0.10274876651825032480"/>
+    <property name="user.dir" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-app"/>
+    <property name="os.arch" value="amd64"/>
+    <property name="git.commit.user.name" value="Carsten Hammer"/>
+    <property name="project.build.finalName" value="taxonomy-app-1.5.3-SNAPSHOT"/>
+    <property name="git.commit.id.abbrev" value="cec668a"/>
+    <property name="git.commit.id.describe-short" value="v1.3.1-1115"/>
+    <property name="catalina.base" value="/tmp/tomcat.0.3692057942319548338"/>
+    <property name="git.commit.message.short" value="QA: fix Responses transport cause-chain handling and bare-repo signature test (#1363)"/>
+    <property name="java.vm.info" value="mixed mode, sharing"/>
+    <property name="java.vm.version" value="25.0.5+8-LTS"/>
+    <property name="stdin.encoding" value="UTF-8"/>
+    <property name="java.class.version" value="69.0"/>
+    <property name="runOnnxTests" value="true"/>
+    <property name="git.commit.time" value="2026-11-01T22:01:58Z"/>
+  </properties>
+  <testcase name="aCurrentCaptureKeepsMoreThanOneBatchOfDistinctBranches" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.466">
+    <system-out><![CDATA[2026-11-01T22:41:21.489Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-0e80a17b-aa72-4b08-88ac-c976dbd5064d]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:21.683Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:21.772Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="cancellationClosesMetadataBodyAndQuestionTransactions(int)[1]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.333">
+    <system-out><![CDATA[2026-11-01T22:41:21.962Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-2b3e07b2-c97d-4eb1-81e5-0967c8a06b4e]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:22.167Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:22.258Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="cancellationClosesMetadataBodyAndQuestionTransactions(int)[2]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.324">
+    <system-out><![CDATA[2026-11-01T22:41:22.292Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-f9af22fa-4627-4b52-8e6b-a475ae799d06]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:22.499Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:22.583Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="cancellationClosesMetadataBodyAndQuestionTransactions(int)[3]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.328">
+    <system-out><![CDATA[2026-11-01T22:41:22.616Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-3408c233-6a03-4ee5-8132-494f3c3a9a41]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:22.823Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:22.910Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="compactAndLegacyQuestionsKeepTheOriginalCleartextArchiveContract(int)[1]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.425">
+    <system-out><![CDATA[2026-11-01T22:41:22.951Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-b0542aa8-be39-4a93-8205-36ed9745d52c]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:23.159Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:23.283Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="compactAndLegacyQuestionsKeepTheOriginalCleartextArchiveContract(int)[2]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.423">
+    <system-out><![CDATA[2026-11-01T22:41:23.388Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-05da6e27-f226-45df-8033-0b6b3a5792c4]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:23.628Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:23.734Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="compactAndLegacyQuestionsKeepTheOriginalCleartextArchiveContract(int)[3]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.457">
+    <system-out><![CDATA[2026-11-01T22:41:23.800Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-39806cca-419c-4db0-8b31-6e5300a016ff]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:24.067Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:24.195Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="compactAndLegacyQuestionsKeepTheOriginalCleartextArchiveContract(int)[4]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.394">
+    <system-out><![CDATA[2026-11-01T22:41:24.261Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-95e76b61-b8df-4ac5-8477-d09a09c890d3]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:24.487Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:24.599Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="aCaseAliasedBodyIdCannotReplaceTheSelectedId" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.317">
+    <system-out><![CDATA[2026-11-01T22:41:24.653Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-1b77e5aa-5584-45e2-973c-86aa1704d653]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:24.853Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:24.933Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="anUnknownCheckpointStorageVersionFailsCaptureInsteadOfBecomingPromptEvidence" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.307">
+    <system-out><![CDATA[2026-11-01T22:41:24.964Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-e6925ee9-da76-45c0-a913-a185d55d01c0]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:25.156Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:25.238Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="questionParentMustStillMatchTheEmittedContinuation" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.305">
+    <system-out><![CDATA[2026-11-01T22:41:25.272Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-d8aa9cb3-a9d0-44fa-b904-6dac78dec1c0]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:25.464Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:25.543Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="installationCaptureRejectsNoncanonicalDraftOwnersBeforeReadingPayload(String, BackupProfile)[1]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.336">
+    <system-out><![CDATA[2026-11-01T22:41:25.580Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-a0669fb8-6f11-41d1-9109-3a82d52faf9b]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:25.791Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:25.879Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="installationCaptureRejectsNoncanonicalDraftOwnersBeforeReadingPayload(String, BackupProfile)[2]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.328">
+    <system-out><![CDATA[2026-11-01T22:41:25.917Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-e4f8ae0e-5e2f-4691-9bdd-a3152f21cc88]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:26.123Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:26.210Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="installationCaptureRejectsNoncanonicalDraftOwnersBeforeReadingPayload(String, BackupProfile)[3]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.325">
+    <system-out><![CDATA[2026-11-01T22:41:26.246Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-40d80451-4bbf-486f-ad67-4e8ecab56cf4]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:26.451Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:26.537Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="installationCaptureRejectsNoncanonicalDraftOwnersBeforeReadingPayload(String, BackupProfile)[4]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.323">
+    <system-out><![CDATA[2026-11-01T22:41:26.571Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-48459ba6-5f69-43f8-913f-d514b2e9b249]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:26.778Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:26.861Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="databaseCollationCannotBroadenCapturedOwnership(String, String, String, BackupProfile)[1]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.319">
+    <system-out><![CDATA[2026-11-01T22:41:26.896Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-36c1f900-34d1-4d8e-9d9c-f5d315cb6d97]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:27.098Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:27.181Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="databaseCollationCannotBroadenCapturedOwnership(String, String, String, BackupProfile)[2]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.318">
+    <system-out><![CDATA[2026-11-01T22:41:27.216Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-25ce7331-254b-46b0-9562-e557ed910ab4]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:27.418Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:27.501Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="databaseCollationCannotBroadenCapturedOwnership(String, String, String, BackupProfile)[3]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.349">
+    <system-out><![CDATA[2026-11-01T22:41:27.536Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-c6327176-1e4c-4032-8d0c-0ca88d1a80d2]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:27.769Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:27.852Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="databaseCollationCannotBroadenCapturedOwnership(String, String, String, BackupProfile)[4]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.316">
+    <system-out><![CDATA[2026-11-01T22:41:27.885Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-d0c6751e-7f70-4958-b360-4436c2e72067]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:28.084Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:28.167Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="databaseCollationCannotBroadenCapturedOwnership(String, String, String, BackupProfile)[5]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.316">
+    <system-out><![CDATA[2026-11-01T22:41:28.201Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-3759d821-3de9-4859-96d5-6a8323efff04]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:28.401Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:28.484Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="databaseCollationCannotBroadenCapturedOwnership(String, String, String, BackupProfile)[6]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.326">
+    <system-out><![CDATA[2026-11-01T22:41:28.518Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-7fad4327-5247-41c2-80da-9f627384f550]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:28.719Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:28.809Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="databaseCollationCannotBroadenCapturedOwnership(String, String, String, BackupProfile)[7]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.316">
+    <system-out><![CDATA[2026-11-01T22:41:28.850Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-0643906d-44c3-4753-b24c-c27eb4b39b36]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:29.047Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:29.128Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="databaseCollationCannotBroadenCapturedOwnership(String, String, String, BackupProfile)[8]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.318">
+    <system-out><![CDATA[2026-11-01T22:41:29.160Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-da713c8f-014a-41e9-9bdf-cadc2d4e410b]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:29.358Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:29.447Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="databaseCollationCannotBroadenCapturedOwnership(String, String, String, BackupProfile)[9]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.312">
+    <system-out><![CDATA[2026-11-01T22:41:29.480Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-25bc7546-b44d-4102-9287-9ceee9bcbea2]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:29.680Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:29.760Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="databaseCollationCannotBroadenCapturedOwnership(String, String, String, BackupProfile)[10]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.32">
+    <system-out><![CDATA[2026-11-01T22:41:29.792Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-2f2f4203-2ee6-45a4-ad73-663f1ac7589c]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:29.996Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:30.081Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="malformedAnalysisBodiesFailRatherThanBecomingEmptyRecords(String)[1]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.317">
+    <system-out><![CDATA[2026-11-01T22:41:30.114Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-669a7b47-ab36-4bfa-aea1-4df862412d09]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:30.317Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:30.398Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="malformedAnalysisBodiesFailRatherThanBecomingEmptyRecords(String)[2]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.322">
+    <system-out><![CDATA[2026-11-01T22:41:30.430Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-2e97b63c-4a84-420d-90d7-84fce615c72b]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:30.637Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:30.720Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="malformedAnalysisBodiesFailRatherThanBecomingEmptyRecords(String)[3]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.323">
+    <system-out><![CDATA[2026-11-01T22:41:30.754Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-7016caf6-9f84-4a2d-ab98-809cc135f40c]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:30.958Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:31.041Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="aCaseAliasedQuestionReferenceFailsInsteadOfDisappearing(BackupProfile)[1]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.321">
+    <system-out><![CDATA[2026-11-01T22:41:31.079Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-d51030ad-e259-47ac-a064-f3f847e638e3]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:31.284Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:31.368Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="aCaseAliasedQuestionReferenceFailsInsteadOfDisappearing(BackupProfile)[2]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.318">
+    <system-out><![CDATA[2026-11-01T22:41:31.401Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-9391d77d-a4e3-49da-ae7b-2921c67113be]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:31.601Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:31.686Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="aCaseAliasedQuestionReferenceFailsInsteadOfDisappearing(BackupProfile)[3]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.41">
+    <system-out><![CDATA[2026-11-01T22:41:31.719Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-9c447773-1597-4043-a473-5c94e5ec6339]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:31.922Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:32.046Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="aCaseAliasedQuestionReferenceFailsInsteadOfDisappearing(BackupProfile)[4]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.385">
+    <system-out><![CDATA[2026-11-01T22:41:32.143Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-c5e9399d-89a6-4361-85d4-888321181e7f]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:32.356Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:32.465Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="mixedCaseOwnersKeepBothSourceRepresentationsAndTheirCompletedCurrentRun(BackupProfile)[1]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.448">
+    <system-out><![CDATA[2026-11-01T22:41:32.524Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-b329b0f5-936d-4f28-bafa-2d5f255e2a5d]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:32.788Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:32.903Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="mixedCaseOwnersKeepBothSourceRepresentationsAndTheirCompletedCurrentRun(BackupProfile)[2]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.385">
+    <system-out><![CDATA[2026-11-01T22:41:32.974Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-613aa029-97f6-4064-a32d-73374221525b]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:33.199Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:33.307Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="mixedCaseOwnersKeepBothSourceRepresentationsAndTheirCompletedCurrentRun(BackupProfile)[3]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.322">
+    <system-out><![CDATA[2026-11-01T22:41:33.355Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-4656bf30-3a18-482f-a3f1-85c71d44b777]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:33.557Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:33.640Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="mixedCaseOwnersKeepBothSourceRepresentationsAndTheirCompletedCurrentRun(BackupProfile)[4]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.321">
+    <system-out><![CDATA[2026-11-01T22:41:33.676Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-9183fa21-3c51-4648-8ace-662adb334288]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:33.879Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:33.962Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="installationCaptureStillRejectsContradictoryDraftWorkspaceIdentity(BackupProfile)[1]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.318">
+    <system-out><![CDATA[2026-11-01T22:41:33.997Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-6dc7d024-45f7-434d-a981-65eedfbd59ea]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:34.198Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:34.283Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="installationCaptureStillRejectsContradictoryDraftWorkspaceIdentity(BackupProfile)[2]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.325">
+    <system-out><![CDATA[2026-11-01T22:41:34.316Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-1231f341-7449-4090-a346-e69fc4c4b214]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:34.520Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:34.608Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="emptyCurrentDraftStillRetainsItsMatchingUnfinishedRun" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.298">
+    <system-out><![CDATA[2026-11-01T22:41:34.642Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-198529d9-33b3-44f5-9632-4f0ed9153ea3]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:34.831Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:34.907Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="aDeletedSelectedRunCannotBecomeSuccessfulEmptyOutput" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.288">
+    <system-out><![CDATA[2026-11-01T22:41:34.941Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-62e8e05d-35c9-4d61-bc2a-575efd3dc0dc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:35.123Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:35.197Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="largePlainAndStoredPackedResultsExportAsLosslessBoundedFields(boolean)[1]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.971">
+    <system-out><![CDATA[2026-11-01T22:41:35.234Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-cde8e0f7-c2c5-4d87-9fea-1b725ccec54a]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:35.436Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:35.518Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="largePlainAndStoredPackedResultsExportAsLosslessBoundedFields(boolean)[2]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="1.108">
+    <system-out><![CDATA[2026-11-01T22:41:36.204Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-951dbd5f-df2c-45eb-b476-615f7aa6a293]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:36.403Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:36.483Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="continuationArchiveIncludesItsDurableRelationLedgerRatherThanQuestionAttempts" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.288">
+    <system-out><![CDATA[2026-11-01T22:41:37.308Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-b01e2c0c-03e8-4e96-a206-b9b81c73018f]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:37.491Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:37.564Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="selectedRunMetadataMustStillMatchBeforeAnyBodyIsRead(String, String)[1]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.311">
+    <system-out><![CDATA[2026-11-01T22:41:37.599Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-f1f5be6e-d198-4d35-b25b-9fde12cb090d]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:37.798Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:37.878Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="selectedRunMetadataMustStillMatchBeforeAnyBodyIsRead(String, String)[2]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.318">
+    <system-out><![CDATA[2026-11-01T22:41:37.910Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-f1559e7f-5ba0-4b89-8bc4-f2c645e4c4bc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:38.110Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:38.192Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="selectedRunMetadataMustStillMatchBeforeAnyBodyIsRead(String, String)[3]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.304">
+    <system-out><![CDATA[2026-11-01T22:41:38.228Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-681092e9-5c2f-4ff8-948a-7d9ed5078d19]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:38.423Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:38.501Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="selectedRunMetadataMustStillMatchBeforeAnyBodyIsRead(String, String)[4]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.314">
+    <system-out><![CDATA[2026-11-01T22:41:38.533Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-635a67db-4dbb-4272-9fbe-4d4fc041698b]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:38.735Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:38.815Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="selectedRunMetadataMustStillMatchBeforeAnyBodyIsRead(String, String)[5]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.322">
+    <system-out><![CDATA[2026-11-01T22:41:38.847Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-a408cd57-2c42-4746-9477-9524085e4837]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:39.048Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:39.131Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="selectedRunMetadataMustStillMatchBeforeAnyBodyIsRead(String, String)[6]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.329">
+    <system-out><![CDATA[2026-11-01T22:41:39.176Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-e11d146a-5a90-47ec-936e-c978a55645cc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:39.387Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:39.468Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="selectedRunMetadataMustStillMatchBeforeAnyBodyIsRead(String, String)[7]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.32">
+    <system-out><![CDATA[2026-11-01T22:41:39.498Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-01f6eaf2-7e9a-42dc-af7d-5ab8ce084eda]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:39.699Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:39.788Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="selectedRunMetadataMustStillMatchBeforeAnyBodyIsRead(String, String)[8]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.305">
+    <system-out><![CDATA[2026-11-01T22:41:39.818Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-1361f835-e958-44c9-9d67-65f91e3e2ee8]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:40.014Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:40.093Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="selectedRunMetadataMustStillMatchBeforeAnyBodyIsRead(String, String)[9]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.313">
+    <system-out><![CDATA[2026-11-01T22:41:40.123Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-2aa2d6f0-3973-43d2-8827-92c4d9061681]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:40.322Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:40.406Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="selectedRunMetadataMustStillMatchBeforeAnyBodyIsRead(String, String)[10]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.379">
+    <system-out><![CDATA[2026-11-01T22:41:40.436Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-6550d8d0-8f53-4087-a824-a1d71d2f1434]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:40.640Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:40.774Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="mixedCaseRunOwnerCannotBypassTheNormalizedDraftsCurrentText(BackupProfile)[1]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.41">
+    <system-out><![CDATA[2026-11-01T22:41:40.825Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-4846e801-f77d-47d5-aefb-e0d1025d3020]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:41.040Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:41.128Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="mixedCaseRunOwnerCannotBypassTheNormalizedDraftsCurrentText(BackupProfile)[2]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.365">
+    <system-out><![CDATA[2026-11-01T22:41:41.233Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-78893a9e-57e1-4b68-a059-ebdc53b7e8e8]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:41.446Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:41.550Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="staleAndCompletedUnattachedRunsDoNotLeakIntoCurrentDraftCapture" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.408">
+    <system-out><![CDATA[2026-11-01T22:41:41.595Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-af915ca5-cf6e-4b4c-815e-55bd9ce1d8d4]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:41.788Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:41.958Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="newestRunSelectionCannotCollapseDistinctExactIdentities(String, String, BackupProfile)[1]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.336">
+    <system-out><![CDATA[2026-11-01T22:41:42.008Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-106c7006-c77c-4b4a-a924-c2c169f94117]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:42.217Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:42.307Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="newestRunSelectionCannotCollapseDistinctExactIdentities(String, String, BackupProfile)[2]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.317">
+    <system-out><![CDATA[2026-11-01T22:41:42.347Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-0a56fbab-7924-46da-a896-aded70664258]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:42.544Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:42.625Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="newestRunSelectionCannotCollapseDistinctExactIdentities(String, String, BackupProfile)[3]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.313">
+    <system-out><![CDATA[2026-11-01T22:41:42.659Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-daef493d-57fb-435a-9982-c364e4bb195b]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:42.856Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:42.939Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="newestRunSelectionCannotCollapseDistinctExactIdentities(String, String, BackupProfile)[4]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.315">
+    <system-out><![CDATA[2026-11-01T22:41:42.972Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-79412a97-64d8-4659-82be-efffad187834]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:43.174Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:43.256Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="newestRunSelectionCannotCollapseDistinctExactIdentities(String, String, BackupProfile)[5]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.307">
+    <system-out><![CDATA[2026-11-01T22:41:43.288Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-6984c1b2-8cf0-4ebb-9b05-142c637f8b76]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:43.483Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:43.563Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="selectedVersionDoesNotOpenThePresentDayDatabase" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.008"/>
+  <testcase name="latestSelectionUsesTimestampThenExactIdAndDoesNotParseOldBodies" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.288">
+    <system-out><![CDATA[2026-11-01T22:41:43.603Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-6f6a7375-e153-475a-8e02-848d721dd15a]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:43.787Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:43.860Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="installationDraftIdentityMustBeCanonicalAndDescribeItsWorkspace(String)[1]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.308">
+    <system-out><![CDATA[2026-11-01T22:41:43.893Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-8e8617b9-54b8-4568-8dad-4559239bb108]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:44.091Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:44.170Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="installationDraftIdentityMustBeCanonicalAndDescribeItsWorkspace(String)[2]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.307">
+    <system-out><![CDATA[2026-11-01T22:41:44.203Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-2f1fdf4a-324a-4698-94fc-fc55a944db3e]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:44.400Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:44.479Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="installationDraftIdentityMustBeCanonicalAndDescribeItsWorkspace(String)[3]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.306">
+    <system-out><![CDATA[2026-11-01T22:41:44.510Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-ae7a6d58-d046-4d15-b413-6d463009e3b4]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:44.708Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:44.786Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="profilesKeepCurrentWorkAndExactQuestionReferencesWithoutWorkerClaims(BackupProfile)[1]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.321">
+    <system-out><![CDATA[2026-11-01T22:41:44.817Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-410abcb4-1532-4aea-b14f-274932543970]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:45.018Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:45.098Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="profilesKeepCurrentWorkAndExactQuestionReferencesWithoutWorkerClaims(BackupProfile)[2]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.343">
+    <system-out><![CDATA[2026-11-01T22:41:45.140Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-fcf0e1f1-15ed-4b35-829c-41af955bcfb5]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:45.343Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:45.443Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="profilesKeepCurrentWorkAndExactQuestionReferencesWithoutWorkerClaims(BackupProfile)[3]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.322">
+    <system-out><![CDATA[2026-11-01T22:41:45.483Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-9786755f-ddfd-4b4d-86b2-e85b8e8be823]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:45.686Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:45.766Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+  <testcase name="profilesKeepCurrentWorkAndExactQuestionReferencesWithoutWorkerClaims(BackupProfile)[4]" classname="com.taxonomy.backup.runtime.AnalysisRecordsExportIT" time="0.32">
+    <system-out><![CDATA[2026-11-01T22:41:45.806Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:current-export-09704d72-d7a7-43bd-ab72-d7b8f26fc622]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-11-01T22:41:46.006Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.search.version.orm         : HSEARCH000034: Hibernate Search version 8.4.0.Final
+2026-11-01T22:41:46.085Z  INFO 33088 --- [taxonomy-analyzer] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+]]></system-out>
+  </testcase>
+</testsuite>

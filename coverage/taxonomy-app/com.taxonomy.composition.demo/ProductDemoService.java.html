@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProductDemoService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.demo</a> &gt; <span class="el_source">ProductDemoService.java</span></div><h1>ProductDemoService.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.demo;
+
+import com.taxonomy.analysis.demo.DemoCatalogueValidator;
+import com.taxonomy.analysis.demo.DemoProviderIds;
+import com.taxonomy.analysis.demo.DemoScenario;
+import com.taxonomy.analysis.demo.DemoScenarioCatalog;
+import com.taxonomy.analysis.demo.evaluation.DemoReference;
+import com.taxonomy.analysis.demo.evaluation.DemoReferenceEvaluator;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProjectStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.RequirementStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.RequirementType;
+import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.PortfolioScope;
+import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * Starts, reads, compares and closes isolated product demos (issue #1184).
+ *
+ * &lt;p&gt;Each start creates a fresh, clearly labelled demo project with exactly the
+ * scenario requirement R0; existing drafts, projects and requirements are never
+ * touched. Analyses, reformulation, explicit adoption and exports then run on
+ * the normal product paths; only the external AI reply is replaced by the
+ * strict scenario replay derived from this run.&lt;/p&gt;
+ */
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;portfolio&quot;, &quot;analysis&quot;})
+@Service
+public class ProductDemoService {
+
+<span class="fc" id="L51">    public record DemoRunView(String id, Long projectId, Long requirementId, String scenarioId, int scenarioVersion,</span>
+                              String scenarioFingerprint, String catalogueSource, Map&lt;String, String&gt; title,
+                              Map&lt;String, String&gt; banner, String requirementKey, String requirementText,
+                              List&lt;DemoScenario.Station&gt; stations, List&lt;DemoScenario.DemoDecision&gt; demoDecisions,
+                              List&lt;DemoScenario.DemoReview&gt; demoReviews, String activeProvider,
+                              int currentRequirementVersion, Instant createdAt, Instant closedAt) { }
+
+<span class="fc" id="L58">    public record DemoComparison(String runId, String a0SnapshotId, String a1SnapshotId,</span>
+                                 DemoReferenceEvaluator.Report report) { }
+
+    private final ProductDemoRunRepository runs;
+    private final ProjectPortfolioService projects;
+    private final PortfolioAnalysisPersistenceService analyses;
+    private final DemoScenarioCatalog catalog;
+    private final TaxonomyService taxonomy;
+
+    public ProductDemoService(ProductDemoRunRepository runs, ProjectPortfolioService projects,
+                              PortfolioAnalysisPersistenceService analyses,
+<span class="fc" id="L69">                              DemoScenarioCatalog catalog, TaxonomyService taxonomy) {</span>
+<span class="fc" id="L70">        this.runs = runs;</span>
+<span class="fc" id="L71">        this.projects = projects;</span>
+<span class="fc" id="L72">        this.analyses = analyses;</span>
+<span class="fc" id="L73">        this.catalog = catalog;</span>
+<span class="fc" id="L74">        this.taxonomy = taxonomy;</span>
+<span class="fc" id="L75">    }</span>
+
+    public DemoScenarioCatalog catalog() {
+<span class="fc" id="L78">        return catalog;</span>
+    }
+
+    @Transactional
+    public DemoRunView start(String scenarioId, String username, WorkspaceContext context) {
+<span class="pc bpc" id="L83" title="3 of 4 branches missed.">        DemoScenario scenario = scenarioId == null || scenarioId.isBlank()</span>
+<span class="fc" id="L84">                ? catalog().defaultScenario()</span>
+<span class="pc" id="L85">                : catalog().find(scenarioId.strip()).orElseThrow(() -&gt; ProductDemoProblems.notFound(</span>
+                        ProductDemoProblems.SCENARIO_NOT_FOUND, &quot;Unknown demo scenario: &quot; + scenarioId));
+<span class="fc" id="L87">        verifyCatalogue(scenario);</span>
+<span class="fc" id="L88">        String runId = UUID.randomUUID().toString();</span>
+        // Demo data is authored content: it uses the scenario's own language, never server-side literals.
+<span class="fc" id="L90">        String language = scenario.requirement().language();</span>
+<span class="fc" id="L91">        String banner = scenario.banner().get(language);</span>
+<span class="fc" id="L92">        String revision = scenario.id() + &quot; v&quot; + scenario.version();</span>
+<span class="fc" id="L93">        var project = projects.createProject(new CreateProjectRequest(</span>
+<span class="fc" id="L94">                &quot;DEMO-&quot; + scenario.id().toUpperCase(Locale.ROOT) + &quot;-&quot; + runId.substring(0, 8).toUpperCase(Locale.ROOT),</span>
+<span class="fc" id="L95">                &quot;DEMO · &quot; + scenario.title().get(language), banner + &quot; · &quot; + revision,</span>
+                ProjectStatus.PLANNING, null, null, null, null), username, context);
+<span class="fc" id="L97">        var requirement = projects.createRequirement(project.id(), new CreateRequirementRequest(</span>
+<span class="fc" id="L98">                scenario.requirement().key(), scenario.requirement().title(), scenario.r0Text(),</span>
+                RequirementStatus.DRAFT, null, null, RequirementType.FUNCTIONAL, null, null,
+                banner + &quot; · &quot; + revision + &quot; · R0&quot;, null),
+                username, context);
+<span class="fc" id="L102">        var run = runs.save(new ProductDemoRun(runId, PortfolioScope.key(username, context), project.id(),</span>
+<span class="fc" id="L103">                requirement.id(), scenario.id(), scenario.version(), scenario.fingerprint(),</span>
+<span class="fc" id="L104">                PortfolioScope.username(username, context), Instant.now()));</span>
+<span class="fc" id="L105">        return view(run, scenario, 1, requirement.requirementKey());</span>
+    }
+
+    @Transactional(readOnly = true)
+    public DemoRunView get(String runId, String username, WorkspaceContext context) {
+<span class="fc" id="L110">        return view(require(runId, username, context), username, context);</span>
+    }
+
+    private DemoRunView view(ProductDemoRun run, String username, WorkspaceContext context) {
+<span class="fc" id="L114">        DemoScenario scenario = scenarioOf(run);</span>
+<span class="fc" id="L115">        var requirement = projects.requireRequirement(run.getProjectId(), run.getRequirementId(), username, context);</span>
+<span class="fc" id="L116">        int version = projects.currentVersion(requirement).getVersionNumber();</span>
+<span class="fc" id="L117">        return view(run, scenario, version, requirement.getRequirementKey());</span>
+    }
+
+    /** The caller's demo runs, optionally restricted to one project (at most one run per project). */
+    @Transactional(readOnly = true)
+    public List&lt;DemoRunView&gt; list(Long projectId, String username, WorkspaceContext context) {
+<span class="fc" id="L123">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        List&lt;ProductDemoRun&gt; selected = projectId == null ? runs.findByScopeKeyOrderByCreatedAtDesc(scopeKey)</span>
+<span class="fc" id="L125">                : runs.findByProjectIdAndScopeKey(projectId, scopeKey).map(List::of).orElse(List.of());</span>
+<span class="fc" id="L126">        return selected.stream().map(run -&gt; view(run, username, context)).toList();</span>
+    }
+
+    /** Closing takes the same row lock as provider admission, so no replay analysis is admitted afterwards. */
+    @Transactional
+    public DemoRunView close(String runId, String username, WorkspaceContext context) {
+<span class="fc" id="L132">        ProductDemoRun run = runs.lockByIdAndScopeKey(requireRunId(runId), PortfolioScope.key(username, context))</span>
+<span class="pc" id="L133">                .orElseThrow(() -&gt; runNotFound(runId));</span>
+<span class="fc" id="L134">        run.close(Instant.now());</span>
+<span class="fc" id="L135">        return view(run, username, context);</span>
+    }
+
+    /**
+     * Independent reference evaluation of the latest completed A0 and A1 analyses.
+     * Partial analyses retain their coverage so missing evidence is never treated as zero.
+     */
+    @Transactional(readOnly = true)
+    public DemoComparison compare(String runId, String username, WorkspaceContext context) {
+<span class="fc" id="L144">        ProductDemoRun run = require(runId, username, context);</span>
+<span class="fc" id="L145">        DemoScenario scenario = scenarioOf(run);</span>
+<span class="fc" id="L146">        List&lt;SnapshotSummary&gt; snapshots = analyses.listRequirementSnapshots(</span>
+<span class="fc" id="L147">                run.getProjectId(), run.getRequirementId(), username, context);</span>
+<span class="fc" id="L148">        Map&lt;Integer, String&gt; texts = new java.util.HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        for (RequirementVersionView version : projects.listRequirementVersions(</span>
+<span class="fc" id="L150">                run.getProjectId(), run.getRequirementId(), username, context))</span>
+<span class="fc" id="L151">            texts.put(version.versionNumber(), version.text());</span>
+<span class="fc" id="L152">        var a0 = latest(snapshots, run, 0);</span>
+<span class="fc" id="L153">        var a1 = latest(snapshots, run, 1);</span>
+<span class="fc" id="L154">        var report = DemoReferenceEvaluator.evaluate(DemoReference.load(scenario.id()),</span>
+<span class="fc" id="L155">                observation(a0, texts, run, username, context), observation(a1, texts, run, username, context));</span>
+<span class="fc" id="L156">        return new DemoComparison(run.getId(), a0.map(SnapshotSummary::id).orElse(null),</span>
+<span class="fc" id="L157">                a1.map(SnapshotSummary::id).orElse(null), report);</span>
+    }
+
+    private Optional&lt;SnapshotSummary&gt; latest(List&lt;SnapshotSummary&gt; snapshots, ProductDemoRun run, int iteration) {
+<span class="fc" id="L161">        String provider = DemoProviderIds.providerId(run.getScenarioId(), iteration).value();</span>
+<span class="fc" id="L162">        return snapshots.stream()</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">                .filter(s -&gt; s.requirementVersionNumber() == iteration + 1)</span>
+<span class="fc" id="L164">                .filter(s -&gt; provider.equalsIgnoreCase(s.provider()))</span>
+                // A completed partial snapshot may contain explicit clarification evidence.
+<span class="pc bpc" id="L166" title="1 of 4 branches missed.">                .filter(s -&gt; s.status() == AnalysisStatus.SUCCESS || s.status() == AnalysisStatus.PARTIAL)</span>
+<span class="fc" id="L167">                .max(Comparator.comparing(SnapshotSummary::createdAt));</span>
+    }
+
+    private DemoReferenceEvaluator.Observation observation(Optional&lt;SnapshotSummary&gt; summary, Map&lt;Integer, String&gt; texts,
+                                                           ProductDemoRun run, String username,
+                                                           WorkspaceContext context) {
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        if (summary.isEmpty()) return new DemoReferenceEvaluator.Observation(null, null, Set.of());</span>
+<span class="fc" id="L174">        SnapshotDetail detail = analyses.getSnapshot(run.getProjectId(), summary.get().id(), username, context);</span>
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">        Map&lt;String, Double&gt; scores = detail.analysis() != null ? detail.analysis().getRawScores() : null;</span>
+<span class="fc" id="L176">        Set&lt;String&gt; relations = new LinkedHashSet&lt;&gt;();</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">        if (detail.relationMappings() != null)</span>
+<span class="fc" id="L178">            detail.relationMappings().forEach(r -&gt; relations.add(r.sourceCode() + &quot; &quot; + r.relationType() + &quot; &quot; + r.targetCode()));</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        boolean scoringComplete = summary.get().status() == AnalysisStatus.SUCCESS;</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">        var search = detail.analysis() == null ? null : detail.analysis().getRelationSearchReport();</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">        boolean relationsComplete = search == null ? scoringComplete : search.isSearchExhausted();</span>
+<span class="fc" id="L182">        return new DemoReferenceEvaluator.Observation(texts.get(summary.get().requirementVersionNumber()), scores, relations,</span>
+<span class="pc bpc" id="L183" title="2 of 4 branches missed.">                detail.analysis() != null &amp;&amp; detail.analysis().getAnalysisCoverage() != null</span>
+<span class="pc" id="L184">                        ? detail.analysis().getAnalysisCoverage().nodes() : Map.of(), scoringComplete, relationsComplete);</span>
+    }
+
+    private ProductDemoRun require(String runId, String username, WorkspaceContext context) {
+<span class="fc" id="L188">        return runs.findByIdAndScopeKey(requireRunId(runId), PortfolioScope.key(username, context))</span>
+<span class="fc" id="L189">                .orElseThrow(() -&gt; runNotFound(runId));</span>
+    }
+
+    private static String requireRunId(String runId) {
+<span class="pc bpc" id="L193" title="2 of 4 branches missed.">        if (runId == null || runId.isBlank()) throw PortfolioException.validation(&quot;demo run id is required&quot;);</span>
+<span class="fc" id="L194">        return runId.strip();</span>
+    }
+
+    private static PortfolioException runNotFound(String runId) {
+<span class="fc" id="L198">        return ProductDemoProblems.notFound(ProductDemoProblems.RUN_NOT_FOUND, &quot;Product demo not found: &quot; + runId);</span>
+    }
+
+    private DemoScenario scenarioOf(ProductDemoRun run) {
+<span class="pc" id="L202">        DemoScenario scenario = catalog().find(run.getScenarioId()).orElseThrow(() -&gt; ProductDemoProblems.conflict(</span>
+<span class="nc" id="L203">                ProductDemoProblems.SCENARIO_CHANGED, &quot;Scenario &quot; + run.getScenarioId() + &quot; is no longer available&quot;));</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">        if (scenario.version() != run.getScenarioVersion()</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">                || !scenario.fingerprint().equals(run.getScenarioFingerprint()))</span>
+<span class="fc" id="L206">            throw ProductDemoProblems.conflict(ProductDemoProblems.SCENARIO_CHANGED,</span>
+<span class="fc" id="L207">                    &quot;Scenario &quot; + run.getScenarioId() + &quot; no longer matches the recorded version of this demo run&quot;);</span>
+<span class="fc" id="L208">        return scenario;</span>
+    }
+
+    private DemoRunView view(ProductDemoRun run, DemoScenario scenario, int currentVersion, String requirementKey) {
+<span class="fc" id="L212">        int iteration = currentVersion - 1;</span>
+<span class="pc bpc" id="L213" title="2 of 4 branches missed.">        String provider = iteration &gt;= 0 &amp;&amp; iteration &lt;= scenario.maxIteration()</span>
+<span class="pc" id="L214">                ? DemoProviderIds.providerId(run.getScenarioId(), iteration).value() : null;</span>
+<span class="fc" id="L215">        return new DemoRunView(run.getId(), run.getProjectId(), run.getRequirementId(), run.getScenarioId(),</span>
+<span class="fc" id="L216">                run.getScenarioVersion(), run.getScenarioFingerprint(), scenario.catalogueSource(), scenario.title(),</span>
+<span class="fc" id="L217">                scenario.banner(), requirementKey, scenario.r0Text(), scenario.stations(), scenario.demoDecisions(),</span>
+<span class="fc" id="L218">                scenario.demoReviews(), provider, currentVersion, run.getCreatedAt(), run.getClosedAt());</span>
+    }
+
+    /** The scenario is validated against the live catalogue before any demo data is created. */
+    private void verifyCatalogue(DemoScenario scenario) {
+<span class="fc" id="L223">        TaxonomyService service = taxonomy;</span>
+        try {
+<span class="fc" id="L225">            DemoCatalogueValidator.validate(scenario, new DemoCatalogueValidator.CatalogueView() {</span>
+                @Override public Optional&lt;String&gt; title(String code) {
+<span class="fc" id="L227">                    return Optional.ofNullable(service.getNodeByCode(code)).map(TaxonomyNode::getNameEn);</span>
+                }
+                @Override public List&lt;String&gt; children(String code) {
+<span class="fc" id="L230">                    return service.getChildrenOf(code).stream().map(TaxonomyNode::getCode).toList();</span>
+                }
+            });
+<span class="nc" id="L233">        } catch (IllegalStateException mismatch) {</span>
+<span class="nc" id="L234">            throw ProductDemoProblems.conflict(ProductDemoProblems.CATALOGUE_MISMATCH, mismatch.getMessage());</span>
+<span class="fc" id="L235">        }</span>
+<span class="fc" id="L236">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

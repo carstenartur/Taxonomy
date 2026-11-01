@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>InventoryEvidencePort.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.api.inventory</a> &gt; <span class="el_source">InventoryEvidencePort.java</span></div><h1>InventoryEvidencePort.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.api.inventory;
+import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.*;
+import java.util.*;
+import java.util.function.Supplier;
+/** Narrow composition boundary. Implementations own durable typed inventory journals and source authorization. */
+public interface InventoryEvidencePort {
+    /** Safe composition failure; no remote body, credentials or transport exception chain. */
+    final class Failure extends RuntimeException {
+        private final String code;private final int status;
+<span class="fc" id="L10">        public Failure(String code,int status,String detail) {super(detail);this.code=code;this.status=status;}</span>
+<span class="fc" id="L11">        public String code(){return code;}public int status(){return status;}</span>
+    }
+    record Scope(String repositoryId,String scopeKey,String branch,String actor) {
+<span class="pc bpc" id="L14" title="1 of 4 branches missed.">        public Scope { for(var v:List.of(repositoryId,scopeKey,branch,actor)) if(v.isBlank()) throw new IllegalArgumentException(&quot;Missing inventory scope&quot;); }</span>
+    }
+    record SourceRead(List&lt;Candidate&gt; candidates,List&lt;SourceEvidence&gt; sources) {
+<span class="fc" id="L17">        public SourceRead { candidates=List.copyOf(candidates);sources=List.copyOf(sources); }</span>
+    }
+    List&lt;Assertion&gt; assertions(Scope scope,String candidateId);
+    void appendAssertion(Scope scope,Assertion assertion);
+    SourceRead readSources(Scope scope,Demand demand,List&lt;String&gt; profileIds);
+    void authorize(Scope scope,Demand demand,List&lt;SourceEvidence&gt; sources);
+<span class="fc" id="L23">    default void revalidate(Scope scope,Demand demand,List&lt;SourceEvidence&gt; sources) { authorize(scope,demand,sources); }</span>
+    String fingerprint(Object value);
+    void map(Scope scope,Mapping mapping);
+    List&lt;Mapping&gt; mappings(Scope scope,String candidateId);
+    void save(Scope scope,Comparison comparison);
+    Comparison read(Scope scope,UUID comparisonId);
+    List&lt;Comparison&gt; list(Scope scope,Long projectId,String snapshotId);
+    List&lt;Reviewed&gt; reviews(Scope scope,UUID comparisonId);
+    Reviewed review(Scope scope,UUID comparisonId,Review review,Supplier&lt;Void&gt; application);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

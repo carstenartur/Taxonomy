@@ -1,0 +1,458 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioReportService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortfolioReportService.java</span></div><h1>PortfolioReportService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.dto.AnalysisPercentages;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ConflictView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.MatrixView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectPortfolioView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectSolutionView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
+import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/** Renders human-readable and machine-readable reports from one exact portfolio view. */
+@Service
+public class PortfolioReportService {
+
+<span class="fc" id="L36">    public enum Format {</span>
+<span class="fc" id="L37">        MARKDOWN(&quot;text/markdown&quot;, &quot;md&quot;),</span>
+<span class="fc" id="L38">        HTML(&quot;text/html&quot;, &quot;html&quot;),</span>
+<span class="fc" id="L39">        DOCX(&quot;application/vnd.openxmlformats-officedocument.wordprocessingml.document&quot;, &quot;docx&quot;),</span>
+<span class="fc" id="L40">        JSON(&quot;application/json&quot;, &quot;json&quot;),</span>
+<span class="fc" id="L41">        CSV(&quot;text/csv&quot;, &quot;csv&quot;);</span>
+
+        private final String contentType;
+        private final String extension;
+
+<span class="fc" id="L46">        Format(String contentType, String extension) {</span>
+<span class="fc" id="L47">            this.contentType = contentType;</span>
+<span class="fc" id="L48">            this.extension = extension;</span>
+<span class="fc" id="L49">        }</span>
+
+<span class="fc" id="L51">        public String contentType() { return contentType; }</span>
+<span class="fc" id="L52">        public String extension() { return extension; }</span>
+    }
+
+<span class="fc" id="L55">    public record RenderedReport(byte[] bytes, String contentType, String filename) {</span>
+    }
+
+    private final PortfolioAggregationService aggregationService;
+    private final RequirementAnalysisSnapshotRepository snapshotRepository;
+    private final ObjectMapper objectMapper;
+
+    public PortfolioReportService(PortfolioAggregationService aggregationService,
+                                  RequirementAnalysisSnapshotRepository snapshotRepository,
+<span class="fc" id="L64">                                  ObjectMapper objectMapper) {</span>
+<span class="fc" id="L65">        this.aggregationService = aggregationService;</span>
+<span class="fc" id="L66">        this.snapshotRepository = snapshotRepository;</span>
+<span class="fc" id="L67">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L68">    }</span>
+
+    @Transactional(readOnly = true)
+    public RenderedReport render(Long projectId,
+                                 Long requirementId,
+                                 Format format,
+                                 String matrix,
+                                 String username,
+                                 WorkspaceContext context) {
+<span class="fc" id="L77">        ProjectPortfolioView portfolio = aggregationService.build(projectId, username, context);</span>
+<span class="fc" id="L78">        ReportModel model = buildModel(portfolio, requirementId);</span>
+<span class="fc" id="L79">        String baseName = safeFilename(portfolio.project().projectKey()</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">                + (requirementId != null ? &quot;-&quot; + model.requirements().get(0).requirementKey() : &quot;-portfolio&quot;));</span>
+<span class="fc bfc" id="L81" title="All 5 branches covered.">        return switch (format) {</span>
+<span class="fc" id="L82">            case MARKDOWN -&gt; bytes(markdown(model), format, baseName);</span>
+<span class="fc" id="L83">            case HTML -&gt; bytes(html(model), format, baseName);</span>
+<span class="fc" id="L84">            case JSON -&gt; bytes(json(model), format, baseName);</span>
+<span class="fc" id="L85">            case CSV -&gt; bytes(csv(model, matrix), format, baseName + &quot;-&quot; + normalizeMatrix(matrix));</span>
+<span class="fc" id="L86">            case DOCX -&gt; new RenderedReport(docx(model), format.contentType(), baseName + &quot;.&quot; + format.extension());</span>
+        };
+    }
+
+    private RenderedReport bytes(String content, Format format, String filename) {
+<span class="fc" id="L91">        return new RenderedReport(</span>
+<span class="fc" id="L92">                content.getBytes(StandardCharsets.UTF_8),</span>
+<span class="fc" id="L93">                format.contentType(),</span>
+<span class="fc" id="L94">                filename + &quot;.&quot; + format.extension());</span>
+    }
+
+    private ReportModel buildModel(ProjectPortfolioView portfolio, Long requirementId) {
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        List&lt;RequirementView&gt; requirements = requirementId == null</span>
+<span class="fc" id="L99">                ? portfolio.requirements()</span>
+<span class="fc" id="L100">                : portfolio.requirements().stream()</span>
+<span class="fc" id="L101">                        .filter(requirement -&gt; requirement.id().equals(requirementId))</span>
+<span class="fc" id="L102">                        .toList();</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        if (requirements.isEmpty()) {</span>
+<span class="nc" id="L104">            throw PortfolioException.notFound(&quot;Requirement not found in project: &quot; + requirementId);</span>
+        }
+<span class="fc" id="L106">        List&lt;Long&gt; requirementIds = requirements.stream().map(RequirementView::id).toList();</span>
+<span class="fc" id="L107">        List&lt;ProjectSolutionView&gt; solutions = portfolio.solutions().stream()</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                .filter(solution -&gt; requirementId == null</span>
+<span class="fc" id="L109">                        || solution.requirements().stream()</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">                                .anyMatch(link -&gt; requirementIds.contains(link.requirementId())))</span>
+<span class="fc" id="L111">                .toList();</span>
+<span class="fc" id="L112">        List&lt;ConflictView&gt; conflicts = portfolio.conflicts().stream()</span>
+<span class="pc bnc" id="L113" title="All 2 branches missed.">                .filter(conflict -&gt; requirementId == null</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">                        || requirementIds.contains(conflict.requirementAId())</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">                        || requirementIds.contains(conflict.requirementBId()))</span>
+<span class="fc" id="L116">                .toList();</span>
+<span class="fc" id="L117">        List&lt;SnapshotBaseline&gt; baselines = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        for (RequirementView requirement : requirements) {</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            if (requirement.currentAnalysisSnapshotId() == null) continue;</span>
+<span class="fc" id="L120">            snapshotRepository.findByIdAndProjectId(</span>
+<span class="fc" id="L121">                            requirement.currentAnalysisSnapshotId(), portfolio.project().id())</span>
+<span class="fc" id="L122">                    .map(snapshot -&gt; baseline(requirement, snapshot))</span>
+<span class="fc" id="L123">                    .ifPresent(baselines::add);</span>
+<span class="fc" id="L124">        }</span>
+<span class="fc" id="L125">        return new ReportModel(</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">                requirementId == null ? &quot;PROJECT&quot; : &quot;REQUIREMENT&quot;,</span>
+<span class="fc" id="L127">                Instant.now(),</span>
+<span class="fc" id="L128">                portfolio.project(),</span>
+<span class="fc" id="L129">                portfolio.metrics(),</span>
+                requirements,
+<span class="fc" id="L131">                portfolio.taxonomyNodes(),</span>
+                solutions,
+                conflicts,
+<span class="fc" id="L134">                portfolio.requirementTaxonomyMatrix(),</span>
+<span class="fc" id="L135">                portfolio.requirementSolutionMatrix(),</span>
+<span class="fc" id="L136">                portfolio.solutionProductMatrix(),</span>
+                baselines);
+    }
+
+    private SnapshotBaseline baseline(RequirementView requirement,
+                                      RequirementAnalysisSnapshot snapshot) {
+<span class="fc" id="L142">        return new SnapshotBaseline(</span>
+<span class="fc" id="L143">                requirement.id(), requirement.requirementKey(), snapshot.getId(),</span>
+<span class="fc" id="L144">                snapshot.getRequirementVersion().getVersionNumber(), snapshot.getProvider(),</span>
+<span class="fc" id="L145">                snapshot.getModelName(), snapshot.getTaxonomyFingerprint(),</span>
+<span class="fc" id="L146">                snapshot.getPromptFingerprint(), snapshot.getBranchName(),</span>
+<span class="fc" id="L147">                snapshot.getCommitSha(), snapshot.getCreatedAt());</span>
+    }
+
+    private String json(ReportModel model) {
+        try {
+<span class="fc" id="L152">            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(model);</span>
+<span class="nc" id="L153">        } catch (JacksonException error) {</span>
+<span class="nc" id="L154">            throw new IllegalStateException(&quot;Unable to render portfolio report JSON&quot;, error);</span>
+        }
+    }
+
+    private String markdown(ReportModel model) {
+<span class="fc" id="L159">        StringBuilder output = new StringBuilder();</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        output.append(&quot;# &quot;).append(model.reportType().equals(&quot;PROJECT&quot;)</span>
+<span class="fc" id="L161">                ? &quot;Project portfolio report&quot; : &quot;Requirement report&quot;).append(&quot;\n\n&quot;);</span>
+<span class="fc" id="L162">        output.append(&quot;- **Project:** &quot;).append(model.project().projectKey())</span>
+<span class="fc" id="L163">                .append(&quot; — &quot;).append(model.project().title()).append(&quot;\n&quot;);</span>
+<span class="fc" id="L164">        output.append(&quot;- **Generated:** &quot;).append(model.generatedAt()).append(&quot;\n&quot;);</span>
+<span class="fc" id="L165">        output.append(&quot;- **Workspace:** &quot;).append(nullSafe(model.project().workspaceId())).append(&quot;\n\n&quot;);</span>
+<span class="fc" id="L166">        output.append(&quot;## Management summary\n\n&quot;);</span>
+<span class="fc" id="L167">        output.append(&quot;- Requirements: &quot;).append(model.requirements().size()).append(&quot;\n&quot;);</span>
+<span class="fc" id="L168">        output.append(&quot;- Analysed: &quot;).append(model.metrics().analyzedRequirements()).append(&quot;\n&quot;);</span>
+<span class="fc" id="L169">        output.append(&quot;- Requirements without confirmed solution: &quot;)</span>
+<span class="fc" id="L170">                .append(model.metrics().requirementsWithoutConfirmedSolution()).append(&quot;\n&quot;);</span>
+<span class="fc" id="L171">        output.append(&quot;- Solutions: &quot;).append(model.solutions().size()).append(&quot;\n&quot;);</span>
+<span class="fc" id="L172">        output.append(&quot;- Selected products: &quot;).append(model.metrics().selectedProducts()).append(&quot;\n&quot;);</span>
+<span class="fc" id="L173">        output.append(&quot;- Open conflicts: &quot;).append(model.conflicts().stream()</span>
+<span class="pc bnc" id="L174" title="All 2 branches missed.">                .filter(conflict -&gt; conflict.status().name().equals(&quot;PROPOSED&quot;)</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">                        || conflict.status().name().equals(&quot;CONFIRMED&quot;))</span>
+<span class="fc" id="L176">                .count()).append(&quot;\n\n&quot;);</span>
+
+<span class="fc" id="L178">        output.append(&quot;## Requirements\n\n&quot;);</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        for (RequirementView requirement : model.requirements()) {</span>
+<span class="fc" id="L180">            output.append(&quot;### &quot;).append(requirement.requirementKey()).append(&quot; — &quot;)</span>
+<span class="fc" id="L181">                    .append(requirement.title()).append(&quot;\n\n&quot;);</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">            output.append(requirement.currentVersion() != null</span>
+<span class="fc" id="L183">                    ? requirement.currentVersion().text() : &quot;No current text&quot;).append(&quot;\n\n&quot;);</span>
+<span class="pc bpc" id="L184" title="1 of 4 branches missed.">            if (requirement.currentVersion() != null &amp;&amp; requirement.currentVersion().source() != null) {</span>
+<span class="fc" id="L185">                var source = requirement.currentVersion().source();</span>
+<span class="fc" id="L186">                output.append(&quot;**Source:** artifact &quot;).append(nullSafe(source.sourceArtifactId()))</span>
+<span class="fc" id="L187">                        .append(&quot;, section &quot;).append(nullSafe(source.sectionReference()))</span>
+<span class="fc" id="L188">                        .append(&quot;, page &quot;).append(nullSafe(source.pageNumber())).append(&quot;\n\n&quot;);</span>
+            }
+<span class="fc" id="L190">        }</span>
+
+<span class="fc" id="L192">        output.append(&quot;## Taxonomy coverage\n\n&quot;);</span>
+<span class="fc" id="L193">        output.append(&quot;| Node | Title | Requirements | Max score | Average relevance |\n&quot;)</span>
+<span class="fc" id="L194">                .append(&quot;|---|---|---:|---:|---:|\n&quot;);</span>
+<span class="fc" id="L195">        model.taxonomyNodes().forEach(node -&gt; output.append('|').append(node.nodeCode())</span>
+<span class="fc" id="L196">                .append('|').append(escapeMarkdown(node.title())).append('|')</span>
+<span class="fc" id="L197">                .append(node.requirementCount()).append('|').append(AnalysisPercentages.display(node.maximumDirectScore()))</span>
+<span class="fc" id="L198">                .append('|').append(AnalysisPercentages.display(node.averageRelevance() * 100)).append(&quot;|\n&quot;));</span>
+<span class="fc" id="L199">        output.append(&quot;\n## Solutions and products\n\n&quot;);</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">        for (ProjectSolutionView solution : model.solutions()) {</span>
+<span class="fc" id="L201">            output.append(&quot;### &quot;).append(solution.solution().solutionKey()).append(&quot; — &quot;)</span>
+<span class="fc" id="L202">                    .append(solution.solution().title()).append(&quot;\n\n&quot;)</span>
+<span class="fc" id="L203">                    .append(&quot;- Status: &quot;).append(solution.status()).append(&quot;\n&quot;)</span>
+<span class="fc" id="L204">                    .append(&quot;- Action: &quot;).append(solution.actionStatus()).append(&quot;\n&quot;)</span>
+<span class="fc" id="L205">                    .append(&quot;- Requirements: &quot;)</span>
+<span class="fc" id="L206">                    .append(solution.requirements().stream()</span>
+<span class="fc" id="L207">                            .map(link -&gt; link.requirementKey() + &quot; (&quot; + link.coveragePercent() + &quot;%)&quot;)</span>
+<span class="pc" id="L208">                            .reduce((left, right) -&gt; left + &quot;, &quot; + right).orElse(&quot;—&quot;))</span>
+<span class="fc" id="L209">                    .append(&quot;\n&quot;)</span>
+<span class="fc" id="L210">                    .append(&quot;- Product candidates: &quot;)</span>
+<span class="fc" id="L211">                    .append(solution.productCandidates().stream()</span>
+<span class="fc" id="L212">                            .map(candidate -&gt; candidate.product().productKey() + &quot; (&quot;</span>
+<span class="fc" id="L213">                                    + candidate.selectionStatus() + &quot;)&quot;)</span>
+<span class="pc" id="L214">                            .reduce((left, right) -&gt; left + &quot;, &quot; + right).orElse(&quot;—&quot;))</span>
+<span class="fc" id="L215">                    .append(&quot;\n\n&quot;);</span>
+<span class="fc" id="L216">        }</span>
+
+<span class="fc" id="L218">        output.append(&quot;## Conflicts and open decisions\n\n&quot;);</span>
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">        if (model.conflicts().isEmpty()) output.append(&quot;No conflict hypotheses recorded.\n\n&quot;);</span>
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">        for (ConflictView conflict : model.conflicts()) {</span>
+<span class="nc" id="L221">            output.append(&quot;- **&quot;).append(conflict.requirementAKey()).append(&quot; ↔ &quot;)</span>
+<span class="nc" id="L222">                    .append(conflict.requirementBKey()).append(&quot;:** &quot;)</span>
+<span class="nc" id="L223">                    .append(conflict.title()).append(&quot; — &quot;).append(conflict.status())</span>
+<span class="nc" id="L224">                    .append(&quot;. &quot;).append(nullSafe(conflict.evidence())).append(&quot;\n&quot;);</span>
+<span class="nc" id="L225">        }</span>
+
+<span class="fc" id="L227">        output.append(&quot;\n## Reproducibility baseline\n\n&quot;);</span>
+<span class="fc" id="L228">        output.append(&quot;| Requirement | Snapshot | Version | Provider/model | Taxonomy | Prompt | Branch/commit |\n&quot;)</span>
+<span class="fc" id="L229">                .append(&quot;|---|---|---:|---|---|---|---|\n&quot;);</span>
+<span class="fc" id="L230">        model.baselines().forEach(baseline -&gt; output.append('|')</span>
+<span class="fc" id="L231">                .append(baseline.requirementKey()).append('|').append(baseline.snapshotId())</span>
+<span class="fc" id="L232">                .append('|').append(baseline.requirementVersion()).append('|')</span>
+<span class="fc" id="L233">                .append(nullSafe(baseline.provider())).append('/').append(nullSafe(baseline.modelName()))</span>
+<span class="fc" id="L234">                .append('|').append(shortHash(baseline.taxonomyFingerprint()))</span>
+<span class="fc" id="L235">                .append('|').append(shortHash(baseline.promptFingerprint()))</span>
+<span class="fc" id="L236">                .append('|').append(nullSafe(baseline.branchName())).append('/')</span>
+<span class="fc" id="L237">                .append(shortHash(baseline.commitSha())).append(&quot;|\n&quot;));</span>
+<span class="fc" id="L238">        return output.toString();</span>
+    }
+
+    private String html(ReportModel model) {
+<span class="fc" id="L242">        String markdown = markdown(model);</span>
+<span class="fc" id="L243">        StringBuilder html = new StringBuilder(&quot;&lt;!doctype html&gt;&lt;html lang=\&quot;en\&quot;&gt;&lt;head&gt;&lt;meta charset=\&quot;utf-8\&quot;&gt;&quot;)</span>
+<span class="fc" id="L244">                .append(&quot;&lt;meta name=\&quot;viewport\&quot; content=\&quot;width=device-width,initial-scale=1\&quot;&gt;&quot;)</span>
+<span class="fc" id="L245">                .append(&quot;&lt;title&gt;&quot;).append(escapeHtml(model.project().projectKey())).append(&quot; report&lt;/title&gt;&quot;)</span>
+<span class="fc" id="L246">                .append(&quot;&lt;style&gt;body{font:16px system-ui;max-width:1100px;margin:auto;padding:2rem;line-height:1.5}&quot;)</span>
+<span class="fc" id="L247">                .append(&quot;table{border-collapse:collapse;width:100%;margin:1rem 0}th,td{border:1px solid #777;padding:.4rem;text-align:left}&quot;)</span>
+<span class="fc" id="L248">                .append(&quot;code{overflow-wrap:anywhere}.meta{color:#555}&lt;/style&gt;&lt;/head&gt;&lt;body&gt;&quot;);</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        for (String line : markdown.split(&quot;\\R&quot;, -1)) {</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">            if (line.startsWith(&quot;# &quot;)) html.append(&quot;&lt;h1&gt;&quot;).append(escapeHtml(line.substring(2))).append(&quot;&lt;/h1&gt;&quot;);</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">            else if (line.startsWith(&quot;## &quot;)) html.append(&quot;&lt;h2&gt;&quot;).append(escapeHtml(line.substring(3))).append(&quot;&lt;/h2&gt;&quot;);</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">            else if (line.startsWith(&quot;### &quot;)) html.append(&quot;&lt;h3&gt;&quot;).append(escapeHtml(line.substring(4))).append(&quot;&lt;/h3&gt;&quot;);</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">            else if (line.startsWith(&quot;- &quot;)) html.append(&quot;&lt;p&gt;• &quot;).append(escapeHtml(line.substring(2))).append(&quot;&lt;/p&gt;&quot;);</span>
+<span class="fc bfc" id="L254" title="All 4 branches covered.">            else if (!line.startsWith(&quot;|&quot;) &amp;&amp; !line.isBlank()) html.append(&quot;&lt;p&gt;&quot;).append(escapeHtml(line)).append(&quot;&lt;/p&gt;&quot;);</span>
+        }
+<span class="fc" id="L256">        html.append(&quot;&lt;h2&gt;Machine-readable baseline&lt;/h2&gt;&lt;pre&gt;&lt;code&gt;&quot;)</span>
+<span class="fc" id="L257">                .append(escapeHtml(json(model))).append(&quot;&lt;/code&gt;&lt;/pre&gt;&lt;/body&gt;&lt;/html&gt;&quot;);</span>
+<span class="fc" id="L258">        return html.toString();</span>
+    }
+
+    private byte[] docx(ReportModel model) {
+<span class="fc" id="L262">        try (XWPFDocument document = new XWPFDocument();</span>
+<span class="fc" id="L263">             ByteArrayOutputStream output = new ByteArrayOutputStream()) {</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">            title(document, model.reportType().equals(&quot;PROJECT&quot;)</span>
+<span class="fc" id="L265">                    ? &quot;Project portfolio report&quot; : &quot;Requirement report&quot;, 1);</span>
+<span class="fc" id="L266">            paragraph(document, model.project().projectKey() + &quot; — &quot; + model.project().title(), true);</span>
+<span class="fc" id="L267">            paragraph(document, &quot;Generated: &quot; + model.generatedAt(), false);</span>
+<span class="fc" id="L268">            title(document, &quot;Management summary&quot;, 2);</span>
+<span class="fc" id="L269">            bullet(document, &quot;Requirements: &quot; + model.requirements().size());</span>
+<span class="fc" id="L270">            bullet(document, &quot;Analysed: &quot; + model.metrics().analyzedRequirements());</span>
+<span class="fc" id="L271">            bullet(document, &quot;Requirements without confirmed solution: &quot;</span>
+<span class="fc" id="L272">                    + model.metrics().requirementsWithoutConfirmedSolution());</span>
+<span class="fc" id="L273">            bullet(document, &quot;Solutions: &quot; + model.solutions().size());</span>
+<span class="fc" id="L274">            bullet(document, &quot;Selected products: &quot; + model.metrics().selectedProducts());</span>
+<span class="fc" id="L275">            title(document, &quot;Requirements&quot;, 2);</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">            for (RequirementView requirement : model.requirements()) {</span>
+<span class="fc" id="L277">                title(document, requirement.requirementKey() + &quot; — &quot; + requirement.title(), 3);</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">                paragraph(document, requirement.currentVersion() != null</span>
+<span class="fc" id="L279">                        ? requirement.currentVersion().text() : &quot;No current text&quot;, false);</span>
+<span class="pc bpc" id="L280" title="1 of 4 branches missed.">                if (requirement.currentVersion() != null &amp;&amp; requirement.currentVersion().source() != null) {</span>
+<span class="fc" id="L281">                    var source = requirement.currentVersion().source();</span>
+<span class="fc" id="L282">                    paragraph(document, &quot;Source: section &quot; + nullSafe(source.sectionReference())</span>
+<span class="fc" id="L283">                            + &quot;, page &quot; + nullSafe(source.pageNumber()), false);</span>
+                }
+<span class="fc" id="L285">            }</span>
+<span class="fc" id="L286">            title(document, &quot;Taxonomy coverage&quot;, 2);</span>
+<span class="fc" id="L287">            XWPFTable taxonomy = document.createTable(Math.max(1, model.taxonomyNodes().size() + 1), 5);</span>
+<span class="fc" id="L288">            tableHeader(taxonomy, &quot;Node&quot;, &quot;Title&quot;, &quot;Requirements&quot;, &quot;Max score&quot;, &quot;Average relevance&quot;);</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">            for (int index = 0; index &lt; model.taxonomyNodes().size(); index++) {</span>
+<span class="fc" id="L290">                var node = model.taxonomyNodes().get(index);</span>
+<span class="fc" id="L291">                tableRow(taxonomy, index + 1, node.nodeCode(), node.title(),</span>
+<span class="fc" id="L292">                        String.valueOf(node.requirementCount()), AnalysisPercentages.display(node.maximumDirectScore()),</span>
+<span class="fc" id="L293">                        AnalysisPercentages.display(node.averageRelevance() * 100));</span>
+            }
+<span class="fc" id="L295">            title(document, &quot;Solutions and products&quot;, 2);</span>
+<span class="fc bfc" id="L296" title="All 2 branches covered.">            for (ProjectSolutionView solution : model.solutions()) {</span>
+<span class="fc" id="L297">                title(document, solution.solution().solutionKey() + &quot; — &quot;</span>
+<span class="fc" id="L298">                        + solution.solution().title(), 3);</span>
+<span class="fc" id="L299">                bullet(document, &quot;Status: &quot; + solution.status());</span>
+<span class="fc" id="L300">                bullet(document, &quot;Action: &quot; + solution.actionStatus());</span>
+<span class="fc bfc" id="L301" title="All 2 branches covered.">                for (var link : solution.requirements()) {</span>
+<span class="fc" id="L302">                    bullet(document, link.requirementKey() + &quot;: &quot; + link.coveragePercent()</span>
+<span class="fc" id="L303">                            + &quot;% (&quot; + link.reviewStatus() + &quot;)&quot;);</span>
+<span class="fc" id="L304">                }</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">                for (var candidate : solution.productCandidates()) {</span>
+<span class="fc" id="L306">                    bullet(document, candidate.product().manufacturer() + &quot; &quot;</span>
+<span class="fc" id="L307">                            + candidate.product().productName() + &quot;: &quot;</span>
+<span class="fc" id="L308">                            + candidate.selectionStatus() + &quot;, source &quot;</span>
+<span class="fc" id="L309">                            + candidate.product().sourceReference());</span>
+<span class="fc" id="L310">                }</span>
+<span class="fc" id="L311">            }</span>
+<span class="fc" id="L312">            title(document, &quot;Conflicts&quot;, 2);</span>
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">            for (ConflictView conflict : model.conflicts()) {</span>
+<span class="nc" id="L314">                bullet(document, conflict.requirementAKey() + &quot; ↔ &quot; + conflict.requirementBKey()</span>
+<span class="nc" id="L315">                        + &quot;: &quot; + conflict.title() + &quot; — &quot; + conflict.status());</span>
+<span class="nc" id="L316">            }</span>
+<span class="fc" id="L317">            title(document, &quot;Reproducibility baseline&quot;, 2);</span>
+<span class="fc" id="L318">            XWPFTable baseline = document.createTable(Math.max(1, model.baselines().size() + 1), 6);</span>
+<span class="fc" id="L319">            tableHeader(baseline, &quot;Requirement&quot;, &quot;Snapshot&quot;, &quot;Version&quot;, &quot;Provider/model&quot;, &quot;Taxonomy/prompt&quot;, &quot;Branch/commit&quot;);</span>
+<span class="pc bpc" id="L320" title="1 of 2 branches missed.">            for (int index = 0; index &lt; model.baselines().size(); index++) {</span>
+<span class="nc" id="L321">                SnapshotBaseline item = model.baselines().get(index);</span>
+<span class="nc" id="L322">                tableRow(baseline, index + 1, item.requirementKey(), item.snapshotId(),</span>
+<span class="nc" id="L323">                        String.valueOf(item.requirementVersion()),</span>
+<span class="nc" id="L324">                        nullSafe(item.provider()) + &quot;/&quot; + nullSafe(item.modelName()),</span>
+<span class="nc" id="L325">                        shortHash(item.taxonomyFingerprint()) + &quot;/&quot; + shortHash(item.promptFingerprint()),</span>
+<span class="nc" id="L326">                        nullSafe(item.branchName()) + &quot;/&quot; + shortHash(item.commitSha()));</span>
+            }
+<span class="fc" id="L328">            document.write(output);</span>
+<span class="fc" id="L329">            return output.toByteArray();</span>
+<span class="nc" id="L330">        } catch (IOException error) {</span>
+<span class="nc" id="L331">            throw new IllegalStateException(&quot;Unable to render portfolio DOCX report&quot;, error);</span>
+        }
+    }
+
+    private String csv(ReportModel model, String matrixName) {
+<span class="fc bfc" id="L336" title="All 3 branches covered.">        MatrixView matrix = switch (normalizeMatrix(matrixName)) {</span>
+<span class="fc" id="L337">            case &quot;solutions&quot; -&gt; model.requirementSolutionMatrix();</span>
+<span class="fc" id="L338">            case &quot;products&quot; -&gt; model.solutionProductMatrix();</span>
+<span class="fc" id="L339">            default -&gt; model.requirementTaxonomyMatrix();</span>
+        };
+<span class="fc" id="L341">        StringBuilder output = new StringBuilder(&quot;row&quot;);</span>
+<span class="fc" id="L342">        matrix.columns().forEach(column -&gt; output.append(',').append(csvCell(column)));</span>
+<span class="fc" id="L343">        output.append('\n');</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        for (String row : matrix.rows()) {</span>
+<span class="fc" id="L345">            output.append(csvCell(row));</span>
+<span class="fc bfc" id="L346" title="All 2 branches covered.">            for (String column : matrix.columns()) {</span>
+<span class="fc" id="L347">                output.append(',').append(matrix.values().getOrDefault(row, Map.of())</span>
+<span class="fc" id="L348">                        .getOrDefault(column, 0d));</span>
+<span class="fc" id="L349">            }</span>
+<span class="fc" id="L350">            output.append('\n');</span>
+<span class="fc" id="L351">        }</span>
+<span class="fc" id="L352">        return output.toString();</span>
+    }
+
+    private static void title(XWPFDocument document, String text, int level) {
+<span class="fc" id="L356">        XWPFParagraph paragraph = document.createParagraph();</span>
+<span class="fc" id="L357">        paragraph.setStyle(&quot;Heading&quot; + level);</span>
+<span class="fc" id="L358">        XWPFRun run = paragraph.createRun();</span>
+<span class="fc" id="L359">        run.setText(text);</span>
+<span class="fc" id="L360">        run.setBold(true);</span>
+<span class="fc bfc" id="L361" title="All 2 branches covered.">        if (level == 1) {</span>
+<span class="fc" id="L362">            paragraph.setAlignment(ParagraphAlignment.CENTER);</span>
+<span class="fc" id="L363">            run.setFontSize(20);</span>
+        }
+<span class="fc" id="L365">    }</span>
+
+    private static void paragraph(XWPFDocument document, String text, boolean bold) {
+<span class="fc" id="L368">        XWPFRun run = document.createParagraph().createRun();</span>
+<span class="fc" id="L369">        run.setBold(bold);</span>
+<span class="fc" id="L370">        run.setText(nullSafe(text));</span>
+<span class="fc" id="L371">    }</span>
+
+    private static void bullet(XWPFDocument document, String text) {
+<span class="fc" id="L374">        XWPFParagraph paragraph = document.createParagraph();</span>
+<span class="fc" id="L375">        paragraph.setStyle(&quot;ListBullet&quot;);</span>
+<span class="fc" id="L376">        paragraph.createRun().setText(text);</span>
+<span class="fc" id="L377">    }</span>
+
+    private static void tableHeader(XWPFTable table, String... values) {
+<span class="fc" id="L380">        tableRow(table, 0, values);</span>
+<span class="fc bfc" id="L381" title="All 2 branches covered.">        for (var cell : table.getRow(0).getTableCells()) {</span>
+<span class="fc" id="L382">            cell.getParagraphs().get(0).getRuns().get(0).setBold(true);</span>
+<span class="fc" id="L383">        }</span>
+<span class="fc" id="L384">    }</span>
+
+    private static void tableRow(XWPFTable table, int rowIndex, String... values) {
+<span class="fc bfc" id="L387" title="All 2 branches covered.">        for (int column = 0; column &lt; values.length; column++) {</span>
+<span class="fc" id="L388">            table.getRow(rowIndex).getCell(column).setText(nullSafe(values[column]));</span>
+        }
+<span class="fc" id="L390">    }</span>
+
+    private static String normalizeMatrix(String value) {
+<span class="fc bfc" id="L393" title="All 3 branches covered.">        return switch (String.valueOf(value).toLowerCase()) {</span>
+<span class="fc" id="L394">            case &quot;solution&quot;, &quot;solutions&quot;, &quot;requirement-solution&quot; -&gt; &quot;solutions&quot;;</span>
+<span class="fc" id="L395">            case &quot;product&quot;, &quot;products&quot;, &quot;solution-product&quot; -&gt; &quot;products&quot;;</span>
+<span class="fc" id="L396">            default -&gt; &quot;taxonomy&quot;;</span>
+        };
+    }
+
+    private static String safeFilename(String value) {
+<span class="fc" id="L401">        String sanitized = value.replaceAll(&quot;[^A-Za-z0-9._-]+&quot;, &quot;-&quot;)</span>
+<span class="fc" id="L402">                .replaceAll(&quot;^-+|-+$&quot;, &quot;&quot;);</span>
+<span class="pc bpc" id="L403" title="1 of 2 branches missed.">        return sanitized.isBlank() ? &quot;taxonomy-report&quot; : sanitized;</span>
+    }
+
+    private static String csvCell(Object value) {
+<span class="fc" id="L407">        String text = Objects.toString(value, &quot;&quot;);</span>
+<span class="pc bpc" id="L408" title="1 of 2 branches missed.">        return text.matches(&quot;.*[\&quot;,\\r\\n].*&quot;)</span>
+<span class="pc" id="L409">                ? '&quot;' + text.replace(&quot;\&quot;&quot;, &quot;\&quot;\&quot;&quot;) + '&quot;' : text;</span>
+    }
+
+    private static String shortHash(String value) {
+<span class="pc bpc" id="L413" title="2 of 4 branches missed.">        return value == null || value.isBlank() ? &quot;—&quot; : value.substring(0, Math.min(12, value.length()));</span>
+    }
+
+    private static String nullSafe(Object value) {
+<span class="fc bfc" id="L417" title="All 2 branches covered.">        return value == null ? &quot;—&quot; : value.toString();</span>
+    }
+
+    private static String escapeMarkdown(String value) {
+<span class="fc" id="L421">        return nullSafe(value).replace(&quot;|&quot;, &quot;\\|&quot;);</span>
+    }
+
+    private static String escapeHtml(String value) {
+<span class="fc" id="L425">        return nullSafe(value).replace(&quot;&amp;&quot;, &quot;&amp;amp;&quot;).replace(&quot;&lt;&quot;, &quot;&amp;lt;&quot;)</span>
+<span class="fc" id="L426">                .replace(&quot;&gt;&quot;, &quot;&amp;gt;&quot;).replace(&quot;\&quot;&quot;, &quot;&amp;quot;&quot;).replace(&quot;'&quot;, &quot;&amp;#39;&quot;);</span>
+    }
+
+<span class="fc" id="L429">    public record SnapshotBaseline(</span>
+            Long requirementId,
+            String requirementKey,
+            String snapshotId,
+            int requirementVersion,
+            String provider,
+            String modelName,
+            String taxonomyFingerprint,
+            String promptFingerprint,
+            String branchName,
+            String commitSha,
+            Instant createdAt) {
+    }
+
+<span class="fc" id="L443">    public record ReportModel(</span>
+            String reportType,
+            Instant generatedAt,
+            com.taxonomy.portfolio.dto.PortfolioDtos.ProjectView project,
+            com.taxonomy.portfolio.dto.PortfolioDtos.PortfolioMetrics metrics,
+            List&lt;RequirementView&gt; requirements,
+            List&lt;com.taxonomy.portfolio.dto.PortfolioDtos.AggregatedTaxonomyNode&gt; taxonomyNodes,
+            List&lt;ProjectSolutionView&gt; solutions,
+            List&lt;ConflictView&gt; conflicts,
+            MatrixView requirementTaxonomyMatrix,
+            MatrixView requirementSolutionMatrix,
+            MatrixView solutionProductMatrix,
+            List&lt;SnapshotBaseline&gt; baselines) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

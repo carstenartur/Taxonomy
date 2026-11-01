@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioSnapshotSelectionReader.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortfolioSnapshotSelectionReader.java</span></div><h1>PortfolioSnapshotSelectionReader.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.portfolio.dto.SnapshotSelection;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import jakarta.persistence.EntityManager;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.type.StandardBasicTypes;
+import org.springframework.stereotype.Repository;
+
+import java.io.Reader;
+import java.sql.Clob;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+
+/** Completes a scoped selection read while its caller's read-only transaction still owns the CLOB. */
+@Repository
+public class PortfolioSnapshotSelectionReader {
+    // Bounds only sharing bookkeeping. Further distinct reads retain the ordinary read path.
+    private static final int MAX_INFLIGHT_PARSES = 32;
+    private static final String SELECT = &quot;&quot;&quot;
+            select s.id as snapshot_id, s.status as snapshot_status, s.duration_ms as duration_ms,
+                   s.analysis_payload as analysis_payload,
+                   (select count(e.id) from req_element_mapping e
+                     where e.snapshot_id = s.id and e.scope_key = s.scope_key) as element_count,
+                   (select count(r.id) from req_relation_mapping r
+                     where r.snapshot_id = s.id and r.scope_key = s.scope_key) as relation_count
+              from req_analysis_snapshot s
+             where s.id = :id and s.project_id = :projectId and s.scope_key = :scopeKey
+            &quot;&quot;&quot;;
+
+    private final EntityManager entityManager;
+    private final PortfolioJsonCodec jsonCodec;
+<span class="fc" id="L41">    private final Map&lt;ParseKey, CompletableFuture&lt;ParsedEvidence&gt;&gt; inFlight = new HashMap&lt;&gt;();</span>
+
+<span class="fc" id="L43">    public PortfolioSnapshotSelectionReader(EntityManager entityManager, PortfolioJsonCodec jsonCodec) {</span>
+<span class="fc" id="L44">        this.entityManager = entityManager;</span>
+<span class="fc" id="L45">        this.jsonCodec = jsonCodec;</span>
+<span class="fc" id="L46">    }</span>
+
+    public Optional&lt;SnapshotSelection&gt; read(Long projectId, String snapshotId, String scopeKey) {
+<span class="fc" id="L49">        Session session = entityManager.unwrap(Session.class);</span>
+<span class="fc" id="L50">        SessionFactory factory = session.getSessionFactory();</span>
+<span class="fc" id="L51">        Object[] row = session.createNativeQuery(SELECT, Object[].class)</span>
+<span class="fc" id="L52">                .addScalar(&quot;snapshot_id&quot;, StandardBasicTypes.STRING)</span>
+<span class="fc" id="L53">                .addScalar(&quot;snapshot_status&quot;, StandardBasicTypes.STRING)</span>
+<span class="fc" id="L54">                .addScalar(&quot;duration_ms&quot;, StandardBasicTypes.LONG)</span>
+<span class="fc" id="L55">                .addScalar(&quot;analysis_payload&quot;, StandardBasicTypes.CLOB)</span>
+<span class="fc" id="L56">                .addScalar(&quot;element_count&quot;, StandardBasicTypes.LONG)</span>
+<span class="fc" id="L57">                .addScalar(&quot;relation_count&quot;, StandardBasicTypes.LONG)</span>
+<span class="fc" id="L58">                .setParameter(&quot;id&quot;, snapshotId)</span>
+<span class="fc" id="L59">                .setParameter(&quot;projectId&quot;, projectId)</span>
+<span class="fc" id="L60">                .setParameter(&quot;scopeKey&quot;, scopeKey)</span>
+<span class="fc" id="L61">                .getSingleResultOrNull();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (row == null) return Optional.empty();</span>
+<span class="fc" id="L63">        Clob clob = (Clob) row[3];</span>
+        try {
+<span class="fc" id="L65">            var evidence = evidence(new ParseKey(factory, projectId, (String) row[0], scopeKey), clob);</span>
+<span class="fc" id="L66">            return Optional.of(new SnapshotSelection((String) row[0], AnalysisStatus.valueOf((String) row[1]),</span>
+<span class="fc" id="L67">                    (Long) row[2], evidence.scores(), evidence.warningCount(), (Long) row[4], (Long) row[5]));</span>
+<span class="fc" id="L68">        } catch (RuntimeException exception) {</span>
+<span class="fc" id="L69">            throw exception;</span>
+<span class="fc" id="L70">        } catch (Exception exception) {</span>
+<span class="fc" id="L71">            throw PortfolioException.analysisFailed(&quot;Could not read portfolio selection evidence&quot;, exception);</span>
+        }
+    }
+
+    private ParsedEvidence evidence(ParseKey key, Clob clob) throws Exception {
+        CompletableFuture&lt;ParsedEvidence&gt; flight;
+<span class="fc" id="L77">        boolean owner = false;</span>
+<span class="fc" id="L78">        synchronized (inFlight) {</span>
+<span class="fc" id="L79">            flight = inFlight.get(key);</span>
+<span class="fc bfc" id="L80" title="All 4 branches covered.">            if (flight == null &amp;&amp; inFlight.size() &lt; MAX_INFLIGHT_PARSES) {</span>
+<span class="fc" id="L81">                flight = new CompletableFuture&lt;&gt;();</span>
+<span class="fc" id="L82">                inFlight.put(key, flight);</span>
+<span class="fc" id="L83">                owner = true;</span>
+            }
+<span class="fc" id="L85">        }</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (flight == null) return parseAndClose(clob);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (!owner) return awaitAndClose(flight, clob);</span>
+
+        ParsedEvidence parsed;
+        try {
+<span class="fc" id="L91">            parsed = parseAndClose(clob);</span>
+<span class="fc" id="L92">        } catch (Exception | Error failure) {</span>
+<span class="fc" id="L93">            remove(key, flight);</span>
+<span class="fc" id="L94">            flight.completeExceptionally(failure);</span>
+<span class="fc" id="L95">            throw failure;</span>
+<span class="fc" id="L96">        }</span>
+        // Remove before publishing: later reads cannot reuse a completed parse or failure.
+<span class="fc" id="L98">        remove(key, flight);</span>
+<span class="fc" id="L99">        flight.complete(parsed);</span>
+<span class="fc" id="L100">        return parsed;</span>
+    }
+
+    private void remove(ParseKey key, CompletableFuture&lt;ParsedEvidence&gt; flight) {
+<span class="fc" id="L104">        synchronized (inFlight) {</span>
+<span class="fc" id="L105">            inFlight.remove(key, flight);</span>
+<span class="fc" id="L106">        }</span>
+<span class="fc" id="L107">    }</span>
+
+    private ParsedEvidence parseAndClose(Clob clob) throws Exception {
+        // Register the locator first so it is freed even if opening the stream fails.
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        try (AutoCloseable locator = () -&gt; { if (clob != null) clob.free(); };</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">             Reader input = clob == null ? null : JdbcClobReaders.open(clob)) {</span>
+<span class="fc" id="L113">            var analysis = jsonCodec.readSelectionAnalysis(input);</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            return new ParsedEvidence(analysis == null ? Map.of() : analysis.getScores(),</span>
+<span class="pc bpc" id="L115" title="1 of 4 branches missed.">                    analysis == null || analysis.getWarnings() == null ? 0 : analysis.getWarnings().size());</span>
+        }
+    }
+
+    private ParsedEvidence awaitAndClose(CompletableFuture&lt;ParsedEvidence&gt; flight, Clob clob) throws Exception {
+        // The subscriber owns its locator, but never opens an unused reader or cancels the owner.
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        try (AutoCloseable locator = () -&gt; { if (clob != null) clob.free(); }) {</span>
+            try {
+<span class="fc" id="L123">                return flight.get();</span>
+<span class="fc" id="L124">            } catch (InterruptedException interrupted) {</span>
+<span class="fc" id="L125">                Thread.currentThread().interrupt();</span>
+<span class="fc" id="L126">                throw PortfolioException.analysisFailed(&quot;Interrupted while reading portfolio selection evidence&quot;, interrupted);</span>
+<span class="fc" id="L127">            } catch (CancellationException cancelled) {</span>
+                // Future.get throws an owner's cancellation directly, without ExecutionException.
+<span class="fc" id="L129">                throw PortfolioException.analysisFailed(&quot;Could not read portfolio selection evidence&quot;, cancelled);</span>
+<span class="fc" id="L130">            } catch (ExecutionException failed) {</span>
+                // Each caller needs its own exception before its own cleanup adds suppressed failures.
+<span class="fc" id="L132">                Throwable cause = failed.getCause();</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">                if (cause instanceof PortfolioException failure) {</span>
+<span class="fc" id="L134">                    throw new PortfolioException(failure.getKind(), failure.getCode(), failure.getMessage(), failure);</span>
+                }
+<span class="fc" id="L136">                throw PortfolioException.analysisFailed(&quot;Could not read portfolio selection evidence&quot;, cause);</span>
+            }
+        }
+    }
+
+    private record ParsedEvidence(Map&lt;String, Double&gt; scores, int warningCount) {
+<span class="fc" id="L142">        private ParsedEvidence {</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">            scores = scores == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap&lt;&gt;(scores));</span>
+<span class="fc" id="L144">        }</span>
+    }
+
+<span class="fc" id="L147">    private record ParseKey(SessionFactory factory, Long projectId, String snapshotId, String scopeKey) {</span>
+        @Override public boolean equals(Object value) {
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">            return value instanceof ParseKey other &amp;&amp; factory == other.factory</span>
+<span class="pc bpc" id="L150" title="2 of 4 branches missed.">                    &amp;&amp; Objects.equals(projectId, other.projectId) &amp;&amp; Objects.equals(snapshotId, other.snapshotId)</span>
+<span class="pc bpc" id="L151" title="2 of 4 branches missed.">                    &amp;&amp; Objects.equals(scopeKey, other.scopeKey);</span>
+        }
+        @Override public int hashCode() {
+<span class="fc" id="L154">            return Objects.hash(System.identityHashCode(factory), projectId, snapshotId, scopeKey);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

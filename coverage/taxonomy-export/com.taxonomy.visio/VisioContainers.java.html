@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioContainers.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.visio</a> &gt; <span class="el_source">VisioContainers.java</span></div><h1>VisioContainers.java</h1><pre class="source lang-java linenums">package com.taxonomy.visio;
+
+import java.util.*;
+
+/** Native container membership follows only explicitly visual ancestors present on this page. */
+public final class VisioContainers {
+    public static final double HEADER_HEIGHT = 1.0;
+    private VisioContainers() { }
+
+<span class="fc" id="L10">    public record Membership(Map&lt;String, String&gt; owners, Map&lt;String, List&lt;String&gt;&gt; members) {</span>
+        public String formula(String id) {
+<span class="fc" id="L12">            List&lt;String&gt; relationships = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L13">            var children = members.getOrDefault(id, List.of());</span>
+<span class="fc bfc" id="L14" title="All 2 branches covered.">            if (!children.isEmpty()) relationships.add(&quot;DEPENDSON(1,&quot; + children.stream()</span>
+<span class="fc" id="L15">                    .map(child -&gt; &quot;Sheet.&quot; + child + &quot;!SheetRef()&quot;)</span>
+<span class="fc" id="L16">                    .collect(java.util.stream.Collectors.joining(&quot;,&quot;)) + &quot;)&quot;);</span>
+<span class="fc bfc" id="L17" title="All 2 branches covered.">            if (owners.containsKey(id)) relationships.add(&quot;DEPENDSON(4,Sheet.&quot; + owners.get(id) + &quot;!SheetRef())&quot;);</span>
+<span class="fc bfc" id="L18" title="All 2 branches covered.">            return relationships.isEmpty() ? null : &quot;SUM(&quot; + String.join(&quot;,&quot;, relationships) + &quot;)&quot;;</span>
+        }
+    }
+
+    public static Membership membership(VisioPage page) {
+<span class="fc" id="L23">        Map&lt;String, VisioShape&gt; identities = new HashMap&lt;&gt;(), shapes = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        for (VisioShape shape : page.getShapes()) {</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">            if (VisioNativeShape.isPresentationOnly(shape)) continue;</span>
+<span class="fc" id="L26">            shapes.put(shape.getId(), shape);</span>
+<span class="fc" id="L27">            var identity = shape.getProperties().get(&quot;taxonomy.id&quot;);</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">            if (identity != null) identities.put(identity.value(), shape);</span>
+<span class="fc" id="L29">        }</span>
+<span class="fc" id="L30">        Map&lt;String, String&gt; parents = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        for (VisioShape shape : shapes.values()) {</span>
+<span class="fc" id="L32">            var parent = shape.getProperties().get(&quot;taxonomy.parentId&quot;);</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">            VisioShape found = parent == null ? null : identities.get(parent.value());</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">            if (found != null) parents.put(shape.getId(), found.getId());</span>
+<span class="fc" id="L35">        }</span>
+<span class="fc" id="L36">        rejectCycles(parents);</span>
+<span class="fc" id="L37">        Map&lt;String, String&gt; owners = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L38">        Set&lt;String&gt; known = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        for (VisioShape shape : shapes.values()) {</span>
+<span class="fc" id="L40">            List&lt;String&gt; path = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L41">            String current = shape.getId(), owner = null;</span>
+<span class="fc bfc" id="L42" title="All 4 branches covered.">            while (current != null &amp;&amp; !known.contains(current)) {</span>
+<span class="fc" id="L43">                path.add(current);</span>
+<span class="fc" id="L44">                String parent = parents.get(current);</span>
+<span class="fc bfc" id="L45" title="All 4 branches covered.">                if (parent != null &amp;&amp; VisioNativeShape.isContainer(shapes.get(parent))) {</span>
+<span class="fc" id="L46">                    owner = parent;</span>
+<span class="fc" id="L47">                    break;</span>
+                }
+<span class="fc" id="L49">                current = parent;</span>
+<span class="fc" id="L50">            }</span>
+<span class="pc bpc" id="L51" title="1 of 6 branches missed.">            if (owner == null &amp;&amp; current != null &amp;&amp; known.contains(current)) owner = owners.get(current);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            for (String id : path) {</span>
+<span class="fc" id="L53">                known.add(id);</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">                if (owner != null) owners.put(id, owner);</span>
+<span class="fc" id="L55">            }</span>
+<span class="fc" id="L56">        }</span>
+<span class="fc" id="L57">        Map&lt;String, List&lt;String&gt;&gt; members = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L58">        owners.forEach((child, owner) -&gt; members.computeIfAbsent(owner, ignored -&gt; new ArrayList&lt;&gt;()).add(child));</span>
+<span class="fc" id="L59">        members.values().forEach(list -&gt; list.sort(Comparator.comparingLong(Long::parseLong)));</span>
+<span class="fc" id="L60">        return new Membership(owners, members);</span>
+    }
+
+    /** Run before caption placement, so native container bounds and headers participate honestly. */
+    public static void fit(VisioPage page) {
+<span class="fc" id="L65">        Membership membership = membership(page);</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (membership.members().isEmpty()) return;</span>
+<span class="fc" id="L67">        Map&lt;String, VisioShape&gt; shapes = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L68">        page.getShapes().forEach(shape -&gt; shapes.put(shape.getId(), shape));</span>
+<span class="fc" id="L69">        Map&lt;String, Integer&gt; remaining = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L70">        var ready = new ArrayDeque&lt;String&gt;();</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        for (String container : membership.members().keySet()) {</span>
+<span class="fc" id="L72">            int nested = (int) membership.members().get(container).stream().filter(membership.members()::containsKey).count();</span>
+<span class="fc" id="L73">            remaining.put(container, nested);</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            if (nested == 0) ready.add(container);</span>
+<span class="fc" id="L75">        }</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        while (!ready.isEmpty()) {</span>
+<span class="fc" id="L77">            String id = ready.remove();</span>
+<span class="fc" id="L78">            var children = membership.members().get(id).stream().map(shapes::get).toList();</span>
+<span class="fc" id="L79">            double left = children.stream().mapToDouble(s -&gt; s.getX() - s.getWidth() / 2).min().orElseThrow() - .25;</span>
+<span class="fc" id="L80">            double right = children.stream().mapToDouble(s -&gt; s.getX() + s.getWidth() / 2).max().orElseThrow() + .25;</span>
+<span class="fc" id="L81">            double bottom = children.stream().mapToDouble(s -&gt; s.getY() - s.getHeight() / 2).min().orElseThrow() - .25;</span>
+<span class="fc" id="L82">            double top = children.stream().mapToDouble(s -&gt; s.getY() + s.getHeight() / 2).max().orElseThrow() + HEADER_HEIGHT + .25;</span>
+<span class="fc" id="L83">            VisioShape original = shapes.get(id);</span>
+<span class="fc" id="L84">            shapes.put(id, copy(original, original.getText(), (left + right) / 2, (top + bottom) / 2, right - left, top - bottom));</span>
+<span class="fc" id="L85">            String owner = membership.owners().get(id);</span>
+<span class="pc bpc" id="L86" title="1 of 4 branches missed.">            if (owner != null &amp;&amp; remaining.computeIfPresent(owner, (ignored, count) -&gt; count - 1) == 0) ready.add(owner);</span>
+<span class="fc" id="L87">        }</span>
+        // Deep nesting may extend past the page origin. Shift the entire page,
+        // never clip a member or emit negative boundary endpoints.
+<span class="fc" id="L90">        double shiftX = Math.max(0, .1 - shapes.values().stream().mapToDouble(s -&gt; s.getX() - s.getWidth() / 2).min().orElse(.1));</span>
+<span class="fc" id="L91">        double shiftY = Math.max(0, .1 - shapes.values().stream().mapToDouble(s -&gt; s.getY() - s.getHeight() / 2).min().orElse(.1));</span>
+<span class="fc" id="L92">        page.getShapes().replaceAll(original -&gt; {</span>
+<span class="fc" id="L93">            VisioShape shape = shapes.get(original.getId());</span>
+<span class="pc bpc" id="L94" title="1 of 4 branches missed.">            return shiftX == 0 &amp;&amp; shiftY == 0 ? shape : copy(shape, shape.getText(), shape.getX() + shiftX,</span>
+<span class="fc" id="L95">                    shape.getY() + shiftY, shape.getWidth(), shape.getHeight());</span>
+        });
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        if (page.getLegend() != null) {</span>
+<span class="nc" id="L98">            var old = page.getLegend();</span>
+<span class="nc" id="L99">            double top = page.getShapes().stream().mapToDouble(s -&gt; s.getY() + s.getHeight() / 2).max().orElse(0);</span>
+<span class="nc" id="L100">            page.setLegend(new VisioTextBox(old.text(), old.x() + shiftX, top + 1.3, old.width(), old.height()));</span>
+        }
+<span class="fc" id="L102">    }</span>
+
+    private static VisioShape copy(VisioShape source, String text, double x, double y, double width, double height) {
+<span class="fc" id="L105">        var result = new VisioShape(source.getId(), text, x, y, width, height, source.getType(), source.isAnchor());</span>
+<span class="fc" id="L106">        result.getProperties().putAll(source.getProperties());</span>
+<span class="fc" id="L107">        return result;</span>
+    }
+
+    private static void rejectCycles(Map&lt;String, String&gt; parents) {
+<span class="fc" id="L111">        Set&lt;String&gt; done = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        for (String start : parents.keySet()) {</span>
+<span class="fc" id="L113">            Set&lt;String&gt; path = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L114">            String current = start;</span>
+<span class="fc bfc" id="L115" title="All 4 branches covered.">            while (current != null &amp;&amp; !done.contains(current)) {</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">                if (!path.add(current)) throw new IllegalArgumentException(&quot;Visio parent hierarchy contains a cycle&quot;);</span>
+<span class="fc" id="L117">                current = parents.get(current);</span>
+            }
+<span class="fc" id="L119">            done.addAll(path);</span>
+<span class="fc" id="L120">        }</span>
+<span class="fc" id="L121">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

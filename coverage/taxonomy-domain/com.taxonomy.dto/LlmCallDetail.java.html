@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LlmCallDetail.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">LlmCallDetail.java</span></div><h1>LlmCallDetail.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.Map;
+
+/**
+ * Captures details of a single LLM API call: the prompt sent, the raw text response,
+ * parsed scores, reasons per node, provider name, call duration, and any discrepancy.
+ */
+public class LlmCallDetail {
+
+    private Map&lt;String, Double&gt; scores;
+    private Map&lt;String, String&gt; reasons;
+    private String prompt;
+    private String rawResponse;
+    private String provider;
+    private long durationMs;
+    private String error;
+    private TaxonomyDiscrepancy discrepancy;
+<span class="fc" id="L19">    private Map&lt;String, RootAssessment&gt; rootAssessments = Map.of();</span>
+
+<span class="fc" id="L21">    public LlmCallDetail() {}</span>
+
+<span class="fc" id="L23">    public Map&lt;String, Double&gt; getScores() { return scores; }</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">    public void setScores(Map&lt;String, ? extends Number&gt; scores) { this.scores = scores == null ? null : new java.util.LinkedHashMap&lt;&gt;(AnalysisScoreSemantics.normalizeScores(scores)); }</span>
+
+<span class="fc" id="L26">    public Map&lt;String, String&gt; getReasons() { return reasons; }</span>
+<span class="fc" id="L27">    public void setReasons(Map&lt;String, String&gt; reasons) { this.reasons = reasons; }</span>
+
+<span class="fc" id="L29">    public String getPrompt() { return prompt; }</span>
+<span class="fc" id="L30">    public void setPrompt(String prompt) { this.prompt = prompt; }</span>
+
+<span class="fc" id="L32">    public String getRawResponse() { return rawResponse; }</span>
+<span class="fc" id="L33">    public void setRawResponse(String rawResponse) { this.rawResponse = rawResponse; }</span>
+
+<span class="fc" id="L35">    public String getProvider() { return provider; }</span>
+<span class="fc" id="L36">    public void setProvider(String provider) { this.provider = provider; }</span>
+
+<span class="fc" id="L38">    public long getDurationMs() { return durationMs; }</span>
+<span class="fc" id="L39">    public void setDurationMs(long durationMs) { this.durationMs = durationMs; }</span>
+
+<span class="fc" id="L41">    public String getError() { return error; }</span>
+<span class="fc" id="L42">    public void setError(String error) { this.error = error; }</span>
+
+<span class="fc" id="L44">    public TaxonomyDiscrepancy getDiscrepancy() { return discrepancy; }</span>
+<span class="fc" id="L45">    public void setDiscrepancy(TaxonomyDiscrepancy discrepancy) { this.discrepancy = discrepancy; }</span>
+
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+<span class="fc" id="L48">    public Map&lt;String, RootAssessment&gt; getRootAssessments() { return rootAssessments; }</span>
+
+    public void setRootAssessments(Map&lt;String, RootAssessment&gt; values) {
+<span class="pc bpc" id="L51" title="1 of 4 branches missed.">        if (values == null || values.isEmpty()) { rootAssessments = Map.of(); return; }</span>
+<span class="pc bpc" id="L52" title="3 of 6 branches missed.">        if (values.entrySet().stream().anyMatch(entry -&gt; entry.getKey() == null || entry.getKey().isBlank()</span>
+<span class="pc bpc" id="L53" title="2 of 4 branches missed.">                || entry.getKey().length() &gt; 256 || entry.getValue() == null))</span>
+<span class="nc" id="L54">            throw new IllegalArgumentException(&quot;Root assessment evidence requires bounded identities and valid decisions&quot;);</span>
+<span class="fc" id="L55">        rootAssessments = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap&lt;&gt;(values));</span>
+<span class="fc" id="L56">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

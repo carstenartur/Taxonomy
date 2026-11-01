@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementRealization.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.requirements</a> &gt; <span class="el_source">RequirementRealization.java</span></div><h1>RequirementRealization.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.requirements;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.DocumentAst;
+import com.taxonomy.dsl.ast.PropertyAst;
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.serializer.TaxDslSerializer;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+/** Version-bound human realization evidence on the canonical requirement itself. */
+public final class RequirementRealization {
+    public static final String PREFIX = &quot;x-realization-&quot;;
+    private static final int MAX_DEPENDENCIES = 128;
+<span class="fc" id="L26">    private static final Set&lt;String&gt; STATUSES = Set.of(&quot;OPEN&quot;, &quot;PARTIAL&quot;, &quot;COMPLETE&quot;);</span>
+<span class="fc" id="L27">    private static final TaxDslSerializer SERIALIZER = new TaxDslSerializer();</span>
+
+    private RequirementRealization() {}
+
+<span class="fc" id="L31">    public enum State { OPEN, PARTIAL, COMPLETE, REVIEW_REQUIRED, INVALID_EVIDENCE }</span>
+    public record Review(int requirementVersion, String contentHash, String status,
+                         String contributorProject, String actor, Instant occurredAt,
+                         String rationale, List&lt;String&gt; dependencies) {
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">        public Review { dependencies = dependencies == null ? List.of() : List.copyOf(dependencies); }</span>
+    }
+<span class="fc" id="L37">    public record Dependency(String id, String hash) {}</span>
+    public record Reviewed(int requirementVersion, String contentHash, String status,
+                           String contributorProject, String actor, Instant occurredAt,
+                           String rationale, List&lt;Dependency&gt; dependencies) {
+<span class="fc" id="L41">        public Reviewed { dependencies = List.copyOf(dependencies); }</span>
+    }
+    public record Assessment(State state, Reviewed reviewed, List&lt;String&gt; changedDependencies) {
+<span class="fc" id="L44">        public Assessment { changedDependencies = List.copyOf(changedDependencies); }</span>
+    }
+
+    public static String record(String source, String requirementId, Review review) {
+<span class="fc" id="L48">        Objects.requireNonNull(review, &quot;review&quot;);</span>
+<span class="fc" id="L49">        Map&lt;String, BlockAst&gt; blocks = ArchitectureSemanticPatch.index(source);</span>
+<span class="fc" id="L50">        BlockAst requirement = require(blocks, requirementId);</span>
+<span class="fc" id="L51">        validate(review);</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        if (review.requirementVersion() != version(requirement)</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">                || !review.contentHash().equals(requirement.property(&quot;x-content-hash&quot;))</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">                || !review.contentHash().equals(textHash(requirement.property(&quot;text&quot;))))</span>
+<span class="fc" id="L55">            throw problem(&quot;REQUIREMENT_VERSION_MOVED&quot;, &quot;The reviewed requirement version or exact text changed&quot;);</span>
+<span class="fc" id="L56">        Map&lt;String, String&gt; values = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L57">        values.put(PREFIX + &quot;schema&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L58">        values.put(PREFIX + &quot;version&quot;, Integer.toString(review.requirementVersion()));</span>
+<span class="fc" id="L59">        values.put(PREFIX + &quot;content-hash&quot;, review.contentHash());</span>
+<span class="fc" id="L60">        values.put(PREFIX + &quot;status&quot;, review.status());</span>
+<span class="fc" id="L61">        values.put(PREFIX + &quot;contributor-project&quot;, review.contributorProject());</span>
+<span class="fc" id="L62">        values.put(PREFIX + &quot;actor&quot;, review.actor());</span>
+<span class="fc" id="L63">        values.put(PREFIX + &quot;occurred-at&quot;, review.occurredAt().toString());</span>
+<span class="fc" id="L64">        values.put(PREFIX + &quot;rationale&quot;, review.rationale());</span>
+<span class="fc" id="L65">        List&lt;String&gt; dependencies = review.dependencies().stream().distinct().sorted().toList();</span>
+<span class="fc" id="L66">        values.put(PREFIX + &quot;dependency-count&quot;, Integer.toString(dependencies.size()));</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        for (int i = 0; i &lt; dependencies.size(); i++) {</span>
+<span class="fc" id="L68">            String id = dependencies.get(i);</span>
+<span class="fc" id="L69">            BlockAst dependency = blocks.get(id);</span>
+<span class="pc bpc" id="L70" title="2 of 4 branches missed.">            if (dependency == null || id.equals(&quot;requirement:&quot; + requirementId))</span>
+<span class="nc" id="L71">                throw new CommandProblem(&quot;INVALID_REFERENCE&quot;, &quot;dependencies&quot;, &quot;Realization dependency is absent or refers to itself&quot;, List.of(id));</span>
+<span class="fc" id="L72">            values.put(PREFIX + &quot;dependency.&quot; + i + &quot;.id&quot;, id);</span>
+<span class="fc" id="L73">            values.put(PREFIX + &quot;dependency.&quot; + i + &quot;.hash&quot;, fingerprint(dependency));</span>
+        }
+<span class="fc" id="L75">        String result = ArchitectureSemanticPatch.replace(source, requirement, replaceNamespace(requirement, values));</span>
+<span class="fc" id="L76">        return RequirementTrace.contribute(result, requirementId, review.contributorProject());</span>
+    }
+
+    public static Assessment evaluate(String source, String requirementId) {
+<span class="fc" id="L80">        return evaluate(ArchitectureSemanticPatch.index(source), requirementId);</span>
+    }
+
+    public static Assessment evaluate(Map&lt;String, BlockAst&gt; blocks, String requirementId) {
+<span class="fc" id="L84">        BlockAst requirement = require(blocks, requirementId);</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (requirement.getProperties().stream().noneMatch(p -&gt; p.key().startsWith(PREFIX)))</span>
+<span class="fc" id="L86">            return new Assessment(State.OPEN, null, List.of());</span>
+        Reviewed reviewed;
+<span class="fc" id="L88">        try { reviewed = decode(requirement); }</span>
+<span class="fc" id="L89">        catch (IllegalArgumentException | java.time.DateTimeException | NullPointerException invalid) {</span>
+<span class="fc" id="L90">            return new Assessment(State.INVALID_EVIDENCE, null, List.of());</span>
+<span class="fc" id="L91">        }</span>
+<span class="fc" id="L92">        List&lt;String&gt; changed = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        for (Dependency dependency : reviewed.dependencies()) {</span>
+<span class="fc" id="L94">            BlockAst current = blocks.get(dependency.id());</span>
+<span class="fc bfc" id="L95" title="All 4 branches covered.">            if (current == null || !dependency.hash().equals(fingerprint(current))) changed.add(dependency.id());</span>
+<span class="fc" id="L96">        }</span>
+        boolean sameVersion;
+        try {
+<span class="fc bfc" id="L99" title="All 2 branches covered.">            sameVersion = reviewed.requirementVersion() == version(requirement)</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">                    &amp;&amp; reviewed.contentHash().equals(requirement.property(&quot;x-content-hash&quot;))</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">                    &amp;&amp; reviewed.contentHash().equals(textHash(requirement.property(&quot;text&quot;)));</span>
+<span class="pc" id="L102">        } catch (IllegalArgumentException | NullPointerException invalid) { sameVersion = false; }</span>
+<span class="fc bfc" id="L103" title="All 4 branches covered.">        return new Assessment(sameVersion &amp;&amp; changed.isEmpty() ? State.valueOf(reviewed.status()) : State.REVIEW_REQUIRED,</span>
+                reviewed, changed);
+    }
+
+    /** Portfolio regeneration keeps review evidence, whose freshness is evaluated against its frozen inputs. */
+    public static BlockAst retain(BlockAst generated, BlockAst existing) {
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (existing == null) return generated;</span>
+<span class="fc" id="L110">        List&lt;PropertyAst&gt; properties = new ArrayList&lt;&gt;(generated.getProperties());</span>
+<span class="fc" id="L111">        properties.removeIf(p -&gt; p.key().startsWith(PREFIX));</span>
+<span class="fc" id="L112">        existing.getProperties().stream().filter(p -&gt; p.key().startsWith(PREFIX)).forEach(properties::add);</span>
+<span class="fc" id="L113">        return copy(generated, properties);</span>
+    }
+
+    /** An inverse may restore evidence without restoring a newer business text or version. */
+    public static boolean reviewOnlyChange(String before, String after, String id) {
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (!id.startsWith(&quot;requirement:&quot;)) return false;</span>
+<span class="fc" id="L119">        BlockAst previous = ArchitectureSemanticPatch.index(before).get(id), next = ArchitectureSemanticPatch.index(after).get(id);</span>
+<span class="pc bpc" id="L120" title="2 of 4 branches missed.">        if (previous == null || next == null) return false;</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        List&lt;PropertyAst&gt; oldValues = previous.getProperties().stream().filter(p -&gt; !reviewField(p.key())).toList();</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        List&lt;PropertyAst&gt; newValues = next.getProperties().stream().filter(p -&gt; !reviewField(p.key())).toList();</span>
+<span class="fc" id="L123">        return new TaxDslSerializer().serialize(new DocumentAst(null, List.of(copy(previous, oldValues))))</span>
+<span class="fc" id="L124">                .equals(new TaxDslSerializer().serialize(new DocumentAst(null, List.of(copy(next, newValues)))));</span>
+    }
+
+<span class="fc bfc" id="L127" title="All 4 branches covered.">    private static boolean reviewField(String key) { return key.startsWith(PREFIX) || key.startsWith(RequirementTrace.PREFIX); }</span>
+
+    /** Exact text identity; whitespace is part of the immutable requirement version. */
+    public static String textHash(String text) {
+<span class="fc" id="L131">        Objects.requireNonNull(text, &quot;text&quot;);</span>
+<span class="fc" id="L132">        try { return HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(text.getBytes(StandardCharsets.UTF_8))); }</span>
+<span class="nc" id="L133">        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+
+    private static Reviewed decode(BlockAst requirement) {
+<span class="fc" id="L137">        Map&lt;String, String&gt; values = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L138" title="All 4 branches covered.">        for (PropertyAst property : requirement.getProperties()) if (property.key().startsWith(PREFIX)) {</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">            if (values.putIfAbsent(property.key(), property.value()) != null) throw new IllegalArgumentException(&quot;Duplicate realization field&quot;);</span>
+        }
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (!&quot;1&quot;.equals(values.get(PREFIX + &quot;schema&quot;))) throw new IllegalArgumentException(&quot;Unknown realization schema&quot;);</span>
+<span class="fc" id="L142">        int count = Integer.parseInt(values.get(PREFIX + &quot;dependency-count&quot;));</span>
+<span class="pc bpc" id="L143" title="3 of 6 branches missed.">        if (count &lt; 0 || count &gt; MAX_DEPENDENCIES || values.size() != 9 + 2 * count)</span>
+<span class="nc" id="L144">            throw new IllegalArgumentException(&quot;Invalid realization envelope&quot;);</span>
+<span class="fc" id="L145">        List&lt;Dependency&gt; dependencies = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        for (int i = 0; i &lt; count; i++) {</span>
+<span class="fc" id="L147">            String id = values.get(PREFIX + &quot;dependency.&quot; + i + &quot;.id&quot;);</span>
+<span class="fc" id="L148">            String hash = values.get(PREFIX + &quot;dependency.&quot; + i + &quot;.hash&quot;);</span>
+<span class="fc" id="L149">            bounded(id, &quot;dependency&quot;, 1024); hash(hash);</span>
+<span class="pc bpc" id="L150" title="2 of 4 branches missed.">            if (id.equals(ArchitectureSemanticPatch.key(requirement)) || dependencies.stream().anyMatch(d -&gt; d.id().equals(id)))</span>
+<span class="nc" id="L151">                throw new IllegalArgumentException(&quot;Duplicate or self realization dependency&quot;);</span>
+<span class="fc" id="L152">            dependencies.add(new Dependency(id, hash));</span>
+        }
+<span class="fc" id="L154">        Review review = new Review(Integer.parseInt(values.get(PREFIX + &quot;version&quot;)), values.get(PREFIX + &quot;content-hash&quot;),</span>
+<span class="fc" id="L155">                values.get(PREFIX + &quot;status&quot;), values.get(PREFIX + &quot;contributor-project&quot;), values.get(PREFIX + &quot;actor&quot;),</span>
+<span class="fc" id="L156">                Instant.parse(values.get(PREFIX + &quot;occurred-at&quot;)), values.get(PREFIX + &quot;rationale&quot;),</span>
+<span class="fc" id="L157">                dependencies.stream().map(Dependency::id).toList());</span>
+<span class="fc" id="L158">        validate(review);</span>
+<span class="fc" id="L159">        return new Reviewed(review.requirementVersion(), review.contentHash(), review.status(), review.contributorProject(),</span>
+<span class="fc" id="L160">                review.actor(), review.occurredAt(), review.rationale(), dependencies);</span>
+    }
+
+    private static void validate(Review review) {
+<span class="pc bpc" id="L164" title="3 of 6 branches missed.">        if (review.requirementVersion() &lt; 1 || review.status() == null || !STATUSES.contains(review.status()))</span>
+<span class="nc" id="L165">            throw problem(&quot;INVALID_VALUE&quot;, &quot;Unknown realization version or status&quot;);</span>
+<span class="fc" id="L166">        hash(review.contentHash());</span>
+<span class="fc" id="L167">        bounded(review.contributorProject(), &quot;contributorProject&quot;, 64);</span>
+<span class="fc" id="L168">        bounded(review.actor(), &quot;actor&quot;, 160);</span>
+<span class="fc" id="L169">        bounded(review.rationale(), &quot;rationale&quot;, 8000);</span>
+<span class="pc bpc" id="L170" title="2 of 4 branches missed.">        if (review.occurredAt() == null || review.dependencies().size() &gt; MAX_DEPENDENCIES</span>
+<span class="pc bpc" id="L171" title="1 of 4 branches missed.">                || !&quot;OPEN&quot;.equals(review.status()) &amp;&amp; review.dependencies().isEmpty())</span>
+<span class="fc" id="L172">            throw problem(&quot;INVALID_VALUE&quot;, &quot;A realization decision requires its time and supporting dependencies&quot;);</span>
+<span class="fc" id="L173">        review.dependencies().forEach(id -&gt; bounded(id, &quot;dependency&quot;, 1024));</span>
+<span class="fc" id="L174">    }</span>
+
+    private static String fingerprint(BlockAst block) {
+<span class="fc" id="L177">        return textHash(SERIALIZER.serialize(new DocumentAst(null, List.of(block))));</span>
+    }
+    private static int version(BlockAst requirement) {
+<span class="fc" id="L180">        int version = Integer.parseInt(requirement.property(&quot;x-version&quot;));</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">        if (version &lt; 1) throw problem(&quot;INVALID_VALUE&quot;, &quot;Requirement version must be positive&quot;);</span>
+<span class="fc" id="L182">        return version;</span>
+    }
+    private static BlockAst require(Map&lt;String, BlockAst&gt; blocks, String id) {
+<span class="fc" id="L185">        BlockAst requirement = blocks.get(&quot;requirement:&quot; + id);</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">        if (requirement == null) throw problem(&quot;NOT_FOUND&quot;, &quot;Canonical requirement does not exist&quot;);</span>
+<span class="fc" id="L187">        return requirement;</span>
+    }
+    private static BlockAst replaceNamespace(BlockAst original, Map&lt;String, String&gt; values) {
+<span class="fc" id="L190">        List&lt;PropertyAst&gt; properties = new ArrayList&lt;&gt;(original.getProperties());</span>
+<span class="fc" id="L191">        properties.removeIf(p -&gt; p.key().startsWith(PREFIX));</span>
+<span class="fc" id="L192">        values.forEach((key, value) -&gt; properties.add(new PropertyAst(key, value, null)));</span>
+<span class="fc" id="L193">        return copy(original, properties);</span>
+    }
+    private static BlockAst copy(BlockAst original, List&lt;PropertyAst&gt; properties) {
+<span class="fc" id="L196">        Map&lt;String, String&gt; extensions = new LinkedHashMap&lt;&gt;(original.getExtensions());</span>
+<span class="fc" id="L197">        extensions.keySet().removeIf(key -&gt; key.startsWith(PREFIX));</span>
+<span class="fc" id="L198">        properties.stream().filter(p -&gt; p.key().startsWith(PREFIX)).forEach(p -&gt; extensions.put(p.key(), p.value()));</span>
+<span class="fc" id="L199">        return new BlockAst(original.getKind(), original.getHeaderTokens(), properties, original.getChildren(), extensions, null);</span>
+    }
+    private static void bounded(String value, String field, int limit) {
+<span class="pc bpc" id="L202" title="4 of 8 branches missed.">        if (value == null || value.isBlank() || value.length() &gt; limit || value.indexOf('\0') &gt;= 0)</span>
+<span class="nc" id="L203">            throw problem(&quot;INVALID_VALUE&quot;, &quot;Invalid realization &quot; + field);</span>
+<span class="fc" id="L204">    }</span>
+    private static void hash(String value) {
+<span class="pc bpc" id="L206" title="2 of 4 branches missed.">        if (value == null || !value.matches(&quot;[0-9a-f]{64}&quot;)) throw problem(&quot;INVALID_VALUE&quot;, &quot;Invalid SHA-256 evidence hash&quot;);</span>
+<span class="fc" id="L207">    }</span>
+    private static CommandProblem problem(String code, String message) {
+<span class="fc" id="L209">        return new CommandProblem(code, &quot;realization&quot;, message, List.of());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

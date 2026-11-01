@@ -1,0 +1,648 @@
+{
+  "schemaVersion": 1,
+  "shard": "domain-integration",
+  "commit": "cec668ade2eb0436d9954a44549f10ca47e82f84",
+  "sourceTree": "1dcf7be9ace7427b17d786bbc0f986a8548b39e0",
+  "buildId": "41355023584.1.domain-integration",
+  "reports": [
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.composition.analysis.artemis.ArtemisAnalysisTransportTest.xml",
+      "className": "com.taxonomy.composition.analysis.artemis.ArtemisAnalysisTransportTest",
+      "sha256": "cb8b194dd9ade84bd894de56bf69e54963d052aebbfc648035c3b22733417a98",
+      "tests": 11,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.composition.analysis.artemis.ArtemisProductionExecutionTest.xml",
+      "className": "com.taxonomy.composition.analysis.artemis.ArtemisProductionExecutionTest",
+      "sha256": "4cf77918f8bbe471c1acfc5117e5b2c12722bc47aee0031a0e8d22b3216db911",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.composition.analysis.artemis.ArtemisProviderPermitProvisionerTest.xml",
+      "className": "com.taxonomy.composition.analysis.artemis.ArtemisProviderPermitProvisionerTest",
+      "sha256": "6f82c5e028ab00c4bce07e49c7ac443019d88c81459d96ae4c707ea21959beca",
+      "tests": 12,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.composition.analysis.artemis.ArtemisProviderPermitQuarantineTest.xml",
+      "className": "com.taxonomy.composition.analysis.artemis.ArtemisProviderPermitQuarantineTest",
+      "sha256": "a8ad6ef0061b4cb52f174a9517aa4eea6e73df0aac57a8a9e2aa56d0fee60643",
+      "tests": 4,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.composition.analysis.artemis.ArtemisProviderRateQuotasTest.xml",
+      "className": "com.taxonomy.composition.analysis.artemis.ArtemisProviderRateQuotasTest",
+      "sha256": "07f470f0f79ab1496f888929cb6313cb81e6a932a16f5d2f5ec56f3c3a5f9fd7",
+      "tests": 53,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.interop.IntegrationFlowTest.xml",
+      "className": "com.taxonomy.interop.IntegrationFlowTest",
+      "sha256": "349fc24eb23b5d24b1071e30d7037fc63f31e0f63158e542ba6c2d481bab43ea",
+      "tests": 7,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.interop.ScenarioArchiMateImportTest.xml",
+      "className": "com.taxonomy.interop.ScenarioArchiMateImportTest",
+      "sha256": "dc019629446e8b508eba34b4484b6f359f162829312322de19018373b051ca6c",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.interop.SparxIntegrationFlowTest.xml",
+      "className": "com.taxonomy.interop.SparxIntegrationFlowTest",
+      "sha256": "dae0981391ef3676dcb5d953e777684839d58cbef1f08b0d49398d2512711234",
+      "tests": 15,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.interop.publication.IntegrationPublicationApiTest.xml",
+      "className": "com.taxonomy.interop.publication.IntegrationPublicationApiTest",
+      "sha256": "8b551c46796d54e6d1b077a77c101f4e6a9263e4efcb542a755ce017fdd37cb3",
+      "tests": 3,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.interop.publication.IntegrationPublicationPartialTest.xml",
+      "className": "com.taxonomy.interop.publication.IntegrationPublicationPartialTest",
+      "sha256": "b4077bc0c5b5517c880cf5c828a4399861f91f46655c86d9fa7c2ac6c1f2decf",
+      "tests": 11,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.interop.publication.IntegrationPublicationProjectionBudgetTest.xml",
+      "className": "com.taxonomy.interop.publication.IntegrationPublicationProjectionBudgetTest",
+      "sha256": "ff020025cbdf8ef5ec535ba3d131996499d49c30d95148fad77bff71b9bee99d",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.interop.publication.IntegrationPublicationRecoveryTest.xml",
+      "className": "com.taxonomy.interop.publication.IntegrationPublicationRecoveryTest",
+      "sha256": "6f4b97aff5a0ed5f8460db3ebdbc2de73520abde03a0fb3e1cc42f98997f9d31",
+      "tests": 24,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.interop.publication.IntegrationPublicationSecurityTest.xml",
+      "className": "com.taxonomy.interop.publication.IntegrationPublicationSecurityTest",
+      "sha256": "c111c11cf226025429a130b9a750b306cce51bb094d09721790f8f0b1eb793f9",
+      "tests": 3,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.PortfolioAnalysisClaimPersistenceServiceTest.xml",
+      "className": "com.taxonomy.portfolio.PortfolioAnalysisClaimPersistenceServiceTest",
+      "sha256": "a936f41167eb6f1665dd7b1098bad667d6d9ac98e0c143b96579ddd6eaed5e2a",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.PortfolioAnalysisCoverageRegressionTest.xml",
+      "className": "com.taxonomy.portfolio.PortfolioAnalysisCoverageRegressionTest",
+      "sha256": "765ecc436dc3cca049069fb0a44003a604a78868dd8bb5116b0de2840f6559bd",
+      "tests": 4,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.PortfolioAnalysisRecoveryAndLimitsTest.xml",
+      "className": "com.taxonomy.portfolio.PortfolioAnalysisRecoveryAndLimitsTest",
+      "sha256": "97ac26675d808eb24862cfb727f1f64df40fcdf3da2dd5b38e53096c656813ec",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.PortfolioAnalysisWorkQueueClaimTest.xml",
+      "className": "com.taxonomy.portfolio.PortfolioAnalysisWorkQueueClaimTest",
+      "sha256": "d4c45efa7e151e5e4917f35bb2edca319e5039dd0897912afc1279261ae74db4",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.PortfolioApiContractTest.xml",
+      "className": "com.taxonomy.portfolio.PortfolioApiContractTest",
+      "sha256": "063df8c3871c780d9b35cdefbd37b50c1d09f48301f3f3c29d38b54b990d6814",
+      "tests": 8,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.PortfolioGitServiceTest.xml",
+      "className": "com.taxonomy.portfolio.PortfolioGitServiceTest",
+      "sha256": "e9ad871978f7ffcefb09f9274b8d2ae4213b60bc9c7d6ffd1057ebb313417354",
+      "tests": 7,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.PortfolioPageRoutesTest.xml",
+      "className": "com.taxonomy.portfolio.PortfolioPageRoutesTest",
+      "sha256": "af811b2de336c4d0744dee27fe72349a18bb879f9fd07a7e3ce418eb0b9c7bef",
+      "tests": 3,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.PortfolioPartialDiagnosticsTest.xml",
+      "className": "com.taxonomy.portfolio.PortfolioPartialDiagnosticsTest",
+      "sha256": "49d2633b9c85fe10621ed894aba1f87047cb4b7fdee21ad3795cc926c7beade5",
+      "tests": 8,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.PortfolioReportServiceTest.xml",
+      "className": "com.taxonomy.portfolio.PortfolioReportServiceTest",
+      "sha256": "1c26f804b0095e358cb663741d531a3dd8bb17e07836abf1a5405527c86ef695",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.ProjectAnalysisSingleRequirementMvcContractTest.xml",
+      "className": "com.taxonomy.portfolio.ProjectAnalysisSingleRequirementMvcContractTest",
+      "sha256": "e15b8ca237a51597b93d20a974b014763b3a0baa6c0e2e1f4d55d7c8077ac79d",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.ProjectRequirementAnalysisServiceTest.xml",
+      "className": "com.taxonomy.portfolio.ProjectRequirementAnalysisServiceTest",
+      "sha256": "17d5d366432af3e927cadeab5039797e1d9c2da334e05b3fc81c1f601366f5bd",
+      "tests": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.RequirementTenantIsolationTest.xml",
+      "className": "com.taxonomy.portfolio.RequirementTenantIsolationTest",
+      "sha256": "0cced54a6619eca8ec5af8947888ab5df29e1b3eabc17a412e880ee37609a3bd",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.SolutionProductPortfolioIntegrationTest.xml",
+      "className": "com.taxonomy.portfolio.SolutionProductPortfolioIntegrationTest",
+      "sha256": "6c7696da728058e752caaa43191e2056c90fedf9c4d7b340b65ff2e918a3893d",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.inventory.InventoryReviewConcurrencyTest.xml",
+      "className": "com.taxonomy.portfolio.inventory.InventoryReviewConcurrencyTest",
+      "sha256": "ec7d5cc67b3a873fd86e1e1fd03cadd0aa448216368a487102c41e7d32b8af9e",
+      "tests": 4,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.AdoptedLineageRealReanalysisTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.AdoptedLineageRealReanalysisTest",
+      "sha256": "3f90536a90648780cf901e89a5345bb19fbd4640f3f693f7e6e4332928400084",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.InventoryVariantConcurrencyTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.InventoryVariantConcurrencyTest",
+      "sha256": "eced558304a9570378c85b5322f2a09c4f632abcf24672fab9220865b002eb58",
+      "tests": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationBasePathContractTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationBasePathContractTest",
+      "sha256": "c11f9ba2a80d8b16b7acc37db8adc20dc9ca64606e6796123351287462b31229",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationCancellationApiTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationCancellationApiTest",
+      "sha256": "ea3ede8113e179ab457db3cb07b36f5c452d4160db7b4ecd72994cc4838d4fb6",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationDecisionActionContractTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationDecisionActionContractTest",
+      "sha256": "ac8b1d907bfab4d80116a64a957f0a3f5eba3215b37ce75b5a80103171504e45",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationDispatchClaimTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationDispatchClaimTest",
+      "sha256": "2c069054893b13797b4f5ff2739fea560d72edb38e598db17e8e65a1284031dc",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationEncodingTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationEncodingTest",
+      "sha256": "410adbe241932d525ee7da009b0897b24423c8a5169b8bd78f97add8df0884db",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationEvidenceRoundTripTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationEvidenceRoundTripTest",
+      "sha256": "8d36622db0deff5784618f0599fdef1c2d968f1e71d7b4e695f2872294c50650",
+      "tests": 18,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationIsolationTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationIsolationTest",
+      "sha256": "266789fc1d4715c1044c73d0b7a0e76f897927fe6c43dba0892e4a16278a139c",
+      "tests": 9,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationListContractTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationListContractTest",
+      "sha256": "f87ebf1c8be26a1d4f83e26c9b2b5dabef56562af4a8887400c77080fd499243",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationPositiveReviewGuardTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationPositiveReviewGuardTest",
+      "sha256": "31ad283065a4d249b5c93939bcf2bdd0df04f0b3c6357e54e74f7a9cd63ecd6a",
+      "tests": 26,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationQuestionWorkflowTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationQuestionWorkflowTest",
+      "sha256": "c33b045249d3395e9dc1564df1078754f22ea81afb2d51d35fd4212b633d6a64",
+      "tests": 15,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationReportTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationReportTest",
+      "sha256": "2054089acbe71f0fbc2cea8d286cf3255e57b23012f3737586f34663152a8d56",
+      "tests": 7,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationSynthesisTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationSynthesisTest",
+      "sha256": "91c1346ffda60547ca452108a3e094cf8cea7a8fa925143436842b97eea9a4ab",
+      "tests": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationTargetedSynthesisTest.xml",
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationTargetedSynthesisTest",
+      "sha256": "09f1899f6ad84c6438d39b0a4a0878bde7a4d38bee655222258b5ce8dcca0fa7",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.workspace.controller.WorkspaceControllerTest.xml",
+      "className": "com.taxonomy.workspace.controller.WorkspaceControllerTest",
+      "sha256": "6ffc1330f1d242d95522b69e766b9f79d38f180417052c671386ebe03c0fe13b",
+      "tests": 25,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.workspace.controller.WorkspaceScopedEndpointIsolationTest.xml",
+      "className": "com.taxonomy.workspace.controller.WorkspaceScopedEndpointIsolationTest",
+      "sha256": "fa217c76b906f9bc6c07f3ea290c0ff425e6d31bb26ade68022d749ad8b017e5",
+      "tests": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/surefire-reports/TEST-com.taxonomy.workspace.storage.JgitStorageHibernateIntegrationTest.xml",
+      "className": "com.taxonomy.workspace.storage.JgitStorageHibernateIntegrationTest",
+      "sha256": "111cdbae14baad22690d254c2442156a3fcce5d1e5f560fe084f47617ea9ddc4",
+      "tests": 4,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    }
+  ],
+  "coverage": {
+    "path": "coverage.exec",
+    "sha256": "0b41d0b241d59445da04e0d2aac4c9f5d48f4f827319247186985a63621232a4"
+  },
+  "timing": {
+    "durationSeconds": 626.528,
+    "suites": [
+      {
+        "className": "com.taxonomy.portfolio.reformulation.AdoptedLineageRealReanalysisTest",
+        "durationSeconds": 71.218
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationDispatchClaimTest",
+        "durationSeconds": 53.638
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationEncodingTest",
+        "durationSeconds": 51.323
+      },
+      {
+        "className": "com.taxonomy.interop.ScenarioArchiMateImportTest",
+        "durationSeconds": 37.32
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationPositiveReviewGuardTest",
+        "durationSeconds": 26.466
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationEvidenceRoundTripTest",
+        "durationSeconds": 25.753
+      },
+      {
+        "className": "com.taxonomy.portfolio.PortfolioGitServiceTest",
+        "durationSeconds": 22.327
+      },
+      {
+        "className": "com.taxonomy.composition.analysis.artemis.ArtemisProviderRateQuotasTest",
+        "durationSeconds": 21.485
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationQuestionWorkflowTest",
+        "durationSeconds": 20.457
+      },
+      {
+        "className": "com.taxonomy.composition.analysis.artemis.ArtemisAnalysisTransportTest",
+        "durationSeconds": 19.75
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationReportTest",
+        "durationSeconds": 16.884
+      },
+      {
+        "className": "com.taxonomy.workspace.controller.WorkspaceControllerTest",
+        "durationSeconds": 16.367
+      },
+      {
+        "className": "com.taxonomy.composition.analysis.artemis.ArtemisProductionExecutionTest",
+        "durationSeconds": 15.126
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationIsolationTest",
+        "durationSeconds": 13.366
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.InventoryVariantConcurrencyTest",
+        "durationSeconds": 12.453
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationSynthesisTest",
+        "durationSeconds": 12.406
+      },
+      {
+        "className": "com.taxonomy.interop.publication.IntegrationPublicationRecoveryTest",
+        "durationSeconds": 11.8
+      },
+      {
+        "className": "com.taxonomy.portfolio.PortfolioApiContractTest",
+        "durationSeconds": 11.129
+      },
+      {
+        "className": "com.taxonomy.portfolio.PortfolioAnalysisWorkQueueClaimTest",
+        "durationSeconds": 11.011
+      },
+      {
+        "className": "com.taxonomy.interop.publication.IntegrationPublicationPartialTest",
+        "durationSeconds": 9.78
+      },
+      {
+        "className": "com.taxonomy.interop.SparxIntegrationFlowTest",
+        "durationSeconds": 8.062
+      },
+      {
+        "className": "com.taxonomy.portfolio.ProjectAnalysisSingleRequirementMvcContractTest",
+        "durationSeconds": 7.499
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationBasePathContractTest",
+        "durationSeconds": 7.229
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationTargetedSynthesisTest",
+        "durationSeconds": 6.686
+      },
+      {
+        "className": "com.taxonomy.portfolio.PortfolioPartialDiagnosticsTest",
+        "durationSeconds": 6.675
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationCancellationApiTest",
+        "durationSeconds": 6.644
+      },
+      {
+        "className": "com.taxonomy.portfolio.SolutionProductPortfolioIntegrationTest",
+        "durationSeconds": 6.298
+      },
+      {
+        "className": "com.taxonomy.portfolio.PortfolioPageRoutesTest",
+        "durationSeconds": 6.216
+      },
+      {
+        "className": "com.taxonomy.portfolio.PortfolioAnalysisCoverageRegressionTest",
+        "durationSeconds": 6.172
+      },
+      {
+        "className": "com.taxonomy.portfolio.PortfolioReportServiceTest",
+        "durationSeconds": 6.164
+      },
+      {
+        "className": "com.taxonomy.interop.IntegrationFlowTest",
+        "durationSeconds": 6.068
+      },
+      {
+        "className": "com.taxonomy.interop.publication.IntegrationPublicationSecurityTest",
+        "durationSeconds": 6.06
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationDecisionActionContractTest",
+        "durationSeconds": 6.051
+      },
+      {
+        "className": "com.taxonomy.portfolio.ProjectRequirementAnalysisServiceTest",
+        "durationSeconds": 5.998
+      },
+      {
+        "className": "com.taxonomy.workspace.storage.JgitStorageHibernateIntegrationTest",
+        "durationSeconds": 5.971
+      },
+      {
+        "className": "com.taxonomy.portfolio.PortfolioAnalysisClaimPersistenceServiceTest",
+        "durationSeconds": 5.777
+      },
+      {
+        "className": "com.taxonomy.composition.analysis.artemis.ArtemisProviderPermitQuarantineTest",
+        "durationSeconds": 5.574
+      },
+      {
+        "className": "com.taxonomy.composition.analysis.artemis.ArtemisProviderPermitProvisionerTest",
+        "durationSeconds": 5.535
+      },
+      {
+        "className": "com.taxonomy.portfolio.PortfolioAnalysisRecoveryAndLimitsTest",
+        "durationSeconds": 5.53
+      },
+      {
+        "className": "com.taxonomy.portfolio.RequirementTenantIsolationTest",
+        "durationSeconds": 5.382
+      },
+      {
+        "className": "com.taxonomy.workspace.controller.WorkspaceScopedEndpointIsolationTest",
+        "durationSeconds": 5.377
+      },
+      {
+        "className": "com.taxonomy.interop.publication.IntegrationPublicationApiTest",
+        "durationSeconds": 5.293
+      },
+      {
+        "className": "com.taxonomy.interop.publication.IntegrationPublicationProjectionBudgetTest",
+        "durationSeconds": 4.466
+      },
+      {
+        "className": "com.taxonomy.portfolio.inventory.InventoryReviewConcurrencyTest",
+        "durationSeconds": 4.249
+      },
+      {
+        "className": "com.taxonomy.portfolio.reformulation.ReformulationListContractTest",
+        "durationSeconds": 1.493
+      }
+    ]
+  }
+}

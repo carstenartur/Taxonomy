@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ClusterAnalysisCall.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">ClusterAnalysisCall.java</span></div><h1>ClusterAnalysisCall.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.DynamicUpdate;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+/** Durable logical evaluation. Request/answer previews are loaded only by the scoped detail endpoint. */
+@Entity @DynamicUpdate
+@Table(name = &quot;analysis_cluster_call&quot;, uniqueConstraints = @UniqueConstraint(name = &quot;uq_analysis_cluster_call_number&quot;, columnNames = {&quot;operation_id&quot;, &quot;call_number&quot;}),
+        indexes = @Index(name = &quot;idx_analysis_cluster_call_run&quot;, columnList = &quot;operation_id,call_number&quot;))
+public class ClusterAnalysisCall {
+    @Id @Column(length = 64) String id;
+    @Column(name = &quot;operation_id&quot;, nullable = false, length = 128) String operationId;
+    @Column(name = &quot;task_id&quot;, nullable = false, length = 1200) String taskId;
+    @Column(name = &quot;call_number&quot;, nullable = false) long callNumber;
+    @Column(name = &quot;execution_id&quot;, nullable = false, length = 36) String executionId;
+    @Column(name = &quot;logical_ordinal&quot;, nullable = false) int logicalOrdinal;
+    @Column(name = &quot;delivery_attempt&quot;, nullable = false) int deliveryAttempt;
+    @Column(nullable = false, length = 128) String provider;
+    @Column(length = 512) String node;
+    @Column(nullable = false, length = 32) String state;
+    @Column(name = &quot;started_at&quot;, nullable = false) long startedAt;
+    @Column(name = &quot;duration_millis&quot;, nullable = false) long durationMillis;
+    @Column(name = &quot;event_revision&quot;, nullable = false) long eventRevision;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = &quot;prompt_text&quot;) String prompt;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = &quot;response_text&quot;) String response;
+    @Column(name = &quot;error_text&quot;, length = 1024) String error;
+    @Column(name = &quot;prompt_length&quot;, nullable = false) int promptLength;
+    @Column(name = &quot;response_length&quot;, nullable = false) int responseLength;
+<span class="fc" id="L31">    protected ClusterAnalysisCall() { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementHistoryService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">RequirementHistoryService.java</span></div><h1>RequirementHistoryService.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.DocumentAst;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.requirements.RequirementRealization;
+import com.taxonomy.dsl.serializer.TaxDslSerializer;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import com.taxonomy.workspace.signing.CommitSignature;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevSort;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+
+/** Bounded, branch-reachable history from authoritative Git, independent of search-index freshness. */
+@Service
+public final class RequirementHistoryService {
+    private static final int MAX_OFFSET = 100_000;
+    private static final int MAX_DOCUMENT_BYTES = 16 * 1024 * 1024;
+<span class="fc" id="L40">    private static final Set&lt;String&gt; CONTENT_KEYS = Set.of(&quot;text&quot;, &quot;x-version&quot;, &quot;x-content-hash&quot;);</span>
+<span class="fc" id="L41">    private static final TaxDslSerializer SERIALIZER = new TaxDslSerializer();</span>
+    private final DslGitRepositoryFactory repositories;
+
+<span class="fc" id="L44">    public RequirementHistoryService(DslGitRepositoryFactory repositories) {</span>
+<span class="fc" id="L45">        this.repositories = Objects.requireNonNull(repositories, &quot;repositories&quot;);</span>
+<span class="fc" id="L46">    }</span>
+
+    public record Query(String projectKey, String requirementKey, String text, String expectedHead,
+                        int offset, int limit, int scanLimit) {
+<span class="fc" id="L50">        public Query {</span>
+<span class="fc" id="L51">            projectKey = input(projectKey, &quot;projectKey&quot;, 200);</span>
+<span class="fc" id="L52">            requirementKey = input(requirementKey, &quot;requirementKey&quot;, 200);</span>
+<span class="fc" id="L53">            text = input(text, &quot;text&quot;, 500);</span>
+<span class="fc bfc" id="L54" title="All 6 branches covered.">            if ((projectKey == null) != (requirementKey == null))</span>
+<span class="fc" id="L55">                throw new IllegalArgumentException(&quot;projectKey and requirementKey must be supplied together&quot;);</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">            if (expectedHead != null) expectedHead = WorkspaceDslReadPort.normalizeCommitId(expectedHead);</span>
+<span class="fc bfc" id="L57" title="All 4 branches covered.">            if (offset &lt; 0 || offset &gt; MAX_OFFSET) throw new IllegalArgumentException(&quot;offset must be between 0 and 100000&quot;);</span>
+<span class="fc bfc" id="L58" title="All 4 branches covered.">            if (limit &lt; 1 || limit &gt; 100) throw new IllegalArgumentException(&quot;limit must be between 1 and 100&quot;);</span>
+<span class="fc bfc" id="L59" title="All 4 branches covered.">            if (scanLimit &lt; 1 || scanLimit &gt; 500) throw new IllegalArgumentException(&quot;scanLimit must be between 1 and 500&quot;);</span>
+<span class="fc bfc" id="L60" title="All 4 branches covered.">            if (offset &gt; 0 &amp;&amp; expectedHead == null) throw new IllegalArgumentException(&quot;Continuation requires expectedHead&quot;);</span>
+<span class="fc" id="L61">        }</span>
+    }
+<span class="fc" id="L63">    public enum Coverage { COMPLETE, PARTIAL, LIMIT_REACHED }</span>
+<span class="fc" id="L64">    public enum ChangeKind { MERGE, GIT_CHANGE, ADDED, REMOVED, REQUIREMENT_CHANGED,</span>
+<span class="fc" id="L65">        DEPENDENCIES_CHANGED, REQUIREMENT_METADATA_CHANGED, REALIZATION_CHANGED }</span>
+    public record Change(String projectKey, String requirementKey, String requirementId,
+                         List&lt;ChangeKind&gt; kinds, String beforeVersion, String afterVersion,
+                         String beforeStatus, String afterStatus) {
+<span class="fc" id="L69">        public Change { kinds = List.copyOf(kinds); }</span>
+    }
+    public record Entry(String commitId, List&lt;String&gt; parents, String author, Instant timestamp,
+                        String message, CommitSignature signature, List&lt;Change&gt; changes) {
+<span class="fc" id="L73">        public Entry { parents = List.copyOf(parents); changes = List.copyOf(changes); }</span>
+    }
+    public record Page(String head, List&lt;Entry&gt; entries, int offset, Integer nextOffset,
+                       int scanned, Coverage coverage, String source) {
+<span class="fc" id="L77">        public Page { entries = List.copyOf(entries); }</span>
+    }
+
+    /** Resolve one authorized context; never search detached objects, another branch or another workspace. */
+    public Page search(RepositoryContext context, Query query) throws IOException {
+<span class="fc" id="L82">        Objects.requireNonNull(context, &quot;context&quot;); Objects.requireNonNull(query, &quot;query&quot;);</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">        if (!Repository.isValidRefName(Constants.R_HEADS + context.branch())) throw new IllegalArgumentException(&quot;Invalid branch&quot;);</span>
+<span class="fc" id="L84">        DslGitRepository repository = repositories.resolveRepository(context);</span>
+<span class="fc" id="L85">        String head = repository.getHeadCommit(context.branch());</span>
+<span class="fc bfc" id="L86" title="All 4 branches covered.">        if (query.expectedHead() != null &amp;&amp; !query.expectedHead().equals(head))</span>
+<span class="fc" id="L87">            throw new BranchHeadConflictException(context.branch(), query.expectedHead(), head,</span>
+                    &quot;Branch changed; restart history from the current architecture version&quot;);
+<span class="fc" id="L89">        List&lt;Entry&gt; entries = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L90">        int scanned = 0;</span>
+<span class="fc" id="L91">        boolean more = false;</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (head != null) {</span>
+<span class="fc" id="L93">            try (RevWalk walk = new RevWalk(repository.getGitRepository())) {</span>
+<span class="fc" id="L94">                walk.sort(RevSort.TOPO);</span>
+<span class="fc" id="L95">                walk.sort(RevSort.COMMIT_TIME_DESC, true);</span>
+<span class="fc" id="L96">                walk.markStart(walk.parseCommit(ObjectId.fromString(head)));</span>
+<span class="fc" id="L97">                boolean exhausted = false;</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                for (int skipped = 0; skipped &lt; query.offset(); skipped++) {</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">                    if (walk.next() == null) { exhausted = true; break; }</span>
+                }
+<span class="pc bpc" id="L101" title="2 of 6 branches missed.">                while (!exhausted &amp;&amp; scanned &lt; query.scanLimit() &amp;&amp; entries.size() &lt; query.limit()</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">                        &amp;&amp; query.offset() + scanned &lt; MAX_OFFSET) {</span>
+<span class="fc" id="L103">                    RevCommit commit = walk.next();</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                    if (commit == null) { exhausted = true; break; }</span>
+<span class="fc" id="L105">                    scanned++;</span>
+<span class="fc" id="L106">                    Entry entry = entry(repository, commit, query);</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">                    if (entry != null) entries.add(entry);</span>
+<span class="fc" id="L108">                }</span>
+<span class="fc bfc" id="L109" title="All 4 branches covered.">                more = !exhausted &amp;&amp; walk.next() != null;</span>
+            }
+        }
+        // No-change CAS ensures a page never silently mixes two moving branch selections.
+<span class="fc" id="L113">        synchronized (repository.getGitRepository()) {</span>
+<span class="fc" id="L114">            repository.verifyExpectedHead(context.branch(), head);</span>
+<span class="fc" id="L115">        }</span>
+<span class="fc" id="L116">        int next = query.offset() + scanned;</span>
+<span class="pc bpc" id="L117" title="1 of 4 branches missed.">        Integer nextOffset = more &amp;&amp; next &lt; MAX_OFFSET ? next : null;</span>
+<span class="pc bpc" id="L118" title="1 of 4 branches missed.">        Coverage coverage = !more ? Coverage.COMPLETE : nextOffset == null ? Coverage.LIMIT_REACHED : Coverage.PARTIAL;</span>
+<span class="fc" id="L119">        return new Page(head, entries, query.offset(), nextOffset, scanned, coverage, &quot;LIVE_GIT&quot;);</span>
+    }
+
+    private Entry entry(DslGitRepository repository, RevCommit commit, Query query) throws IOException {
+<span class="fc" id="L123">        String afterDsl = repository.getDslAtCommit(commit.name(), MAX_DOCUMENT_BYTES);</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        String beforeDsl = commit.getParentCount() == 0 ? &quot;&quot;</span>
+<span class="fc" id="L125">                : repository.getDslAtCommit(commit.getParent(0).name(), MAX_DOCUMENT_BYTES);</span>
+<span class="fc" id="L126">        Snapshot before = snapshot(beforeDsl), after = snapshot(afterDsl);</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        List&lt;Change&gt; changes = changes(before, after, query, commit.getParentCount() &gt; 1);</span>
+<span class="pc bpc" id="L128" title="1 of 4 branches missed.">        if (query.projectKey() != null &amp;&amp; changes.isEmpty()) return null;</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        if (changes.isEmpty()) changes = List.of(new Change(null, null, null,</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">                List.of(commit.getParentCount() &gt; 1 ? ChangeKind.MERGE : ChangeKind.GIT_CHANGE), null, null, null, null));</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        if (query.text() != null) {</span>
+<span class="fc" id="L132">            String needle = query.text().toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">            String content = query.projectKey() == null ? beforeDsl + &quot;\n&quot; + afterDsl</span>
+<span class="fc" id="L134">                    : selectedText(before, query) + &quot;\n&quot; + selectedText(after, query);</span>
+<span class="fc" id="L135">            if (!(commit.getFullMessage() + &quot;\n&quot; + commit.getAuthorIdent().getName() + &quot;\n&quot; + content)</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">                    .toLowerCase(Locale.ROOT).contains(needle)) return null;</span>
+        }
+<span class="fc" id="L138">        return new Entry(commit.name(), Arrays.stream(commit.getParents()).map(RevCommit::name).toList(),</span>
+<span class="fc" id="L139">                commit.getAuthorIdent().getName(), Instant.ofEpochSecond(commit.getCommitTime()),</span>
+<span class="fc" id="L140">                commit.getFullMessage(), repository.verifyCommit(commit.name()), changes);</span>
+    }
+
+    private static List&lt;Change&gt; changes(Snapshot before, Snapshot after, Query query, boolean merge) {
+<span class="fc" id="L144">        Set&lt;String&gt; identities = new LinkedHashSet&lt;&gt;(before.requirements().keySet());</span>
+<span class="fc" id="L145">        identities.addAll(after.requirements().keySet());</span>
+<span class="fc" id="L146">        List&lt;Change&gt; changes = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        for (String identity : identities) {</span>
+<span class="fc" id="L148">            BlockAst a = before.requirements().get(identity), b = after.requirements().get(identity);</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            BlockAst selected = b == null ? a : b;</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">            if (!matches(selected, query)) continue;</span>
+<span class="fc" id="L151">            List&lt;ChangeKind&gt; kinds = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            if (a == null) kinds.add(ChangeKind.ADDED);</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">            else if (b == null) kinds.add(ChangeKind.REMOVED);</span>
+            else {
+<span class="fc bfc" id="L155" title="All 2 branches covered.">                if (!properties(a, PropertyGroup.CONTENT).equals(properties(b, PropertyGroup.CONTENT))) kinds.add(ChangeKind.REQUIREMENT_CHANGED);</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">                if (!a.getHeaderTokens().equals(b.getHeaderTokens())</span>
+<span class="fc" id="L157">                        || !a.getChildren().stream().map(RequirementHistoryService::serialized).toList()</span>
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">                        .equals(b.getChildren().stream().map(RequirementHistoryService::serialized).toList())</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">                        || !properties(a, PropertyGroup.METADATA).equals(properties(b, PropertyGroup.METADATA))</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">                        || !portable(before, a).equals(portable(after, b))) kinds.add(ChangeKind.REQUIREMENT_METADATA_CHANGED);</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">                if (!properties(a, PropertyGroup.REALIZATION).equals(properties(b, PropertyGroup.REALIZATION))) kinds.add(ChangeKind.REALIZATION_CHANGED);</span>
+<span class="fc" id="L162">                Set&lt;String&gt; dependencies = new LinkedHashSet&lt;&gt;(dependencyIds(before, a));</span>
+<span class="fc" id="L163">                dependencies.addAll(dependencyIds(after, b));</span>
+<span class="pc bpc" id="L164" title="1 of 4 branches missed.">                if (dependencies.stream().anyMatch(id -&gt; !serialized(before.blocks().get(id)).equals(serialized(after.blocks().get(id)))))</span>
+<span class="fc" id="L165">                    kinds.add(ChangeKind.DEPENDENCIES_CHANGED);</span>
+            }
+<span class="fc bfc" id="L167" title="All 2 branches covered.">            if (kinds.isEmpty()) continue;</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">            if (merge) kinds.addFirst(ChangeKind.MERGE);</span>
+<span class="fc" id="L169">            changes.add(new Change(selected.property(&quot;x-project-key&quot;), selected.property(&quot;x-requirement-key&quot;),</span>
+<span class="fc" id="L170">                    selected.getHeaderTokens().getFirst(), kinds, property(a, &quot;x-version&quot;), property(b, &quot;x-version&quot;),</span>
+<span class="fc" id="L171">                    status(before, a), status(after, b)));</span>
+<span class="fc" id="L172">        }</span>
+<span class="fc" id="L173">        return List.copyOf(changes);</span>
+    }
+
+<span class="fc" id="L176">    private enum PropertyGroup { CONTENT, METADATA, REALIZATION }</span>
+    private static Map&lt;String, List&lt;String&gt;&gt; properties(BlockAst block, PropertyGroup group) {
+<span class="fc" id="L178">        Map&lt;String, List&lt;String&gt;&gt; result = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L179">        block.getProperties().forEach(property -&gt; {</span>
+<span class="fc" id="L180">            boolean realization = property.key().startsWith(RequirementRealization.PREFIX);</span>
+<span class="fc" id="L181">            boolean content = CONTENT_KEYS.contains(property.key());</span>
+<span class="fc bfc" id="L182" title="All 14 branches covered.">            if (group == PropertyGroup.CONTENT &amp;&amp; content || group == PropertyGroup.REALIZATION &amp;&amp; realization</span>
+                    || group == PropertyGroup.METADATA &amp;&amp; !content &amp;&amp; !realization)
+<span class="fc" id="L184">                result.computeIfAbsent(property.key(), ignored -&gt; new ArrayList&lt;&gt;()).add(property.value());</span>
+<span class="fc" id="L185">        });</span>
+<span class="fc" id="L186">        return result;</span>
+    }
+    private static Snapshot snapshot(String dsl) throws IOException {
+        try {
+<span class="fc" id="L190">            Map&lt;String, BlockAst&gt; blocks = ArchitectureSemanticPatch.index(dsl);</span>
+<span class="fc" id="L191">            Map&lt;String, BlockAst&gt; requirements = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">            for (BlockAst block : blocks.values()) {</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                if (!&quot;requirement&quot;.equals(block.getKind())) continue;</span>
+<span class="pc bpc" id="L194" title="1 of 4 branches missed.">                if (block.propertyValues(&quot;x-project-key&quot;).size() &gt; 1 || block.propertyValues(&quot;x-requirement-key&quot;).size() &gt; 1)</span>
+<span class="fc" id="L195">                    throw new IOException(&quot;Ambiguous historical requirement identity&quot;);</span>
+<span class="fc" id="L196">                String project = block.property(&quot;x-project-key&quot;), requirement = block.property(&quot;x-requirement-key&quot;);</span>
+<span class="pc bpc" id="L197" title="2 of 4 branches missed.">                String identity = project != null &amp;&amp; requirement != null ? project + '\0' + requirement : &quot;unbound\0&quot; + block.getHeaderTokens().getFirst();</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">                if (requirements.putIfAbsent(identity, block) != null) throw new IOException(&quot;Ambiguous historical requirement identity&quot;);</span>
+<span class="fc" id="L199">            }</span>
+<span class="fc" id="L200">            return new Snapshot(blocks, requirements);</span>
+<span class="nc" id="L201">        } catch (RuntimeException malformed) {</span>
+<span class="nc" id="L202">            throw new IOException(&quot;Cannot interpret the selected historical DSL&quot;, malformed);</span>
+        }
+    }
+<span class="fc" id="L205">    private record Snapshot(Map&lt;String, BlockAst&gt; blocks, Map&lt;String, BlockAst&gt; requirements) {}</span>
+    private static boolean matches(BlockAst requirement, Query query) {
+<span class="pc bpc" id="L207" title="1 of 4 branches missed.">        return query.projectKey() == null || query.projectKey().equals(requirement.property(&quot;x-project-key&quot;))</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">                &amp;&amp; query.requirementKey().equals(requirement.property(&quot;x-requirement-key&quot;));</span>
+    }
+    private static String selectedText(Snapshot snapshot, Query query) {
+<span class="fc" id="L211">        StringBuilder text = new StringBuilder();</span>
+<span class="fc" id="L212">        snapshot.requirements().values().stream().filter(block -&gt; matches(block, query)).forEach(block -&gt; {</span>
+<span class="fc" id="L213">            text.append(serialized(block)).append(portable(snapshot, block));</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">            for (String id : dependencyIds(snapshot, block)) text.append(serialized(snapshot.blocks().get(id)));</span>
+<span class="fc" id="L215">        });</span>
+<span class="fc" id="L216">        return text.toString();</span>
+    }
+    private static String portable(Snapshot snapshot, BlockAst requirement) {
+<span class="fc" id="L219">        String project = requirement.property(&quot;x-project-key&quot;), key = requirement.property(&quot;x-requirement-key&quot;);</span>
+<span class="pc bpc" id="L220" title="2 of 4 branches missed.">        if (project == null || key == null) return &quot;&quot;;</span>
+<span class="fc" id="L221">        StringBuilder result = new StringBuilder();</span>
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">        snapshot.blocks().values().stream().filter(block -&gt; Set.of(&quot;projectRequirement&quot;, &quot;requirementVersion&quot;).contains(block.getKind())</span>
+<span class="nc bnc" id="L223" title="All 4 branches missed.">                        &amp;&amp; block.getHeaderTokens().size() &gt;= 2 &amp;&amp; project.equals(block.getHeaderTokens().get(0))</span>
+<span class="pc bnc" id="L224" title="All 2 branches missed.">                        &amp;&amp; key.equals(block.getHeaderTokens().get(1)))</span>
+<span class="fc" id="L225">                .map(RequirementHistoryService::serialized).sorted().forEach(result::append);</span>
+<span class="fc" id="L226">        return result.toString();</span>
+    }
+    private static List&lt;String&gt; dependencyIds(Snapshot snapshot, BlockAst requirement) {
+<span class="fc" id="L229">        var assessment = RequirementRealization.evaluate(snapshot.blocks(), requirement.getHeaderTokens().getFirst());</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        return assessment.reviewed() == null ? List.of()</span>
+<span class="fc" id="L231">                : assessment.reviewed().dependencies().stream().map(RequirementRealization.Dependency::id).toList();</span>
+    }
+    private static String status(Snapshot snapshot, BlockAst requirement) {
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        return requirement == null ? null : RequirementRealization.evaluate(snapshot.blocks(), requirement.getHeaderTokens().getFirst()).state().name();</span>
+    }
+<span class="fc bfc" id="L236" title="All 2 branches covered.">    private static String property(BlockAst block, String key) { return block == null ? null : block.property(key); }</span>
+    private static String serialized(BlockAst block) {
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">        return block == null ? &quot;&quot; : SERIALIZER.serialize(new DocumentAst(null, List.of(block)));</span>
+    }
+    private static String input(String value, String field, int max) {
+<span class="fc bfc" id="L241" title="All 2 branches covered.">        if (value == null) return null;</span>
+<span class="fc bfc" id="L242" title="All 4 branches covered.">        if (value.length() &gt; max || value.chars().anyMatch(Character::isISOControl)) throw new IllegalArgumentException(&quot;Invalid &quot; + field);</span>
+<span class="fc" id="L243">        String normalized = value.strip();</span>
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">        return normalized.isEmpty() ? null : normalized;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

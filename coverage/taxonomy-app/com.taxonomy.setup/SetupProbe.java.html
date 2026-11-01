@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SetupProbe.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.setup</a> &gt; <span class="el_source">SetupProbe.java</span></div><h1>SetupProbe.java</h1><pre class="source lang-java linenums">package com.taxonomy.setup;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+
+/** Explicit, bounded connection probes. Never starts Spring, Flyway or an AI provider. */
+public final class SetupProbe {
+    // Keep permits until JDBC actually exits: cancellation is not guaranteed to stop every driver.
+<span class="fc" id="L25">    private static final Semaphore DATABASE_PROBES = new Semaphore(2);</span>
+    private SetupProbe() { }
+
+    public static List&lt;SetupChecks.Finding&gt; check(Function&lt;String, String&gt; properties, Set&lt;String&gt; profiles) {
+<span class="fc" id="L29">        List&lt;SetupChecks.Finding&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L30">        String url = SetupChecks.value(properties, &quot;spring.datasource.url&quot;);</span>
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">        if (url.startsWith(&quot;jdbc:hsqldb:&quot;)) {</span>
+<span class="fc" id="L32">            result.add(new SetupChecks.Finding(SetupChecks.Status.NOT_CHECKED, &quot;database.connection&quot;,</span>
+                    &quot;Embedded databases are not opened by preflight: opening could create files or conflict with a running instance.&quot;));
+        } else {
+<span class="nc" id="L35">            result.add(checkDatabase(properties));</span>
+        }
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if (profiles.contains(&quot;keycloak&quot;)) {</span>
+<span class="fc" id="L38">            String issuer = SetupChecks.value(properties, &quot;spring.security.oauth2.client.provider.keycloak.issuer-uri&quot;);</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">            if (SetupChecks.safeEndpoint(issuer)) {</span>
+<span class="fc" id="L40">                result.add(bounded(&quot;authentication.discovery&quot;, () -&gt; discovery(issuer), Duration.ofSeconds(10)));</span>
+            }
+        }
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (Boolean.parseBoolean(SetupChecks.value(properties, &quot;embedding.enabled&quot;))) {</span>
+<span class="fc" id="L44">            String directory = SetupChecks.value(properties, &quot;embedding.model.dir&quot;);</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">            if (directory.isEmpty()) {</span>
+<span class="nc" id="L46">                result.add(new SetupChecks.Finding(SetupChecks.Status.NOT_CHECKED, &quot;embedding.model.dir&quot;, &quot;No local model directory selected; downloads are not performed by preflight.&quot;));</span>
+            } else {
+                try {
+<span class="fc" id="L49">                    Path path = Path.of(directory);</span>
+<span class="fc" id="L50">                    boolean available = List.of(&quot;model.onnx&quot;, &quot;tokenizer.json&quot;).stream()</span>
+<span class="pc bpc" id="L51" title="1 of 4 branches missed.">                            .allMatch(name -&gt; Files.isRegularFile(path.resolve(name)) &amp;&amp; Files.isReadable(path.resolve(name)));</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">                    result.add(new SetupChecks.Finding(available ? SetupChecks.Status.OK : SetupChecks.Status.ERROR,</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">                            &quot;embedding.model.dir&quot;, available ? &quot;Expected model files are readable; inference was not tested.&quot;</span>
+<span class="fc" id="L54">                            : &quot;The model directory must contain readable model.onnx and tokenizer.json.&quot;));</span>
+<span class="fc bfc" id="L55" title="All 4 branches covered.">                    if (available &amp;&amp; !Files.isRegularFile(path.resolve(&quot;serving.properties&quot;))) {</span>
+<span class="fc" id="L56">                        result.add(new SetupChecks.Finding(SetupChecks.Status.NOT_CHECKED, &quot;embedding.serving-properties&quot;,</span>
+                                &quot;Serving metadata is generated during model startup; generation permissions and model loading were not tested. No file was written.&quot;));
+                    }
+<span class="nc" id="L59">                } catch (IllegalArgumentException invalid) {</span>
+<span class="nc" id="L60">                    result.add(new SetupChecks.Finding(SetupChecks.Status.ERROR, &quot;embedding.model.dir&quot;, &quot;Invalid model directory.&quot;));</span>
+<span class="fc" id="L61">                }</span>
+            }
+        }
+<span class="fc" id="L64">        return List.copyOf(result);</span>
+    }
+
+    /** Database-only path for the optional admin assistant; never contacts identity or AI services. */
+    public static SetupChecks.Finding checkDatabase(Function&lt;String, String&gt; properties) {
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (SetupChecks.value(properties, &quot;spring.datasource.url&quot;).startsWith(&quot;jdbc:hsqldb:&quot;)) {</span>
+<span class="nc" id="L70">            return new SetupChecks.Finding(SetupChecks.Status.NOT_CHECKED, &quot;database.connection&quot;,</span>
+                    &quot;Embedded databases are not opened by preflight: opening could create files or conflict with a running instance.&quot;);
+        }
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        if (!DATABASE_PROBES.tryAcquire()) {</span>
+<span class="fc" id="L74">            return new SetupChecks.Finding(SetupChecks.Status.WARNING, &quot;database.connection&quot;,</span>
+                    &quot;Other database connection checks are still running; try again after they finish.&quot;);
+        }
+<span class="fc" id="L77">        return bounded(&quot;database.connection&quot;, () -&gt; {</span>
+<span class="fc" id="L78">            try { return database(properties); }</span>
+<span class="fc" id="L79">            finally { DATABASE_PROBES.release(); }</span>
+<span class="fc" id="L80">        }, Duration.ofSeconds(10));</span>
+    }
+
+    private static SetupChecks.Finding database(Function&lt;String, String&gt; properties) throws Exception {
+<span class="fc" id="L84">        String url = SetupChecks.value(properties, &quot;spring.datasource.url&quot;);</span>
+<span class="fc" id="L85">        Properties connectionProperties = connectionProperties(url, properties.apply(&quot;spring.datasource.username&quot;),</span>
+<span class="fc" id="L86">                properties.apply(&quot;spring.datasource.password&quot;));</span>
+<span class="fc" id="L87">        try (Connection connection = DriverManager.getConnection(url, connectionProperties)) {</span>
+<span class="fc" id="L88">            connection.setReadOnly(true);</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">            if (!connection.isValid(5)) { throw new IllegalStateException(&quot;Connection validation failed&quot;); }</span>
+<span class="fc" id="L90">            return new SetupChecks.Finding(SetupChecks.Status.OK, &quot;database.connection&quot;,</span>
+                    &quot;JDBC connection validated in read-only mode; schema and migration permissions remain untested.&quot;);
+        }
+    }
+
+    /** Keeps driver-specific probe limits separate from generated deployment configuration. */
+    static Properties connectionProperties(String url, String username, String password) {
+<span class="fc" id="L97">        Properties connectionProperties = new Properties();</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">        if (username != null) { connectionProperties.setProperty(&quot;user&quot;, username); }</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">        if (password != null) { connectionProperties.setProperty(&quot;password&quot;, password); }</span>
+        // Probe-only settings must never become the application's production query timeouts.
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        if (url.startsWith(&quot;jdbc:postgresql:&quot;)) {</span>
+<span class="fc" id="L102">            connectionProperties.setProperty(&quot;connectTimeout&quot;, &quot;5&quot;);</span>
+            // A nonzero pgJDBC loginTimeout spawns a driver-owned connection thread.
+            // Keep the actual operation on our bounded worker so its permit cannot be released early.
+<span class="fc" id="L105">            connectionProperties.setProperty(&quot;loginTimeout&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L106">            connectionProperties.setProperty(&quot;socketTimeout&quot;, &quot;5&quot;);</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        } else if (url.startsWith(&quot;jdbc:sqlserver:&quot;)) {</span>
+<span class="fc" id="L108">            connectionProperties.setProperty(&quot;loginTimeout&quot;, &quot;5&quot;);</span>
+<span class="fc" id="L109">            connectionProperties.setProperty(&quot;socketTimeout&quot;, &quot;5000&quot;);</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        } else if (url.startsWith(&quot;jdbc:oracle:&quot;)) {</span>
+<span class="fc" id="L111">            connectionProperties.setProperty(&quot;oracle.net.CONNECT_TIMEOUT&quot;, &quot;5000&quot;);</span>
+<span class="fc" id="L112">            connectionProperties.setProperty(&quot;oracle.jdbc.ReadTimeout&quot;, &quot;5000&quot;);</span>
+<span class="fc" id="L113">            connectionProperties.setProperty(&quot;oracle.net.OUTBOUND_CONNECT_TIMEOUT&quot;, &quot;5sec&quot;);</span>
+        }
+<span class="fc" id="L115">        return connectionProperties;</span>
+    }
+
+    private static SetupChecks.Finding discovery(String issuer) throws Exception {
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">        String base = issuer.endsWith(&quot;/&quot;) ? issuer.substring(0, issuer.length() - 1) : issuer;</span>
+<span class="fc" id="L120">        try (HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5))</span>
+<span class="fc" id="L121">                .followRedirects(HttpClient.Redirect.NEVER).build()) {</span>
+<span class="fc" id="L122">            HttpRequest request = HttpRequest.newBuilder(URI.create(base + &quot;/.well-known/openid-configuration&quot;))</span>
+<span class="fc" id="L123">                    .timeout(Duration.ofSeconds(5)).GET().build();</span>
+<span class="fc" id="L124">            int status = client.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">            return new SetupChecks.Finding(status == 200 ? SetupChecks.Status.OK : SetupChecks.Status.ERROR,</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">                    &quot;authentication.discovery&quot;, status == 200</span>
+<span class="fc" id="L127">                    ? &quot;Discovery endpoint reachable; metadata, browser callback and role mapping still require a login test.&quot;</span>
+<span class="pc" id="L128">                    : &quot;Discovery did not return HTTP 200; redirects are not followed.&quot;);</span>
+        }
+    }
+
+    static SetupChecks.Finding bounded(String key, Callable&lt;SetupChecks.Finding&gt; operation, Duration timeout) {
+<span class="fc" id="L133">        FutureTask&lt;SetupChecks.Finding&gt; task = new FutureTask&lt;&gt;(operation);</span>
+<span class="fc" id="L134">        Thread thread = Thread.ofVirtual().name(&quot;taxonomy-setup-probe&quot;).unstarted(task);</span>
+<span class="fc" id="L135">        thread.start();</span>
+        try {
+<span class="fc" id="L137">            return task.get(timeout.toMillis(), TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L138">        } catch (InterruptedException interrupted) {</span>
+<span class="nc" id="L139">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L140">            return new SetupChecks.Finding(SetupChecks.Status.ERROR, key, &quot;Connection check interrupted.&quot;);</span>
+<span class="fc" id="L141">        } catch (Exception failure) {</span>
+            // Driver/TLS exceptions can contain credentials and full connection URLs.
+<span class="fc" id="L143">            return new SetupChecks.Finding(SetupChecks.Status.ERROR, key,</span>
+                    &quot;Connection failed or timed out; check DNS, network policy, TLS trust and credentials in the target environment.&quot;);
+        } finally {
+<span class="fc" id="L146">            task.cancel(true);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

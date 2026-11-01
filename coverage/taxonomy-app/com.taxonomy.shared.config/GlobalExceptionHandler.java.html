@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GlobalExceptionHandler.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.config</a> &gt; <span class="el_source">GlobalExceptionHandler.java</span></div><h1>GlobalExceptionHandler.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.config;
+
+import jakarta.servlet.http.HttpServletResponse;
+import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.context.request.ServletWebRequest;
+import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+import org.springframework.web.util.DisconnectedClientHelper;
+
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ * Global exception handler for all REST controllers.
+ * Prevents stack traces from leaking to clients and returns
+ * consistent JSON error responses.
+ *
+ * &lt;p&gt;Extends {@link ResponseEntityExceptionHandler} so that Spring MVC binding
+ * exceptions (e.g. missing required parameters, type mismatches) are correctly
+ * returned as 4xx responses rather than being caught by the generic 500 handler.
+ */
+@ControllerAdvice
+public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
+
+<span class="fc" id="L39">    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);</span>
+    private static final String DEFAULT_INTERNAL_MESSAGE =
+            &quot;An internal error occurred. Please try again or check the server logs.&quot;;
+
+    private final MessageSource messageSource;
+
+<span class="fc" id="L45">    public GlobalExceptionHandler(MessageSource messageSource) {</span>
+<span class="fc" id="L46">        this.messageSource = messageSource;</span>
+<span class="fc" id="L47">    }</span>
+
+    /** Distinguish an unavailable search from a completed query with no matches. */
+    @ExceptionHandler(com.taxonomy.error.SearchUnavailableException.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleSearchUnavailable(
+            com.taxonomy.error.SearchUnavailableException exception, WebRequest request) {
+<span class="fc" id="L53">        String message = messageSource.getMessage(&quot;error.search.unavailable&quot;, null,</span>
+<span class="fc" id="L54">                &quot;Search is temporarily unavailable. Please try again.&quot;, LocaleContextHolder.getLocale());</span>
+<span class="fc" id="L55">        return buildErrorResponse(HttpStatus.SERVICE_UNAVAILABLE, message, request);</span>
+    }
+
+
+    /** A drained or replaced contribution cannot be silently retargeted. */
+    @ExceptionHandler(com.taxonomy.extension.api.plugin.ExtensionUnavailableException.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleExtensionUnavailable(
+            com.taxonomy.extension.api.plugin.ExtensionUnavailableException failure, WebRequest request) {
+<span class="fc" id="L63">        String message = messageSource.getMessage(&quot;error.extension.unavailable&quot;, null,</span>
+<span class="fc" id="L64">                &quot;The selected format is no longer available. Refresh the selection and retry.&quot;, LocaleContextHolder.getLocale());</span>
+<span class="fc" id="L65">        return buildErrorResponse(HttpStatus.SERVICE_UNAVAILABLE, message, request);</span>
+    }
+
+    /**
+     * Handles IllegalArgumentException (bad input from client).
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleBadRequest(
+            IllegalArgumentException exception,
+            WebRequest request) {
+<span class="fc" id="L75">        log.warn(&quot;Bad request: status=400, type=BAD_REQUEST&quot;);</span>
+<span class="fc" id="L76">        return buildErrorResponse(</span>
+                HttpStatus.BAD_REQUEST,
+<span class="fc" id="L78">                clientErrorMessage(exception, HttpStatus.BAD_REQUEST),</span>
+                request);
+    }
+
+    /**
+     * Handles authorization failures raised after the security filter chain,
+     * for example while validating an explicit browser-tab workspace pin.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleAccessDenied(
+            AccessDeniedException exception,
+            WebRequest request) {
+<span class="fc" id="L90">        log.warn(&quot;Access denied: status=403, type=ACCESS_DENIED&quot;);</span>
+<span class="fc" id="L91">        Locale locale = LocaleContextHolder.getLocale();</span>
+<span class="fc" id="L92">        String message = messageSource.getMessage(</span>
+                &quot;error.forbidden&quot;, null, &quot;Access denied.&quot;, locale);
+<span class="fc" id="L94">        return buildErrorResponse(HttpStatus.FORBIDDEN, message, request);</span>
+    }
+
+    /**
+     * Catch-all handler for any unhandled exception.
+     * Logs real failures server-side but does not write to a disconnected or committed response.
+     */
+    @ExceptionHandler(Exception.class)
+    public @Nullable ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleGenericException(
+            Exception exception,
+            WebRequest request) {
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (logClientDisconnect(exception)) {</span>
+<span class="fc" id="L106">            return null;</span>
+        }
+<span class="fc" id="L108">        log.error(&quot;Unhandled exception: status=500, type=INTERNAL_ERROR&quot;);</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (responseCommitted(request)) {</span>
+<span class="fc" id="L110">            return null;</span>
+        }
+<span class="fc" id="L112">        return buildErrorResponse(</span>
+                HttpStatus.INTERNAL_SERVER_ERROR,
+<span class="fc" id="L114">                internalErrorMessage(),</span>
+                request);
+    }
+
+    /**
+     * Retain the 405 contract without Spring's warning containing the request method.
+     */
+    @Override
+    protected @Nullable ResponseEntity&lt;Object&gt; handleHttpRequestMethodNotSupported(
+            HttpRequestMethodNotSupportedException exception,
+            HttpHeaders headers,
+            HttpStatusCode statusCode,
+            WebRequest request) {
+<span class="fc" id="L127">        return handleExceptionInternal(exception, null, headers, statusCode, request);</span>
+    }
+
+    /**
+     * Override the Spring MVC base handler to return our consistent JSON format
+     * for framework-level exceptions (missing params, type mismatches, etc.).
+     */
+    @Override
+    protected @Nullable ResponseEntity&lt;Object&gt; handleExceptionInternal(
+            Exception exception,
+            Object body,
+            HttpHeaders headers,
+            HttpStatusCode statusCode,
+            WebRequest request) {
+        // JSON converters can wrap a servlet disconnect several causes deep. Do not
+        // report a serialization bug or attempt a second write to the closed connection.
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (logClientDisconnect(exception)) {</span>
+<span class="fc" id="L144">            return null;</span>
+        }
+<span class="fc" id="L146">        HttpStatus status = HttpStatus.resolve(statusCode.value());</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">        if (status == null) {</span>
+<span class="nc" id="L148">            status = HttpStatus.INTERNAL_SERVER_ERROR;</span>
+        }
+
+        String message;
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (status.is5xxServerError()) {</span>
+<span class="fc" id="L153">            log.error(&quot;Spring MVC exception: status={}, type=MVC_SERVER_ERROR&quot;, status.value());</span>
+<span class="fc" id="L154">            message = internalErrorMessage();</span>
+        } else {
+<span class="fc" id="L156">            log.warn(&quot;Spring MVC exception: status={}, type=MVC_CLIENT_ERROR&quot;, status.value());</span>
+<span class="fc" id="L157">            message = clientErrorMessage(exception, status);</span>
+        }
+
+        // Spring's committed-response warning formats the exception itself.
+        // Log only the metadata above and avoid its secondary private diagnostic.
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        if (responseCommitted(request)) {</span>
+<span class="fc" id="L163">            return null;</span>
+        }
+
+<span class="fc" id="L166">        Map&lt;String, Object&gt; errorBody = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L167">        errorBody.put(&quot;timestamp&quot;, Instant.now().toString());</span>
+<span class="fc" id="L168">        errorBody.put(&quot;status&quot;, status.value());</span>
+<span class="fc" id="L169">        errorBody.put(&quot;error&quot;, status.getReasonPhrase());</span>
+<span class="fc" id="L170">        errorBody.put(&quot;message&quot;, message);</span>
+<span class="fc" id="L171">        errorBody.put(&quot;path&quot;, request.getDescription(false).replace(&quot;uri=&quot;, &quot;&quot;));</span>
+        // Retain Spring's uncommitted-response handling and servlet error attributes.
+<span class="fc" id="L173">        return super.handleExceptionInternal(exception, errorBody, headers, status, request);</span>
+    }
+
+    private static boolean logClientDisconnect(Exception exception) {
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (!DisconnectedClientHelper.isClientDisconnectedException(exception)) {</span>
+<span class="fc" id="L178">            return false;</span>
+        }
+        // Spring's logging helper includes exception payloads at both DEBUG and TRACE.
+        // Retain its classification and level choice without logging private causes.
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        if (log.isTraceEnabled()) {</span>
+<span class="fc" id="L183">            log.trace(&quot;Client disconnected: type=CLIENT_DISCONNECTED&quot;);</span>
+        } else {
+<span class="fc" id="L185">            log.debug(&quot;Client disconnected: type=CLIENT_DISCONNECTED&quot;);</span>
+        }
+<span class="fc" id="L187">        return true;</span>
+    }
+
+    private static boolean responseCommitted(WebRequest request) {
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">        if (request instanceof ServletWebRequest servletRequest) {</span>
+<span class="fc" id="L192">            HttpServletResponse response = servletRequest.getResponse();</span>
+<span class="fc bfc" id="L193" title="All 4 branches covered.">            return response != null &amp;&amp; response.isCommitted();</span>
+        }
+<span class="nc" id="L195">        return false;</span>
+    }
+
+    private String internalErrorMessage() {
+<span class="fc" id="L199">        Locale locale = LocaleContextHolder.getLocale();</span>
+<span class="fc" id="L200">        String message = messageSource.getMessage(</span>
+                &quot;error.internal&quot;, null, DEFAULT_INTERNAL_MESSAGE, locale);
+<span class="pc bpc" id="L202" title="1 of 4 branches missed.">        return message == null || message.isBlank()</span>
+<span class="fc" id="L203">                ? DEFAULT_INTERNAL_MESSAGE</span>
+<span class="fc" id="L204">                : message;</span>
+    }
+
+    private static String clientErrorMessage(Exception exception, HttpStatus status) {
+<span class="fc" id="L208">        String message = exception.getMessage();</span>
+<span class="pc bpc" id="L209" title="1 of 4 branches missed.">        return message == null || message.isBlank()</span>
+<span class="fc" id="L210">                ? status.getReasonPhrase()</span>
+<span class="fc" id="L211">                : message;</span>
+    }
+
+    private ResponseEntity&lt;Map&lt;String, Object&gt;&gt; buildErrorResponse(
+            HttpStatus status,
+            String message,
+            WebRequest request) {
+<span class="fc" id="L218">        Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L219">        body.put(&quot;timestamp&quot;, Instant.now().toString());</span>
+<span class="fc" id="L220">        body.put(&quot;status&quot;, status.value());</span>
+<span class="fc" id="L221">        body.put(&quot;error&quot;, status.getReasonPhrase());</span>
+<span class="fc" id="L222">        body.put(&quot;message&quot;, message);</span>
+<span class="fc" id="L223">        body.put(&quot;path&quot;, request.getDescription(false).replace(&quot;uri=&quot;, &quot;&quot;));</span>
+<span class="fc" id="L224">        return ResponseEntity.status(status).body(body);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

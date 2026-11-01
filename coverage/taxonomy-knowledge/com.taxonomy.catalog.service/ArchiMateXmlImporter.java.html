@@ -1,0 +1,359 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchiMateXmlImporter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">ArchiMateXmlImporter.java</span></div><h1>ArchiMateXmlImporter.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import com.taxonomy.archimate.ArchiMateModel;
+import com.taxonomy.archimate.exchange.ArchiMateSchema;
+import com.taxonomy.archimate.exchange.ArchiMateReturnProfile;
+import com.taxonomy.archimate.exchange.ArchiMateExchangeReader;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.dto.ArchiMateImportResult;
+import com.taxonomy.dsl.mapping.profiles.ArchiMateMappingProfile;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.RepositoryContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ * Parses ArchiMate 3.x Model Exchange XML and materializes matched relations in
+ * an explicit workspace.
+ *
+ * &lt;p&gt;Parsing/matching and persistence are deliberately separated. Preview uses
+ * the same parser and duplicate policy but performs no writes. Import runs in a
+ * single transaction; a fatal materialization error therefore rolls back every
+ * relation created by that request.&lt;/p&gt;
+ */
+@Service
+public class ArchiMateXmlImporter {
+
+<span class="fc" id="L38">    private static final Logger log = LoggerFactory.getLogger(ArchiMateXmlImporter.class);</span>
+<span class="fc" id="L39">    private static final ArchiMateMappingProfile PROFILE = new ArchiMateMappingProfile();</span>
+
+    private final TaxonomyNodeRepository nodeRepository;
+    private final TaxonomyRelationService relationService;
+
+    public ArchiMateXmlImporter(TaxonomyNodeRepository nodeRepository,
+<span class="fc" id="L45">                                TaxonomyRelationService relationService) {</span>
+<span class="fc" id="L46">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L47">        this.relationService = relationService;</span>
+<span class="fc" id="L48">    }</span>
+
+    /** Parses and validates the model without mutating architecture state. */
+    @Transactional(readOnly = true)
+    public ArchiMateImportResult previewXml(InputStream inputStream, WorkspaceContext context) {
+<span class="fc" id="L53">        return execute(inputStream, requireContext(context), false);</span>
+    }
+
+    /**
+     * Parses, validates, and atomically creates relations in the exact active
+     * workspace. Shared baseline relations are visible to personal workspaces
+     * and therefore count as duplicates rather than being copied locally.
+     */
+    @Transactional
+    public ArchiMateImportResult importXml(InputStream inputStream, WorkspaceContext context) {
+<span class="fc" id="L63">        return execute(inputStream, requireContext(context), true);</span>
+    }
+
+    /** Backward-compatible shared-scope overload for non-request callers. */
+    @Transactional
+    public ArchiMateImportResult importXml(InputStream inputStream) {
+<span class="fc" id="L69">        return importXml(inputStream, WorkspaceContext.SHARED);</span>
+    }
+
+    /** Explicit bounded return: no semantic edits, no implicit fallback from ordinary XML import. */
+    @Transactional(readOnly = true)
+    public ArchiMateImportResult previewReturn(byte[] original, byte[] returned, WorkspaceContext context) {
+<span class="fc" id="L75">        return executeReturn(original, returned, requireContext(context), null, false);</span>
+    }
+
+    @Transactional
+    public ArchiMateImportResult importReturn(byte[] original, byte[] returned, String reviewedFingerprint,
+                                              WorkspaceContext context) {
+<span class="fc" id="L81">        return executeReturn(original, returned, requireContext(context), reviewedFingerprint, true);</span>
+    }
+
+    private ArchiMateImportResult executeReturn(byte[] original, byte[] returned, WorkspaceContext context,
+                                                String reviewedFingerprint, boolean materialize) {
+        try {
+<span class="fc" id="L87">            var exchange = new ArchiMateReturnProfile().read(original, returned);</span>
+<span class="fc" id="L88">            String fingerprint = returnFingerprint(original, returned, context);</span>
+<span class="fc bfc" id="L89" title="All 4 branches covered.">            if (materialize &amp;&amp; !fingerprint.equals(reviewedFingerprint))</span>
+<span class="fc" id="L90">                throw new ArchiMateImportException(&quot;Review the exact original and returned files in the current workspace before applying&quot;);</span>
+<span class="fc" id="L91">            var result = execute(parsedExchange(exchange), context, materialize,</span>
+                    &quot;Reviewed Archi return &quot; + fingerprint, &quot;ARCHIMATE_RETURN&quot;);
+<span class="fc" id="L93">            result.setMappingProfile(ArchiMateReturnProfile.VERSION);</span>
+<span class="fc" id="L94">            result.setReviewFingerprint(fingerprint);</span>
+<span class="fc" id="L95">            result.getNotes().add(&quot;Content-preservation return only: semantic edits are rejected. Erased representation is interpreted from the supplied original; this is not a lossless return or proof of source authenticity.&quot;);</span>
+<span class="fc" id="L96">            return result;</span>
+<span class="nc" id="L97">        } catch (IllegalArgumentException error) {</span>
+<span class="nc" id="L98">            throw new ArchiMateImportException(&quot;Unsupported Archi return: &quot; + error.getMessage(), error);</span>
+        }
+    }
+
+    private static String returnFingerprint(byte[] original, byte[] returned, WorkspaceContext context) {
+        try {
+<span class="fc" id="L104">            var digest = java.security.MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L105">            List&lt;byte[]&gt; fields = new ArrayList&lt;&gt;(List.of(original, returned,</span>
+<span class="fc" id="L106">                    ArchiMateReturnProfile.VERSION.getBytes(java.nio.charset.StandardCharsets.UTF_8)));</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            for (String field : new String[] {context.username(), context.workspaceId(), context.currentBranch(), context.repositoryId()})</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                fields.add(field == null ? new byte[] {0} : (&quot;1&quot; + field).getBytes(java.nio.charset.StandardCharsets.UTF_8));</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            for (byte[] value : fields) {</span>
+<span class="fc" id="L110">                digest.update(java.nio.ByteBuffer.allocate(4).putInt(value.length).array());</span>
+<span class="fc" id="L111">                digest.update(value);</span>
+<span class="fc" id="L112">            }</span>
+<span class="fc" id="L113">            return java.util.HexFormat.of().formatHex(digest.digest());</span>
+<span class="nc" id="L114">        } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+
+    private ArchiMateImportResult execute(InputStream inputStream,
+                                          WorkspaceContext context,
+                                          boolean materialize) {
+<span class="fc" id="L120">        return execute(parseModel(inputStream), context, materialize, &quot;Imported from ArchiMate XML&quot;, &quot;ARCHIMATE_IMPORT&quot;);</span>
+    }
+
+    private ArchiMateImportResult execute(ParsedModel model, WorkspaceContext context, boolean materialize,
+                                           String description, String provenance) {
+<span class="fc" id="L125">        List&lt;String&gt; notes = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L126">        notes.add(&quot;Parsed &quot; + model.elements().size() + &quot; elements and &quot;</span>
+<span class="fc" id="L127">                + model.relationships().size() + &quot; relationships from XML&quot;);</span>
+
+<span class="fc" id="L129">        Map&lt;String, TaxonomyNode&gt; matchedNodes = matchElements(model.elements(), notes);</span>
+
+<span class="fc" id="L131">        ArchiMateImportResult result = new ArchiMateImportResult();</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        result.setPreview(!materialize);</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (model.exchange() != null) {</span>
+<span class="fc" id="L134">            result.setMappingProfile(com.taxonomy.archimate.exchange.ArchiMateExchangeProfile.VERSION);</span>
+<span class="fc" id="L135">            result.setLosses(model.exchange().losses().stream().map(loss -&gt;</span>
+<span class="fc" id="L136">                    new ArchiMateImportResult.ImportLoss(loss.scope(), loss.id(), loss.field(), loss.kind(), loss.rationale())).toList());</span>
+<span class="fc" id="L137">            List&lt;ArchiMateImportResult.ImportLoss&gt; importLosses = new ArrayList&lt;&gt;(result.getLosses());</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            for (var element : model.exchange().elements()) {</span>
+<span class="fc" id="L139">                importLosses.add(new ArchiMateImportResult.ImportLoss(&quot;element&quot;, element.id(), &quot;properties&quot;, &quot;OMITTED&quot;,</span>
+                        &quot;Catalogue import resolves exact existing identities; it does not overwrite catalogue labels, selection, or review properties.&quot;));
+<span class="fc" id="L141">            }</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            for (var relation : model.exchange().relationships()) {</span>
+<span class="fc" id="L143">                importLosses.add(new ArchiMateImportResult.ImportLoss(&quot;relationship&quot;, relation.id(), &quot;externalIdAndProperties&quot;, &quot;OMITTED&quot;,</span>
+                        &quot;Relation materialization deduplicates by exact endpoints and original type; it does not restore snapshot IDs, scores or decisions.&quot;));
+<span class="fc" id="L145">            }</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">            for (var view : model.exchange().views()) {</span>
+<span class="fc" id="L147">                importLosses.add(new ArchiMateImportResult.ImportLoss(&quot;view&quot;, view.id(), &quot;view&quot;, &quot;OMITTED&quot;,</span>
+                        &quot;The catalogue relation import does not persist views; the exchange reader preserves their complete membership and supported layout.&quot;));
+<span class="fc" id="L149">            }</span>
+<span class="fc" id="L150">            result.setLosses(importLosses);</span>
+<span class="fc" id="L151">            notes.add(&quot;Taxonomy exchange profile: exact catalogue identities and original relationship types; no fuzzy matching.&quot;);</span>
+        }
+<span class="fc" id="L153">        result.setElementsImported(model.elements().size());</span>
+<span class="fc" id="L154">        result.setElementsMatched(matchedNodes.size());</span>
+<span class="fc" id="L155">        result.setElementsUnmatched(model.elements().size() - matchedNodes.size());</span>
+<span class="fc" id="L156">        result.setRelationsParsed(model.relationships().size());</span>
+
+<span class="fc" id="L158">        int created = 0;</span>
+<span class="fc" id="L159">        int skipped = 0;</span>
+<span class="fc" id="L160">        int rejected = 0;</span>
+
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        for (ParsedRelationship relation : model.relationships()) {</span>
+<span class="fc" id="L163">            TaxonomyNode sourceNode = matchedNodes.get(relation.sourceId());</span>
+<span class="fc" id="L164">            TaxonomyNode targetNode = matchedNodes.get(relation.targetId());</span>
+<span class="fc bfc" id="L165" title="All 4 branches covered.">            if (sourceNode == null || targetNode == null) {</span>
+<span class="fc" id="L166">                rejected++;</span>
+<span class="fc" id="L167">                continue;</span>
+            }
+
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            String mappedType = relation.taxonomyType() != null ? relation.taxonomyType()</span>
+<span class="fc" id="L171">                    : PROFILE.mapRelationType(relation.type());</span>
+            RelationType relationType;
+            try {
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">                relationType = mappedType != null ? RelationType.valueOf(mappedType) : RelationType.RELATED_TO;</span>
+<span class="nc" id="L175">            } catch (IllegalArgumentException unsupported) {</span>
+<span class="nc" id="L176">                throw new ArchiMateImportException(&quot;Unsupported original relationship type: &quot; + mappedType, unsupported);</span>
+<span class="fc" id="L177">            }</span>
+
+<span class="fc" id="L179">            boolean exists = relationExists(sourceNode.getCode(), targetNode.getCode(), relationType, context);</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">            if (exists) {</span>
+<span class="fc" id="L181">                skipped++;</span>
+<span class="fc" id="L182">                continue;</span>
+            }
+
+<span class="fc bfc" id="L185" title="All 2 branches covered.">            if (!materialize) {</span>
+<span class="fc" id="L186">                continue;</span>
+            }
+
+            try {
+<span class="fc bfc" id="L190" title="All 2 branches covered.">                if (WorkspaceContext.LEGACY_REPOSITORY_ID.equals(context.repositoryId())) {</span>
+<span class="fc" id="L191">                    relationService.createRelation(sourceNode.getCode(), targetNode.getCode(), relationType,</span>
+<span class="fc" id="L192">                            description, provenance, context.workspaceId(), context.username());</span>
+                } else {
+<span class="fc" id="L194">                    relationService.createRelationInContext(sourceNode.getCode(), targetNode.getCode(), relationType,</span>
+<span class="fc" id="L195">                            description, provenance, repositoryContext(context));</span>
+                }
+<span class="fc" id="L197">                created++;</span>
+<span class="nc" id="L198">            } catch (IllegalArgumentException error) {</span>
+                // Treat only a concurrent duplicate as a skip. Any other failure
+                // is fatal and must roll the complete import transaction back.
+<span class="nc bnc" id="L201" title="All 2 branches missed.">                if (relationExists(sourceNode.getCode(), targetNode.getCode(), relationType, context)) {</span>
+<span class="nc" id="L202">                    skipped++;</span>
+                } else {
+<span class="nc" id="L204">                    throw new ArchiMateImportException(</span>
+                            &quot;Unable to materialize ArchiMate relation&quot;, error);
+                }
+<span class="nc" id="L207">            } catch (RuntimeException error) {</span>
+<span class="nc" id="L208">                throw new ArchiMateImportException(</span>
+                        &quot;Unable to materialize ArchiMate relation&quot;, error);
+<span class="pc" id="L210">            }</span>
+<span class="fc" id="L211">        }</span>
+
+<span class="fc" id="L213">        result.setRelationsImported(created);</span>
+<span class="fc" id="L214">        result.setRelationsSkipped(skipped);</span>
+<span class="fc" id="L215">        result.setRelationsRejected(rejected);</span>
+<span class="fc" id="L216">        result.setNotes(notes);</span>
+
+<span class="fc" id="L218">        int eligible = model.relationships().size() - skipped - rejected;</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        notes.add(materialize</span>
+<span class="fc" id="L220">                ? &quot;Created &quot; + created + &quot; relation(s) in workspace &quot; + scopeName(context)</span>
+                        + &quot;; skipped &quot; + skipped + &quot; duplicate(s); rejected &quot; + rejected
+<span class="fc" id="L222">                        + &quot; relation(s) with unmatched endpoints&quot;</span>
+                : &quot;Preview found &quot; + eligible + &quot; relation(s) eligible for workspace &quot;
+<span class="fc" id="L224">                        + scopeName(context) + &quot;; &quot; + skipped + &quot; duplicate(s); &quot;</span>
+<span class="fc" id="L225">                        + rejected + &quot; relation(s) with unmatched endpoints&quot;);</span>
+
+<span class="fc" id="L227">        log.info(&quot;ArchiMate {} complete: elements={}, matched={}, relations={}, created={}, skipped={}, rejected={}, workspace={}&quot;,</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">                materialize ? &quot;import&quot; : &quot;preview&quot;, model.elements().size(), matchedNodes.size(),</span>
+<span class="fc" id="L229">                model.relationships().size(), created, skipped, rejected, context.workspaceId());</span>
+<span class="fc" id="L230">        return result;</span>
+    }
+
+    private boolean relationExists(String source, String target, RelationType type, WorkspaceContext context) {
+        // Only direct legacy callers may resolve the primary repository. HTTP callers carry exact repository identity.
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        return WorkspaceContext.LEGACY_REPOSITORY_ID.equals(context.repositoryId())</span>
+<span class="fc" id="L236">                ? relationService.relationExistsVisible(source, target, type, context.workspaceId())</span>
+<span class="fc" id="L237">                : relationService.relationExistsVisibleInContext(source, target, type, repositoryContext(context));</span>
+    }
+
+    private static RepositoryContext repositoryContext(WorkspaceContext context) {
+<span class="fc bfc" id="L241" title="All 2 branches covered.">        return context.workspaceId() == null</span>
+<span class="fc" id="L242">                ? RepositoryContext.centralWrite(context.repositoryId(), context.currentBranch(), context.username())</span>
+<span class="fc" id="L243">                : RepositoryContext.workspace(context.repositoryId(), context.workspaceId(), context.currentBranch(), context.username());</span>
+    }
+
+    private ParsedModel parseModel(InputStream inputStream) {
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">        if (inputStream == null) throw new ArchiMateImportException(&quot;No ArchiMate XML input was provided&quot;);</span>
+        try {
+<span class="fc" id="L249">            byte[] bytes = inputStream.readNBytes(ArchiMateSchema.MAX_BYTES + 1);</span>
+<span class="fc" id="L250">            var document = ArchiMateSchema.parse(bytes);</span>
+<span class="fc" id="L251">            Map&lt;String, ParsedElement&gt; elements = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L252">            List&lt;ParsedRelationship&gt; relationships = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">            if (ArchiMateExchangeReader.hasTaxonomyProfile(document)) {</span>
+<span class="fc" id="L254">                ArchiMateModel exchange = new ArchiMateExchangeReader().read(document);</span>
+<span class="fc" id="L255">                return parsedExchange(exchange);</span>
+            }
+<span class="fc" id="L257">            var root = document.getDocumentElement();</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">            for (var element : ArchiMateExchangeReader.children(ArchiMateExchangeReader.child(root, &quot;elements&quot;), &quot;element&quot;)) {</span>
+<span class="fc" id="L259">                String id = element.getAttribute(&quot;identifier&quot;);</span>
+<span class="fc" id="L260">                elements.put(id, new ParsedElement(id, ArchiMateExchangeReader.type(element),</span>
+<span class="fc" id="L261">                        ArchiMateExchangeReader.content(element, &quot;name&quot;), false));</span>
+<span class="fc" id="L262">            }</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">            for (var relation : ArchiMateExchangeReader.children(ArchiMateExchangeReader.child(root, &quot;relationships&quot;), &quot;relationship&quot;)) {</span>
+<span class="fc" id="L264">                relationships.add(new ParsedRelationship(relation.getAttribute(&quot;identifier&quot;),</span>
+<span class="fc" id="L265">                        relation.getAttribute(&quot;source&quot;), relation.getAttribute(&quot;target&quot;),</span>
+<span class="fc" id="L266">                        ArchiMateExchangeReader.type(relation), null));</span>
+<span class="fc" id="L267">            }</span>
+<span class="fc" id="L268">            return new ParsedModel(elements, relationships, null);</span>
+<span class="fc" id="L269">        } catch (java.io.IOException | IllegalArgumentException error) {</span>
+<span class="fc" id="L270">            throw new ArchiMateImportException(&quot;Malformed or unsupported ArchiMate XML: &quot; + error.getMessage(), error);</span>
+        }
+    }
+
+    private static ParsedModel parsedExchange(ArchiMateModel exchange) {
+<span class="fc" id="L275">        Map&lt;String, ParsedElement&gt; elements = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L276">        List&lt;ParsedRelationship&gt; relationships = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">        for (var element : exchange.elements())</span>
+<span class="fc" id="L278">            elements.put(element.id(), new ParsedElement(element.id(), element.archiMateType(), element.label(), true));</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">        for (var relation : exchange.relationships())</span>
+<span class="fc" id="L280">            relationships.add(new ParsedRelationship(relation.id(), relation.sourceId(), relation.targetId(),</span>
+<span class="fc" id="L281">                    relation.archiMateType(), relation.properties().get(&quot;taxonomy.type&quot;).value()));</span>
+<span class="fc" id="L282">        return new ParsedModel(elements, relationships, exchange);</span>
+    }
+
+    private Map&lt;String, TaxonomyNode&gt; matchElements(Map&lt;String, ParsedElement&gt; elements,
+                                                     List&lt;String&gt; notes) {
+<span class="fc" id="L287">        Map&lt;String, TaxonomyNode&gt; matched = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L288" title="All 2 branches covered.">        for (ParsedElement element : elements.values()) {</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">            if (element.exactIdentity()) {</span>
+<span class="fc" id="L290">                nodeRepository.findByCode(element.id()).ifPresentOrElse(node -&gt; matched.put(element.id(), node),</span>
+<span class="fc" id="L291">                        () -&gt; notes.add(&quot;Unmatched exact Taxonomy identity: &quot; + element.id()));</span>
+<span class="fc" id="L292">                continue;</span>
+            }
+<span class="fc" id="L294">            String taxonomyRoot = PROFILE.mapElementType(element.type());</span>
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">            if (taxonomyRoot == null) {</span>
+<span class="nc" id="L296">                notes.add(&quot;Unknown ArchiMate type: &quot; + element.type() + &quot; for element &quot; + element.label());</span>
+<span class="nc" id="L297">                continue;</span>
+            }
+<span class="pc bpc" id="L299" title="2 of 4 branches missed.">            if (element.label() == null || element.label().isBlank()) {</span>
+<span class="nc" id="L300">                continue;</span>
+            }
+
+<span class="fc" id="L303">            List&lt;TaxonomyNode&gt; candidates = nodeRepository</span>
+<span class="fc" id="L304">                    .findByTaxonomyRootOrderByLevelAscNameEnAsc(taxonomyRoot);</span>
+<span class="fc" id="L305">            TaxonomyNode bestMatch = findBestMatch(element.label(), candidates);</span>
+<span class="fc bfc" id="L306" title="All 2 branches covered.">            if (bestMatch != null) {</span>
+<span class="fc" id="L307">                matched.put(element.id(), bestMatch);</span>
+            }
+<span class="fc" id="L309">        }</span>
+<span class="fc" id="L310">        notes.add(&quot;Matched &quot; + matched.size() + &quot; of &quot; + elements.size()</span>
+                + &quot; elements to taxonomy nodes&quot;);
+<span class="fc" id="L312">        return matched;</span>
+    }
+
+    private TaxonomyNode findBestMatch(String label, List&lt;TaxonomyNode&gt; candidates) {
+<span class="pc bpc" id="L316" title="1 of 2 branches missed.">        if (candidates.isEmpty()) {</span>
+<span class="nc" id="L317">            return null;</span>
+        }
+<span class="fc" id="L319">        String normalizedLabel = label.toLowerCase(Locale.ROOT).trim();</span>
+<span class="fc bfc" id="L320" title="All 2 branches covered.">        for (TaxonomyNode node : candidates) {</span>
+<span class="pc bpc" id="L321" title="1 of 2 branches missed.">            if (node.getNameEn() != null</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">                    &amp;&amp; node.getNameEn().toLowerCase(Locale.ROOT).trim().equals(normalizedLabel)) {</span>
+<span class="fc" id="L323">                return node;</span>
+            }
+<span class="fc" id="L325">        }</span>
+<span class="fc bfc" id="L326" title="All 2 branches covered.">        for (TaxonomyNode node : candidates) {</span>
+<span class="pc bpc" id="L327" title="1 of 2 branches missed.">            if (node.getNameEn() == null) {</span>
+<span class="nc" id="L328">                continue;</span>
+            }
+<span class="fc" id="L330">            String nodeName = node.getNameEn().toLowerCase(Locale.ROOT).trim();</span>
+<span class="pc bpc" id="L331" title="2 of 4 branches missed.">            if (nodeName.contains(normalizedLabel) || normalizedLabel.contains(nodeName)) {</span>
+<span class="nc" id="L332">                return node;</span>
+            }
+<span class="fc" id="L334">        }</span>
+<span class="fc" id="L335">        return null;</span>
+    }
+
+    private static WorkspaceContext requireContext(WorkspaceContext context) {
+<span class="pc bpc" id="L339" title="1 of 2 branches missed.">        if (context == null) {</span>
+<span class="nc" id="L340">            throw new ArchiMateImportException(&quot;An explicit workspace context is required&quot;);</span>
+        }
+<span class="fc" id="L342">        return context;</span>
+    }
+
+    private static String scopeName(WorkspaceContext context) {
+<span class="fc bfc" id="L346" title="All 2 branches covered.">        return context.workspaceId() != null ? context.workspaceId() : &quot;shared&quot;;</span>
+    }
+
+<span class="fc" id="L349">    private record ParsedModel(Map&lt;String, ParsedElement&gt; elements,</span>
+                               List&lt;ParsedRelationship&gt; relationships, ArchiMateModel exchange) {
+    }
+
+<span class="fc" id="L353">    private record ParsedElement(String id, String type, String label, boolean exactIdentity) {</span>
+    }
+
+<span class="fc" id="L356">    private record ParsedRelationship(String id, String sourceId, String targetId, String type, String taxonomyType) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

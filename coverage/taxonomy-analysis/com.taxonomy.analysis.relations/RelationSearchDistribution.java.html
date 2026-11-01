@@ -1,0 +1,426 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationSearchDistribution.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.relations</a> &gt; <span class="el_source">RelationSearchDistribution.java</span></div><h1>RelationSearchDistribution.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.relations;
+
+import com.taxonomy.analysis.dag.TaxonomyShardRoot;
+import com.taxonomy.dto.RelationSearchReport;
+import com.taxonomy.relations.service.RelationCompatibilityMatrix;
+
+import java.util.*;
+
+import static com.taxonomy.dto.RelationSearchModel.*;
+
+/**
+ * JSON scalar contracts and deterministic admission for distributed downwalks.
+ * Persist a Plan once, then publish only its identity and Work references. Source
+ * assessments and original requirement text belong in the authoritative store.
+ */
+public final class RelationSearchDistribution {
+    private RelationSearchDistribution() { }
+
+    public record Plan(int schemaVersion, String preparationId, String originalSha256,
+                       List&lt;String&gt; sourceResultIds, RequirementRelationSearch.Options options,
+                       List&lt;Node&gt; sourceNodes, List&lt;Node&gt; targetRoots, List&lt;SourceAssessment&gt; sources,
+                       List&lt;Item&gt; items, int sourceCalls, long durationMillis,
+                       List&lt;String&gt; warnings, String stopReason, boolean included, RelationSearchReport inlineReport) {
+        public Plan(int schemaVersion, String preparationId, String originalSha256,
+                List&lt;String&gt; sourceResultIds, RequirementRelationSearch.Options options,
+                List&lt;Node&gt; sourceNodes, List&lt;Node&gt; targetRoots, List&lt;SourceAssessment&gt; sources,
+                List&lt;Item&gt; items, int sourceCalls, long durationMillis,
+                List&lt;String&gt; warnings, String stopReason, boolean included) {
+<span class="fc" id="L29">            this(schemaVersion, preparationId, originalSha256, sourceResultIds, options, sourceNodes, targetRoots,</span>
+                    sources, items, sourceCalls, durationMillis, warnings, stopReason, included, null);
+<span class="fc" id="L31">        }</span>
+<span class="fc" id="L32">        public Plan {</span>
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">            if (schemaVersion != 1) throw new IllegalArgumentException(&quot;Unsupported relation preparation schema&quot;);</span>
+<span class="fc" id="L34">            required(preparationId); required(originalSha256); Objects.requireNonNull(options);</span>
+<span class="fc" id="L35">            sourceResultIds = List.copyOf(sourceResultIds);</span>
+<span class="fc" id="L36">            sourceResultIds.forEach(RelationSearchDistribution::required);</span>
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">            if (new HashSet&lt;&gt;(sourceResultIds).size() != sourceResultIds.size())</span>
+<span class="nc" id="L38">                throw new IllegalArgumentException(&quot;Duplicate source result reference&quot;);</span>
+<span class="fc" id="L39">            sourceNodes = List.copyOf(sourceNodes); targetRoots = List.copyOf(targetRoots);</span>
+<span class="fc" id="L40">            sources = List.copyOf(sources); items = List.copyOf(items); warnings = List.copyOf(warnings);</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">            stopReason = stopReason == null ? &quot;&quot; : stopReason;</span>
+<span class="pc bpc" id="L42" title="3 of 6 branches missed.">            if (sourceCalls &lt; 0 || sourceCalls &gt; options.limits().maxCalls() || durationMillis &lt; 0)</span>
+<span class="nc" id="L43">                throw new IllegalArgumentException(&quot;Invalid preparation budget&quot;);</span>
+<span class="pc bpc" id="L44" title="1 of 4 branches missed.">            if (sources.size() &gt; (options.budget() == null ? options.maxSources() : sourceNodes.size()))</span>
+<span class="nc" id="L45">                throw new IllegalArgumentException(&quot;Source limit exceeded&quot;);</span>
+<span class="pc bpc" id="L46" title="1 of 4 branches missed.">            if (!sources.isEmpty() &amp;&amp; sourceResultIds.isEmpty())</span>
+<span class="nc" id="L47">                throw new IllegalArgumentException(&quot;Assessed sources require persisted source references&quot;);</span>
+<span class="fc" id="L48">            Set&lt;TaxonomyShardRoot&gt; roots = new HashSet&lt;&gt;();</span>
+<span class="pc bpc" id="L49" title="1 of 4 branches missed.">            for (Node node : targetRoots) if (!roots.add(TaxonomyShardRoot.of(node.root())))</span>
+<span class="nc" id="L50">                throw new IllegalArgumentException(&quot;Duplicate target root&quot;);</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            for (int n = 0; n &lt; items.size(); n++) {</span>
+<span class="fc" id="L52">                Item item = items.get(n);</span>
+<span class="pc bpc" id="L53" title="2 of 4 branches missed.">                if (item.ordinal() != n || item.sourceIndex() &gt;= sources.size()</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">                        || item.contributionIndex() &gt;= sources.get(item.sourceIndex()).contributions().size()</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">                        || !roots.contains(item.targetRoot()))</span>
+<span class="nc" id="L56">                    throw new IllegalArgumentException(&quot;Invalid prepared relation reference&quot;);</span>
+            }
+<span class="pc bpc" id="L58" title="4 of 10 branches missed.">            if (!included &amp;&amp; (!sourceNodes.isEmpty() || !sources.isEmpty() || !items.isEmpty() || sourceCalls != 0))</span>
+<span class="nc" id="L59">                throw new IllegalArgumentException(&quot;Disabled relations cannot contain work&quot;);</span>
+<span class="pc bpc" id="L60" title="2 of 6 branches missed.">            if (inlineReport != null &amp;&amp; (!included || options.budget() == null</span>
+<span class="pc bpc" id="L61" title="1 of 4 branches missed.">                    || !options.budget().automatic() &amp;&amp; sourceCalls != options.limits().maxCalls()</span>
+<span class="pc bpc" id="L62" title="2 of 4 branches missed.">                    || !items.isEmpty() || !inlineReport.originalSha256().equals(originalSha256)</span>
+<span class="pc bpc" id="L63" title="2 of 4 branches missed.">                    || !inlineReport.sources().equals(sources) || !inlineReport.warnings().equals(warnings)</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">                    || !inlineReport.stopReason().equals(stopReason)</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">                    || inlineReport.maxCalls() != options.limits().maxCalls()</span>
+<span class="pc bpc" id="L66" title="2 of 4 branches missed.">                    || inlineReport.totalCalls() &lt; sourceCalls || inlineReport.totalCalls() &gt; options.limits().maxCalls()</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">                    || inlineReport.budget() == null</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">                    || inlineReport.budget().callsPerSlice() != options.budget().callsPerSlice()</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">                    || inlineReport.budget().maxTotalCalls() != options.budget().maxTotalCalls()</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">                    || inlineReport.budget().automatic() != options.budget().automatic()</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">                    || inlineReport.budget().sourcesPerSlice() != options.budget().sourcesPerSlice()</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                    || inlineReport.budget().workItemsPerSlice() != options.budget().workItemsPerSlice()</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">                    || inlineReport.budget().sourceCohortSize() != options.budget().sourceCohortSize()</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">                    || inlineReport.budget().newCalls() != inlineReport.totalCalls()</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">                    || inlineReport.budget().spentCalls() != (long) options.budget().callsBeforeExecution() + inlineReport.totalCalls()))</span>
+<span class="fc" id="L76">                throw new IllegalArgumentException(&quot;Invalid inline relation continuation&quot;);</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            if (inlineReport != null) validateInlineEvidence(sourceNodes, targetRoots, sources, inlineReport);</span>
+<span class="fc" id="L78">        }</span>
+    }
+
+    /** Inline preparation must retain the same contribution and route authority as target grants. */
+    private static void validateInlineEvidence(List&lt;Node&gt; sourceNodes, List&lt;Node&gt; targetRoots,
+            List&lt;SourceAssessment&gt; sources, RelationSearchReport report) {
+<span class="fc" id="L84">        Set&lt;Node&gt; frozenSources = new HashSet&lt;&gt;(sourceNodes);</span>
+<span class="fc" id="L85">        Set&lt;String&gt; sourceIds = new HashSet&lt;&gt;(), roots = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L86">        sourceNodes.forEach(node -&gt; sourceIds.add(node.id()));</span>
+<span class="fc" id="L87">        targetRoots.forEach(node -&gt; roots.add(node.root()));</span>
+<span class="fc" id="L88">        var contributions = new HashMap&lt;String, List&lt;Contribution&gt;&gt;();</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        for (SourceAssessment source : sources) {</span>
+<span class="pc bpc" id="L90" title="1 of 4 branches missed.">            if (!frozenSources.contains(source.node()) || source.node().container()</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">                    || contributions.putIfAbsent(source.node().id(), source.contributions()) != null</span>
+<span class="fc bfc" id="L92" title="All 4 branches covered.">                    || source.contributions().stream().anyMatch(value -&gt; !source.node().equals(value.source())))</span>
+<span class="fc" id="L93">                throw new IllegalArgumentException(&quot;Foreign inline source assessment&quot;);</span>
+<span class="fc" id="L94">        }</span>
+<span class="fc" id="L95">        Set&lt;Contribution&gt; accepted = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L96">        contributions.values().forEach(accepted::addAll);</span>
+<span class="fc" id="L97">        var rules = new RelationCompatibilityMatrix();</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        for (Edge edge : report.result().edges()) {</span>
+<span class="pc bpc" id="L99" title="2 of 6 branches missed.">            if (!accepted.contains(edge.contribution()) || edge.target() == null || edge.target().container()</span>
+<span class="pc bpc" id="L100" title="1 of 4 branches missed.">                    || !roots.contains(edge.target().root()) || edge.evidence() == null</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">                    || edge.evidence().outcome() != Outcome.VERIFIED</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                    || !edge.target().id().equals(edge.evidence().targetId())</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">                    || !inlineRoute(contributions, roots, rules, edge.contribution().source().id(),</span>
+<span class="fc" id="L104">                            edge.type(), edge.direction(), null, edge.target().root()))</span>
+<span class="fc" id="L105">                throw new IllegalArgumentException(&quot;Foreign inline relation evidence&quot;);</span>
+<span class="fc" id="L106">        }</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        for (Trace trace : report.result().trace()) {</span>
+<span class="pc bpc" id="L108" title="4 of 8 branches missed.">            if (trace.phase() == null || trace.outcome() == null || trace.targetId() == null || trace.targetId().isBlank()</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                    || !inlineRoute(contributions, roots, rules, trace.sourceId(), trace.type(), trace.direction(),</span>
+<span class="fc" id="L110">                            trace.contributionKey(), null))</span>
+<span class="fc" id="L111">                throw new IllegalArgumentException(&quot;Foreign inline relation trace&quot;);</span>
+<span class="fc" id="L112">        }</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        for (Unfinished unfinished : report.result().unfinished()) {</span>
+<span class="pc bpc" id="L114" title="4 of 8 branches missed.">            if (unfinished.targets().isEmpty() || unfinished.targets().stream().anyMatch(id -&gt; id == null || id.isBlank())</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">                    || !inlineRoute(contributions, roots, rules, unfinished.sourceId(), unfinished.type(), unfinished.direction(),</span>
+<span class="fc" id="L116">                            unfinished.contributionKey(), unfinished.targetRoot()))</span>
+<span class="fc" id="L117">                throw new IllegalArgumentException(&quot;Foreign inline unfinished relation&quot;);</span>
+<span class="fc" id="L118">        }</span>
+<span class="fc" id="L119">        var result = report.result();</span>
+<span class="pc bpc" id="L120" title="3 of 6 branches missed.">        if (result.calls() &lt; 0 || result.visitedBatches() &lt; 0 || result.visitedBatches() &gt; result.calls()</span>
+<span class="pc bpc" id="L121" title="2 of 4 branches missed.">                || result.durationMillis() &lt; 0 || report.durationMillis() &lt; 0)</span>
+<span class="nc" id="L122">            throw new IllegalArgumentException(&quot;Invalid inline relation diagnostics&quot;);</span>
+<span class="fc" id="L123">        var progress = report.progress();</span>
+<span class="pc bpc" id="L124" title="2 of 6 branches missed.">        if (progress != null &amp;&amp; (progress.calls() != report.totalCalls() || progress.maxCalls() != report.maxCalls()</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">                || !Objects.equals(progress.budget(), report.budget())</span>
+<span class="pc bpc" id="L126" title="2 of 4 branches missed.">                || progress.totalSources() != sourceNodes.size() || progress.assessedSources() != sources.size()</span>
+<span class="pc bpc" id="L127" title="2 of 4 branches missed.">                || progress.taxonomies().stream().anyMatch(taxonomy -&gt; !roots.contains(taxonomy.root()))))</span>
+<span class="nc" id="L128">            throw new IllegalArgumentException(&quot;Invalid inline relation progress&quot;);</span>
+<span class="pc bpc" id="L129" title="3 of 6 branches missed.">        if (report.tasks().stream().anyMatch(task -&gt; !sourceIds.contains(task.sourceId()) || !roots.contains(task.targetRoot())))</span>
+<span class="nc" id="L130">            throw new IllegalArgumentException(&quot;Foreign inline relation task&quot;);</span>
+<span class="fc" id="L131">    }</span>
+
+    private static boolean inlineRoute(Map&lt;String, List&lt;Contribution&gt;&gt; contributions, Set&lt;String&gt; roots,
+            RelationCompatibilityMatrix rules, String sourceId, String type, Direction direction,
+            String contributionKey, String targetRoot) {
+<span class="pc bpc" id="L136" title="2 of 8 branches missed.">        if (type == null || direction == null || targetRoot != null &amp;&amp; !roots.contains(targetRoot)) return false;</span>
+<span class="fc" id="L137">        var relation = com.taxonomy.model.RelationType.valueOf(type);</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        for (Contribution contribution : contributions.getOrDefault(sourceId, List.of())) {</span>
+            // A missing key in legacy retained reports stays unspecified; a
+            // supplied key must identify this exact contribution and route.
+<span class="fc bfc" id="L141" title="All 4 branches covered.">            if (contributionKey != null &amp;&amp; !contributionKey.equals(RelationSearchEngine.contributionKey(contribution, type, direction))) continue;</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            for (String root : roots) {</span>
+<span class="fc bfc" id="L143" title="All 4 branches covered.">                if (targetRoot != null &amp;&amp; !targetRoot.equals(root)) continue;</span>
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">                String origin = direction == Direction.OUTGOING ? contribution.source().root() : root;</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">                String destination = direction == Direction.OUTGOING ? root : contribution.source().root();</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">                if (rules.allowedTargetRoots(origin, relation).contains(destination)) return true;</span>
+<span class="fc" id="L147">            }</span>
+<span class="fc" id="L148">        }</span>
+<span class="fc" id="L149">        return false;</span>
+    }
+
+    /** One ordered intent, referring to the immutable assessment rather than copying it. */
+    public record Item(int ordinal, int sourceIndex, int contributionIndex, String type,
+                       Direction direction, TaxonomyShardRoot targetRoot, int maxQueries) {
+<span class="fc" id="L155">        public Item {</span>
+<span class="pc bpc" id="L156" title="4 of 8 branches missed.">            if (ordinal &lt; 0 || sourceIndex &lt; 0 || contributionIndex &lt; 0 || maxQueries &lt; 1)</span>
+<span class="nc" id="L157">                throw new IllegalArgumentException(&quot;Invalid relation item&quot;);</span>
+<span class="fc" id="L158">            required(type); com.taxonomy.model.RelationType.valueOf(type);</span>
+<span class="fc" id="L159">            Objects.requireNonNull(direction); Objects.requireNonNull(targetRoot);</span>
+<span class="fc" id="L160">        }</span>
+    }
+
+    /** A durable grant: both allowances are part of the identity checked at aggregation. */
+    public record Work(String preparationId, int ordinal, TaxonomyShardRoot targetRoot,
+                       int maxCalls, int maxWorkItems) {
+<span class="fc" id="L166">        public Work {</span>
+<span class="fc" id="L167">            required(preparationId); Objects.requireNonNull(targetRoot);</span>
+<span class="pc bpc" id="L168" title="3 of 6 branches missed.">            if (ordinal &lt; 0 || maxCalls &lt; 1 || maxWorkItems &lt; 1)</span>
+<span class="nc" id="L169">                throw new IllegalArgumentException(&quot;Invalid relation work grant&quot;);</span>
+<span class="fc" id="L170">        }</span>
+    }
+
+    /** Operation budget charges retain already spent exchanges during checkpoint replay. */
+    public record WorkResult(Work work, Result result, int calls, String stopReason) {
+<span class="fc" id="L175">        public WorkResult {</span>
+<span class="fc" id="L176">            Objects.requireNonNull(work); Objects.requireNonNull(result);</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">            stopReason = stopReason == null ? &quot;&quot; : stopReason;</span>
+<span class="pc bpc" id="L178" title="2 of 6 branches missed.">            if (calls &lt; 0 || calls &gt; work.maxCalls() || calls &gt; work.maxWorkItems())</span>
+<span class="fc" id="L179">                throw new IllegalArgumentException(&quot;Relation grant exceeded&quot;);</span>
+<span class="fc" id="L180">        }</span>
+    }
+
+    /**
+     * A terminal worker failure settles the EXISTING grant with no semantic finding.
+     * Consumption is unknown, so reserve its entire allowance rather than inventing
+     * a zero-cost failure. Aggregation still verifies the deterministic grant identity.
+     */
+    public static WorkResult failed(Plan plan, Work grant) {
+<span class="fc" id="L189">        return failed(plan, grant, &quot;RELATION_EVALUATION_FAILED&quot;);</span>
+    }
+
+    /** Preserve actual stop codes: only ordinary evaluation failures permit independent work. */
+    public static WorkResult failed(Plan plan, Work grant, String reason) {
+<span class="pc bpc" id="L194" title="2 of 4 branches missed.">        if (reason == null || !reason.matches(&quot;[A-Z_]{1,64}&quot;))</span>
+<span class="nc" id="L195">            throw new IllegalArgumentException(&quot;Invalid relation failure code&quot;);</span>
+<span class="pc bpc" id="L196" title="1 of 4 branches missed.">        if (!grant.preparationId().equals(plan.preparationId()) || grant.ordinal() &gt;= plan.items().size())</span>
+<span class="fc" id="L197">            throw new IllegalArgumentException(&quot;Foreign failed relation grant&quot;);</span>
+<span class="fc" id="L198">        Item item = plan.items().get(grant.ordinal());</span>
+<span class="pc bpc" id="L199" title="2 of 4 branches missed.">        if (!item.targetRoot().equals(grant.targetRoot()) || grant.maxCalls() &gt; item.maxQueries()</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">                || grant.maxWorkItems() &gt; item.maxQueries()) throw new IllegalArgumentException(&quot;Invalid failed relation grant&quot;);</span>
+<span class="fc" id="L201">        Intent intent = intent(plan, item);</span>
+<span class="fc" id="L202">        var unfinished = new Unfinished(intent.contribution().source().id(), item.type(), item.direction(),</span>
+<span class="fc" id="L203">                intent.roots().stream().map(Node::id).toList(), reason, &quot;&quot;,</span>
+<span class="fc" id="L204">                RelationSearchEngine.contributionKey(intent.contribution(), item.type(), item.direction()), item.targetRoot().code());</span>
+<span class="fc" id="L205">        return new WorkResult(grant, new Result(List.of(), List.of(unfinished), List.of(), 0, 0, 0),</span>
+<span class="fc" id="L206">                Math.min(grant.maxCalls(), grant.maxWorkItems()), reason);</span>
+    }
+
+    /**
+     * Return missing members of the current deterministic wave. Do not release
+     * unused reservations until every member has a persisted result. This makes
+     * reverse delivery equivalent and prevents completion races inflating quotas.
+     * Fully funded independent branches may overlap. A constrained first branch
+     * receives the remaining allowance and retains the sequential budget prefix.
+     */
+    public static List&lt;Work&gt; ready(Plan plan, List&lt;WorkResult&gt; persisted) {
+<span class="fc" id="L217">        return schedule(plan, persisted).ready();</span>
+    }
+
+    /** Aggregate in original intent order, irrespective of broker completion order. */
+    public static RelationSearchReport combine(Plan plan, List&lt;WorkResult&gt; persisted) {
+<span class="fc" id="L222">        return combine(plan, persisted, null);</span>
+    }
+
+    /** Saved progress and questions remain visible before the new grants replay their evidence. */
+    public static RelationSearchReport combine(Plan plan, List&lt;WorkResult&gt; persisted, RelationSearchReport previous) {
+<span class="fc" id="L227">        Schedule schedule = schedule(plan, persisted);</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">        if (plan.inlineReport() != null) return retainAcceptedRelations(plan.inlineReport(), previous);</span>
+<span class="pc bpc" id="L229" title="1 of 4 branches missed.">        if (previous != null &amp;&amp; !plan.originalSha256().equals(previous.originalSha256()))</span>
+<span class="nc" id="L230">            throw new IllegalArgumentException(&quot;Saved relation evidence belongs to another requirement&quot;);</span>
+<span class="fc" id="L231">        var progress = new RelationWorkPlan(plan.sourceNodes(), plan.targetRoots(),</span>
+<span class="fc" id="L232">                new RelationCompatibilityMatrix(), plan.options().limits().maxCalls(), false);</span>
+<span class="fc" id="L233">        progress.restore(previous);</span>
+<span class="fc" id="L234">        plan.sources().forEach(progress::assessed);</span>
+<span class="fc" id="L235">        progress.expect(plan.items().stream().map(i -&gt; intent(plan, i)).toList());</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">        if (previous != null) progress.replayUnresolved(previous.tasks(), previous.result().unfinished(),</span>
+<span class="fc" id="L237">                schedule.results().values().stream()</span>
+<span class="fc" id="L238">                        .map(result -&gt; intent(plan, plan.items().get(result.work().ordinal()))).toList());</span>
+<span class="fc" id="L239">        Set&lt;List&lt;String&gt;&gt; previouslyCompleted = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        if (previous != null) previous.tasks().stream()</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">                .filter(task -&gt; task.state() == com.taxonomy.dto.RelationSearchProgress.State.COMPLETED)</span>
+<span class="fc" id="L242">                .forEach(task -&gt; previouslyCompleted.add(List.of(task.sourceId(), task.targetRoot())));</span>
+<span class="fc" id="L243">        Set&lt;Edge&gt; edges = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L244">        List&lt;Trace&gt; trace = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L245">        List&lt;Unfinished&gt; unfinished = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L246">        int calls = plan.sourceCalls(), engineCalls = 0, visited = 0;</span>
+<span class="fc" id="L247">        long duration = plan.durationMillis();</span>
+<span class="fc" id="L248">        String stop = plan.stopReason();</span>
+        // The sequential engine records the first denied frontier query as an
+        // attempted batch, then drains later intents. Preserve that diagnostic
+        // and task state without dispatching a zero-allowance provider request.
+<span class="fc bfc" id="L252" title="All 2 branches covered.">        boolean deniedFrontier = Set.of(&quot;CALL_BUDGET&quot;, &quot;TOTAL_CALL_BUDGET&quot;, &quot;WORK_LIMIT&quot;).contains(schedule.pendingReason())</span>
+<span class="fc" id="L253">                &amp;&amp; schedule.results().values().stream().flatMap(r -&gt; r.result().unfinished().stream())</span>
+<span class="fc bfc" id="L254" title="All 2 branches covered.">                .noneMatch(u -&gt; Set.of(&quot;CALL_BUDGET&quot;, &quot;TOTAL_CALL_BUDGET&quot;, &quot;WORK_LIMIT&quot;).contains(u.reason()));</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">        for (Item item : plan.items()) {</span>
+<span class="fc" id="L256">            WorkResult completed = schedule.results().get(item.ordinal());</span>
+<span class="fc" id="L257">            Intent intent = intent(plan, item);</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">            if (completed == null) {</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">                if (previouslyCompleted.contains(List.of(intent.contribution().source().id(), item.targetRoot().code()))) continue;</span>
+<span class="fc" id="L260">                unfinished.add(new Unfinished(intent.contribution().source().id(), item.type(), item.direction(),</span>
+<span class="fc" id="L261">                        intent.roots().stream().map(Node::id).toList(), schedule.pendingReason(), &quot;&quot;,</span>
+<span class="fc" id="L262">                        RelationSearchEngine.contributionKey(intent.contribution(), item.type(), item.direction()), item.targetRoot().code()));</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">                if (deniedFrontier) {</span>
+<span class="fc" id="L264">                    engineCalls++; progress.finished(intent, false); deniedFrontier = false;</span>
+                }
+                continue;
+            }
+<span class="fc" id="L268">            Result result = completed.result();</span>
+<span class="fc" id="L269">            edges.addAll(result.edges()); trace.addAll(result.trace()); unfinished.addAll(result.unfinished());</span>
+<span class="fc" id="L270">            calls += completed.calls(); engineCalls += result.calls(); visited += result.visitedBatches();</span>
+<span class="fc" id="L271">            duration += result.durationMillis();</span>
+<span class="fc bfc" id="L272" title="All 4 branches covered.">            progress.finished(intent, completed.stopReason().isEmpty() &amp;&amp; result.searchExhausted());</span>
+<span class="fc" id="L273">            result.edges().forEach(progress::verified);</span>
+            // An earlier non-blocking assessment failure must never hide a later execution stop.
+<span class="fc bfc" id="L275" title="All 4 branches covered.">            if (!completed.stopReason().isEmpty() &amp;&amp; (stop.isEmpty()</span>
+<span class="pc bpc" id="L276" title="2 of 4 branches missed.">                    || !blocksFurtherWork(stop) &amp;&amp; blocksFurtherWork(completed.stopReason()))) stop = completed.stopReason();</span>
+<span class="fc" id="L277">        }</span>
+<span class="fc" id="L278">        progress.calls(calls);</span>
+<span class="fc" id="L279">        var sources = new LinkedHashMap&lt;String, SourceAssessment&gt;();</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        if (previous != null) {</span>
+<span class="fc" id="L281">            previous.sources().forEach(source -&gt; sources.put(source.node().id(), source));</span>
+<span class="fc" id="L282">            Set&lt;List&lt;String&gt;&gt; completedTasks = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L283">            Set&lt;String&gt; completedSources = new HashSet&lt;&gt;(), retainedLegacySources = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L284">            progress.tasks().forEach(task -&gt; completedSources.add(task.sourceId()));</span>
+<span class="fc" id="L285">            progress.tasks().forEach(task -&gt; {</span>
+<span class="fc bfc" id="L286" title="All 2 branches covered.">                if (task.state() == com.taxonomy.dto.RelationSearchProgress.State.COMPLETED)</span>
+<span class="fc" id="L287">                    completedTasks.add(List.of(task.sourceId(), task.targetRoot()));</span>
+<span class="fc" id="L288">                else completedSources.remove(task.sourceId());</span>
+<span class="fc" id="L289">            });</span>
+<span class="fc" id="L290">            unfinished = RequirementRelationSearch.retainedUnfinished(previous.result(),</span>
+<span class="fc" id="L291">                    new Result(List.copyOf(edges), unfinished, trace, engineCalls, visited, duration),</span>
+                    completedTasks, completedSources, retainedLegacySources);
+<span class="fc" id="L293">            progress.retainUnresolved(previous.tasks(), retainedLegacySources);</span>
+<span class="fc" id="L294">            var accepted = new LinkedHashSet&lt;&gt;(previous.result().edges()); accepted.addAll(edges); edges = accepted;</span>
+<span class="fc" id="L295">            var observations = new LinkedHashSet&lt;&gt;(previous.result().trace()); observations.addAll(trace); trace = List.copyOf(observations);</span>
+        }
+<span class="fc" id="L297">        plan.sources().forEach(source -&gt; sources.put(source.node().id(), source));</span>
+<span class="fc bfc" id="L298" title="All 6 branches covered.">        progress.finish(plan.warnings().isEmpty() &amp;&amp; stop.isEmpty() &amp;&amp; unfinished.isEmpty());</span>
+<span class="fc" id="L299">        var report = new RelationSearchReport(2, plan.originalSha256(),</span>
+                &quot;relation-downwalk-v2/complete-plan/resumable-exchanges&quot;,
+<span class="fc" id="L301">                List.copyOf(sources.values()), new Result(List.copyOf(edges), unfinished, trace, engineCalls, visited, duration),</span>
+<span class="fc" id="L302">                calls, plan.options().limits().maxCalls(), duration, plan.warnings(), stop,</span>
+<span class="fc" id="L303">                progress.snapshot(), progress.tasks());</span>
+<span class="fc bfc" id="L304" title="All 2 branches covered.">        return plan.options().budget() == null ? report : report.withBudget(</span>
+<span class="fc" id="L305">                plan.options().budget().usage(calls, plan.sources().size(), Math.max(0, calls - plan.sourceCalls())));</span>
+    }
+
+    /** Carry accepted findings across attempts without crediting the current plan for prior work or calls. */
+    public static RelationSearchReport retainAcceptedRelations(RelationSearchReport current, RelationSearchReport retained) {
+<span class="pc bpc" id="L310" title="1 of 2 branches missed.">        if (current == null) return retained;</span>
+<span class="fc bfc" id="L311" title="All 2 branches covered.">        if (retained == null) return current;</span>
+<span class="fc bfc" id="L312" title="All 2 branches covered.">        if (!current.originalSha256().equals(retained.originalSha256()))</span>
+<span class="fc" id="L313">            throw new IllegalArgumentException(&quot;Saved relation evidence belongs to another requirement&quot;);</span>
+<span class="fc" id="L314">        var edges = new LinkedHashSet&lt;Edge&gt;();</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">        retained.result().edges().stream().filter(edge -&gt; edge.evidence().outcome() == Outcome.VERIFIED).forEach(edges::add);</span>
+<span class="fc" id="L316">        edges.addAll(current.result().edges());</span>
+<span class="fc" id="L317">        var result = current.result();</span>
+<span class="fc" id="L318">        var progress = current.progress();</span>
+<span class="pc bpc" id="L319" title="1 of 2 branches missed.">        if (progress != null) progress = new com.taxonomy.dto.RelationSearchProgress(progress.totalSources(), progress.assessedSources(),</span>
+<span class="fc" id="L320">                progress.totalSearches(), progress.completedSearches(), progress.unresolvedSearches(), progress.pendingSearches(),</span>
+<span class="pc bpc" id="L321" title="1 of 2 branches missed.">                progress.calls(), progress.maxCalls(), (int) edges.stream().filter(edge -&gt; edge.evidence().outcome() == Outcome.VERIFIED).count(),</span>
+<span class="fc" id="L322">                progress.step(), progress.current(), progress.taxonomies(), progress.sourceTaxonomies());</span>
+<span class="fc" id="L323">        return new RelationSearchReport(current.schemaVersion(), current.originalSha256(), current.policy(), current.sources(),</span>
+<span class="fc" id="L324">                new Result(List.copyOf(edges), result.unfinished(), result.trace(), result.calls(), result.visitedBatches(), result.durationMillis()),</span>
+<span class="fc" id="L325">                current.totalCalls(), current.maxCalls(), current.durationMillis(), current.warnings(), current.stopReason(), progress,</span>
+<span class="fc" id="L326">                current.tasks(), current.budget()).withBudget(current.budget());</span>
+    }
+
+    static Intent intent(Plan plan, Item item) {
+<span class="fc" id="L330">        Contribution contribution = plan.sources().get(item.sourceIndex()).contributions().get(item.contributionIndex());</span>
+<span class="fc" id="L331">        Node root = plan.targetRoots().stream().filter(n -&gt; n.root().equals(item.targetRoot().code()))</span>
+<span class="pc" id="L332">                .findFirst().orElseThrow(() -&gt; new IllegalArgumentException(&quot;Missing prepared target root&quot;));</span>
+<span class="fc" id="L333">        return new Intent(contribution, item.type(), item.direction(), List.of(root));</span>
+    }
+
+    private static boolean blocksFurtherWork(String reason) {
+<span class="fc bfc" id="L337" title="All 4 branches covered.">        return !reason.isEmpty() &amp;&amp; !reason.equals(&quot;RELATION_EVALUATION_FAILED&quot;);</span>
+    }
+
+<span class="fc" id="L340">    private record Schedule(List&lt;Work&gt; ready, Map&lt;Integer, WorkResult&gt; results, String pendingReason) { }</span>
+
+    private static Schedule schedule(Plan plan, List&lt;WorkResult&gt; persisted) {
+<span class="fc" id="L343">        Objects.requireNonNull(plan); Objects.requireNonNull(persisted);</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        if (plan.inlineReport() != null) {</span>
+<span class="pc bpc" id="L345" title="1 of 2 branches missed.">            if (!persisted.isEmpty()) throw new IllegalArgumentException(&quot;Inline relations cannot also contain worker results&quot;);</span>
+<span class="fc" id="L346">            return new Schedule(List.of(), Map.of(), &quot;&quot;);</span>
+        }
+<span class="fc" id="L348">        Map&lt;Integer, WorkResult&gt; byOrdinal = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">        for (WorkResult result : persisted) {</span>
+<span class="fc" id="L350">            Work work = result.work();</span>
+<span class="pc bpc" id="L351" title="2 of 4 branches missed.">            if (!work.preparationId().equals(plan.preparationId()) || work.ordinal() &gt;= plan.items().size())</span>
+<span class="nc" id="L352">                throw new IllegalArgumentException(&quot;Foreign relation result&quot;);</span>
+<span class="fc" id="L353">            WorkResult previous = byOrdinal.putIfAbsent(work.ordinal(), result);</span>
+<span class="pc bpc" id="L354" title="3 of 4 branches missed.">            if (previous != null &amp;&amp; !previous.equals(result)) throw new IllegalArgumentException(&quot;Conflicting relation result&quot;);</span>
+<span class="fc" id="L355">        }</span>
+<span class="fc" id="L356">        Map&lt;Integer, WorkResult&gt; checked = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L357">        int calls = plan.options().limits().maxCalls() - plan.sourceCalls();</span>
+<span class="fc" id="L358">        int workItems = plan.options().limits().maxWorkItems();</span>
+        // Ordinals identify all intents, including free accepted replay. The
+        // configured work allowance is debited below by actual grant charges.
+<span class="fc" id="L361">        int taskLimit = Math.min(plan.items().size(), 100_000);</span>
+<span class="fc" id="L362">        int next = 0;</span>
+<span class="fc bfc" id="L363" title="All 2 branches covered.">        String reason = plan.stopReason().isEmpty() ? &quot;PENDING&quot; : &quot;INTERRUPTED&quot;;</span>
+<span class="fc" id="L364">        List&lt;Work&gt; ready = List.of();</span>
+<span class="pc bpc" id="L365" title="1 of 4 branches missed.">        while (next &lt; taskLimit &amp;&amp; plan.stopReason().isEmpty()) {</span>
+<span class="fc bfc" id="L366" title="All 6 branches covered.">            if (calls == 0 || workItems == 0) { reason = calls == 0 ? RequirementRelationSearch.callBudgetReason(plan.options()) : &quot;WORK_LIMIT&quot;; break; }</span>
+<span class="fc" id="L367">            int reserved = 0;</span>
+<span class="fc" id="L368">            List&lt;Work&gt; wave = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">            while (next &lt; taskLimit) {</span>
+<span class="fc" id="L370">                Item item = plan.items().get(next);</span>
+<span class="fc" id="L371">                int callQuota = Math.min(item.maxQueries(), calls - reserved);</span>
+<span class="fc" id="L372">                int workQuota = Math.min(item.maxQueries(), workItems - reserved);</span>
+<span class="fc" id="L373">                int quota = Math.min(callQuota, workQuota);</span>
+<span class="fc bfc" id="L374" title="All 6 branches covered.">                if (quota &lt; 1 || (!wave.isEmpty() &amp;&amp; quota &lt; item.maxQueries())) break;</span>
+<span class="fc" id="L375">                wave.add(new Work(plan.preparationId(), next++, item.targetRoot(), callQuota, workQuota));</span>
+<span class="fc" id="L376">                reserved += quota;</span>
+<span class="fc bfc" id="L377" title="All 2 branches covered.">                if (quota &lt; item.maxQueries()) break;</span>
+<span class="fc" id="L378">            }</span>
+<span class="fc" id="L379">            List&lt;Work&gt; missing = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L380">            boolean stopped = false;</span>
+<span class="fc bfc" id="L381" title="All 2 branches covered.">            for (Work grant : wave) {</span>
+<span class="fc" id="L382">                WorkResult result = byOrdinal.get(grant.ordinal());</span>
+<span class="fc bfc" id="L383" title="All 2 branches covered.">                if (result == null) { missing.add(grant); continue; }</span>
+<span class="fc bfc" id="L384" title="All 2 branches covered.">                if (!grant.equals(result.work())) throw new IllegalArgumentException(&quot;Result does not match its deterministic grant&quot;);</span>
+<span class="fc" id="L385">                validateEvidence(plan, result);</span>
+<span class="fc" id="L386">                checked.put(grant.ordinal(), result);</span>
+                // A settled branch failure consumes its allowance, not the right of
+                // independently admitted branches to finish. Unknown stop kinds remain conservative.
+<span class="fc" id="L389">                stopped |= blocksFurtherWork(result.stopReason());</span>
+<span class="fc" id="L390">            }</span>
+<span class="fc bfc" id="L391" title="All 2 branches covered.">            if (stopped) { reason = &quot;INTERRUPTED&quot;; break; }</span>
+<span class="fc bfc" id="L392" title="All 2 branches covered.">            if (!missing.isEmpty()) { ready = List.copyOf(missing); break; }</span>
+<span class="fc bfc" id="L393" title="All 2 branches covered.">            for (Work grant : wave) {</span>
+<span class="fc" id="L394">                int spent = byOrdinal.get(grant.ordinal()).calls(); calls -= spent; workItems -= spent;</span>
+<span class="fc" id="L395">            }</span>
+<span class="fc" id="L396">        }</span>
+<span class="pc bpc" id="L397" title="3 of 8 branches missed.">        if (ready.isEmpty() &amp;&amp; next == taskLimit &amp;&amp; taskLimit &lt; plan.items().size() &amp;&amp; reason.equals(&quot;PENDING&quot;))</span>
+<span class="nc" id="L398">            reason = &quot;WORK_LIMIT&quot;;</span>
+<span class="pc bpc" id="L399" title="1 of 2 branches missed.">        if (checked.size() != byOrdinal.size()) throw new IllegalArgumentException(&quot;Result precedes its admitted work wave&quot;);</span>
+<span class="fc" id="L400">        return new Schedule(ready, Map.copyOf(checked), reason);</span>
+    }
+
+    private static void validateEvidence(Plan plan, WorkResult result) {
+<span class="fc" id="L404">        Item item = plan.items().get(result.work().ordinal());</span>
+<span class="fc" id="L405">        Intent intent = intent(plan, item);</span>
+<span class="fc bfc" id="L406" title="All 2 branches covered.">        for (Edge edge : result.result().edges()) {</span>
+<span class="pc bpc" id="L407" title="2 of 4 branches missed.">            if (!edge.contribution().equals(intent.contribution()) || !edge.type().equals(item.type())</span>
+<span class="pc bpc" id="L408" title="2 of 4 branches missed.">                    || edge.direction() != item.direction() || !edge.target().root().equals(item.targetRoot().code())</span>
+<span class="pc bpc" id="L409" title="1 of 2 branches missed.">                    || edge.evidence().outcome() != Outcome.VERIFIED)</span>
+<span class="nc" id="L410">                throw new IllegalArgumentException(&quot;Foreign relation evidence&quot;);</span>
+<span class="fc" id="L411">        }</span>
+<span class="fc bfc" id="L412" title="All 2 branches covered.">        for (Trace trace : result.result().trace()) {</span>
+<span class="pc bpc" id="L413" title="2 of 4 branches missed.">            if (!trace.sourceId().equals(intent.contribution().source().id()) || !trace.type().equals(item.type())</span>
+<span class="pc bpc" id="L414" title="1 of 2 branches missed.">                    || trace.direction() != item.direction()) throw new IllegalArgumentException(&quot;Foreign relation trace&quot;);</span>
+<span class="fc" id="L415">        }</span>
+<span class="fc bfc" id="L416" title="All 2 branches covered.">        for (Unfinished unfinished : result.result().unfinished()) {</span>
+<span class="pc bpc" id="L417" title="2 of 4 branches missed.">            if (!unfinished.sourceId().equals(intent.contribution().source().id()) || !unfinished.type().equals(item.type())</span>
+<span class="pc bpc" id="L418" title="1 of 2 branches missed.">                    || unfinished.direction() != item.direction()) throw new IllegalArgumentException(&quot;Foreign unfinished relation&quot;);</span>
+<span class="fc" id="L419">        }</span>
+<span class="fc" id="L420">    }</span>
+
+    private static void required(String value) {
+<span class="pc bpc" id="L423" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) throw new IllegalArgumentException(&quot;Missing relation preparation identity&quot;);</span>
+<span class="fc" id="L424">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

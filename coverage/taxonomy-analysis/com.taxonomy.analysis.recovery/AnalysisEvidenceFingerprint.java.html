@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisEvidenceFingerprint.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.recovery</a> &gt; <span class="el_source">AnalysisEvidenceFingerprint.java</span></div><h1>AnalysisEvidenceFingerprint.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.recovery;
+
+import tools.jackson.databind.ObjectMapper;
+
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.Objects;
+
+/** Existing four-byte UTF-8-length-framed SHA identities, without unbounded temporary buffers. */
+final class AnalysisEvidenceFingerprint {
+    private static final int SMALL_STRING_CHARACTERS = 16_384;
+    private static final int BUFFER_BYTES = 8_192;
+
+    private AnalysisEvidenceFingerprint() { }
+
+    static String digest(String... values) {
+<span class="fc" id="L28">        var framed = new FramedDigest();</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">        for (String value : values) framed.string(value);</span>
+<span class="fc" id="L30">        return framed.finish();</span>
+    }
+
+    static String digestJson(ObjectMapper mapper, Object value) {
+<span class="fc" id="L34">        return digestJson(mapper, new String[0], value);</span>
+    }
+
+    static String digestJson(ObjectMapper mapper, String[] before, Object value, String... after) {
+<span class="fc" id="L38">        var framed = new FramedDigest();</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        for (String part : before) framed.string(part);</span>
+<span class="fc" id="L40">        framed.json(mapper, value);</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        for (String part : after) framed.string(part);</span>
+<span class="fc" id="L42">        return framed.finish();</span>
+    }
+
+    private static final class FramedDigest {
+        private final MessageDigest digest;
+        private CharsetEncoder encoder;
+        private ByteBuffer encoded;
+
+<span class="fc" id="L50">        private FramedDigest() {</span>
+<span class="fc" id="L51">            try { digest = MessageDigest.getInstance(&quot;SHA-256&quot;); }</span>
+<span class="pc" id="L52">            catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+<span class="fc" id="L53">        }</span>
+
+        private void prefix(int bytes) {
+<span class="fc" id="L56">            digest.update((byte) (bytes &gt;&gt;&gt; 24));</span>
+<span class="fc" id="L57">            digest.update((byte) (bytes &gt;&gt;&gt; 16));</span>
+<span class="fc" id="L58">            digest.update((byte) (bytes &gt;&gt;&gt; 8));</span>
+<span class="fc" id="L59">            digest.update((byte) bytes);</span>
+<span class="fc" id="L60">        }</span>
+
+        private void string(String nullable) {
+<span class="fc" id="L63">            String value = Objects.toString(nullable, &quot;&quot;);</span>
+            // Keep ordinary provider prompts on the existing, cheaper small-array path.
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            if (value.length() &lt;= SMALL_STRING_CHARACTERS) {</span>
+<span class="fc" id="L66">                byte[] bytes = value.getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L67">                prefix(bytes.length);</span>
+<span class="fc" id="L68">                digest.update(bytes);</span>
+<span class="fc" id="L69">                return;</span>
+            }
+<span class="fc" id="L71">            prefix(utf8Length(value));</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            if (encoder == null) {</span>
+<span class="fc" id="L73">                encoder = StandardCharsets.UTF_8.newEncoder()</span>
+<span class="fc" id="L74">                        .onMalformedInput(CodingErrorAction.REPLACE)</span>
+<span class="fc" id="L75">                        .onUnmappableCharacter(CodingErrorAction.REPLACE);</span>
+<span class="fc" id="L76">                encoded = ByteBuffer.allocate(BUFFER_BYTES);</span>
+            }
+            // Reset at every frame: an unmatched high surrogate must become '?' in this frame,
+            // never pair with the first character of the following frame.
+<span class="fc" id="L80">            encoder.reset();</span>
+<span class="fc" id="L81">            var input = CharBuffer.wrap(value);</span>
+            while (true) {
+<span class="fc" id="L83">                var result = encoder.encode(input, encoded, true);</span>
+<span class="fc" id="L84">                drain();</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                if (result.isUnderflow()) break;</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">                if (result.isError()) throw new IllegalStateException(&quot;UTF-8 replacement encoding failed&quot;);</span>
+<span class="fc" id="L87">            }</span>
+            while (true) {
+<span class="fc" id="L89">                var result = encoder.flush(encoded);</span>
+<span class="fc" id="L90">                drain();</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">                if (result.isUnderflow()) break;</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">                if (result.isError()) throw new IllegalStateException(&quot;UTF-8 replacement encoding failed&quot;);</span>
+<span class="nc" id="L93">            }</span>
+<span class="fc" id="L94">        }</span>
+
+        private void drain() {
+<span class="fc" id="L97">            digest.update(encoded.array(), 0, encoded.position());</span>
+<span class="fc" id="L98">            encoded.clear();</span>
+<span class="fc" id="L99">        }</span>
+
+        private void json(ObjectMapper mapper, Object value) {
+            // The length precedes the bytes in the established durable identity. Serialize the
+            // same stable evidence twice using the caller's mapper and character generator;
+            // neither pass creates the full JSON String or changes UTF-8 replacement semantics.
+<span class="fc" id="L105">            var count = new JsonSink(null);</span>
+<span class="fc" id="L106">            writeJson(mapper, value, count);</span>
+<span class="fc" id="L107">            prefix(Math.toIntExact(count.bytes));</span>
+<span class="fc" id="L108">            var hash = new JsonSink(digest);</span>
+<span class="fc" id="L109">            writeJson(mapper, value, hash);</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">            if (hash.bytes != count.bytes)</span>
+<span class="nc" id="L111">                throw new IllegalStateException(&quot;Evidence JSON changed length while fingerprinting&quot;);</span>
+<span class="fc" id="L112">        }</span>
+
+<span class="fc" id="L114">        private String finish() { return HexFormat.of().formatHex(digest.digest()); }</span>
+    }
+
+    private static int utf8Length(String value) {
+<span class="fc" id="L118">        int bytes = 0;</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        for (int i = 0; i &lt; value.length(); i++) {</span>
+<span class="fc" id="L120">            char character = value.charAt(i);</span>
+            int width;
+<span class="fc bfc" id="L122" title="All 2 branches covered.">            if (character &lt; 0x80) width = 1;</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            else if (character &lt; 0x800) width = 2;</span>
+<span class="fc bfc" id="L124" title="All 4 branches covered.">            else if (Character.isHighSurrogate(character) &amp;&amp; i + 1 &lt; value.length()</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">                    &amp;&amp; Character.isLowSurrogate(value.charAt(i + 1))) { width = 4; i++; }</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            else width = Character.isSurrogate(character) ? 1 : 3;</span>
+<span class="fc" id="L127">            bytes = Math.addExact(bytes, width);</span>
+        }
+<span class="fc" id="L129">        return bytes;</span>
+    }
+
+    private static void writeJson(ObjectMapper mapper, Object value, JsonSink sink) {
+        // Buffer characters as well as bytes: OutputStreamWriter.write(String) alone may allocate
+        // a temporary char[] proportional to a single large catalogue field.
+<span class="fc" id="L135">        try (Writer output = new BufferedWriter(new OutputStreamWriter(sink, StandardCharsets.UTF_8), BUFFER_BYTES)) {</span>
+<span class="fc" id="L136">            mapper.writeValue(output, value);</span>
+<span class="nc" id="L137">        } catch (IOException impossible) {</span>
+<span class="nc" id="L138">            throw new IllegalStateException(&quot;Could not fingerprint evidence JSON&quot;, impossible);</span>
+<span class="fc" id="L139">        }</span>
+<span class="fc" id="L140">    }</span>
+
+    private static final class JsonSink extends OutputStream {
+        private final MessageDigest digest;
+        private long bytes;
+<span class="fc" id="L145">        private JsonSink(MessageDigest digest) { this.digest = digest; }</span>
+        @Override public void write(int value) {
+<span class="nc" id="L147">            bytes++;</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">            if (digest != null) digest.update((byte) value);</span>
+<span class="nc" id="L149">        }</span>
+        @Override public void write(byte[] values, int offset, int length) {
+<span class="fc" id="L151">            bytes += length;</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            if (digest != null) digest.update(values, offset, length);</span>
+<span class="fc" id="L153">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

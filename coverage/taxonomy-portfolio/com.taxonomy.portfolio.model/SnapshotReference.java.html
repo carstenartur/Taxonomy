@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SnapshotReference.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.model</a> &gt; <span class="el_source">SnapshotReference.java</span></div><h1>SnapshotReference.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.model;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import org.hibernate.annotations.Immutable;
+
+/**
+ * Read-only identity of an existing snapshot, not a second stored artifact.
+ *
+ * &lt;p&gt;Composite-key associations may require a unique-key lookup even when lazy.
+ * Metadata owners use this payload-free view so those lookups cannot hydrate the
+ * immutable evidence CLOBs. Full evidence remains owned by
+ * {@link RequirementAnalysisSnapshot} on the same physical table.&lt;/p&gt;
+ */
+@Entity
+@Immutable
+@Table(name = &quot;req_analysis_snapshot&quot;)
+public class SnapshotReference {
+    @Id
+    @Column(length = 36)
+    private String id;
+
+    @Column(name = &quot;scope_key&quot;, nullable = false,
+            length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
+    private String scopeKey;
+
+    @Column(name = &quot;project_id&quot;, nullable = false)
+    private Long projectId;
+
+    @Column(name = &quot;requirement_id&quot;, nullable = false)
+    private Long requirementId;
+
+    @Column(name = &quot;requirement_version_id&quot;, nullable = false)
+    private Long requirementVersionId;
+
+    @Column(name = &quot;job_id&quot;, nullable = false)
+    private String jobId;
+
+<span class="fc" id="L41">    protected SnapshotReference() { }</span>
+
+<span class="fc" id="L43">    public String getId() { return id; }</span>
+<span class="fc" id="L44">    public String getScopeKey() { return scopeKey; }</span>
+<span class="fc" id="L45">    public Long getProjectId() { return projectId; }</span>
+<span class="fc" id="L46">    public Long getRequirementId() { return requirementId; }</span>
+<span class="fc" id="L47">    public Long getRequirementVersionId() { return requirementVersionId; }</span>
+<span class="fc" id="L48">    public String getJobId() { return jobId; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

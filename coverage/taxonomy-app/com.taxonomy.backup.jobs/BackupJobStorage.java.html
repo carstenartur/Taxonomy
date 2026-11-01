@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupJobStorage.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.jobs</a> &gt; <span class="el_source">BackupJobStorage.java</span></div><h1>BackupJobStorage.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.jobs;
+
+import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.*;
+import java.nio.file.attribute.*;
+import java.security.*;
+import java.util.*;
+
+/** A configured application-private volume, shared by all application instances that serve these jobs. */
+public final class BackupJobStorage {
+    private final Path root;
+<span class="fc" id="L14">    public BackupJobStorage(Path root) throws IOException {</span>
+<span class="fc" id="L15">        this.root = root.toAbsolutePath().normalize();</span>
+<span class="fc" id="L16">        createPrivateDirectory(this.root);</span>
+<span class="fc" id="L17">        requireDirectory(this.root);</span>
+<span class="fc" id="L18">    }</span>
+    public Path workDirectory(BackupJobClaim claim) throws IOException {
+<span class="fc" id="L20">        Path path = directory(claim.artifactName()); createPrivateDirectory(path); requireDirectory(path); return path;</span>
+    }
+<span class="fc" id="L22">    public Path archiveTarget(BackupJobClaim claim) throws IOException { return workDirectory(claim).resolve(&quot;archive.taxbackup&quot;); }</span>
+    public Path artifactPath(BackupArtifact artifact) throws IOException {
+<span class="fc" id="L24">        Path parent = directory(artifact.name()); requireDirectory(parent); return parent.resolve(&quot;archive.taxbackup&quot;);</span>
+    }
+    public void discard(String name) throws IOException {
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">        if (name == null) return;</span>
+<span class="fc" id="L28">        Path path = directory(name);</span>
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return;</span>
+        // walkFileTree does not follow symlinks, including a replaced root.
+<span class="fc" id="L31">        Files.walkFileTree(path, new SimpleFileVisitor&lt;&gt;() {</span>
+<span class="fc" id="L32">            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException { Files.delete(file); return FileVisitResult.CONTINUE; }</span>
+            public FileVisitResult postVisitDirectory(Path directory, IOException failure) throws IOException {
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">                if (failure != null) throw failure; Files.delete(directory); return FileVisitResult.CONTINUE;</span>
+            }
+        });
+<span class="fc" id="L37">    }</span>
+    public Download open(BackupArtifact receipt, String filename, Runnable accessCheck) throws IOException {
+<span class="fc" id="L39">        Path path = artifactPath(receipt);</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) throw new IOException(&quot;Backup artifact is unavailable&quot;);</span>
+<span class="fc" id="L41">        var channel = FileChannel.open(path, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);</span>
+<span class="fc" id="L42">        boolean accepted = false;</span>
+        try {
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">            if (channel.size() != receipt.length()) throw new IOException(&quot;Backup artifact verification failed&quot;);</span>
+<span class="fc" id="L45">            var digest = sha256(); var buffer = ByteBuffer.allocate(65536); long count = 0, checked = 0;</span>
+<span class="fc" id="L46">            accessCheck.run();</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">            for (int n; (n = channel.read(buffer)) != -1;) {</span>
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">                if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException(&quot;Backup download cancelled&quot;);</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">                if (n &gt; receipt.length() - count) throw new IOException(&quot;Backup artifact verification failed&quot;);</span>
+<span class="fc" id="L50">                count += n; buffer.flip(); digest.update(buffer); buffer.clear();</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">                if (count - checked &gt;= 4L &lt;&lt; 20) { accessCheck.run(); checked = count; }</span>
+            }
+<span class="pc bpc" id="L53" title="1 of 4 branches missed.">            if (count != receipt.length() || !HexFormat.of().formatHex(digest.digest()).equals(receipt.sha256()))</span>
+<span class="fc" id="L54">                throw new IOException(&quot;Backup artifact verification failed&quot;);</span>
+<span class="fc" id="L55">            accessCheck.run(); channel.position(0); accepted = true;</span>
+<span class="fc" id="L56">            return new Download(channel, receipt, filename, accessCheck);</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        } finally { if (!accepted) channel.close(); }</span>
+    }
+    private Path directory(String name) throws IOException {
+        // Apply the same strict generated-name contract on recovery paths as on artifact receipts.
+<span class="fc" id="L61">        new BackupArtifact(name, 1, &quot;0&quot;.repeat(64), false);</span>
+<span class="fc" id="L62">        requireDirectory(root); return root.resolve(name);</span>
+    }
+    private static void requireDirectory(Path directory) throws IOException {
+<span class="pc bpc" id="L65" title="2 of 4 branches missed.">        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS) || !directory.toRealPath().equals(directory))</span>
+<span class="nc" id="L66">            throw new IOException(&quot;Backup storage is unavailable&quot;);</span>
+<span class="fc" id="L67">    }</span>
+    private static void createPrivateDirectory(Path path) throws IOException {
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (path.getFileSystem().supportedFileAttributeViews().contains(&quot;posix&quot;))</span>
+<span class="fc" id="L70">            Files.createDirectories(path, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString(&quot;rwx------&quot;)));</span>
+<span class="nc" id="L71">        else Files.createDirectories(path);</span>
+<span class="fc" id="L72">    }</span>
+    private static MessageDigest sha256() {
+<span class="pc" id="L74">        try { return MessageDigest.getInstance(&quot;SHA-256&quot;); } catch (NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }</span>
+    }
+    /** Owns the same descriptor that was verified; no path is returned to the HTTP layer. */
+    public static final class Download implements AutoCloseable {
+        private final FileChannel channel;
+        private final BackupArtifact receipt;
+        private final String filename;
+        private final Runnable accessCheck;
+        private boolean consumed;
+<span class="fc" id="L83">        Download(FileChannel channel, BackupArtifact receipt, String filename, Runnable accessCheck) {</span>
+<span class="fc" id="L84">            this.channel = channel; this.receipt = receipt; this.filename = filename; this.accessCheck = accessCheck;</span>
+<span class="fc" id="L85">        }</span>
+<span class="fc" id="L86">        public long length() { return receipt.length(); }</span>
+<span class="fc" id="L87">        public String filename() { return filename; }</span>
+        public void writeTo(OutputStream output) throws IOException {
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">            if (consumed) throw new IOException(&quot;Backup download was already consumed&quot;); consumed = true;</span>
+<span class="fc" id="L90">            accessCheck.run(); var buffer = ByteBuffer.allocate(65536); var digest = sha256(); long count = 0, checked = 0, checkedAt = System.nanoTime();</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">            for (int n; (n = channel.read(buffer)) != -1;) {</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">                if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException(&quot;Backup download cancelled&quot;);</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">                if (n &gt; receipt.length() - count) throw new IOException(&quot;Backup artifact changed&quot;);</span>
+<span class="fc" id="L94">                count += n;</span>
+<span class="pc bpc" id="L95" title="2 of 4 branches missed.">                if (count - checked &gt;= 4L &lt;&lt; 20 || System.nanoTime() - checkedAt &gt;= 250_000_000) {</span>
+<span class="nc" id="L96">                    accessCheck.run(); checked = count; checkedAt = System.nanoTime();</span>
+                }
+<span class="fc" id="L98">                digest.update(buffer.array(), 0, n); output.write(buffer.array(), 0, n); buffer.clear();</span>
+            }
+<span class="fc" id="L100">            accessCheck.run();</span>
+<span class="pc bpc" id="L101" title="2 of 4 branches missed.">            if (count != receipt.length() || !HexFormat.of().formatHex(digest.digest()).equals(receipt.sha256())) throw new IOException(&quot;Backup artifact changed&quot;);</span>
+<span class="fc" id="L102">        }</span>
+<span class="fc" id="L103">        @Override public void close() throws IOException { channel.close(); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

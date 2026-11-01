@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioHyperlinks.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.visio</a> &gt; <span class="el_source">VisioHyperlinks.java</span></div><h1>VisioHyperlinks.java</h1><pre class="source lang-java linenums">package com.taxonomy.visio;
+
+import java.net.URI;
+
+/** The only external native link allowed by the export profile. Never evaluated as a formula. */
+public final class VisioHyperlinks {
+    private VisioHyperlinks() { }
+
+    public static void validateRequirementUrl(VisioProperty value) {
+        try {
+<span class="fc" id="L11">            URI uri = URI.create(value.value());</span>
+<span class="pc bpc" id="L12" title="1 of 4 branches missed.">            if (value.kind() != VisioProperty.Kind.STRING || !uri.isAbsolute()</span>
+<span class="pc bpc" id="L13" title="1 of 4 branches missed.">                    || !(&quot;https&quot;.equalsIgnoreCase(uri.getScheme()) || &quot;http&quot;.equalsIgnoreCase(uri.getScheme()))</span>
+<span class="pc bpc" id="L14" title="1 of 6 branches missed.">                    || uri.getHost() == null || uri.getRawUserInfo() != null || uri.getRawQuery() != null</span>
+<span class="fc bfc" id="L15" title="All 4 branches covered.">                    || uri.getRawFragment() != null || !uri.normalize().equals(uri)</span>
+<span class="pc bpc" id="L16" title="3 of 6 branches missed.">                    || value.value().codePoints().anyMatch(c -&gt; Character.isISOControl(c) || Character.isWhitespace(c))) {</span>
+<span class="fc" id="L17">                throw new IllegalArgumentException(&quot;Unsafe Visio requirement URL&quot;);</span>
+            }
+<span class="fc" id="L19">        } catch (IllegalArgumentException exception) {</span>
+<span class="fc" id="L20">            throw new IllegalArgumentException(&quot;Unsafe Visio requirement URL&quot;, exception);</span>
+<span class="fc" id="L21">        }</span>
+<span class="fc" id="L22">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

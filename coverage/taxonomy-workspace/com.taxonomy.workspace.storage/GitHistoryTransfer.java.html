@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitHistoryTransfer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.storage</a> &gt; <span class="el_source">GitHistoryTransfer.java</span></div><h1>GitHistoryTransfer.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.storage;
+
+import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.revwalk.ObjectWalk;
+import org.eclipse.jgit.revwalk.RevObject;
+
+import java.io.IOException;
+import java.util.List;
+
+/** Copies a captured commit closure using public JGit APIs, without creating any acceptance ref. */
+public final class GitHistoryTransfer {
+    private static final int MAX_OBJECTS = 1_000_000;
+    private static final long MAX_BYTES = 1024L * 1024 * 1024;
+    private GitHistoryTransfer() {}
+
+    /** Accepted heads must be captured from the destination before import; staging refs are never trust boundaries. */
+    public static long copyCommitClosure(DslGitRepository source, DslGitRepository destination,
+                                         String commit, List&lt;String&gt; acceptedHeads) throws IOException {
+<span class="fc" id="L19">        ObjectId selected = ObjectId.fromString(commit);</span>
+<span class="fc" id="L20">        List&lt;String&gt; accepted = List.copyOf(acceptedHeads);</span>
+<span class="fc" id="L21">        Repository from = source.getGitRepository(), to = destination.getGitRepository();</span>
+<span class="fc" id="L22">        long[] budget = {0, 0};</span>
+        // The same public object APIs support Hibernate-backed and explicit in-memory repositories.
+<span class="fc" id="L24">        synchronized (to) {</span>
+<span class="fc" id="L25">            try (ObjectWalk walk = new ObjectWalk(from); ObjectReader reader = from.newObjectReader(); ObjectInserter writer = to.newObjectInserter()) {</span>
+<span class="fc" id="L26">                walk.markStart(walk.parseCommit(selected));</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">                for (String head : accepted) {</span>
+<span class="fc" id="L28">                    ObjectId id = ObjectId.fromString(head);</span>
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">                    if (!to.getObjectDatabase().has(id)) throw new IOException(&quot;Captured acceptance boundary is unavailable&quot;);</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">                    if (from.getObjectDatabase().has(id)) walk.markUninteresting(walk.parseCommit(id));</span>
+<span class="fc" id="L31">                }</span>
+                RevObject object;
+<span class="fc bfc" id="L33" title="All 2 branches covered.">                while ((object = walk.next()) != null) copy(reader, writer, to, object, budget);</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">                while ((object = walk.nextObject()) != null) copy(reader, writer, to, object, budget);</span>
+<span class="fc" id="L35">                writer.flush();</span>
+            }
+<span class="fc" id="L37">        }</span>
+        // Check every newly introduced ancestor, including all sides of merges, under destination policy.
+<span class="fc" id="L39">        destination.verifyIncomingFromAcceptedHeads(commit, accepted);</span>
+<span class="fc" id="L40">        return budget[1];</span>
+    }
+
+    private static void copy(ObjectReader reader, ObjectInserter writer, Repository destination, RevObject object, long[] budget) throws IOException {
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">        if (++budget[0] &gt; MAX_OBJECTS) throw new IOException(&quot;History transfer exceeds the object budget&quot;);</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        if (destination.getObjectDatabase().has(object)) return;</span>
+<span class="fc" id="L46">        ObjectLoader loader = reader.open(object);</span>
+<span class="pc bpc" id="L47" title="2 of 4 branches missed.">        if (loader.getSize() &gt; 64L * 1024 * 1024 || budget[1] + loader.getSize() &gt; MAX_BYTES)</span>
+<span class="nc" id="L48">            throw new IOException(&quot;History transfer exceeds the byte budget&quot;);</span>
+<span class="fc" id="L49">        try (ObjectStream stream = loader.openStream()) {</span>
+<span class="fc" id="L50">            ObjectId copied = writer.insert(loader.getType(), loader.getSize(), stream);</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">            if (!copied.equals(object)) throw new IOException(&quot;Transferred Git object identity mismatch&quot;);</span>
+        }
+<span class="fc" id="L53">        budget[1] += loader.getSize();</span>
+<span class="fc" id="L54">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

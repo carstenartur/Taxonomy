@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioWorkingViewMetadata.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export.service</a> &gt; <span class="el_source">VisioWorkingViewMetadata.java</span></div><h1>VisioWorkingViewMetadata.java</h1><pre class="source lang-java linenums">package com.taxonomy.export.service;
+
+import com.taxonomy.visio.VisioProperty;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.info.BuildProperties;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+
+import java.time.Clock;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+
+/** Server export identity for unsaved source; independent of optional application features. */
+@Component
+public final class VisioWorkingViewMetadata {
+    private final BuildProperties buildProperties;
+    private final String fallbackVersion;
+    private final Clock clock;
+
+    @Autowired
+    public VisioWorkingViewMetadata(ObjectProvider&lt;BuildProperties&gt; buildProperties,
+            @Value(&quot;${app.display-version:${info.app.version:unknown}}&quot;) String fallbackVersion) {
+<span class="fc" id="L27">        this(buildProperties.getIfAvailable(), fallbackVersion, Clock.systemUTC());</span>
+<span class="fc" id="L28">    }</span>
+
+    /** Explicit clock makes a given working-view export context reproducible. */
+<span class="fc" id="L31">    public VisioWorkingViewMetadata(BuildProperties buildProperties, String fallbackVersion, Clock clock) {</span>
+<span class="fc" id="L32">        this.buildProperties = buildProperties;</span>
+<span class="fc" id="L33">        this.fallbackVersion = normalized(fallbackVersion, &quot;unknown&quot;);</span>
+<span class="fc" id="L34">        this.clock = Objects.requireNonNull(clock, &quot;export clock&quot;);</span>
+<span class="fc" id="L35">    }</span>
+
+    static Map&lt;String, VisioProperty&gt; document(String originalText, VisioWorkingViewMetadata context) {
+<span class="fc" id="L38">        var properties = new LinkedHashMap&lt;String, VisioProperty&gt;();</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        if (context != null) {</span>
+<span class="fc" id="L40">            properties.put(&quot;taxonomy.generatorName&quot;, VisioProperty.text(&quot;Taxonomy Architecture Analyzer&quot;));</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">            properties.put(&quot;taxonomy.generatorVersion&quot;, VisioProperty.text(context.buildProperties == null</span>
+<span class="fc" id="L42">                    ? context.fallbackVersion : normalized(context.buildProperties.getVersion(), context.fallbackVersion)));</span>
+<span class="fc" id="L43">            properties.put(&quot;taxonomy.exportedAt&quot;, VisioProperty.text(context.clock.instant()));</span>
+<span class="fc" id="L44">            var authentication = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="pc bpc" id="L45" title="1 of 6 branches missed.">            if (authentication != null &amp;&amp; authentication.isAuthenticated()</span>
+                    &amp;&amp; !(authentication instanceof AnonymousAuthenticationToken)
+<span class="pc bpc" id="L47" title="2 of 4 branches missed.">                    &amp;&amp; authentication.getName() != null &amp;&amp; !authentication.getName().isBlank()) {</span>
+<span class="fc" id="L48">                properties.put(&quot;taxonomy.exportedBy&quot;, VisioProperty.text(authentication.getName().strip()));</span>
+            }
+        }
+        // An operator public base cannot establish an editing target for unsaved client data.
+<span class="fc" id="L52">        properties.put(&quot;taxonomy.requirementUrlStatus&quot;, VisioProperty.text(</span>
+                &quot;Unavailable: this working view has no saved requirement editing target.&quot;));
+<span class="fc" id="L54">        properties.put(&quot;taxonomy.requirementTextProvenance&quot;, VisioProperty.text(</span>
+                &quot;Client-provided working source; no saved requirement version authority.&quot;));
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        if (originalText != null) properties.put(&quot;taxonomy.requirementText&quot;, VisioProperty.text(originalText));</span>
+<span class="fc" id="L57">        return properties;</span>
+    }
+
+    private static String normalized(String value, String fallback) {
+<span class="pc bpc" id="L61" title="2 of 4 branches missed.">        return value == null || value.isBlank() ? fallback : value.strip();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

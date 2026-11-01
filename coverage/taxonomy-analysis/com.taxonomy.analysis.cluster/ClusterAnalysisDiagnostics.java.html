@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ClusterAnalysisDiagnostics.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">ClusterAnalysisDiagnostics.java</span></div><h1>ClusterAnalysisDiagnostics.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import com.taxonomy.analysis.dag.*;
+import com.taxonomy.analysis.service.*;
+import com.taxonomy.dto.LlmCallDetail;
+import jakarta.persistence.EntityManager;
+import org.springframework.http.HttpStatus;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+/** Analysis-owned diagnostics. Every admission commits independently before transport is allowed to run. */
+public final class ClusterAnalysisDiagnostics {
+    // One operation can spend up to 10,000 relation evaluations plus its node
+    // assessments. Diagnostics must accommodate that funded execution while
+    // retaining independent record, per-call retry and text bounds.
+    public static final int MAX_CALLS = 16_384, MAX_ATTEMPTS = 65_536, MAX_ATTEMPTS_PER_CALL = 32, MAX_TEXT = 8192;
+<span class="fc" id="L22">    private static final LlmTransportMeter.Usage UNKNOWN = new LlmTransportMeter.Usage(null, null, null, null, null, false);</span>
+    private final EntityManager em;
+    private final TransactionTemplate tx;
+    private final ObjectMapper json;
+    private final ClusterAnalysisStore store;
+
+<span class="fc" id="L28">    ClusterAnalysisDiagnostics(EntityManager em, PlatformTransactionManager transactions, ObjectMapper json, ClusterAnalysisStore store) {</span>
+<span class="fc" id="L29">        this.em = Objects.requireNonNull(em); this.json = Objects.requireNonNull(json); this.store = Objects.requireNonNull(store);</span>
+<span class="fc" id="L30">        this.tx = new TransactionTemplate(transactions);</span>
+<span class="fc" id="L31">        tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);</span>
+<span class="fc" id="L32">    }</span>
+
+    public Session session(AnalysisTaskMessage task) {
+<span class="fc" id="L35">        return tx.execute(status -&gt; { store.diagnosticAuthority(task, null); int delivery = store.diagnosticDelivery(task);</span>
+<span class="fc" id="L36">            store.diagnosticAuthority(task, delivery); return new Session(task, delivery); });</span>
+    }
+    public Session session(AnalysisTaskMessage task, int deliveryAttempt) {
+<span class="fc" id="L39">        return tx.execute(status -&gt; { store.diagnosticAuthority(task, deliveryAttempt); return new Session(task, deliveryAttempt); });</span>
+    }
+
+    public record Summaries(List&lt;AnalysisProgressRegistry.CallView&gt; calls, long omitted) {
+<span class="fc" id="L43">        public Summaries { calls = List.copyOf(calls); }</span>
+    }
+<span class="fc" id="L45">    public Summaries summaries(AnalysisOperationContext context) { return summaries(context, Long.MAX_VALUE); }</span>
+    /** Scalar projection avoids loading prompt/response columns into ordinary progress or SSE. */
+    public Summaries summaries(AnalysisOperationContext context, long revision) {
+<span class="fc" id="L48">        return tx.execute(status -&gt; {</span>
+<span class="fc" id="L49">            store.command(context);</span>
+<span class="fc" id="L50">            var rows = em.createQuery(&quot;select c.callNumber,c.provider,c.node,c.state,c.startedAt,c.durationMillis from ClusterAnalysisCall c where c.operationId=:run and c.eventRevision&lt;=:revision order by c.callNumber desc&quot;, Object[].class)</span>
+<span class="fc" id="L51">                    .setParameter(&quot;run&quot;, context.operationId()).setParameter(&quot;revision&quot;, revision).setMaxResults(MAX_CALLS).getResultList();</span>
+<span class="fc" id="L52">            var calls = rows.stream().limit(32).map(r -&gt; new AnalysisProgressRegistry.CallView((Long) r[0], (String) r[1], (String) r[2], (String) r[3], (Long) r[4], (Long) r[5])).toList().reversed();</span>
+<span class="fc" id="L53">            return new Summaries(calls, Math.max(0, rows.size() - calls.size()));</span>
+        });
+    }
+    /** Caller must first authorize owner/workspace through ClusterAnalysisObservation. */
+    public AnalysisProgressRegistry.CallDetail detail(AnalysisOperationContext context, long callNumber) {
+<span class="fc" id="L58">        return tx.execute(status -&gt; {</span>
+<span class="fc" id="L59">            store.command(context);</span>
+<span class="fc" id="L60">            var call = em.find(ClusterAnalysisCall.class, callKey(context.operationId(), callNumber));</span>
+<span class="pc bpc" id="L61" title="2 of 6 branches missed.">            if (call == null || !call.operationId.equals(context.operationId()) || call.callNumber != callNumber</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">                    || !store.diagnosticTask(context, call.taskId)) throw notFound();</span>
+<span class="fc" id="L63">            var attempts = em.createQuery(&quot;select a from ClusterAnalysisAttempt a where a.operationId=:run and a.callId=:call order by a.startedAt,a.retryIndex,a.id&quot;, ClusterAnalysisAttempt.class)</span>
+<span class="fc" id="L64">                    .setParameter(&quot;run&quot;, context.operationId()).setParameter(&quot;call&quot;, call.id).setMaxResults(MAX_ATTEMPTS_PER_CALL).getResultList()</span>
+<span class="fc" id="L65">                    .stream().map(this::view).toList();</span>
+<span class="fc" id="L66">            return new AnalysisProgressRegistry.CallDetail(Objects.toString(call.prompt, &quot;&quot;), Objects.toString(call.response, &quot;&quot;),</span>
+<span class="pc bpc" id="L67" title="1 of 4 branches missed.">                    call.promptLength &gt; length(call.prompt) || call.responseLength &gt; length(call.response), Objects.toString(call.error, &quot;&quot;),</span>
+<span class="fc" id="L68">                    call.promptLength, call.responseLength, attempts, call.taskId, call.executionId, call.deliveryAttempt);</span>
+        });
+    }
+    private AnalysisProgressRegistry.TransportAttempt view(ClusterAnalysisAttempt attempt) {
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        var result = attempt.observationJson == null ? null : json.readValue(attempt.observationJson, LlmTransportMeter.Observation.class);</span>
+<span class="fc" id="L73">        return new AnalysisProgressRegistry.TransportAttempt(attempt.id, attempt.invocationId, attempt.provider, attempt.source, attempt.retryIndex,</span>
+<span class="fc bfc" id="L74" title="All 4 branches covered.">                result == null ? &quot;STARTED&quot; : &quot;COMPLETED&quot;, attempt.startedAt, result == null ? 0 : result.durationMillis(),</span>
+<span class="fc bfc" id="L75" title="All 6 branches covered.">                result == null ? null : result.statusCode(), result == null ? null : result.outcome().name(), result == null ? UNKNOWN : result.usage());</span>
+    }
+<span class="fc" id="L77">    private static ResponseStatusException notFound() { return new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;Analysis call not found&quot;); }</span>
+
+    /** Thread-confined worker binding; no prompts or active state are shared with another request. */
+    public final class Session implements AnalysisRunControl.Observer, LlmTransportMeter.Journal {
+        private final AnalysisTaskMessage task;
+        private final int delivery;
+<span class="fc" id="L83">        private final String execution = UUID.randomUUID().toString();</span>
+<span class="fc" id="L84">        private final Deque&lt;Long&gt; active = new ArrayDeque&lt;&gt;();</span>
+        private int ordinal;
+        private final Set&lt;String&gt; catalogue;
+<span class="fc" id="L87">        private Session(AnalysisTaskMessage task, int delivery) {</span>
+<span class="fc" id="L88">            this.task = task; this.delivery = delivery;</span>
+<span class="fc" id="L89">            var work = store.diagnosticWork(task);</span>
+<span class="fc" id="L90">            var previous = ClusterAnalysisProgress.read(work.progressJson, json);</span>
+<span class="fc bfc" id="L91" title="All 4 branches covered.">            if (previous != null &amp;&amp; previous.delivery() &gt;= delivery)</span>
+<span class="fc" id="L92">                throw new IllegalStateException(&quot;Worker progress is already owned by this delivery&quot;);</span>
+<span class="fc" id="L93">            var root = store.progressRoot(task);</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            catalogue = root == null ? Set.of() : root.nodes().stream().map(com.taxonomy.catalog.snapshot.RootCatalogueSnapshot.Node::code)</span>
+<span class="fc" id="L95">                    .collect(java.util.stream.Collectors.toUnmodifiableSet());</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            var scores = previous == null ? Map.&lt;String, Double&gt;of() : previous.scores();</span>
+<span class="fc" id="L97">            work.progressJson = json.writeValueAsString(new ClusterAnalysisProgress.Worker(execution, delivery,</span>
+<span class="fc" id="L98">                    store.diagnosticAuthority(task, delivery).revision, null, null, scores, null));</span>
+<span class="fc" id="L99">        }</span>
+<span class="fc" id="L100">        @Override public String operationId() { return task.envelope().operationId(); }</span>
+        @Override public void phase(String phase, String node) {
+<span class="fc" id="L102">            progress(current -&gt; current.phase(Objects.requireNonNull(phase), node));</span>
+<span class="fc" id="L103">        }</span>
+<span class="fc" id="L104">        @Override public void assessment(LlmCallDetail detail) { assessment(detail, true); }</span>
+        private void assessment(LlmCallDetail detail, boolean requireCurrent) {
+<span class="fc" id="L106">            Objects.requireNonNull(detail);</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            if (task.taskType() != AnalysisTaskType.SUBTAXONOMY_ANALYSIS) return;</span>
+<span class="fc" id="L108">            progress(current -&gt; {</span>
+<span class="pc bpc" id="L109" title="1 of 6 branches missed.">                if (detail.getError() != null &amp;&amp; !detail.getError().isBlank() || detail.getScores() == null) return current;</span>
+<span class="fc" id="L110">                var scores = new LinkedHashMap&lt;&gt;(current.scores());</span>
+<span class="fc" id="L111">                detail.getScores().forEach((code, value) -&gt; {</span>
+<span class="pc bpc" id="L112" title="4 of 10 branches missed.">                    if (catalogue.contains(code) &amp;&amp; value != null &amp;&amp; Double.isFinite(value) &amp;&amp; value &gt;= 0 &amp;&amp; value &lt;= 100)</span>
+<span class="fc" id="L113">                        scores.put(code, value);</span>
+<span class="fc" id="L114">                });</span>
+<span class="fc" id="L115">                return current.scores(scores);</span>
+            }, requireCurrent);
+<span class="fc" id="L117">        }</span>
+        @Override public void relations(com.taxonomy.dto.RelationSearchProgress value) {
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">            if (task.taskType() != AnalysisTaskType.RELATION_ANALYSIS)</span>
+<span class="nc" id="L120">                throw new IllegalStateException(&quot;Relation progress requires a relation task&quot;);</span>
+<span class="fc" id="L121">            progress(current -&gt; {</span>
+<span class="fc" id="L122">                ClusterAnalysisProgress.validateRelations(value);</span>
+<span class="fc" id="L123">                var work = store.diagnosticWork(task);</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">                if (work.inputJson != null) {</span>
+<span class="fc" id="L125">                    var grant = json.readValue(work.inputJson, com.taxonomy.analysis.relations.RelationSearchDistribution.Work.class);</span>
+<span class="pc bpc" id="L126" title="2 of 4 branches missed.">                    if (value.maxCalls() != grant.maxCalls() || value.calls() &gt; grant.maxCalls()</span>
+<span class="pc bpc" id="L127" title="2 of 4 branches missed.">                            || value.taxonomies().stream().anyMatch(root -&gt; !root.root().equals(grant.targetRoot().code())))</span>
+<span class="nc" id="L128">                        throw new IllegalArgumentException(&quot;Relation progress differs from its admitted grant&quot;);</span>
+<span class="fc" id="L129">                    var plan = store.relationPlan(ClusterAnalysisStore.context(task.envelope()));</span>
+<span class="fc" id="L130">                    var item = plan.items().get(grant.ordinal());</span>
+<span class="fc" id="L131">                    var source = plan.sources().get(item.sourceIndex()).node().id();</span>
+<span class="pc bpc" id="L132" title="1 of 4 branches missed.">                    if (value.current() != null &amp;&amp; (!source.equals(value.current().sourceId())</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">                            || !grant.targetRoot().code().equals(value.current().targetRoot())</span>
+<span class="pc bpc" id="L134" title="2 of 4 branches missed.">                            || !item.type().equals(value.current().type()) || item.direction() != value.current().direction()))</span>
+<span class="nc" id="L135">                        throw new IllegalArgumentException(&quot;Foreign current relation search&quot;);</span>
+                }
+<span class="fc" id="L137">                return current.relations(value);</span>
+            });
+<span class="fc" id="L139">        }</span>
+<span class="fc" id="L140">        private void progress(java.util.function.UnaryOperator&lt;ClusterAnalysisProgress.Worker&gt; update) { progress(update, true); }</span>
+        private void progress(java.util.function.UnaryOperator&lt;ClusterAnalysisProgress.Worker&gt; update, boolean requireCurrent) {
+<span class="fc" id="L142">            tx.executeWithoutResult(status -&gt; {</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                var run = store.diagnosticAuthority(task, requireCurrent ? delivery : null); var work = store.diagnosticWork(task);</span>
+<span class="fc" id="L144">                var previous = ClusterAnalysisProgress.read(work.progressJson, json);</span>
+<span class="pc bpc" id="L145" title="5 of 12 branches missed.">                if (run.state.terminal() || !&quot;RUNNING&quot;.equals(work.state) || work.attempts != delivery</span>
+                        || work.resultJson != null || work.failureReason != null || previous == null
+<span class="pc bpc" id="L147" title="2 of 4 branches missed.">                        || !execution.equals(previous.execution()) || delivery != previous.delivery()) {</span>
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">                    if (!requireCurrent) return; // Late diagnostic responses remain historical evidence only.</span>
+<span class="nc" id="L149">                    throw new IllegalStateException(&quot;Worker progress delivery was superseded&quot;);</span>
+                }
+<span class="fc" id="L151">                var next = Objects.requireNonNull(update.apply(previous));</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">                if (previous.equals(next)) return;</span>
+<span class="fc" id="L153">                String encoded = json.writeValueAsString(next.at(run.revision + 1));</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">                if (encoded.length() &gt; ClusterAnalysisProgress.MAX_JSON) throw new IllegalArgumentException(&quot;Worker progress exceeds operation bound&quot;);</span>
+<span class="fc" id="L155">                work.progressJson = encoded; store.diagnosticChanged(run); em.flush();</span>
+<span class="fc" id="L156">            });</span>
+<span class="fc" id="L157">        }</span>
+        @Override public long started(String provider, String node) {
+<span class="fc" id="L159">            int logicalOrdinal = ++ordinal;</span>
+<span class="fc" id="L160">            long number = tx.execute(status -&gt; {</span>
+<span class="fc" id="L161">                var run = store.diagnosticAuthority(task, delivery);</span>
+<span class="fc" id="L162">                long previous = em.createQuery(&quot;select coalesce(max(c.callNumber),0) from ClusterAnalysisCall c where c.operationId=:run&quot;, Long.class).setParameter(&quot;run&quot;, operationId()).getSingleResult();</span>
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">                if (previous &gt;= MAX_CALLS) throw new IllegalStateException(&quot;Analysis diagnostics call limit reached&quot;);</span>
+<span class="fc" id="L164">                var call = new ClusterAnalysisCall(); call.callNumber = previous + 1; call.id = callKey(operationId(), call.callNumber);</span>
+<span class="fc" id="L165">                call.operationId = operationId(); call.taskId = task.taskId().value(); call.executionId = execution;</span>
+<span class="fc" id="L166">                call.deliveryAttempt = delivery; call.logicalOrdinal = logicalOrdinal;</span>
+<span class="fc" id="L167">                call.provider = clip(Objects.requireNonNull(provider), 128); call.node = clip(node, 512); call.state = &quot;STARTED&quot;; call.startedAt = System.currentTimeMillis();</span>
+<span class="fc" id="L168">                store.diagnosticChanged(run); call.eventRevision = run.revision; em.persist(call); em.flush(); return call.callNumber;</span>
+            });
+<span class="fc" id="L170">            active.push(number); return number;</span>
+        }
+        @Override public void prepared(long callId, String prompt) {
+<span class="fc" id="L173">            tx.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L174">                var run = store.diagnosticAuthority(task, null); var call = ownCall(callId);</span>
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">                if (!&quot;STARTED&quot;.equals(call.state)) return;</span>
+<span class="fc" id="L176">                call.prompt = clip(prompt, MAX_TEXT); call.promptLength = length(prompt);</span>
+<span class="fc" id="L177">                store.diagnosticChanged(run); call.eventRevision = run.revision; em.flush();</span>
+<span class="fc" id="L178">            });</span>
+<span class="fc" id="L179">        }</span>
+        @Override public void completed(long callId, LlmCallDetail detail, long durationMillis) {
+<span class="fc bfc" id="L181" title="All 2 branches covered.">            finish(callId, detail, durationMillis, RootAssessmentEvidence.isClarification(detail) ? &quot;CLARIFICATION&quot;</span>
+<span class="pc bpc" id="L182" title="1 of 4 branches missed.">                    : detail.getError() == null || detail.getError().isBlank() ? &quot;COMPLETED&quot; : &quot;FAILED&quot;, detail.getError());</span>
+            // Ordinary scoring reports parsed evidence here; checkpoint replay also
+            // invokes assessment(). Frozen identities deduplicate both paths.
+<span class="fc" id="L185">            assessment(detail, false);</span>
+<span class="fc" id="L186">        }</span>
+<span class="nc" id="L187">        @Override public void failed(long callId, String failure, long durationMillis) { finish(callId, null, durationMillis, &quot;FAILED&quot;, failure); }</span>
+        @Override public void stopped(AnalysisStoppedException.Reason reason) {
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            for (long call : List.copyOf(active)) finish(call, null, 0, &quot;STOPPED&quot;, reason.name());</span>
+<span class="fc" id="L190">        }</span>
+        @Override public void stoppedAfterResponse(long callId, LlmCallDetail detail, long durationMillis, AnalysisStoppedException.Reason reason) {
+<span class="fc" id="L192">            finish(callId, detail, durationMillis, &quot;STOPPED&quot;, reason.name());</span>
+<span class="fc" id="L193">        }</span>
+        private void finish(long callId, LlmCallDetail detail, long duration, String state, String error) {
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">            if (duration &lt; 0) throw new IllegalArgumentException(&quot;Invalid diagnostic duration&quot;);</span>
+<span class="fc" id="L196">            tx.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L197">                var run = store.diagnosticAuthority(task, null); var call = ownCall(callId);</span>
+<span class="fc bfc" id="L198" title="All 4 branches covered.">                String prompt = detail == null || detail.getPrompt() == null ? call.prompt : clip(detail.getPrompt(), MAX_TEXT);</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">                String response = detail == null ? call.response : clip(detail.getRawResponse(), MAX_TEXT);</span>
+<span class="fc bfc" id="L200" title="All 4 branches covered.">                int promptLength = detail == null || detail.getPrompt() == null ? call.promptLength : length(detail.getPrompt());</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">                int responseLength = detail == null ? call.responseLength : length(detail.getRawResponse());</span>
+<span class="fc" id="L202">                String failure = clip(error, 1024);</span>
+<span class="pc bpc" id="L203" title="3 of 8 branches missed.">                if (!&quot;STARTED&quot;.equals(call.state) &amp;&amp; !(&quot;STOPPED&quot;.equals(call.state) &amp;&amp; detail != null &amp;&amp; call.response == null)) {</span>
+<span class="nc bnc" id="L204" title="All 6 branches missed.">                    if (!call.state.equals(state) || !Objects.equals(call.prompt, prompt) || !Objects.equals(call.response, response)</span>
+<span class="nc bnc" id="L205" title="All 4 branches missed.">                            || !Objects.equals(call.error, failure) || call.durationMillis != duration) throw new IllegalStateException(&quot;Conflicting logical call completion&quot;);</span>
+<span class="nc" id="L206">                    return;</span>
+                }
+<span class="fc bfc" id="L208" title="All 2 branches covered.">                call.state = &quot;STOPPED&quot;.equals(call.state) ? &quot;STOPPED&quot; : state; call.prompt = prompt; call.response = response;</span>
+<span class="fc" id="L209">                call.promptLength = promptLength; call.responseLength = responseLength; call.error = failure; call.durationMillis = duration;</span>
+<span class="fc" id="L210">                store.diagnosticChanged(run); call.eventRevision = run.revision; em.flush();</span>
+<span class="fc" id="L211">            });</span>
+<span class="fc" id="L212">            active.remove(callId);</span>
+<span class="fc" id="L213">        }</span>
+        private ClusterAnalysisCall ownCall(long number) {
+<span class="fc" id="L215">            var call = em.find(ClusterAnalysisCall.class, callKey(operationId(), number));</span>
+<span class="pc bpc" id="L216" title="3 of 6 branches missed.">            if (call == null || !call.operationId.equals(operationId()) || !call.taskId.equals(task.taskId().value())</span>
+<span class="pc bpc" id="L217" title="1 of 4 branches missed.">                    || !call.executionId.equals(execution) || call.deliveryAttempt != delivery) throw new IllegalStateException(&quot;Unexpected logical call identity&quot;);</span>
+<span class="fc" id="L218">            return call;</span>
+        }
+        @Override public void started(LlmTransportMeter.Attempt attempt) {
+<span class="fc" id="L221">            validate(attempt);</span>
+<span class="fc" id="L222">            tx.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L223">                var run = store.diagnosticAuthority(task, null);</span>
+<span class="fc" id="L224">                var existing = em.find(ClusterAnalysisAttempt.class, attempt.id());</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                if (existing != null) {</span>
+<span class="fc" id="L226">                    var retained = em.find(ClusterAnalysisCall.class, existing.callId);</span>
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">                    if (retained == null) throw new IllegalStateException(&quot;Missing logical call&quot;);</span>
+<span class="fc" id="L228">                    var call = ownCall(retained.callNumber); requireAttempt(existing, call, attempt); return;</span>
+                }
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">                if (active.isEmpty()) throw new IllegalStateException(&quot;Transport attempt has no logical call&quot;);</span>
+<span class="fc" id="L231">                store.diagnosticAuthority(task, delivery); var call = ownCall(active.peek());</span>
+<span class="fc" id="L232">                long total = em.createQuery(&quot;select count(a) from ClusterAnalysisAttempt a where a.operationId=:run&quot;, Long.class).setParameter(&quot;run&quot;, operationId()).getSingleResult();</span>
+<span class="fc" id="L233">                long count = em.createQuery(&quot;select count(a) from ClusterAnalysisAttempt a where a.callId=:call&quot;, Long.class).setParameter(&quot;call&quot;, call.id).getSingleResult();</span>
+<span class="pc bpc" id="L234" title="2 of 4 branches missed.">                if (total &gt;= MAX_ATTEMPTS || count &gt;= MAX_ATTEMPTS_PER_CALL) throw new IllegalStateException(&quot;Analysis transport diagnostics limit reached&quot;);</span>
+<span class="fc" id="L235">                var row = new ClusterAnalysisAttempt(); row.id = attempt.id(); row.operationId = operationId(); row.callId = call.id;</span>
+<span class="fc" id="L236">                row.invocationId = attempt.invocationId(); row.provider = attempt.provider(); row.source = attempt.source().name(); row.retryIndex = attempt.retryIndex(); row.startedAt = System.currentTimeMillis();</span>
+<span class="fc" id="L237">                em.persist(row); store.diagnosticChanged(run); em.flush();</span>
+<span class="fc" id="L238">            });</span>
+<span class="fc" id="L239">        }</span>
+        @Override public void completed(LlmTransportMeter.Attempt attempt, LlmTransportMeter.Observation result) {
+<span class="fc" id="L241">            validate(attempt); validateResult(attempt, result);</span>
+<span class="fc" id="L242">            tx.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L243">                var run = store.diagnosticAuthority(task, null); var row = em.find(ClusterAnalysisAttempt.class, attempt.id());</span>
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">                if (row == null) throw new IllegalStateException(&quot;Missing durable transport admission&quot;);</span>
+<span class="fc" id="L245">                var call = em.find(ClusterAnalysisCall.class, row.callId);</span>
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">                if (call == null) throw new IllegalStateException(&quot;Missing logical call&quot;);</span>
+<span class="fc" id="L247">                ownCall(call.callNumber); requireAttempt(row, call, attempt);</span>
+<span class="fc" id="L248">                String observation = json.writeValueAsString(result);</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">                if (row.observationJson != null) {</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">                    if (!json.readValue(row.observationJson, LlmTransportMeter.Observation.class).equals(result)) throw new IllegalStateException(&quot;Conflicting transport completion&quot;);</span>
+<span class="fc" id="L251">                    return;</span>
+                }
+<span class="fc" id="L253">                row.observationJson = observation; store.diagnosticChanged(run); em.flush();</span>
+<span class="fc" id="L254">            });</span>
+<span class="fc" id="L255">        }</span>
+        private void requireAttempt(ClusterAnalysisAttempt row, ClusterAnalysisCall call, LlmTransportMeter.Attempt attempt) {
+<span class="pc bpc" id="L257" title="3 of 6 branches missed.">            if (!row.operationId.equals(operationId()) || !row.callId.equals(call.id) || !row.invocationId.equals(attempt.invocationId())</span>
+<span class="pc bpc" id="L258" title="3 of 6 branches missed.">                    || !row.provider.equals(attempt.provider()) || !row.source.equals(attempt.source().name()) || row.retryIndex != attempt.retryIndex())</span>
+<span class="nc" id="L259">                throw new IllegalStateException(&quot;Unexpected transport attempt identity&quot;);</span>
+<span class="fc" id="L260">        }</span>
+    }
+
+    static void validate(LlmTransportMeter.Attempt attempt) {
+<span class="fc" id="L264">        Objects.requireNonNull(attempt); uuid(attempt.id()); uuid(attempt.invocationId());</span>
+<span class="pc bpc" id="L265" title="4 of 8 branches missed.">        if (attempt.provider() == null || attempt.provider().isBlank() || attempt.provider().length() &gt; 128 || attempt.source() == null</span>
+<span class="pc bpc" id="L266" title="2 of 4 branches missed.">                || attempt.retryIndex() &lt; 0 || attempt.retryIndex() &gt;= MAX_ATTEMPTS_PER_CALL</span>
+<span class="pc bpc" id="L267" title="1 of 4 branches missed.">                || attempt.source() == LlmTransportMeter.Source.RECORDING_REPLAY &amp;&amp; attempt.retryIndex() != 0) throw new IllegalArgumentException(&quot;Invalid transport admission&quot;);</span>
+<span class="fc" id="L268">    }</span>
+    static void validateResult(LlmTransportMeter.Attempt attempt, LlmTransportMeter.Observation result) {
+<span class="fc" id="L270">        Objects.requireNonNull(result); var usage = Objects.requireNonNull(result.usage());</span>
+<span class="pc bpc" id="L271" title="3 of 6 branches missed.">        if (!attempt.invocationId().equals(result.invocationId()) || !attempt.provider().equals(result.provider()) || attempt.source() != result.source()</span>
+<span class="pc bpc" id="L272" title="3 of 6 branches missed.">                || attempt.retryIndex() != result.retryIndex() || result.outcome() == null || result.durationMillis() &lt; 0</span>
+<span class="pc bpc" id="L273" title="2 of 6 branches missed.">                || result.statusCode() != null &amp;&amp; (result.statusCode() &lt; 100 || result.statusCode() &gt; 599)) throw new IllegalArgumentException(&quot;Invalid transport completion&quot;);</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">        for (Long count : Arrays.asList(usage.inputTokens(), usage.outputTokens(), usage.totalTokens(), usage.cachedInputTokens(), usage.reasoningTokens()))</span>
+<span class="pc bpc" id="L275" title="1 of 4 branches missed.">            if (count != null &amp;&amp; count &lt; 0) throw new IllegalArgumentException(&quot;Invalid reported usage&quot;);</span>
+<span class="pc bpc" id="L276" title="2 of 6 branches missed.">        if (result.source() == LlmTransportMeter.Source.RECORDING_REPLAY &amp;&amp; (result.statusCode() != null || result.durationMillis() != 0</span>
+<span class="pc bpc" id="L277" title="2 of 4 branches missed.">                || result.outcome() != LlmTransportMeter.Outcome.RESPONSE || !usage.equals(UNKNOWN))) throw new IllegalArgumentException(&quot;Replay cannot claim new usage&quot;);</span>
+<span class="fc" id="L278">    }</span>
+<span class="fc" id="L279">    static String callKey(String operationId, long callNumber) { return key(operationId + &quot;:call:&quot; + callNumber); }</span>
+<span class="fc" id="L280">    static String key(String value) { return java.util.HexFormat.of().formatHex(sha(value)); }</span>
+<span class="pc" id="L281">    private static byte[] sha(String value) { try { return java.security.MessageDigest.getInstance(&quot;SHA-256&quot;).digest(value.getBytes(StandardCharsets.UTF_8)); } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); } }</span>
+<span class="pc bpc" id="L282" title="2 of 4 branches missed.">    static void uuid(String value) { if (value == null || !UUID.fromString(value).toString().equals(value)) throw new IllegalArgumentException(&quot;Invalid diagnostic identity&quot;); }</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">    static int length(String value) { return value == null ? 0 : value.length(); }</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">    static String clip(String value, int max) { return value == null ? null : value.substring(0, Math.min(max, value.length())); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

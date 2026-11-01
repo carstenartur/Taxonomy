@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProviderRateQuotas.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">ProviderRateQuotas.java</span></div><h1>ProviderRateQuotas.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.extension.api.llm.ProviderId;
+import java.util.Objects;
+
+/** Shared physical-attempt rate policy; distinct from HTTP in-flight capacity. */
+public interface ProviderRateQuotas {
+    record TokenBudget(String adapterId, long inputUpperBound, int maximumOutputTokens) {
+<span class="fc" id="L9">        public TokenBudget {</span>
+<span class="pc bpc" id="L10" title="6 of 12 branches missed.">            if (adapterId == null || !adapterId.matches(&quot;[a-z0-9][a-z0-9.-]{0,127}&quot;)</span>
+                    || inputUpperBound &lt; 1 || inputUpperBound &gt; 1_000_000_000
+                    || maximumOutputTokens &lt; 1 || maximumOutputTokens &gt; 1_000_000) {
+<span class="nc" id="L13">                throw new IllegalArgumentException(&quot;Invalid provider token budget contract&quot;);</span>
+            }
+<span class="fc" id="L15">        }</span>
+<span class="fc" id="L16">        public long maximumTokens() { return Math.addExact(inputUpperBound, maximumOutputTokens); }</span>
+    }
+    interface Reservation {
+        String id();
+        /** Atomically consumes this same still-live receipt immediately before physical HTTP. */
+        void beforeTransport();
+        void settle(LlmTransportMeter.Usage usage);
+    }
+    record Decision(Reservation reservation, long waitMillis) {
+<span class="fc" id="L25">        public Decision {</span>
+<span class="pc bpc" id="L26" title="2 of 6 branches missed.">            if (reservation == null ? waitMillis &lt; 1 : waitMillis != 0) throw new IllegalArgumentException(&quot;Invalid quota admission decision&quot;);</span>
+<span class="fc" id="L27">        }</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">        public boolean granted() { return reservation != null; }</span>
+    }
+    /** Null denotes request-only RPM/RPD; no unsupported TPM estimate is permitted. */
+    TokenBudget requiredBudget(ProviderId provider);
+    Decision tryReserve(ProviderId provider, String attemptId, TokenBudget supportedBudget, Runnable checkpoint);
+    void defer(ProviderId provider, long delayMillis);
+
+    final class UnavailableException extends RuntimeException {
+<span class="fc" id="L36">        public UnavailableException(String message, Throwable cause) { super(message, cause); }</span>
+    }
+<span class="fc" id="L38">    ProviderRateQuotas NONE = new ProviderRateQuotas() {</span>
+<span class="fc" id="L39">        public TokenBudget requiredBudget(ProviderId provider) { return null; }</span>
+        public Decision tryReserve(ProviderId provider, String id, TokenBudget budget, Runnable checkpoint) {
+<span class="fc" id="L41">            Objects.requireNonNull(checkpoint).run();</span>
+<span class="fc" id="L42">            return new Decision(new Reservation() {</span>
+<span class="fc" id="L43">                public String id() { return id; }</span>
+<span class="fc" id="L44">                public void beforeTransport() {}</span>
+<span class="fc" id="L45">                public void settle(LlmTransportMeter.Usage usage) {}</span>
+            }, 0);
+        }
+<span class="fc" id="L48">        public void defer(ProviderId provider, long delayMillis) {}</span>
+    };
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

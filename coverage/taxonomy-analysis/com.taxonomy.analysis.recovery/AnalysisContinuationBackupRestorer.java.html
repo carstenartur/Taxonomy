@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisContinuationBackupRestorer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.recovery</a> &gt; <span class="el_source">AnalysisContinuationBackupRestorer.java</span></div><h1>AnalysisContinuationBackupRestorer.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.recovery;
+
+import com.taxonomy.analysis.backup.AnalysisBackupContributor.*;
+import com.taxonomy.backup.SourceRecordId;
+import com.taxonomy.dto.*;
+import com.taxonomy.exchange.backup.PortableJsonPayloads;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import jakarta.persistence.EntityManager;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.ObjectMapper;
+import java.util.*;
+
+/**
+ * Imports one caller-verified aggregate into isolated staged persistence under caller-remapped scope.
+ * Retained catalogue/source identifiers are inert historical evidence; this API never admits work.
+ * No dispatcher, broker, provider, active claim or distributed grant is available to this owner.
+ */
+public final class AnalysisContinuationBackupRestorer {
+    private static final int MAX_CALLS=4096, MAX_QUESTIONS=16_384, MAX_QUESTION_CHARACTERS=2_000_000;
+    private static final long MAX_RUN_CHARACTERS=24_000_000;
+    private final EntityManager em;
+    private final TransactionTemplate transactions;
+    private final ObjectMapper json;
+    private final AnalysisCheckpointPayloadCodec checkpointPayload;
+<span class="fc" id="L26">    public AnalysisContinuationBackupRestorer(EntityManager em,PlatformTransactionManager transactions,ObjectMapper json) {</span>
+<span class="fc" id="L27">        this.em=Objects.requireNonNull(em);this.transactions=new TransactionTemplate(Objects.requireNonNull(transactions));this.json=Objects.requireNonNull(json);</span>
+<span class="fc" id="L28">        this.checkpointPayload=new AnalysisCheckpointPayloadCodec(json);</span>
+<span class="fc" id="L29">    }</span>
+    public void restore(ContinuationRecord source,List&lt;QuestionRecord&gt; questions,String targetId,WorkspaceContext target) {
+<span class="fc" id="L31">        Objects.requireNonNull(source);Objects.requireNonNull(questions);Objects.requireNonNull(target);</span>
+<span class="fc" id="L32">        requireUuid(targetId);requireKind(source.sourceId(),&quot;analysis.continuation&quot;);</span>
+<span class="fc" id="L33">        text(target.username(),160);text(target.workspaceId(),320);text(target.repositoryId(),320);text(target.currentBranch(),512);</span>
+<span class="pc bpc" id="L34" title="2 of 6 branches missed.">        if(source.resumePolicy()!=ResumePolicy.REVIEW_REQUIRED || source.updatedAtEpochMillis()&lt;0 || questions.size()&gt;MAX_QUESTIONS</span>
+<span class="fc bfc" id="L35" title="All 4 branches covered.">                || source.relationCallsSpent()!=null &amp;&amp; source.relationCallsSpent()&lt;0</span>
+<span class="fc bfc" id="L36" title="All 6 branches covered.">                || source.relationSourceCohortSize()!=null &amp;&amp; (source.relationSourceCohortSize()&lt;1 || source.relationSourceCohortSize()&gt;256))</span>
+<span class="fc" id="L37">            throw invalid();</span>
+<span class="fc" id="L38">        hash(source.inputHash()); optionalText(source.currentNode(),320);</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">        if(!Set.of(&quot;NEW&quot;,&quot;RUNNING&quot;,&quot;STOPPED&quot;,&quot;PAUSED&quot;,&quot;CANCELLED&quot;,&quot;COMPLETED&quot;,&quot;COMPLETED_WITH_GAPS&quot;).contains(source.sourceState()))throw invalid();</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        String state=Set.of(&quot;NEW&quot;,&quot;RUNNING&quot;).contains(source.sourceState())?&quot;STOPPED&quot;:source.sourceState();</span>
+<span class="fc" id="L41">        bounded(source.requestJson(),MAX_QUESTION_CHARACTERS);var request=json.readValue(source.requestJson(),AnalysisRequest.class);</span>
+<span class="fc" id="L42">        request.setContinuationId(targetId);request.setContinuationAction(null);request.setContinuationVersion(null);request.setContinuationQuestion(null);request.setContinuationQuestions(null);</span>
+        AnalysisResult result;
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">        if(source.resultJson()==null)result=new AnalysisResult(Map.of(),List.of());</span>
+<span class="fc" id="L45">        else { result=json.readValue(unpackResult(source.resultJson()),AnalysisResult.class); }</span>
+<span class="fc" id="L46">        var keys=new HashSet&lt;String&gt;();var ids=new HashSet&lt;SourceRecordId&gt;();long payload=0;</span>
+<span class="fc" id="L47">        var preparedQuestions=new ArrayList&lt;PreparedQuestion&gt;();</span>
+<span class="fc" id="L48">        var scores=new LinkedHashMap&lt;String,Double&gt;(result.getRawScores());var reasons=new LinkedHashMap&lt;String,String&gt;(result.getReasons());</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        for(var question:questions) {</span>
+<span class="fc" id="L50">            requireKind(question.sourceId(),&quot;analysis.question&quot;);</span>
+<span class="pc bpc" id="L51" title="1 of 6 branches missed.">            if(!source.sourceId().equals(question.run()) || !ids.add(question.sourceId()) || !keys.add(question.questionKey())</span>
+<span class="pc bpc" id="L52" title="2 of 4 branches missed.">                    || question.questionKey()==null || !question.questionKey().matches(&quot;(?:[a-f0-9]{64}|R[a-f0-9]{63})&quot;)</span>
+<span class="pc bpc" id="L53" title="3 of 6 branches missed.">                    || question.attempts()&lt;0 || question.attempts()&gt;MAX_CALLS || question.startedAtEpochMillis()&lt;0</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">                    || !Set.of(&quot;READY&quot;,&quot;ATTEMPT&quot;,&quot;SUCCESS&quot;,&quot;FAILED&quot;,&quot;SKIPPED&quot;,&quot;UNASSESSED&quot;,&quot;CLARIFICATION&quot;,&quot;DECOMPOSED&quot;,&quot;SUPERSEDED&quot;).contains(question.sourceState()))throw invalid();</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            hash(question.inputHash());text(question.provider(),128);if(question.error()!=null)bounded(question.error(),2048);bounded(question.nodeCodesJson(),MAX_QUESTION_CHARACTERS);</span>
+<span class="pc bpc" id="L56" title="1 of 4 branches missed.">            var nodes=json.readValue(question.nodeCodesJson(),String[].class);if(nodes.length&gt;MAX_CALLS)throw invalid();for(String node:nodes)text(node,320);</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">            if(question.prompt()!=null)bounded(question.prompt(),MAX_QUESTION_CHARACTERS);</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">            if(question.detailJson()!=null)bounded(question.detailJson(),MAX_QUESTION_CHARACTERS);</span>
+<span class="fc" id="L59">            String detailError=null;</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            if(question.detailJson()!=null) {</span>
+<span class="fc" id="L61">                var detail=json.readValue(question.detailJson(),LlmCallDetail.class);</span>
+<span class="fc" id="L62">                detailError=detail.getError();</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">                if(&quot;SUCCESS&quot;.equals(question.sourceState())) {</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">                    if(detail.getScores()!=null)detail.getScores().forEach(scores::putIfAbsent);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                    if(detail.getReasons()!=null)detail.getReasons().forEach(reasons::putIfAbsent);</span>
+                }
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">            } else if(&quot;SUCCESS&quot;.equals(question.sourceState()))throw invalid();</span>
+<span class="fc" id="L68">            String storedPrompt=checkpointPayload.encodePrompt(question.prompt());</span>
+<span class="fc" id="L69">            String storedDetail=checkpointPayload.encodeDetail(question.detailJson(),question.prompt());</span>
+<span class="fc" id="L70">            String storedNodes=checkpointPayload.encodeNodes(Arrays.asList(nodes));</span>
+            // Layout selects the decoding of both fields. Keep a valid legacy pair
+            // together when compression/base64 would increase its retained size.
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">            long clearSize=(question.prompt()==null?0L:question.prompt().length())</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">                    +(question.detailJson()==null?0L:question.detailJson().length());</span>
+<span class="pc bpc" id="L75" title="1 of 4 branches missed.">            long encodedSize=(storedPrompt==null?0L:storedPrompt.length())+(storedDetail==null?0L:storedDetail.length());</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            if(encodedSize&gt;clearSize) {</span>
+<span class="fc" id="L77">                storedNodes=question.nodeCodesJson();storedPrompt=question.prompt();storedDetail=question.detailJson();</span>
+            }
+<span class="fc" id="L79">            payload=addStored(payload,storedPrompt);payload=addStored(payload,storedDetail);</span>
+<span class="fc" id="L80">            preparedQuestions.add(new PreparedQuestion(question,storedNodes,storedPrompt,storedDetail,detailError));</span>
+<span class="fc" id="L81">        }</span>
+<span class="fc" id="L82">        result.setRawScores(scores);result.setReasons(reasons);</span>
+<span class="fc" id="L83">        var warnings=new ArrayList&lt;&gt;(result.getWarnings());</span>
+<span class="fc" id="L84">        warnings.add(&quot;RESTORED_HISTORICAL_SOURCE_EVIDENCE: retained catalogue and source identifiers describe the archived analysis; review the target context before any new execution.&quot;);</span>
+<span class="fc" id="L85">        result.setWarnings(warnings);</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if(Set.of(&quot;STOPPED&quot;,&quot;PAUSED&quot;).contains(state))result.setStatus(&quot;PARTIAL&quot;);</span>
+<span class="fc" id="L87">        result.setRecovery(null); // Public reads derive a new target-bound recovery revision/count from restored rows.</span>
+<span class="fc" id="L88">        String requestJson=json.writeValueAsString(request),resultJson=packResult(json.writeValueAsString(result));</span>
+<span class="fc" id="L89">        long retained=payload;</span>
+<span class="fc" id="L90">        transactions.executeWithoutResult(status -&gt; {</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">            if(em.find(AnalysisContinuationRun.class,targetId)!=null)throw new IllegalStateException(&quot;Continuation restore target already exists&quot;);</span>
+<span class="fc" id="L92">            var run=new AnalysisContinuationRun();run.id=targetId;run.username=target.username();run.workspaceId=target.workspaceId();</span>
+<span class="fc" id="L93">            run.repositoryId=target.repositoryId();run.branchName=target.currentBranch();run.inputHash=source.inputHash();run.requestJson=requestJson;run.resultJson=resultJson;</span>
+<span class="fc" id="L94">            run.state=state;run.updatedAt=System.currentTimeMillis();run.payloadCharacters=retained;run.currentNode=source.currentNode();</span>
+<span class="fc" id="L95">            run.relationCallsSpent=source.relationCallsSpent();run.relationSourceCohortSize=source.relationSourceCohortSize();em.persist(run);</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            for(var prepared:preparedQuestions) {</span>
+<span class="fc" id="L97">                var sourceQuestion=prepared.source();</span>
+<span class="fc" id="L98">                var question=new AnalysisQuestionCheckpoint();question.id=targetId+&quot;:&quot;+sourceQuestion.questionKey();question.run=run;</span>
+<span class="fc" id="L99">                question.questionKey=sourceQuestion.questionKey();question.inputHash=sourceQuestion.inputHash();question.provider=sourceQuestion.provider();</span>
+<span class="fc" id="L100">                question.nodeCodes=prepared.nodeCodes();question.detailJson=prepared.detail();question.prompt=prepared.prompt();</span>
+<span class="fc" id="L101">                question.state=sourceQuestion.sourceState();question.attempts=sourceQuestion.attempts();question.startedAt=sourceQuestion.startedAtEpochMillis();</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                if(&quot;ATTEMPT&quot;.equals(question.state)) {question.state=&quot;FAILED&quot;;question.error=&quot;OUTCOME_UNCERTAIN: archive retained a started attempt without an accepted outcome; explicit review and retry or leave-open is required&quot;;}</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">                else if(&quot;READY&quot;.equals(question.state)) {question.state=&quot;FAILED&quot;;question.error=&quot;RESTORE_REVIEW_REQUIRED: archived ready work has no execution authority&quot;;}</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                else if(sourceQuestion.error()!=null)optionalError(question,sourceQuestion.error());</span>
+<span class="fc" id="L105">                else optionalError(question,prepared.detailError());</span>
+<span class="fc" id="L106">                em.persist(question);</span>
+<span class="fc" id="L107">            }</span>
+<span class="fc" id="L108">            em.flush();</span>
+<span class="fc" id="L109">        });</span>
+<span class="fc" id="L110">    }</span>
+<span class="fc" id="L111">    private record PreparedQuestion(QuestionRecord source,String nodeCodes,String prompt,String detail,String detailError) { }</span>
+    private static String unpackResult(String value) {
+<span class="fc" id="L113">        try { return PortableJsonPayloads.unpack(value,(int)MAX_RUN_CHARACTERS); }</span>
+<span class="nc" id="L114">        catch(java.io.IOException failure) {throw invalid();}</span>
+    }
+    private static String packResult(String value) {
+<span class="fc" id="L117">        try { return PortableJsonPayloads.pack(value,(int)MAX_RUN_CHARACTERS); }</span>
+<span class="nc" id="L118">        catch(java.io.IOException failure) {throw invalid();}</span>
+    }
+<span class="fc bfc" id="L120" title="All 2 branches covered.">    private static void optionalError(AnalysisQuestionCheckpoint q,String value) {q.error=value==null?null:value.substring(0,Math.min(2048,value.length()));}</span>
+<span class="fc bfc" id="L121" title="All 4 branches covered.">    private static long addStored(long total,String value) {if(value==null)return total;if(value.length()&gt;MAX_RUN_CHARACTERS-total)throw invalid();return total+value.length();}</span>
+<span class="pc bpc" id="L122" title="2 of 4 branches missed.">    private static void requireKind(SourceRecordId id,String kind) {if(id==null || !kind.equals(id.kind()))throw invalid();}</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">    private static void requireUuid(String id) {try {if(!UUID.fromString(id).toString().equals(id))throw invalid();}catch(RuntimeException failure){throw invalid();}}</span>
+<span class="pc bpc" id="L124" title="2 of 4 branches missed.">    private static void hash(String value) {if(value==null || !value.matches(&quot;[a-f0-9]{64}&quot;))throw invalid();}</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">    private static void optionalText(String value,int max) {if(value!=null)text(value,max);}</span>
+<span class="pc bpc" id="L126" title="3 of 6 branches missed.">    private static void text(String value,int max) {if(value==null || value.isBlank() || value.length()&gt;max)throw invalid();}</span>
+<span class="pc bpc" id="L127" title="1 of 4 branches missed.">    private static void bounded(String value,long max) {if(value==null || value.length()&gt;max)throw invalid();}</span>
+<span class="fc" id="L128">    private static IllegalArgumentException invalid() {return new IllegalArgumentException(&quot;Invalid typed continuation archive aggregate&quot;);}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

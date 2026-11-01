@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitStandBackupSource.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">GitStandBackupSource.java</span></div><h1>GitStandBackupSource.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
+import javax.sql.DataSource;
+import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static com.taxonomy.workspace.backup.GitTreeCapture.failure;
+import static com.taxonomy.workspace.backup.GitTreeCapture.sanitized;
+
+/** Fenced current/selected file evidence, including the durable editor overlay and stand projection. */
+public final class GitStandBackupSource {
+    private static final String DSL = DslGitRepository.DSL_FILENAME;
+    private static final int BUFFER = 8_192;
+    private final DataSource database;
+    private final ExistingGitBackupRepositories repositories;
+    private final BackupDocumentProjector projector;
+    public record Limits(GitTreeCapture.Limits git, int maxDocumentBytes) {
+<span class="fc" id="L31">        public Limits {</span>
+<span class="fc" id="L32">            Objects.requireNonNull(git);</span>
+<span class="pc bpc" id="L33" title="2 of 4 branches missed.">            if (maxDocumentBytes &lt; 1 || maxDocumentBytes &gt; PortableRows.MAX_RECORD_BYTES)</span>
+<span class="nc" id="L34">                throw new IllegalArgumentException(&quot;Invalid stand document limit&quot;);</span>
+<span class="fc" id="L35">        }</span>
+    }
+<span class="fc" id="L37">    public record File(String path, int mode, long length, String sha256) { }</span>
+<span class="fc" id="L38">    public GitStandBackupSource(DataSource database, ExistingGitBackupRepositories repositories, BackupDocumentProjector projector) {</span>
+<span class="fc" id="L39">        this.database = Objects.requireNonNull(database); this.repositories = Objects.requireNonNull(repositories); this.projector = Objects.requireNonNull(projector);</span>
+<span class="fc" id="L40">    }</span>
+
+    /** Caller holds the installation fence and fresh authorization through the final copy and close. */
+    public Stand openHistoryWorkingCopy(AuthorizedBackupRequest authorization, BackupRepositoryKey key, Limits limits, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        if (!authorization.request().profile().includesHistory()) throw failure(&quot;Raw history working copies require history authorization&quot;);</span>
+<span class="fc" id="L45">        return open(authorization, key, limits, checkpoint, true);</span>
+    }
+
+    /** Caller holds the installation fence and fresh authorization through the final copy and close. */
+    public Stand open(AuthorizedBackupRequest authorization, BackupRepositoryKey key, Limits limits, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L50">        return open(authorization, key, limits, checkpoint, false);</span>
+    }
+    private Stand open(AuthorizedBackupRequest authorization, BackupRepositoryKey key, Limits limits, BackupCheckpoint checkpoint, boolean historyWorkingCopy) throws IOException {
+<span class="fc" id="L53">        ExistingGitBackupRepositories.ReadSession session = null;</span>
+        try {
+<span class="fc" id="L55">            Objects.requireNonNull(limits); checkpoint.check();</span>
+<span class="fc" id="L56">            session = repositories.open(authorization, key, checkpoint);</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            var tree = (historyWorkingCopy ? session.captureHistoryWorkingTree(limits.git(), checkpoint) : session.captureStand(limits.git(), checkpoint)).orElse(null);</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">            boolean selected = authorization.request().profile() == BackupProfile.SELECTED_VERSION;</span>
+<span class="fc bfc" id="L59" title="All 4 branches covered.">            var saved = selected || key.workspaceId() == null ? null : savedProof(key, session.branch(), limits, checkpoint);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            String commit = tree == null ? null : tree.commit();</span>
+<span class="fc bfc" id="L61" title="All 4 branches covered.">            if (saved != null &amp;&amp; !Objects.equals(saved.state().checkpointCommit(), commit))</span>
+<span class="fc" id="L62">                throw failure(&quot;Saved editor checkpoint and captured Git head disagree; reconcile the version first&quot;);</span>
+<span class="fc" id="L63">            var originals = new TreeMap&lt;String, GitTreeCapture.File&gt;();</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">            if (tree != null) tree.files().forEach(file -&gt; originals.put(file.path(), file));</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            var paths = new TreeSet&lt;&gt;(originals.keySet()); if (saved != null) paths.add(DSL);</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            if (paths.size() &gt; limits.git().maxFiles()) throw failure(&quot;Effective stand file limit exceeded&quot;);</span>
+<span class="fc" id="L67">            PortableGitPaths.requireTree(paths);</span>
+<span class="fc" id="L68">            var evidence = new LinkedHashMap&lt;File, Evidence&gt;(); var documents = new ArrayList&lt;BackupDocumentReference&gt;(); long total = 0;</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            for (String path : paths) {</span>
+<span class="fc bfc" id="L70" title="All 4 branches covered.">                checkpoint.check(); var original = originals.get(path); boolean working = saved != null &amp;&amp; path.equals(DSL);</span>
+<span class="fc" id="L71">                boolean document = path.toLowerCase(Locale.ROOT).endsWith(&quot;.taxdsl&quot;);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                int mode = original == null ? FileMode.REGULAR_FILE.getBits() : original.mode();</span>
+                File file;
+<span class="fc bfc" id="L74" title="All 2 branches covered.">                if (document) {</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">                    byte[] raw = working ? savedBytes(saved, key, session.branch(), limits, checkpoint) : document(tree, original, limits, checkpoint);</span>
+<span class="fc bfc" id="L76" title="All 4 branches covered.">                    if (working &amp;&amp; saved.state().semanticRevision() == saved.state().checkpointRevision()</span>
+<span class="pc bpc" id="L77" title="1 of 4 branches missed.">                            &amp;&amp; !hash(raw).equals(original == null ? hash(new byte[0]) : original.sha256()))</span>
+<span class="fc" id="L78">                        throw failure(&quot;Completed editor checkpoint content disagrees with its Git document&quot;);</span>
+<span class="fc" id="L79">                    byte[] projected = documentBytes(raw, limits, checkpoint, historyWorkingCopy);</span>
+<span class="fc" id="L80">                    file = new File(path, mode, projected.length, hash(projected));</span>
+<span class="fc bfc" id="L81" title="All 6 branches covered.">                    if (original != null &amp;&amp; (!working || original.sha256().equals(saved.sha256())))</span>
+<span class="fc" id="L82">                        documents.add(new BackupDocumentReference(key, commit, path, original.sha256()));</span>
+<span class="fc" id="L83">                } else file = new File(path, mode, original.length(), original.sha256());</span>
+<span class="pc bpc" id="L84" title="1 of 4 branches missed.">                if (file.length() &gt; limits.git().maxFileBytes() || file.length() &gt; limits.git().maxTotalBytes() - total)</span>
+<span class="fc" id="L85">                    throw failure(&quot;Effective stand byte limit exceeded&quot;);</span>
+<span class="fc" id="L86">                total += file.length(); evidence.put(file, new Evidence(original, document, working));</span>
+<span class="fc" id="L87">            }</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            String branch = selected ? null : Constants.R_HEADS + session.branch();</span>
+<span class="fc bfc" id="L89" title="All 4 branches covered.">            var state = new SnapshotContext.RepositoryState(branch == null || commit == null ? Map.of() : Map.of(branch, commit), branch,</span>
+<span class="fc bfc" id="L90" title="All 4 branches covered.">                    saved == null ? Map.of() : Map.of(session.branch(), saved.state()), commit == null ? Set.of() : Set.of(commit));</span>
+<span class="fc" id="L91">            checkpoint.check();</span>
+<span class="fc" id="L92">            return new Stand(session, tree, limits, saved, evidence, state, documents, historyWorkingCopy);</span>
+<span class="fc" id="L93">        } catch (IOException | RuntimeException | Error problem) {</span>
+<span class="pc bfc" id="L94" title="All 2 branches covered.">            if (session != null) try { session.close(); } catch (IOException | RuntimeException cleanup) { problem.addSuppressed(cleanup); }</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">            if (problem instanceof Error error) throw error;</span>
+<span class="fc" id="L96">            throw sanitized(problem);</span>
+        }
+    }
+
+    /** No document payloads are retained here: each copy rereads and checks one bounded document. */
+    public final class Stand implements AutoCloseable {
+        private final ExistingGitBackupRepositories.ReadSession session;
+        private final GitTreeCapture tree;
+        private final Limits limits;
+        private final SavedProof saved;
+        private final Map&lt;File, Evidence&gt; evidence;
+        private final List&lt;File&gt; files;
+        private final SnapshotContext.RepositoryState state;
+        private final List&lt;BackupDocumentReference&gt; documents;
+        private final boolean historyWorkingCopy;
+<span class="fc" id="L111">        private final AtomicBoolean active = new AtomicBoolean(true);</span>
+        private Stand(ExistingGitBackupRepositories.ReadSession session, GitTreeCapture tree, Limits limits, SavedProof saved,
+<span class="fc" id="L113">                      Map&lt;File, Evidence&gt; evidence, SnapshotContext.RepositoryState state, List&lt;BackupDocumentReference&gt; documents, boolean historyWorkingCopy) {</span>
+<span class="fc" id="L114">            this.session = session; this.tree = tree; this.limits = limits; this.saved = saved;</span>
+<span class="fc" id="L115">            this.evidence = Map.copyOf(evidence); files = List.copyOf(evidence.keySet()); this.state = state; this.documents = List.copyOf(documents);</span>
+<span class="fc" id="L116">            this.historyWorkingCopy = historyWorkingCopy;</span>
+<span class="fc" id="L117">        }</span>
+<span class="fc" id="L118">        public List&lt;File&gt; files() { return files; }</span>
+        /** Source capture evidence. This does not declare an exported Git representation. */
+<span class="fc" id="L120">        public SnapshotContext.RepositoryState state() { return state; }</span>
+<span class="fc" id="L121">        public List&lt;BackupDocumentReference&gt; documents() { return documents; }</span>
+<span class="fc" id="L122">        boolean isHistoryWorkingCopy() { return historyWorkingCopy; }</span>
+<span class="fc" id="L123">        GitHistoryCapture.Origin origin() { return session.origin(); }</span>
+<span class="fc" id="L124">        GitTreeCapture sourceTree() { return tree; }</span>
+        public void copy(File file, OutputStream output, BackupCheckpoint checkpoint) throws IOException {
+            try {
+<span class="fc" id="L127">                Objects.requireNonNull(output); var check = (BackupCheckpoint) () -&gt; check(checkpoint); check.check();</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                var source = evidence.get(file); if (source == null) throw failure(&quot;File is outside the captured stand&quot;);</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">                if (source.document()) {</span>
+                    byte[] raw;
+<span class="fc bfc" id="L131" title="All 2 branches covered.">                    if (source.working()) {</span>
+<span class="fc" id="L132">                        raw = savedBytes(saved, session.key(), session.branch(), limits, check);</span>
+<span class="fc" id="L133">                    } else raw = document(tree, source.original(), limits, check);</span>
+<span class="fc" id="L134">                    byte[] projected = documentBytes(raw, limits, check, historyWorkingCopy);</span>
+<span class="pc bpc" id="L135" title="1 of 4 branches missed.">                    if (projected.length != file.length() || !hash(projected).equals(file.sha256()))</span>
+<span class="fc" id="L136">                        throw failure(&quot;Captured stand content changed after capture&quot;);</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">                    for (int offset = 0; offset &lt; projected.length; offset += BUFFER) {</span>
+<span class="fc" id="L138">                        check.check(); output.write(projected, offset, Math.min(BUFFER, projected.length - offset)); check.check();</span>
+                    }
+<span class="fc" id="L140">                } else tree.copy(source.original(), output, check);</span>
+<span class="fc" id="L141">                check.check();</span>
+<span class="fc" id="L142">            } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+<span class="fc" id="L143">        }</span>
+        public BackupEntry writeFile(File file, String path, ComponentSink sink) throws IOException {
+            try {
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">                if (!evidence.containsKey(file)) throw failure(&quot;File is outside the captured stand&quot;);</span>
+<span class="fc" id="L147">                return GitTreeCapture.writeGenerated(new BackupEntry(path, file.length(), file.sha256()), sink, output -&gt; copy(file, output, sink::checkpoint));</span>
+<span class="fc" id="L148">            } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+        }
+        void check(BackupCheckpoint checkpoint) throws IOException {
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            if (!active.get()) throw failure(&quot;Git stand capture session is closed&quot;);</span>
+<span class="fc" id="L152">            checkpoint.check();</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">            if (!active.get()) throw failure(&quot;Git stand capture session is closed&quot;);</span>
+<span class="fc" id="L154">        }</span>
+<span class="fc" id="L155">        void checkLifetime() throws IOException { check(() -&gt; { }); }</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        @Override public void close() throws IOException { if (active.getAndSet(false)) session.close(); }</span>
+    }
+
+    private SavedProof savedProof(BackupRepositoryKey key, String branch, Limits limits, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        var saved = saved(key, branch, limits, checkpoint); return saved == null ? null : saved.proof();</span>
+    }
+    private byte[] savedBytes(SavedProof expected, BackupRepositoryKey key, String branch, Limits limits, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L163">        var current = saved(key, branch, limits, checkpoint);</span>
+<span class="fc bfc" id="L164" title="All 4 branches covered.">        if (current == null || !expected.equals(current.proof())) throw failure(&quot;Saved editor evidence changed after capture&quot;);</span>
+<span class="fc" id="L165">        return current.bytes();</span>
+    }
+    private Saved saved(BackupRepositoryKey key, String branch, Limits limits, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L168">        String scope = RepositoryContext.workspace(key.repositoryId(), key.workspaceId(), branch, &quot;backup-reader&quot;).repositoryWorkspaceScopeKey();</span>
+<span class="fc" id="L169">        String sql = &quot;select scope_id,dsl,semantic_revision,checkpoint_commit,checkpoint_revision,pending_checkpoint from editor_workspace where repository_id=? and workspace_id=? and branch=?&quot;;</span>
+<span class="fc" id="L170">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L171">            connection.setReadOnly(true); connection.setAutoCommit(false);</span>
+<span class="fc" id="L172">            try (Rollback rollback = connection::rollback; var statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L173">                statement.setMaxRows(2); statement.setQueryTimeout(60); statement.setString(1, key.repositoryId()); statement.setString(2, key.workspaceId()); statement.setString(3, branch);</span>
+<span class="fc" id="L174">                checkpoint.check();</span>
+<span class="fc" id="L175">                try (var row = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">                    if (!row.next()) { checkpoint.check(); return null; }</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">                    if (!scope.equals(text(row, &quot;scope_id&quot;, 64, checkpoint))) throw failure(&quot;Saved editor routing evidence is inconsistent&quot;);</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">                    if (text(row, &quot;pending_checkpoint&quot;, 36, checkpoint) != null) throw failure(&quot;Saved editor checkpoint is pending; complete or recover it before stand capture&quot;);</span>
+<span class="fc" id="L179">                    long revision = number(row, &quot;semantic_revision&quot;), checkpointRevision = number(row, &quot;checkpoint_revision&quot;);</span>
+<span class="fc" id="L180">                    var state = new SnapshotContext.WorkingState(revision, text(row, &quot;checkpoint_commit&quot;, 40, checkpoint), checkpointRevision);</span>
+<span class="fc" id="L181">                    String framed = text(row, &quot;dsl&quot;, limits.maxDocumentBytes() + 2, checkpoint);</span>
+<span class="pc bpc" id="L182" title="1 of 4 branches missed.">                    if (framed == null || !framed.startsWith(&quot;1:&quot;)) throw failure(&quot;Unsupported saved editor body version&quot;);</span>
+<span class="fc" id="L183">                    byte[] bytes = utf8(framed.substring(2), limits, checkpoint);</span>
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">                    if (row.next()) throw failure(&quot;Duplicate saved editor routing evidence&quot;);</span>
+<span class="fc" id="L185">                    checkpoint.check(); return new Saved(new SavedProof(state, hash(bytes)), bytes);</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">                }</span>
+<span class="pc bpc" id="L187" title="2 of 4 branches missed.">            }</span>
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">        } catch (SQLException problem) { throw sanitized(problem); }</span>
+    }
+
+    private static String text(ResultSet row, String column, int maximum, BackupCheckpoint checkpoint) throws IOException, SQLException {
+<span class="fc" id="L192">        try (var reader = row.getCharacterStream(column)) {</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">            if (reader == null) return null;</span>
+<span class="fc" id="L194">            var value = new StringBuilder(); var buffer = new char[Math.min(BUFFER, maximum + 1)];</span>
+            for (;;) {
+<span class="fc bfc" id="L196" title="All 2 branches covered.">                checkpoint.check(); int count = reader.read(buffer); if (count &lt; 0) break;</span>
+<span class="pc bpc" id="L197" title="3 of 4 branches missed.">                if (count == 0) { int single = reader.read(); if (single &lt; 0) break; buffer[0] = (char) single; count = 1; }</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">                if (count &gt; maximum - value.length()) throw failure(&quot;Saved editor text limit exceeded&quot;);</span>
+<span class="fc" id="L199">                value.append(buffer, 0, count);</span>
+<span class="fc" id="L200">            }</span>
+<span class="fc" id="L201">            checkpoint.check(); return value.toString();</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">        }</span>
+    }
+    private static long number(ResultSet row, String column) throws SQLException, IOException {
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">        long value = row.getLong(column); if (row.wasNull()) throw failure(&quot;Saved editor revision is missing&quot;); return value;</span>
+    }
+    private static byte[] document(GitTreeCapture tree, GitTreeCapture.File file, Limits limits, BackupCheckpoint checkpoint) throws IOException {
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">        if (file.length() &gt; limits.maxDocumentBytes()) throw failure(&quot;Stand document byte limit exceeded&quot;);</span>
+<span class="fc" id="L209">        var output = new ByteArrayOutputStream((int) file.length()); tree.copy(file, output, checkpoint); return output.toByteArray();</span>
+    }
+    private byte[] documentBytes(byte[] raw, Limits limits, BackupCheckpoint checkpoint, boolean rawHistory) throws IOException {
+<span class="fc" id="L212">        checkpoint.check();</span>
+<span class="fc" id="L213">        String document = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(raw)).toString();</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        if (rawHistory) { checkpoint.check(); return raw; }</span>
+<span class="fc" id="L215">        String projected = projector.currentState(document); checkpoint.check(); return utf8(projected, limits, checkpoint);</span>
+    }
+    private static byte[] utf8(String value, Limits limits, BackupCheckpoint checkpoint) throws IOException {
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">        if (value == null) throw failure(&quot;Stand document projection is missing&quot;);</span>
+<span class="fc" id="L219">        int count = 0;</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">        for (int i = 0; i &lt; value.length(); i++) {</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">            if (i % BUFFER == 0) checkpoint.check(); char c = value.charAt(i);</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">            if (c &lt; 0x80) count++;</span>
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">            else if (c &lt; 0x800) count += 2;</span>
+<span class="nc bnc" id="L224" title="All 2 branches missed.">            else if (Character.isHighSurrogate(c)) {</span>
+<span class="nc bnc" id="L225" title="All 4 branches missed.">                if (++i &gt;= value.length() || !Character.isLowSurrogate(value.charAt(i))) throw failure(&quot;Stand document is not valid Unicode&quot;);</span>
+<span class="nc" id="L226">                count += 4;</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">            } else if (Character.isLowSurrogate(c)) throw failure(&quot;Stand document is not valid Unicode&quot;);</span>
+<span class="nc" id="L228">            else count += 3;</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">            if (count &gt; limits.maxDocumentBytes()) throw failure(&quot;Stand document byte limit exceeded&quot;);</span>
+        }
+<span class="fc" id="L231">        checkpoint.check(); return value.getBytes(StandardCharsets.UTF_8);</span>
+    }
+    private static String hash(byte[] bytes) {
+<span class="fc" id="L234">        try { return HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(bytes)); }</span>
+<span class="nc" id="L235">        catch (NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }</span>
+    }
+<span class="fc" id="L237">    private record Evidence(GitTreeCapture.File original, boolean document, boolean working) { }</span>
+<span class="fc" id="L238">    private record SavedProof(SnapshotContext.WorkingState state, String sha256) { }</span>
+<span class="fc" id="L239">    private record Saved(SavedProof proof, byte[] bytes) { }</span>
+    @FunctionalInterface private interface Rollback extends AutoCloseable { @Override void close() throws SQLException; }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

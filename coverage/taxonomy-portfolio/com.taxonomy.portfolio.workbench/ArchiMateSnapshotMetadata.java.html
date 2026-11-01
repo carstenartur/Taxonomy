@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchiMateSnapshotMetadata.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.workbench</a> &gt; <span class="el_source">ArchiMateSnapshotMetadata.java</span></div><h1>ArchiMateSnapshotMetadata.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.workbench;
+
+import com.taxonomy.archimate.ArchiMateExportMetadata;
+import com.taxonomy.archimate.ArchiMateLoss;
+import com.taxonomy.archimate.ArchiMateProperty;
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Allowlisted immutable requirement, scoped contributions and review data for an inspectable handoff. */
+final class ArchiMateSnapshotMetadata {
+    private ArchiMateSnapshotMetadata() { }
+
+    static ArchiMateExportMetadata from(Projection projection, DiagramModel graph, String graphSha256) {
+<span class="fc" id="L19">        Map&lt;String, ArchiMateProperty&gt; properties = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L20">        List&lt;ArchiMateLoss&gt; losses = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L21">        String id = projection.snapshotId();</span>
+<span class="fc" id="L22">        put(properties, &quot;snapshotId&quot;, id);</span>
+<span class="fc" id="L23">        put(properties, &quot;snapshotStatus&quot;, projection.snapshotStatus());</span>
+<span class="fc" id="L24">        put(properties, &quot;snapshotCreatedAt&quot;, projection.snapshotCreatedAt());</span>
+<span class="fc" id="L25">        put(properties, &quot;projectId&quot;, projection.projectId());</span>
+<span class="fc" id="L26">        put(properties, &quot;requirementId&quot;, projection.requirementId());</span>
+<span class="fc" id="L27">        put(properties, &quot;workspaceId&quot;, projection.workspaceId());</span>
+<span class="fc" id="L28">        put(properties, &quot;branch&quot;, projection.branchName());</span>
+<span class="fc" id="L29">        put(properties, &quot;authoritativeCommit&quot;, projection.commitSha());</span>
+<span class="fc" id="L30">        put(properties, &quot;canonicalGraphSha256&quot;, graphSha256);</span>
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">        if (projection.requirementText() != null) {</span>
+<span class="fc" id="L32">            put(properties, &quot;requirementText&quot;, projection.requirementText());</span>
+<span class="fc" id="L33">            put(properties, &quot;requirementSha256&quot;, sha256(projection.requirementText()));</span>
+        } else {
+<span class="nc" id="L35">            losses.add(new ArchiMateLoss(&quot;model&quot;, id, &quot;requirementText&quot;, &quot;OMITTED&quot;,</span>
+                    &quot;The original requirement is not retained in this frozen projection; no current text was substituted.&quot;));
+        }
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        if (projection.exportProvenance() != null) {</span>
+<span class="fc" id="L39">            put(properties, &quot;requirementVersionId&quot;, projection.exportProvenance().requirementVersionId());</span>
+<span class="fc" id="L40">            put(properties, &quot;taxonomyFingerprint&quot;, projection.exportProvenance().taxonomyFingerprint());</span>
+<span class="fc" id="L41">            put(properties, &quot;repositoryId&quot;, projection.exportProvenance().repositoryId());</span>
+        }
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        for (String field : List.of(&quot;requirementVersionId&quot;, &quot;taxonomyFingerprint&quot;, &quot;repositoryId&quot;, &quot;selectionProfileFingerprint&quot;)) {</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">            if (!properties.containsKey(&quot;taxonomy.&quot; + field)) {</span>
+<span class="fc" id="L45">                losses.add(new ArchiMateLoss(&quot;model&quot;, id, field, &quot;OMITTED&quot;,</span>
+                        &quot;Not retained in the authorized persisted snapshot projection; no current-state value was substituted.&quot;));
+            }
+<span class="fc" id="L48">        }</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        for (String field : List.of(&quot;providerPayload&quot;, &quot;prompt&quot;, &quot;sourceEvidence&quot;, &quot;warnings&quot;)) {</span>
+<span class="fc" id="L50">            losses.add(new ArchiMateLoss(&quot;model&quot;, id, field, &quot;OMITTED&quot;,</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">                    field.equals(&quot;sourceEvidence&quot;)</span>
+<span class="fc" id="L52">                            ? &quot;Raw model-level provider/source evidence is omitted; recorded scoped relationship evidence is retained where present.&quot;</span>
+<span class="fc" id="L53">                            : &quot;Outside the authorized model exchange subset; use the canonical evidence report when separately authorized.&quot;));</span>
+<span class="fc" id="L54">        }</span>
+<span class="fc" id="L55">        Map&lt;String, Map&lt;String, ArchiMateProperty&gt;&gt; elements = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        for (var node : graph.nodes()) {</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">            if (node.container()) continue;</span>
+<span class="fc" id="L58">            Map&lt;String, ArchiMateProperty&gt; values = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L59">            var metadata = projection.elements().get(node.id());</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            if (metadata != null) {</span>
+<span class="fc" id="L61">                values.put(&quot;taxonomy.directScore&quot;, ArchiMateProperty.number(metadata.directScore()));</span>
+<span class="fc" id="L62">                values.put(&quot;taxonomy.confidence&quot;, ArchiMateProperty.number(metadata.confidence()));</span>
+<span class="fc" id="L63">                put(values, &quot;taxonomyRoot&quot;, metadata.taxonomyRoot());</span>
+<span class="fc" id="L64">                put(values, &quot;mappingOrigin&quot;, metadata.mappingOrigin());</span>
+<span class="fc" id="L65">                put(values, &quot;hierarchyPath&quot;, metadata.hierarchyPath());</span>
+<span class="fc" id="L66">                put(values, &quot;reviewStatus&quot;, metadata.reviewStatus());</span>
+<span class="fc" id="L67">                put(values, &quot;actionStatus&quot;, metadata.actionStatus());</span>
+<span class="fc" id="L68">                put(values, &quot;actionEvidence&quot;, metadata.actionEvidence());</span>
+<span class="fc" id="L69">                put(values, &quot;decisionBy&quot;, metadata.decisionBy());</span>
+<span class="fc" id="L70">                put(values, &quot;decisionAt&quot;, metadata.decisionAt());</span>
+<span class="fc" id="L71">                put(values, &quot;decisionRationale&quot;, metadata.decisionComment());</span>
+<span class="fc" id="L72">                put(values, &quot;presenceReason&quot;, metadata.presenceReason());</span>
+            } else {
+<span class="fc" id="L74">                losses.add(new ArchiMateLoss(&quot;element&quot;, node.id(), &quot;reviewMetadata&quot;, &quot;OMITTED&quot;,</span>
+                        &quot;No persisted mapping metadata is available for this selected element.&quot;));
+            }
+<span class="fc" id="L77">            elements.put(node.id(), values);</span>
+<span class="fc" id="L78">        }</span>
+<span class="fc" id="L79">        Map&lt;String, Map&lt;String, ArchiMateProperty&gt;&gt; relations = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        for (var edge : graph.edges()) {</span>
+<span class="fc" id="L81">            var metadata = projection.relations().get(edge.sourceId() + &quot;|&quot; + edge.targetId() + &quot;|&quot; + edge.relationType());</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">            if (metadata == null) continue;</span>
+<span class="fc" id="L83">            Map&lt;String, ArchiMateProperty&gt; values = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L84">            values.put(&quot;taxonomy.confidence&quot;, ArchiMateProperty.number(metadata.confidence()));</span>
+<span class="fc" id="L85">            put(values, &quot;relationOrigin&quot;, metadata.relationOrigin());</span>
+<span class="fc" id="L86">            put(values, &quot;reviewStatus&quot;, metadata.reviewStatus());</span>
+<span class="fc" id="L87">            put(values, &quot;decisionBy&quot;, metadata.decisionBy());</span>
+<span class="fc" id="L88">            put(values, &quot;decisionAt&quot;, metadata.decisionAt());</span>
+<span class="fc" id="L89">            put(values, &quot;decisionRationale&quot;, metadata.decisionComment());</span>
+<span class="fc" id="L90">            relations.put(edge.id(), values);</span>
+<span class="fc bfc" id="L91" title="All 4 branches covered.">            if (edge.metadata() == null || edge.metadata().presenceReason() == null) {</span>
+<span class="fc" id="L92">                losses.add(new ArchiMateLoss(&quot;relationship&quot;, edge.id(), &quot;presenceReason&quot;, &quot;OMITTED&quot;,</span>
+                        &quot;No recorded neutral relationship presence reason is exported; reviewed human rationale is retained.&quot;));
+            }
+<span class="fc" id="L95">        }</span>
+<span class="fc" id="L96">        return new ArchiMateExportMetadata(&quot;snapshot-&quot; + id, properties, elements, relations, losses);</span>
+    }
+
+    private static void put(Map&lt;String, ArchiMateProperty&gt; properties, String name, Object value) {
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (value != null) properties.put(&quot;taxonomy.&quot; + name, ArchiMateProperty.text(value.toString()));</span>
+<span class="fc" id="L101">    }</span>
+
+    private static String sha256(String value) {
+        try {
+<span class="fc" id="L105">            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance(&quot;SHA-256&quot;)</span>
+<span class="fc" id="L106">                    .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8)));</span>
+<span class="nc" id="L107">        } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

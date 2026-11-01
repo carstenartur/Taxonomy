@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupIntegrationScope.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup</a> &gt; <span class="el_source">BackupIntegrationScope.java</span></div><h1>BackupIntegrationScope.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup;
+
+import com.taxonomy.identity.StableIdentityHash;
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+
+/** Server-supplied routing identity for an interoperability journal, distinct from its workspace overlay key. */
+public record BackupIntegrationScope(BackupRepositoryKey repository, String branch) {
+<span class="fc" id="L10">    public BackupIntegrationScope {</span>
+<span class="fc" id="L11">        Objects.requireNonNull(repository);</span>
+<span class="fc bfc" id="L12" title="All 2 branches covered.">        if (repository.workspaceId() == null) throw new IllegalArgumentException(&quot;Integration journals require a workspace&quot;);</span>
+<span class="fc" id="L13">        BackupChecks.text(branch, &quot;integration branch&quot;);</span>
+<span class="fc" id="L14">    }</span>
+    public String scopeId() {
+<span class="fc" id="L16">        return StableIdentityHash.sha256(repository.repositoryId() + &quot;\u0000&quot; + repository.workspaceId() + &quot;\u0000&quot; + branch);</span>
+    }
+
+    @FunctionalInterface
+    public interface Selector {
+        List&lt;BackupIntegrationScope&gt; select(SnapshotContext snapshot, BackupCheckpoint checkpoint) throws IOException;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

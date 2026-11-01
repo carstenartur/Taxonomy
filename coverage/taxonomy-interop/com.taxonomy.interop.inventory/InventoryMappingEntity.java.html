@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>InventoryMappingEntity.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.inventory</a> &gt; <span class="el_source">InventoryMappingEntity.java</span></div><h1>InventoryMappingEntity.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.inventory;
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+@Entity
+@Table(name=&quot;inventory_mapping&quot;,indexes=@Index(name=&quot;ix_inventory_mapping_scope&quot;,columnList=&quot;scope_key&quot;))
+public class InventoryMappingEntity {
+@Id @Column(name=&quot;id&quot;,length=200) String id;
+@Column(name=&quot;repository_id&quot;,nullable=false,length=320) String repositoryId;
+@Column(name=&quot;scope_key&quot;,nullable=false,length=1024) String scopeKey;
+@Column(name=&quot;branch_name&quot;,nullable=false,length=400) String branch;
+@Column(name=&quot;candidate_id&quot;,nullable=false,length=3000) String candidateId;
+@JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name=&quot;mapping_json&quot;,nullable=false) String mappingJson;
+<span class="fc" id="L14">protected InventoryMappingEntity() {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.analysis.cluster.ClusterAnalysisDetailedProgressTest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.485 s -- in com.taxonomy.analysis.cluster.ClusterAnalysisDetailedProgressTest

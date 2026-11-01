@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CommitProvenance.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.storage</a> &gt; <span class="el_source">CommitProvenance.java</span></div><h1>CommitProvenance.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.storage;
+
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.taxonomy.workspace.signing.GitCommitSignatureService;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectInserter;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.treewalk.CanonicalTreeParser;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * One-hop evidence for a semantic copy across independent Git histories.
+ * The target's signed tree covers this document. Original commit/tree bytes
+ * prove the cited source signature and DSL blob ID, without recursively copying
+ * old evidence or claiming that a semantic merge is byte-identical to its source.
+ */
+public record CommitProvenance(int version, String operation, List&lt;Source&gt; sources) {
+    public static final String FILENAME = &quot;.taxonomy-provenance.json&quot;;
+    public static final int MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
+    private static final int MAX_SOURCE_BYTES = 256 * 1024;
+<span class="fc" id="L29">    private static final JsonMapper JSON = JsonMapper.builder(JsonFactory.builder()</span>
+<span class="fc" id="L30">                    .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build())</span>
+<span class="fc" id="L31">            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();</span>
+
+<span class="fc" id="L33">    public CommitProvenance {</span>
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">        if (version != 1) throw new IllegalArgumentException(&quot;Unsupported provenance version&quot;);</span>
+<span class="fc" id="L35">        operation = text(operation, &quot;operation&quot;);</span>
+<span class="fc" id="L36">        sources = List.copyOf(Objects.requireNonNull(sources, &quot;sources&quot;));</span>
+<span class="pc bpc" id="L37" title="2 of 4 branches missed.">        if (sources.isEmpty() || sources.size() &gt; 4) throw new IllegalArgumentException(&quot;Invalid provenance source count&quot;);</span>
+<span class="fc" id="L38">    }</span>
+
+    public record Source(String repositoryId, String branch, String commitId, String baseCommitId,
+                         String dslBlobId, byte[] rawCommit, byte[] rawTree) {
+<span class="fc" id="L42">        public Source {</span>
+<span class="fc" id="L43">            repositoryId = text(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc" id="L44">            branch = text(branch, &quot;branch&quot;);</span>
+<span class="fc" id="L45">            commitId = objectId(commitId);</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">            if (baseCommitId != null) baseCommitId = objectId(baseCommitId);</span>
+<span class="fc" id="L47">            dslBlobId = objectId(dslBlobId);</span>
+<span class="fc" id="L48">            rawCommit = bounded(rawCommit);</span>
+<span class="fc" id="L49">            rawTree = bounded(rawTree);</span>
+<span class="fc" id="L50">        }</span>
+<span class="fc" id="L51">        @Override public byte[] rawCommit() { return rawCommit.clone(); }</span>
+<span class="fc" id="L52">        @Override public byte[] rawTree() { return rawTree.clone(); }</span>
+    }
+
+    public static CommitProvenance capture(String operation, DslGitRepository source,
+                                           String repositoryId, String branch, String head,
+                                           String baseCommitId) throws IOException {
+<span class="fc" id="L58">        source.verifySnapshot(head);</span>
+<span class="fc" id="L59">        var repository = source.getGitRepository();</span>
+<span class="fc" id="L60">        byte[] commit = repository.open(ObjectId.fromString(head), Constants.OBJ_COMMIT).getBytes(MAX_SOURCE_BYTES);</span>
+<span class="fc" id="L61">        byte[] tree = repository.open(RevCommit.parse(commit).getTree(), Constants.OBJ_TREE).getBytes(MAX_SOURCE_BYTES);</span>
+<span class="fc" id="L62">        return new CommitProvenance(1, operation, List.of(new Source(repositoryId, branch, head, baseCommitId,</span>
+<span class="fc" id="L63">                dslBlob(tree), commit, tree)));</span>
+    }
+
+    public void verify(GitCommitSignatureService signatures) throws IOException {
+<span class="fc" id="L67">        try (var formatter = new ObjectInserter.Formatter()) {</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            for (var source : sources) {</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">                if (!formatter.idFor(Constants.OBJ_COMMIT, source.rawCommit).name().equals(source.commitId)) {</span>
+<span class="fc" id="L70">                    throw new IOException(&quot;Provenance source commit does not match its object ID&quot;);</span>
+                }
+<span class="fc" id="L72">                signatures.requireAcceptable(source.rawCommit);</span>
+<span class="fc" id="L73">                var sourceCommit = RevCommit.parse(source.rawCommit);</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">                if (!formatter.idFor(Constants.OBJ_TREE, source.rawTree).equals(sourceCommit.getTree())) {</span>
+<span class="fc" id="L75">                    throw new IOException(&quot;Provenance source tree does not match the signed commit&quot;);</span>
+                }
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">                if (!dslBlob(source.rawTree).equals(source.dslBlobId)) {</span>
+<span class="nc" id="L78">                    throw new IOException(&quot;Provenance DSL blob does not match the source tree&quot;);</span>
+                }
+<span class="fc" id="L80">            }</span>
+<span class="fc" id="L81">        } catch (RuntimeException malformed) {</span>
+<span class="fc" id="L82">            throw new IOException(&quot;Malformed provenance evidence&quot;, malformed);</span>
+<span class="fc" id="L83">        }</span>
+<span class="fc" id="L84">    }</span>
+
+    public byte[] toBytes() throws IOException {
+<span class="fc" id="L87">        byte[] bytes = JSON.writeValueAsBytes(this);</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (bytes.length &gt; MAX_DOCUMENT_BYTES) throw new IOException(&quot;Provenance document is too large&quot;);</span>
+<span class="fc" id="L89">        return bytes;</span>
+    }
+
+    public static CommitProvenance fromBytes(byte[] bytes) throws IOException {
+<span class="pc bpc" id="L93" title="2 of 4 branches missed.">        if (bytes == null || bytes.length &gt; MAX_DOCUMENT_BYTES) throw new IOException(&quot;Invalid provenance document size&quot;);</span>
+        try {
+<span class="fc" id="L95">            var provenance = JSON.readValue(bytes, CommitProvenance.class);</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">            if (provenance == null) throw new IOException(&quot;Provenance document must be an object&quot;);</span>
+<span class="fc" id="L97">            return provenance;</span>
+<span class="nc" id="L98">        } catch (RuntimeException invalid) {</span>
+<span class="nc" id="L99">            throw new IOException(&quot;Malformed provenance document&quot;, invalid);</span>
+        }
+    }
+
+    private static String dslBlob(byte[] rawTree) throws IOException {
+<span class="fc" id="L104">        var tree = new CanonicalTreeParser();</span>
+<span class="fc" id="L105">        tree.reset(rawTree);</span>
+<span class="fc" id="L106">        String blob = null;</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        while (!tree.eof()) {</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            if (DslGitRepository.DSL_FILENAME.equals(tree.getEntryPathString())) {</span>
+<span class="pc bpc" id="L109" title="2 of 4 branches missed.">                if (blob != null || !FileMode.REGULAR_FILE.equals(tree.getEntryFileMode())) {</span>
+<span class="nc" id="L110">                    throw new IOException(&quot;Provenance source tree has an ambiguous architecture DSL&quot;);</span>
+                }
+<span class="fc" id="L112">                blob = tree.getEntryObjectId().name();</span>
+            }
+<span class="fc" id="L114">            tree.next(1);</span>
+        }
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">        if (blob != null) return blob;</span>
+<span class="nc" id="L117">        throw new IOException(&quot;Provenance source tree has no architecture DSL&quot;);</span>
+    }
+
+    private static String text(String value, String name) {
+<span class="pc bpc" id="L121" title="3 of 6 branches missed.">        if (value == null || value.isBlank() || value.length() &gt; 512) throw new IllegalArgumentException(&quot;Invalid &quot; + name);</span>
+<span class="fc" id="L122">        return value;</span>
+    }
+    private static String objectId(String value) {
+<span class="pc bpc" id="L125" title="2 of 4 branches missed.">        if (value == null || !ObjectId.isId(value)) throw new IllegalArgumentException(&quot;Invalid provenance object ID&quot;);</span>
+<span class="fc" id="L126">        return value;</span>
+    }
+    private static byte[] bounded(byte[] bytes) {
+<span class="pc bpc" id="L129" title="3 of 6 branches missed.">        if (bytes == null || bytes.length == 0 || bytes.length &gt; MAX_SOURCE_BYTES) throw new IllegalArgumentException(&quot;Invalid provenance evidence size&quot;);</span>
+<span class="fc" id="L130">        return bytes.clone();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

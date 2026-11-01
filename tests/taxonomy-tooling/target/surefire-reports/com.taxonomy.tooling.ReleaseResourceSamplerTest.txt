@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.tooling.ReleaseResourceSamplerTest
+-------------------------------------------------------------------------------
+Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.586 s -- in com.taxonomy.tooling.ReleaseResourceSamplerTest

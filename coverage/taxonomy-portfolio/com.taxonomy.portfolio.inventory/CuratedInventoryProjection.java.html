@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CuratedInventoryProjection.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.inventory</a> &gt; <span class="el_source">CuratedInventoryProjection.java</span></div><h1>CuratedInventoryProjection.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.inventory;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProductView;
+import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.*;
+import com.taxonomy.extension.api.inventory.InventoryReadContracts.AssertionKind;
+import java.util.*;
+
+/** Sourced catalogue claims are distinct from explicit organizational availability. */
+<span class="fc" id="L9">public final class CuratedInventoryProjection {</span>
+    public Candidate project(ProductView product,String fingerprint,List&lt;Assertion&gt; retained,Question question) {
+<span class="fc" id="L11">        String id=&quot;product:&quot;+product.id(); var assertions=new ArrayList&lt;&gt;(retained);var metadata=new TreeMap&lt;String,String&gt;();</span>
+<span class="fc" id="L12">        metadata.put(&quot;source&quot;,Objects.toString(product.sourceReference(),&quot;&quot;));</span>
+<span class="fc" id="L13">        metadata.put(&quot;verifiedAt&quot;,Objects.toString(product.verifiedAt(),&quot;&quot;));</span>
+<span class="fc" id="L14">        metadata.put(&quot;productStatus&quot;,Objects.toString(product.productStatus(),&quot;&quot;));</span>
+<span class="fc" id="L15">        metadata.put(&quot;editionVersion&quot;,Objects.toString(product.editionVersion(),&quot;&quot;));</span>
+        // Coverage is a reviewed semantic mapping, not proof of availability or implementation.
+<span class="fc bfc" id="L17" title="All 4 branches covered.">        for(var mapping:product.taxonomyCoverage()) if(mapping.reviewStatus()==ReviewStatus.CONFIRMED) {</span>
+<span class="pc bpc" id="L18" title="1 of 2 branches missed.">            assertions.add(new Assertion(&quot;mapping:&quot;+mapping.id(),id,Criterion.CAPABILITY,mapping.nodeCode(),mapping.coveragePercent()&gt;0,</span>
+                    null,null,null,null,AssertionKind.DECLARED,
+<span class="fc" id="L20">                    Objects.toString(mapping.evidence(),&quot;Confirmed taxonomy mapping&quot;),mapping.updatedAt()));</span>
+        }
+<span class="fc bfc" id="L22" title="All 2 branches covered.">        if(product.endOfSupport()!=null) {</span>
+            // A support end can contradict future support, but no start date is manufactured.
+<span class="fc" id="L24">            assertions.add(new Assertion(&quot;support:&quot;+product.id(),id,Criterion.SUPPORT,null,true,null,</span>
+<span class="fc" id="L25">                    new Boundary(product.endOfSupport().toString(),Precision.DATE),question.organization(),question.environment(),</span>
+<span class="fc" id="L26">                    AssertionKind.DECLARED,Objects.toString(product.sourceReference(),&quot;Catalogue support claim&quot;),product.verifiedAt()));</span>
+        }
+<span class="fc" id="L28">        return new Candidate(id,product.id(),product.productName(),&quot;TECHNOLOGY_PRODUCT&quot;,fingerprint,metadata,assertions);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

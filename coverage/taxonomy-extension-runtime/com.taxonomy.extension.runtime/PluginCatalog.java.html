@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PluginCatalog.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-runtime</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.runtime</a> &gt; <span class="el_source">PluginCatalog.java</span></div><h1>PluginCatalog.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.runtime;
+
+import com.taxonomy.extension.api.plugin.*;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
+import com.taxonomy.shared.extension.*;
+import org.pf4j.DefaultVersionManager;
+
+import java.time.Duration;
+import java.util.*;
+
+/**
+ * One publication point for all built-in and installed contributions. Lifecycle mutations and
+ * lease acquisition share a monitor; metadata readers observe one immutable volatile snapshot.
+ */
+<span class="fc" id="L15">public final class PluginCatalog implements ExtensionCatalog {</span>
+    public record Contribution(PluginDescriptor descriptor, List&lt;? extends TaxonomyExtension&gt; extensions) {
+<span class="fc" id="L17">        public Contribution { Objects.requireNonNull(descriptor); extensions = List.copyOf(extensions); }</span>
+    }
+
+<span class="fc" id="L20">    private final Map&lt;String, Generation&gt; generations = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L21">    private volatile Publication current = new Publication(new CatalogSnapshot(0, List.of(), List.of()), Map.of());</span>
+
+<span class="fc" id="L23">    @Override public CatalogSnapshot snapshot() { return current.snapshot(); }</span>
+
+    /** Validate admission before creating a classloader. Publication repeats this atomically. */
+    public synchronized void validateDescriptor(PluginDescriptor descriptor) {
+<span class="fc" id="L27">        Map&lt;String, Generation&gt; candidate = new LinkedHashMap&lt;&gt;(generations);</span>
+<span class="fc" id="L28">        String id = descriptor.identity().id();</span>
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">        if (candidate.putIfAbsent(id, new Generation(new Contribution(descriptor, List.of()))) != null)</span>
+<span class="nc" id="L30">            throw new IllegalArgumentException(&quot;Duplicate plugin ID: &quot; + id);</span>
+<span class="fc" id="L31">        validateDependencies(candidate);</span>
+<span class="fc" id="L32">    }</span>
+
+    public void publish(PluginDescriptor descriptor, List&lt;? extends TaxonomyExtension&gt; extensions) {
+<span class="fc" id="L35">        publishAll(List.of(new Contribution(descriptor, extensions)));</span>
+<span class="fc" id="L36">    }</span>
+
+    public void publishAll(List&lt;Contribution&gt; contributions) {
+        // Read plugin-provided metadata before entering the host monitor. No plugin callback
+        // executes while publishing or while accounting for an admitted invocation.
+<span class="fc" id="L41">        List&lt;Generation&gt; additions = List.copyOf(contributions).stream().map(Generation::new).toList();</span>
+<span class="fc" id="L42">        synchronized (this) {</span>
+<span class="fc" id="L43">            Map&lt;String, Generation&gt; candidate = new LinkedHashMap&lt;&gt;(generations);</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">            for (Generation generation : additions) {</span>
+<span class="fc" id="L45">                String id = generation.descriptor.identity().id();</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">                if (candidate.putIfAbsent(id, generation) != null)</span>
+<span class="fc" id="L47">                    throw new IllegalStateException(&quot;Duplicate plugin ID: &quot; + id);</span>
+<span class="fc" id="L48">            }</span>
+<span class="fc" id="L49">            validateDependencies(candidate);</span>
+<span class="fc" id="L50">            Publication publication = publication(candidate, current.snapshot().revision() + 1);</span>
+            // All validation succeeded. These two mutations are invisible to acquisitions until
+            // the monitor is released; readers receive the complete old or new publication.
+<span class="fc" id="L53">            generations.clear(); generations.putAll(candidate); current = publication;</span>
+<span class="fc" id="L54">        }</span>
+<span class="fc" id="L55">    }</span>
+
+    @Override public synchronized &lt;T extends TaxonomyExtension&gt; ExtensionLease&lt;T&gt; acquire(
+            ExtensionKey key, Class&lt;T&gt; expectedType) {
+<span class="fc" id="L59">        Objects.requireNonNull(expectedType, &quot;expectedType&quot;);</span>
+<span class="fc" id="L60">        Entry entry = current.entries().get(Objects.requireNonNull(key, &quot;key&quot;));</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (entry == null) {</span>
+            // Draining registrations remain installed until every admitted call has finished.
+            // Keep that transient state distinct from an unknown ID for request adapters.
+<span class="fc" id="L64">            boolean installed = generations.values().stream()</span>
+<span class="fc" id="L65">                    .flatMap(generation -&gt; generation.entries.stream())</span>
+<span class="fc" id="L66">                    .anyMatch(candidate -&gt; candidate.metadata.key().equals(key));</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">            throw new ExtensionUnavailableException(key, installed</span>
+<span class="fc" id="L68">                    ? ExtensionUnavailableException.Reason.UNAVAILABLE</span>
+<span class="fc" id="L69">                    : ExtensionUnavailableException.Reason.UNKNOWN);</span>
+        }
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (!expectedType.isInstance(entry.extension))</span>
+<span class="fc" id="L72">            throw new IllegalArgumentException(&quot;Extension contract mismatch: &quot; + key);</span>
+<span class="fc" id="L73">        entry.owner.references++;</span>
+<span class="fc" id="L74">        return new Lease&lt;&gt;(entry.owner, expectedType.cast(entry.extension));</span>
+    }
+
+    @Override public synchronized &lt;T extends TaxonomyExtension&gt; List&lt;ExtensionLease&lt;T&gt;&gt; acquireAll(
+            ExtensionKind kind, Class&lt;T&gt; expectedType) {
+<span class="fc" id="L79">        Objects.requireNonNull(kind); Objects.requireNonNull(expectedType);</span>
+<span class="fc" id="L80">        return current.entries().entrySet().stream()</span>
+<span class="fc bfc" id="L81" title="All 4 branches covered.">                .filter(e -&gt; e.getKey().kind() == kind &amp;&amp; expectedType.isInstance(e.getValue().extension))</span>
+<span class="fc" id="L82">                .sorted(Map.Entry.comparingByKey()).map(e -&gt; acquire(e.getKey(), expectedType)).toList();</span>
+    }
+
+    public synchronized void beginDraining(PluginIdentity identity) {
+<span class="fc" id="L86">        Generation generation = generation(identity);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (generation.draining) return;</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        for (Generation dependent : generations.values()) {</span>
+<span class="fc" id="L89">            if (dependent.descriptor.requires().stream()</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                    .anyMatch(r -&gt; r.id().equals(identity.id()))) {</span>
+<span class="fc" id="L91">                throw new IllegalStateException(&quot;Plugin is required by &quot; + dependent.descriptor.identity().id());</span>
+            }
+<span class="fc" id="L93">        }</span>
+<span class="fc" id="L94">        generation.draining = true;</span>
+<span class="fc" id="L95">        current = publication(generations, current.snapshot().revision() + 1);</span>
+<span class="fc" id="L96">    }</span>
+
+    public synchronized boolean awaitReleased(PluginIdentity identity, Duration timeout) throws InterruptedException {
+<span class="fc" id="L99">        Objects.requireNonNull(timeout, &quot;timeout&quot;);</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">        if (timeout.isNegative()) throw new IllegalArgumentException(&quot;Drain timeout must not be negative&quot;);</span>
+<span class="fc" id="L101">        Generation generation = generation(identity);</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">        if (!generation.draining) throw new IllegalStateException(&quot;Plugin is not draining&quot;);</span>
+        long budget;
+<span class="pc" id="L104">        try { budget = timeout.toNanos(); } catch (ArithmeticException tooLarge) { budget = Long.MAX_VALUE; }</span>
+<span class="fc" id="L105">        long started = System.nanoTime();</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        while (generation.references != 0) {</span>
+<span class="fc" id="L107">            long remaining = budget - (System.nanoTime() - started);</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">            if (remaining &lt;= 0) return false;</span>
+<span class="nc" id="L109">            wait(remaining / 1_000_000, (int) (remaining % 1_000_000));</span>
+<span class="nc" id="L110">        }</span>
+<span class="fc" id="L111">        return true;</span>
+    }
+
+    public synchronized void remove(PluginIdentity identity) {
+<span class="fc" id="L115">        Generation generation = generation(identity);</span>
+<span class="pc bpc" id="L116" title="1 of 4 branches missed.">        if (!generation.draining || generation.references != 0)</span>
+<span class="fc" id="L117">            throw new IllegalStateException(&quot;Plugin must finish draining before removal: &quot; + identity.id());</span>
+<span class="fc" id="L118">        generations.remove(identity.id());</span>
+<span class="fc" id="L119">        current = publication(generations, current.snapshot().revision() + 1);</span>
+<span class="fc" id="L120">    }</span>
+
+<span class="fc" id="L122">    public synchronized int activeLeases(PluginIdentity identity) { return generation(identity).references; }</span>
+
+<span class="fc" id="L124">    public synchronized boolean isDraining(PluginIdentity identity) { return generation(identity).draining; }</span>
+
+    private Generation generation(PluginIdentity identity) {
+<span class="fc" id="L127">        Generation generation = generations.get(identity.id());</span>
+<span class="pc bpc" id="L128" title="2 of 4 branches missed.">        if (generation == null || !generation.descriptor.identity().equals(identity))</span>
+<span class="nc" id="L129">            throw new IllegalArgumentException(&quot;Plugin version is not installed: &quot; + identity.id());</span>
+<span class="fc" id="L130">        return generation;</span>
+    }
+
+    private static Publication publication(Map&lt;String, Generation&gt; all, long revision) {
+<span class="fc" id="L134">        Map&lt;ExtensionKey, Entry&gt; entries = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        List&lt;PluginDescriptor&gt; plugins = all.values().stream().filter(g -&gt; !g.draining)</span>
+<span class="fc" id="L136">                .map(g -&gt; g.descriptor).sorted(Comparator.comparing(p -&gt; p.identity().id())).toList();</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        for (Generation generation : all.values()) {</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            if (generation.draining) continue;</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            for (Entry entry : generation.entries) {</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">                if (entries.putIfAbsent(entry.metadata.key(), entry) != null)</span>
+<span class="fc" id="L141">                    throw new IllegalStateException(&quot;Duplicate extension ID for kind &quot; + entry.metadata.key().kind()</span>
+<span class="fc" id="L142">                            + &quot;: normalized ID '&quot; + entry.metadata.key().id() + &quot;'&quot;);</span>
+<span class="fc" id="L143">            }</span>
+<span class="fc" id="L144">        }</span>
+<span class="fc" id="L145">        return new Publication(new CatalogSnapshot(revision, plugins,</span>
+<span class="fc" id="L146">                entries.values().stream().map(e -&gt; e.metadata).toList()), Map.copyOf(entries));</span>
+    }
+
+    private static void validateDependencies(Map&lt;String, Generation&gt; candidate) {
+<span class="fc" id="L150">        DefaultVersionManager versions = new DefaultVersionManager();</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        for (Generation generation : candidate.values()) {</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">            if (generation.draining) continue;</span>
+<span class="fc" id="L153">            PluginDescriptor plugin = generation.descriptor;</span>
+            // Parsing the artifact version is required even when nobody currently requires it.
+<span class="fc" id="L155">            versions.compareVersions(plugin.identity().version(), plugin.identity().version());</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            if (!versions.checkVersionConstraint(PluginDescriptor.HOST_API_VERSION, plugin.hostApiRange()))</span>
+<span class="fc" id="L157">                throw new IllegalArgumentException(&quot;Host API range is incompatible: &quot; + plugin.identity().id());</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">            for (PluginRequirement requirement : plugin.requires()) {</span>
+<span class="fc" id="L159">                Generation dependency = candidate.get(requirement.id());</span>
+<span class="pc bpc" id="L160" title="1 of 4 branches missed.">                if (dependency == null || dependency.draining)</span>
+<span class="fc" id="L161">                    throw new IllegalArgumentException(&quot;Missing plugin dependency: &quot; + requirement.id());</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">                if (!versions.checkVersionConstraint(dependency.descriptor.identity().version(), requirement.versionRange()))</span>
+<span class="fc" id="L163">                    throw new IllegalArgumentException(&quot;Incompatible plugin dependency version: &quot; + requirement.id());</span>
+<span class="fc" id="L164">            }</span>
+<span class="fc" id="L165">        }</span>
+<span class="fc" id="L166">        Set&lt;String&gt; visited = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        for (Generation generation : candidate.values()) {</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">            if (!generation.draining) visit(generation.descriptor.identity().id(), candidate, visited, new HashSet&lt;&gt;());</span>
+<span class="fc" id="L169">        }</span>
+<span class="fc" id="L170">    }</span>
+
+    private static void visit(String id, Map&lt;String, Generation&gt; candidate, Set&lt;String&gt; visited, Set&lt;String&gt; path) {
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        if (visited.contains(id)) return;</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (!path.add(id)) throw new IllegalArgumentException(&quot;Plugin dependency cycle: &quot; + id);</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        for (PluginRequirement requirement : candidate.get(id).descriptor.requires())</span>
+<span class="fc" id="L176">            visit(requirement.id(), candidate, visited, path);</span>
+<span class="fc" id="L177">        path.remove(id); visited.add(id);</span>
+<span class="fc" id="L178">    }</span>
+
+    private static final class Generation {
+        final PluginDescriptor descriptor;
+        final List&lt;Entry&gt; entries;
+        int references;
+        boolean draining;
+<span class="fc" id="L185">        Generation(Contribution contribution) {</span>
+<span class="fc" id="L186">            descriptor = contribution.descriptor();</span>
+<span class="fc" id="L187">            entries = contribution.extensions().stream().map(extension -&gt; entry(extension, this)).toList();</span>
+<span class="fc" id="L188">        }</span>
+    }
+
+    private static Entry entry(TaxonomyExtension extension, Generation owner) {
+<span class="fc" id="L192">        Objects.requireNonNull(extension, &quot;TaxonomyExtension must not be null&quot;);</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        if (extension instanceof com.taxonomy.extension.api.importer.ImportProfileExtension importer</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">                &amp;&amp; importer.descriptor() == null)</span>
+<span class="fc" id="L195">            throw new IllegalStateException(&quot;Import profile extension must declare a descriptor&quot;);</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">        if (extension instanceof com.taxonomy.extension.api.llm.LlmProviderExtension provider</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">                &amp;&amp; provider.descriptor() == null)</span>
+<span class="nc" id="L198">            throw new IllegalStateException(&quot;LLM provider extension must declare a descriptor&quot;);</span>
+<span class="pc bpc" id="L199" title="1 of 4 branches missed.">        if (extension instanceof ReportRendererExtension renderer &amp;&amp; renderer.descriptor() == null)</span>
+<span class="nc" id="L200">            throw new IllegalStateException(&quot;Report renderer extension must declare a descriptor&quot;);</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        if (extension instanceof com.taxonomy.extension.api.importer.ImportProfileExtension importer</span>
+<span class="pc bpc" id="L202" title="1 of 4 branches missed.">                &amp;&amp; (importer.descriptor().profileId() == null || importer.descriptor().profileId().isBlank()))</span>
+<span class="fc" id="L203">            throw new IllegalStateException(&quot;Import profile extension must declare a non-blank profile ID&quot;);</span>
+<span class="fc" id="L204">        ExtensionKind kind = extension.kind();</span>
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">        if (kind == null) throw new IllegalStateException(&quot;Extension kind must not be null&quot;);</span>
+<span class="pc bpc" id="L206" title="2 of 4 branches missed.">        if (extension.id() == null || extension.id().isBlank())</span>
+<span class="nc" id="L207">            throw new IllegalStateException(&quot;Extension must declare a non-blank ID&quot;);</span>
+<span class="pc bpc" id="L208" title="2 of 4 branches missed.">        if (extension.displayName() == null || extension.displayName().isBlank())</span>
+<span class="nc" id="L209">            throw new IllegalStateException(&quot;Extension must declare a non-blank display name&quot;);</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">        if (extension.description() == null)</span>
+<span class="nc" id="L211">            throw new IllegalStateException(&quot;Extension must declare a non-null description&quot;);</span>
+<span class="fc bfc" id="L212" title="All 6 branches covered.">        if (owner.descriptor.mode() == PluginMode.DYNAMIC &amp;&amp; kind != ExtensionKind.EXPORT_FORMAT</span>
+                &amp;&amp; kind != ExtensionKind.REPORT_RENDERER)
+<span class="fc" id="L214">            throw new IllegalArgumentException(&quot;DYNAMIC plugins may contribute only export formats and report renderers&quot;);</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        if (extension instanceof com.taxonomy.extension.api.llm.LlmProviderExtension provider) {</span>
+<span class="fc" id="L216">            try { new com.taxonomy.extension.api.llm.ProviderId(provider.descriptor().providerId()); }</span>
+<span class="pc" id="L217">            catch (IllegalArgumentException invalid) { throw new IllegalStateException(&quot;Invalid LLM provider ID&quot;, invalid); }</span>
+        }
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        ExtensionKey key = extension instanceof ReportRendererExtension renderer</span>
+<span class="fc" id="L220">                ? ExtensionKey.report(renderer.reportTypeId(), renderer.descriptor().id())</span>
+<span class="fc" id="L221">                : new ExtensionKey(kind, extension.id());</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        if (extension instanceof ReportRendererExtension renderer)</span>
+<span class="fc" id="L223">            Objects.requireNonNull(renderer.reportModelType(), &quot;report renderer model type must not be null&quot;);</span>
+        // Capture immutable values once. Later mutable plugin metadata cannot alter identity.
+<span class="fc" id="L225">        ExtensionDescriptor metadata = new ExtensionDescriptor(extension.id(), extension.displayName(), extension.description(), kind);</span>
+<span class="fc" id="L226">        return new Entry(owner, extension, new ExtensionRegistration(key, owner.descriptor.identity(), metadata));</span>
+    }
+
+<span class="fc" id="L229">    private record Entry(Generation owner, TaxonomyExtension extension, ExtensionRegistration metadata) { }</span>
+<span class="fc" id="L230">    private record Publication(CatalogSnapshot snapshot, Map&lt;ExtensionKey, Entry&gt; entries) { }</span>
+
+    private final class Lease&lt;T extends TaxonomyExtension&gt; implements ExtensionLease&lt;T&gt; {
+        private final Generation generation;
+        private final T extension;
+        private boolean closed;
+<span class="fc" id="L236">        Lease(Generation generation, T extension) { this.generation = generation; this.extension = extension; }</span>
+        @Override public T extension() {
+<span class="fc" id="L238">            synchronized (PluginCatalog.this) {</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                if (closed) throw new IllegalStateException(&quot;Extension lease is closed&quot;);</span>
+<span class="fc" id="L240">                return extension;</span>
+            }
+        }
+<span class="fc" id="L243">        @Override public PluginIdentity plugin() { return generation.descriptor.identity(); }</span>
+        @Override public void close() {
+<span class="fc" id="L245">            synchronized (PluginCatalog.this) {</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">                if (!closed) { closed = true; generation.references--; PluginCatalog.this.notifyAll(); }</span>
+<span class="fc" id="L247">            }</span>
+<span class="fc" id="L248">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

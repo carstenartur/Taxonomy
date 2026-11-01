@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>InventoryJournal.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.inventory</a> &gt; <span class="el_source">InventoryJournal.java</span></div><h1>InventoryJournal.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.inventory;
+import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.*;
+import com.taxonomy.extension.api.inventory.InventoryEvidencePort.Scope;
+import com.taxonomy.extension.api.inventory.InventoryReadContracts.Observation;
+import com.taxonomy.interop.*;
+import jakarta.persistence.*;
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import java.time.Instant;
+import java.util.*;
+import java.util.function.Supplier;
+
+/** Inventory observations are companion evidence, never ExchangeDocument operation payloads. */
+@Repository
+public class InventoryJournal {
+    private static final int ASSERTION_LIMIT=1000;
+    private final EntityManager em; private final TransactionTemplate tx; private final IntegrationJson json;
+    private final com.taxonomy.workspace.service.RepositoryMutationFence repositoryFence;
+    public InventoryJournal(EntityManagerFactory factory,PlatformTransactionManager transactions,IntegrationJson json,
+<span class="fc" id="L21">                            com.taxonomy.workspace.service.RepositoryMutationFence repositoryFence) {</span>
+<span class="fc" id="L22">        this.em=org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(factory);this.tx=new TransactionTemplate(transactions);this.json=json;</span>
+<span class="fc" id="L23">        this.repositoryFence=Objects.requireNonNull(repositoryFence);</span>
+<span class="fc" id="L24">    }</span>
+    public List&lt;Assertion&gt; assertions(Scope scope,String candidate) {
+<span class="fc" id="L26">        return tx.execute(s-&gt;{var rows=em.createQuery(&quot;select a from InventoryAssertionEntity a where a.repositoryId=:repo and a.scopeKey=:scope and a.branch=:branch and a.candidateId=:candidate order by a.id&quot;,InventoryAssertionEntity.class)</span>
+<span class="fc" id="L27">                .setParameter(&quot;repo&quot;,scope.repositoryId()).setParameter(&quot;scope&quot;,scope.scopeKey()).setParameter(&quot;branch&quot;,scope.branch()).setParameter(&quot;candidate&quot;,candidate).setMaxResults(ASSERTION_LIMIT+1).getResultList();</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">            if(rows.size()&gt;ASSERTION_LIMIT)throw new IntegrationProblem(&quot;ASSERTION_LIMIT_EXCEEDED&quot;,409,&quot;The product exceeds the immutable assertion limit; no evidence subset may authorize comparison or review&quot;);</span>
+<span class="fc" id="L29">            return rows.stream().map(a-&gt;json.read(a.assertionJson,Assertion.class)).toList();});</span>
+    }
+    public void append(Scope scope,Assertion assertion) {
+<span class="fc" id="L32">        tx.executeWithoutResult(s-&gt;{String id=json.fingerprint(List.of(scope.repositoryId(),scope.scopeKey(),scope.branch(),assertion.id()));</span>
+<span class="fc" id="L33">            var prior=em.find(InventoryAssertionEntity.class,id);</span>
+<span class="pc bpc" id="L34" title="3 of 4 branches missed.">            if(prior!=null) { if(!json.read(prior.assertionJson,Assertion.class).equals(assertion)) throw IntegrationProblem.conflict(&quot;ASSERTION_ID_REUSED&quot;);return; }</span>
+<span class="fc" id="L35">            var e=new InventoryAssertionEntity();e.id=id;e.repositoryId=scope.repositoryId();e.scopeKey=scope.scopeKey();e.branch=scope.branch();e.candidateId=assertion.candidateId();e.assertionJson=json.write(assertion);em.persist(e);});</span>
+<span class="fc" id="L36">    }</span>
+    public void save(Scope scope,Comparison comparison) {
+<span class="fc" id="L38">        requireDemand(scope,comparison.demand());</span>
+<span class="fc" id="L39">        guarded(()-&gt;{tx.executeWithoutResult(s-&gt;{repositoryFence.lock(scope.repositoryId());var prior=em.find(InventoryComparisonEntity.class,comparison.id().toString());</span>
+<span class="pc bpc" id="L40" title="3 of 4 branches missed.">            if(prior!=null) { requireScope(scope,prior.repositoryId,prior.scopeKey,prior.branch);if(!json.read(prior.comparisonJson,Comparison.class).equals(comparison)) throw IntegrationProblem.conflict(&quot;COMPARISON_ID_REUSED&quot;);return; }</span>
+<span class="fc" id="L41">            var e=new InventoryComparisonEntity();e.id=comparison.id().toString();e.scopeGuardKey=&quot;comparison:&quot;+e.id;e.repositoryId=scope.repositoryId();e.scopeKey=scope.scopeKey();e.branch=scope.branch();e.projectId=comparison.demand().projectId();e.snapshotId=comparison.demand().snapshotId();e.actor=scope.actor();e.fingerprint=comparison.fingerprint();e.comparisonJson=json.write(comparison);em.persist(e);});return null;});</span>
+<span class="fc" id="L42">    }</span>
+<span class="fc" id="L43">    public Comparison read(Scope scope,UUID id) { return tx.execute(s-&gt;json.read(require(scope,id,false).comparisonJson,Comparison.class)); }</span>
+    public List&lt;Comparison&gt; list(Scope scope,Long project,String snapshot) {
+<span class="fc" id="L45">        return tx.execute(s-&gt;em.createQuery(&quot;select c from InventoryComparisonEntity c where c.repositoryId=:repo and c.scopeKey=:scope and c.branch=:branch and c.projectId=:project and c.snapshotId=:snapshot order by c.id&quot;,InventoryComparisonEntity.class)</span>
+<span class="fc" id="L46">                .setParameter(&quot;repo&quot;,scope.repositoryId()).setParameter(&quot;scope&quot;,scope.scopeKey()).setParameter(&quot;branch&quot;,scope.branch()).setParameter(&quot;project&quot;,project).setParameter(&quot;snapshot&quot;,snapshot).setMaxResults(100).getResultList().stream().map(c-&gt;json.read(c.comparisonJson,Comparison.class)).toList());</span>
+    }
+    public List&lt;Reviewed&gt; reviews(Scope scope,UUID comparisonId) {
+<span class="fc" id="L49">        return tx.execute(s-&gt;{require(scope,comparisonId,false);return em.createQuery(&quot;select r from InventoryReviewEntity r where r.repositoryId=:repo and r.scopeKey=:scope and r.branch=:branch and r.comparisonId=:comparison order by r.id&quot;,InventoryReviewEntity.class)</span>
+<span class="fc" id="L50">            .setParameter(&quot;repo&quot;,scope.repositoryId()).setParameter(&quot;scope&quot;,scope.scopeKey()).setParameter(&quot;branch&quot;,scope.branch()).setParameter(&quot;comparison&quot;,comparisonId.toString()).setMaxResults(100).getResultList().stream().map(r-&gt;json.read(r.reviewJson,Reviewed.class)).toList();});</span>
+    }
+    public Reviewed review(Scope scope,UUID id,Review review,Supplier&lt;Void&gt; apply) {
+<span class="fc" id="L53">        return guarded(()-&gt;tx.execute(s-&gt;{repositoryFence.lock(scope.repositoryId());lockScope(scope);var comparison=require(scope,id,true);</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">            if(!comparison.fingerprint.equals(review.comparisonFingerprint())) throw IntegrationProblem.conflict(&quot;COMPARISON_CHANGED&quot;);</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">            if(!comparison.actor.equals(scope.actor())) throw new IntegrationProblem(&quot;REVIEW_ACTOR&quot;,403,&quot;Only the comparison actor may review it&quot;);</span>
+<span class="fc" id="L56">            var prior=em.find(InventoryReviewEntity.class,review.id().toString());String fp=json.fingerprint(review);</span>
+<span class="pc bpc" id="L57" title="1 of 6 branches missed.">            if(prior!=null) { requireScope(scope,prior.repositoryId,prior.scopeKey,prior.branch);if(!prior.comparisonId.equals(id.toString()) || !json.read(prior.reviewJson,Reviewed.class).review().equals(review)) throw IntegrationProblem.conflict(&quot;REVIEW_ID_REUSED&quot;);return json.read(prior.reviewJson,Reviewed.class); }</span>
+<span class="fc" id="L58">            apply.get();var reviewed=new Reviewed(review,Instant.now(),scope.actor());var e=new InventoryReviewEntity();e.id=review.id().toString();e.repositoryId=scope.repositoryId();e.scopeKey=scope.scopeKey();e.branch=scope.branch();e.comparisonId=id.toString();e.reviewFingerprint=fp;e.reviewJson=json.write(reviewed);em.persist(e);em.flush();return reviewed;}));</span>
+    }
+    public void observation(Scope scope,String profile,String revision,String organization,UUID id,Observation observation,String failureCode) {
+<span class="fc bfc" id="L61" title="All 4 branches covered.">        guarded(()-&gt;{tx.executeWithoutResult(s-&gt;{repositoryFence.lock(scope.repositoryId());lockScope(scope);var e=new InventoryObservationEntity();e.id=id.toString();e.repositoryId=scope.repositoryId();e.scopeKey=scope.scopeKey();e.branch=scope.branch();e.profileId=profile;e.profileRevision=revision;e.actor=scope.actor();e.organization=organization;e.createdAt=Instant.now().toString();e.status=failureCode==null?&quot;SUCCEEDED&quot;:&quot;FAILED&quot;;e.failureCode=failureCode;e.observationJson=observation==null?null:json.write(observation);em.persist(e);});return null;});</span>
+<span class="fc" id="L62">    }</span>
+    public String latestSuccessful(Scope scope,String profile,String organization) {
+<span class="fc" id="L64">        return tx.execute(s-&gt;em.createQuery(&quot;select e.id from InventoryObservationEntity e where e.repositoryId=:repo and e.scopeKey=:scope and e.branch=:branch and e.profileId=:profile and e.organization=:org and e.status='SUCCEEDED' order by e.createdAt desc,e.id desc&quot;,String.class)</span>
+<span class="fc" id="L65">            .setParameter(&quot;repo&quot;,scope.repositoryId()).setParameter(&quot;scope&quot;,scope.scopeKey()).setParameter(&quot;branch&quot;,scope.branch()).setParameter(&quot;profile&quot;,profile).setParameter(&quot;org&quot;,organization).setMaxResults(1).getResultStream().findFirst().orElse(null));</span>
+    }
+    public void map(Scope scope,Mapping mapping) {
+<span class="fc" id="L68">        guarded(()-&gt;{tx.executeWithoutResult(s-&gt;{repositoryFence.lock(scope.repositoryId());lockScope(scope);</span>
+<span class="fc" id="L69">            var prior=em.find(InventoryMappingEntity.class,mapping.id().toString());</span>
+<span class="fc bfc" id="L70" title="All 4 branches covered.">            if(prior!=null) {requireScope(scope,prior.repositoryId,prior.scopeKey,prior.branch);if(!prior.mappingJson.equals(json.write(mapping)))throw IntegrationProblem.conflict(&quot;MAPPING_ID_REUSED&quot;);return;}</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">            if(!mapping.actor().equals(scope.actor()))throw new IntegrationProblem(&quot;MAPPING_ACTOR&quot;,403,&quot;Mapping actor differs&quot;);</span>
+<span class="fc" id="L72">            var e=new InventoryMappingEntity();e.id=mapping.id().toString();e.repositoryId=scope.repositoryId();e.scopeKey=scope.scopeKey();e.branch=scope.branch();e.candidateId=mapping.candidateId();e.mappingJson=json.write(mapping);em.persist(e);</span>
+<span class="fc" id="L73">        });return null;});</span>
+<span class="fc" id="L74">    }</span>
+    public List&lt;Mapping&gt; mappings(Scope scope,String candidate) {
+<span class="fc" id="L76">        return tx.execute(s-&gt;{var rows=em.createQuery(&quot;select m from InventoryMappingEntity m where m.repositoryId=:repo and m.scopeKey=:scope and m.branch=:branch and m.candidateId=:candidate order by m.id&quot;,InventoryMappingEntity.class)</span>
+<span class="fc" id="L77">            .setParameter(&quot;repo&quot;,scope.repositoryId()).setParameter(&quot;scope&quot;,scope.scopeKey()).setParameter(&quot;branch&quot;,scope.branch()).setParameter(&quot;candidate&quot;,candidate).setMaxResults(101).getResultList();</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">            if(rows.size()&gt;100)throw IntegrationProblem.conflict(&quot;MAPPING_LIMIT_EXCEEDED&quot;);</span>
+<span class="fc" id="L79">            return rows.stream().map(m-&gt;json.read(m.mappingJson,Mapping.class)).toList();});</span>
+    }
+    /** Coordinate current mapping/observation authority on an existing immutable comparison owner.
+     * This fence precedes comparison and portfolio locks; only technical guard/version fields change. */
+    private void lockScope(Scope scope) {
+<span class="fc" id="L84">        String guard=&quot;scope:&quot;+json.fingerprint(List.of(scope.repositoryId(),scope.scopeKey(),scope.branch()));</span>
+<span class="fc" id="L85">        var anchors=em.createQuery(&quot;select c from InventoryComparisonEntity c where c.scopeGuardKey=:guard&quot;,InventoryComparisonEntity.class)</span>
+<span class="fc" id="L86">            .setParameter(&quot;guard&quot;,guard).setMaxResults(1).getResultList();</span>
+        InventoryComparisonEntity anchor;
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        if(anchors.isEmpty()) {</span>
+<span class="fc" id="L89">            var existing=em.createQuery(&quot;select c from InventoryComparisonEntity c where c.repositoryId=:repo and c.scopeKey=:scope and c.branch=:branch order by c.id&quot;,InventoryComparisonEntity.class)</span>
+<span class="fc" id="L90">                .setParameter(&quot;repo&quot;,scope.repositoryId()).setParameter(&quot;scope&quot;,scope.scopeKey()).setParameter(&quot;branch&quot;,scope.branch()).setMaxResults(1).getResultList();</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">            if(existing.isEmpty())return; // The repository fence also covers the interval before the first comparison.</span>
+<span class="fc" id="L92">            anchor=existing.getFirst();</span>
+<span class="fc" id="L93">            em.lock(anchor,LockModeType.PESSIMISTIC_FORCE_INCREMENT);</span>
+<span class="fc" id="L94">            anchor.scopeGuardKey=guard;em.flush();</span>
+<span class="fc" id="L95">        } else {</span>
+<span class="fc" id="L96">            anchor=anchors.getFirst();requireScope(scope,anchor.repositoryId,anchor.scopeKey,anchor.branch);</span>
+<span class="fc" id="L97">            em.lock(anchor,LockModeType.PESSIMISTIC_FORCE_INCREMENT);</span>
+        }
+<span class="fc" id="L99">    }</span>
+    private &lt;T&gt; T guarded(Supplier&lt;T&gt; action) {
+<span class="fc" id="L101">        try {return action.get();}</span>
+<span class="nc" id="L102">        catch(OptimisticLockException|PessimisticLockException|org.springframework.dao.ConcurrencyFailureException|org.springframework.dao.DataIntegrityViolationException conflict) {</span>
+<span class="nc" id="L103">            throw IntegrationProblem.conflict(&quot;INVENTORY_AUTHORITY_CHANGED&quot;);</span>
+        }
+    }
+    private InventoryComparisonEntity require(Scope scope,UUID id,boolean lock) {
+<span class="pc bpc" id="L107" title="1 of 4 branches missed.">        var e=em.find(InventoryComparisonEntity.class,id.toString(),lock?LockModeType.PESSIMISTIC_WRITE:LockModeType.NONE);if(e==null)throw IntegrationProblem.missing();requireScope(scope,e.repositoryId,e.scopeKey,e.branch);return e;</span>
+    }
+<span class="fc" id="L109">    private void requireDemand(Scope scope,Demand d) { requireScope(scope,d.repositoryId(),d.scopeKey(),d.branch()); }</span>
+<span class="pc bpc" id="L110" title="2 of 6 branches missed.">    private void requireScope(Scope scope,String repo,String key,String branch) { if(!scope.repositoryId().equals(repo)||!scope.scopeKey().equals(key)||!scope.branch().equals(branch))throw IntegrationProblem.missing(); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

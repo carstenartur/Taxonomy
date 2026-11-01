@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DefaultDocumentTemplateBootstrap.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-templates</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">DefaultDocumentTemplateBootstrap.java</span></div><h1>DefaultDocumentTemplateBootstrap.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import com.taxonomy.templates.api.DocumentTemplates;
+import com.taxonomy.templates.api.TemplateConflictException;
+import com.taxonomy.templates.api.TemplateContribution;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+
+/** Seeds contributed families without ever overwriting an organisation's edited version. */
+@Component
+@Order(Ordered.HIGHEST_PRECEDENCE + 100)
+public final class DefaultDocumentTemplateBootstrap implements ApplicationRunner {
+<span class="fc" id="L22">    private static final Logger log = LoggerFactory.getLogger(DefaultDocumentTemplateBootstrap.class);</span>
+    private final DocumentTemplates templates;
+    private final List&lt;TemplateContribution&gt; contributions;
+
+<span class="fc" id="L26">    public DefaultDocumentTemplateBootstrap(DocumentTemplates templates, List&lt;TemplateContribution&gt; contributions) {</span>
+<span class="fc" id="L27">        this.templates = Objects.requireNonNull(templates, &quot;templates&quot;);</span>
+<span class="fc" id="L28">        this.contributions = List.copyOf(TemplateContributions.index(contributions).values());</span>
+<span class="fc" id="L29">    }</span>
+
+    @Override
+    public void run(ApplicationArguments args) throws IOException {
+<span class="fc" id="L33">        seedIfMissing();</span>
+<span class="fc" id="L34">    }</span>
+
+    void seedIfMissing() throws IOException {
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        for (var contribution : contributions) {</span>
+<span class="fc" id="L38">            String id = contribution.templateId();</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">            if (templates.exists(id)) continue;</span>
+<span class="fc" id="L40">            try (var input = Objects.requireNonNull(contribution.content().open(), &quot;template content&quot;)) {</span>
+<span class="fc" id="L41">                var created = templates.upload(id, contribution.displayName(), input, null,</span>
+                        &quot;taxonomy-bootstrap&quot;, &quot;Seed bundled template &quot; + id);
+<span class="fc" id="L43">                log.info(&quot;Seeded document template {} at commit {}&quot;, id, created.headCommit());</span>
+<span class="fc" id="L44">            } catch (TemplateConflictException race) {</span>
+                // Another instance may win creation. Never force-update its version.
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">                if (!templates.exists(id)) throw race;</span>
+<span class="fc" id="L47">                log.info(&quot;Document template {} was seeded concurrently&quot;, id);</span>
+<span class="fc" id="L48">            } catch (IOException | IllegalArgumentException | NullPointerException unavailable) {</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">                if (contribution.required()) {</span>
+<span class="fc" id="L50">                    throw new IllegalStateException(&quot;Required bundled document template is unavailable: &quot; + id,</span>
+                            unavailable);
+                }
+<span class="fc" id="L53">                log.warn(&quot;Optional bundled document template {} is unavailable&quot;, id);</span>
+<span class="fc" id="L54">            }</span>
+<span class="fc" id="L55">        }</span>
+<span class="fc" id="L56">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

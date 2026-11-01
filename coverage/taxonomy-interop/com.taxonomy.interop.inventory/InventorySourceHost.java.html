@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>InventorySourceHost.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.inventory</a> &gt; <span class="el_source">InventorySourceHost.java</span></div><h1>InventorySourceHost.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.inventory;
+import com.taxonomy.extension.api.inventory.*;
+import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.*;
+import com.taxonomy.extension.api.inventory.InventoryEvidencePort.*;
+import com.taxonomy.extension.api.inventory.InventoryReadContracts.*;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.extension.api.plugin.*;
+import com.taxonomy.shared.extension.ExtensionKind;
+import com.taxonomy.interop.*;
+import org.springframework.core.env.Environment;
+import org.springframework.stereotype.Service;
+import java.time.*;
+import java.util.*;
+
+/** Manual, grant-bound, leased inventory reads. Read failures retain previous successful observations. */
+@Service
+public class InventorySourceHost {
+    private final InventorySourceProfiles profiles;private final ExtensionCatalog catalog;private final InventoryJournal journal;private final IntegrationJson json;private final Environment environment;
+<span class="fc" id="L19">    public InventorySourceHost(InventorySourceProfiles profiles,ExtensionCatalog catalog,InventoryJournal journal,IntegrationJson json,Environment environment) {this.profiles=profiles;this.catalog=catalog;this.journal=journal;this.json=json;this.environment=environment;}</span>
+    public SourceRead read(Scope scope,Demand demand,List&lt;String&gt; selected) {
+<span class="pc bpc" id="L21" title="2 of 4 branches missed.">        if(selected.size()&gt;3 || new HashSet&lt;&gt;(selected).size()!=selected.size())throw new IllegalArgumentException(&quot;Select at most three distinct approved source profiles&quot;);</span>
+        // Check the complete authorization set before the first outbound call.
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        for(String id:selected) profile(scope,demand,id,null);</span>
+<span class="fc" id="L24">        long allowedBytes=0;int allowedRequests=0,allowedObjects=0,allowedSeconds=0;</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">        for(String id:selected) {var p=profile(scope,demand,id,null);allowedBytes+=p.limits().maxTotalBytes();allowedRequests+=p.limits().maxRequests();allowedObjects+=p.limits().maxObjects();allowedSeconds+=p.limits().timeoutSeconds();}</span>
+<span class="pc bpc" id="L26" title="4 of 8 branches missed.">        if(allowedBytes&gt;16*1024*1024 || allowedRequests&gt;100 || allowedObjects&gt;10000 || allowedSeconds&gt;120)throw new IllegalArgumentException(&quot;Combined inventory read budget exceeds host bounds&quot;);</span>
+<span class="fc" id="L27">        var candidates=new ArrayList&lt;Candidate&gt;();var sources=new ArrayList&lt;SourceEvidence&gt;();</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">        for(String id:selected) {</span>
+<span class="fc" id="L29">            var p=profile(scope,demand,id,null);var operation=UUID.randomUUID();</span>
+<span class="fc" id="L30">            var state=new InternalState(scope.repositoryId(),scope.scopeKey(),scope.branch(),null,0,demand.projectId(),demand.snapshotFingerprint());</span>
+<span class="fc" id="L31">            var authority=new IntegrationContext(operation,AuthorityMode.LINK_ONLY,new ExternalScope(&quot;INVENTORY&quot;,p.instanceId(),null),state,scope.actor(),id,p.revision());</span>
+<span class="fc" id="L32">            var request=new Request(authority,p.instanceId(),p.revision(),p.origin(),p.projections(),p.selectedIds(),p.readUsageRelations(),p.limits(),p.options());</span>
+<span class="fc" id="L33">            try(var lease=catalog.acquire(new ExtensionKey(ExtensionKind.INVENTORY_SOURCE,p.extensionId()),InventorySourceExtension.class)) {</span>
+<span class="fc" id="L34">                var artifact=Objects.requireNonNull(lease.plugin(),&quot;Inventory extension artifact identity is required&quot;);</span>
+<span class="fc" id="L35">                Observation observed=lease.extension().read(request,new ReadAccess() {</span>
+<span class="fc" id="L36">                    public char[] credential() {return secret(p.credentialEnvironment());}</span>
+<span class="nc bnc" id="L37" title="All 2 branches missed.">                    public char[] principal() {return p.principalEnvironment()==null?null:secret(p.principalEnvironment());}</span>
+<span class="nc" id="L38">                    public boolean allowPrivateNetworks() {return p.allowPrivateNetworks();}</span>
+                });
+<span class="pc bpc" id="L40" title="3 of 6 branches missed.">                if(observed.objects().stream().anyMatch(o-&gt;!p.instanceId().equals(o.key().instance()) || !p.selectedIds().contains(o.key().id())))throw new ReadFailure(&quot;OBSERVATION_SELECTOR_MISMATCH&quot;);</span>
+<span class="pc bpc" id="L41" title="5 of 10 branches missed.">                if(!observed.request().equals(request) || observed.objects().size()&gt;p.limits().maxObjects() || observed.relations().size()&gt;p.limits().maxRelations() || observed.requests()&gt;p.limits().maxRequests() || observed.bytes()&gt;p.limits().maxTotalBytes())throw new ReadFailure(&quot;INVALID_OBSERVATION&quot;);</span>
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">                if(candidates.size()+observed.objects().size()&gt;100)throw new ReadFailure(&quot;CANDIDATE_LIMIT&quot;);</span>
+<span class="fc" id="L43">                var normalized=new ArrayList&lt;Candidate&gt;();</span>
+<span class="fc" id="L44">                var relationAssertions=new InventoryRelationshipProjection(json).project(observed.relations(),observed.objects().stream().map(ObservedObject::key).collect(java.util.stream.Collectors.toSet()),p.relationships(),operation,observed.finishedAt(),p.organization());</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">                for(var object:observed.objects()) {</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">                    if(candidates.size()&gt;=100)throw new ReadFailure(&quot;CANDIDATE_LIMIT&quot;);</span>
+<span class="fc" id="L47">                    String key=&quot;external:&quot;+json.fingerprint(object.key());</span>
+<span class="fc" id="L48">                    var metadata=new TreeMap&lt;String,String&gt;();metadata.put(&quot;sourceProfile&quot;,id);metadata.put(&quot;instance&quot;,object.key().instance());metadata.put(&quot;namespace&quot;,object.key().namespace());metadata.put(&quot;externalId&quot;,object.key().id());metadata.put(&quot;sourceType&quot;,object.sourceType());metadata.put(&quot;observationId&quot;,operation.toString());</span>
+<span class="pc" id="L49">                    object.fields().forEach((field,value)-&gt;metadata.put(&quot;field:&quot;+field,value.state()+&quot;:&quot;+Objects.toString(value.value(),&quot;&quot;)));</span>
+                    // Adapter fields are evidence, never implicit organizational availability or confirmed mappings.
+<span class="fc" id="L51">                    var claims=new ArrayList&lt;&gt;(assertions(object,p,key,operation,observed.finishedAt()));</span>
+<span class="fc" id="L52">                    relationAssertions.stream().filter(a-&gt;a.candidateId().equals(key)).forEach(claims::add);</span>
+<span class="fc" id="L53">                    normalized.add(new Candidate(key,null,field(object,&quot;name&quot;,object.key().id()),object.kind().name(),json.fingerprint(object),metadata,claims));</span>
+<span class="fc" id="L54">                }</span>
+<span class="fc" id="L55">                journal.observation(scope,id,p.revision(),demand.question().organization(),operation,observed,null);</span>
+<span class="fc" id="L56">                candidates.addAll(normalized);</span>
+<span class="fc" id="L57">                sources.add(new SourceEvidence(id,p.revision(),operation.toString(),observed.finishedAt(),json.fingerprint(p.selectedIds()),&quot;SUCCEEDED&quot;,observed.limitations(),json.fingerprint(p),artifact.toString()));</span>
+<span class="fc" id="L58">            } catch(ReadFailure failure) {</span>
+<span class="fc" id="L59">                journal.observation(scope,id,p.revision(),demand.question().organization(),UUID.randomUUID(),null,failure.code());throw failure;</span>
+<span class="nc" id="L60">            } catch(RuntimeException failure) {</span>
+<span class="nc" id="L61">                journal.observation(scope,id,p.revision(),demand.question().organization(),UUID.randomUUID(),null,&quot;SOURCE_UNAVAILABLE&quot;);throw new ReadFailure(&quot;SOURCE_UNAVAILABLE&quot;);</span>
+<span class="fc" id="L62">            }</span>
+<span class="fc" id="L63">        }</span>
+<span class="fc" id="L64">        return new SourceRead(candidates,sources);</span>
+    }
+    public void authorize(Scope scope,Demand demand,List&lt;SourceEvidence&gt; sources) {
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        for(var source:sources) {</span>
+<span class="nc" id="L68">            var p=profile(scope,demand,source.profileId(),source.revision());</span>
+<span class="nc bnc" id="L69" title="All 4 branches missed.">            if(source.profileFingerprint()!=null &amp;&amp; !source.profileFingerprint().equals(json.fingerprint(p)))throw IntegrationProblem.conflict(&quot;INVENTORY_PROFILE_CHANGED&quot;);</span>
+<span class="nc" id="L70">        }</span>
+<span class="fc" id="L71">    }</span>
+    public void revalidate(Scope scope,Demand demand,List&lt;SourceEvidence&gt; sources) {
+<span class="fc" id="L73">        authorize(scope,demand,sources);</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">        for(var source:sources) {</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">            if(!source.observationId().equals(journal.latestSuccessful(scope,source.profileId(),demand.question().organization())))throw IntegrationProblem.conflict(&quot;INVENTORY_OBSERVATION_CHANGED&quot;);</span>
+<span class="nc bnc" id="L76" title="All 4 branches missed.">            if(source.extensionArtifact()!=null &amp;&amp; !source.extensionArtifact().equals(&quot;ARTIFACT_UNRECORDED&quot;)) {</span>
+<span class="nc" id="L77">                var p=profile(scope,demand,source.profileId(),source.revision());</span>
+<span class="nc" id="L78">                var registered=catalog.snapshot().extensions().stream().filter(e-&gt;e.key().equals(new ExtensionKey(ExtensionKind.INVENTORY_SOURCE,p.extensionId()))).findFirst().orElseThrow(()-&gt;IntegrationProblem.conflict(&quot;INVENTORY_PLUGIN_CHANGED&quot;));</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">                if(!source.extensionArtifact().equals(registered.plugin().toString()))throw IntegrationProblem.conflict(&quot;INVENTORY_PLUGIN_CHANGED&quot;);</span>
+            }
+<span class="nc" id="L81">        }</span>
+<span class="fc" id="L82">    }</span>
+    private InventorySourceProfiles.Profile profile(Scope scope,Demand demand,String id,String revision) {
+<span class="fc" id="L84">        var p=profiles.getProfiles().get(id);</span>
+<span class="pc bpc" id="L85" title="2 of 8 branches missed.">        if(p==null || !p.repositoryId().equals(scope.repositoryId()) || !p.organization().equals(demand.question().organization()) || !p.principals().contains(scope.actor()))throw new IntegrationProblem(&quot;INVENTORY_SOURCE_DENIED&quot;,403,&quot;Inventory source profile is not authorized&quot;);</span>
+<span class="pc bpc" id="L86" title="3 of 4 branches missed.">        if(revision!=null &amp;&amp; !revision.equals(p.revision()))throw IntegrationProblem.conflict(&quot;INVENTORY_PROFILE_CHANGED&quot;);return p;</span>
+    }
+    private List&lt;Assertion&gt; assertions(ObservedObject object,InventorySourceProfiles.Profile profile,String key,UUID observation,Instant recorded) {
+<span class="fc" id="L89">        var assertions=new ArrayList&lt;Assertion&gt;();int index=0;</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">        for(var rule:profile.assertions()) {</span>
+<span class="nc" id="L91">            String value=present(object,rule.positiveField());</span>
+<span class="nc bnc" id="L92" title="All 4 branches missed.">            if(!&quot;true&quot;.equals(value) &amp;&amp; !&quot;false&quot;.equals(value))continue;</span>
+            try {
+<span class="nc" id="L94">                var start=boundary(present(object,rule.startField()));var end=boundary(present(object,rule.endField()));</span>
+<span class="nc" id="L95">                assertions.add(new Assertion(observation+&quot;:&quot;+json.fingerprint(object.key())+&quot;:&quot;+(index++),key,rule.criterion(),present(object,rule.nodeField()),Boolean.parseBoolean(value),start,end,</span>
+<span class="nc" id="L96">                    present(object,rule.organizationField()),present(object,rule.environmentField()),rule.kind(),&quot;Profile &quot;+object.key().instance()+&quot;/&quot;+object.key().namespace()+&quot;/&quot;+object.key().id()+&quot; field &quot;+rule.positiveField(),recorded));</span>
+<span class="nc" id="L97">            } catch(IllegalArgumentException invalid) {throw new ReadFailure(&quot;INVALID_ASSERTION_VALUE&quot;);}</span>
+<span class="nc" id="L98">        }</span>
+<span class="fc" id="L99">        return assertions;</span>
+    }
+<span class="nc bnc" id="L101" title="All 6 branches missed.">    private String present(ObservedObject object,String field) {if(field==null)return null;var value=object.fields().get(field);return value!=null &amp;&amp; value.state()==State.PRESENT?value.value():null;}</span>
+<span class="nc bnc" id="L102" title="All 4 branches missed.">    private Boundary boundary(String value) {return value==null?null:new Boundary(value,value.length()==4?Precision.YEAR:Precision.DATE);}</span>
+<span class="pc bpc" id="L103" title="2 of 4 branches missed.">    private char[] secret(String ref) {String value=environment.getProperty(ref);if(value==null||value.isBlank())throw new ReadFailure(&quot;CREDENTIAL_UNAVAILABLE&quot;);return value.toCharArray();}</span>
+<span class="pc bpc" id="L104" title="3 of 4 branches missed.">    private String field(ObservedObject object,String field,String fallback) {var value=object.fields().get(field);return value!=null&amp;&amp;value.state()==State.PRESENT?value.value():fallback;}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

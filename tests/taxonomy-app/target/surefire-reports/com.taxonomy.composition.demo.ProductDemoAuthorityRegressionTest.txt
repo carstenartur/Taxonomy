@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.composition.demo.ProductDemoAuthorityRegressionTest
+-------------------------------------------------------------------------------
+Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 12.35 s -- in com.taxonomy.composition.demo.ProductDemoAuthorityRegressionTest

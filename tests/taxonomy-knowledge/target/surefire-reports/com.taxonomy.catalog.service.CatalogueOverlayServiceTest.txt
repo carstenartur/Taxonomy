@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.catalog.service.CatalogueOverlayServiceTest
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.183 s -- in com.taxonomy.catalog.service.CatalogueOverlayServiceTest

@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceBackupContributor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">WorkspaceBackupContributor.java</span></div><h1>WorkspaceBackupContributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.exchange.backup.PortableRows.Query;
+import com.taxonomy.exchange.backup.PrincipalScopeCapture;
+import com.taxonomy.workspace.model.*;
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.*;
+import static com.taxonomy.exchange.backup.PortableRows.*;
+
+/** Portable routing, ownership and durable editor schemas. No source storage names, credentials or live locks. */
+public final class WorkspaceBackupContributor implements BackupDataContributor {
+    private final PortableRows rows;
+    private final BackupDocumentProjector projector;
+<span class="fc" id="L19">    public WorkspaceBackupContributor(DataSource database, BackupDocumentProjector projector) {</span>
+<span class="fc" id="L20">        rows = new PortableRows(database); this.projector = Objects.requireNonNull(projector);</span>
+<span class="fc" id="L21">    }</span>
+<span class="fc" id="L22">    @Override public BackupComponentId componentId() { return new BackupComponentId(&quot;workspace&quot;); }</span>
+    /** Ownership references only; audit/Git author labels never become login or ownership mappings. */
+    public Set&lt;String&gt; principalScopes(SnapshotContext snapshot, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L25">        var scope = new BackupRowScope(snapshot); var queries = new ArrayList&lt;Query&gt;();</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        if (!scope.selectedVersion()) {</span>
+<span class="fc" id="L27">            var repositories = scope.repositoryIds(&quot;repository_id&quot;); var workspaces = scope.repositories(&quot;source_repository_id&quot;, &quot;workspace_id&quot;);</span>
+<span class="fc" id="L28">            var sync = scope.repositories(&quot;w.source_repository_id&quot;, &quot;w.workspace_id&quot;);</span>
+<span class="fc" id="L29">            queries.add(new Query(&quot;select repository_id,cast(null as varchar(255)) as workspace_id,cast(null as varchar(255)) as linked_workspace_id,1 as repository_only,owner_id as principal_scope from system_repository where &quot;</span>
+<span class="fc" id="L30">                    + repositories.sql() + &quot; and (owner_type='USER' or owner_type is null) order by repository_id&quot;, repositories.parameters()));</span>
+<span class="fc" id="L31">            queries.add(new Query(&quot;select repository_id,cast(null as varchar(255)) as workspace_id,cast(null as varchar(255)) as linked_workspace_id,1 as repository_only,username as principal_scope from repository_membership where &quot;</span>
+<span class="fc" id="L32">                    + repositories.sql() + &quot; order by id&quot;, repositories.parameters()));</span>
+<span class="fc" id="L33">            queries.add(new Query(&quot;select source_repository_id as repository_id,workspace_id,workspace_id as linked_workspace_id,0 as repository_only,username as principal_scope from user_workspace where &quot;</span>
+<span class="fc" id="L34">                    + workspaces.sql() + &quot; order by workspace_id&quot;, workspaces.parameters()));</span>
+<span class="fc" id="L35">            queries.add(new Query(&quot;select w.source_repository_id as repository_id,w.workspace_id,s.workspace_id as linked_workspace_id,0 as repository_only,s.username as principal_scope from sync_state s join user_workspace w on w.workspace_id=s.workspace_id where &quot;</span>
+<span class="fc" id="L36">                    + sync.sql() + &quot; order by s.id&quot;, sync.parameters()));</span>
+        }
+<span class="fc" id="L38">        var repositoryIds = snapshot.repositories().keySet().stream().map(BackupRepositoryKey::repositoryId).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc" id="L39">        return new PrincipalScopeCapture(rows).capture(queries, row -&gt; {</span>
+<span class="fc" id="L40">            String repository = text(row, &quot;repository_id&quot;), workspace = text(row, &quot;workspace_id&quot;);</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">            if (!Objects.equals(workspace, text(row, &quot;linked_workspace_id&quot;)))</span>
+<span class="fc" id="L42">                throw new IOException(&quot;Principal reference belongs to a different workspace&quot;);</span>
+<span class="fc bfc" id="L43" title="All 6 branches covered.">            if (!scope.installation() &amp;&amp; !(row.getInt(&quot;repository_only&quot;) == 1 ? repositoryIds.contains(repository)</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">                    : snapshot.repositories().containsKey(new BackupRepositoryKey(repository, workspace))))</span>
+<span class="fc" id="L45">                throw new IOException(&quot;Principal reference belongs to a different repository scope&quot;);</span>
+<span class="fc" id="L46">            return new PrincipalScopeCapture.Scope(text(row, &quot;principal_scope&quot;));</span>
+        }, checkpoint);
+    }
+<span class="fc" id="L49">    @Override public int schemaVersion() { return 1; }</span>
+    @Override public Set&lt;String&gt; categories() {
+<span class="fc" id="L51">        return Set.of(&quot;com.taxonomy.workspace.model.SystemRepository&quot;, &quot;com.taxonomy.workspace.model.UserWorkspace&quot;,</span>
+                &quot;com.taxonomy.workspace.model.RepositoryMembership&quot;, &quot;com.taxonomy.workspace.model.SyncState&quot;,
+                &quot;com.taxonomy.editor.persistence.EditorWorkspace&quot;, &quot;com.taxonomy.editor.persistence.EditorOperation&quot;,
+                &quot;com.taxonomy.editor.persistence.EditorCheckpoint&quot;, &quot;com.taxonomy.versioning.model.ArchitectureCommitIndex&quot;,
+                &quot;com.taxonomy.versioning.model.ContextHistoryRecord&quot;);
+    }
+    @Override public List&lt;String&gt; omissions(BackupProfile profile) {
+<span class="fc" id="L58">        var omissions = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (!profile.includesHistory()) omissions.add(&quot;workspace: editor operations, checkpoint bodies, commit index and context history are excluded&quot;);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (profile == BackupProfile.SELECTED_VERSION) omissions.add(&quot;workspace: current unversioned working copies and routing metadata are excluded; selected Git state is authoritative&quot;);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (profile != BackupProfile.INSTALLATION_FULL) omissions.add(&quot;workspace: cross-context navigation history is outside the selected scope&quot;);</span>
+<span class="fc" id="L62">        omissions.add(&quot;workspace: physical storage names, runtime row versions, provisioning errors and remote credentials are target-owned&quot;);</span>
+<span class="fc" id="L63">        return List.copyOf(omissions);</span>
+    }
+    @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
+<span class="fc" id="L66">        var scope = new BackupRowScope(snapshot); var profile = snapshot.authorization().request().profile();</span>
+<span class="fc" id="L67">        var repositories = scope.repositoryIds(&quot;repository_id&quot;);</span>
+<span class="fc" id="L68">        write(sink, &quot;repositories&quot;, profile, query(scope, false, &quot;select repository_id,slug,display_name,description,visibility,lifecycle_state,owner_type,owner_id,topology_mode,default_branch,upstream_repository_id,upstream_branch,fork_point_commit,last_fetch_at,last_push_at,last_fetch_commit,primary_repo,created_by,created_at,updated_at from system_repository&quot;, repositories, &quot;repository_id&quot;),</span>
+<span class="fc" id="L69">                scoped(scope,&quot;repository_id&quot;,null,r -&gt; new RepositoryRecord(text(r,&quot;repository_id&quot;),text(r,&quot;slug&quot;),text(r,&quot;display_name&quot;),text(r,&quot;description&quot;),</span>
+<span class="fc" id="L70">                        enumeration(r,&quot;visibility&quot;,RepositoryVisibility.class),enumeration(r,&quot;lifecycle_state&quot;,RepositoryLifecycleState.class),</span>
+<span class="fc" id="L71">                        enumeration(r,&quot;owner_type&quot;,RepositoryOwnerType.class),text(r,&quot;owner_id&quot;),enumeration(r,&quot;topology_mode&quot;,RepositoryTopologyMode.class),</span>
+<span class="fc" id="L72">                        text(r,&quot;default_branch&quot;),text(r,&quot;upstream_repository_id&quot;),text(r,&quot;upstream_branch&quot;),text(r,&quot;fork_point_commit&quot;),</span>
+<span class="fc" id="L73">                        instant(r,&quot;last_fetch_at&quot;),instant(r,&quot;last_push_at&quot;),text(r,&quot;last_fetch_commit&quot;),r.getBoolean(&quot;primary_repo&quot;),</span>
+<span class="fc" id="L74">                        text(r,&quot;created_by&quot;),instant(r,&quot;created_at&quot;),instant(r,&quot;updated_at&quot;))));</span>
+<span class="fc" id="L75">        var workspaces = scope.repositories(&quot;source_repository_id&quot;, &quot;workspace_id&quot;);</span>
+<span class="fc" id="L76">        write(sink,&quot;workspaces&quot;,profile,query(scope,false,&quot;select workspace_id,username,display_name,current_branch,base_branch,shared,created_at,last_accessed_at,provisioning_status,topology_mode,source_repository_id,source_branch,relationship_type,base_commit,current_commit,last_fetched_commit,last_integrated_commit,sync_target_branch,provisioned_at,description,archived,is_default from user_workspace&quot;,workspaces,&quot;workspace_id&quot;),</span>
+<span class="fc" id="L77">                scoped(scope,&quot;source_repository_id&quot;,&quot;workspace_id&quot;,r -&gt; new WorkspaceRecord(text(r,&quot;workspace_id&quot;),text(r,&quot;username&quot;),text(r,&quot;display_name&quot;),text(r,&quot;current_branch&quot;),text(r,&quot;base_branch&quot;),r.getBoolean(&quot;shared&quot;),</span>
+<span class="fc" id="L78">                        instant(r,&quot;created_at&quot;),instant(r,&quot;last_accessed_at&quot;),enumeration(r,&quot;provisioning_status&quot;,WorkspaceProvisioningStatus.class),</span>
+<span class="fc" id="L79">                        enumeration(r,&quot;topology_mode&quot;,RepositoryTopologyMode.class),text(r,&quot;source_repository_id&quot;),text(r,&quot;source_branch&quot;),</span>
+<span class="fc" id="L80">                        enumeration(r,&quot;relationship_type&quot;,WorkspaceRelationshipType.class),text(r,&quot;base_commit&quot;),text(r,&quot;current_commit&quot;),text(r,&quot;last_fetched_commit&quot;),</span>
+<span class="fc" id="L81">                        text(r,&quot;last_integrated_commit&quot;),text(r,&quot;sync_target_branch&quot;),instant(r,&quot;provisioned_at&quot;),text(r,&quot;description&quot;),r.getBoolean(&quot;archived&quot;),r.getBoolean(&quot;is_default&quot;))));</span>
+<span class="fc" id="L82">        write(sink,&quot;memberships&quot;,profile,query(scope,false,&quot;select id,repository_id,username,repository_role,created_at,created_by,updated_at from repository_membership&quot;,repositories,&quot;id&quot;),</span>
+<span class="fc" id="L83">                scoped(scope,&quot;repository_id&quot;,null,r -&gt; new MembershipRecord(reference(r,&quot;workspace.membership&quot;,&quot;id&quot;),text(r,&quot;repository_id&quot;),text(r,&quot;username&quot;),enumeration(r,&quot;repository_role&quot;,RepositoryRole.class),instant(r,&quot;created_at&quot;),text(r,&quot;created_by&quot;),instant(r,&quot;updated_at&quot;))));</span>
+<span class="fc" id="L84">        var sync = scope.repositories(&quot;w.source_repository_id&quot;,&quot;w.workspace_id&quot;);</span>
+<span class="fc" id="L85">        write(sink,&quot;synchronization&quot;,profile,query(scope,false,&quot;select w.source_repository_id as captured_repository_id,w.workspace_id as captured_workspace_id,s.id,s.username,s.workspace_id,s.last_synced_commit_id,s.last_sync_timestamp,s.last_published_commit_id,s.last_publish_timestamp,s.sync_status,s.unpublished_commit_count,s.created_at,s.updated_at from sync_state s join user_workspace w on w.workspace_id=s.workspace_id&quot;,sync,&quot;s.id&quot;),</span>
+<span class="fc" id="L86">                scoped(scope,&quot;captured_repository_id&quot;,&quot;captured_workspace_id&quot;,linked(&quot;captured_workspace_id&quot;,&quot;workspace_id&quot;,r -&gt; new SyncRecord(reference(r,&quot;workspace.sync&quot;,&quot;id&quot;),text(r,&quot;username&quot;),text(r,&quot;workspace_id&quot;),text(r,&quot;last_synced_commit_id&quot;),instant(r,&quot;last_sync_timestamp&quot;),</span>
+<span class="fc" id="L87">                        text(r,&quot;last_published_commit_id&quot;),instant(r,&quot;last_publish_timestamp&quot;),text(r,&quot;sync_status&quot;),r.getInt(&quot;unpublished_commit_count&quot;),instant(r,&quot;created_at&quot;),instant(r,&quot;updated_at&quot;)))));</span>
+<span class="fc" id="L88">        var editors = scope.repositories(&quot;repository_id&quot;,&quot;workspace_id&quot;);</span>
+<span class="fc" id="L89">        write(sink,&quot;working-states&quot;,profile,query(scope,false,&quot;select scope_id,repository_id,workspace_id,branch,dsl,semantic_revision,checkpoint_commit,checkpoint_revision,pending_checkpoint from editor_workspace&quot;,editors,&quot;scope_id&quot;),</span>
+<span class="fc" id="L90">                scoped(scope,&quot;repository_id&quot;,&quot;workspace_id&quot;,r -&gt; new WorkingStateRecord(reference(r,&quot;workspace.editor&quot;,&quot;scope_id&quot;),text(r,&quot;repository_id&quot;),text(r,&quot;workspace_id&quot;),text(r,&quot;branch&quot;),document(scope,unframe(text(r,&quot;dsl&quot;))),r.getLong(&quot;semantic_revision&quot;),text(r,&quot;checkpoint_commit&quot;),r.getLong(&quot;checkpoint_revision&quot;),text(r,&quot;pending_checkpoint&quot;))));</span>
+<span class="fc" id="L91">        var editorHistory = scope.repositories(&quot;w.repository_id&quot;,&quot;w.workspace_id&quot;);</span>
+<span class="fc" id="L92">        write(sink,&quot;operations&quot;,profile,query(scope,true,&quot;select w.repository_id as captured_repository_id,w.workspace_id as captured_workspace_id,w.scope_id as captured_editor_id,o.id,o.scope_id,o.command_id,o.actor,o.occurred_at,o.rationale,o.correlation_id,o.causation_id,o.kind,o.target_operation_id,o.previous_revision,o.semantic_revision,o.fingerprint,o.body_version,o.before_dsl,o.after_dsl,o.affected_ids from editor_operation o join editor_workspace w on w.scope_id=o.scope_id&quot;,editorHistory,&quot;o.id&quot;),</span>
+<span class="fc" id="L93">                scoped(scope,&quot;captured_repository_id&quot;,&quot;captured_workspace_id&quot;,linked(&quot;captured_editor_id&quot;,&quot;scope_id&quot;,r -&gt; new OperationRecord(reference(r,&quot;workspace.operation&quot;,&quot;id&quot;),reference(r,&quot;workspace.editor&quot;,&quot;scope_id&quot;),text(r,&quot;command_id&quot;),text(r,&quot;actor&quot;),text(r,&quot;occurred_at&quot;),text(r,&quot;rationale&quot;),text(r,&quot;correlation_id&quot;),text(r,&quot;causation_id&quot;),text(r,&quot;kind&quot;),text(r,&quot;target_operation_id&quot;),r.getLong(&quot;previous_revision&quot;),r.getLong(&quot;semantic_revision&quot;),text(r,&quot;fingerprint&quot;),r.getInt(&quot;body_version&quot;),unframe(text(r,&quot;before_dsl&quot;)),unframe(text(r,&quot;after_dsl&quot;)),unframe(text(r,&quot;affected_ids&quot;))))));</span>
+<span class="fc" id="L94">        write(sink,&quot;checkpoints&quot;,profile,query(scope,true,&quot;select w.repository_id as captured_repository_id,w.workspace_id as captured_workspace_id,w.scope_id as captured_editor_id,c.id,c.scope_id,c.command_id,c.actor,c.occurred_at,c.rationale,c.fingerprint,c.from_revision,c.semantic_revision,c.expected_commit,c.dsl,c.commit_id,c.completed,c.commit_created,c.failure_code,c.origin from editor_checkpoint c join editor_workspace w on w.scope_id=c.scope_id&quot;,editorHistory,&quot;c.id&quot;),</span>
+<span class="fc" id="L95">                scoped(scope,&quot;captured_repository_id&quot;,&quot;captured_workspace_id&quot;,linked(&quot;captured_editor_id&quot;,&quot;scope_id&quot;,r -&gt; new CheckpointRecord(reference(r,&quot;workspace.checkpoint&quot;,&quot;id&quot;),reference(r,&quot;workspace.editor&quot;,&quot;scope_id&quot;),text(r,&quot;command_id&quot;),text(r,&quot;actor&quot;),text(r,&quot;occurred_at&quot;),text(r,&quot;rationale&quot;),text(r,&quot;fingerprint&quot;),r.getLong(&quot;from_revision&quot;),r.getLong(&quot;semantic_revision&quot;),text(r,&quot;expected_commit&quot;),unframe(text(r,&quot;dsl&quot;)),text(r,&quot;commit_id&quot;),r.getBoolean(&quot;completed&quot;),r.getBoolean(&quot;commit_created&quot;),text(r,&quot;failure_code&quot;),text(r,&quot;origin&quot;)))));</span>
+<span class="fc" id="L96">        write(sink,&quot;commit-index&quot;,profile,query(scope,true,&quot;select id,repository_id,workspace_id,workspace_scope_key,commit_id,author,commit_timestamp,message,changed_files,tokenized_change_text,affected_element_ids,affected_relation_ids,branch,indexed_at from architecture_commit_index&quot;,editors,&quot;id&quot;),</span>
+<span class="fc" id="L97">                scoped(scope,&quot;repository_id&quot;,&quot;workspace_id&quot;,r -&gt; new CommitIndexRecord(reference(r,&quot;workspace.commit-index&quot;,&quot;id&quot;),text(r,&quot;repository_id&quot;),text(r,&quot;workspace_id&quot;),text(r,&quot;workspace_scope_key&quot;),text(r,&quot;commit_id&quot;),text(r,&quot;author&quot;),instant(r,&quot;commit_timestamp&quot;),text(r,&quot;message&quot;),text(r,&quot;changed_files&quot;),text(r,&quot;tokenized_change_text&quot;),text(r,&quot;affected_element_ids&quot;),text(r,&quot;affected_relation_ids&quot;),text(r,&quot;branch&quot;),instant(r,&quot;indexed_at&quot;))));</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        write(sink,&quot;context-history&quot;,profile,profile == BackupProfile.INSTALLATION_FULL ? new Query(&quot;select id,username,from_context_id,to_context_id,from_branch,to_branch,from_commit_id,to_commit_id,reason,origin_context_id,created_at from context_history_record order by id&quot;,List.of()) : null,</span>
+<span class="fc" id="L99">                r -&gt; new ContextHistoryRecord(reference(r,&quot;workspace.context-history&quot;,&quot;id&quot;),text(r,&quot;username&quot;),text(r,&quot;from_context_id&quot;),text(r,&quot;to_context_id&quot;),text(r,&quot;from_branch&quot;),text(r,&quot;to_branch&quot;),text(r,&quot;from_commit_id&quot;),text(r,&quot;to_commit_id&quot;),text(r,&quot;reason&quot;),text(r,&quot;origin_context_id&quot;),instant(r,&quot;created_at&quot;)));</span>
+<span class="fc" id="L100">    }</span>
+<span class="fc" id="L101">    private &lt;T extends Record&gt; void write(ComponentSink sink,String kind,BackupProfile profile,Query query,PortableRows.Mapper&lt;T&gt; mapper) throws IOException { rows.write(sink,&quot;workspace&quot;,kind,profile,query,mapper); }</span>
+    private static &lt;T extends Record&gt; PortableRows.Mapper&lt;T&gt; scoped(BackupRowScope scope,String repositoryColumn,String workspaceColumn,PortableRows.Mapper&lt;T&gt; mapper) {
+<span class="fc" id="L103">        return row -&gt; {</span>
+<span class="fc" id="L104">            String repository = text(row,repositoryColumn);</span>
+<span class="fc bfc" id="L105" title="All 6 branches covered.">            if (!(workspaceColumn == null ? scope.includesRepository(repository) : scope.includesWorkspace(repository,text(row,workspaceColumn))))</span>
+<span class="fc" id="L106">                throw new IOException(&quot;Workspace record belongs to a different captured scope&quot;);</span>
+<span class="fc" id="L107">            return mapper.read(row);</span>
+        };
+    }
+    private static &lt;T extends Record&gt; PortableRows.Mapper&lt;T&gt; linked(String parentColumn,String childColumn,PortableRows.Mapper&lt;T&gt; mapper) {
+<span class="fc" id="L111">        return row -&gt; {</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            if (!Objects.equals(text(row,parentColumn),text(row,childColumn))) throw new IOException(&quot;Workspace record has an inconsistent parent link&quot;);</span>
+<span class="fc" id="L113">            return mapper.read(row);</span>
+        };
+    }
+<span class="fc bfc" id="L116" title="All 2 branches covered.">    private String document(BackupRowScope scope,String dsl) { return scope.history() ? dsl : projector.currentState(dsl); }</span>
+    private static Query query(BackupRowScope scope,boolean history,String select,Query predicate,String order) {
+<span class="fc bfc" id="L118" title="All 6 branches covered.">        return scope.selectedVersion() || history &amp;&amp; !scope.history() ? null : new Query(select + &quot; where &quot; + predicate.sql() + &quot; order by &quot; + order,predicate.parameters());</span>
+    }
+    private static &lt;E extends Enum&lt;E&gt;&gt; E enumeration(ResultSet row,String column,Class&lt;E&gt; type) throws SQLException,IOException {
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        String value=text(row,column); return value==null?null:Enum.valueOf(type,value);</span>
+    }
+<span class="fc" id="L123">    public record RepositoryRecord(String repositoryId,String slug,String displayName,String description,RepositoryVisibility visibility,RepositoryLifecycleState lifecycleState,RepositoryOwnerType ownerType,String ownerScope,RepositoryTopologyMode topologyMode,String defaultBranch,String upstreamRepositoryId,String upstreamBranch,String forkPointCommit,String lastFetchAt,String lastPushAt,String lastFetchCommit,boolean primaryRepository,String createdBy,String createdAt,String updatedAt) { }</span>
+<span class="fc" id="L124">    public record WorkspaceRecord(String workspaceId,String ownerScope,String displayName,String currentBranch,String baseBranch,boolean shared,String createdAt,String lastAccessedAt,WorkspaceProvisioningStatus provisioningStatus,RepositoryTopologyMode topologyMode,String repositoryId,String sourceBranch,WorkspaceRelationshipType relationshipType,String baseCommit,String currentCommit,String lastFetchedCommit,String lastIntegratedCommit,String syncTargetBranch,String provisionedAt,String description,boolean archived,boolean defaultWorkspace) { }</span>
+<span class="fc" id="L125">    public record MembershipRecord(SourceRecordId sourceId,String repositoryId,String principalScope,RepositoryRole role,String createdAt,String createdBy,String updatedAt) { }</span>
+<span class="fc" id="L126">    public record SyncRecord(SourceRecordId sourceId,String principalScope,String workspaceId,String lastSyncedCommit,String lastSyncAt,String lastPublishedCommit,String lastPublishAt,String syncStatus,int unpublishedCommitCount,String createdAt,String updatedAt) { }</span>
+<span class="fc" id="L127">    public record WorkingStateRecord(SourceRecordId sourceId,String repositoryId,String workspaceId,String branch,String dsl,long semanticRevision,String checkpointCommit,long checkpointRevision,String interruptedCheckpoint) { }</span>
+<span class="fc" id="L128">    public record OperationRecord(SourceRecordId sourceId,SourceRecordId editor,String commandId,String actor,String occurredAt,String rationale,String correlationId,String causationId,String kind,String targetOperationId,long previousRevision,long semanticRevision,String fingerprint,int bodyVersion,String beforeDsl,String afterDsl,String affectedIds) { }</span>
+<span class="fc" id="L129">    public record CheckpointRecord(SourceRecordId sourceId,SourceRecordId editor,String commandId,String actor,String occurredAt,String rationale,String fingerprint,long fromRevision,long semanticRevision,String expectedCommit,String dsl,String commitId,boolean completed,boolean commitCreated,String failureCode,String origin) { }</span>
+<span class="fc" id="L130">    public record CommitIndexRecord(SourceRecordId sourceId,String repositoryId,String workspaceId,String workspaceScope,String commitId,String author,String committedAt,String message,String changedFiles,String changeText,String affectedElementIds,String affectedRelationIds,String branch,String indexedAt) { }</span>
+<span class="fc" id="L131">    public record ContextHistoryRecord(SourceRecordId sourceId,String principalScope,String fromContext,String toContext,String fromBranch,String toBranch,String fromCommit,String toCommit,String reason,String originContext,String createdAt) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

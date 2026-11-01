@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureLifecycleCreationController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.architecture</a> &gt; <span class="el_source">ArchitectureLifecycleCreationController.java</span></div><h1>ArchitectureLifecycleCreationController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.architecture;
+
+import com.taxonomy.workspace.model.*;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.*;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.Operation;
+import java.util.*;
+import static com.taxonomy.composition.architecture.ArchitectureLifecycleService.problem;
+
+/** Core lifecycle creation is independent of the optional administration catalogue UI. */
+@RestController
+@com.taxonomy.shared.features.ConditionalOnFeature(&quot;portfolio&quot;)
+@RequestMapping(&quot;/api/architecture/lifecycle/architectures&quot;)
+public class ArchitectureLifecycleCreationController {
+    private final SystemRepositoryService repositories;private final ArchitectureRepositoryProvisioningService provisioner;
+    private final RepositoryMembershipService membership;private final WorkspaceResolver resolver;private final UserWorkspaceRepository workspaces;
+    public ArchitectureLifecycleCreationController(SystemRepositoryService repositories,ArchitectureRepositoryProvisioningService provisioner,
+<span class="fc" id="L20">            RepositoryMembershipService membership,WorkspaceResolver resolver,UserWorkspaceRepository workspaces) {</span>
+<span class="fc" id="L21">        this.repositories=repositories;this.provisioner=provisioner;this.membership=membership;this.resolver=resolver;this.workspaces=workspaces;</span>
+<span class="fc" id="L22">    }</span>
+    public record Create(String displayName,String slug,String description) {
+<span class="fc" id="L24">        public Create {</span>
+<span class="pc bpc" id="L25" title="5 of 10 branches missed.">            if(displayName==null || displayName.isBlank() || displayName.length()&gt;255 || slug==null || !slug.matches(&quot;[a-z0-9][a-z0-9-]{0,99}&quot;))</span>
+<span class="nc" id="L26">                throw new IllegalArgumentException(&quot;A bounded name and stable lower-case slug are required&quot;);</span>
+<span class="pc bpc" id="L27" title="1 of 4 branches missed.">            if(description!=null &amp;&amp; description.length()&gt;1000) throw new IllegalArgumentException(&quot;Description must not exceed 1000 characters&quot;);</span>
+<span class="fc" id="L28">        }</span>
+    }
+<span class="fc" id="L30">    public record Architecture(String repositoryId,String displayName,String slug,String defaultBranch,boolean owned,</span>
+                               String description,RepositoryLifecycleState lifecycleState) {}
+<span class="nc" id="L32">    public record WorkingCopy(String workspaceId,String sourceRepositoryId,String sourceBranch,String currentBranch,</span>
+                              String displayName,WorkspaceProvisioningStatus provisioningStatus) {}
+    @GetMapping
+    @Operation(summary=&quot;List readable persistent architectures for requirement intake&quot;,
+            description=&quot;Lists active architectures readable by the authenticated user and that user's incomplete private creations. Includes lifecycle state so an interrupted creation can be recovered.&quot;)
+    public ResponseEntity&lt;List&lt;Architecture&gt;&gt; list() {
+<span class="fc" id="L38">        String user=resolver.resolveCurrentUsername();</span>
+<span class="fc" id="L39">        var readable=new ArrayList&lt;&gt;(repositories.listActiveRepositories().stream().filter(repo-&gt;membership.canRead(repo,user)).toList());</span>
+<span class="fc" id="L40">        readable.addAll(repositories.listOwnIncompleteCreations(user));</span>
+<span class="fc" id="L41">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(readable.stream()</span>
+<span class="fc" id="L42">                .sorted(Comparator.comparing(SystemRepository::getDisplayName,String.CASE_INSENSITIVE_ORDER)).map(repo-&gt;view(repo,user)).toList());</span>
+    }
+    @PostMapping
+    @Operation(summary=&quot;Create an independent private architecture&quot;,description=&quot;Uses the existing logical JGit provisioning service. Keep the slug stable across a transport retry and recover the already-created owned architecture before making a working copy.&quot;)
+    public ResponseEntity&lt;Architecture&gt; create(@RequestBody Create request) {
+<span class="fc" id="L47">        String user=resolver.resolveCurrentUsername();</span>
+<span class="fc" id="L48">        var result=provisioner.createOrResumePrivateRepository(request.displayName(),request.slug(),request.description(),user);</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        return ResponseEntity.status(result.created()?HttpStatus.CREATED:HttpStatus.OK).cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L50">                .body(view(result.repository(),user));</span>
+    }
+    @GetMapping(&quot;/{repositoryId}/workspaces&quot;)
+    @Operation(summary=&quot;Recover an owned architecture working copy after an interrupted response&quot;,
+            description=&quot;Lists the authenticated user's unarchived private working copies of a readable architecture, including source branch, current branch and provisioning status. This read does not create or provision a working copy.&quot;)
+    public ResponseEntity&lt;List&lt;WorkingCopy&gt;&gt; copies(@PathVariable String repositoryId) {
+<span class="nc" id="L56">        String user=resolver.resolveCurrentUsername();var repo=repositories.getRepository(repositoryId);</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">        if(!membership.canRead(repo,user)) throw problem(&quot;NOT_FOUND&quot;,&quot;Architecture unavailable&quot;);</span>
+<span class="nc" id="L58">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(workspaces.findByUsernameAndArchivedFalseOrderByLastAccessedAtDesc(user).stream()</span>
+<span class="nc bnc" id="L59" title="All 4 branches missed.">                .filter(w-&gt;!w.isShared() &amp;&amp; repositoryId.equals(w.getSourceRepositoryId()))</span>
+<span class="nc" id="L60">                .map(w-&gt;new WorkingCopy(w.getWorkspaceId(),w.getSourceRepositoryId(),w.getSourceBranch(),w.getCurrentBranch(),w.getDisplayName(),w.getProvisioningStatus())).toList());</span>
+    }
+<span class="fc" id="L62">    private static Architecture view(SystemRepository repo,String user){return new Architecture(repo.getRepositoryId(),repo.getDisplayName(),repo.getSlug(),repo.getDefaultBranch(),</span>
+<span class="fc bfc" id="L63" title="All 4 branches covered.">            repo.getOwnerType()==RepositoryOwnerType.USER &amp;&amp; user.equals(repo.getOwnerId()),repo.getDescription(),repo.getLifecycleState());}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

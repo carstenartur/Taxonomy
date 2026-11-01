@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspacePortfolioDocumentPort.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspacePortfolioDocumentPort.java</span></div><h1>WorkspacePortfolioDocumentPort.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import java.io.IOException;
+import java.util.List;
+
+/** Captures the selected repository once; portfolio sees no JGit/Hibernate storage implementation. */
+public interface WorkspacePortfolioDocumentPort {
+    DocumentHandle resolveRepository(WorkspaceContext context) throws IOException;
+
+    interface DocumentHandle {
+        String getDslAtHead(String branch) throws IOException;
+        /** Reads immutable content without resolving a mutable branch again. */
+        String getDslAtCommit(String commitId) throws IOException;
+        String getHeadCommit(String branch) throws IOException;
+        String commitDsl(String branch, String dsl, String author, String message) throws IOException;
+        /** Publish only against the immutable revision used to construct this projection. */
+        String commitDslIfHeadMatches(String branch, String expectedHead, String dsl,
+                                      String author, String message) throws IOException;
+        /** Validate a no-op under the same checkpoint/import boundary, without creating a commit. */
+        String verifyHeadForVersion(String branch, String expectedHead,
+                                    String author, String message) throws IOException;
+        MergeResult mergeBranches(String fromBranch, String intoBranch, String author, String message) throws IOException;
+    }
+
+<span class="fc" id="L25">    record MergeResult(boolean success, String commitId, boolean semanticFallback, List&lt;String&gt; conflicts) {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

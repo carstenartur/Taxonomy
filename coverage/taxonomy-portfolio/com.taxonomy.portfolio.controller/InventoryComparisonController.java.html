@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>InventoryComparisonController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.controller</a> &gt; <span class="el_source">InventoryComparisonController.java</span></div><h1>InventoryComparisonController.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.controller;
+import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.*;
+import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Mapping;
+import com.taxonomy.portfolio.inventory.InventoryComparisonService;
+import com.taxonomy.portfolio.inventory.InventoryComparisonService.*;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.web.bind.annotation.*;
+import java.util.*;
+/** Existing authenticated API and CSRF/security boundary applies to all mutations. */
+@org.springframework.boot.autoconfigure.condition.ConditionalOnBean(com.taxonomy.extension.api.inventory.InventoryEvidencePort.class)
+@RestController
+@RequestMapping(&quot;/api&quot;)
+@Tag(name = &quot;Inventory comparison&quot;)
+public class InventoryComparisonController {
+    private final InventoryComparisonService service;private final WorkspaceResolver workspaces;
+<span class="fc" id="L19">    public InventoryComparisonController(InventoryComparisonService service,WorkspaceResolver workspaces) {this.service=service;this.workspaces=workspaces;}</span>
+    @PostMapping(&quot;/projects/{projectId}/snapshots/{snapshotId}/inventory-comparisons&quot;)
+    @Operation(summary = &quot;Compare inventory against selected nodes from a saved analysis&quot;,
+            description = &quot;Retains a comparison for the exact saved demand, selected catalogue nodes and explicit time question in the authenticated workspace. Reads only explicitly selected authorized source profiles; the saved analysis is not rerun or rescored.&quot;)
+    public Comparison create(@Parameter(description = &quot;Project containing the saved analysis&quot;) @PathVariable Long projectId,
+            @Parameter(description = &quot;Exact saved analysis snapshot identifier&quot;) @PathVariable String snapshotId,
+<span class="fc" id="L25">            @RequestBody CreateComparisonRequest request) {return service.compare(projectId,snapshotId,request,workspaces.resolveCurrentUsername(),workspaces.resolveCurrentContext());}</span>
+    @GetMapping(&quot;/projects/{projectId}/snapshots/{snapshotId}/inventory-comparisons&quot;)
+    @Operation(summary = &quot;List retained inventory comparisons for a saved analysis&quot;,
+            description = &quot;Lists locally retained comparisons visible in the authenticated project and snapshot scope. Rechecks source grants without refreshing external sources or creating new observations.&quot;)
+    public List&lt;Comparison&gt; list(@Parameter(description = &quot;Project containing the saved analysis&quot;) @PathVariable Long projectId,
+<span class="fc" id="L30">            @Parameter(description = &quot;Exact saved analysis snapshot identifier&quot;) @PathVariable String snapshotId) {return service.list(projectId,snapshotId,workspaces.resolveCurrentUsername(),workspaces.resolveCurrentContext());}</span>
+    @GetMapping(&quot;/inventory-comparisons/{comparisonId}&quot;)
+    @Operation(summary = &quot;Read a retained inventory comparison and its evidence&quot;,
+            description = &quot;Reads the frozen demand, source evidence and criterion findings after checking the current workspace, project and source grants. This read does not refresh vendor data or alter the comparison.&quot;)
+<span class="fc" id="L34">    public Comparison read(@Parameter(description = &quot;Retained inventory comparison identifier&quot;) @PathVariable UUID comparisonId) {return service.read(comparisonId,workspaces.resolveCurrentUsername(),workspaces.resolveCurrentContext());}</span>
+    @GetMapping(&quot;/inventory-comparisons/{comparisonId}/reviews&quot;)
+    @Operation(summary = &quot;Read the retained review history of an inventory comparison&quot;,
+            description = &quot;Returns recorded reviews after checking access to the retained comparison. Review history is read locally and does not reapply a portfolio decision or query an external source.&quot;)
+<span class="fc" id="L38">    public List&lt;Reviewed&gt; reviews(@Parameter(description = &quot;Retained inventory comparison identifier&quot;) @PathVariable UUID comparisonId) {return service.reviews(comparisonId,workspaces.resolveCurrentUsername(),workspaces.resolveCurrentContext());}</span>
+    @PostMapping(&quot;/inventory-comparisons/{comparisonId}/reviews&quot;)
+    @Operation(summary = &quot;Record an explicit inventory review and optional portfolio application&quot;,
+            description = &quot;Records the supplied rationale and optionally applies an existing product candidate and requirement link using the retained comparison. Hard exclusions prevent selection and changed inputs require a new comparison. An identical review identifier and payload return the retained result without reapplication.&quot;)
+    public Reviewed review(@Parameter(description = &quot;Retained inventory comparison identifier&quot;) @PathVariable UUID comparisonId,
+<span class="fc" id="L43">            @RequestBody Review request) {return service.review(comparisonId,request,workspaces.resolveCurrentUsername(),workspaces.resolveCurrentContext());}</span>
+    @PostMapping(&quot;/inventory-comparisons/{comparisonId}/candidates/{candidateId}/mappings&quot;)
+    @Operation(summary = &quot;Map a retained external candidate to an existing sourced product&quot;,
+            description = &quot;Records an explicit identity mapping with rationale and the current product fingerprint. Names alone do not establish identity. The mapping takes effect in a new comparison and does not select the product.&quot;)
+    public Mapping map(@Parameter(description = &quot;Retained inventory comparison identifier&quot;) @PathVariable UUID comparisonId,
+            @Parameter(description = &quot;Exact external candidate identity retained in the comparison&quot;) @PathVariable String candidateId,
+<span class="fc" id="L49">            @RequestBody MapCandidateRequest request) {return service.map(comparisonId,candidateId,request,workspaces.resolveCurrentUsername(),workspaces.resolveCurrentContext());}</span>
+    @PostMapping(&quot;/products/{productId}/inventory-assertions&quot;)
+    @Operation(summary = &quot;Append a sourced inventory assertion for an existing product&quot;,
+            description = &quot;Retains an immutable, cited assertion with explicit criterion, organization, environment and date precision in the authenticated product scope. The assertion is evidence for a new comparison and does not rewrite an earlier comparison or selection.&quot;)
+    public Assertion assertEvidence(@Parameter(description = &quot;Existing product catalogue identifier in the current workspace&quot;) @PathVariable Long productId,
+<span class="fc" id="L54">            @RequestBody Assertion request) {return service.appendAssertion(productId,request,workspaces.resolveCurrentUsername(),workspaces.resolveCurrentContext());}</span>
+    @ExceptionHandler(com.taxonomy.extension.api.inventory.InventoryEvidencePort.Failure.class)
+    public org.springframework.http.ResponseEntity&lt;org.springframework.http.ProblemDetail&gt; failure(com.taxonomy.extension.api.inventory.InventoryEvidencePort.Failure failure) {
+<span class="fc" id="L57">        var problem=org.springframework.http.ProblemDetail.forStatusAndDetail(org.springframework.http.HttpStatusCode.valueOf(failure.status()),failure.getMessage());problem.setTitle(&quot;Inventory evidence operation failed&quot;);problem.setProperty(&quot;code&quot;,failure.code());return org.springframework.http.ResponseEntity.status(failure.status()).body(problem);</span>
+    }
+    @ExceptionHandler(IllegalArgumentException.class)
+    public org.springframework.http.ResponseEntity&lt;org.springframework.http.ProblemDetail&gt; invalid(IllegalArgumentException failure) {
+<span class="fc" id="L61">        return org.springframework.http.ResponseEntity.badRequest().body(org.springframework.http.ProblemDetail.forStatusAndDetail(org.springframework.http.HttpStatus.BAD_REQUEST,&quot;Invalid inventory comparison metadata or interval&quot;));</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

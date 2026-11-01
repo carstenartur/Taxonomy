@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioDocumentConverter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.visio.converter</a> &gt; <span class="el_source">VisioDocumentConverter.java</span></div><h1>VisioDocumentConverter.java</h1><pre class="source lang-java linenums">package com.taxonomy.visio.converter;
+
+import com.taxonomy.visio.VisioDocument;
+import com.thoughtworks.xstream.converters.Converter;
+import com.thoughtworks.xstream.converters.MarshallingContext;
+import com.thoughtworks.xstream.converters.UnmarshallingContext;
+import com.thoughtworks.xstream.io.HierarchicalStreamReader;
+import com.thoughtworks.xstream.io.HierarchicalStreamWriter;
+
+/**
+ * Marshals the Visio main document part for the supported 2012 namespace.
+ * Package metadata is stored in the standard OPC core-properties part rather
+ * than in legacy inline document-property elements. Optional collections are
+ * omitted when empty instead of emitting schema-invalid empty containers.
+ */
+<span class="fc" id="L16">public class VisioDocumentConverter implements Converter {</span>
+
+    private static final String VISIO_NS =
+            &quot;http://schemas.microsoft.com/office/visio/2012/main&quot;;
+    private static final String REL_NS =
+            &quot;http://schemas.openxmlformats.org/officeDocument/2006/relationships&quot;;
+
+    @Override
+    public boolean canConvert(Class type) {
+<span class="fc" id="L25">        return VisioDocument.class.equals(type);</span>
+    }
+
+    @Override
+    public void marshal(
+            Object source,
+            HierarchicalStreamWriter writer,
+            MarshallingContext context) {
+<span class="fc" id="L33">        writer.addAttribute(&quot;xmlns&quot;, VISIO_NS);</span>
+<span class="fc" id="L34">        writer.addAttribute(&quot;xmlns:r&quot;, REL_NS);</span>
+<span class="fc" id="L35">        writer.addAttribute(&quot;xml:space&quot;, &quot;preserve&quot;);</span>
+
+        // Explicit defaults make the masterless package renderable as well as parseable.
+<span class="fc" id="L38">        writer.startNode(&quot;DocumentSettings&quot;);</span>
+<span class="fc" id="L39">        writer.addAttribute(&quot;DefaultLineStyle&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L40">        writer.addAttribute(&quot;DefaultFillStyle&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L41">        writer.addAttribute(&quot;DefaultTextStyle&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L42">        writer.endNode();</span>
+<span class="fc" id="L43">        writer.startNode(&quot;FaceNames&quot;);</span>
+<span class="fc" id="L44">        writer.startNode(&quot;FaceName&quot;);</span>
+<span class="fc" id="L45">        writer.addAttribute(&quot;NameU&quot;, &quot;Arial&quot;);</span>
+<span class="fc" id="L46">        writer.endNode();</span>
+<span class="fc" id="L47">        writer.endNode();</span>
+<span class="fc" id="L48">        writer.startNode(&quot;StyleSheets&quot;);</span>
+<span class="fc" id="L49">        writer.startNode(&quot;StyleSheet&quot;);</span>
+<span class="fc" id="L50">        writer.addAttribute(&quot;ID&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L51">        writer.addAttribute(&quot;NameU&quot;, &quot;Normal&quot;);</span>
+<span class="fc" id="L52">        cell(writer, &quot;LineColor&quot;, &quot;#44546A&quot;);</span>
+<span class="fc" id="L53">        cell(writer, &quot;LinePattern&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L54">        cell(writer, &quot;LineWeight&quot;, &quot;0.01388888888888889&quot;);</span>
+<span class="fc" id="L55">        cell(writer, &quot;LineCap&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L56">        cell(writer, &quot;FillForegnd&quot;, &quot;#FFFFFF&quot;);</span>
+<span class="fc" id="L57">        cell(writer, &quot;FillBkgnd&quot;, &quot;#FFFFFF&quot;);</span>
+<span class="fc" id="L58">        cell(writer, &quot;FillPattern&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L59">        cell(writer, &quot;VerticalAlign&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L60">        writer.startNode(&quot;Section&quot;);</span>
+<span class="fc" id="L61">        writer.addAttribute(&quot;N&quot;, &quot;Character&quot;);</span>
+<span class="fc" id="L62">        writer.startNode(&quot;Row&quot;);</span>
+<span class="fc" id="L63">        writer.addAttribute(&quot;IX&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L64">        cell(writer, &quot;Font&quot;, &quot;Arial&quot;);</span>
+<span class="fc" id="L65">        cell(writer, &quot;Size&quot;, &quot;0.1388888888888889&quot;);</span>
+<span class="fc" id="L66">        cell(writer, &quot;Color&quot;, &quot;#172B4D&quot;);</span>
+<span class="fc" id="L67">        writer.endNode();</span>
+<span class="fc" id="L68">        writer.endNode();</span>
+<span class="fc" id="L69">        writer.startNode(&quot;Section&quot;);</span>
+<span class="fc" id="L70">        writer.addAttribute(&quot;N&quot;, &quot;Paragraph&quot;);</span>
+<span class="fc" id="L71">        writer.startNode(&quot;Row&quot;);</span>
+<span class="fc" id="L72">        writer.addAttribute(&quot;IX&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L73">        cell(writer, &quot;HorzAlign&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L74">        writer.endNode();</span>
+<span class="fc" id="L75">        writer.endNode();</span>
+<span class="fc" id="L76">        writer.endNode();</span>
+<span class="fc" id="L77">        writer.endNode();</span>
+<span class="fc" id="L78">    }</span>
+
+    private static void cell(HierarchicalStreamWriter writer, String name, String value) {
+<span class="fc" id="L81">        writer.startNode(&quot;Cell&quot;);</span>
+<span class="fc" id="L82">        writer.addAttribute(&quot;N&quot;, name);</span>
+<span class="fc" id="L83">        writer.addAttribute(&quot;V&quot;, value);</span>
+<span class="fc" id="L84">        writer.endNode();</span>
+<span class="fc" id="L85">    }</span>
+
+    @Override
+    public Object unmarshal(
+            HierarchicalStreamReader reader,
+            UnmarshallingContext context) {
+<span class="fc" id="L91">        throw new UnsupportedOperationException(</span>
+                &quot;VisioDocumentConverter does not support unmarshaling&quot;);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

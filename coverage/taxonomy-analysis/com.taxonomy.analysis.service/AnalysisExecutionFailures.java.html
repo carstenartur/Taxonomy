@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisExecutionFailures.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">AnalysisExecutionFailures.java</span></div><h1>AnalysisExecutionFailures.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import jakarta.persistence.PersistenceException;
+import org.springframework.dao.DataAccessException;
+import org.springframework.web.server.ResponseStatusException;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+
+/** Failures of execution authority or durable storage are not negative model assessments. */
+public final class AnalysisExecutionFailures {
+    private AnalysisExecutionFailures() { }
+    public static void rethrow(Throwable failure) {
+<span class="fc" id="L13">        var seen = Collections.newSetFromMap(new IdentityHashMap&lt;Throwable, Boolean&gt;());</span>
+<span class="pc bpc" id="L14" title="2 of 6 branches missed.">        for (Throwable cause = failure; cause != null &amp;&amp; seen.size() &lt; 32 &amp;&amp; seen.add(cause); cause = cause.getCause()) {</span>
+<span class="pc bpc" id="L15" title="1 of 18 branches missed.">            if (cause instanceof DataAccessException || cause instanceof PersistenceException || cause instanceof SecurityException</span>
+                    || cause instanceof ResponseStatusException || cause instanceof ProviderPluginUnavailableException
+                    || cause instanceof LlmTransportMeter.JournalStartException
+                    || cause instanceof ProviderRateQuotas.UnavailableException
+                    || cause instanceof org.springframework.security.access.AccessDeniedException
+                    || cause instanceof org.springframework.security.core.AuthenticationException) {
+<span class="pc bpc" id="L21" title="1 of 2 branches missed.">                if (failure instanceof RuntimeException runtime) throw runtime;</span>
+<span class="nc" id="L22">                throw new IllegalStateException(&quot;Analysis execution cannot continue&quot;, failure);</span>
+            }
+        }
+<span class="fc" id="L25">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

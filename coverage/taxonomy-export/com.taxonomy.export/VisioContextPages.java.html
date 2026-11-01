@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioContextPages.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">VisioContextPages.java</span></div><h1>VisioContextPages.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.visio.VisioDocument;
+import com.taxonomy.visio.VisioLoss;
+import com.taxonomy.visio.VisioPage;
+import com.taxonomy.visio.VisioProperty;
+import com.taxonomy.visio.VisioShape;
+import com.taxonomy.visio.VisioTextBox;
+
+import java.awt.Font;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/** Editable source context, with complete requirement text on mandatory pages. */
+final class VisioContextPages {
+<span class="fc" id="L17">    private static final Font FONT = new Font(Font.SANS_SERIF, Font.PLAIN, 10);</span>
+    private static final double PAGE_WIDTH = 7.5;
+    private static final double LINE_HEIGHT = .20;
+    private static final double TOP = 10.65;
+    private static final String UNKNOWN = &quot;Not recorded&quot;;
+<span class="fc" id="L22">    private static final List&lt;String&gt; SHAPE_CONTEXT = List.of(&quot;projectId&quot;, &quot;projectKey&quot;, &quot;requirementId&quot;,</span>
+            &quot;requirementKey&quot;, &quot;requirementTextProvenance&quot;, &quot;requirementVersionId&quot;, &quot;requirementVersionCreatedBy&quot;, &quot;requirementVersionCreatedAt&quot;,
+            &quot;snapshotId&quot;, &quot;snapshotCreatedAt&quot;, &quot;workspaceId&quot;, &quot;branch&quot;, &quot;generatorName&quot;, &quot;generatorVersion&quot;,
+            &quot;exportedBy&quot;, &quot;exportedAt&quot;, &quot;requirementUrl&quot;, &quot;requirementUrlStatus&quot;);
+
+    private VisioContextPages() { }
+
+    /** Called before optional relationship pages so complete source text reserves its capacity first. */
+    static void append(VisioDocument document) {
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (!hasContext(document)) return;</span>
+        // Reject oversized source and unsafe metadata before measured text wrapping.
+<span class="fc" id="L33">        VisioPackageValidator.validateProperties(document.getProperties());</span>
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">        if (document.getProperties().containsKey(&quot;taxonomy.requirementContextPages&quot;)) return;</span>
+<span class="fc" id="L35">        String source = value(document, &quot;requirementText&quot;);</span>
+<span class="pc bpc" id="L36" title="1 of 4 branches missed.">        if (source != null &amp;&amp; !source.isBlank()) {</span>
+<span class="fc" id="L37">            var heading = wrap(contextLines(document), PAGE_WIDTH);</span>
+<span class="fc" id="L38">            double headingHeight = height(heading);</span>
+<span class="fc" id="L39">            int linesPerPage = (int) Math.floor((TOP - headingHeight - .4 - .5) / LINE_HEIGHT);</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">            if (linesPerPage &lt; 4) throw capacity();</span>
+<span class="fc" id="L41">            var lines = wrap(List.of(source), PAGE_WIDTH);</span>
+<span class="fc" id="L42">            int count = (lines.size() + linesPerPage - 1) / linesPerPage;</span>
+<span class="fc" id="L43">            long existing = document.getPages().stream().filter(VisioPage::isEvidencePage).count();</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">            if (existing + count &gt; VisioPackageValidator.MAX_EVIDENCE_PAGES</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">                    || document.getPages().size() + count &gt; VisioPackageValidator.MAX_PAGES) throw capacity();</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">            for (int index = 0; index &lt; count; index++) {</span>
+<span class="fc" id="L47">                var page = new VisioPage(Integer.toString(document.getPages().size()),</span>
+<span class="fc" id="L48">                        requirementPageName(document, index + 1));</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">                if (index == 0) document.getProperties().put(&quot;taxonomy.requirementStartPage&quot;, VisioProperty.text(page.getName()));</span>
+<span class="fc" id="L50">                page.setEvidencePage(true);</span>
+<span class="fc" id="L51">                var header = text(&quot;1&quot;, heading, .4, TOP, PAGE_WIDTH);</span>
+<span class="fc" id="L52">                copyContext(document, header);</span>
+<span class="fc" id="L53">                page.getShapes().add(header);</span>
+<span class="fc" id="L54">                int start = index * linesPerPage;</span>
+<span class="fc" id="L55">                var body = text(&quot;2&quot;, lines.subList(start, Math.min(lines.size(), start + linesPerPage)),</span>
+                        .4, TOP - headingHeight - .4, PAGE_WIDTH);
+<span class="fc" id="L57">                body.getProperties().put(&quot;taxonomy.requirementContent&quot;, VisioProperty.bool(true));</span>
+<span class="fc" id="L58">                page.getShapes().add(body);</span>
+<span class="fc" id="L59">                page.setLegend(new VisioTextBox(&quot;Original requirement · &quot; + (index + 1) + &quot; / &quot; + count</span>
+                        + &quot; · complete source text&quot;, 4.15, 11.05, PAGE_WIDTH, .4));
+<span class="fc" id="L61">                document.getPages().add(page);</span>
+            }
+<span class="fc" id="L63">            document.getProperties().put(&quot;taxonomy.requirementContextPages&quot;, VisioProperty.number(count));</span>
+<span class="fc" id="L64">            document.getLosses().add(new VisioLoss(&quot;document&quot;, &quot;&quot;, &quot;visibleRequirement&quot;, &quot;MAPPED&quot;,</span>
+                    &quot;The diagram context contains an explicitly bounded excerpt; complete original requirement text &quot;
+                            + &quot;is retained on Requirement pages and in taxonomy.requirementText.&quot;));
+<span class="fc" id="L67">        } else {</span>
+<span class="fc" id="L68">            document.getProperties().put(&quot;taxonomy.requirementContextPages&quot;, VisioProperty.number(0));</span>
+        }
+<span class="fc" id="L70">        decorateDiagrams(document);</span>
+<span class="fc" id="L71">    }</span>
+
+    /** Also called after optional details, which must receive the same creation/source context. */
+    static void decorateDiagrams(VisioDocument document) {
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (!hasContext(document)) return;</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        for (var page : document.getPages()) {</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            if (page.isEvidencePage() || page.getShapes().stream()</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">                    .anyMatch(shape -&gt; shape.getProperties().containsKey(&quot;taxonomy.contextBlock&quot;))) continue;</span>
+<span class="fc" id="L79">            var fields = contextLines(document);</span>
+<span class="fc" id="L80">            String source = value(document, &quot;requirementText&quot;);</span>
+<span class="pc bpc" id="L81" title="1 of 4 branches missed.">            if (source != null &amp;&amp; !source.isBlank()) {</span>
+<span class="fc" id="L82">                var original = wrap(List.of(source), 10);</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                fields.add(&quot;Original requirement&quot; + (original.size() &gt; 4 ? &quot; (excerpt):&quot; : &quot;:&quot;));</span>
+<span class="fc" id="L84">                fields.addAll(original.subList(0, Math.min(4, original.size())));</span>
+<span class="fc" id="L85">                fields.add(&quot;Complete original text: &quot; + value(document, &quot;requirementStartPage&quot;)</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">                        + (document.getProperties().containsKey(&quot;taxonomy.requirementContextPages&quot;)</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">                        &amp;&amp; Integer.parseInt(value(document, &quot;requirementContextPages&quot;)) &gt; 1 ? &quot; and following pages.&quot; : &quot;.&quot;));</span>
+<span class="fc" id="L88">            } else {</span>
+<span class="fc" id="L89">                fields.add(&quot;Original requirement: &quot; + UNKNOWN + &quot;.&quot;);</span>
+            }
+<span class="fc" id="L91">            double top = page.getShapes().stream().mapToDouble(s -&gt; s.getY() + s.getHeight() / 2).max().orElse(.5);</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">            top = Math.max(top, page.getConnects().stream().filter(c -&gt; c.getTextBox() != null)</span>
+<span class="fc" id="L93">                    .mapToDouble(c -&gt; c.getTextBox().y() + c.getTextBox().height() / 2).max().orElse(.5));</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            if (page.getLegend() != null) top = Math.max(top, page.getLegend().y() + page.getLegend().height() / 2);</span>
+<span class="fc" id="L95">            long nextId = page.getShapes().stream().mapToLong(s -&gt; Long.parseLong(s.getId())).max().orElse(0) + 1;</span>
+<span class="fc" id="L96">            var wrapped = wrap(fields, 10);</span>
+<span class="fc" id="L97">            var header = text(Long.toString(nextId), wrapped, .5, top + .35 + height(wrapped), 10);</span>
+<span class="fc" id="L98">            copyContext(document, header);</span>
+<span class="fc" id="L99">            header.getProperties().put(&quot;taxonomy.contextBlock&quot;, VisioProperty.bool(true));</span>
+<span class="pc bpc" id="L100" title="1 of 4 branches missed.">            if (source != null &amp;&amp; !source.isBlank()) {</span>
+<span class="fc" id="L101">                header.getProperties().put(&quot;taxonomy.evidencePage&quot;, VisioProperty.text(value(document, &quot;requirementStartPage&quot;)));</span>
+            }
+<span class="fc" id="L103">            page.getShapes().add(header);</span>
+<span class="fc" id="L104">        }</span>
+<span class="fc" id="L105">    }</span>
+
+    private static ArrayList&lt;String&gt; contextLines(VisioDocument document) {
+<span class="fc" id="L108">        var lines = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L109">        lines.add(&quot;Requirement: &quot; + label(document, &quot;requirementKey&quot;) + &quot; · &quot; + label(document, &quot;requirementTitle&quot;));</span>
+<span class="fc" id="L110">        lines.add(&quot;Project: &quot; + label(document, &quot;projectKey&quot;) + &quot; | Requirement version: &quot; + label(document, &quot;requirementVersionId&quot;));</span>
+<span class="fc" id="L111">        lines.add(&quot;Version author: &quot; + label(document, &quot;requirementVersionCreatedBy&quot;)</span>
+<span class="fc" id="L112">                + &quot; | Version created: &quot; + label(document, &quot;requirementVersionCreatedAt&quot;));</span>
+<span class="fc" id="L113">        lines.add(&quot;Analysis created: &quot; + label(document, &quot;snapshotCreatedAt&quot;) + &quot; | Snapshot: &quot; + label(document, &quot;snapshotId&quot;));</span>
+<span class="fc" id="L114">        lines.add(&quot;Exported by: &quot; + label(document, &quot;exportedBy&quot;) + &quot; | Export created: &quot; + label(document, &quot;exportedAt&quot;));</span>
+<span class="fc" id="L115">        lines.add(&quot;Created with: &quot; + label(document, &quot;generatorName&quot;) + &quot; &quot; + label(document, &quot;generatorVersion&quot;));</span>
+<span class="fc" id="L116">        lines.add(&quot;Workspace: &quot; + label(document, &quot;workspaceId&quot;) + &quot; | Branch: &quot; + label(document, &quot;branch&quot;));</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (value(document, &quot;requirementTextProvenance&quot;) != null)</span>
+<span class="fc" id="L118">            lines.add(label(document, &quot;requirementTextProvenance&quot;));</span>
+<span class="fc" id="L119">        String link = value(document, &quot;requirementUrl&quot;);</span>
+<span class="pc bpc" id="L120" title="1 of 4 branches missed.">        if (link != null &amp;&amp; !link.isBlank()) {</span>
+<span class="fc" id="L121">            lines.add(&quot;Edit in Taxonomy: &quot; + label(document, &quot;requirementUrl&quot;));</span>
+<span class="fc" id="L122">            lines.add(&quot;Sign in and select the source workspace/branch to edit. The link grants no access.&quot;);</span>
+        } else {
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            lines.add(&quot;Edit in Taxonomy: &quot; + (value(document, &quot;requirementUrlStatus&quot;) == null</span>
+<span class="fc" id="L125">                    ? &quot;No saved requirement link is available.&quot; : label(document, &quot;requirementUrlStatus&quot;)));</span>
+        }
+<span class="fc" id="L127">        return lines;</span>
+    }
+
+    private static VisioShape text(String id, List&lt;String&gt; lines, double left, double top, double width) {
+<span class="fc" id="L131">        double height = height(lines);</span>
+<span class="fc" id="L132">        var shape = new VisioShape(id, String.join(&quot;\n&quot;, lines), left + width / 2, top - height / 2,</span>
+                width, height, &quot;Evidence&quot;, false);
+<span class="fc" id="L134">        shape.getProperties().put(&quot;taxonomy.presentationOnly&quot;, VisioProperty.bool(true));</span>
+<span class="fc" id="L135">        return shape;</span>
+    }
+
+<span class="fc" id="L138">    private static double height(List&lt;String&gt; lines) { return .25 + lines.size() * LINE_HEIGHT; }</span>
+
+    private static String requirementPageName(VisioDocument document, int index) {
+<span class="fc" id="L141">        String base = &quot;Requirement &quot; + index;</span>
+<span class="fc" id="L142">        String candidate = base;</span>
+<span class="fc" id="L143">        int suffix = 1;</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        while (nameExists(document, candidate)) candidate = base + &quot; (source &quot; + suffix++ + &quot;)&quot;;</span>
+<span class="fc" id="L145">        return candidate;</span>
+    }
+
+    private static boolean nameExists(VisioDocument document, String name) {
+<span class="fc" id="L149">        return document.getPages().stream().anyMatch(page -&gt; page.getName().equalsIgnoreCase(name));</span>
+    }
+
+    private static void copyContext(VisioDocument document, VisioShape shape) {
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        for (String key : SHAPE_CONTEXT) {</span>
+<span class="fc" id="L154">            var property = document.getProperties().get(&quot;taxonomy.&quot; + key);</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">            if (property != null) shape.getProperties().put(&quot;taxonomy.&quot; + key, property);</span>
+<span class="fc" id="L156">        }</span>
+<span class="fc" id="L157">    }</span>
+
+    private static List&lt;String&gt; wrap(List&lt;String&gt; fields, double width) {
+<span class="fc" id="L160">        var lines = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        for (String field : fields) {</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">            for (String paragraph : field.split(&quot;\\R&quot;, -1)) {</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">                if (paragraph.isBlank()) lines.add(&quot;&quot;);</span>
+<span class="fc" id="L164">                else lines.addAll(DiagramTextWrapper.wrapMeasured(paragraph, FONT, (width * 72 - 20) / 1.15,</span>
+                        Integer.MAX_VALUE, &quot;&quot;));
+            }
+<span class="fc" id="L167">        }</span>
+<span class="fc" id="L168">        return lines;</span>
+    }
+
+    private static String label(VisioDocument document, String key) {
+<span class="fc" id="L172">        String value = value(document, key);</span>
+<span class="pc bpc" id="L173" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) return UNKNOWN;</span>
+<span class="fc" id="L174">        String displayed = VisioPresentation.display(value, 120, 1);</span>
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">        if (!displayed.equals(value)) {</span>
+<span class="nc" id="L176">            var loss = new VisioLoss(&quot;document&quot;, &quot;&quot;, key, &quot;TRUNCATED&quot;,</span>
+                    &quot;Visible context label shortened; full value remains in native document/shape data.&quot;);
+<span class="nc bnc" id="L178" title="All 2 branches missed.">            if (!document.getLosses().contains(loss)) document.getLosses().add(loss);</span>
+        }
+<span class="fc" id="L180">        return displayed;</span>
+    }
+
+    private static String value(VisioDocument document, String key) {
+<span class="fc" id="L184">        var property = document.getProperties().get(&quot;taxonomy.&quot; + key);</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">        return property == null ? null : property.value();</span>
+    }
+
+    static boolean hasContext(VisioDocument document) {
+<span class="fc" id="L189">        Map&lt;String, VisioProperty&gt; values = document.getProperties();</span>
+<span class="fc bfc" id="L190" title="All 4 branches covered.">        return values.containsKey(&quot;taxonomy.requirementText&quot;) || values.containsKey(&quot;taxonomy.generatorName&quot;)</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">                || values.containsKey(&quot;taxonomy.exportedBy&quot;);</span>
+    }
+
+    private static IllegalArgumentException capacity() {
+<span class="fc" id="L195">        return new IllegalArgumentException(&quot;Complete readable Visio requirement exceeds page capacity; &quot;</span>
+                + &quot;no original requirement text was truncated.&quot;);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

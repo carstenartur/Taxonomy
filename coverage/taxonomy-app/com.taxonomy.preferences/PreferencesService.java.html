@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PreferencesService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.preferences</a> &gt; <span class="el_source">PreferencesService.java</span></div><h1>PreferencesService.java</h1><pre class="source lang-java linenums">package com.taxonomy.preferences;
+
+import com.taxonomy.dto.AnalysisReasonLength;
+import com.taxonomy.preferences.storage.PreferencesCommit;
+import com.taxonomy.preferences.storage.PreferencesGitRepository;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import tools.jackson.databind.ObjectMapper;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.util.*;
+
+/**
+ * Service that manages runtime application preferences backed by a dedicated JGit repository.
+ *
+ * &lt;p&gt;On startup, preferences are loaded from the HEAD of the {@code main} branch in the
+ * preferences Git repository. If no commit exists yet, all values are initialised from
+ * {@code application.properties} defaults and committed as the first entry.
+ *
+ * &lt;p&gt;Every {@link #update(Map)} call merges the provided changes into the current preferences,
+ * serialises them to JSON, and creates a new Git commit — giving a full audit trail of all
+ * preference changes over time.
+ *
+ * &lt;p&gt;The preferences Git repository uses project name {@code &quot;taxonomy-preferences&quot;}, which
+ * is completely separate from the Architecture DSL repository ({@code &quot;taxonomy-dsl&quot;}).
+ */
+@Service
+public class PreferencesService {
+
+<span class="fc" id="L34">    private static final Logger log = LoggerFactory.getLogger(PreferencesService.class);</span>
+
+    private static final String TOKEN_MASK_PREFIX = &quot;****&quot;;
+    private static final String ANALYSIS_REASON_LENGTH = &quot;analysis.reason-length&quot;;
+    private static final String RELATION_MAX_CALLS = &quot;analysis.relations.max-calls&quot;;
+    private static final String RELATION_MAX_TOTAL_CALLS = &quot;analysis.relations.max-total-calls&quot;;
+    private static final String RELATION_AUTO_CONTINUE = &quot;analysis.relations.auto-continue&quot;;
+    private static final String RELATION_MAX_SOURCES = &quot;analysis.relations.max-sources&quot;;
+    private static final String RELATION_MAX_WORK_ITEMS = &quot;analysis.relations.max-work-items&quot;;
+
+    private final PreferencesGitRepository gitRepository;
+    private final ObjectMapper objectMapper;
+
+    // Atomically published immutable snapshot of the current preferences.
+    //
+    // Persist first and publish second: a failed Git commit must never change the
+    // runtime settings observed by analysis or export code.
+<span class="fc" id="L51">    private volatile Map&lt;String, Object&gt; cache = Map.of();</span>
+
+    // ── Default values loaded from application.properties ─────────────────────
+
+    @Value(&quot;${taxonomy.llm.rpm:5}&quot;)
+    private int defaultLlmRpm;
+
+    @Value(&quot;${taxonomy.llm.timeout-seconds:30}&quot;)
+    private int defaultLlmTimeoutSeconds;
+
+    @Value(&quot;${taxonomy.rate-limit.per-minute:10}&quot;)
+    private int defaultRateLimitPerMinute;
+
+    @Value(&quot;${taxonomy.analysis.min-score:70}&quot;)
+    private int defaultAnalysisMinScore;
+
+<span class="fc" id="L67">    @Value(&quot;${taxonomy.analysis.reason-length:standard}&quot;)</span>
+    private String defaultAnalysisReasonLength = &quot;standard&quot;;
+
+<span class="fc" id="L70">    @Value(&quot;${taxonomy.analysis.relations.hierarchical.max-calls:256}&quot;)</span>
+    private int defaultRelationMaxCalls = 256;
+
+<span class="fc" id="L73">    @Value(&quot;${taxonomy.analysis.relations.hierarchical.max-total-calls:4096}&quot;)</span>
+    private int defaultRelationMaxTotalCalls = 4096;
+
+<span class="fc" id="L76">    @Value(&quot;${taxonomy.analysis.relations.hierarchical.auto-continue:true}&quot;)</span>
+    private boolean defaultRelationAutoContinue = true;
+
+<span class="fc" id="L79">    @Value(&quot;${taxonomy.analysis.relations.hierarchical.max-sources:128}&quot;)</span>
+    private int defaultRelationMaxSources = 128;
+
+<span class="fc" id="L82">    @Value(&quot;${taxonomy.analysis.relations.hierarchical.max-work-items:4096}&quot;)</span>
+    private int defaultRelationMaxWorkItems = 4096;
+
+    @Value(&quot;${taxonomy.dsl.default-branch:draft}&quot;)
+    private String defaultDslDefaultBranch;
+
+    @Value(&quot;${taxonomy.dsl.project-name:Taxonomy Architecture}&quot;)
+    private String defaultDslProjectName;
+
+    @Value(&quot;${taxonomy.dsl.auto-save-interval:0}&quot;)
+    private int defaultDslAutoSaveInterval;
+
+    @Value(&quot;${taxonomy.dsl.remote-url:}&quot;)
+    private String defaultDslRemoteUrl;
+
+    @Value(&quot;${taxonomy.dsl.remote-token:}&quot;)
+    private String defaultDslRemoteToken;
+
+    @Value(&quot;${taxonomy.dsl.remote-push-on-commit:false}&quot;)
+    private boolean defaultDslRemotePushOnCommit;
+
+    @Value(&quot;${taxonomy.limits.max-business-text:5000}&quot;)
+    private int defaultMaxBusinessText;
+
+    @Value(&quot;${taxonomy.limits.max-architecture-nodes:50}&quot;)
+    private int defaultMaxArchitectureNodes;
+
+    @Value(&quot;${taxonomy.limits.max-export-nodes:200}&quot;)
+    private int defaultMaxExportNodes;
+
+    @Value(&quot;${taxonomy.diagram.policy:defaultImpact}&quot;)
+    private String defaultDiagramPolicy;
+
+<span class="fc" id="L115">    public PreferencesService(PreferencesGitRepository gitRepository, ObjectMapper objectMapper) {</span>
+<span class="fc" id="L116">        this.gitRepository = gitRepository;</span>
+<span class="fc" id="L117">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L118">    }</span>
+
+    /**
+     * On startup: load preferences from the JGit repository, or initialise from defaults.
+     */
+    @PostConstruct
+    public void init() {
+        try {
+<span class="fc" id="L126">            String json = gitRepository.readHead();</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            if (json != null) {</span>
+                @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L129">                Map&lt;String, Object&gt; loaded = objectMapper.readValue(json, Map.class);</span>
+                // Older commits omit newer analysis preferences. Expose deployment
+                // defaults immediately without creating a read-time commit.
+<span class="fc" id="L132">                loaded.putIfAbsent(ANALYSIS_REASON_LENGTH, configuredReasonLength());</span>
+<span class="fc" id="L133">                configuredRelationBudgets().forEach(loaded::putIfAbsent);</span>
+<span class="fc" id="L134">                cache = immutableSnapshot(loaded);</span>
+<span class="fc" id="L135">                log.info(&quot;Preferences loaded from JGit repository ({} entries)&quot;, cache.size());</span>
+<span class="fc" id="L136">            } else {</span>
+                // No commits yet — initialise from property defaults and commit
+<span class="fc" id="L138">                Map&lt;String, Object&gt; defaults = buildDefaults();</span>
+<span class="fc" id="L139">                String initialJson = objectMapper.writeValueAsString(defaults);</span>
+<span class="fc" id="L140">                gitRepository.commit(initialJson, &quot;system&quot;, &quot;Initial preferences from application.properties&quot;);</span>
+<span class="fc" id="L141">                cache = immutableSnapshot(defaults);</span>
+<span class="fc" id="L142">                log.info(&quot;Preferences initialised from defaults and committed to JGit&quot;);</span>
+            }
+<span class="nc" id="L144">        } catch (IOException e) {</span>
+<span class="nc" id="L145">            log.warn(&quot;Could not load preferences from JGit, using defaults: {}&quot;, e.getMessage());</span>
+<span class="nc" id="L146">            cache = immutableSnapshot(buildDefaults());</span>
+<span class="fc" id="L147">        }</span>
+<span class="fc" id="L148">    }</span>
+
+    /**
+     * Returns all current preferences. The {@code dsl.remote.token} value is masked.
+     *
+     * @return an unmodifiable copy of the preferences map with the token masked
+     */
+    public Map&lt;String, Object&gt; getAll() {
+<span class="fc" id="L156">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;(cache);</span>
+<span class="fc" id="L157">        maskToken(result);</span>
+<span class="fc" id="L158">        return Collections.unmodifiableMap(result);</span>
+    }
+
+    /**
+     * Returns the raw (unmasked) value for the given key.
+     *
+     * @param key the preference key
+     * @return the value, or {@code null} if not set
+     */
+    public Object get(String key) {
+<span class="fc" id="L168">        return cache.get(key);</span>
+    }
+
+    /**
+     * Returns the integer value for the given key, or the default if not present or not a number.
+     */
+    public int getInt(String key, int defaultValue) {
+<span class="fc" id="L175">        Object val = cache.get(key);</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">        if (val instanceof Number n) return n.intValue();</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">        if (val instanceof String s) {</span>
+<span class="nc" id="L178">            try { return Integer.parseInt(s); } catch (NumberFormatException ignored) {}</span>
+        }
+<span class="fc" id="L180">        return defaultValue;</span>
+    }
+
+    /**
+     * Returns the string value for the given key, or the default if not present.
+     */
+    public String getString(String key, String defaultValue) {
+<span class="fc" id="L187">        Object val = cache.get(key);</span>
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">        return val != null ? String.valueOf(val) : defaultValue;</span>
+    }
+
+    /**
+     * Returns the boolean value for the given key, or the default if not present.
+     */
+    public boolean getBoolean(String key, boolean defaultValue) {
+<span class="fc" id="L195">        Object val = cache.get(key);</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">        if (val instanceof Boolean b) return b;</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">        if (val instanceof String s) return Boolean.parseBoolean(s);</span>
+<span class="fc" id="L198">        return defaultValue;</span>
+    }
+
+    /**
+     * Merge the provided changes into the current preferences, commit to JGit, and update
+     * the in-memory cache. Each call creates a new Git commit with the full preferences JSON.
+     *
+     * @param changes   partial map of settings to update
+     * @param author    the user making the change (for the Git commit author)
+     * @throws IOException if the JGit commit fails
+     */
+    public synchronized void update(Map&lt;String, Object&gt; changes, String author) throws IOException {
+<span class="fc" id="L210">        Map&lt;String, Object&gt; validated = new LinkedHashMap&lt;&gt;(changes);</span>
+<span class="fc" id="L211">        validateReasonLength(validated);</span>
+<span class="fc" id="L212">        validateRelationBudgets(validated);</span>
+<span class="fc" id="L213">        Map&lt;String, Object&gt; updated = new LinkedHashMap&lt;&gt;(cache);</span>
+<span class="fc" id="L214">        updated.putAll(validated);</span>
+<span class="fc" id="L215">        String json = objectMapper.writeValueAsString(updated);</span>
+<span class="fc" id="L216">        String commitMsg = &quot;Preferences updated: &quot; + String.join(&quot;, &quot;, validated.keySet());</span>
+
+        // The repository is the durable authority. Do not publish a new runtime
+        // snapshot until its commit has succeeded.
+<span class="fc" id="L220">        gitRepository.commit(json, author, commitMsg);</span>
+<span class="fc" id="L221">        cache = immutableSnapshot(updated);</span>
+<span class="fc" id="L222">        log.info(&quot;Preferences updated by '{}': {}&quot;, author, validated.keySet());</span>
+<span class="fc" id="L223">    }</span>
+
+    /**
+     * Resets all preferences to their default values (from application.properties),
+     * commits to JGit, and updates the in-memory cache.
+     *
+     * @param author the user requesting the reset
+     * @throws IOException if the JGit commit fails
+     */
+    public synchronized void resetToDefaults(String author) throws IOException {
+<span class="fc" id="L233">        Map&lt;String, Object&gt; defaults = buildDefaults();</span>
+<span class="fc" id="L234">        String json = objectMapper.writeValueAsString(defaults);</span>
+
+        // As with update(), a failed reset must leave the active runtime
+        // preferences untouched.
+<span class="fc" id="L238">        gitRepository.commit(json, author, &quot;Preferences reset to defaults&quot;);</span>
+<span class="fc" id="L239">        cache = immutableSnapshot(defaults);</span>
+<span class="fc" id="L240">        log.info(&quot;Preferences reset to defaults by '{}'&quot;, author);</span>
+<span class="fc" id="L241">    }</span>
+
+    /**
+     * Returns the commit history of the preferences repository, newest first.
+     */
+    public List&lt;PreferencesCommit&gt; getHistory() throws IOException {
+<span class="fc" id="L247">        return gitRepository.getHistory();</span>
+    }
+
+    // ── Private helpers ────────────────────────────────────────────────────────
+
+    private static void validateReasonLength(Map&lt;String, Object&gt; changes) {
+<span class="fc bfc" id="L253" title="All 2 branches covered.">        if (!changes.containsKey(ANALYSIS_REASON_LENGTH)) return;</span>
+<span class="fc" id="L254">        Object value = changes.get(ANALYSIS_REASON_LENGTH);</span>
+<span class="fc bfc" id="L255" title="All 4 branches covered.">        if (value instanceof String text &amp;&amp; !text.isBlank()) {</span>
+            try {
+<span class="fc" id="L257">                AnalysisReasonLength.fromValue(text);</span>
+<span class="fc" id="L258">                return;</span>
+<span class="fc" id="L259">            } catch (IllegalArgumentException ignored) {</span>
+                // Return a stable, non-reflective validation message at the API boundary.
+            }
+        }
+<span class="fc" id="L263">        throw new IllegalArgumentException(&quot;analysis.reason-length must be short, standard or detailed&quot;);</span>
+    }
+
+    private String configuredReasonLength() {
+<span class="fc" id="L267">        return AnalysisReasonLength.fromValue(defaultAnalysisReasonLength).value();</span>
+    }
+
+    private static void validateRelationBudgets(Map&lt;String, Object&gt; changes) {
+<span class="fc" id="L271">        validateIntegerBudget(changes, RELATION_MAX_CALLS, 0, 10_000);</span>
+<span class="fc" id="L272">        validateIntegerBudget(changes, RELATION_MAX_TOTAL_CALLS, 0, 10_000);</span>
+<span class="fc" id="L273">        validateIntegerBudget(changes, RELATION_MAX_SOURCES, 1, 256);</span>
+<span class="fc" id="L274">        validateIntegerBudget(changes, RELATION_MAX_WORK_ITEMS, 1, 100_000);</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        if (changes.containsKey(RELATION_AUTO_CONTINUE)</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">                &amp;&amp; !(changes.get(RELATION_AUTO_CONTINUE) instanceof Boolean)) {</span>
+<span class="fc" id="L277">            throw new IllegalArgumentException(RELATION_AUTO_CONTINUE + &quot; must be true or false&quot;);</span>
+        }
+<span class="fc" id="L279">    }</span>
+
+    private static void validateIntegerBudget(Map&lt;String, Object&gt; changes, String key, int min, int max) {
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        if (!changes.containsKey(key)) return;</span>
+<span class="fc" id="L283">        Object value = changes.get(key);</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">        if (value instanceof Number number) {</span>
+            try {
+                // intValue() silently truncates fractions and wraps overflowing
+                // longs. Persist one exact integer representation after validation.
+<span class="fc" id="L288">                int integer = new BigDecimal(number.toString()).intValueExact();</span>
+<span class="fc bfc" id="L289" title="All 4 branches covered.">                if (integer &gt;= min &amp;&amp; integer &lt;= max) {</span>
+<span class="fc" id="L290">                    changes.put(key, integer);</span>
+<span class="fc" id="L291">                    return;</span>
+                }
+<span class="fc" id="L293">            } catch (ArithmeticException | NumberFormatException ignored) {</span>
+                // Return the same bounded message for every invalid representation.
+<span class="fc" id="L295">            }</span>
+        }
+<span class="fc" id="L297">        throw new IllegalArgumentException(key + &quot; must be an integer between &quot; + min + &quot; and &quot; + max);</span>
+    }
+
+    private Map&lt;String, Object&gt; configuredRelationBudgets() {
+<span class="fc" id="L301">        Map&lt;String, Object&gt; defaults = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L302">        defaults.put(RELATION_MAX_CALLS, defaultRelationMaxCalls);</span>
+<span class="fc" id="L303">        defaults.put(RELATION_MAX_TOTAL_CALLS, defaultRelationMaxTotalCalls);</span>
+<span class="fc" id="L304">        defaults.put(RELATION_AUTO_CONTINUE, defaultRelationAutoContinue);</span>
+<span class="fc" id="L305">        defaults.put(RELATION_MAX_SOURCES, defaultRelationMaxSources);</span>
+<span class="fc" id="L306">        defaults.put(RELATION_MAX_WORK_ITEMS, defaultRelationMaxWorkItems);</span>
+<span class="fc" id="L307">        validateRelationBudgets(defaults);</span>
+<span class="fc" id="L308">        return defaults;</span>
+    }
+
+    private static Map&lt;String, Object&gt; immutableSnapshot(Map&lt;String, Object&gt; source) {
+<span class="fc" id="L312">        return Collections.unmodifiableMap(new LinkedHashMap&lt;&gt;(source));</span>
+    }
+
+    private Map&lt;String, Object&gt; buildDefaults() {
+<span class="fc" id="L316">        Map&lt;String, Object&gt; defaults = new LinkedHashMap&lt;&gt;();</span>
+        // LLM Configuration
+<span class="fc" id="L318">        defaults.put(&quot;llm.rpm&quot;, defaultLlmRpm);</span>
+<span class="fc" id="L319">        defaults.put(&quot;llm.timeout.seconds&quot;, defaultLlmTimeoutSeconds);</span>
+<span class="fc" id="L320">        defaults.put(&quot;rate-limit.per-minute&quot;, defaultRateLimitPerMinute);</span>
+<span class="fc" id="L321">        defaults.put(&quot;analysis.min-relevance-score&quot;, defaultAnalysisMinScore);</span>
+<span class="fc" id="L322">        defaults.put(ANALYSIS_REASON_LENGTH, configuredReasonLength());</span>
+<span class="fc" id="L323">        defaults.putAll(configuredRelationBudgets());</span>
+        // JGit / DSL Configuration
+<span class="fc" id="L325">        defaults.put(&quot;dsl.default-branch&quot;, defaultDslDefaultBranch);</span>
+<span class="fc" id="L326">        defaults.put(&quot;dsl.project-name&quot;, defaultDslProjectName);</span>
+<span class="fc" id="L327">        defaults.put(&quot;dsl.auto-save.interval-seconds&quot;, defaultDslAutoSaveInterval);</span>
+<span class="fc" id="L328">        defaults.put(&quot;dsl.remote.url&quot;, defaultDslRemoteUrl);</span>
+<span class="fc" id="L329">        defaults.put(&quot;dsl.remote.token&quot;, defaultDslRemoteToken);</span>
+<span class="fc" id="L330">        defaults.put(&quot;dsl.remote.push-on-commit&quot;, defaultDslRemotePushOnCommit);</span>
+        // Size Limits
+<span class="fc" id="L332">        defaults.put(&quot;limits.max-business-text&quot;, defaultMaxBusinessText);</span>
+<span class="fc" id="L333">        defaults.put(&quot;limits.max-architecture-nodes&quot;, defaultMaxArchitectureNodes);</span>
+<span class="fc" id="L334">        defaults.put(&quot;limits.max-export-nodes&quot;, defaultMaxExportNodes);</span>
+        // Diagram Configuration
+<span class="fc" id="L336">        defaults.put(&quot;diagram.policy&quot;, defaultDiagramPolicy);</span>
+<span class="fc" id="L337">        return defaults;</span>
+    }
+
+    private void maskToken(Map&lt;String, Object&gt; prefs) {
+<span class="fc" id="L341">        Object token = prefs.get(&quot;dsl.remote.token&quot;);</span>
+<span class="fc bfc" id="L342" title="All 4 branches covered.">        if (token instanceof String s &amp;&amp; !s.isEmpty()) {</span>
+<span class="fc" id="L343">            int showChars = Math.min(4, s.length());</span>
+<span class="fc" id="L344">            prefs.put(&quot;dsl.remote.token&quot;,</span>
+<span class="fc" id="L345">                    TOKEN_MASK_PREFIX + s.substring(s.length() - showChars));</span>
+        }
+<span class="fc" id="L347">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

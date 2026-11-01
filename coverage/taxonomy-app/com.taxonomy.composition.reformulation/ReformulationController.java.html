@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.reformulation</a> &gt; <span class="el_source">ReformulationController.java</span></div><h1>ReformulationController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.reformulation;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import com.taxonomy.portfolio.reformulation.ReformulationService;
+import com.taxonomy.portfolio.reformulation.ProposalSummary;
+import com.taxonomy.portfolio.reformulation.ReformulationPreconditionException;
+
+import com.taxonomy.portfolio.reformulation.ReformulationDtos.*;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import java.util.List;
+
+/** Scope and actor always come from authenticated workspace resolution, never request JSON. */
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;portfolio&quot;})
+@RestController
+@Tag(name = &quot;Reformulations&quot;)
+@RequestMapping(&quot;/api/projects/{projectId}/requirements/{requirementId}/reformulations&quot;)
+public class ReformulationController {
+    private final ReformulationService service;
+    private final WorkspaceResolver resolver;
+    private final ReformulationExecutionService execution;
+<span class="fc" id="L31">    public ReformulationController(ReformulationService service,WorkspaceResolver resolver,ReformulationExecutionService execution){this.service=service;this.resolver=resolver;this.execution=execution;}</span>
+    @PostMapping @Operation(summary = &quot;Create and start a reformulation proposal&quot;,
+            description = &quot;Freezes the source requirement and starts proposal synthesis in the authenticated workspace. Returns 202 with the proposal Location and revision ETag. The original requirement remains unchanged until a separate confirmed adoption.&quot;)
+    @ApiResponse(responseCode = &quot;202&quot;, description = &quot;Accepted; observe the run separately&quot;)
+    public ResponseEntity&lt;Proposal&gt; create(@Parameter(description = &quot;Project containing the scoped resource&quot;) @PathVariable Long projectId,@Parameter(description = &quot;Requirement within the selected project&quot;) @PathVariable Long requirementId,@RequestBody CreateRequest request) {
+<span class="fc" id="L36">        var actor=resolver.resolveCurrentUsername();var context=resolver.resolveCurrentContext();</span>
+<span class="fc" id="L37">        var proposal=service.create(projectId,requirementId,request,actor,context);</span>
+<span class="fc" id="L38">        execution.start(projectId,requirementId,proposal.id(),proposal.currentRevision().number(),actor,context);</span>
+<span class="fc" id="L39">        return ResponseEntity.accepted().location(ServletUriComponentsBuilder.fromCurrentRequestUri()</span>
+<span class="fc" id="L40">                        .pathSegment(proposal.id()).build().toUri())</span>
+<span class="fc" id="L41">                .eTag(Long.toString(proposal.currentRevision().number())).body(proposal);</span>
+    }
+    @GetMapping @Operation(summary = &quot;List requirement reformulation proposals&quot;,
+            description = &quot;Returns proposal summaries for the selected requirement and authenticated workspace; listing does not start synthesis or adopt text.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Operation completed&quot;)
+    public List&lt;ProposalSummary&gt; list(@Parameter(description = &quot;Project containing the scoped resource&quot;) @PathVariable Long projectId,@Parameter(description = &quot;Requirement within the selected project&quot;) @PathVariable Long requirementId) {
+<span class="fc" id="L47">        return service.list(projectId,requirementId,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext());</span>
+    }
+    @GetMapping(&quot;/{proposalId}&quot;) @Operation(summary = &quot;Read a reformulation proposal&quot;,
+            description = &quot;Returns the stored proposal, immutable baseline and current proposal revision. The ETag is the quoted proposal revision required by subsequent mutations.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Operation completed&quot;)
+    public ResponseEntity&lt;Proposal&gt; get(@Parameter(description = &quot;Project containing the scoped resource&quot;) @PathVariable Long projectId,@Parameter(description = &quot;Requirement within the selected project&quot;) @PathVariable Long requirementId,@Parameter(description = &quot;Existing reformulation proposal identifier&quot;) @PathVariable String proposalId) {
+<span class="fc" id="L53">        var proposal=service.get(projectId,requirementId,proposalId,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext());</span>
+<span class="fc" id="L54">        return ResponseEntity.ok().eTag(Long.toString(proposal.currentRevision().number())).body(proposal);</span>
+    }
+    @GetMapping(&quot;/{proposalId}/revisions/{revision}&quot;) @Operation(summary = &quot;Read an immutable proposal revision&quot;,
+            description = &quot;Returns the numbered historical revision of an authorized proposal without changing its current revision or the original requirement.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Operation completed&quot;)
+    public Revision revision(@Parameter(description = &quot;Project containing the scoped resource&quot;) @PathVariable Long projectId,@Parameter(description = &quot;Requirement within the selected project&quot;) @PathVariable Long requirementId,@Parameter(description = &quot;Existing reformulation proposal identifier&quot;) @PathVariable String proposalId,@Parameter(description = &quot;Exact retained revision number or commit, as required by this endpoint&quot;) @PathVariable long revision) {
+<span class="fc" id="L60">        return service.revision(projectId,requirementId,proposalId,revision,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext());</span>
+    }
+    @PostMapping(&quot;/{proposalId}/revisions&quot;) @Operation(summary = &quot;Save one reviewed proposal revision&quot;,
+            description = &quot;Requires the quoted current proposal revision in If-Match and exactly one text, answer or statement operation. Saves a new proposal revision and ETag, not the active requirement. Invalid revision operations return 422 and stale proposal revisions return 412.&quot;)
+    @ApiResponse(responseCode = &quot;201&quot;, description = &quot;Operation completed&quot;)
+    public ResponseEntity&lt;Proposal&gt; draft(@Parameter(description = &quot;Project containing the scoped resource&quot;) @PathVariable Long projectId,@Parameter(description = &quot;Requirement within the selected project&quot;) @PathVariable Long requirementId,@Parameter(description = &quot;Existing reformulation proposal identifier&quot;) @PathVariable String proposalId,
+            @Parameter(description = &quot;Required quoted positive proposal revision&quot;, required = true,
+                    schema = @Schema(type = &quot;string&quot;, pattern = &quot;\&quot;[1-9][0-9]*\&quot;&quot;), example = &quot;\&quot;3\&quot;&quot;)
+            @RequestHeader(value=&quot;If-Match&quot;,required=false) String expected,@RequestBody SaveDraftRequest request) {
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if(expected==null) throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,&quot;If-Match is required&quot;);</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        if(!expected.matches(&quot;\&quot;[1-9][0-9]*\&quot;&quot;)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,&quot;Expected a quoted proposal revision&quot;);</span>
+        long revision;
+<span class="fc" id="L72">        try {revision=Long.parseLong(expected.substring(1,expected.length()-1));}</span>
+<span class="pc" id="L73">        catch(NumberFormatException invalid){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,&quot;Invalid proposal revision&quot;);}</span>
+<span class="fc bfc" id="L74" title="All 6 branches covered.">        int operations=(request.text()!=null?1:0)+(request.answer()!=null?1:0)+(request.statement()!=null?1:0);</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        if(operations!=1)throw new com.taxonomy.portfolio.reformulation.ReformulationAnswerException(&quot;Exactly one revision operation is required&quot;);</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if(request.answer()!=null)return changed(service.answer(projectId,requirementId,proposalId,revision,request.answer(),resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if(request.statement()!=null)return changed(service.statement(projectId,requirementId,proposalId,revision,request.statementId(),request.statement(),resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));</span>
+<span class="fc" id="L78">        var proposal=service.saveDraft(projectId,requirementId,proposalId,revision,request,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext());</span>
+<span class="fc" id="L79">        return ResponseEntity.status(HttpStatus.CREATED).eTag(Long.toString(proposal.currentRevision().number())).body(proposal);</span>
+    }
+    @PostMapping(&quot;/{proposalId}/answers&quot;) @Operation(summary = &quot;Record an answer to a proposal question&quot;,
+            description = &quot;Records the reviewed question answer as a new proposal revision. Requires the current quoted If-Match revision; an answer changes the proposal, not the original requirement.&quot;)
+    @ApiResponse(responseCode = &quot;201&quot;, description = &quot;Operation completed&quot;)
+    public ResponseEntity&lt;Proposal&gt; answer(@Parameter(description = &quot;Project containing the scoped resource&quot;) @PathVariable Long projectId,@Parameter(description = &quot;Requirement within the selected project&quot;) @PathVariable Long requirementId,@Parameter(description = &quot;Existing reformulation proposal identifier&quot;) @PathVariable String proposalId,
+            @Parameter(description = &quot;Required quoted positive proposal revision&quot;, required = true,
+                    schema = @Schema(type = &quot;string&quot;, pattern = &quot;\&quot;[1-9][0-9]*\&quot;&quot;), example = &quot;\&quot;3\&quot;&quot;)
+            @RequestHeader(value=&quot;If-Match&quot;,required=false) String expected,@RequestBody AnswerRequest request) {
+<span class="fc" id="L88">        return changed(service.answer(projectId,requirementId,proposalId,expected(expected),request,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));</span>
+    }
+    @PostMapping(&quot;/{proposalId}/statements/{statementId}&quot;) @Operation(summary = &quot;Review a reformulation statement&quot;,
+            description = &quot;Applies the statement review identified by statementId under the current If-Match proposal revision. Returns the updated proposal with a new ETag; this is not requirement adoption.&quot;)
+    @ApiResponse(responseCode = &quot;201&quot;, description = &quot;Operation completed&quot;)
+    public ResponseEntity&lt;Proposal&gt; statement(@Parameter(description = &quot;Project containing the scoped resource&quot;) @PathVariable Long projectId,@Parameter(description = &quot;Requirement within the selected project&quot;) @PathVariable Long requirementId,@Parameter(description = &quot;Existing reformulation proposal identifier&quot;) @PathVariable String proposalId,@Parameter(description = &quot;Statement identifier in the proposal revision&quot;) @PathVariable String statementId,
+            @Parameter(description = &quot;Required quoted positive proposal revision&quot;, required = true,
+                    schema = @Schema(type = &quot;string&quot;, pattern = &quot;\&quot;[1-9][0-9]*\&quot;&quot;), example = &quot;\&quot;3\&quot;&quot;)
+            @RequestHeader(value=&quot;If-Match&quot;,required=false) String expected,@RequestBody StatementRequest request) {
+<span class="fc" id="L97">        return changed(service.statement(projectId,requirementId,proposalId,expected(expected),statementId,request,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));</span>
+    }
+    @PostMapping(&quot;/{proposalId}/variants&quot;) @Operation(summary = &quot;Create a reviewed proposal variant&quot;,
+            description = &quot;Creates a proposal variant from the supplied decision and current quoted If-Match revision. Returns a new proposal revision; source text remains unchanged until confirmed adoption.&quot;)
+    @ApiResponse(responseCode = &quot;201&quot;, description = &quot;Operation completed&quot;)
+    public ResponseEntity&lt;Proposal&gt; variant(@Parameter(description = &quot;Project containing the scoped resource&quot;) @PathVariable Long projectId,@Parameter(description = &quot;Requirement within the selected project&quot;) @PathVariable Long requirementId,@Parameter(description = &quot;Existing reformulation proposal identifier&quot;) @PathVariable String proposalId,
+            @Parameter(description = &quot;Required quoted positive proposal revision&quot;, required = true,
+                    schema = @Schema(type = &quot;string&quot;, pattern = &quot;\&quot;[1-9][0-9]*\&quot;&quot;), example = &quot;\&quot;3\&quot;&quot;)
+            @RequestHeader(value=&quot;If-Match&quot;,required=false) String expected,@RequestBody VariantRequest request) {
+<span class="fc" id="L106">        return changed(service.variant(projectId,requirementId,proposalId,expected(expected),request,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));</span>
+    }
+    private static ResponseEntity&lt;Proposal&gt; changed(Proposal proposal) {
+<span class="fc" id="L109">        return ResponseEntity.status(HttpStatus.CREATED).eTag(Long.toString(proposal.currentRevision().number())).body(proposal);</span>
+    }
+    private static long expected(String value) {
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        if(value==null)throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,&quot;If-Match is required&quot;);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if(!value.matches(&quot;\\\&quot;[1-9][0-9]*\\\&quot;&quot;))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,&quot;Expected a quoted proposal revision&quot;);</span>
+<span class="fc" id="L114">        try {return Long.parseLong(value.substring(1,value.length()-1));}</span>
+<span class="nc" id="L115">        catch(NumberFormatException failure){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,&quot;Invalid proposal revision&quot;);}</span>
+    }
+    @PostMapping(&quot;/{proposalId}/synthesis-runs&quot;) @Operation(summary = &quot;Start a proposal synthesis run&quot;,
+            description = &quot;Starts synthesis from the exact current proposal revision named by If-Match. Returns the accepted run, not a completed or adopted requirement. Observe its progress and usage through the synthesis-run APIs.&quot;)
+    @ApiResponse(responseCode = &quot;202&quot;, description = &quot;Accepted; observe the run separately&quot;)
+    public ResponseEntity&lt;Run&gt; synthesize(@Parameter(description = &quot;Project containing the scoped resource&quot;) @PathVariable Long projectId,@Parameter(description = &quot;Requirement within the selected project&quot;) @PathVariable Long requirementId,@Parameter(description = &quot;Existing reformulation proposal identifier&quot;) @PathVariable String proposalId,
+            @Parameter(description = &quot;Required quoted positive proposal revision&quot;, required = true,
+                    schema = @Schema(type = &quot;string&quot;, pattern = &quot;\&quot;[1-9][0-9]*\&quot;&quot;), example = &quot;\&quot;3\&quot;&quot;)
+            @RequestHeader(value=&quot;If-Match&quot;,required=false) String expected) {
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if(expected==null) throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,&quot;If-Match is required&quot;);</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        if(!expected.matches(&quot;\&quot;[1-9][0-9]*\&quot;&quot;)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,&quot;Expected a quoted proposal revision&quot;);</span>
+        long revision;
+<span class="fc" id="L127">        try {revision=Long.parseLong(expected.substring(1,expected.length()-1));}</span>
+<span class="pc" id="L128">        catch(NumberFormatException invalid){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,&quot;Invalid proposal revision&quot;);}</span>
+<span class="fc" id="L129">        return ResponseEntity.accepted().body(execution.start(projectId,requirementId,proposalId,revision,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));</span>
+    }
+    @PostMapping(&quot;/{proposalId}/synthesis-runs/{runId}/cancel&quot;) @Operation(summary = &quot;Cancel a proposal synthesis run&quot;,
+            description = &quot;Requests cancellation of the identified synthesis run after workspace authorization and current If-Match validation. Preserves the proposal and already retained evidence; does not adopt generated text.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Operation completed&quot;)
+    public Run cancel(@Parameter(description = &quot;Project containing the scoped resource&quot;) @PathVariable Long projectId,@Parameter(description = &quot;Requirement within the selected project&quot;) @PathVariable Long requirementId,
+            @Parameter(description = &quot;Existing reformulation proposal identifier&quot;) @PathVariable String proposalId,@Parameter(description = &quot;Existing synthesis run identifier&quot;) @PathVariable String runId,@Parameter(description = &quot;Required quoted positive proposal revision&quot;, required = true,
+                    schema = @Schema(type = &quot;string&quot;, pattern = &quot;\&quot;[1-9][0-9]*\&quot;&quot;), example = &quot;\&quot;3\&quot;&quot;)
+            @RequestHeader(value=&quot;If-Match&quot;,required=false) String expected) {
+<span class="fc" id="L138">        return service.cancelRun(projectId,requirementId,proposalId,runId,expected(expected),resolver.resolveCurrentUsername(),resolver.resolveCurrentContext());</span>
+    }
+    @GetMapping(&quot;/{proposalId}/synthesis-runs&quot;) @Operation(summary = &quot;List proposal synthesis runs&quot;,
+            description = &quot;Returns retained synthesis runs for the selected proposal and authenticated workspace. Historical failed or cancelled runs remain distinguishable from successful synthesis.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Operation completed&quot;)
+    public List&lt;Run&gt; runs(@Parameter(description = &quot;Project containing the scoped resource&quot;) @PathVariable Long projectId,@Parameter(description = &quot;Requirement within the selected project&quot;) @PathVariable Long requirementId,@Parameter(description = &quot;Existing reformulation proposal identifier&quot;) @PathVariable String proposalId) {
+<span class="fc" id="L144">        return service.runs(projectId,requirementId,proposalId,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext());</span>
+    }
+    @ExceptionHandler(com.taxonomy.portfolio.reformulation.ReformulationAnswerException.class)
+    public ResponseEntity&lt;ProblemDetail&gt; invalidAnswer(com.taxonomy.portfolio.reformulation.ReformulationAnswerException failure) {
+<span class="fc" id="L148">        return ResponseEntity.status(422).body(ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY,failure.getMessage()));</span>
+    }
+    @ExceptionHandler(ReformulationPreconditionException.class) public ResponseEntity&lt;ProblemDetail&gt; stale(ReformulationPreconditionException failure) {
+<span class="fc" id="L151">        return ResponseEntity.status(HttpStatus.PRECONDITION_FAILED).body(ProblemDetail.forStatusAndDetail(HttpStatus.PRECONDITION_FAILED,failure.getMessage()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

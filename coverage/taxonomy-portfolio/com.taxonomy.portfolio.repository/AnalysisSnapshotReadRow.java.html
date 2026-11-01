@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisSnapshotReadRow.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.repository</a> &gt; <span class="el_source">AnalysisSnapshotReadRow.java</span></div><h1>AnalysisSnapshotReadRow.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.repository;
+
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+
+import java.time.Instant;
+
+/** Full immutable result data, without hydrating the snapshot's composite-key associations. */
+<span class="nc" id="L9">public record AnalysisSnapshotReadRow(</span>
+        String id, Long projectId, Long requirementId, String requirementKey,
+        Long requirementVersionId, int requirementVersionNumber, String jobId,
+        AnalysisStatus status, String provider, String modelName, String taxonomyFingerprint,
+        String promptFingerprint, String workspaceId, String branchName, String commitSha,
+        Instant createdAt, long durationMs, int warningCount, String errorMessage,
+        String analysisPayload, String gapAnalysisPayload, String patternDetectionPayload,
+        String recommendationPayload) {
+
+    public SnapshotSummary summary() {
+<span class="nc" id="L19">        return new SnapshotSummary(id, projectId, requirementId, requirementKey,</span>
+                requirementVersionId, requirementVersionNumber, jobId, status, provider,
+                modelName, taxonomyFingerprint, promptFingerprint, workspaceId, branchName,
+                commitSha, createdAt, durationMs, warningCount, errorMessage);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

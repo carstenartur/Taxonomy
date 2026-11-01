@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ClusterAnalysisProgress.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">ClusterAnalysisProgress.java</span></div><h1>ClusterAnalysisProgress.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import com.taxonomy.analysis.dag.*;
+import com.taxonomy.analysis.relations.RelationSearchDistribution;
+import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
+import com.taxonomy.dto.*;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.*;
+
+/** Bounded worker observations; committed task effects remain the semantic result authority. */
+<span class="nc" id="L12">final class ClusterAnalysisProgress {</span>
+    static final int MAX_JSON = 8 * 1024 * 1024;
+    record Worker(String execution, int delivery, long revision, String phase, String node,
+                  Map&lt;String, Double&gt; scores, RelationSearchProgress relations) {
+<span class="fc" id="L16">        Worker {</span>
+<span class="fc" id="L17">            ClusterAnalysisDiagnostics.uuid(execution);</span>
+<span class="pc bpc" id="L18" title="3 of 10 branches missed.">            if (delivery &lt; 1 || revision &lt; 1 || phase != null &amp;&amp; !phase.matches(&quot;[A-Z_]{1,64}&quot;)</span>
+<span class="pc bpc" id="L19" title="1 of 2 branches missed.">                    || node != null &amp;&amp; node.length() &gt; 512) throw new IllegalArgumentException(&quot;Invalid worker progress identity&quot;);</span>
+<span class="fc" id="L20">            scores = Map.copyOf(scores);</span>
+<span class="pc bpc" id="L21" title="2 of 6 branches missed.">            for (var entry : scores.entrySet()) if (entry.getKey().isBlank() || !Double.isFinite(entry.getValue())</span>
+<span class="pc bpc" id="L22" title="2 of 4 branches missed.">                    || entry.getValue() &lt; 0 || entry.getValue() &gt; 100) throw new IllegalArgumentException(&quot;Invalid worker coverage&quot;);</span>
+<span class="fc" id="L23">            validateRelations(relations);</span>
+<span class="fc" id="L24">        }</span>
+<span class="fc" id="L25">        Worker at(long sequence) { return new Worker(execution, delivery, sequence, phase, node, scores, relations); }</span>
+<span class="fc" id="L26">        Worker phase(String value, String current) { return new Worker(execution, delivery, revision, value,</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">                current == null ? node : ClusterAnalysisDiagnostics.clip(current, 512), scores, relations); }</span>
+<span class="fc" id="L28">        Worker scores(Map&lt;String, Double&gt; values) { return new Worker(execution, delivery, revision, phase, node, values, relations); }</span>
+<span class="fc" id="L29">        Worker relations(RelationSearchProgress value) { return new Worker(execution, delivery, revision, phase, node, scores, value); }</span>
+    }
+<span class="fc" id="L31">    record View(AnalysisNodeProgress nodes, RelationSearchProgress relations, String phase, String node) {</span>
+<span class="fc" id="L32">        static final View EMPTY = new View(null, null, null, null);</span>
+    }
+
+    static Worker read(String source, ObjectMapper json) {
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        if (source == null) return null;</span>
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">        if (source.length() &gt; MAX_JSON) throw new IllegalArgumentException(&quot;Oversized worker progress&quot;);</span>
+<span class="fc" id="L38">        return json.readValue(source, Worker.class);</span>
+    }
+
+    static RootCatalogueSnapshot frozen(String source, ObjectMapper json, AnalysisOperationContext context, String root) {
+<span class="fc" id="L42">        return frozen(source, json, context, root, false);</span>
+    }
+    static RootCatalogueSnapshot frozen(String source, ObjectMapper json, AnalysisOperationContext context, String root, boolean restored) {
+        // Older admitted operations may predate frozen progress evidence. An unknown
+        // catalogue has no denominator; task counts remain available for those runs.
+<span class="pc bpc" id="L47" title="1 of 4 branches missed.">        if (source == null || !json.readTree(source).has(&quot;schemaVersion&quot;)) return null;</span>
+<span class="fc" id="L48">        var frozen = json.readValue(source, RootCatalogueSnapshot.class);</span>
+<span class="pc bpc" id="L49" title="2 of 6 branches missed.">        if (!root.equals(frozen.rootCode()) || !restored &amp;&amp; !DurableClusterAnalysisExecution.source(context).equals(frozen.source()))</span>
+<span class="nc" id="L50">            throw new IllegalStateException(&quot;Progress catalogue differs from admitted authority&quot;);</span>
+<span class="fc" id="L51">        return frozen;</span>
+    }
+
+    static View combine(AnalysisOperationContext context, ClusterAnalysisState state, List&lt;ClusterAnalysisWork&gt; work,
+                        Map&lt;String, RootCatalogueSnapshot&gt; roots, String planJson, RelationSearchReport retained, ObjectMapper json) {
+<span class="fc" id="L56">        var workers = new LinkedHashMap&lt;ClusterAnalysisWork, Worker&gt;();</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        for (var task : work) {</span>
+<span class="fc" id="L58">            var progress = read(task.progressJson, json);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            if (progress != null) workers.put(task, progress);</span>
+<span class="fc" id="L60">        }</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        var current = workers.entrySet().stream().filter(entry -&gt; &quot;RUNNING&quot;.equals(entry.getKey().state)</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">                        &amp;&amp; entry.getValue().delivery() == entry.getKey().attempts)</span>
+<span class="fc" id="L63">                .max(Comparator.comparingLong(entry -&gt; entry.getValue().revision())).map(Map.Entry::getValue).orElse(null);</span>
+<span class="fc" id="L64">        return new View(nodes(work, workers, roots, json), relations(state, work, workers, planJson, retained, json),</span>
+<span class="fc bfc" id="L65" title="All 4 branches covered.">                state.terminal() || current == null ? null : current.phase(),</span>
+<span class="fc bfc" id="L66" title="All 4 branches covered.">                state.terminal() || current == null ? null : current.node());</span>
+    }
+
+    private static AnalysisNodeProgress nodes(List&lt;ClusterAnalysisWork&gt; work, Map&lt;ClusterAnalysisWork, Worker&gt; workers,
+                                              Map&lt;String, RootCatalogueSnapshot&gt; roots, ObjectMapper json) {
+<span class="fc" id="L71">        var parts = new ArrayList&lt;AnalysisNodeProgress.Taxonomy&gt;();</span>
+<span class="fc" id="L72">        int total = 0, assessed = 0, excluded = 0;</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        for (var task : work) {</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            if (!AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name().equals(task.taskType)) continue;</span>
+<span class="fc" id="L75">            var root = roots.get(task.root);</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            if (root == null) return null;</span>
+<span class="fc" id="L77">            var scores = new HashMap&lt;String, Double&gt;();</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            var live = workers.get(task); if (live != null) scores.putAll(live.scores());</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">            if (task.resultJson != null) scores.putAll(json.readValue(task.resultJson, AnalysisResult.class).getRawScores());</span>
+<span class="fc" id="L80">            var byCode = new HashMap&lt;String, RootCatalogueSnapshot.Node&gt;(); root.nodes().forEach(node -&gt; byCode.put(node.code(), node));</span>
+<span class="fc" id="L81">            var pruning = new HashMap&lt;String, Boolean&gt;();</span>
+<span class="fc" id="L82">            var budgetParents = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">            root.nodes().stream().filter(node -&gt; !&quot;PRODUCT&quot;.equals(node.analysisRole()))</span>
+<span class="fc" id="L84">                    .map(RootCatalogueSnapshot.Node::parentCode).filter(Objects::nonNull).forEach(budgetParents::add);</span>
+<span class="fc" id="L85">            int direct = 0, pruned = 0, positive = 0;</span>
+<span class="fc" id="L86">            double allocated = 0;</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            for (var node : root.nodes()) {</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                if (scores.containsKey(node.code())) direct++;</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                else if (excluded(node.parentCode(), byCode, scores, pruning)) pruned++;</span>
+<span class="fc" id="L90">                Double score = scores.get(node.code());</span>
+<span class="fc bfc" id="L91" title="All 4 branches covered.">                if (score != null &amp;&amp; score &gt; 0) positive++;</span>
+<span class="fc bfc" id="L92" title="All 6 branches covered.">                if (score != null &amp;&amp; !&quot;PRODUCT&quot;.equals(node.analysisRole()) &amp;&amp; !budgetParents.contains(node.code()))</span>
+<span class="fc" id="L93">                    allocated += score;</span>
+<span class="fc" id="L94">            }</span>
+<span class="fc" id="L95">            var name = byCode.get(task.root);</span>
+<span class="fc" id="L96">            parts.add(new AnalysisNodeProgress.Taxonomy(task.root, name.nameEn(), name.nameDe(), root.nodes().size(),</span>
+<span class="fc" id="L97">                    direct, pruned, root.nodes().size() - direct - pruned, positive, allocated, scores.get(task.root)));</span>
+<span class="fc" id="L98">            total += root.nodes().size(); assessed += direct; excluded += pruned;</span>
+<span class="fc" id="L99">        }</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        return parts.isEmpty() ? null : new AnalysisNodeProgress(total, assessed, excluded, total - assessed - excluded, parts);</span>
+    }
+    private static boolean excluded(String code, Map&lt;String, RootCatalogueSnapshot.Node&gt; nodes, Map&lt;String, Double&gt; scores,
+                                    Map&lt;String, Boolean&gt; memo) {
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (code == null) return false;</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">        var known = memo.get(code); if (known != null) return known;</span>
+        // Frozen roots have already validated parent closure and absence of cycles.
+<span class="pc bpc" id="L107" title="1 of 4 branches missed.">        boolean value = Double.valueOf(0).equals(scores.get(code)) || excluded(nodes.get(code).parentCode(), nodes, scores, memo);</span>
+<span class="fc" id="L108">        memo.put(code, value); return value;</span>
+    }
+
+    private static RelationSearchProgress relations(ClusterAnalysisState state, List&lt;ClusterAnalysisWork&gt; tasks,
+            Map&lt;ClusterAnalysisWork, Worker&gt; workers, String planJson, RelationSearchReport retained, ObjectMapper json) {
+<span class="pc bpc" id="L113" title="1 of 8 branches missed.">        if (planJson == null &amp;&amp; state.terminal() &amp;&amp; retained != null &amp;&amp; retained.progress() != null)</span>
+<span class="pc bpc" id="L114" title="1 of 4 branches missed.">            return withActivity(retained.progress(), state == ClusterAnalysisState.COMPLETED &amp;&amp; retained.isSearchExhausted()</span>
+<span class="fc" id="L115">                    ? RelationSearchProgress.Step.FINISHED : RelationSearchProgress.Step.PAUSED, null, retained.progress().calls());</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        var live = workers.entrySet().stream().filter(entry -&gt; AnalysisTaskType.RELATION_ANALYSIS.name().equals(entry.getKey().taskType)</span>
+<span class="pc bpc" id="L117" title="1 of 4 branches missed.">                        &amp;&amp; &quot;RUNNING&quot;.equals(entry.getKey().state) &amp;&amp; entry.getValue().delivery() == entry.getKey().attempts</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">                        &amp;&amp; entry.getValue().relations() != null)</span>
+<span class="fc" id="L119">                .max(Comparator.comparingLong(entry -&gt; entry.getValue().revision())).map(Map.Entry::getValue).orElse(null);</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (planJson == null) {</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            var preparation = workers.entrySet().stream().filter(entry -&gt; AnalysisTaskType.RELATION_ANALYSIS.name().equals(entry.getKey().taskType)</span>
+<span class="pc bpc" id="L122" title="1 of 4 branches missed.">                            &amp;&amp; entry.getKey().inputJson == null &amp;&amp; entry.getValue().relations() != null)</span>
+<span class="pc" id="L123">                    .max(Comparator.comparingLong(entry -&gt; entry.getValue().revision())).map(entry -&gt; entry.getValue().relations()).orElse(null);</span>
+<span class="pc bpc" id="L124" title="1 of 6 branches missed.">            if (preparation == null &amp;&amp; retained != null &amp;&amp; retained.progress() != null)</span>
+<span class="fc" id="L125">                return withActivity(retained.progress(), RelationSearchProgress.Step.PAUSED, null, retained.progress().calls());</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            return preparation == null ? null : withActivity(preparation,</span>
+<span class="fc bfc" id="L127" title="All 4 branches covered.">                    state.terminal() ? RelationSearchProgress.Step.PAUSED : preparation.step(), state.terminal() ? null : preparation.current(), preparation.calls());</span>
+        }
+<span class="fc" id="L129">        var plan = json.readValue(planJson, RelationSearchDistribution.Plan.class);</span>
+<span class="fc bfc" id="L130" title="All 6 branches covered.">        var results = tasks.stream().filter(task -&gt; AnalysisTaskType.RELATION_ANALYSIS.name().equals(task.taskType)</span>
+                        &amp;&amp; task.inputJson != null &amp;&amp; task.resultJson != null)
+<span class="fc" id="L132">                .map(task -&gt; json.readValue(task.resultJson, RelationSearchDistribution.WorkResult.class)).toList();</span>
+<span class="fc" id="L133">        var report = RelationSearchDistribution.combine(plan, results, retained);</span>
+<span class="fc" id="L134">        var progress = report.progress(); int calls = progress.calls();</span>
+<span class="fc bfc" id="L135" title="All 6 branches covered.">        for (var entry : workers.entrySet()) if (entry.getKey().inputJson != null &amp;&amp; entry.getKey().resultJson == null</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">                &amp;&amp; entry.getValue().relations() != null) calls += entry.getValue().relations().calls();</span>
+<span class="fc" id="L137">        calls = Math.min(calls, progress.maxCalls());</span>
+<span class="pc bpc" id="L138" title="5 of 6 branches missed.">        var step = state.terminal() ? (state == ClusterAnalysisState.COMPLETED &amp;&amp; report.isSearchExhausted()</span>
+<span class="nc" id="L139">                ? RelationSearchProgress.Step.FINISHED : RelationSearchProgress.Step.PAUSED)</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">                : report.isSearchExhausted() ? RelationSearchProgress.Step.FINISHED</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">                : calls &gt;= progress.maxCalls() ? RelationSearchProgress.Step.PAUSED</span>
+<span class="fc bfc" id="L142" title="All 4 branches covered.">                : live != null &amp;&amp; live.relations().current() != null ? live.relations().step() : RelationSearchProgress.Step.NAVIGATE;</span>
+<span class="pc bpc" id="L143" title="1 of 4 branches missed.">        return withActivity(progress, step, state.terminal() || live == null ? null : live.relations().current(), calls);</span>
+    }
+    private static RelationSearchProgress withActivity(RelationSearchProgress progress, RelationSearchProgress.Step step,
+                                                        RelationSearchProgress.Current current, int calls) {
+<span class="fc" id="L147">        var budget = progress.budget();</span>
+<span class="fc bfc" id="L148" title="All 4 branches covered.">        if (budget != null &amp;&amp; calls != progress.calls()) budget = budget.withSpentCalls(budget.spentCalls() - budget.newCalls() + calls,</span>
+<span class="fc" id="L149">                budget.spentCalls() - budget.newCalls());</span>
+<span class="fc" id="L150">        return new RelationSearchProgress(progress.totalSources(), progress.assessedSources(), progress.totalSearches(),</span>
+<span class="fc" id="L151">                progress.completedSearches(), progress.unresolvedSearches(), progress.pendingSearches(), calls, progress.maxCalls(),</span>
+<span class="fc" id="L152">                progress.verifiedRelations(), step, current, progress.taxonomies(), progress.sourceTaxonomies(), budget);</span>
+    }
+
+    static void validateRelations(RelationSearchProgress p) {
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        if (p == null) return;</span>
+<span class="pc bpc" id="L157" title="4 of 8 branches missed.">        if (p.step() == null || p.totalSources() &lt; 0 || p.assessedSources() &lt; 0 || p.assessedSources() &gt; p.totalSources()</span>
+<span class="pc bpc" id="L158" title="4 of 8 branches missed.">                || p.totalSources() &gt; 1_000_000 || p.totalSearches() &gt; 8_000_000 || p.maxCalls() &gt; 10_000 || p.verifiedRelations() &gt; 1_000_000</span>
+<span class="pc bpc" id="L159" title="4 of 8 branches missed.">                || p.totalSearches() &lt; 0 || p.completedSearches() &lt; 0 || p.unresolvedSearches() &lt; 0 || p.pendingSearches() &lt; 0</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">                || (long) p.completedSearches() + p.unresolvedSearches() + p.pendingSearches() != p.totalSearches()</span>
+<span class="pc bpc" id="L161" title="4 of 8 branches missed.">                || p.calls() &lt; 0 || p.maxCalls() &lt; 0 || p.calls() &gt; p.maxCalls() || p.verifiedRelations() &lt; 0</span>
+<span class="pc bpc" id="L162" title="2 of 4 branches missed.">                || p.taxonomies().size() &gt; 8 || p.sourceTaxonomies().size() &gt; 8)</span>
+<span class="nc" id="L163">            throw new IllegalArgumentException(&quot;Invalid relation progress counts&quot;);</span>
+<span class="fc" id="L164">        int sources = 0; var sourceRoots = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        for (var source : p.sourceTaxonomies()) {</span>
+<span class="pc bpc" id="L166" title="2 of 4 branches missed.">            if (!TaxonomyShardRoot.of(source.root()).defaultCatalogueRoot() || !sourceRoots.add(source.root())</span>
+<span class="pc bpc" id="L167" title="3 of 6 branches missed.">                    || source.total() &lt; 0 || source.completed() &lt; 0 || source.unresolved() &lt; 0</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">                    || (long) source.completed() + source.unresolved() &gt; source.total())</span>
+<span class="nc" id="L169">                throw new IllegalArgumentException(&quot;Invalid relation source progress&quot;);</span>
+<span class="fc" id="L170">            sources += source.total();</span>
+<span class="fc" id="L171">        }</span>
+<span class="pc bpc" id="L172" title="1 of 4 branches missed.">        if (!p.sourceTaxonomies().isEmpty() &amp;&amp; sources != p.totalSources())</span>
+<span class="nc" id="L173">            throw new IllegalArgumentException(&quot;Relation source totals differ from plan&quot;);</span>
+<span class="fc" id="L174">        int total = 0, completed = 0, unresolved = 0, pending = 0; var roots = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        for (var root : p.taxonomies()) {</span>
+<span class="pc bpc" id="L176" title="3 of 6 branches missed.">            if (!TaxonomyShardRoot.of(root.root()).defaultCatalogueRoot() || !roots.add(root.root()) || root.total() &lt; 0</span>
+<span class="pc bpc" id="L177" title="3 of 6 branches missed.">                    || root.completed() &lt; 0 || root.unresolved() &lt; 0 || root.pending() &lt; 0</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">                    || (long) root.completed() + root.unresolved() + root.pending() != root.total())</span>
+<span class="nc" id="L179">                throw new IllegalArgumentException(&quot;Invalid target progress&quot;);</span>
+<span class="fc" id="L180">            total += root.total(); completed += root.completed(); unresolved += root.unresolved(); pending += root.pending();</span>
+<span class="fc" id="L181">        }</span>
+<span class="pc bpc" id="L182" title="4 of 8 branches missed.">        if (total != p.totalSearches() || completed != p.completedSearches() || unresolved != p.unresolvedSearches() || pending != p.pendingSearches())</span>
+<span class="nc" id="L183">            throw new IllegalArgumentException(&quot;Conflicting target progress&quot;);</span>
+<span class="fc" id="L184">        var current = p.current();</span>
+<span class="pc bpc" id="L185" title="2 of 6 branches missed.">        if (current != null &amp;&amp; (current.sourceId() == null || current.sourceId().length() &gt; 32_000</span>
+<span class="pc bpc" id="L186" title="3 of 6 branches missed.">                || current.targetRoot() == null || current.type() == null || current.type().length() &gt; 64</span>
+<span class="pc bpc" id="L187" title="2 of 4 branches missed.">                || current.depth() &lt; 0 || current.candidates().size() &gt; 256</span>
+<span class="pc bpc" id="L188" title="3 of 6 branches missed.">                || current.candidates().stream().anyMatch(id -&gt; id == null || id.length() &gt; 512)))</span>
+<span class="nc" id="L189">            throw new IllegalArgumentException(&quot;Invalid current relation search&quot;);</span>
+<span class="fc" id="L190">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureRequirementController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.architecture</a> &gt; <span class="el_source">ArchitectureRequirementController.java</span></div><h1>ArchitectureRequirementController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.architecture;
+
+import com.taxonomy.composition.architecture.ArchitectureRequirementService.*;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.Operation;
+import java.io.IOException;
+
+@RestController
+@com.taxonomy.shared.features.ConditionalOnFeature(&quot;portfolio&quot;)
+public class ArchitectureRequirementController {
+    private final ArchitectureRequirementService service; private final LifecycleHttpContext contexts;
+<span class="fc" id="L13">    public ArchitectureRequirementController(ArchitectureRequirementService service,LifecycleHttpContext contexts){this.service=service;this.contexts=contexts;}</span>
+    @PostMapping(&quot;/api/architecture/editor/requirements&quot;)
+    @Operation(summary=&quot;Apply an explicit requirement intake choice to the architecture&quot;,description=&quot;NEW, CHANGE or LINK retains the exact input hash, existing version precondition and stable command identity. Requirement, journal and checkpoint intent share one transaction; Git publication follows it.&quot;)
+    public ResponseEntity&lt;Saved&gt; save(@RequestBody Request request,@RequestHeader(value=HttpHeaders.IF_MATCH,required=false) String ifMatch,
+            @RequestHeader(value=HttpHeaders.IF_NONE_MATCH,required=false) String ifNoneMatch) throws IOException {
+<span class="nc" id="L18">        LifecycleHttpContext.requireRevision(request.context(),ifMatch,ifNoneMatch);</span>
+<span class="nc" id="L19">        var result=service.save(contexts.resolve(),request);return LifecycleHttpContext.response(result.publication().context()).body(result);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

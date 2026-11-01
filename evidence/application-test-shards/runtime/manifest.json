@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 1,
+  "shard": "runtime",
+  "commit": "cec668ade2eb0436d9954a44549f10ca47e82f84",
+  "sourceTree": "1dcf7be9ace7427b17d786bbc0f986a8548b39e0",
+  "buildId": "41355023584.1.runtime",
+  "reports": [
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.DiagnosticsContainerIT.xml",
+      "className": "com.taxonomy.DiagnosticsContainerIT",
+      "sha256": "73b081c5aa737aa0665c577d6f167e672c4db68f1d4c672c6ec226340faa5d4d",
+      "tests": 16,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.DiagnosticsPostgresContainerIT.xml",
+      "className": "com.taxonomy.DiagnosticsPostgresContainerIT",
+      "sha256": "de4792cf56e7e10fbd3c492385ffec1dc369a382e2374f48d4a5a60c368216f2",
+      "tests": 18,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.DiagnosticsWithApiKeyContainerIT.xml",
+      "className": "com.taxonomy.DiagnosticsWithApiKeyContainerIT",
+      "sha256": "88477b153269db013164d1542f3779f96eb044c2b52700ab8cea3c61a4e1c0fd",
+      "tests": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.KeycloakSecurityContainerIT.xml",
+      "className": "com.taxonomy.KeycloakSecurityContainerIT",
+      "sha256": "c8b7f8bbb517794390aeae64044637b6bb33172fb644d9ece6fad21056402374",
+      "tests": 7,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.LocalOnnxPipelineIT.xml",
+      "className": "com.taxonomy.LocalOnnxPipelineIT",
+      "sha256": "d93b10648c9f6c190a13d9b77837fab8cee7ce6ac7a89b1258c40ba75f375164",
+      "tests": 9,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.ObservabilityContainerIT.xml",
+      "className": "com.taxonomy.ObservabilityContainerIT",
+      "sha256": "f14f4a7a160b00fe569f7d90744bfddd6a814670a5045ed531a2e0d00370316d",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.OnnxSeleniumIT.xml",
+      "className": "com.taxonomy.OnnxSeleniumIT",
+      "sha256": "bd75f0bb4a1a62b34e830e52ae854c3b6be62a155ba20f53753bf14c9a78e7d8",
+      "tests": 9,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.PortfolioAnalysisUiDiagnosticIT.xml",
+      "className": "com.taxonomy.PortfolioAnalysisUiDiagnosticIT",
+      "sha256": "fe8810476fb25b877f40cb8d2301acf77ebd6ea230164690380ec37181f6d4ae",
+      "tests": 1,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.TaxonomyLargeResultBudgetIT.xml",
+      "className": "com.taxonomy.TaxonomyLargeResultBudgetIT",
+      "sha256": "ece9d2bf8aa88a0b7fd3b26360502518a2d8e0545068d7eba4aa6ebf3eb574c3",
+      "tests": 7,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    },
+    {
+      "path": "tests/failsafe-reports/TEST-com.taxonomy.backup.recovery.NativeInstallationPostgresRecoveryIT.xml",
+      "className": "com.taxonomy.backup.recovery.NativeInstallationPostgresRecoveryIT",
+      "sha256": "ac6582ac6be270e50335be233e1926fa15524e4b459333f219d4578863a1e0c0",
+      "tests": 3,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "failureElements": []
+    }
+  ],
+  "coverage": {
+    "path": "coverage.exec",
+    "sha256": "34cb74e5bf9fd0e551c95354b6acf3d1fd0d0add23a61073ff5c181e5f05fd26"
+  },
+  "timing": {
+    "durationSeconds": 623.371,
+    "suites": [
+      {
+        "className": "com.taxonomy.KeycloakSecurityContainerIT",
+        "durationSeconds": 130.506
+      },
+      {
+        "className": "com.taxonomy.backup.recovery.NativeInstallationPostgresRecoveryIT",
+        "durationSeconds": 87.969
+      },
+      {
+        "className": "com.taxonomy.DiagnosticsContainerIT",
+        "durationSeconds": 75.759
+      },
+      {
+        "className": "com.taxonomy.ObservabilityContainerIT",
+        "durationSeconds": 71.058
+      },
+      {
+        "className": "com.taxonomy.OnnxSeleniumIT",
+        "durationSeconds": 58.577
+      },
+      {
+        "className": "com.taxonomy.LocalOnnxPipelineIT",
+        "durationSeconds": 56.124
+      },
+      {
+        "className": "com.taxonomy.DiagnosticsPostgresContainerIT",
+        "durationSeconds": 53.645
+      },
+      {
+        "className": "com.taxonomy.TaxonomyLargeResultBudgetIT",
+        "durationSeconds": 39.644
+      },
+      {
+        "className": "com.taxonomy.PortfolioAnalysisUiDiagnosticIT",
+        "durationSeconds": 27.682
+      },
+      {
+        "className": "com.taxonomy.DiagnosticsWithApiKeyContainerIT",
+        "durationSeconds": 22.407
+      }
+    ]
+  }
+}

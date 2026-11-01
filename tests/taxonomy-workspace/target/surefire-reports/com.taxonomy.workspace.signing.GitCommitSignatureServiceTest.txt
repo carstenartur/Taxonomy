@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.workspace.signing.GitCommitSignatureServiceTest
+-------------------------------------------------------------------------------
+Tests run: 47, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 6.113 s -- in com.taxonomy.workspace.signing.GitCommitSignatureServiceTest

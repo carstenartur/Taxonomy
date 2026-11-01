@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DemoProviderIds.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.demo</a> &gt; <span class="el_source">DemoProviderIds.java</span></div><h1>DemoProviderIds.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.demo;
+
+import com.taxonomy.extension.api.llm.ProviderId;
+
+import java.util.Locale;
+import java.util.Optional;
+import java.util.regex.Pattern;
+
+/**
+ * Durable identity of a product-demo replay binding.
+ *
+ * &lt;p&gt;The scenario and iteration are part of the persisted provider string, so
+ * asynchronous workers, recovery and retries keep the exact binding without any
+ * thread-local or global switch. Such a provider is never a live model.&lt;/p&gt;
+ */
+public final class DemoProviderIds {
+    public static final String PREFIX = &quot;DEMO.&quot;;
+<span class="fc" id="L18">    private static final Pattern PATTERN = Pattern.compile(&quot;DEMO\\.([A-Z0-9][A-Z0-9-]{0,63})\\.(R[0-9]{1,2})&quot;);</span>
+
+    private DemoProviderIds() { }
+
+    /** Exact scenario/iteration binding. */
+    public record Binding(String scenarioId, String iteration) {
+<span class="fc" id="L24">        public Binding {</span>
+<span class="pc bpc" id="L25" title="2 of 4 branches missed.">            if (scenarioId == null || !scenarioId.matches(&quot;[a-z0-9][a-z0-9-]{0,63}&quot;))</span>
+<span class="nc" id="L26">                throw new IllegalArgumentException(&quot;Invalid demo scenario ID&quot;);</span>
+<span class="pc bpc" id="L27" title="2 of 4 branches missed.">            if (iteration == null || !iteration.matches(&quot;R[0-9]{1,2}&quot;))</span>
+<span class="nc" id="L28">                throw new IllegalArgumentException(&quot;Invalid demo iteration&quot;);</span>
+<span class="fc" id="L29">        }</span>
+
+        public ProviderId providerId() {
+<span class="fc" id="L32">            return new ProviderId(PREFIX + scenarioId.toUpperCase(Locale.ROOT) + &quot;.&quot; + iteration);</span>
+        }
+
+<span class="nc" id="L35">        public int iterationNumber() { return Integer.parseInt(iteration.substring(1)); }</span>
+    }
+
+    public static boolean isDemo(String provider) {
+<span class="pc bpc" id="L39" title="1 of 4 branches missed.">        return provider != null &amp;&amp; provider.strip().toUpperCase(Locale.ROOT).startsWith(PREFIX);</span>
+    }
+
+    public static boolean isDemo(ProviderId provider) {
+<span class="pc bpc" id="L43" title="1 of 4 branches missed.">        return provider != null &amp;&amp; isDemo(provider.value());</span>
+    }
+
+    public static Optional&lt;Binding&gt; parse(String provider) {
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">        if (!isDemo(provider)) return Optional.empty();</span>
+<span class="fc" id="L48">        var matcher = PATTERN.matcher(provider.strip().toUpperCase(Locale.ROOT));</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (!matcher.matches()) return Optional.empty();</span>
+<span class="fc" id="L50">        return Optional.of(new Binding(matcher.group(1).toLowerCase(Locale.ROOT), matcher.group(2)));</span>
+    }
+
+    public static Optional&lt;Binding&gt; parse(ProviderId provider) {
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">        return provider == null ? Optional.empty() : parse(provider.value());</span>
+    }
+
+    public static ProviderId providerId(String scenarioId, int iteration) {
+<span class="fc" id="L58">        return new Binding(scenarioId, &quot;R&quot; + iteration).providerId();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

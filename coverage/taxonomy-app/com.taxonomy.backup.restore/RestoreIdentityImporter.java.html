@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RestoreIdentityImporter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.restore</a> &gt; <span class="el_source">RestoreIdentityImporter.java</span></div><h1>RestoreIdentityImporter.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.restore;
+
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.taxonomy.backup.*;
+import com.taxonomy.backup.archive.VerifiedBackup;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.security.backup.IdentityBackupContributor.*;
+import com.taxonomy.security.model.PrincipalBinding;
+import java.io.*;
+import java.sql.*;
+import java.time.Instant;
+import java.util.*;
+
+/** Imports explicit disabled namespaces and inert typed evidence, never source login/admin authority. */
+<span class="fc" id="L15">public final class RestoreIdentityImporter {</span>
+<span class="fc" id="L16">    private static final BackupComponentId OWNER=new BackupComponentId(&quot;application&quot;);</span>
+<span class="fc" id="L17">    private static final JsonMapper JSON=JsonMapper.builder().build();</span>
+    private static final int MAX_ROWS=100_000,MAX_BYTES=32*1024*1024;
+    public record Result(Map&lt;PrincipalId,PrincipalId&gt; targetPrincipals,Map&lt;String,String&gt; sourceScopes,Set&lt;PrincipalId&gt; privatePrincipals,int evidenceCount) {
+<span class="fc" id="L20">        public Result {targetPrincipals=Map.copyOf(targetPrincipals);sourceScopes=Map.copyOf(sourceScopes);privatePrincipals=Set.copyOf(privatePrincipals);}</span>
+    }
+    /** Uses the exact import DTO/reference checks without opening any target or writing rows. */
+    public Result preview(VerifiedBackup archive,Map&lt;PrincipalId,RestorePrincipalAllocation&gt; approvedMapping,BackupCheckpoint checkpoint)throws IOException {
+        Map&lt;PrincipalId,RestorePrincipalAllocation&gt; mapping;
+<span class="pc" id="L25">        try{mapping=Map.copyOf(approvedMapping);}catch(NullPointerException malformed){throw new IOException(&quot;Restore identity mapping is incomplete or foreign&quot;);}</span>
+<span class="fc" id="L26">        return allocations(inspect(archive,checkpoint),mapping);</span>
+    }
+    public Result restore(VerifiedBackup archive,RestoreTargetGeneration generation,
+                          Map&lt;PrincipalId,RestorePrincipalAllocation&gt; approvedMapping,BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L30">        var model=inspect(archive,checkpoint);Map&lt;PrincipalId,RestorePrincipalAllocation&gt; mapping;</span>
+<span class="fc" id="L31">        try{mapping=Map.copyOf(approvedMapping);}catch(NullPointerException malformed){throw new IOException(&quot;Restore identity mapping is incomplete or foreign&quot;);}</span>
+<span class="fc" id="L32">        var proof=allocations(model,mapping);String mappingHash=mappingHash(mapping);</span>
+<span class="fc" id="L33">        generation.requireUnchanged(checkpoint);</span>
+<span class="fc" id="L34">        try(var connection=generation.dataSource().getConnection()) {</span>
+<span class="fc" id="L35">            generation.requireConnection(connection,checkpoint);</span>
+<span class="fc" id="L36">            connection.setAutoCommit(false);connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);</span>
+<span class="fc" id="L37">            try(var rollback=new Rollback(connection)) {</span>
+<span class="fc" id="L38">                var existing=owner(connection,checkpoint);</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">                if(existing!=null) {</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">                    if(!existing.equals(List.of(generation.generationId().toString(),archive.archiveSha256(),mappingHash)))throw new IOException(&quot;Identity owner is bound to another restore plan&quot;);</span>
+<span class="fc" id="L41">                    verify(connection,model,mapping,checkpoint);generation.requireConnection(connection,checkpoint);return proof;</span>
+                }
+<span class="fc" id="L43">                requireEmpty(connection,checkpoint);</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">                for(var entry:mapping.entrySet()) {</span>
+<span class="fc" id="L45">                    checkpoint.check();var allocation=entry.getValue();String target=allocation.targetPrincipal().value().toString();</span>
+<span class="fc" id="L46">                    update(connection,&quot;insert into app_principal(principal_id,scope_key,enabled) values(?,?,0)&quot;,target,allocation.targetScope());</span>
+<span class="fc" id="L47">                    update(connection,&quot;insert into restore_identity_mapping(source_principal,target_principal,target_scope,disposition,row_sha256) values(?,?,?,?,?)&quot;,</span>
+<span class="fc" id="L48">                            entry.getKey().value().toString(),target,allocation.targetScope(),allocation.disposition().name(),principalHash(allocation));</span>
+<span class="fc" id="L49">                }</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                for(var evidence:model.evidence.values()) {</span>
+<span class="fc" id="L51">                    checkpoint.check();update(connection,&quot;insert into restore_identity_evidence(record_kind,record_key,record_json,sha256,classification) values(?,?,?,?,?)&quot;,</span>
+<span class="fc" id="L52">                            evidence.kind(),evidence.key(),evidence.json(),StableIdentityHash.sha256(evidence.json()),evidence.classification());</span>
+<span class="fc" id="L53">                }</span>
+<span class="fc" id="L54">                update(connection,&quot;insert into restore_identity_owner(owner_id,generation_id,archive_sha256,mapping_sha256) values('identities',?,?,?)&quot;,generation.generationId().toString(),archive.archiveSha256(),mappingHash);</span>
+<span class="fc" id="L55">                generation.requireConnection(connection,checkpoint);connection.commit();rollback.committed=true;checkpoint.check();return proof;</span>
+<span class="fc" id="L56">            }</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        } catch(InterruptedIOException cancelled){Thread.currentThread().interrupt();throw cancelled;}</span>
+<span class="nc" id="L58">        catch(SQLException|RuntimeException failure){throw new IOException(&quot;Staged identity owner import failed&quot;);}</span>
+    }
+    private static Model inspect(VerifiedBackup archive,BackupCheckpoint checkpoint)throws IOException {
+<span class="pc bpc" id="L61" title="3 of 6 branches missed.">        if(archive.manifest().components().stream().noneMatch(component-&gt;component.id().equals(OWNER)&amp;&amp;component.version()==1))throw invalid();</span>
+<span class="fc" id="L62">        var model=new Model();</span>
+<span class="fc" id="L63">        read(archive,&quot;principals&quot;,PrincipalRecord.class,checkpoint,record-&gt;{</span>
+<span class="pc bpc" id="L64" title="3 of 6 branches missed.">            if(record.id()==null||record.registryState()==null||record.restorePolicy()!=RestorePolicy.EXPLICIT_MAPPING</span>
+<span class="pc bpc" id="L65" title="3 of 6 branches missed.">                    ||(record.registryState()==RegistryState.REGISTERED)!=(record.sourceScope()!=null))throw invalid();</span>
+<span class="fc" id="L66">            text(record.sourceScope(),255);text(record.displayName(),255);text(record.email(),255);</span>
+<span class="pc bpc" id="L67" title="2 of 4 branches missed.">            if(record.sourceScope()!=null&amp;&amp;record.sourceScope().isBlank())throw invalid();</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">            if(model.principals.putIfAbsent(record.id(),record)!=null)throw invalid();model.evidence(&quot;principals&quot;,record.id().value().toString(),record,&quot;PRIVATE_PRIMARY&quot;);</span>
+<span class="fc" id="L69">        });</span>
+<span class="fc" id="L70">        read(archive,&quot;bindings&quot;,BindingRecord.class,checkpoint,record-&gt;{</span>
+<span class="pc bpc" id="L71" title="3 of 6 branches missed.">            id(record.sourceId(),&quot;identity-binding&quot;);if(record.principal()==null||record.binding()==null||!record.sourceId().value().equals(PrincipalBinding.key(record.binding())))throw invalid();</span>
+<span class="fc" id="L72">            text(record.binding().issuer(),2048);text(record.binding().subject(),1024);</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">            if(!model.principals.containsKey(record.principal()))throw invalid();model.evidence(&quot;bindings&quot;,record.sourceId().value(),record,&quot;PRIVATE_PRIMARY&quot;);</span>
+<span class="fc" id="L74">        });</span>
+<span class="fc" id="L75">        read(archive,&quot;local-accounts&quot;,AccountRecord.class,checkpoint,record-&gt;{</span>
+<span class="pc bpc" id="L76" title="2 of 4 branches missed.">            id(record.sourceId(),&quot;local-account&quot;);if(record.principal()==null||!model.principals.containsKey(record.principal()))throw invalid();</span>
+<span class="fc" id="L77">            required(record.username(),255);text(record.displayName(),255);text(record.email(),255);</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">            if(model.accounts.putIfAbsent(record.sourceId(),record)!=null)throw invalid();model.evidence(&quot;local-accounts&quot;,record.sourceId().value(),record,&quot;PRIVATE_PRIMARY&quot;);</span>
+<span class="fc" id="L79">        });</span>
+<span class="fc" id="L80">        read(archive,&quot;roles&quot;,RoleRecord.class,checkpoint,record-&gt;{</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">            id(record.sourceId(),&quot;role&quot;);required(record.name(),255);if(model.roles.putIfAbsent(record.sourceId(),record)!=null)throw invalid();model.evidence(&quot;roles&quot;,record.sourceId().value(),record,&quot;PRIVATE_PRIMARY&quot;);</span>
+<span class="fc" id="L82">        });</span>
+<span class="fc" id="L83">        read(archive,&quot;user-roles&quot;,UserRoleRecord.class,checkpoint,record-&gt;{</span>
+<span class="pc bpc" id="L84" title="2 of 4 branches missed.">            id(record.account(),&quot;local-account&quot;);id(record.role(),&quot;role&quot;);if(!model.accounts.containsKey(record.account())||!model.roles.containsKey(record.role()))throw invalid();</span>
+<span class="fc" id="L85">            model.evidence(&quot;user-roles&quot;,StableIdentityHash.sha256(JSON.writeValueAsString(record)),record,&quot;INERT_SOURCE_AUTHORITY&quot;);</span>
+<span class="fc" id="L86">        });</span>
+<span class="fc" id="L87">        read(archive,&quot;capability-grants&quot;,CapabilityGrant.class,checkpoint,record-&gt;{</span>
+<span class="pc bpc" id="L88" title="3 of 6 branches missed.">            if(record.principal()==null||record.capability()==null||!model.principals.containsKey(record.principal()))throw invalid();</span>
+<span class="fc" id="L89">            model.evidence(&quot;capability-grants&quot;,StableIdentityHash.sha256(JSON.writeValueAsString(record)),record,&quot;INERT_SOURCE_AUTHORITY&quot;);</span>
+<span class="fc" id="L90">        });</span>
+<span class="fc" id="L91">        read(archive,&quot;version-grants&quot;,VersionGrant.class,checkpoint,record-&gt;{</span>
+<span class="nc bnc" id="L92" title="All 10 branches missed.">            if(record.principal()==null||!model.principals.containsKey(record.principal())||record.repository()==null||record.commit()==null||!record.commit().matches(&quot;[a-f0-9]{40}&quot;))throw invalid();</span>
+            // Historical source grants are evidence, not executable target ACLs or proof of target Git objects.
+<span class="nc" id="L94">            model.evidence(&quot;version-grants&quot;,StableIdentityHash.sha256(JSON.writeValueAsString(record)),record,&quot;INERT_SOURCE_AUTHORITY&quot;);</span>
+<span class="nc" id="L95">        });</span>
+<span class="fc" id="L96">        read(archive,&quot;access-audit&quot;,AccessAudit.class,checkpoint,record-&gt;{</span>
+<span class="nc bnc" id="L97" title="All 4 branches missed.">            id(record.sourceId(),&quot;identity-audit&quot;);if(!model.principals.containsKey(record.actor())||!model.principals.containsKey(record.target()))throw invalid();</span>
+<span class="nc" id="L98">            required(record.decision(),40);text(record.detail(),2048);instant(record.occurredAt());model.evidence(&quot;access-audit&quot;,record.sourceId().value(),record,&quot;HISTORICAL_EVIDENCE&quot;);</span>
+<span class="nc" id="L99">        });</span>
+<span class="fc" id="L100">        var installation=RestoreArchiveRecords.document(archive,OWNER,&quot;identities/installation.json&quot;,InstallationRecord.class,checkpoint);</span>
+<span class="pc bpc" id="L101" title="2 of 4 branches missed.">        if(installation.installationId()==null||!installation.installationId().equals(archive.manifest().sourceInstallationId()))throw invalid();</span>
+<span class="fc" id="L102">        canonicalUuid(installation.installationId());model.evidence(&quot;installation&quot;,installation.installationId(),installation,&quot;HISTORICAL_EVIDENCE&quot;);</span>
+<span class="fc" id="L103">        String passwords=&quot;protected/identities/password-hashes.ndjson&quot;;</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">        if(archive.manifest().request().secrets()==SecretsSelection.INCLUDE_ENCRYPTED) {</span>
+<span class="nc" id="L105">            RestoreArchiveRecords.read(archive,OWNER,passwords,&quot;password-hashes&quot;,PasswordHash.class,MAX_ROWS,checkpoint,record-&gt;{</span>
+<span class="nc" id="L106">                id(record.account(),&quot;local-account&quot;);var account=model.accounts.get(record.account());</span>
+<span class="nc bnc" id="L107" title="All 4 branches missed.">                if(account==null||!account.principal().equals(record.principal()))throw invalid();required(record.passwordHash(),255);</span>
+<span class="nc" id="L108">                model.evidence(&quot;password-hashes&quot;,record.account().value(),record,&quot;PROTECTED_PRIMARY&quot;);</span>
+<span class="nc" id="L109">            });</span>
+<span class="nc" id="L110">            long hashes=model.evidence.values().stream().filter(row-&gt;row.kind().equals(&quot;password-hashes&quot;)).count();</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">            if(hashes!=model.accounts.size())throw invalid();</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">        } else if(RestoreArchiveRecords.declares(archive,OWNER,passwords))throw invalid();</span>
+<span class="fc" id="L113">        var usernames=new HashSet&lt;String&gt;();var accountPrincipals=new HashSet&lt;PrincipalId&gt;();</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        for(var account:model.accounts.values()) {</span>
+<span class="pc bpc" id="L115" title="2 of 4 branches missed.">            checkpoint.check();if(!usernames.add(account.username())||!accountPrincipals.add(account.principal()))throw invalid();</span>
+<span class="fc" id="L116">            var principal=model.principals.get(account.principal());</span>
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">            if(principal.registryState()==RegistryState.PENDING_LOCAL_ACCOUNT)model.pendingScopes.put(account.principal(),account.username());</span>
+<span class="fc" id="L118">        }</span>
+<span class="pc bpc" id="L119" title="3 of 6 branches missed.">        for(var principal:model.principals.values())if(principal.registryState()==RegistryState.PENDING_LOCAL_ACCOUNT&amp;&amp;!model.pendingScopes.containsKey(principal.id()))throw invalid();</span>
+<span class="fc" id="L120">        checkpoint.check();return model;</span>
+    }
+    private static Result allocations(Model model,Map&lt;PrincipalId,RestorePrincipalAllocation&gt; mapping)throws IOException {
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if(!mapping.keySet().equals(model.principals.keySet()))throw new IOException(&quot;Restore identity mapping is incomplete or foreign&quot;);</span>
+<span class="fc" id="L124">        var targets=new HashMap&lt;PrincipalId,PrincipalId&gt;();var scopes=new HashMap&lt;String,String&gt;();var privatePrincipals=new HashSet&lt;PrincipalId&gt;();</span>
+<span class="fc" id="L125">        var seenTargets=new HashSet&lt;PrincipalId&gt;();var seenScopes=new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        for(var entry:mapping.entrySet()) {</span>
+<span class="pc bpc" id="L127" title="1 of 4 branches missed.">            var allocation=entry.getValue();if(!seenTargets.add(allocation.targetPrincipal())||!seenScopes.add(allocation.targetScope()))throw new IOException(&quot;Restore identity mapping merges distinct source identities&quot;);</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            targets.put(entry.getKey(),allocation.targetPrincipal());if(allocation.disposition()==RestorePrincipalAllocation.Disposition.QUARANTINE)privatePrincipals.add(allocation.targetPrincipal());</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">            var principal=model.principals.get(entry.getKey());String scope=principal.sourceScope()==null?model.pendingScopes.get(entry.getKey()):principal.sourceScope();</span>
+<span class="pc bpc" id="L130" title="2 of 4 branches missed.">            if(scope!=null&amp;&amp;scopes.putIfAbsent(scope,allocation.targetScope())!=null)throw new IOException(&quot;Restore identity mapping has conflicting source scopes&quot;);</span>
+<span class="fc" id="L131">        }</span>
+<span class="fc" id="L132">        return new Result(targets,scopes,privatePrincipals,model.evidence.size());</span>
+    }
+    private static String mappingHash(Map&lt;PrincipalId,RestorePrincipalAllocation&gt; mapping)throws IOException {
+<span class="fc" id="L135">        var sorted=new TreeMap&lt;String,RestorePrincipalAllocation&gt;();mapping.forEach((source,target)-&gt;sorted.put(source.value().toString(),target));</span>
+<span class="fc" id="L136">        return StableIdentityHash.sha256(JSON.writeValueAsString(sorted));</span>
+    }
+    private static String principalHash(RestorePrincipalAllocation allocation)throws IOException {
+<span class="fc" id="L139">        return StableIdentityHash.sha256(JSON.writeValueAsString(new PrincipalProof(allocation.targetPrincipal().value().toString(),allocation.targetScope(),0)));</span>
+    }
+<span class="fc" id="L141">    private record PrincipalProof(String principal,String scope,int enabled) { }</span>
+    private static &lt;T extends Record&gt;void read(VerifiedBackup archive,String kind,Class&lt;T&gt; type,BackupCheckpoint checkpoint,RestoreArchiveRecords.Visitor&lt;T&gt; visitor)throws IOException {
+<span class="fc" id="L143">        try{RestoreArchiveRecords.read(archive,OWNER,&quot;identities/&quot;+kind+&quot;.ndjson&quot;,kind,type,MAX_ROWS,checkpoint,visitor);}</span>
+<span class="pc" id="L144">        catch(IllegalArgumentException|NullPointerException malformed){throw invalid();}</span>
+<span class="fc" id="L145">    }</span>
+<span class="pc bpc" id="L146" title="3 of 6 branches missed.">    private static void id(SourceRecordId id,String kind)throws IOException {if(id==null||!id.kind().equals(&quot;application.&quot;+kind)||id.value().length()&gt;4096)throw invalid();}</span>
+<span class="pc bpc" id="L147" title="1 of 4 branches missed.">    private static void text(String value,int limit)throws IOException {if(value!=null&amp;&amp;value.length()&gt;limit)throw invalid();}</span>
+<span class="pc bpc" id="L148" title="2 of 4 branches missed.">    private static void required(String value,int limit)throws IOException {if(value==null||value.isBlank())throw invalid();text(value,limit);}</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">    private static void instant(String value)throws IOException {try{if(value==null)throw invalid();Instant.parse(value);}catch(RuntimeException malformed){throw invalid();}}</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">    private static void canonicalUuid(String value)throws IOException {try{if(!UUID.fromString(value).toString().equals(value))throw invalid();}catch(RuntimeException malformed){throw invalid();}}</span>
+<span class="nc" id="L151">    private static IOException invalid(){return new IOException(&quot;Invalid typed source identity evidence&quot;);}</span>
+<span class="fc" id="L152">    private record Evidence(String kind,String key,String json,String classification) { }</span>
+<span class="fc" id="L153">    private static final class Model {</span>
+<span class="fc" id="L154">        final Map&lt;PrincipalId,PrincipalRecord&gt; principals=new LinkedHashMap&lt;&gt;();final Map&lt;SourceRecordId,AccountRecord&gt; accounts=new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L155">        final Map&lt;SourceRecordId,RoleRecord&gt; roles=new LinkedHashMap&lt;&gt;();final Map&lt;PrincipalId,String&gt; pendingScopes=new HashMap&lt;&gt;();</span>
+<span class="fc" id="L156">        final Map&lt;String,Evidence&gt; evidence=new LinkedHashMap&lt;&gt;();int bytes;</span>
+        void evidence(String kind,String key,Record value,String classification)throws IOException {
+<span class="fc" id="L158">            String json=JSON.writeValueAsString(value);int size=json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;</span>
+<span class="pc bpc" id="L159" title="2 of 4 branches missed.">            if(size&gt;MAX_BYTES-bytes||evidence.size()&gt;=MAX_ROWS)throw new IOException(&quot;Identity restore evidence budget exceeded&quot;);bytes+=size;</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">            if(evidence.putIfAbsent(kind+&quot;:&quot;+key,new Evidence(kind,key,json,classification))!=null)throw invalid();</span>
+<span class="fc" id="L161">        }</span>
+    }
+    private static PreparedStatement statement(Connection connection,String sql)throws SQLException {
+<span class="fc" id="L164">        var statement=connection.prepareStatement(sql);statement.setMaxRows(MAX_ROWS+1);statement.setQueryTimeout(60);return statement;</span>
+    }
+    private static void update(Connection connection,String sql,Object...values)throws SQLException {
+<span class="fc" id="L167">        try(var statement=statement(connection,sql)) {</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">            for(int index=0;index&lt;values.length;index++)statement.setObject(index+1,values[index]);</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">            if(statement.executeUpdate()!=1)throw new SQLException(&quot;Unexpected identity restore row count&quot;);</span>
+        }
+<span class="fc" id="L171">    }</span>
+    private static List&lt;String&gt; owner(Connection connection,BackupCheckpoint checkpoint)throws SQLException,IOException {
+<span class="fc" id="L173">        try(var statement=statement(connection,&quot;select generation_id,archive_sha256,mapping_sha256 from restore_identity_owner where owner_id='identities'&quot;);var rows=statement.executeQuery()) {</span>
+<span class="pc bpc" id="L174" title="1 of 4 branches missed.">            checkpoint.check();if(!rows.next())return null;var result=List.of(rows.getString(1),rows.getString(2),rows.getString(3));if(rows.next())throw invalid();return result;</span>
+<span class="pc bpc" id="L175" title="2 of 4 branches missed.">        }</span>
+    }
+    private static void requireEmpty(Connection connection,BackupCheckpoint checkpoint)throws SQLException,IOException {
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        for(String table:List.of(&quot;app_principal&quot;,&quot;principal_binding&quot;,&quot;app_user&quot;,&quot;app_role&quot;,&quot;user_roles&quot;,&quot;backup_capability_grant&quot;,&quot;backup_version_grant&quot;,&quot;principal_access_audit&quot;,&quot;restore_identity_owner&quot;,&quot;restore_identity_mapping&quot;,&quot;restore_identity_evidence&quot;)) {</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">            checkpoint.check();if(count(connection,table)!=0)throw new IOException(&quot;Unjournaled identity target is not empty&quot;);</span>
+<span class="fc" id="L180">        }</span>
+<span class="fc" id="L181">    }</span>
+    private static long count(Connection connection,String table)throws SQLException {
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">        try(var statement=statement(connection,&quot;select count(*) from &quot;+table);var rows=statement.executeQuery()) {if(!rows.next())throw new SQLException(&quot;Missing identity inventory&quot;);return rows.getLong(1);}</span>
+    }
+    private static void verify(Connection connection,Model model,Map&lt;PrincipalId,RestorePrincipalAllocation&gt; mapping,BackupCheckpoint checkpoint)throws SQLException,IOException {
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        if(count(connection,&quot;restore_identity_owner&quot;)!=1)throw new IOException(&quot;Staged identity owner inventory proof changed&quot;);</span>
+<span class="fc" id="L187">        var found=new HashSet&lt;PrincipalId&gt;();</span>
+<span class="fc" id="L188">        try(var statement=statement(connection,&quot;select m.source_principal,m.target_principal,m.target_scope,m.disposition,m.row_sha256,p.scope_key,p.enabled from restore_identity_mapping m join app_principal p on p.principal_id=m.target_principal&quot;);var rows=statement.executeQuery()) {</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            while(rows.next()) {</span>
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">                checkpoint.check();if(found.size()&gt;=MAX_ROWS)throw invalid();var source=new PrincipalId(UUID.fromString(rows.getString(1)));var allocation=mapping.get(source);</span>
+<span class="pc bpc" id="L191" title="4 of 10 branches missed.">                if(allocation==null||!source.value().toString().equals(rows.getString(1))||!found.add(source)||!allocation.targetPrincipal().value().toString().equals(rows.getString(2))||!allocation.targetScope().equals(rows.getString(3))</span>
+<span class="pc bpc" id="L192" title="3 of 8 branches missed.">                        ||!allocation.disposition().name().equals(rows.getString(4))||!principalHash(allocation).equals(rows.getString(5))||!allocation.targetScope().equals(rows.getString(6))||rows.getInt(7)!=0)</span>
+<span class="fc" id="L193">                    throw new IOException(&quot;Staged identity principal proof changed&quot;);</span>
+<span class="fc" id="L194">            }</span>
+        }
+<span class="pc bpc" id="L196" title="3 of 6 branches missed.">        if(!found.equals(mapping.keySet())||count(connection,&quot;app_principal&quot;)!=mapping.size()||count(connection,&quot;restore_identity_mapping&quot;)!=mapping.size())throw new IOException(&quot;Staged identity principal inventory proof changed&quot;);</span>
+<span class="fc" id="L197">        var evidence=new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L198">        try(var statement=statement(connection,&quot;select record_kind,record_key,record_json,sha256,classification from restore_identity_evidence&quot;);var rows=statement.executeQuery()) {</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">            while(rows.next()) {</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">                checkpoint.check();if(evidence.size()&gt;=MAX_ROWS)throw invalid();String key=rows.getString(1)+&quot;:&quot;+rows.getString(2);var expected=model.evidence.get(key);</span>
+<span class="pc bpc" id="L201" title="3 of 10 branches missed.">                if(expected==null||!evidence.add(key)||!sameJson(rows.getCharacterStream(3),expected.json(),checkpoint)||!StableIdentityHash.sha256(expected.json()).equals(rows.getString(4))||!expected.classification().equals(rows.getString(5)))</span>
+<span class="fc" id="L202">                    throw new IOException(&quot;Staged identity private evidence proof changed&quot;);</span>
+<span class="fc" id="L203">            }</span>
+        }
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">        if(!evidence.equals(model.evidence.keySet()))throw new IOException(&quot;Staged identity private evidence inventory proof changed&quot;);</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">        for(String table:List.of(&quot;principal_binding&quot;,&quot;app_user&quot;,&quot;app_role&quot;,&quot;user_roles&quot;,&quot;backup_capability_grant&quot;,&quot;backup_version_grant&quot;,&quot;principal_access_audit&quot;)) {</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">            checkpoint.check();if(count(connection,table)!=0)throw new IOException(&quot;Staged identity authority proof changed&quot;);</span>
+<span class="fc" id="L208">        }</span>
+<span class="fc" id="L209">    }</span>
+    /** A changed LOB can cost at most the expected bounded record plus one character. */
+    private static boolean sameJson(Reader source,String expected,BackupCheckpoint checkpoint)throws IOException {
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">        if(source==null)return false;</span>
+<span class="fc" id="L213">        try(source) {</span>
+<span class="fc" id="L214">            char[] buffer=new char[4096];int offset=0;</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">            while(offset&lt;expected.length()) {</span>
+<span class="fc" id="L216">                checkpoint.check();int count=source.read(buffer,0,Math.min(buffer.length,expected.length()-offset));</span>
+<span class="pc bpc" id="L217" title="2 of 4 branches missed.">                if(count&lt;0)return false;if(count==0)throw new IOException(&quot;Staged identity private evidence proof changed&quot;);</span>
+<span class="pc bpc" id="L218" title="1 of 4 branches missed.">                for(int index=0;index&lt;count;index++)if(buffer[index]!=expected.charAt(offset+index))return false;</span>
+<span class="fc" id="L219">                offset+=count;</span>
+<span class="fc" id="L220">            }</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">            checkpoint.check();return source.read()==-1;</span>
+<span class="nc bnc" id="L222" title="All 4 branches missed.">        }</span>
+    }
+    private static final class Rollback implements AutoCloseable {
+        private final Connection connection;boolean committed;
+<span class="fc" id="L226">        Rollback(Connection connection){this.connection=connection;}</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">        @Override public void close()throws SQLException {if(!committed)connection.rollback();}</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitPackVerification.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">GitPackVerification.java</span></div><h1>GitPackVerification.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.BackupCheckpoint;
+import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.transport.PackParser;
+import org.eclipse.jgit.transport.PackedObjectInfo;
+import java.io.*;
+import java.util.*;
+
+import static com.taxonomy.workspace.backup.GitTreeCapture.failure;
+import static com.taxonomy.workspace.backup.GitTreeCapture.sanitized;
+
+/** Read-only validation of the bounded, non-delta pack format emitted by portable history export. */
+public final class GitPackVerification {
+    private static final int BUFFER_BYTES = 8_192;
+    private static final long MAX_COMMIT_OR_TAG_BYTES = 1_048_576;
+    private static final long MAX_TREE_BYTES = 4 * 1_048_576;
+
+    private GitPackVerification() { }
+    public record Result(int objectCount,long expandedBytes,Set&lt;String&gt; objectIds,String packChecksum) {
+<span class="fc" id="L21">        public Result {objectIds=Set.copyOf(objectIds);}</span>
+    }
+    /**
+     * Validates the complete stream without creating objects, refs, or pack files. The caller supplies
+     * a fresh private repository as the parser context and retains ownership of both input and context.
+     * The public JGit parser verifies object syntax, identities, inflation, checksum, and exact EOF.
+     */
+    public static Result inspect(Repository context, InputStream input, int expectedObjects,
+            GitHistoryCapture.Limits limits, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L31">            Objects.requireNonNull(context); Objects.requireNonNull(input);</span>
+<span class="fc" id="L32">            Objects.requireNonNull(limits); Objects.requireNonNull(checkpoint);</span>
+<span class="pc bpc" id="L33" title="2 of 4 branches missed.">            if (expectedObjects &lt; 0 || expectedObjects &gt; limits.maxObjects())</span>
+<span class="nc" id="L34">                throw failure(&quot;Git pack object count exceeds the capture limit&quot;);</span>
+<span class="fc" id="L35">            BackupCheckpoint check = () -&gt; {</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">                if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException(&quot;Git pack verification cancelled&quot;);</span>
+<span class="fc" id="L37">                checkpoint.check();</span>
+<span class="fc" id="L38">            };</span>
+<span class="fc" id="L39">            check.check();</span>
+<span class="fc" id="L40">            var parser = new Validator(context, checked(input, check), expectedObjects, limits, check);</span>
+<span class="fc" id="L41">            parser.parse(NullProgressMonitor.INSTANCE);</span>
+<span class="fc" id="L42">            check.check();</span>
+<span class="pc bpc" id="L43" title="3 of 6 branches missed.">            if (parser.getObjectCount() != expectedObjects || parser.objectIds.size() != expectedObjects</span>
+                    || parser.packChecksum == null)
+<span class="nc" id="L45">                throw failure(&quot;Git pack object proof is incomplete&quot;);</span>
+<span class="fc" id="L46">            return new Result(expectedObjects, parser.expandedBytes, parser.objectIds, parser.packChecksum);</span>
+<span class="fc" id="L47">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+    }
+
+    private static InputStream checked(InputStream input, BackupCheckpoint check) {
+<span class="fc" id="L51">        return new FilterInputStream(input) {</span>
+            @Override public int read() throws IOException {
+<span class="fc" id="L53">                byte[] value = new byte[1];</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">                return read(value, 0, 1) &lt; 0 ? -1 : value[0] &amp; 0xff;</span>
+            }
+            @Override public int read(byte[] bytes, int offset, int length) throws IOException {
+<span class="fc" id="L57">                Objects.checkFromIndexSize(offset, length, bytes.length); check.check();</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">                if (length == 0) return 0;</span>
+<span class="fc" id="L59">                int count = in.read(bytes, offset, Math.min(length, BUFFER_BYTES));</span>
+<span class="fc" id="L60">                check.check(); return count;</span>
+            }
+        };
+    }
+
+    /** Only the public parser extension points are used; storage callbacks deliberately never write. */
+    private static final class Validator extends PackParser {
+        private final int expectedObjects;
+        private final GitHistoryCapture.Limits limits;
+        private final BackupCheckpoint check;
+<span class="fc" id="L70">        private final Set&lt;String&gt; objectIds = new HashSet&lt;&gt;();</span>
+        private long expandedBytes;
+        private String packChecksum;
+
+        Validator(Repository context, InputStream input, int expectedObjects,
+                GitHistoryCapture.Limits limits, BackupCheckpoint check) {
+<span class="fc" id="L76">            super(context.getObjectDatabase(), input);</span>
+<span class="fc" id="L77">            this.expectedObjects = expectedObjects; this.limits = limits; this.check = check;</span>
+<span class="fc" id="L78">            setAllowThin(false); setCheckEofAfterPackFooter(true); setObjectChecking(true);</span>
+<span class="fc" id="L79">        }</span>
+
+        @Override protected void onPackHeader(long objectCount) throws IOException {
+<span class="fc" id="L82">            check.check();</span>
+            // JGit invokes this before allocating its object-info array.
+<span class="pc bpc" id="L84" title="2 of 6 branches missed.">            if (objectCount != expectedObjects || objectCount &lt; 0 || objectCount &gt; limits.maxObjects())</span>
+<span class="fc" id="L85">                throw failure(&quot;Git pack object count does not match the bounded capture&quot;);</span>
+<span class="fc" id="L86">        }</span>
+        @Override protected void onBeginWholeObject(long offset, int type, long length) throws IOException {
+<span class="fc" id="L88">            check.check();</span>
+<span class="pc bpc" id="L89" title="1 of 4 branches missed.">            long metadataLimit = switch (type) {</span>
+<span class="fc" id="L90">                case Constants.OBJ_COMMIT, Constants.OBJ_TAG -&gt; MAX_COMMIT_OR_TAG_BYTES;</span>
+<span class="fc" id="L91">                case Constants.OBJ_TREE -&gt; MAX_TREE_BYTES;</span>
+<span class="fc" id="L92">                case Constants.OBJ_BLOB -&gt; limits.maxObjectBytes();</span>
+<span class="nc" id="L93">                default -&gt; throw failure(&quot;Git pack contains an unsupported object type&quot;);</span>
+<span class="fc" id="L94">            };</span>
+            // This callback precedes inflation and JGit's commit/tree/tag byte-array allocation.
+<span class="pc bpc" id="L96" title="2 of 6 branches missed.">            if (length &lt; 0 || length &gt; metadataLimit || length &gt; limits.maxObjectBytes()</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">                    || length &gt; limits.maxTotalBytes() - expandedBytes)</span>
+<span class="fc" id="L98">                throw failure(&quot;Git pack expanded object byte limit exceeded&quot;);</span>
+<span class="fc" id="L99">            expandedBytes += length;</span>
+<span class="fc" id="L100">        }</span>
+        @Override protected void onEndWholeObject(PackedObjectInfo info) throws IOException {
+<span class="fc" id="L102">            check.check();</span>
+<span class="pc bpc" id="L103" title="2 of 4 branches missed.">            if (objectIds.size() &gt;= expectedObjects || !objectIds.add(info.name()))</span>
+<span class="nc" id="L104">                throw failure(&quot;Git pack contains duplicate or excess objects&quot;);</span>
+<span class="fc" id="L105">        }</span>
+        @Override protected void onPackFooter(byte[] checksum) throws IOException {
+<span class="fc" id="L107">            check.check();</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">            if (checksum.length != Constants.OBJECT_ID_LENGTH) throw failure(&quot;Invalid Git pack checksum&quot;);</span>
+<span class="fc" id="L109">            packChecksum = HexFormat.of().formatHex(checksum);</span>
+<span class="fc" id="L110">        }</span>
+<span class="fc" id="L111">        @Override protected void onStoreStream(byte[] bytes, int offset, int length) throws IOException { check.check(); }</span>
+<span class="fc" id="L112">        @Override protected void onObjectHeader(Source source, byte[] bytes, int offset, int length) throws IOException { check.check(); }</span>
+<span class="fc" id="L113">        @Override protected void onObjectData(Source source, byte[] bytes, int offset, int length) throws IOException { check.check(); }</span>
+<span class="fc" id="L114">        @Override protected void onInflatedObjectData(PackedObjectInfo info, int type, byte[] data) throws IOException { check.check(); }</span>
+<span class="nc" id="L115">        @Override protected void onBeginOfsDelta(long offset, long base, long length) throws IOException { throw delta(); }</span>
+<span class="fc" id="L116">        @Override protected void onBeginRefDelta(long offset, AnyObjectId base, long length) throws IOException { throw delta(); }</span>
+<span class="nc" id="L117">        @Override protected boolean onAppendBase(int type, byte[] data, PackedObjectInfo info) throws IOException { throw delta(); }</span>
+<span class="nc" id="L118">        @Override protected void onEndThinPack() throws IOException { throw delta(); }</span>
+        @Override protected ObjectTypeAndSize seekDatabase(PackedObjectInfo info, ObjectTypeAndSize header) throws IOException {
+<span class="nc" id="L120">            throw failure(&quot;Git pack verification requires a fresh private context&quot;);</span>
+        }
+<span class="nc" id="L122">        @Override protected ObjectTypeAndSize seekDatabase(UnresolvedDelta delta, ObjectTypeAndSize header) throws IOException { throw delta(); }</span>
+        @Override protected int readDatabase(byte[] bytes, int offset, int length) throws IOException {
+<span class="nc" id="L124">            throw failure(&quot;Git pack verification cannot read unverified stored pack bytes&quot;);</span>
+        }
+<span class="nc" id="L126">        @Override protected boolean checkCRC(int crc) { return false; }</span>
+<span class="fc" id="L127">        private IOException delta() throws IOException { check.check(); return failure(&quot;Git portable history cannot contain delta objects&quot;); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

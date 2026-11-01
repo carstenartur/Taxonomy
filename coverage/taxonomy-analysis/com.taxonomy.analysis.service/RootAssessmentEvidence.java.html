@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RootAssessmentEvidence.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">RootAssessmentEvidence.java</span></div><h1>RootAssessmentEvidence.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.dto.LlmCallDetail;
+
+/** Recognizes a validated semantic root clarification without interpreting diagnostic text as evidence. */
+public final class RootAssessmentEvidence {
+    public static final String DIAGNOSTIC_PREFIX = &quot;ROOT_UNRESOLVED:&quot;;
+
+    private RootAssessmentEvidence() { }
+
+    public static boolean isClarification(LlmCallDetail detail) {
+<span class="pc bpc" id="L12" title="1 of 4 branches missed.">        return detail != null &amp;&amp; detail.getError() != null</span>
+<span class="fc bfc" id="L13" title="All 2 branches covered.">                &amp;&amp; detail.getError().startsWith(DIAGNOSTIC_PREFIX)</span>
+<span class="pc bpc" id="L14" title="1 of 4 branches missed.">                &amp;&amp; detail.getScores() != null &amp;&amp; detail.getScores().isEmpty()</span>
+<span class="fc bfc" id="L15" title="All 2 branches covered.">                &amp;&amp; detail.getRootAssessments().size() == 1</span>
+<span class="pc bpc" id="L16" title="1 of 2 branches missed.">                &amp;&amp; detail.getRootAssessments().values().iterator().next().unresolved();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

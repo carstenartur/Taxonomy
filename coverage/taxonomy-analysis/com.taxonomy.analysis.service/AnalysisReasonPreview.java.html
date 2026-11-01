@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisReasonPreview.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">AnalysisReasonPreview.java</span></div><h1>AnalysisReasonPreview.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/** Bounded live evidence. Explanations are retained whole; the final result remains authoritative. */
+<span class="fc" id="L8">public final class AnalysisReasonPreview {</span>
+    private static final int MAX_BYTES = 1024 * 1024;
+<span class="fc" id="L10">    private final Map&lt;String, String&gt; reasons = new LinkedHashMap&lt;&gt;();</span>
+    private int bytes;
+    private boolean truncated;
+
+    public void retain(String code, String reason) {
+<span class="fc bfc" id="L15" title="All 4 branches covered.">        if (reason == null || reason.isBlank()) return;</span>
+<span class="fc" id="L16">        String previous = reasons.get(code);</span>
+<span class="fc bfc" id="L17" title="All 2 branches covered.">        if (reason.equals(previous)) return;</span>
+<span class="pc bpc" id="L18" title="1 of 2 branches missed.">        int previousBytes = previous == null ? 0 : previous.getBytes(StandardCharsets.UTF_8).length;</span>
+<span class="fc" id="L19">        int reasonBytes = reason.getBytes(StandardCharsets.UTF_8).length;</span>
+<span class="fc bfc" id="L20" title="All 2 branches covered.">        if (reasonBytes &gt; MAX_BYTES - bytes + previousBytes) {</span>
+<span class="fc" id="L21">            truncated = true;</span>
+<span class="fc" id="L22">            return;</span>
+        }
+<span class="fc" id="L24">        reasons.put(code, reason);</span>
+<span class="fc" id="L25">        bytes += reasonBytes - previousBytes;</span>
+<span class="fc" id="L26">    }</span>
+
+<span class="fc" id="L28">    public Map&lt;String, String&gt; reasons() { return Map.copyOf(reasons); }</span>
+<span class="fc" id="L29">    public boolean truncated() { return truncated; }</span>
+
+    /** A progress response includes explanations only for the scores it actually exposes. */
+    public static AnalysisReasonPreview from(Map&lt;String, Double&gt; scores, Map&lt;String, String&gt; reasons) {
+<span class="fc" id="L33">        var preview = new AnalysisReasonPreview();</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        if (reasons != null) scores.keySet().forEach(code -&gt; preview.retain(code, reasons.get(code)));</span>
+<span class="fc" id="L35">        return preview;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

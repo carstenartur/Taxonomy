@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProductDemoRun.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.demo</a> &gt; <span class="el_source">ProductDemoRun.java</span></div><h1>ProductDemoRun.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.demo;
+
+import com.taxonomy.portfolio.model.PortfolioTenantIdentity;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+
+import java.time.Instant;
+
+/**
+ * Durable marker of an isolated, labelled product demo.
+ *
+ * &lt;p&gt;The marker binds exactly one demo project and requirement to one
+ * versioned scenario. Analysis admission derives the replay provider from this
+ * record and the requirement version, never from a browser flag, so a normal
+ * project can never receive demo replies and a demo project can never reach a
+ * live model.&lt;/p&gt;
+ */
+@Entity
+@Table(name = &quot;product_demo_run&quot;, indexes = {
+        @Index(name = &quot;idx_demo_run_scope&quot;, columnList = &quot;scope_key&quot;)
+}, uniqueConstraints = {
+        @UniqueConstraint(name = &quot;uq_demo_run_project&quot;, columnNames = &quot;project_id&quot;)
+})
+public class ProductDemoRun {
+
+    @Id
+    @Column(name = &quot;id&quot;, nullable = false, length = 36)
+    private String id;
+
+    @Column(name = &quot;scope_key&quot;, nullable = false, length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
+    private String scopeKey;
+
+    @Column(name = &quot;project_id&quot;, nullable = false)
+    private Long projectId;
+
+    @Column(name = &quot;requirement_id&quot;, nullable = false)
+    private Long requirementId;
+
+    @Column(name = &quot;scenario_id&quot;, nullable = false, length = 64)
+    private String scenarioId;
+
+    @Column(name = &quot;scenario_version&quot;, nullable = false)
+    private int scenarioVersion;
+
+    @Column(name = &quot;scenario_fingerprint&quot;, nullable = false, length = 64)
+    private String scenarioFingerprint;
+
+    @Column(name = &quot;owner_username&quot;, nullable = false, length = 160)
+    private String ownerUsername;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;closed_at&quot;)
+    private Instant closedAt;
+
+<span class="fc" id="L61">    protected ProductDemoRun() { }</span>
+
+    public ProductDemoRun(String id, String scopeKey, Long projectId, Long requirementId, String scenarioId,
+<span class="fc" id="L64">                          int scenarioVersion, String scenarioFingerprint, String ownerUsername, Instant createdAt) {</span>
+<span class="fc" id="L65">        this.id = id;</span>
+<span class="fc" id="L66">        this.scopeKey = scopeKey;</span>
+<span class="fc" id="L67">        this.projectId = projectId;</span>
+<span class="fc" id="L68">        this.requirementId = requirementId;</span>
+<span class="fc" id="L69">        this.scenarioId = scenarioId;</span>
+<span class="fc" id="L70">        this.scenarioVersion = scenarioVersion;</span>
+<span class="fc" id="L71">        this.scenarioFingerprint = scenarioFingerprint;</span>
+<span class="fc" id="L72">        this.ownerUsername = ownerUsername;</span>
+<span class="fc" id="L73">        this.createdAt = createdAt;</span>
+<span class="fc" id="L74">    }</span>
+
+<span class="fc" id="L76">    public String getId() { return id; }</span>
+<span class="fc" id="L77">    public String getScopeKey() { return scopeKey; }</span>
+<span class="fc" id="L78">    public Long getProjectId() { return projectId; }</span>
+<span class="fc" id="L79">    public Long getRequirementId() { return requirementId; }</span>
+<span class="fc" id="L80">    public String getScenarioId() { return scenarioId; }</span>
+<span class="fc" id="L81">    public int getScenarioVersion() { return scenarioVersion; }</span>
+<span class="fc" id="L82">    public String getScenarioFingerprint() { return scenarioFingerprint; }</span>
+<span class="fc" id="L83">    public String getOwnerUsername() { return ownerUsername; }</span>
+<span class="fc" id="L84">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="fc" id="L85">    public Instant getClosedAt() { return closedAt; }</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">    public boolean isClosed() { return closedAt != null; }</span>
+
+    public void close(Instant now) {
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">        if (closedAt == null) closedAt = now;</span>
+<span class="fc" id="L90">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

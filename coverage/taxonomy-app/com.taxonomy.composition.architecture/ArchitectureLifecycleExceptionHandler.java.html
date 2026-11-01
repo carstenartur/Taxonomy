@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureLifecycleExceptionHandler.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.architecture</a> &gt; <span class="el_source">ArchitectureLifecycleExceptionHandler.java</span></div><h1>ArchitectureLifecycleExceptionHandler.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.architecture;
+
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.editor.persistence.EditorJournal.RevisionConflict;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import java.io.IOException;
+import java.util.Map;
+import java.util.Set;
+
+@com.taxonomy.shared.features.ConditionalOnFeature(&quot;portfolio&quot;)
+@RestControllerAdvice(assignableTypes={ArchitectureLifecycleController.class,ArchitectureRequirementController.class,
+        ArchitectureRequirementHistoryController.class,ArchitectureLifecycleCreationController.class})
+<span class="fc" id="L16">public class ArchitectureLifecycleExceptionHandler {</span>
+    @ExceptionHandler(LifecycleHttpContext.PreconditionRequired.class)
+<span class="fc" id="L18">    public ResponseEntity&lt;?&gt; missing(){return ResponseEntity.status(428).body(Map.of(&quot;code&quot;,&quot;PRECONDITION_REQUIRED&quot;,&quot;detail&quot;,&quot;An exact semantic revision If-Match is required&quot;));}</span>
+    @ExceptionHandler(RevisionConflict.class)
+<span class="nc" id="L20">    public ResponseEntity&lt;?&gt; revision(RevisionConflict failure){return ResponseEntity.status(412).body(Map.of(&quot;code&quot;,&quot;REVISION_MOVED&quot;,&quot;detail&quot;,&quot;Refresh and compare the current architecture stand&quot;,&quot;expectedRevision&quot;,failure.expected(),&quot;currentRevision&quot;,failure.actual()));}</span>
+    @ExceptionHandler(CommandProblem.class)
+    public ResponseEntity&lt;?&gt; command(CommandProblem failure) {
+<span class="pc bpc" id="L23" title="3 of 4 branches missed.">        int status=&quot;NOT_FOUND&quot;.equals(failure.code())?404:&quot;READ_ONLY&quot;.equals(failure.code())?403:</span>
+<span class="pc bnc" id="L24" title="All 2 branches missed.">                Set.of(&quot;CONTEXT_CHANGED&quot;,&quot;PREVIEW_CHANGED&quot;,&quot;REQUIREMENT_VERSION_CHANGED&quot;,&quot;COMMAND_ID_REUSED&quot;,&quot;CHECKPOINT_PENDING&quot;,&quot;CHECKPOINT_CONFLICT&quot;,&quot;VERSION_CHANGED&quot;).contains(failure.code())?409:422;</span>
+<span class="fc" id="L25">        return ResponseEntity.status(status).body(Map.of(&quot;code&quot;,failure.code(),&quot;field&quot;,failure.field(),&quot;detail&quot;,failure.getMessage(),&quot;dependencies&quot;,failure.dependencies()));</span>
+    }
+    @ExceptionHandler(PortfolioException.class)
+<span class="nc" id="L28">    public ResponseEntity&lt;ProblemDetail&gt; portfolio(PortfolioException failure){return new com.taxonomy.portfolio.controller.PortfolioExceptionHandler().handlePortfolioException(failure);}</span>
+    @ExceptionHandler(IllegalArgumentException.class)
+<span class="fc" id="L30">    public ResponseEntity&lt;?&gt; invalid(IllegalArgumentException failure){return ResponseEntity.badRequest().body(Map.of(&quot;code&quot;,&quot;INVALID_COMMAND&quot;,&quot;detail&quot;,String.valueOf(failure.getMessage())));}</span>
+    @ExceptionHandler(BranchHeadConflictException.class)
+    public ResponseEntity&lt;?&gt; historyHeadChanged(BranchHeadConflictException failure) {
+<span class="fc" id="L33">        var problem = new java.util.LinkedHashMap&lt;String, Object&gt;();</span>
+<span class="fc" id="L34">        problem.put(&quot;code&quot;, &quot;HISTORY_HEAD_CHANGED&quot;);</span>
+<span class="fc" id="L35">        problem.put(&quot;detail&quot;, &quot;The branch changed during history search; restart from the first page&quot;);</span>
+<span class="fc" id="L36">        problem.put(&quot;branch&quot;, failure.getBranch());</span>
+<span class="fc" id="L37">        problem.put(&quot;expectedHead&quot;, failure.getExpectedHeadCommit());</span>
+<span class="fc" id="L38">        problem.put(&quot;currentHead&quot;, failure.getActualHeadCommit());</span>
+<span class="fc" id="L39">        return ResponseEntity.status(409).body(problem);</span>
+    }
+    @ExceptionHandler(IOException.class)
+<span class="fc" id="L42">    public ResponseEntity&lt;?&gt; unavailable(){return ResponseEntity.status(503).body(Map.of(&quot;code&quot;,&quot;GIT_UNAVAILABLE&quot;,&quot;detail&quot;,&quot;Storage is unavailable; retry the same command identity&quot;));}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

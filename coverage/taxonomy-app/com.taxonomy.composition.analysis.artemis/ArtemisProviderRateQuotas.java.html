@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArtemisProviderRateQuotas.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">ArtemisProviderRateQuotas.java</span></div><h1>ArtemisProviderRateQuotas.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import com.taxonomy.analysis.service.ProviderRateQuotas;
+import com.taxonomy.extension.api.llm.ProviderId;
+import jakarta.jms.Session;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Message;
+import jakarta.jms.JMSException;
+import org.apache.activemq.artemis.api.core.SimpleString;
+import org.apache.activemq.artemis.api.core.RoutingType;
+import org.apache.activemq.artemis.jms.client.ActiveMQSession;
+import org.apache.activemq.artemis.jms.client.ActiveMQTextMessage;
+import com.taxonomy.analysis.service.AnalysisStoppedException;
+import com.taxonomy.analysis.service.LlmTransportMeter;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.ExecutionException;
+import java.util.function.BiFunction;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.databind.DeserializationFeature;
+
+/** A committed consume/replace transaction is permanent rate admission before physical HTTP. */
+final class ArtemisProviderRateQuotas implements ProviderRateQuotas {
+    private final Supplier&lt;SessionResource&gt; sessions;
+    private final ArtemisProviderQuotaSettings settings;
+    private final ObjectMapper json;
+    private final LongSupplier clock;
+    ArtemisProviderRateQuotas(ArtemisAnalysisConnection connection, ArtemisProviderQuotaSettings settings,
+                             ObjectMapper json, LongSupplier clock) {
+<span class="fc" id="L35">        this(() -&gt; { var session = connection.createSession(true);</span>
+<span class="fc" id="L36">            return new SessionResource(session, ((ActiveMQSession)session).getCoreSession()); }, settings, json, clock);</span>
+<span class="fc" id="L37">    }</span>
+<span class="fc" id="L38">    record SessionResource(Session session, org.apache.activemq.artemis.api.core.client.ClientSession core) {}</span>
+    ArtemisProviderRateQuotas(Supplier&lt;SessionResource&gt; sessions, ArtemisProviderQuotaSettings settings,
+<span class="fc" id="L40">                             ObjectMapper json, LongSupplier clock) {</span>
+<span class="fc" id="L41">        this.sessions = Objects.requireNonNull(sessions); this.settings = Objects.requireNonNull(settings);</span>
+<span class="fc" id="L42">        this.json = Objects.requireNonNull(json); this.clock = Objects.requireNonNull(clock);</span>
+<span class="fc" id="L43">    }</span>
+<span class="fc" id="L44">    public TokenBudget requiredBudget(ProviderId provider) { return settings.tokenBudgets().get(settings.group(provider)); }</span>
+    public Decision tryReserve(ProviderId provider, String id, TokenBudget budget, Runnable checkpoint) {
+<span class="fc" id="L46">        String group = settings.group(provider);</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        if (!Objects.equals(requiredBudget(provider), budget)) throw unavailable(&quot;Unsupported physical provider TPM budget contract&quot;, null);</span>
+<span class="fc" id="L48">        return update(group, checkpoint, (state, now) -&gt; {</span>
+<span class="fc" id="L49">            var decision = ProviderQuotaLedger.reserve(state, settings.policies().get(group), id,</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                    budget == null ? 0 : budget.maximumTokens(), now);</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            Decision result = decision.granted() ? new Decision(new DurableReservation(group, id, checkpoint), 0)</span>
+<span class="fc" id="L52">                    : new Decision(null, decision.waitMillis());</span>
+<span class="fc" id="L53">            return new Change&lt;&gt;(decision.state(), result);</span>
+        });
+    }
+    public void defer(ProviderId provider, long delayMillis) {
+<span class="fc" id="L57">        String group = settings.group(provider);</span>
+<span class="fc" id="L58">        update(group, () -&gt; {}, (state, now) -&gt; new Change&lt;&gt;(ProviderQuotaLedger.defer(state,</span>
+<span class="fc" id="L59">                settings.policies().get(group), delayMillis, now), null));</span>
+<span class="fc" id="L60">    }</span>
+    private final class DurableReservation implements Reservation {
+        private final String group, id;
+        private final Runnable checkpoint;
+        // This is process-local confirmed-start evidence, never reconstructed from an ID/JMS/archive.
+        private volatile boolean startedConfirmed;
+<span class="fc" id="L66">        DurableReservation(String group, String id, Runnable checkpoint) {</span>
+<span class="fc" id="L67">            this.group = group; this.id = id; this.checkpoint = Objects.requireNonNull(checkpoint);</span>
+<span class="fc" id="L68">        }</span>
+<span class="fc" id="L69">        public String id() { return id; }</span>
+        public void beforeTransport() {
+<span class="fc" id="L71">            update(group, checkpoint, (state, now) -&gt; new Change&lt;&gt;(ProviderQuotaLedger.start(state,</span>
+<span class="fc" id="L72">                    settings.policies().get(group), id, now), null));</span>
+<span class="fc" id="L73">            checkpoint.run();</span>
+<span class="fc" id="L74">            startedConfirmed = true;</span>
+<span class="fc" id="L75">        }</span>
+        public void settle(LlmTransportMeter.Usage usage) {
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            if (!startedConfirmed) return;</span>
+<span class="fc" id="L78">            update(group, () -&gt; {}, (state, now) -&gt; new Change&lt;&gt;(ProviderQuotaLedger.settleConfirmedStartedUsage(state,</span>
+<span class="fc" id="L79">                    settings.policies().get(group), id, usage, now), null));</span>
+<span class="fc" id="L80">        }</span>
+    }
+<span class="fc" id="L82">    private record Change&lt;T&gt;(ProviderQuotaLedger.State state, T value) {}</span>
+    private &lt;T&gt; T update(String group, Runnable checkpoint, BiFunction&lt;ProviderQuotaLedger.State, Long, Change&lt;T&gt;&gt; mutation) {
+<span class="fc" id="L84">        Objects.requireNonNull(checkpoint).run();</span>
+<span class="fc" id="L85">        Session session = null;</span>
+        try {
+<span class="fc" id="L87">            var opened = sessions.get(); session = opened.session();</span>
+<span class="fc" id="L88">            String queue = settings.queueName(group);</span>
+<span class="fc" id="L89">            var query = opened.core().queueQuery(SimpleString.of(queue));</span>
+<span class="pc bpc" id="L90" title="2 of 6 branches missed.">            if (!query.isExists() || !query.isDurable() || query.getRoutingType() != RoutingType.ANYCAST</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                    || !Boolean.TRUE.equals(query.isExclusive()))</span>
+<span class="fc" id="L92">                throw unavailable(&quot;Provider quota ledger is missing, non-durable or nonexclusive&quot;, null);</span>
+<span class="fc" id="L93">            var destination = session.createQueue(queue + &quot;::&quot; + queue);</span>
+<span class="fc" id="L94">            try (var consumer = session.createConsumer(destination)) {</span>
+<span class="fc" id="L95">                long started = System.nanoTime(); Message delivered = null;</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">                while (delivered == null) {</span>
+<span class="fc" id="L97">                    checkpoint.run();</span>
+<span class="fc" id="L98">                    long remaining = settings.maximumWaitMillis() - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">                    if (remaining &lt;= 0) throw unavailable(&quot;Provider quota ledger acquisition expired&quot;, null);</span>
+<span class="fc" id="L100">                    delivered = consumer.receive(Math.min(100, remaining));</span>
+<span class="fc" id="L101">                }</span>
+<span class="fc" id="L102">                checkpoint.run();</span>
+                // Queue statistics are not an atomic snapshot. This exclusive consumer asks the
+                // actual broker for a second message/end-marker before any mutation or admission.
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                if (secondReceive(consumer, checkpoint, started) != null)</span>
+<span class="fc" id="L106">                    throw unavailable(&quot;Provider quota ledger contains duplicate committed state&quot;, null);</span>
+<span class="fc" id="L107">                checkpoint.run();</span>
+<span class="fc" id="L108">                String expected = settings.policies().get(group).fingerprint();</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                String adapter = settings.tokenBudgets().containsKey(group) ? settings.tokenBudgets().get(group).adapterId() : &quot;&quot;;</span>
+<span class="pc bpc" id="L110" title="2 of 4 branches missed.">                if (!(delivered instanceof ActiveMQTextMessage text) || delivered.getJMSDeliveryMode() != DeliveryMode.PERSISTENT</span>
+<span class="pc bpc" id="L111" title="2 of 4 branches missed.">                        || delivered.getJMSExpiration() != 0 || delivered.getIntProperty(&quot;schemaVersion&quot;) != 1</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">                        || !group.equals(delivered.getStringProperty(&quot;quotaGroup&quot;))</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">                        || !expected.equals(delivered.getStringProperty(&quot;policyFingerprint&quot;))</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">                        || !adapter.equals(Objects.requireNonNullElse(delivered.getStringProperty(&quot;tokenAdapter&quot;), &quot;&quot;))</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">                        || text.getCoreMessage().getBodySize() &gt; 6_000_000) throw unavailable(&quot;Invalid provider quota ledger envelope&quot;, null);</span>
+<span class="fc" id="L116">                String body = text.getText();</span>
+<span class="pc bpc" id="L117" title="2 of 4 branches missed.">                if (body == null || body.length() &gt; 3_000_000) throw unavailable(&quot;Provider quota ledger exceeds bounded size&quot;, null);</span>
+<span class="fc" id="L118">                ProviderQuotaLedger.State state = json.readerFor(ProviderQuotaLedger.State.class)</span>
+<span class="fc" id="L119">                        .with(StreamReadFeature.STRICT_DUPLICATE_DETECTION).with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)</span>
+<span class="fc" id="L120">                        .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).readValue(body);</span>
+<span class="fc" id="L121">                var changed = mutation.apply(state, clock.getAsLong());</span>
+<span class="fc" id="L122">                checkpoint.run();</span>
+<span class="fc" id="L123">                var replacement = session.createTextMessage(json.writeValueAsString(changed.state()));</span>
+<span class="fc" id="L124">                replacement.setIntProperty(&quot;schemaVersion&quot;, 1); replacement.setStringProperty(&quot;quotaGroup&quot;, group);</span>
+<span class="fc" id="L125">                replacement.setStringProperty(&quot;policyFingerprint&quot;, expected); replacement.setStringProperty(&quot;tokenAdapter&quot;, adapter);</span>
+<span class="fc" id="L126">                try (var producer = session.createProducer(destination)) {</span>
+<span class="fc" id="L127">                    producer.send(replacement, DeliveryMode.PERSISTENT, Message.DEFAULT_PRIORITY, 0);</span>
+<span class="fc" id="L128">                    session.commit();</span>
+                }
+                // A lost commit acknowledgement never returns admission or sends a compensating refund.
+<span class="fc" id="L131">                return changed.value();</span>
+            }
+<span class="fc" id="L133">        } catch (UnavailableException | AnalysisStoppedException failure) { throw failure;</span>
+<span class="fc" id="L134">        } catch (Exception failure) {</span>
+<span class="fc" id="L135">            restoreInterrupt(failure);</span>
+<span class="fc" id="L136">            checkpoint.run();</span>
+<span class="fc" id="L137">            throw unavailable(&quot;Provider quota transaction was not confirmed&quot;, failure);</span>
+        } finally {
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">            if (session != null) {</span>
+<span class="fc" id="L140">                boolean interrupted = Thread.currentThread().isInterrupted();</span>
+<span class="pc" id="L141">                try { session.close(); } catch (JMSException failure) { restoreInterrupt(failure); }</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">                finally { if (interrupted) Thread.currentThread().interrupt(); }</span>
+            }
+        }
+    }
+    private Message secondReceive(jakarta.jms.MessageConsumer consumer, Runnable checkpoint, long started) throws Exception {
+<span class="fc" id="L147">        var result = new FutureTask&lt;Message&gt;(consumer::receiveNoWait);</span>
+<span class="fc" id="L148">        Thread receiver = Thread.ofVirtual().name(&quot;taxonomy-provider-quota-proof&quot;).start(result);</span>
+        try {
+            while (true) {
+<span class="fc" id="L151">                checkpoint.run();</span>
+<span class="fc" id="L152">                long remaining = settings.maximumWaitMillis() - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">                if (remaining &lt;= 0) throw unavailable(&quot;Provider quota duplicate proof expired&quot;, null);</span>
+<span class="fc" id="L154">                try { return result.get(Math.min(100, remaining), TimeUnit.MILLISECONDS); }</span>
+<span class="fc" id="L155">                catch (TimeoutException waiting) { /* Keep the ordinary cancellation/deadline checkpoint active. */ }</span>
+<span class="nc" id="L156">                catch (ExecutionException failed) {</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">                    if (failed.getCause() instanceof Exception exception) throw exception;</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">                    if (failed.getCause() instanceof Error error) throw error;</span>
+<span class="nc" id="L159">                    throw unavailable(&quot;Provider quota duplicate proof was not confirmed&quot;, failed);</span>
+<span class="fc" id="L160">                }</span>
+<span class="fc" id="L161">            }</span>
+        } finally {
+            // No caller-side session/consumer operation overlaps the receiver. JMS explicitly
+            // permits close to unblock receive; it is used only if interruption did not finish it.
+<span class="fc" id="L165">            boolean interrupted = Thread.interrupted();</span>
+<span class="fc" id="L166">            receiver.interrupt();</span>
+            try {
+<span class="fc" id="L168">                receiver.join(1000);</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">                if (receiver.isAlive()) { consumer.close(); receiver.join(1000); }</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">                if (receiver.isAlive()) throw unavailable(&quot;Provider quota proof receiver did not terminate&quot;, null);</span>
+<span class="nc" id="L171">            } catch (InterruptedException stopped) {</span>
+<span class="nc" id="L172">                Thread.currentThread().interrupt(); throw stopped;</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">            } finally { if (interrupted) Thread.currentThread().interrupt(); }</span>
+        }
+    }
+<span class="fc" id="L176">    private static UnavailableException unavailable(String message, Throwable cause) { return new UnavailableException(message, cause); }</span>
+    private static void restoreInterrupt(Throwable failure) {
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        for (var cause = failure; cause != null; cause = cause.getCause()) {</span>
+<span class="pc bpc" id="L179" title="2 of 4 branches missed.">            if (cause instanceof InterruptedException || cause instanceof org.apache.activemq.artemis.api.core.ActiveMQInterruptedException) {</span>
+<span class="nc" id="L180">                Thread.currentThread().interrupt(); return;</span>
+            }
+        }
+<span class="fc" id="L183">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>InventoryRelationshipEvaluator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.inventory</a> &gt; <span class="el_source">InventoryRelationshipEvaluator.java</span></div><h1>InventoryRelationshipEvaluator.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.inventory;
+
+import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.*;
+import com.taxonomy.extension.api.inventory.InventoryReadContracts.AssertionKind;
+import java.util.*;
+
+/** Exact directed edge evidence; absent edges and expired positive claims remain unknown. */
+<span class="fc" id="L8">public final class InventoryRelationshipEvaluator {</span>
+    public RelationshipFinding evaluate(RelationshipRequirement requirement, Question question, List&lt;Assertion&gt; assertions) {
+<span class="fc" id="L10">        var normalized=new ArrayList&lt;Assertion&gt;();</span>
+<span class="fc" id="L11">        var ids=new ArrayList&lt;String&gt;();var kinds=EnumSet.noneOf(AssertionKind.class);var limits=new TreeSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L12" title="All 2 branches covered.">        for(var a:assertions) {</span>
+<span class="fc" id="L13">            var edge=a.relationship();</span>
+<span class="pc bpc" id="L14" title="2 of 6 branches missed.">            if(a.criterion()!=Criterion.RELATIONSHIPS || edge==null || !requirement.sourceCandidateId().equals(a.candidateId()) ||</span>
+<span class="fc bfc" id="L15" title="All 6 branches covered.">                    !requirement.targetCandidateId().equals(edge.targetCandidateId()) || requirement.kind()!=edge.kind() || !Objects.equals(requirement.qualifier(),edge.qualifier()) ||</span>
+<span class="pc bpc" id="L16" title="3 of 6 branches missed.">                    !question.organization().equals(a.organization()) || (question.environment()!=null &amp;&amp; !question.environment().equals(a.environment())))continue;</span>
+<span class="pc bpc" id="L17" title="1 of 2 branches missed.">            ids.add(a.id());kinds.add(a.kind());if(a.kind()==AssertionKind.PLANNED)limits.add(&quot;PLANNED_NOT_ACTUAL&quot;);</span>
+<span class="pc bpc" id="L18" title="2 of 8 branches missed.">            boolean covers=a.start()!=null &amp;&amp; a.endExclusive()!=null &amp;&amp; !a.start().latest().isAfter(question.start()) &amp;&amp; !a.endExclusive().earliest().isBefore(question.end());</span>
+<span class="pc bpc" id="L19" title="1 of 4 branches missed.">            boolean supports=requirement.kind()==RelationshipKind.HARD_EXCLUSION?!a.positive():a.positive();</span>
+<span class="fc bfc" id="L20" title="All 2 branches covered.">            if(requirement.qualifier()==null) {limits.add(&quot;MISSING_CONTRACT_QUALIFICATION&quot;);continue;}</span>
+            // An expired/partial positive edge is not evidence of a negative edge.
+            // Explicit negative intervals retain the existing scalar start-window union/conflict rules.
+<span class="fc bfc" id="L23" title="All 4 branches covered.">            if(!supports || covers)normalized.add(new Assertion(a.id(),a.candidateId(),Criterion.AVAILABILITY,null,supports,a.start(),a.endExclusive(),a.organization(),a.environment(),a.kind(),a.citation(),a.recordedAt()));</span>
+<span class="pc bpc" id="L24" title="2 of 4 branches missed.">            else limits.add(a.start()==null || a.endExclusive()==null?&quot;MISSING_BOUNDARY&quot;:&quot;PARTIAL_EXPIRED_OR_IMPRECISE_EDGE&quot;);</span>
+<span class="fc" id="L25">        }</span>
+<span class="fc" id="L26">        var evaluated=new InventoryCriterionEvaluator().evaluate(requirement.sourceCandidateId(),Criterion.AVAILABILITY,null,question,normalized,true);</span>
+<span class="fc" id="L27">        var outcome=evaluated.outcome();limits.addAll(evaluated.limitations());</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">        if(ids.isEmpty())limits.add(&quot;NO_ADMISSIBLE_ASSERTION&quot;);</span>
+<span class="fc" id="L29">        var finding=new Finding(requirement.sourceCandidateId(),Criterion.RELATIONSHIPS,null,outcome,ids,kinds,limits,</span>
+<span class="pc bpc" id="L30" title="1 of 8 branches missed.">                outcome==Outcome.SUPPORTED?&quot;Review cited exact directed edge and planned/actual status&quot;:&quot;Obtain dated evidence for these exact endpoints, direction, kind and qualifier&quot;,evaluated.hardExclusion()&amp;&amp;(requirement.required()||requirement.kind()==RelationshipKind.HARD_EXCLUSION));</span>
+<span class="fc" id="L31">        return new RelationshipFinding(requirement.id(),requirement.sourceCandidateId(),requirement.targetCandidateId(),requirement.kind(),requirement.qualifier(),requirement.required(),finding);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

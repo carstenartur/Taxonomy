@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DatabaseSetupController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.setup</a> &gt; <span class="el_source">DatabaseSetupController.java</span></div><h1>DatabaseSetupController.java</h1><pre class="source lang-java linenums">package com.taxonomy.setup;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import tools.jackson.core.StreamReadConstraints;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.core.json.JsonFactory;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.MapperFeature;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.io.IOException;
+import java.util.Map;
+
+/** Shared security requires ADMIN on every route and CSRF protection for session-authenticated POSTs. */
+@RestController
+@Tag(name = &quot;Administration&quot;)
+@RequestMapping(&quot;/api/admin/database-setup&quot;)
+public class DatabaseSetupController {
+    static final int MAX_REQUEST_BYTES = 16 * 1024;
+<span class="fc" id="L34">    private static final JsonMapper INPUT = JsonMapper.builder(JsonFactory.builder()</span>
+<span class="fc" id="L35">                    .streamReadConstraints(StreamReadConstraints.builder().maxDocumentLength(MAX_REQUEST_BYTES)</span>
+<span class="fc" id="L36">                            .maxNestingDepth(3).maxStringLength(4096).maxNameLength(64).maxNumberLength(10).maxTokenCount(128).build())</span>
+<span class="fc" id="L37">                    .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)</span>
+<span class="fc" id="L38">                    .disable(StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION).build())</span>
+<span class="fc" id="L39">            .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, DeserializationFeature.FAIL_ON_TRAILING_TOKENS)</span>
+<span class="fc" id="L40">            .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)</span>
+<span class="fc" id="L41">            .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS).build();</span>
+    private final DatabaseSetupService service;
+
+<span class="fc" id="L44">    public DatabaseSetupController(DatabaseSetupService service) { this.service = service; }</span>
+
+    @GetMapping
+    @Operation(summary = &quot;Read database setup guidance status&quot;,
+            description = &quot;ADMIN only. Reports the current database type, whether it is in memory, whether the setup prompt &quot;
+                    + &quot;is still required and whether deployment is managed. Does not probe the database or expose credentials.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Current setup guidance state&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(implementation = DatabaseSetupService.State.class)))
+    @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Authentication required&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;403&quot;, description = &quot;Administrator role required&quot;, content = @Content)
+<span class="fc" id="L54">    public ResponseEntity&lt;DatabaseSetupService.State&gt; status() { return noStore(service.status()); }</span>
+
+    @PostMapping(&quot;/dismiss&quot;)
+    @Operation(summary = &quot;Dismiss the optional database setup prompt&quot;,
+            description = &quot;ADMIN only; session-authenticated requests require a CSRF token. Persists the installation's &quot;
+                    + &quot;dismissed prompt preference with the authenticated actor. Does not change database or deployment settings.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;The dismissed preference was saved&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;,
+                    requiredProperties = &quot;dismissed&quot;, additionalPropertiesSchema = Boolean.class)))
+    @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Authentication required&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;403&quot;, description = &quot;Administrator role and valid CSRF protection required&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;503&quot;, description = &quot;The preference could not be saved; code DATABASE_SETUP_UNAVAILABLE&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;,
+                    requiredProperties = {&quot;code&quot;, &quot;message&quot;}, additionalPropertiesSchema = String.class)))
+    public ResponseEntity&lt;Map&lt;String, Boolean&gt;&gt; dismiss(Authentication actor) throws IOException {
+<span class="fc" id="L69">        service.dismiss(actor.getName());</span>
+<span class="fc" id="L70">        return noStore(Map.of(&quot;dismissed&quot;, true));</span>
+    }
+
+    @PostMapping(value = &quot;/preview&quot;, consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = &quot;Prepare database deployment configuration&quot;,
+            description = &quot;ADMIN only; session-authenticated requests require a CSRF token. Builds password-free Spring and &quot;
+                    + &quot;Helm configuration for manual deployment and restart. Schema-generation conflicts block export. &quot;
+                    + &quot;Does not connect to the target, change the running datasource or transfer existing records.&quot;)
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+            description = &quot;Strict JSON up to 16 KiB. Select postgres, mssql or oracle with a plain host, port 1–65535, &quot;
+                    + &quot;database/service name and username. Password is optional and omitted from the preview. TLS defaults &quot;
+                    + &quot;to verified TLS; caCertificate is an optional mounted absolute PostgreSQL CA path.&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(
+                    implementation = DatabaseSetupService.ConnectionSettings.class)))
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Password-free configuration and deployment findings&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(implementation = DatabaseSetupService.Preview.class)))
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid connection settings or JSON; code DATABASE_SETUP_INVALID_REQUEST&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;,
+                    requiredProperties = {&quot;code&quot;, &quot;message&quot;}, additionalPropertiesSchema = String.class)))
+    @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Authentication required&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;403&quot;, description = &quot;Administrator role and valid CSRF protection required&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;409&quot;, description = &quot;Schema overrides block export; code DATABASE_SETUP_SCHEMA_CONFLICT&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;,
+                    requiredProperties = {&quot;code&quot;, &quot;message&quot;}, additionalPropertiesSchema = String.class)))
+    @ApiResponse(responseCode = &quot;413&quot;, description = &quot;Request exceeds 16 KiB; code DATABASE_SETUP_REQUEST_TOO_LARGE&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;,
+                    requiredProperties = {&quot;code&quot;, &quot;message&quot;}, additionalPropertiesSchema = String.class)))
+    @ApiResponse(responseCode = &quot;415&quot;, description = &quot;Content-Type must be application/json&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;503&quot;, description = &quot;The request could not be read; code DATABASE_SETUP_UNAVAILABLE&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;,
+                    requiredProperties = {&quot;code&quot;, &quot;message&quot;}, additionalPropertiesSchema = String.class)))
+    public ResponseEntity&lt;DatabaseSetupService.Preview&gt; preview(HttpServletRequest request) throws IOException {
+<span class="fc" id="L102">        return noStore(service.preview(read(request)));</span>
+    }
+
+    @PostMapping(value = &quot;/check&quot;, consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = &quot;Check an independent database connection&quot;,
+            description = &quot;ADMIN only; session-authenticated requests require a CSRF token. Uses the supplied credentials &quot;
+                    + &quot;for a bounded independent JDBC connection with a read-only hint. Connection failures and schema &quot;
+                    + &quot;overrides are returned as findings with HTTP 200. Does not test schema readiness, execute DDL, copy &quot;
+                    + &quot;records, persist the password or replace the running datasource.&quot;)
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+            description = &quot;Strict JSON up to 16 KiB. Select postgres, mssql or oracle with a plain host, port 1–65535, &quot;
+                    + &quot;database/service name and username. Password is optional and used only by this connection check. &quot;
+                    + &quot;TLS defaults to verified TLS; caCertificate is an optional mounted absolute PostgreSQL CA path.&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(
+                    implementation = DatabaseSetupService.ConnectionSettings.class)))
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Connection and deployment findings; target login failures remain findings&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(implementation = DatabaseSetupService.CheckResult.class)))
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid connection settings or JSON; code DATABASE_SETUP_INVALID_REQUEST&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;,
+                    requiredProperties = {&quot;code&quot;, &quot;message&quot;}, additionalPropertiesSchema = String.class)))
+    @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Authentication required&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;403&quot;, description = &quot;Administrator role and valid CSRF protection required&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;413&quot;, description = &quot;Request exceeds 16 KiB; code DATABASE_SETUP_REQUEST_TOO_LARGE&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;,
+                    requiredProperties = {&quot;code&quot;, &quot;message&quot;}, additionalPropertiesSchema = String.class)))
+    @ApiResponse(responseCode = &quot;415&quot;, description = &quot;Content-Type must be application/json&quot;, content = @Content)
+    @ApiResponse(responseCode = &quot;503&quot;, description = &quot;The request could not be read; code DATABASE_SETUP_UNAVAILABLE&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;, schema = @Schema(type = &quot;object&quot;,
+                    requiredProperties = {&quot;code&quot;, &quot;message&quot;}, additionalPropertiesSchema = String.class)))
+    public ResponseEntity&lt;DatabaseSetupService.CheckResult&gt; check(HttpServletRequest request) throws IOException {
+<span class="nc" id="L132">        return noStore(service.check(read(request)));</span>
+    }
+
+    private static DatabaseSetupService.ConnectionSettings read(HttpServletRequest request) throws IOException {
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (request.getContentLengthLong() &gt; MAX_REQUEST_BYTES) { throw new RequestTooLarge(); }</span>
+<span class="fc" id="L137">        byte[] bytes = request.getInputStream().readNBytes(MAX_REQUEST_BYTES + 1);</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">        if (bytes.length &gt; MAX_REQUEST_BYTES) { throw new RequestTooLarge(); }</span>
+        try {
+<span class="fc" id="L140">            var value = INPUT.readTree(bytes);</span>
+<span class="pc bpc" id="L141" title="1 of 4 branches missed.">            if (value == null || !value.isObject()) { throw new IllegalArgumentException(); }</span>
+<span class="fc" id="L142">            return INPUT.treeToValue(value, DatabaseSetupService.ConnectionSettings.class);</span>
+<span class="fc" id="L143">        } catch (RuntimeException invalid) {</span>
+            // Parser failures may include source values. Neither retain nor log their exceptions.
+<span class="fc" id="L145">            throw new IllegalArgumentException(&quot;Invalid database setup request.&quot;);</span>
+        }
+    }
+
+    @ExceptionHandler(DatabaseSetupService.SchemaConflictException.class)
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; schemaConflict() {
+<span class="fc" id="L151">        return error(409, &quot;DATABASE_SETUP_SCHEMA_CONFLICT&quot;, DatabaseSetupService.SCHEMA_CONFLICT_MESSAGE);</span>
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; invalid() {
+<span class="fc" id="L156">        return error(400, &quot;DATABASE_SETUP_INVALID_REQUEST&quot;, &quot;Use a supported database type and valid bounded connection settings.&quot;);</span>
+    }
+
+    @ExceptionHandler(RequestTooLarge.class)
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; tooLarge() {
+<span class="fc" id="L161">        return error(413, &quot;DATABASE_SETUP_REQUEST_TOO_LARGE&quot;, &quot;Database setup requests must not exceed 16 KiB.&quot;);</span>
+    }
+
+    @ExceptionHandler(IOException.class)
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; unavailable() {
+<span class="fc" id="L166">        return error(503, &quot;DATABASE_SETUP_UNAVAILABLE&quot;, &quot;The setup preference could not be saved or the request could not be read. Try again.&quot;);</span>
+    }
+
+    private static &lt;T&gt; ResponseEntity&lt;T&gt; noStore(T body) {
+<span class="fc" id="L170">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);</span>
+    }
+    private static ResponseEntity&lt;Map&lt;String, String&gt;&gt; error(int status, String code, String message) {
+<span class="fc" id="L173">        return ResponseEntity.status(status).cacheControl(CacheControl.noStore()).body(Map.of(&quot;code&quot;, code, &quot;message&quot;, message));</span>
+    }
+    private static final class RequestTooLarge extends RuntimeException { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

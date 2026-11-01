@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementIntakeCandidates.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">RequirementIntakeCandidates.java</span></div><h1>RequirementIntakeCandidates.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.model.WorkspaceOverlayScope;
+import com.taxonomy.portfolio.dto.RequirementIntakeDtos.*;
+import com.taxonomy.portfolio.model.ArchitectureProject;
+import com.taxonomy.portfolio.repository.*;
+import com.taxonomy.workspace.service.*;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.util.*;
+
+/** Bounded evidence capture. No projection materialization, workspace creation or model calls. */
+@Service
+public class RequirementIntakeCandidates {
+    static final int MAXIMUM_DOCUMENT_CHARACTERS = 4_000_000;
+    private static final int MAXIMUM_CANDIDATES = 32;
+    private static final int MAXIMUM_EVIDENCE_CHARACTERS = 200_000;
+    private final ArchitectureProjectRepository projects;
+    private final ProjectRequirementRepository requirements;
+    private final ProjectPortfolioService portfolio;
+    private final WorkspaceSourceDiscoveryService sources;
+    private final WorkspacePortfolioDocumentPort documents;
+    private final ObjectProvider&lt;RequirementIntakePolicy&gt; policies;
+
+    public RequirementIntakeCandidates(ArchitectureProjectRepository projects, ProjectRequirementRepository requirements,
+            ProjectPortfolioService portfolio, WorkspaceSourceDiscoveryService sources, WorkspacePortfolioDocumentPort documents,
+<span class="fc" id="L30">            ObjectProvider&lt;RequirementIntakePolicy&gt; policies) {</span>
+<span class="fc" id="L31">        this.projects = projects; this.requirements = requirements; this.portfolio = portfolio;</span>
+<span class="fc" id="L32">        this.sources = sources;</span>
+<span class="fc" id="L33">        this.documents = documents; this.policies = policies;</span>
+<span class="fc" id="L34">    }</span>
+
+<span class="fc" id="L36">    public record Repository(String id, String branch, String title, String description,</span>
+                             boolean observed, String sourceCommit) {
+        public Repository(String id, String branch, String title, String description) {
+<span class="fc" id="L39">            this(id, branch, title, description, false, null);</span>
+<span class="fc" id="L40">        }</span>
+<span class="fc" id="L41">        private Repository observedAt(String commit) { return new Repository(id, branch, title, description, true, commit); }</span>
+    }
+    public record Frozen(Scope scope, Long projectId, List&lt;Candidate&gt; candidates, List&lt;Repository&gt; repositories,
+                         Coverage coverage, boolean providerAllowed) {
+<span class="fc" id="L45">        public Frozen { candidates = List.copyOf(candidates); repositories = List.copyOf(repositories); }</span>
+    }
+
+    @Transactional(readOnly = true)
+    public Frozen freeze(Long projectId, String username, WorkspaceContext context) {
+<span class="fc" id="L50">        authorize(username, context);</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        var selected = projectId == null ? null : portfolio.requireProject(projectId, username, context);</span>
+<span class="pc bpc" id="L52" title="2 of 4 branches missed.">        boolean allowed = selected == null || allowed(projectId, username, context);</span>
+<span class="fc" id="L53">        var budget = new Budget();</span>
+<span class="fc" id="L54">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L55">        Map&lt;Long, ArchitectureProject&gt; projectMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">        if (selected != null) projectMap.put(projectId, selected);</span>
+        else {
+<span class="nc" id="L58">            var page = projects.findByScopeKeyOrderByUpdatedAtDesc(scopeKey, PageRequest.of(0, MAXIMUM_CANDIDATES));</span>
+<span class="nc" id="L59">            budget.partial |= page.hasNext();</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">            for (var project : page) {</span>
+<span class="nc bnc" id="L61" title="All 2 branches missed.">                if (!allowed(project.getId(), username, context)) { budget.partial = true; continue; }</span>
+<span class="nc" id="L62">                projectMap.put(project.getId(), project);</span>
+<span class="nc" id="L63">            }</span>
+        }
+<span class="fc" id="L65">        var rows = requirements.findIntakeRows(scopeKey, projectId, PageRequest.of(0, MAXIMUM_CANDIDATES));</span>
+<span class="fc" id="L66">        budget.partial |= rows.hasNext();</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        for (var row : rows) {</span>
+<span class="fc" id="L68">            var project = projectMap.get(row.projectId());</span>
+<span class="pc bpc" id="L69" title="3 of 6 branches missed.">            if (project == null || row.versionId() == null || row.text() == null) { budget.partial = true; continue; }</span>
+<span class="fc" id="L70">            budget.add(new Candidate(&quot;requirement:&quot; + row.id(), &quot;REQUIREMENT&quot;, context.repositoryId(), context.workspaceId(),</span>
+<span class="fc" id="L71">                    context.currentBranch(), row.projectId(), project.getProjectKey(), row.id(), row.versionId(), row.requirementKey(),</span>
+<span class="fc" id="L72">                    row.title(), row.text(), row.contentHash(), null, null, List.of(), List.of(&quot;NEW&quot;, &quot;CHANGE&quot;, &quot;LINK&quot;, &quot;VIEW&quot;)));</span>
+<span class="fc" id="L73">        }</span>
+<span class="fc" id="L74">        List&lt;Repository&gt; sourceRepositories = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        if (projectId == null) {</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">            for (var project : projectMap.values()) budget.add(new Candidate(&quot;project:&quot; + project.getId(), &quot;PROJECT&quot;,</span>
+<span class="nc" id="L77">                    context.repositoryId(), context.workspaceId(), context.currentBranch(), project.getId(), project.getProjectKey(),</span>
+<span class="nc" id="L78">                    null, null, null, project.getTitle(), join(project.getTitle(), project.getDescription(), project.getTargetArchitecture()),</span>
+<span class="nc" id="L79">                    null, null, null, List.of(), List.of(&quot;NEW&quot;, &quot;VIEW&quot;)));</span>
+<span class="nc" id="L80">            var discovery = sources.readableSources(username);</span>
+<span class="nc" id="L81">            budget.partial |= discovery.truncated();</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">            for (var source : discovery.sources())</span>
+<span class="nc" id="L83">                sourceRepositories.add(new Repository(source.repositoryId(), source.branch(), source.title(), source.description()));</span>
+        }
+<span class="fc" id="L85">        return new Frozen(new Scope(context.repositoryId(), context.workspaceId(), WorkspaceOverlayScope.keyFor(context.workspaceId()),</span>
+<span class="fc" id="L86">                context.currentBranch()), projectId, budget.candidates, sourceRepositories, budget.coverage(), allowed);</span>
+    }
+
+    /** Canonical central documents are immutable observations, never another workspace's projections. */
+    public Frozen discover(Frozen frozen, String username) {
+<span class="fc" id="L91">        var budget = new Budget(frozen);</span>
+<span class="fc" id="L92">        List&lt;Repository&gt; observations = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        for (var source : frozen.repositories()) {</span>
+            // A second authorization precedes repository content access, after the initial DB snapshot.
+<span class="fc bfc" id="L95" title="All 2 branches covered.">            if (!canRead(source.id(), username)) throw PortfolioException.notFound(&quot;Architecture is unavailable&quot;);</span>
+<span class="fc" id="L96">            Repository observed = source;</span>
+            try {
+<span class="fc" id="L98">                var repository = documents.resolveRepository(new WorkspaceContext(username, null, source.branch(), source.id()));</span>
+<span class="fc" id="L99">                String head = repository.getHeadCommit(source.branch());</span>
+<span class="fc" id="L100">                observed = source.observedAt(head);</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">                String dsl = head == null ? null : repository.getDslAtCommit(head);</span>
+<span class="pc bpc" id="L102" title="1 of 4 branches missed.">                if (head != null &amp;&amp; dsl == null) budget.partial = true;</span>
+<span class="pc bpc" id="L103" title="1 of 4 branches missed.">                if (dsl == null || dsl.isBlank()) continue;</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                if (dsl.length() &gt; MAXIMUM_DOCUMENT_CHARACTERS) { budget.partial = true; continue; }</span>
+<span class="fc" id="L105">                var document = new TaxDslParser().parse(dsl, &quot;intake-central.taxdsl&quot;);</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">                for (var block : document.blocksOfKind(&quot;requirement&quot;)) {</span>
+<span class="fc" id="L107">                    String text = block.property(&quot;text&quot;);</span>
+<span class="pc bpc" id="L108" title="3 of 6 branches missed.">                    if (text == null || text.isBlank() || block.getHeaderTokens().isEmpty()) continue;</span>
+<span class="fc" id="L109">                    String identity = block.getHeaderTokens().getFirst();</span>
+<span class="fc" id="L110">                    budget.add(new Candidate(&quot;architecture-requirement:&quot; + source.id() + &quot;:&quot; + identity,</span>
+<span class="fc" id="L111">                            &quot;ARCHITECTURE_REQUIREMENT&quot;, source.id(), null, source.branch(), null, block.property(&quot;x-project-key&quot;),</span>
+<span class="fc" id="L112">                            null, null, Objects.toString(block.property(&quot;x-requirement-key&quot;), identity),</span>
+<span class="fc" id="L113">                            Objects.toString(block.property(&quot;title&quot;), identity), text, RequirementIntakeService.inputHash(text),</span>
+<span class="fc" id="L114">                            null, null, List.of(), List.of(&quot;VIEW&quot;, &quot;NEW&quot;), head, block.property(&quot;x-version&quot;)));</span>
+<span class="fc" id="L115">                }</span>
+<span class="nc" id="L116">            } catch (java.io.IOException | IllegalArgumentException unavailable) { budget.partial = true; }</span>
+            finally {
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">                if (!canRead(source.id(), username)) throw PortfolioException.notFound(&quot;Architecture is unavailable&quot;);</span>
+<span class="fc" id="L119">                observations.add(observed);</span>
+<span class="fc" id="L120">                budget.add(new Candidate(&quot;architecture:&quot; + source.id(), &quot;ARCHITECTURE&quot;, source.id(), null, source.branch(),</span>
+<span class="fc" id="L121">                        null, null, null, null, null, source.title(), join(source.title(), source.description()),</span>
+<span class="fc" id="L122">                        null, null, null, List.of(), List.of(&quot;VIEW&quot;, &quot;NEW&quot;), observed.sourceCommit(), null));</span>
+            }
+<span class="fc" id="L124">        }</span>
+<span class="fc" id="L125">        return new Frozen(frozen.scope(), frozen.projectId(), budget.candidates, observations, budget.coverage(), frozen.providerAllowed());</span>
+    }
+
+    /** Mutable branch heads are checked outside DB transactions; response links retain their immutable commit. */
+    public void recheckSources(Frozen frozen, String username) {
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        for (var source : frozen.repositories()) {</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">            if (!canRead(source.id(), username)) throw PortfolioException.notFound(&quot;Architecture is unavailable&quot;);</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">            if (!source.observed()) continue; // Discovery failed, so coverage is already explicitly incomplete.</span>
+            try {
+<span class="fc" id="L134">                var repository = documents.resolveRepository(new WorkspaceContext(username, null, source.branch(), source.id()));</span>
+<span class="fc" id="L135">                String current = repository.getHeadCommit(source.branch());</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">                if (!Objects.equals(source.sourceCommit(), current))</span>
+<span class="fc" id="L137">                    throw new PortfolioException(PortfolioException.Kind.CONFLICT, &quot;INTAKE_SOURCE_CHANGED&quot;,</span>
+                            &quot;An architecture changed during intake review; review again&quot;, null);
+<span class="fc" id="L139">            } catch (java.io.IOException | IllegalArgumentException unavailable) {</span>
+<span class="fc" id="L140">                throw new PortfolioException(PortfolioException.Kind.UNAVAILABLE, &quot;INTAKE_SOURCE_UNAVAILABLE&quot;,</span>
+                        &quot;An architecture source could not be checked; review again&quot;, unavailable);
+            } finally {
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                if (!canRead(source.id(), username)) throw PortfolioException.notFound(&quot;Architecture is unavailable&quot;);</span>
+            }
+<span class="fc" id="L145">        }</span>
+<span class="fc" id="L146">    }</span>
+
+    @Transactional(readOnly = true)
+    public void recheck(Frozen frozen, String username, WorkspaceContext context) {
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        if (!Objects.equals(frozen.scope().repositoryId(), context.repositoryId())</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">                || !Objects.equals(frozen.scope().workspaceId(), context.workspaceId())</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">                || !Objects.equals(frozen.scope().branch(), context.currentBranch()))</span>
+<span class="nc" id="L153">            throw PortfolioException.conflict(&quot;The review context changed&quot;);</span>
+<span class="fc" id="L154">        authorize(username, context);</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        if (frozen.projectId() != null) portfolio.requireProject(frozen.projectId(), username, context);</span>
+<span class="pc bpc" id="L156" title="1 of 4 branches missed.">        for (var repository : frozen.repositories()) if (!canRead(repository.id(), username))</span>
+<span class="nc" id="L157">            throw PortfolioException.notFound(&quot;Architecture is unavailable&quot;);</span>
+<span class="fc bfc" id="L158" title="All 4 branches covered.">        for (var candidate : frozen.candidates()) if (candidate.requirementId() != null) {</span>
+<span class="fc" id="L159">            var row = requirements.findReadRowByIdAndProjectIdAndScopeKey(candidate.requirementId(), candidate.projectId(),</span>
+<span class="pc" id="L160">                    PortfolioScope.key(username, context)).orElseThrow(() -&gt; PortfolioException.notFound(&quot;Requirement is unavailable&quot;));</span>
+<span class="pc bpc" id="L161" title="2 of 4 branches missed.">            if (!Objects.equals(row.versionId(), candidate.requirementVersionId()) || !Objects.equals(row.contentHash(), candidate.contentHash()))</span>
+<span class="nc" id="L162">                throw PortfolioException.conflict(&quot;Requirement changed during intake review; review again&quot;);</span>
+        }
+<span class="fc" id="L164">    }</span>
+
+    private boolean allowed(Long projectId, String username, WorkspaceContext context) {
+<span class="pc" id="L167">        return policies.orderedStream().allMatch(policy -&gt; policy.allowsProviderReview(projectId, username, context));</span>
+    }
+    private void authorize(String username, WorkspaceContext context) {
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        if (!sources.canReadContext(username, context)) throw PortfolioException.notFound(&quot;Review context is unavailable&quot;);</span>
+<span class="fc" id="L171">    }</span>
+    private boolean canRead(String repositoryId, String username) {
+<span class="fc" id="L173">        return sources.canReadRepository(repositoryId, username);</span>
+    }
+    private static String join(String... values) {
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">        return Arrays.stream(values).filter(Objects::nonNull).filter(value -&gt; !value.isBlank()).reduce((left, right) -&gt; left + &quot;\n&quot; + right).orElse(&quot;&quot;);</span>
+    }
+    private static final class Budget {
+<span class="fc" id="L179">        private final List&lt;Candidate&gt; candidates = new ArrayList&lt;&gt;();</span>
+        private int characters;
+        private int scanned;
+        private boolean partial;
+<span class="fc" id="L183">        private Budget() { }</span>
+<span class="fc" id="L184">        private Budget(Frozen frozen) {</span>
+<span class="fc" id="L185">            candidates.addAll(frozen.candidates()); scanned = frozen.coverage().scanned(); partial = frozen.coverage().truncated();</span>
+<span class="fc" id="L186">            characters = candidates.stream().mapToInt(candidate -&gt; candidate.text().length()).sum();</span>
+<span class="fc" id="L187">        }</span>
+        private void add(Candidate candidate) {
+<span class="fc" id="L189">            scanned++;</span>
+<span class="pc bpc" id="L190" title="2 of 4 branches missed.">            if (candidates.size() &gt;= MAXIMUM_CANDIDATES || characters + candidate.text().length() &gt; MAXIMUM_EVIDENCE_CHARACTERS) {</span>
+<span class="nc" id="L191">                partial = true; return;</span>
+            }
+<span class="fc" id="L193">            candidates.add(candidate); characters += candidate.text().length();</span>
+<span class="fc" id="L194">        }</span>
+<span class="fc" id="L195">        private Coverage coverage() { return new Coverage(scanned, candidates.size(), partial); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
