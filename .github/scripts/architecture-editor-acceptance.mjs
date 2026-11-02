@@ -175,7 +175,11 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
   // A checkpoint made before adoption has no adopted view. Its history link must open a usable full model.
   const beforeCommit = preview.preview.context.commit;
   assert.ok(beforeCommit);
-  await page.locator('#editorVersions a').filter({hasText:beforeCommit.substring(0,12)}).click();
+  // The old document is already idle; wait for the selected checkpoint navigation first.
+  await Promise.all([
+    page.waitForURL(url => url.searchParams.get('commit') === beforeCommit),
+    page.locator('#editorVersions a').filter({hasText:beforeCommit.substring(0,12)}).click()
+  ]);
   await page.waitForFunction(()=>document.getElementById('architectureEditor')?.getAttribute('aria-busy')==='false');
   assert.equal(new URL(page.url()).searchParams.has('viewId'),false);
   assert.equal(await page.locator('#editorError').isVisible(),false);
