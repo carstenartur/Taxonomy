@@ -15,9 +15,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TaxonomyResponsiveNavigationContractTest {
 
     @Test
-    void narrowViewportsUseAnExplicitSectionSelectorAndReachableTask() throws Exception {
+    void narrowViewportsKeepTheSharedNavigationAndReachableTask() throws Exception {
         String utils = resource("/static/js/shared/taxonomy-utils.js");
         String css = resource("/static/css/taxonomy-ergonomics.css");
+        String chrome = resource("/static/css/application-chrome.css");
         String template = resource("/templates/index.html");
 
         assertThat(template)
@@ -35,24 +36,29 @@ class TaxonomyResponsiveNavigationContractTest {
                 .contains("new MutationObserver(syncResponsiveMainNavigation)");
 
         String navigation = between(css,
-                "/* Discoverable responsive primary navigation. */",
+                "/* The common links remain the primary navigation at every viewport width.",
                 "/* A view switch must never move the view selector.");
         assertThat(ruleBody(navigation, "\\.mobile-main-navigation"))
                 .as("the compact navigation does not duplicate desktop navigation")
                 .containsPattern("display:\\s*none\\s*;");
         String narrow = ruleBody(navigation, "@media\\s*\\(max-width:\\s*991\\.98px\\)");
-        assertThat(ruleBody(narrow, "#mainNavTabs"))
-                .containsPattern("display:\\s*none\\s*!important\\s*;");
         assertThat(ruleBody(narrow, "\\.mobile-main-navigation"))
-                .as("section selection and the task jump share a row at every narrow viewport height")
-                .containsPattern("display:\\s*grid\\s*;")
-                .containsPattern("grid-template-columns:\\s*minmax\\(0,\\s*1fr\\)\\s+auto\\s*;");
-        assertThat(ruleBody(narrow,
-                "\\.mobile-main-navigation-select\\s*,\\s*\\.mobile-current-task-button"))
+                .as("the legacy selector must not duplicate the shared primary links on narrow screens")
+                .containsPattern("display:\\s*none\\s*;");
+        assertThat(narrow).doesNotContainPattern("#mainNavTabs\\s*\\{[^}]*display:\\s*none");
+        assertThat(ruleBody(chrome, "\\.taxonomy-app-primary #mainNavTabs"))
+                .containsPattern("display:\\s*flex\\s*;")
+                .containsPattern("flex-wrap:\\s*wrap\\s*;");
+        assertThat(ruleBody(chrome, "\\.taxonomy-app-primary a, \\.taxonomy-app-languages a"))
+                .as("every actual primary link retains its keyboard and touch target")
+                .containsPattern("min-width:\\s*44px\\s*;")
                 .containsPattern("min-height:\\s*44px\\s*;");
-        assertThat(css)
-                .contains("#applicationNavigation .mobile-main-navigation-label, #applicationNavigation #mobileCurrentTaskBtn { display: none; }")
-                .contains("#applicationNavigation .mobile-main-navigation-select { min-height: 44px;");
+        String shell = css.substring(css.indexOf("/* One compact application shell;"));
+        String compact = ruleBody(shell, "@media\\s*\\(max-width:\\s*575\\.98px\\)");
+        assertThat(ruleBody(compact, "#applicationNavigation #mainNavTabs"))
+                .as("the compact primary row preserves the task budget and reveals overflow through native scrolling")
+                .containsPattern("flex-wrap:\\s*nowrap\\s*;")
+                .containsPattern("overflow-x:\\s*auto\\s*;");
 
         String zoom = ruleBody(css, "@media\\s*\\(max-width:\\s*640px\\)");
         assertThat(ruleBody(zoom, "\\.navbar-brand"))
@@ -69,7 +75,7 @@ class TaxonomyResponsiveNavigationContractTest {
     }
 
     @Test
-    void browserVerificationMeasuresBeforeScrollAndUsesTheResponsiveControl() throws Exception {
+    void browserVerificationMeasuresBeforeScrollAndExercisesSharedNavigation() throws Exception {
         String fixtures = repositoryFile(".github/scripts/ui-role-fixtures.mjs");
         String roleFlow = repositoryFile(".github/scripts/ui-role-state-flow.mjs");
         String mainNavigationHelper = between(
@@ -98,12 +104,16 @@ class TaxonomyResponsiveNavigationContractTest {
 
         assertThat(roleFlow)
                 .contains("await navigateToPage(page, 'analyze')")
-                .contains("responsiveNavigationInsideViewport")
+                .contains("navigationInsideViewport")
                 .contains("taskReachable")
                 .contains("taskSurface.progressTop <= taskSurface.viewportHeight")
                 .contains("Neither task progression nor the primary action is initially reachable")
-                .contains("Responsive section navigation is not discoverable before any automatic scroll")
-                .contains("responsive navigation remains structurally available after task interactions")
+                .contains("Shared primary navigation is not discoverable before any automatic scroll")
+                .contains("shared navigation retains every destination and keyboard access after task interactions")
+                .contains("['projects', 'analysis', 'architecture', 'graph', 'versions', 'dsl-editor']")
+                .contains("await page.keyboard.press('ArrowRight')")
+                .contains("bounds.height >= 44")
+                .contains("document.activeElement === element")
                 .doesNotContain("single-row scrollable main navigation");
 
         assertThat(fixtures)

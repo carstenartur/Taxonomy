@@ -113,7 +113,9 @@ class SharedApplicationChromeBrowserIT {
         assertThat(navigation.getFirst().getAccessibleName()).isNotBlank();
         var links = page.driver().findElements(By.cssSelector(".taxonomy-app-primary [data-app-route]"));
         assertThat(links).extracting(link -> link.getDomAttribute("data-app-route"))
-                .containsExactly("projects", "analysis", "architecture");
+                .containsExactly("projects", "analysis", "architecture", "graph", "versions", "dsl-editor");
+        assertThat(page.driver().findElements(By.cssSelector("[data-app-route='architecture']")))
+                .as("Architecture has one primary destination in every application view").hasSize(1);
         assertThat(page.driver().findElement(By.cssSelector("[data-app-route='" + view.active() + "']"))
                 .getDomAttribute("aria-current")).isEqualTo("page");
         for (var link : links) {
@@ -125,15 +127,33 @@ class SharedApplicationChromeBrowserIT {
                             "branch=review%2Fcurrent", "sourceSnapshotId=frozen-7", "sourceRepositoryId=architecture-source",
                             "sourceBranch=review%2Fsource", "lang=" + locale);
         }
-        assertThat(links.get(2).getDomAttribute("href")).startsWith("/taxonomy/architecture/editor?");
+        assertThat(links.get(2).getDomAttribute("href")).startsWith("/taxonomy/?").endsWith("#architecture");
         assertThat(page.driver().findElements(By.id(view.retainedControl()))).hasSize(1);
-        assertThat(page.driver().executeScript("""
-                const nav=document.getElementById('applicationNavigation'), r=nav.getBoundingClientRect();
-                return [...nav.querySelectorAll('.taxonomy-app-primary a')].every(a => {
-                    const b=a.getBoundingClientRect();
-                    return b.width>=44 && b.height>=44 && b.left>=0 && b.right<=innerWidth+1;
-                }) && r.right<=innerWidth+1;
-                """)).as("Navigation stays usable without horizontal clipping").isEqualTo(true);
+        var navigationGeometry = (Map<?, ?>) page.driver().executeAsyncScript("""
+                const done=arguments[arguments.length-1];
+                (async()=>{
+                    const nav=document.getElementById('applicationNavigation');
+                    for (const link of nav.querySelectorAll('.taxonomy-app-primary a')) {
+                        // The shared mobile row may scroll, but browser focus must reveal every destination.
+                        link.focus();
+                        const deadline=performance.now()+1500;
+                        let bounds;
+                        do {
+                            await new Promise(resolve=>requestAnimationFrame(resolve));
+                            bounds=link.getBoundingClientRect();
+                        } while ((bounds.left<0 || bounds.right>innerWidth+1) && performance.now()<deadline);
+                        if (document.activeElement!==link || bounds.width<44 || bounds.height<44
+                                || bounds.left<0 || bounds.right>innerWidth+1) return {valid:false,
+                            route:link.dataset.appRoute,focused:document.activeElement===link,
+                            left:bounds.left,right:bounds.right,width:bounds.width,height:bounds.height,viewport:innerWidth};
+                    }
+                    const right=nav.getBoundingClientRect().right,scrollWidth=document.documentElement.scrollWidth;
+                    return {valid:right<=innerWidth+1 && scrollWidth<=innerWidth+1,right,scrollWidth,viewport:innerWidth};
+                })().then(done);
+                """);
+        assertThat(navigationGeometry.get("valid"))
+                .as("Every focused navigation destination remains fully visible with a 44px target and no page overflow: %s", navigationGeometry)
+                .isEqualTo(true);
         if (view.template().equals("index")) {
             assertThat(page.driver().findElement(By.id("projectMenuButton")).isDisplayed()).isTrue();
             assertThat(page.driver().findElements(By.id("mainNavTabs"))).hasSize(1);
@@ -255,19 +275,26 @@ class SharedApplicationChromeBrowserIT {
             Files.writeString(evidence.resolve("page.html"), page.driver().getPageSource());
         }
         assertThat(geometry.get("valid")).as("The loaded German analysis preserves the existing CI useful-input and primary-action viewport gates: %s", geometry).isEqualTo(true);
+        assertThat(page.driver().executeScript("""
+                const source=TaxonomyAppChrome.getContext().architecture;
+                return source.repositoryId===arguments[0] && source.branch==='draft'
+                    && [source.modelStand,source.commit,source.revision].every(value=>value==null);
+                """, COMPACT_REPOSITORY))
+                .as("Analysis metadata identifies its repository and branch without claiming the working model's stand").isEqualTo(true);
         var context = page.driver().findElement(By.id("applicationContextDisclosure"));
         if (width == 390) {
             assertThat(context.getDomProperty("open")).isEqualTo("false");
             var summary = page.driver().findElement(By.id("applicationContextSummary"));
-            assertThat(summary.getText()).contains("Shared Architecture Repository", "draft", COMPACT_COMMIT.substring(0, 12));
+            assertThat(summary.getText()).contains("Shared Architecture Repository", "draft").doesNotContain(COMPACT_COMMIT.substring(0, 12));
             assertThat(summary.findElement(By.cssSelector(".taxonomy-status[data-state='READ_ONLY']")).isDisplayed()).isTrue();
             summary.sendKeys(Keys.ENTER);
             assertThat(context.getDomProperty("open")).isEqualTo("true");
             assertThat(page.driver().findElement(By.id("applicationCurrentContext")).isDisplayed()).isTrue();
-            assertThat(page.driver().findElement(By.id("architectureLifecycle")).isDisplayed()).isTrue();
+            assertThat(page.driver().findElement(By.id("architectureLifecycle")).isDisplayed())
+                    .as("Working-model lifecycle controls belong to the Working architecture source").isFalse();
             var technical = page.driver().findElement(By.id("applicationTechnicalContext"));
             technical.findElement(By.tagName("summary")).sendKeys(Keys.ENTER);
-            assertThat(technical.getText()).contains(COMPACT_REPOSITORY, COMPACT_COMMIT);
+            assertThat(technical.getText()).contains(COMPACT_REPOSITORY).doesNotContain(COMPACT_COMMIT);
             summary.sendKeys(Keys.ENTER);
             assertThat(context.getDomProperty("open")).isEqualTo("false");
             assertThat(page.driver().switchTo().activeElement()).isEqualTo(summary);
@@ -293,9 +320,31 @@ class SharedApplicationChromeBrowserIT {
                         Map.entry("version", 2), Map.entry("versionId", 22), Map.entry("contentHash", "fixture-hash"),
                         Map.entry("text", "Authored fixture requirement"), Map.entry("realization", Map.of("state", "INVALID_EVIDENCE")),
                         Map.entry("contributors", List.of()), Map.entry("links", List.of()))))));
+        if (status == 404) {
+            // A failed working stand belongs to the explicit working source;
+            // Analysis must never inherit this commit as its evidence identity.
+            var workingContext = Map.of("repositoryId", "architecture-a", "workspaceScopeKey", "private-a",
+                    "branch", "review/current", "commit", COMPACT_COMMIT, "revision", 4,
+                    "actor", "acceptance", "writeMode", "READ_ONLY");
+            page.route("GET", "/taxonomy/api/architecture/editor", request -> json(200, Map.of(
+                    "document", Map.of("context", workingContext, "source", "GIT_CHECKPOINT", "projectionState", "READY",
+                            "dsl", "", "history", List.of(), "versions", List.of()), "mayEdit", false,
+                    "model", Map.of("elements", List.of(), "relations", List.of(), "evidence", List.of(),
+                            "packages", List.of(), "views", List.of(), "requirements", List.of()),
+                    "scene", Map.of("nodes", List.of(), "edges", List.of(), "width", 1000, "height", 420),
+                    "searchIndex", List.of(), "schema", Map.of("elementTypes", List.of("capability"), "relationTypes", List.of("SUPPORTS"),
+                            "relationStatuses", List.of("proposed"), "layoutStrategy", "stable", "layoutRevision", 0))));
+            assertThat(page.driver().executeAsyncScript("""
+                    const done=arguments[arguments.length-1];
+                    TaxonomyArchitectureWorkspace.open('working',{source:{repositoryId:'architecture-a',
+                        workspaceScopeKey:'private-a',branch:'review/current'}}).then(done);
+                    """)).isEqualTo(true);
+            assertThat(page.driver().findElement(By.id("editorError")).isDisplayed()).isFalse();
+        }
         page.driver().executeAsyncScript("""
                 const done=arguments[arguments.length-1];
-                TaxonomyAppChrome.updateContext({requirement:{id:7,key:'REQ-7',title:'Access requirement',version:2}});
+                TaxonomyAppChrome.updateContext({requirement:{id:7,key:'REQ-7',title:'Access requirement',version:2}},
+                    window.TaxonomyArchitectureWorkspace?.isActive()?'working':undefined);
                 TaxonomyArchitectureLifecycle.refresh().then(done);
                 """);
         var context = page.driver().findElement(By.id("applicationContextDisclosure"));

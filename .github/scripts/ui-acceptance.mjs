@@ -1,4 +1,5 @@
 import { chromium, firefox } from '@playwright/test';
+import { deepStrictEqual } from 'node:assert/strict';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -39,6 +40,7 @@ const externalRequests = [];
 const consoleErrors = [];
 const httpFailures = observeHttpFailures(page);
 const checks = [];
+let architectureLens = null;
 
 function passed(name) { checks.push(name); }
 
@@ -104,6 +106,12 @@ async function auditApplication() {
 
   assert(await page.locator('#mainNavTabs').getAttribute('role') === 'tablist',
     'Main navigation lacks tablist semantics');
+  assert(JSON.stringify(await page.locator('.taxonomy-app-primary [data-app-route]')
+    .evaluateAll(links => links.map(link => link.dataset.appRoute)))
+      === JSON.stringify(['projects', 'analysis', 'architecture', 'graph', 'versions', 'dsl-editor']),
+    'The application must expose the six retained primary destinations exactly once');
+  assert(await page.locator('[data-app-route="architecture"]').count() === 1,
+    'Architecture has more than one primary application destination');
   const responsiveSelect = page.locator('#mobileMainNavigationSelect');
   if (await responsiveSelect.isVisible().catch(() => false)) {
     await responsiveSelect.focus();
@@ -124,6 +132,8 @@ async function auditApplication() {
     const analyzeTab = page.locator('#mainNavTabs [data-page="analyze"]');
     await analyzeTab.focus();
     await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => document.querySelector(
+      '#mainNavTabs [data-page="architecture"]')?.getAttribute('aria-selected') === 'true');
     assert(await page.locator('#mainNavTabs [data-page="architecture"]').getAttribute('aria-selected') === 'true',
       'Arrow-key navigation did not activate Architecture');
     await analyzeTab.click();
@@ -171,6 +181,27 @@ async function auditApplication() {
     assert(await page.locator('[role="treeitem"][aria-label*="Relevance"]').count() > 0,
       'Dynamic scores were not synchronized to accessible tree-item names');
 
+    const retainedText = await page.locator('#businessText').inputValue();
+    const documentIdentity = await page.evaluate(() => {
+      window.__unifiedArchitectureAcceptanceDocument = crypto.randomUUID();
+      return window.__unifiedArchitectureAcceptanceDocument;
+    });
+    await page.locator('#analysisLensAction').focus();
+    await page.keyboard.press('Enter');
+    await page.locator('#tab-architecture').waitFor({ state: 'visible' });
+    await page.locator('#architectureSourceLensTitle').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => window.TaxonomyArchitectureWorkspace?.getSource().kind === 'analysis'
+      && document.activeElement?.id === 'architectureSourceLensTitle');
+    assert(await page.evaluate(() => window.__unifiedArchitectureAcceptanceDocument) === documentIdentity,
+      'Opening the analysis lens replaced the application document');
+    assert(await page.locator('#businessText').inputValue() === retainedText,
+      'Opening the analysis lens changed the retained requirement input');
+    assert(await page.locator('#architectureWorkingSource').isHidden(),
+      'The analysis lens revealed the working editor instead of the analysis source');
+    assert(new URL(page.url()).searchParams.get('architectureSource') === 'analysis',
+      'The analysis lens did not publish its source identity in the URL');
+    passed('analysis lens opens in place with retained input and keyboard focus');
+
     await navigateTo('architecture');
     const impactMap = page.locator('.impact-map-workbench');
     await impactMap.waitFor({ state: 'visible', timeout: 30_000 });
@@ -189,6 +220,37 @@ async function auditApplication() {
     await firstImpactNode.click();
     assert(!(await impactMap.locator('.impact-map-details').getAttribute('class')).includes('is-empty'),
       'Selecting an impact-map element did not expose its details');
+    const evidenceBeforeInspection = await page.evaluate(() => JSON.stringify(window.TaxonomyState.currentArchView));
+    await page.locator('#architectureSourceLensUseAi').uncheck();
+    await page.locator('#architectureSourceLensEnabled').check();
+    const investigationResponse = page.waitForResponse(response =>
+      new URL(response.url()).pathname.endsWith('/api/architecture/focus/suggestions')
+        && response.request().method() === 'POST');
+    await page.locator('#architectureSourceLensInspect').click();
+    const investigationHttp = await investigationResponse;
+    const request = investigationHttp.request().postDataJSON();
+    architectureLens = { source: request.source, sourceId: request.sourceId,
+      useAi: request.useAi, status: investigationHttp.status() };
+    assert(investigationHttp.status() === 200,
+      `Local retained-source investigation failed: ${investigationHttp.status()} ${await investigationHttp.text()}`);
+    const investigation = await investigationHttp.json();
+    assert(request.useAi === false && investigation.modelCalls === 0,
+      'The deterministic source investigation used a provider call');
+    assert(request.source.kind === 'ANALYSIS_DRAFT' && request.sourceId === impactCode,
+      'The lens investigated a different source or selection');
+    deepStrictEqual(investigation.source, request.source,
+      'The source investigation changed its exact retained-source coordinates');
+    assert(/^[0-9a-f]{64}$/i.test(investigation.sourceHash || ''),
+      'The source investigation did not retain its source hash');
+    assert(await page.evaluate(() => JSON.stringify(window.TaxonomyState.currentArchView)) === evidenceBeforeInspection,
+      'Inspecting the retained analysis mutated its displayed evidence');
+    architectureLens = { source: investigation.source, sourceId: investigation.sourceId,
+      sourceHash: investigation.sourceHash, method: investigation.method,
+      outcome: investigation.outcome, modelCalls: investigation.modelCalls };
+    await page.locator('#architectureSourceLensEnabled').uncheck();
+    await page.locator('#architectureSourceLensTitle').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: screenshotPath.replace(/\.png$/, '-architecture-lens.png'), fullPage: false });
+    passed('local source lens investigates the selected retained draft without provider calls or evidence changes');
     const impactSearch = impactMap.locator('.impact-map-search');
     await impactSearch.fill(impactCode);
     await impactSearch.press('Enter');
@@ -263,7 +325,7 @@ try {
   await writeFile(reportPath, JSON.stringify({
     profile, browser: browserName, mode, viewport, javaScriptEnabled,
     contextPath: new URL(baseUrl).pathname.replace(/\/+$/, ''), checks,
-    externalRequests, consoleErrors, httpFailures, auditError
+    architectureLens, externalRequests, consoleErrors, httpFailures, auditError
   }, null, 2) + '\n', 'utf8');
   await context.close();
   await browser.close();
