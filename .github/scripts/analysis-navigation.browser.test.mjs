@@ -36,6 +36,8 @@ function headerMarkup(locale){
 async function fixture(locale='de',width=1366){
     const page=await browser.newPage({viewport:{width,height:768}});page.setDefaultTimeout(2500);
     page.uiErrors=[]; page.on('pageerror',error=>page.uiErrors.push(error.message));
+    await page.route('http://taxonomy.test/taxonomy/',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><html></html>'}));
+    await page.goto('http://taxonomy.test/taxonomy/');
     let dict={};
     for(const name of ['messages.properties',...(locale==='de'?['messages_de.properties']:[])]){
         for(const line of (await readFile(path.join(resources,'i18n',name),'utf8')).split('\n')){
@@ -59,6 +61,7 @@ async function fixture(locale='de',width=1366){
         await page.addStyleTag({path:path.join(resources,'static/css',css)});
     await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-state.js')});
     await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-utils.js')});
+    await page.addScriptTag({path:path.join(resources,'static/js/shared/application-chrome.js')});
     const nav=template.match(/<!-- Page Navigation Script -->\s*<script>([\s\S]*?)<\/script>/);
     assert.ok(nav);await page.addScriptTag({content:nav[1]});
     return page;
@@ -109,6 +112,22 @@ for(const locale of ['de','en']){
                 const link=page.locator('#mainNavTabs [data-page="'+destination+'"]');
                 const box=await link.boundingBox();
                 assert.ok(box&&box.height>=44,`Primary destination retains its 44px touch target: ${destination} ${JSON.stringify(box)}`);
+                await link.focus();
+                await page.waitForFunction(destination=>{
+                    const link=document.querySelector('#mainNavTabs [data-page="'+destination+'"]');
+                    const box=link.getBoundingClientRect(),row=link.closest('#mainNavTabs').getBoundingClientRect();
+                    return document.activeElement===link && box.left>=Math.max(0,row.left)-1
+                        && box.right<=Math.min(innerWidth,row.right)+1;
+                },destination).catch(async()=>{
+                    const geometry=await link.evaluate(link=>{
+                        const row=link.closest('#mainNavTabs'),box=link.getBoundingClientRect(),bounds=row.getBoundingClientRect();
+                        return {destination:link.dataset.page,focused:document.activeElement===link,
+                            left:box.left,right:box.right,rowLeft:bounds.left,rowRight:bounds.right,
+                            scrollLeft:row.scrollLeft,scrollWidth:row.scrollWidth,clientWidth:row.clientWidth,
+                            snap:getComputedStyle(row).scrollSnapType,overflow:getComputedStyle(row).overflowX,viewport:innerWidth};
+                    });
+                    assert.fail('Focused destination must be completely visible: '+JSON.stringify(geometry));
+                });
                 await link.click();
                 assert.equal(await page.locator('#tab-'+destination).isVisible(),true);
             }

@@ -241,7 +241,15 @@
             event.preventDefault(); window.TaxonomyI18n.setLocale(link.dataset.appLocale);
         }
     }, true);
-    document.addEventListener('focusin', refreshNavigation);
+    document.addEventListener('focusin', function (event) {
+        refreshNavigation();
+        var link = event.target.closest?.('#applicationNavigation #mainNavTabs .nav-link');
+        var row = link?.closest('#mainNavTabs');
+        if (row && row.scrollWidth > row.clientWidth) {
+            // Native focus may leave a partially visible destination clipped.
+            link.scrollIntoView({block: 'nearest', inline: 'nearest'});
+        }
+    });
     document.addEventListener('auxclick', refreshNavigation, true);
     window.addEventListener('popstate', refreshNavigation);
     window.addEventListener('hashchange', refreshNavigation);

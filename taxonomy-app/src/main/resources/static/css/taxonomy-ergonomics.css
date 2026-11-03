@@ -766,7 +766,8 @@ button.summary-layer-element[aria-pressed="true"] { outline: 2px solid currentCo
 @media (max-width: 575.98px) {
     /* Keep the single primary row reachable by swipe and keyboard without
        pushing the analysis action below the first mobile viewport. */
-    #applicationNavigation #mainNavTabs { flex-wrap: nowrap; overflow-x: auto; }
+    /* Snap alignment can move a newly focused link outside this narrower row. */
+    #applicationNavigation #mainNavTabs { flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: none; }
     #applicationNavigation .application-shell { flex-wrap: wrap; gap: .4rem; }
     #applicationNavigation .application-utilities { order: 1; }
     #applicationNavigation .application-file-menus { order: 2; }
