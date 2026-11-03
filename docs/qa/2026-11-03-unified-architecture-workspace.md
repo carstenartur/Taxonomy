@@ -337,6 +337,102 @@ cgroup-OOM-Kill. Das ist ein lokaler Ressourcenabbruch; Vollbild wurde dabei
 nicht erreicht. Weder Speichergrenzen noch Testzeitgrenzen wurden dafür im
 Produkt oder CI verändert.
 
+## Nachprüfung des vollständigen CI-Stands `e8da4578`
+
+Im [Hauptlauf 41675038737](https://github.com/carstenartur/Taxonomy/actions/runs/41675038737)
+bestanden alle sechs ursprünglichen UI-Shards. Insbesondere sind der vollständige
+ADMIN-/Export-Escape-Ablauf, Firefox mit Checkpoint und anschließendem historischen
+Stand sowie der mobile WebKit-ADMIN-Ablauf grün. Letzterer enthält **39 Checks
+und zwölf Axe-Zustände**, keine Console-/PageErrors und keine reconcilierten
+Ausnahmen. Die ursprünglichen Fehlergates und CI-Hostprüfungen wurden beibehalten.
+Der geprüfte CI-Merge `8b00bc87` hat denselben Quellbaum wie `e8da4578`;
+die UI-Shards verwenden das unveränderliche Anwendungspaket mit SHA-256
+`a8b02c2082e30ec3202d12962595c60fbdec658e50ba5de84c864bcc1252eeb8`.
+
+Auch der ursprüngliche native Browser-Shard bestand **224 Fälle** ohne Failures,
+Errors oder Skips, darunter alle 13 Workspace-Fälle. Die Originalspur mit Chrome
+und Driver **150.0.7871.124** belegt nun auch in CI den echten Wechsel von
+1600 × 957 auf 800 × 544 Pixel mit verbundenem Vollbildelement und erhaltenem
+Fokus. Erst der zweite native Klick beendet das Vollbild. Angezeigte Quelle und
+Knotenauswahl bleiben während des gesamten Ablaufs unverändert.
+
+Die frischen lokalen vollständigen Abläufe auf diesem Quellbaum bestanden
+ebenfalls: **74 Checks und 21 Axe-Zustände** für PRIMARY ADMIN sowie **39 Checks
+und zwölf Axe-Zustände** für den mobilen WebKit-ADMIN. Beide verwenden das frisch
+gebaute Paket mit SHA-256
+`6596ed8a50bed59631ee537cee6be5fe234bad24b0b427000494811ca34a7fba`;
+alle 173 statischen und Template-Ressourcen entsprechen bytegenau dem Quellbaum.
+Die oben beschriebenen lokalen WebKit-Runtimegrenzen gelten weiterhin.
+
+Der Core-Lauf war dennoch nicht grün: In seiner App-Teilmenge mit 3.370 gemeldeten
+Fällen scheiterten die vier Fälle von `AnalysisBrowserFollowUpTest` bereits beim
+Laden des produktiven Browse-Skripts. Beim Ergänzen der Lifecycle-APIs war diese
+Java-eingebettete Node-VM-Fixture übersehen worden; ihrem vereinfachten `window`
+fehlte `addEventListener`. Der identische originale Mavenlauf reproduzierte lokal
+**vier von vier Setupfehlern**. Die Korrektur ersetzt nur dieses Fixture-Objekt
+durch `Object.assign(new EventTarget(), {TaxonomyState: S})`.
+
+Mit dieser einen geänderten Zeile bestanden dieselben **vier von vier Tests**
+ohne Failures, Errors oder Skips; Maven meldete `BUILD SUCCESS`. Alle vier
+vollständigen Testmethoden, ihre Assertions, Timeouts, Mavenargumente und
+Node **24.18.0** blieben identisch. Der Produktcode, die Testregistrierung und die
+CI-Gates wurden dafür nicht verändert. Der unabhängige Review bestätigte sowohl
+den Diff als auch originale XML-Berichte und Quellhashes beider Läufe. Eine
+begrenzte Suche nach weiteren Java-/CJS-Vollskript-VM-Ladern fand keine weitere
+gleichartig betroffene Fixture. Dieser fokussierte Nachweis ersetzt nicht den
+vollständigen CI-Lauf des folgenden Korrekturstands.
+
+Der abgeschlossene Hauptlauf enthält **20 erfolgreiche, zwei fehlgeschlagene
+und zwei übersprungene Jobs**. Auch Recovery bestand 92 Fälle und der vollständige
+Copilot-Anwendungsszenariofall bestand. Neben dem Core-Fixturefehler war nur das
+davon abhängige Gesamtgate rot; Coverage wurde deshalb nicht ausgeführt.
+
+Der [separate Szenariolauf 41675038696](https://github.com/carstenartur/Taxonomy/actions/runs/41675038696)
+führte 37 Fälle mit genau einer Failure aus. Der ursprüngliche Vollbildeintritt
+und -austritt funktionierten. Danach wurden alle sechs tatsächlichen Downloads
+(SVG, PDF, Architektur-DOCX, Entscheidungs-DOCX, ArchiMate und Visio) inhaltlich
+geprüft und ihre Bytes unabhängig mit den aufgezeichneten SHA-256-Werten
+abgeglichen. Auch der Reflow bei 390 × 844 Pixeln bestand. Erst die nachfolgende
+Sichtbarkeitsassertion für die sechs gespeicherten Paketaktionen schlug fehl.
+
+Die unabhängige Ursachenprüfung reproduzierte den Original-DOM mit allen 16
+Originalstyles auf Chrome 150 bei 1600 × 957 Pixeln. Bootstrap aktiviert in der
+gemeinsamen Seite natives Smoothscrolling: Unmittelbar nach `scrollIntoView`
+stand das Dokument noch bei `scrollY=0`; nach dem nativen `scrollend` nach rund
+814 ms lagen alle sechs Controls vollständig im Viewport. Das Layout wurde dafür
+nicht verändert. Der ursprüngliche Helper wartet nun innerhalb seiner bestehenden
+45-Sekunden-Grenze auf exakt dieselben sechs Bounds; die abschließende Assertion
+bleibt bytegleich. Zwei neue EN/DE-Fälle im vorhandenen nativen Workspace-Harness
+rufen denselben Helper mit echten Templates, Anwendungsskripten und Styles auf.
+Sie scheiterten beide am ursprünglichen Assert und bestanden anschließend beide
+ohne Errors oder Skips. Quelle, gespeicherter Paketname, Auswahl und genau ein
+Editor-Read blieben erhalten. Der Gegenlauf endete mit `BUILD SUCCESS`.
+
+Die nachgelagerte unabhängige Dokumentrenderstufe des ursprünglichen
+Szenarioworkflows wurde wegen dieses Fehlers nicht ausgeführt. Auf bytegleichen
+Kopien der Originalexporte wurde deshalb zusätzlich die unveränderte Dokument-CLI
+mit der vorhandenen lokalen Runtime ausgeführt. Der Reformulation-Gate bestand
+alle vier DOCX mit jeweils 19 gerenderten Seiten. Der Szenario-Dokumentgate
+meldete dagegen 191 Seiten für den Entscheidungsbericht bei einer unveränderten
+Grenze von 178; Architekturbericht und Visio wurden nach diesem Fail-fast-Befund
+in diesem lokalen Aufruf nicht mehr geprüft. Lokal lief LibreOfficeDev 26.8 mit
+NotoSerif/DejaVuSerif als Ersatz für die im Dokument angeforderten Aptos-Schriften;
+die ursprüngliche CI installiert LibreOffice 24.2.7.2. Dieser echte lokale
+Gate-Fehlschlag ist damit noch keine Reproduktion unter dem CI-Renderer. Weder
+Dokumentgrenzen noch Produktcode wurden aufgrund dieser Abweichung verändert.
+
+Eine positive Kontrolle aus dem vollständig erfolgreichen ursprünglichen
+[Szenariolauf 41342810385](https://github.com/carstenartur/Taxonomy/actions/runs/41342810385)
+grenzt die Runtimeabweichung weiter ein: Dieselbe byteidentische Kontroll-DOCX
+hat im originalen LibreOffice-24.2-PDF **175 Seiten**, mit dem lokalen
+LibreOfficeDev 26.8 dagegen **191 Seiten**. Das Original-PDF verwendet DejaVu Sans,
+der lokale Gegenlauf Noto Serif/DejaVu Serif. Formatvorlagen und Einstellungen
+dieser Kontroll-DOCX sind bytegleich mit dem aktuellen Export; beide erfüllen
+denselben vollständigen Corpus und dieselben Fixture-/Requirement-Hashes.
+Damit ist die lokale abweichende Seiteneinteilung an einem bereits CI-grünen
+Dokument nachgewiesen. Der unveränderte tatsächliche CI-Renderer bleibt für die
+aktuelle vollständige Word-/Visio-Abnahme maßgeblich.
+
 ## Noch ausstehende oder begrenzte Evidenz
 
 Die vier oben genannten paketierten Profile sind vollständig abgeschlossen.
@@ -349,8 +445,9 @@ Der lokale kanonische Maven-Lauf stoppte nach neun grünen Modulen im
 unveränderten nativen GPG-Test: Der benötigte AF_UNIX-Socket wurde mit
 `Operation not permitted` abgelehnt. Im Workspace-Modul bestanden 1.243 Tests,
 einer scheiterte; die nachfolgenden Module dieses vollständigen Laufs wurden nicht
-ausgeführt. Der Vollgate ist daher **nicht lokal grün**. Docker-, Helm- und
-LibreOffice-Prüfungen wurden hier nicht ausgeführt.
+ausgeführt. Der Vollgate ist daher **nicht lokal grün**. Docker- und Helm-Gates
+wurden hier nicht ausgeführt. Die zusätzlichen lokalen Dokumentprüfungen mit
+abweichender Office-Runtime und ihren Grenzen sind oben gesondert ausgewiesen.
 
 Zwei vorangegangene Versuche wurden während voller temporärer Platte durch
 Chromium-Abstürze beziehungsweise Schreibfehler invalidiert und nicht als

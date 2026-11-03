@@ -243,6 +243,51 @@ class ArchitectureWorkspaceBrowserIT {
                 Map.of("width", width, "height", height, "deviceScaleFactor", 1, "mobile", false));
     }
 
+    @ParameterizedTest @ValueSource(strings = {"en", "de"})
+    void savedPackageScreenshotWaitsForTheNativeSmoothScroll(String locale) throws IOException {
+        open(locale, 1600);
+        resize(1600, 957);
+        page.route("GET", "/taxonomy/api/architecture/editor", request -> {
+            var view = new LinkedHashMap<>(editorView(query(request.query())));
+            var model = new LinkedHashMap<>((Map<String, Object>) view.get("model"));
+            model.put("packages", List.of(Map.of("id", "saved-package", "title", "Browser reviewed package",
+                    "description", "Saved package for native screenshot inspection", "parentId", "", "position", 0)));
+            view.put("model", model);
+            return json(200, view);
+        });
+        var working = scope("repository-B", "private-B", "draft/B");
+        source("working", working);
+        new Select(page.driver().findElement(By.id("editorPackage"))).selectByValue("saved-package");
+        assertThat(page.driver().findElement(By.id("editorPackageTitle")).getDomProperty("value"))
+                .isEqualTo("Browser reviewed package");
+        var cdp = (HasCdp) new Augmenter().augment(page.driver());
+        cdp.executeCdpCommand("Emulation.setEmulatedMedia", Map.of("features",
+                List.of(Map.of("name", "prefers-reduced-motion", "value", "no-preference"))));
+        page.driver().executeScript("scrollTo({top:0,behavior:'instant'});");
+        assertThat(page.driver().executeScript("return getComputedStyle(document.documentElement).scrollBehavior;"))
+                .as("The original Bootstrap motion preference remains active").isEqualTo("smooth");
+        assertThat(page.driver().executeScript("return document.getElementById('editorPackageTitle').getBoundingClientRect().top>innerHeight;"))
+                .as("The saved package starts below the screenshot viewport").isEqualTo(true);
+
+        ScenarioBrowserWalkthrough.showNativePackagePanel(page.driver(), new WebDriverWait(page.driver(), Duration.ofSeconds(45)));
+
+        var geometry = page.driver().executeScript("""
+                return {innerWidth,innerHeight,scrollY,scrollBehavior:getComputedStyle(document.documentElement).scrollBehavior,
+                    controls:['editorPackageTitle','editorSavePackage','editorDeletePackage','editorMovePackage','editorPlaceElement','editorDetachElement']
+                        .map(id=>({id,...document.getElementById(id).getBoundingClientRect().toJSON()}))};
+                """);
+        Path evidence = Path.of("target", "unified-architecture-acceptance", "saved-package-" + locale);
+        Files.createDirectories(evidence);
+        Files.writeString(evidence.resolve("geometry.json"), json(geometry));
+        Files.write(evidence.resolve("viewport.png"), page.driver().getScreenshotAs(OutputType.BYTES));
+        assertAgreement("working", working);
+        assertThat(page.driver().findElement(By.id("editorPackage")).getDomProperty("value")).isEqualTo("saved-package");
+        assertThat(page.driver().findElement(By.id("editorPackageTitle")).getDomProperty("value"))
+                .isEqualTo("Browser reviewed package");
+        assertThat(page.requests().stream().filter(request -> request.path().equals("/taxonomy/api/architecture/editor")).toList()).hasSize(1);
+        noScriptErrors();
+    }
+
     private static void assertSnapshotViewport(String phase) {
         var geometry = (Map<?, ?>) page.driver().executeAsyncScript("""
                 const done=arguments[arguments.length-1];scrollTo(0,0);

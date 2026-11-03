@@ -479,7 +479,14 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
     }
 
     private void showNativePackagePanel() {
+        showNativePackagePanel(driver, wait);
+    }
+
+    static void showNativePackagePanel(RemoteWebDriver driver, WebDriverWait wait) {
         driver.executeScript("arguments[0].scrollIntoView({block:'center'})", driver.findElement(By.id("editorPackageFields")));
+        // The shared page uses Bootstrap's native smooth scroll when motion is allowed.
+        wait.withMessage("Saved package controls are inside the actual screenshot viewport").until(browser ->
+                Boolean.TRUE.equals(driver.executeScript("return ['editorPackageTitle','editorSavePackage','editorDeletePackage','editorMovePackage','editorPlaceElement','editorDetachElement'].every(id=>{const r=document.getElementById(id).getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;});")));
         assertThat((Boolean) driver.executeScript("return ['editorPackageTitle','editorSavePackage','editorDeletePackage','editorMovePackage','editorPlaceElement','editorDetachElement'].every(id=>{const r=document.getElementById(id).getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;});")).as("Saved package controls are inside the actual screenshot viewport").isTrue();
     }
 

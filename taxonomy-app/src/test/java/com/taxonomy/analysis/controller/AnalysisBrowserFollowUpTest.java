@@ -58,7 +58,7 @@ class AnalysisBrowserFollowUpTest {
             const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
             const S = {}, requests = [];
             const elements = {exportGroup: {style: {}}, exportHint: {classList: {toggle() {}}}};
-            const context = {window: {TaxonomyState: S}, console: {log() {}, error() {}},
+            const context = {window: Object.assign(new EventTarget(), {TaxonomyState: S}), console: {log() {}, error() {}},
                 TaxonomyI18n: {t: v => v}, TaxonomyUtils: {escapeHtml: v => v},
                 document: {addEventListener() {}, getElementById: id => elements[id] || null},
                 fetch: (url, options) => {requests.push({url, options}); return new Promise(() => {});}};
