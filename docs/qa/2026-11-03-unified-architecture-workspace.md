@@ -433,6 +433,196 @@ Damit ist die lokale abweichende Seiteneinteilung an einem bereits CI-grünen
 Dokument nachgewiesen. Der unveränderte tatsächliche CI-Renderer bleibt für die
 aktuelle vollständige Word-/Visio-Abnahme maßgeblich.
 
+## Originale Nachprüfung von `d27621e2` und WebKit-Navigationsdiagnose
+
+Der veröffentlichte Stand `d27621e23a0df264b36221e7ddce81021eb96d38`
+hat den Quellbaum `870ffc1e5f00b99e5f27a902911a86531432ff3a`. Der originale
+CI-Merge `1c9a2048e9f5d89c8328cbcf37db4970587c4a39` enthält genau denselben
+Baum. Gegenüber `e8da4578` änderte dieser Stand ausschließlich drei Testdateien
+und diesen QA-Bericht; sämtliche Produktquellen blieben bytegleich.
+
+Im [Hauptlauf 41687248842](https://github.com/carstenartur/Taxonomy/actions/runs/41687248842)
+bestand nun der vollständige Core-Job. Die Originalartefakte enthalten 1.435
+JUnit-Suites mit 11.728 gemeldeten Fällen, null Failures, null Errors und
+62 übersprungenen Fällen. Diese Artefaktsumme wird nicht als Zahl eindeutig
+verschiedener ausgeführter Tests ausgegeben. Insbesondere bestanden die vier
+unveränderten Methoden von `AnalysisBrowserFollowUpTest` sowie alle drei Fälle
+von `RestApiDocumentationTest` ohne Skips. Beide Artefakt-ZIP-Prüfsummen,
+Quellbaum-/Merge-Bindung und die Manifest-Prüfsummen dieser beiden XML-Berichte
+wurden unabhängig abgeglichen. Der bereits im Produkt behobene Reviewhinweis
+zur fehlenden `@Operation`-Beschreibung wurde erst danach als erledigt markiert.
+
+Auch der ursprüngliche native Browser-Shard bestand **226 Fälle** ohne
+Failures, Errors oder Skips. Dazu gehören alle **15** Fälle von
+`ArchitectureWorkspaceBrowserIT`: die zwei neuen EN/DE-Smoothscroll-Fälle,
+die einzige Navigation mit Architektur-Lupe in der Analyse, erhaltene Quellen,
+Knotenauswahl, Kamera und Analyseeingabe, echte Vollbildwechsel sowie der Schutz
+des versteckten Arbeitsentwurfs bei abgelehnter History-Navigation. Der
+ursprüngliche Recovery-Shard bestand **92 Fälle** ebenfalls ohne Failures,
+Errors oder Skips. Beide ZIP-Digests und sämtliche 20 bzw. 22 XML-Prüfsummen
+stimmen mit ihren an diesen Quellbaum gebundenen Manifesten überein.
+
+Der [ursprüngliche separate Szenariolauf 41687248828](https://github.com/carstenartur/Taxonomy/actions/runs/41687248828)
+bestand alle 37 Fälle ohne Failures, Errors oder Skips. Damit lief auch der
+ursprüngliche vollständige Browser-/Publikations-/Exportpfad nach der
+Smoothscroll-Synchronisation durch. Anschließend bestand das unveränderte
+unabhängige Word-/Visio-Rendergate unter LibreOffice **24.2.7.2**. Die lokale
+26.8-Abweichung führte weder zu geänderten Produktberichten noch zu angehobenen
+Seitenlimits. Auch die separaten ursprünglichen Word- und
+Reformulation-Workflows dieses Stands bestanden.
+
+Der originale Entscheidungsbericht umfasst dabei **175 Seiten** mit 585
+Inhaltsprüfungen, der Architekturbericht **57 Seiten** mit 175 Inhaltsprüfungen;
+beide enthalten keine leeren Inhaltsseiten. Der Visio-Bericht umfasst **55
+Seiten**, 50 Inhaltsprüfungen und weist **36 von 36 Beziehungen** nach. Die vier
+Reformulation-DOCX haben im ursprünglichen CI-Renderer jeweils **18 Seiten**.
+Die Prüfung bestätigt 387 Hashnachweise einschließlich aller 359 gerenderten
+Seitenbilder und aller sechs Browserdownloads. Die Originalaufnahmen der
+Paketaktionen EN/DE und des mobilen Architekturarbeitsbereichs wurden visuell
+geprüft. Der native bzw. Publication-Teil verwendet weiterhin seinen ausdrücklich
+ausgewiesenen Testvertrag; externe Produktkompatibilität ist dort korrekt als
+`NOT_EXECUTED` gekennzeichnet und wird hier nicht zusätzlich behauptet.
+
+Der mobile WebKit-ADMIN-Fall des Hauptlaufs scheiterte weiterhin: Nach 31 Checks
+und acht Axe-Zuständen erschienen beim ersten Sprachwechsel zwei native
+Zugriffsfehlermeldungen für `/api/status/startup` und
+`/api/workspace/sync-state`. Die ursprünglichen Rohdaten enthalten diese
+Meldungen 53 ms nach Navigationsbeginn, HTTP-200-Antwortheader und keinen
+protokollierten fehlgeschlagenen Netzwerkrequest. Diese frühen Daten allein
+belegen weder konsumierte Antwortdaten noch die Ursache der Meldungen.
+
+Die Untersuchung unterschied deshalb ausdrücklich mehrere Fälle. Mit den
+unveränderten beiden Produktpollern, einem echten HTTP-Server und
+Playwright **1.61.1** / WebKit **2311** erzeugten weder vollständig gelesene
+Antworten (sofort bzw. nach elf Sekunden) noch absichtlich offene Antwortheader
+oder Antwortdaten die fraglichen PageErrors. Ein vermeintlicher Fix für das
+Abbrechen bereits abgeschlossener Controller war damit nicht begründet.
+
+Erst die vollständige passive Mobile-ADMIN-Probe reproduzierte genau dieselben
+zwei Meldungen und denselben ursprünglichen Assert nach 31 Checks/acht
+Axe-Zuständen. Sie verwendete das bestehende lokale Anwendungspaket mit SHA-256
+`6596ed8a50bed59631ee537cee6be5fe234bad24b0b427000494811ca34a7fba`, dessen
+173 statische und Template-Ressourcen zum Produktstand passen; es ist nicht das
+separate originale CI-Anwendungspaket. Die zuvor geladenen beiden Antworten
+waren per `requestfinished` abgeschlossen und laut DOM-Beobachtung bereits
+übernommen. Die vollständigen nativen Error-Stacks belegen neue Aufrufe der
+Inline-Statusabfrage bzw. von `pollSyncState`. Es gab keine nativen
+`window.error`-/`unhandledrejection`-Ereignisse und keinen fehlgeschlagenen
+Netzwerkrequest. Im lokalen Ablauf lag `beforeunload` rund 1.148 ms vor den
+Meldungen, `pagehide` erst wenige Millisekunden danach. Browserseitige
+Lifecycle-/DOM-Zeitstempel und hostseitige Netzwerkempfangszeiten bleiben im
+Beleg unterscheidbar.
+
+Ein weiterer gezielter Gegenversuch bestätigt den Mechanismus: Im
+Minimaldokument laufen dieselben unveränderten Produktpoller mit ihrem echten
+15-Sekunden-Intervall. Nach 14,5 Sekunden beginnt eine echte Navigation, deren
+HTML-Antwort der HTTP-Server um 1,5 Sekunden verzögert. Beide neuen Pollstarts
+fallen dadurch in die laufende Navigation vor `pagehide` und erzeugen genau die
+beiden nativen Meldungen. Die Zielseite lädt und übernimmt ihre eigenen
+Antworten erfolgreich. Es werden weder `fetch` noch Browserrouten ersetzt.
+
+Die offiziellen Quellen erklären diese Beobachtung: Die
+[gepinnten WebKit-Quellen](https://github.com/microsoft/playwright/blob/v1.61.1/browser_patches/webkit/UPSTREAM_CONFIG.sh)
+verweisen auf `d8fa5ad85d476be6d60c96ace769a2c9293bc2a8`.
+[CachedResource](https://github.com/WebKit/WebKit/blob/d8fa5ad85d476be6d60c96ace769a2c9293bc2a8/Source/WebCore/loader/cache/CachedResource.cpp)
+verweigert neue normale Fetch-Ladevorgänge während einer vorläufigen Navigation;
+[CachedResourceLoader](https://github.com/WebKit/WebKit/blob/d8fa5ad85d476be6d60c96ace769a2c9293bc2a8/Source/WebCore/loader/cache/CachedResourceLoader.cpp)
+klassifiziert synchrone Abbrüche als Zugriffskontrollfehler.
+[ThreadableLoader](https://github.com/WebKit/WebKit/blob/d8fa5ad85d476be6d60c96ace769a2c9293bc2a8/Source/WebCore/loader/ThreadableLoader.cpp)
+protokolliert dafür den beobachteten Text. Der vollständig abgeglichene
+[Playwright-Patchsatz](https://github.com/microsoft/playwright/blob/v1.61.1/browser_patches/webkit/patches/bootstrap.diff)
+ändert diese entscheidenden Stellen nicht. Der lokale gepinnte
+Playwright-Transport bildet solche nativen JavaScript-Consolemeldungen auf
+`pageerror` ab und trennt `name`/`message` am ersten Doppelpunkt; deshalb ist die
+verkürzte `/127.0.0.1:…`-Form allein kein Beleg für eine unbehandelte Promise.
+
+Die Korrektur betrifft folglich die evidenzgebundene Testauswertung. Eine frühe
+pauschale Stilllegung der Produktpoller bei `beforeunload` wäre sachlich nicht
+begründet und könnte den bewusst abbrechbaren Seitenwechsel bei ungespeicherten
+Architekturentwürfen beeinträchtigen. Die Anwendung behält ihre bestehenden
+Lifecycle- und Entwurfsschutzregeln. Ein Endpunktname allein genügt nicht zur
+Einordnung: Erforderlich sind der einzelne native Fehler, der zugehörige alte
+Dokumentkontext, der tatsächlich erfolgreich abgeschlossene Sprachwechsel
+und eine neue erfolgreiche Antwort samt nachgewiesener Datenübernahme und
+Darstellung im Zieldokument. Fehlende oder widersprüchliche Evidenz bleibt ein
+Testfehler; sämtliche Rohmeldungen bleiben nachvollziehbar erhalten.
+
+Auch der ursprüngliche Anwendungsszenario-Shard bestand seine zwei Fälle
+(0 Failures, Errors oder Skips), und die vollständige Coverage-Aggregation
+war erfolgreich. Der abgeschlossene Hauptlauf enthält damit 21 erfolgreiche,
+zwei fehlgeschlagene und einen erwartungsgemäß übersprungenen Job. Fehlgeschlagen
+sind ausschließlich der mobile WebKit-UI-Shard und das davon abhängige Gesamtgate;
+dessen Originalprotokoll weist allein `UI_SHARDS_RESULT` als Ursache aus.
+
+### Geprüfte Korrektur der WebKit-Auswertung
+
+Die Korrektur ergänzt ausschließlich den Test-Harness, seine Evidenz, additive
+Vertragsfälle und diesen Bericht. Weder Produktquellen noch Timeoutgrenzen,
+Workflow-Auswahl oder bestehende Prüfprädikate wurden gelockert. Ein passiver
+Observer verwendet `performance.timeOrigin` als Dokumentidentität und eine
+gemeinsame empfangsseitige Sequenz für Navigation, Lifecycle und Fehler.
+Browser- und Host-Zeitstempel werden nicht für harte Millisekundenvergleiche
+vermischt. Quellparameter müssen beim Sprachwechsel vollständig erhalten bleiben;
+ein bloßer Hashwechsel innerhalb desselben Dokuments ist weiterhin möglich.
+
+Die Auswertung verlangt für jede einzelne Meldung die vollständige native
+WebKit-Signatur, das alte Dokument, `beforeunload` vor und `pagehide` nach der
+Meldung sowie einen tatsächlich erfolgreich abgeschlossenen Sprachwechsel.
+Nur eine danach im neuen Dokument gestartete Original-GET-Anfrage genau desselben
+Endpunkts mit HTTP 200, `requestfinished` und tatsächlich gelesenen JSON-Daten
+kann den Nachweis liefern. Die Statusleiste muss nach einem neuen DOM-Write exakt
+dem frischen Payload entsprechen. Beim Synchronisationsstatus müssen sowohl
+das vollständige öffentliche `getSyncState()` als auch die lokalisierten
+Statusanzeigen zum Payload passen. Zusätzliche Anfragen zur Herstellung des
+Belegs gibt es nicht. Rohmeldungen, Request-, Lifecycle- und Renderbelege bleiben
+im Bericht erhalten; echte HTTP-/Netzwerkfehler, JavaScript-/Promisefehler und
+CSP-Verletzungen werden nicht als diese native Navigationsmeldung eingeordnet.
+
+Die vier positiven Replayprüfungen mit den originalen nativen Errorfeldern
+schlugen vor der Klassifizierung fehl. Anschließend bestanden **86 neue Fälle**
+zusammen mit allen **23 bestehenden strikten Policyfällen**: 109/109 ohne Skips.
+Die Negativfälle umfassen insbesondere falschen Browser, Signatur, Origin,
+Port, Query oder Dokumentkontext, unvollständige beziehungsweise abgebrochene
+Navigation, alte oder unvollständige Antworten, fehlende JSON-Daten, Redirects,
+fehlenden DOM-Write, abweichenden übernommenen Zustand und echte native Fehler.
+Die vorherigen startup-/sync-Textmeldungen ohne zusätzliche Belegkette bleiben
+in den bestehenden Tests ausdrücklich blockierend.
+
+Der echte native HTTP-Gegenversuch führte dieselben zwei Rohmeldungen sowohl
+durch die unveränderte `d27621e2`-Auswertung als auch durch den neuen Collector:
+Die alte Auswertung behielt zwei Blocker; die neue ordnete exakt beide Meldungen
+anhand ihrer vollständigen neuen Request-/JSON-/DOM-Belege ein. Eine separat
+aufbewahrte native Gegenkontrolle mit einem zusätzlichen tatsächlichen
+Startup-`requestfailed` blieb für diesen Endpunkt korrekt blockierend. In der
+positiven isolierten Fixture wurde lediglich die externe Übersetzungsbereitschaft
+an das natürliche `load`-Ereignis gebunden, um diesen zusätzlichen
+Initialisierungsabbruch getrennt zu halten. Produktpoller, ihr echter
+15-Sekunden-Takt, HTTP-Navigation und Assertions blieben unverändert.
+
+Danach bestand der **unveränderte vollständige Profilablauf
+`mobile-admin-webkit`** über den ursprünglichen `run-ui-suite.mjs`-Runner mit
+39 Checks und zwölf Axe-Zuständen, null Violations und null Blocking-Befunden.
+`auditError` war `null`, `taskCompleted` war `true`; Systeminformationen,
+Browser-Sessions in EN/DE, Architektureditor sowie Import, gespeicherte Historie
+und Export wurden vollständig durchlaufen. Dieser Lauf enthielt keine
+Consolefehler und keine nachträglich eingeordneten Meldungen. Die vier
+erwarteten negativen HTTP-Prüffälle (Analyse 503, Preview 422/409 und Commands
+412) blieben vollständig erhalten; es gab keine unerwarteten Auditfehler. Der eigentliche
+Fehlerpfad ist durch den getrennten deterministischen nativen Gegenversuch
+belegt. Die lokale 512-MB-Anwendung und der Browser wurden anschließend beendet.
+Der Receipt prüfte die unveränderten Harness-Prüfsummen, das oben genannte
+Produktpaket und Node 24.18.0; ein nicht vorhandener CI-Shard-Receipt wurde nicht
+behauptet.
+
+Die anschließende kanonische Maven-Prüfung mit deaktiviertem Buildcache bestand
+**1.857 JavaScript-Verträge und beide Eigentümerprüfungen** ohne Failures, Errors
+oder Skips (`BUILD SUCCESS`). Die neue Testdatei ist additiv im bestehenden
+JUnit-Register enthalten. Die vollständigen neuen XML-Berichte wurden separat
+mit SHA-256 gesichert. Zwei unabhängige Reviews fanden keine relevanten
+Code- oder Testbefunde. Die ursprünglichen CI-Resultate von `d27621e2` und diese
+lokale Prüfung der Harness-Korrektur bleiben getrennte Belege; der anschließende
+CI-Lauf der Korrektur wird anhand seines eigenen Quellstands beurteilt.
+
 ## Noch ausstehende oder begrenzte Evidenz
 
 Die vier oben genannten paketierten Profile sind vollständig abgeschlossen.

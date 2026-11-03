@@ -6,6 +6,7 @@ import { captureFailureEvidence } from './ui-evidence-policy.mjs';
 import { isolateRoleStateScenario } from './ui-role-state-isolation.mjs';
 import { runRoleStateFlow } from './ui-role-state-flow.mjs';
 import { runSystemInformationAcceptance } from './system-information-acceptance.mjs';
+import { createNavigationPollEvidence } from './ui-navigation-poll-evidence.mjs';
 
 import { runBrowserSessionsAcceptance } from './browser-sessions-acceptance.mjs';
 import { runArchitectureEditorAcceptance } from './architecture-editor-acceptance.mjs';
@@ -45,6 +46,7 @@ const reconciledConsoleErrors = [];
 const navigationConsoleCandidates = [];
 const navigationEvidence = [];
 const navigationRequestStarts = new WeakMap();
+const navigationPollEvidence = createNavigationPollEvidence({ browserName, baseUrl });
 const externalRequests = [];
 const httpFailures = [];
 const draftReconciliations = [];
@@ -104,25 +106,24 @@ function recordDraftReconciliation(detail) {
 
 function reconcileSystemInformationConsoleErrors(systemInformation) {
   if (browserName !== 'webkit') return;
-  const candidates = navigationConsoleCandidates
+  const candidates = [...navigationConsoleCandidates
     .filter(candidate => systemInformation.some(item => item.locale === candidate.locale
       && (candidate.read === 'ai-status'
         ? item.aiStatusSettled === true
         : item.operationalStatusSettled === true
           && (candidate.read !== 'git-state'
-            || candidate.requestedBranch === item.operationalBranch))))
+            || candidate.requestedBranch === item.operationalBranch)))),
+    ...navigationPollEvidence.reconciliations()]
     .sort((left, right) => right.index - left.index);
   for (const candidate of candidates) {
     if (consoleErrors[candidate.index] !== candidate.message) continue;
     consoleErrors.splice(candidate.index, 1);
+    const { index, ...retainedEvidence } = candidate;
     reconciledConsoleErrors.unshift({
-      message: candidate.message,
-      locale: candidate.locale,
-      reason: candidate.read === 'ai-status'
+      ...retainedEvidence,
+      reason: candidate.reason || (candidate.read === 'ai-status'
         ? 'webkit-locale-navigation-ai-status-cancelled'
-        : 'webkit-locale-navigation-operational-status-cancelled',
-      read: candidate.read,
-      requestedBranch: candidate.requestedBranch
+        : 'webkit-locale-navigation-operational-status-cancelled')
     });
   }
 }
@@ -165,6 +166,7 @@ try {
     adminUsername, adminPassword,
     forcedColors, reducedMotion: true
   }));
+  await navigationPollEvidence.attach(page, context);
   taskMeasurements.failedStep = 'authenticated application startup';
   checks.push('keyboard authentication');
   const baseOrigin = new URL(baseUrl).origin;
@@ -232,8 +234,10 @@ try {
     }
   });
   page.on('pageerror', error => {
-    recordNavigationEvidence('page-error', { message: error.message, pageUrl: page.url() });
+    recordNavigationEvidence('page-error', { name: error.name, message: error.message,
+      stack: error.stack, pageUrl: page.url() });
     recordConsoleError(error.message);
+    navigationPollEvidence.recordError(error, consoleErrors.length - 1, page.url());
   });
 
   taskMeasurements.failedStep = 'isolating resumable analysis draft';
@@ -254,16 +258,19 @@ try {
     try {
       taskMeasurements.systemInformation = await runSystemInformationAcceptance({
         page, evidence, outputDir,
-        onLocaleNavigationStart: locale => {
+        onLocaleNavigationStart: async locale => {
           systemInformationNavigationLocale = locale;
           recordNavigationEvidence('navigation-start', { pageUrl: page.url() });
+          await navigationPollEvidence.begin(locale);
         },
-        onLocaleNavigationEnd: locale => {
+        onLocaleNavigationEnd: async (locale, succeeded) => {
           recordNavigationEvidence('navigation-end', { locale, pageUrl: page.url() });
+          await navigationPollEvidence.end(locale, succeeded);
           if (systemInformationNavigationLocale === locale) {
             systemInformationNavigationLocale = null;
           }
-        }
+        },
+        onLocaleVerified: locale => navigationPollEvidence.verifyDestination(locale)
       });
     } finally {
       systemInformationNavigationLocale = null;
@@ -335,6 +342,7 @@ try {
     draftReconciliations, reconciledHttpFailures, consoleErrors,
     reconciledConsoleErrors,
     navigationEvidence,
+    navigationPollEvidence: navigationPollEvidence.snapshot(),
     auditError, failureEvidence, browserSessions
   };
   await writeFile(path.join(outputDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');

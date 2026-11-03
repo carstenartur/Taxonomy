@@ -72,6 +72,7 @@
 .github/scripts/ui-dsl-text-read.test.mjs
 .github/scripts/ui-evidence-policy.test.mjs
 .github/scripts/ui-localization-regression.test.mjs
+.github/scripts/ui-navigation-poll-evidence.test.mjs
 .github/scripts/ui-primary-account-workflows.test.mjs
 .github/scripts/ui-primary-evidence.test.mjs
 .github/scripts/ui-primary-session-basepath-contract.test.mjs
