@@ -241,6 +241,102 @@ Geometrieartefakte sind im bestehenden CI-Upload enthalten. Normales Chrome
 150 konnte lokal wegen der AF_UNIX-Socketbeschränkung nicht gestartet werden;
 die erfolgreiche Ausführung ist ausdrücklich der Headless Shell zugeordnet.
 
+## Nachprüfung des vollständigen CI-Stands `98068690`
+
+Der [Hauptlauf 41661854704](https://github.com/carstenartur/Taxonomy/actions/runs/41661854704)
+endete mit 17 erfolgreichen, fünf fehlgeschlagenen und zwei übersprungenen Jobs.
+Vier ausführende Gruppen meldeten konkrete Browserprobleme; das fünfte rote
+Ergebnis war ausschließlich das abhängige Aggregate-Gate. Coverage wurde deshalb
+nicht ausgeführt. Core, Recovery, Anwendungsszenarien, Runtime, Domain-Integration,
+Plugin-Paketierung, Docker und OpenTelemetry bestanden. Die ursprünglichen
+Kontrast-, Ressourcen-, historischen Klick- und Kurzviewportfehler traten in den
+zugehörigen abgeschlossenen Prüfungen nicht mehr auf.
+
+| Befund | Nachgewiesene Ursache und begrenzte Korrektur |
+| --- | --- |
+| Exportmenü reagiert nach einem Größenwechsel nicht auf Escape | Die responsive Umordnung entfernte kurz den Vorfahren des fokussierten Elements. Der Fokus ging dadurch verloren. Die Umordnung verschiebt jetzt das andere Panel und erhält die tatsächliche DOM-Lesereihenfolge. Ein modaler Dialog behält seine Escape-Priorität. |
+| Natives Vollbild wird unmittelbar wieder beendet | Der originale Browser-Shard und der separate Szenariolauf zeigen einen angenommenen Vollbildeintritt mit Wechsel von 1600 × 957 auf 800 × 544 Pixel, danach bereits aufgehobenes Vollbild ohne API-Ablehnung. Derselbe DOM-Wechsel ist im Browser mit dieser Geometrie reproduziert. Eine aktive Vollbildfläche hat bei der Wahl des zu verschiebenden Panels Vorrang. |
+| Firefox erreicht nach einem Checkpoint den historischen Stand nicht | Während der Checkpoint-Anfrage sperrte der Editor die Navigation korrekt, meldete aber noch `aria-busy=false`. Der bestehende gemeinsame Berechtigungs-/Sperrzustand veröffentlicht nun die gesamte Speicher- und Ladephase. Der Ablauf wartet zusätzlich auf den tatsächlich geladenen zurückgegebenen Commit und die wieder freigegebene Checkpoint-Aktion. |
+| WebKit meldet beim Sprachwechsel Fehler für Startup- und Workspace-Statusabfragen | Der vollständige lokale Originalablauf reproduziert diese sporadischen Konsolenmeldungen nicht. Eine passive Ereignisspur hält jetzt Requestbeginn, Antwort, Abbruch, Navigation und Console-/PageErrors fest. Die bestehenden Fehlergates bleiben unverändert; die beiden beobachteten Endpunkte werden ausdrücklich weiter als Blocker getestet. |
+
+Die responsiven Regressionen verwenden echte Tastatur-, Eingabe- und
+Vollbildaktionen. Sie prüfen Export-Escape, Eingabefokus einschließlich
+Textauswahl sowie die unveränderte Quelle, Datenreferenz, Knotenauswahl und
+Leseanzahl des Snapshots. Der identische endgültige Vollbildfall ist auf dem
+unveränderten Ausgangscode rot und auf der Korrektur grün. Ein früherer
+explorativer Versuch scheiterte bereits am Browserprotokoll und zählt nicht als
+Produkt-RED. Die drei vollständigen angrenzenden Browserdateien bestanden
+**57/57 Fälle**, ohne Fehler oder Skips, mit dem tatsächlich importierten
+Playwright/Core **1.61.1** und Chrome Headless Shell **149.0.7827.55**.
+
+Auf dem zusammengeführten Korrekturstand `6fce8609` bestanden anschließend die
+vollständigen kanonischen **115 JavaScript-Browserfälle** und alle **13 Fälle
+der `ArchitectureWorkspaceBrowserIT`**, jeweils ohne Failures, Errors oder Skips.
+Beide Maven-Läufe meldeten `BUILD SUCCESS`. Der native Lauf mit Chrome Headless
+Shell und Driver **150.0.7871.124** wechselte beim echten Vollbildeintritt selbst
+von 1600 × 1100 auf 800 × 600 Pixel: Die Workbench blieb verbunden und im
+Vollbild, ihre Schaltfläche behielt den Fokus. Erst der zweite native Klick
+beendete das Vollbild regulär. Quelle und Auswahl blieben erhalten.
+
+Der vollständige lokale `mobile-admin-webkit`-Ablauf bestand **39 Checks und
+zwölf Axe-Zustände**, einschließlich beider Sprachen, Sitzungsverwaltung,
+Architektureditor und Integrationen. Die neue Spur enthält 97 Statusrequests
+und 97 Antworten, keine Abbrüche, Console-/PageErrors oder reconcilierten Fehler.
+Alle 119 produktiven JavaScript-Dateien des dabei verwendeten Pakets entsprechen
+bytegenau `98068690`; die bekannte Paketabweichung betrifft ausschließlich die
+bereits gesondert geprüfte Desktop-Höhenregel. Verwendet wurden die gepinnte
+WebKit-Revision 2311 und Playwright 1.61.1. Tasklokale Bibliotheken wurden anhand
+signierter Ubuntu-Paketmetadaten, ELF-Abhängigkeiten und tatsächlichem `dlopen`
+geprüft; nur die ausschließlich globale `ldconfig`-Vorprüfung wurde für diesen
+lokalen Prozess ausgelassen. CI und deren Hostprüfung wurden nicht verändert.
+Dieser lokale Erfolg erklärt die vorherigen CI-Konsolenmeldungen noch nicht.
+
+Die gesonderte Lifecycle-Prüfung weist jedoch einen konkreten Produktfehler in
+den drei zugehörigen Pollpfaden nach: Nach `pagehide` konnten nachgereichte
+Übersetzungsbereitschaft, HTTP-Bodies und Retryfehler weiterhin Reads starten
+oder veraltete Inhalte veröffentlichen. Die bestehenden Funktionen behalten
+jetzt ihren Controller und Timer unter der aktiven Seite; Rückkehr aus dem
+Browsercache startet genau einen frischen Zyklus. Ein bereits geladener Katalog,
+die regulären Netzwerkfehler und ihre ursprünglichen Intervalle bleiben erhalten.
+Die endgültigen 15 Regressionen meldeten gegen den unveränderten Ausgangscode
+zwölf echte Assertionfehler bei drei bereits grünen Fehler-/Retrykontrollen.
+Der endgültige unabhängige Lauf bestand
+**152/152 Fälle**, darunter **15 Lifecycle-Regressionen**. Sechs angrenzende
+VM-Harnesses ergänzen dafür nur echte `EventTarget`-/`AbortController`-Primitiven;
+ihre fachlichen Assertions bleiben unverändert. Die neue Datei gehört zur
+kanonischen Maven-JavaScript-Inventur. Dieser Nachweis ersetzt nicht die erneute
+Ausführung des zuvor fehlgeschlagenen WebKit-CI-Profils.
+
+Nach Integration sämtlicher Produktkorrekturen bestand der Stand `389dde2d`
+die vollständigen **1.771 JavaScript-Vertragsfälle** und **115 JavaScript-
+Browserfälle**. Beide kanonischen Maven-Läufe führten zusätzlich die beiden
+Eigentümer-/Inventurprüfungen aus und endeten mit `BUILD SUCCESS`, jeweils ohne
+Failures, Errors oder Skips. Die neue Lifecycle-Datei wurde dabei tatsächlich
+durch den vorhandenen JUnit-Treiber ausgeführt. Die unten genannten aktuellen
+CI-Gates bleiben für die vollständige Integration maßgeblich.
+
+Auch die ergänzenden Workflows dieses veröffentlichten Stands bestanden:
+[Push-CodeQL](https://github.com/carstenartur/Taxonomy/actions/runs/41661847066),
+[Datenbanken](https://github.com/carstenartur/Taxonomy/actions/runs/41661854568),
+[Word-Download](https://github.com/carstenartur/Taxonomy/actions/runs/41661854480),
+[Reformulierungsabrechnung](https://github.com/carstenartur/Taxonomy/actions/runs/41661854671),
+[Security](https://github.com/carstenartur/Taxonomy/actions/runs/41661854449),
+[Kubernetes](https://github.com/carstenartur/Taxonomy/actions/runs/41661854733) und
+[JGit-Speicherverbraucher](https://github.com/carstenartur/Taxonomy/actions/runs/41661854476).
+Die drei Datenbankgruppen bestanden erneut 138 Integrationsfälle ohne Fehler
+oder Skips. Der separate
+[Architektur-Szenariolauf](https://github.com/carstenartur/Taxonomy/actions/runs/41661854553)
+endete mit 37 Tests und genau einer Failure am oben beschriebenen Vollbildeintritt.
+Die anschließenden Exportaktionen wurden dort nicht mehr erreicht.
+
+Zwei zusätzliche lokale Original-Szenarioläufe sind ausdrücklich keine grüne
+Abnahme: Der erste erreichte bei 2 GiB Heap die bestehende Speicherschutzgrenze.
+Der zweite verwendete nachweislich den gemessenen CI-Heap von 4.190.109.696 Bytes,
+endete aber nach 240 Fortsetzungen mit Prozesscode 137 und einem protokollierten
+cgroup-OOM-Kill. Das ist ein lokaler Ressourcenabbruch; Vollbild wurde dabei
+nicht erreicht. Weder Speichergrenzen noch Testzeitgrenzen wurden dafür im
+Produkt oder CI verändert.
+
 ## Noch ausstehende oder begrenzte Evidenz
 
 Die vier oben genannten paketierten Profile sind vollständig abgeschlossen.

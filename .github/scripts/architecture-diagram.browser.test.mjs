@@ -292,6 +292,134 @@ test('embedded dark export menu retains readable resting text contrast', async (
     } finally {await page.close();}
 });
 
+async function snapshotInResponsivePanels(page) {
+    await page.evaluate(() => {
+        const row = document.createElement('div'); row.id = 'taskPanels';
+        const left = document.createElement('div'); left.id = 'leftPanel';
+        const right = document.createElement('div'); right.id = 'rightPanel';
+        // The real application nests the snapshot surface in the primary panel.
+        for (const node of [...document.body.children]) {
+            if (!['SCRIPT', 'STYLE'].includes(node.tagName)) right.appendChild(node);
+        }
+        row.append(left, right); document.body.appendChild(row);
+    });
+    await page.addScriptTag({ path: path.join(resources, 'static/js/shared/taxonomy-utils.js') });
+}
+
+test('responsive panel reordering preserves the open snapshot export keyboard interaction', async () => {
+    const page = await snapshotFixture();
+    try {
+        await page.setViewportSize({ width: 1024, height: 844 });
+        await snapshotInResponsivePanels(page);
+        await page.evaluate(async () => {
+            await snapshotAdapter.activate(sourceA);
+            snapshotAdapter.select('B');
+            window.retainedSnapshotData = snapshotAdapter.getData();
+            window.retainedSnapshotSource = JSON.stringify(snapshotAdapter.getSource());
+            window.exportKeys = [];
+            document.addEventListener('keydown', event => {
+                if (event.key === 'Escape') exportKeys.push({ trusted: event.isTrusted,
+                    withinExport: Boolean(event.target.closest('#architectureExportOptions')) });
+            }, true);
+        });
+        const disclosure = page.locator('#architectureExportOptions');
+        await disclosure.locator('summary').focus();
+        await page.keyboard.press('Enter');
+        assert.equal(await disclosure.evaluate(node => node.open), true);
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.waitForFunction(() => document.getElementById('taskPanels').dataset.taskOrder === 'primary-first');
+        await page.keyboard.press('Escape');
+        assert.equal(await disclosure.evaluate(node => node.open), false,
+            'Moving the primary panel at the mobile breakpoint must preserve the native Escape target');
+        assert.equal(await disclosure.locator('summary').evaluate(node => document.activeElement === node), true);
+        assert.deepEqual(await page.evaluate(() => exportKeys), [{ trusted: true, withinExport: true }]);
+        assert.equal(await page.evaluate(() => snapshotAdapter.getData() === retainedSnapshotData
+            && JSON.stringify(snapshotAdapter.getSource()) === retainedSnapshotSource), true);
+        assert.equal(await page.locator('[data-node-id="B"]').getAttribute('aria-pressed'), 'true');
+        assert.equal(await page.evaluate(() => snapshotRequests.length), 1);
+
+        await page.keyboard.press('Enter');
+        await page.evaluate(() => {
+            const dialog = document.createElement('dialog'); dialog.id = 'activeExportDialog';
+            dialog.innerHTML = '<button id="dialogAction">Keep this dialog interaction</button>';
+            document.body.appendChild(dialog); dialog.showModal();
+        });
+        await page.setViewportSize({ width: 1024, height: 844 });
+        await page.waitForFunction(() => document.getElementById('taskPanels').dataset.taskOrder === 'reference-first');
+        assert.equal(await page.locator('#dialogAction').evaluate(node => document.activeElement === node), true);
+        await page.keyboard.press('Escape');
+        assert.equal(await page.locator('#activeExportDialog').evaluate(node => node.open), false);
+        assert.equal(await disclosure.evaluate(node => node.open), true,
+            'Escape belongs to the active modal, not the export disclosure behind it');
+    } finally { await page.close(); }
+});
+
+test('responsive panel reordering preserves native input selection in the reference panel', async () => {
+    const page = await snapshotFixture();
+    try {
+        await page.setViewportSize({ width: 390, height: 844 });
+        await snapshotInResponsivePanels(page);
+        await page.evaluate(() => {
+            const input = document.createElement('textarea'); input.id = 'referenceFilter';
+            document.getElementById('leftPanel').appendChild(input);
+        });
+        const input = page.locator('#referenceFilter');
+        await input.fill('stable search query');
+        await input.press('Home');
+        for (let i = 0; i < 6; i++) await page.keyboard.press('Shift+ArrowRight');
+        await page.setViewportSize({ width: 1024, height: 844 });
+        await page.waitForFunction(() => document.getElementById('taskPanels').dataset.taskOrder === 'reference-first');
+        assert.deepEqual(await input.evaluate(node => ({ focused: node === document.activeElement,
+            start: node.selectionStart, end: node.selectionEnd })), { focused: true, start: 0, end: 6 });
+        await page.keyboard.type('new');
+        assert.equal(await input.inputValue(), 'new search query');
+    } finally { await page.close(); }
+});
+
+test('responsive panel reordering keeps the native fullscreen snapshot connected', async () => {
+    const page = await snapshotFixture();
+    try {
+        // These are the content sizes recorded by the original Chrome 150 CI failure.
+        await page.setViewportSize({ width: 1600, height: 957 });
+        await snapshotInResponsivePanels(page);
+        assert.equal(await page.locator('#rightPanel #architectureWorkbench').count(), 1);
+        await page.evaluate(async () => {
+            await snapshotAdapter.activate(sourceA);
+            snapshotAdapter.select('B');
+            window.retainedFullscreenData = snapshotAdapter.getData();
+            window.retainedFullscreenSource = JSON.stringify(snapshotAdapter.getSource());
+            window.fullscreenChanges = [];
+            document.addEventListener('fullscreenchange', event => fullscreenChanges.push({
+                trusted: event.isTrusted, active: document.fullscreenElement?.id || null
+            }));
+        });
+        await page.locator('#fullscreenArchitecture').click();
+        await page.waitForFunction(() => document.fullscreenElement?.id === 'architectureWorkbench');
+        // A fullscreen window cannot be resized through Browser.setWindowBounds.
+        // Change its real content viewport without replacing the native fullscreen API.
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send('Emulation.setDeviceMetricsOverride', {
+            width: 800, height: 544, deviceScaleFactor: 1, mobile: false
+        });
+        await page.waitForFunction(() => document.getElementById('taskPanels').dataset.taskOrder === 'primary-first');
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        assert.deepEqual(await page.evaluate(() => ({ width: innerWidth, height: innerHeight })),
+            { width: 800, height: 544 });
+        assert.equal(await page.evaluate(() => document.fullscreenElement?.id), 'architectureWorkbench',
+            'Responsive reading order must not detach an active fullscreen descendant');
+        assert.deepEqual(await page.evaluate(() => fullscreenChanges), [{ trusted: true, active: 'architectureWorkbench' }]);
+        assert.equal(await page.evaluate(() => snapshotAdapter.getData() === retainedFullscreenData
+            && JSON.stringify(snapshotAdapter.getSource()) === retainedFullscreenSource), true);
+        assert.equal(await page.locator('[data-node-id="B"]').getAttribute('aria-pressed'), 'true');
+        await page.locator('#fullscreenArchitecture').click();
+        await page.waitForFunction(() => document.fullscreenElement === null);
+        assert.deepEqual(await page.evaluate(() => fullscreenChanges), [
+            { trusted: true, active: 'architectureWorkbench' }, { trusted: true, active: null }
+        ]);
+        assert.equal(await page.evaluate(() => snapshotRequests.length), 1);
+    } finally { await page.close(); }
+});
+
 for (const workspace of ['private-A','__shared__']) test(`Decision Word captures immutable source scope from opening through confirmation (${workspace})`, async () => {
     const page=await snapshotFixture();
     try {

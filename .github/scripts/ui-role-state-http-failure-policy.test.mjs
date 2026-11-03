@@ -120,10 +120,11 @@ function consoleAudit(browserName = 'webkit') {
   assert.ok(observersStart >= 0 && observersEnd > observersStart);
   return new Function('browserName', `
     const baseUrl = 'http://127.0.0.1:8080';
-    const consoleErrors = [], reconciledConsoleErrors = [], navigationConsoleCandidates = [];
+    const consoleErrors = [], reconciledConsoleErrors = [], navigationConsoleCandidates = [], navigationEvidence = [];
     let systemInformationNavigationLocale = null;
     const handlers = {};
-    const page = { on: (event, handler) => { handlers[event] = handler; } };
+    const page = { on: (event, handler) => { handlers[event] = handler; },
+      url: () => 'http://127.0.0.1:8080/?lang=de#admin' };
     ${source.slice(functionsStart, functionsEnd)}
     ${source.slice(observersStart, observersEnd)}
     return {
@@ -198,6 +199,8 @@ test('navigation reconciliation never admits other origins, endpoints or ordinar
     'Fetch API cannot load https://other.invalid/api/ai-status due to access control checks.',
     '/127.0.0.1:8080/api/analysis-drafts/123 due to access control checks.',
     '/127.0.0.1:8080/api/admin/system-information due to access control checks.',
+    '/127.0.0.1:8080/api/status/startup due to access control checks.',
+    '/127.0.0.1:8080/api/workspace/sync-state due to access control checks.',
     '/127.0.0.1:8080/api/context/current?unexpected=1 due to access control checks.',
     '/127.0.0.1:8080/api/git/state?branch=draft&unexpected=1 due to access control checks.',
     '/127.0.0.1:8080/api/context/current failed with HTTP 503',

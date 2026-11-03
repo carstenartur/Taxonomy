@@ -229,7 +229,13 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
   await page.locator('#editorRationale').fill('Retain frozen adoption checkpoint');
   const checkpointResponse=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith('/editor/checkpoints'));
   await page.locator('#editorCheckpoint').click();const checkpoint=await (await checkpointResponse).json();
-  await page.waitForFunction(()=>document.getElementById('architectureEditor').getAttribute('aria-busy')==='false');
+  assert.ok(checkpoint.commitId);
+  await page.waitForFunction(commit=>{
+    const current=window.TaxonomyArchitectureWorkspace?.getData();
+    return current?.document?.context?.commit===commit
+      && document.getElementById('architectureEditor')?.getAttribute('aria-busy')==='false'
+      && !document.getElementById('editorCheckpoint').disabled;
+  },checkpoint.commitId);
   // A checkpoint made before adoption has no adopted view. Its history link must open a usable full model.
   const beforeCommit = preview.preview.context.commit;
   assert.ok(beforeCommit);
@@ -246,7 +252,7 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
   await page.waitForFunction(()=>new URL(location.href).searchParams.get('revision')==='1'&&document.getElementById('architectureEditor').getAttribute('aria-busy')==='false');
   await page.locator('#adoptionView').selectOption(adopted.viewId);
   await page.waitForFunction(id=>new URL(location.href).searchParams.get('viewId')===id,adopted.viewId);
-  // Historical version navigation opens a new document, so supply a fresh audit rationale.
+  // Historical version navigation selects a different stand, so supply a fresh audit rationale.
   await page.locator('#editorRationale').fill('Review undo and redo after historical navigation');
   async function invert(kind) {
     const preview=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith('/editor/preview'));

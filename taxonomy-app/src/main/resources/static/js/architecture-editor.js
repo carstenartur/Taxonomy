@@ -91,6 +91,7 @@
     }
     function permissions() {
         var writable = active && view && view.mayEdit && !busy && !loading;
+        el('architectureEditor').setAttribute('aria-busy', String(busy || loading));
         adoptionPanel.setLocked(busy || loading);
         planningPanel.setEnabled(writable);
         focusPanel.setLocked(!active || busy || loading);
@@ -114,7 +115,6 @@
         if (loader) loader.abort();
         loader = new AbortController();
         focusPanel.setLocked(true);
-        el('architectureEditor').setAttribute('aria-busy', 'true');
         setStatus(t('editor.loading'));
         el('editorError').hidden = true;
         try {
@@ -133,7 +133,7 @@
             if (ticket === generation) { report(error); view = null; window.TaxonomyArchitectureLifecycle?.failedSelection(error); focusPanel.setContext(null, false); permissions(); }
             return false;
         } finally {
-            if (ticket === generation) { loading = false; el('architectureEditor').setAttribute('aria-busy', 'false'); permissions(); }
+            if (ticket === generation) { loading = false; permissions(); }
         }
     }
     function publishContext() {

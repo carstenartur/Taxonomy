@@ -303,17 +303,17 @@ window.TaxonomyUtils = (function () {
         // Bootstrap's lg columns become the desktop two-column layout at 992px.
         var narrowViewport = window.matchMedia('(max-width: 991.98px)');
         var synchronize = function () {
-            if (narrowViewport.matches) {
-                if (rightPanel.nextElementSibling !== leftPanel) {
-                    row.insertBefore(rightPanel, leftPanel);
-                }
-                row.dataset.taskOrder = 'primary-first';
-            } else {
-                if (leftPanel.nextElementSibling !== rightPanel) {
-                    row.insertBefore(leftPanel, rightPanel);
-                }
-                row.dataset.taskOrder = 'reference-first';
+            var first = narrowViewport.matches ? rightPanel : leftPanel;
+            var second = narrowViewport.matches ? leftPanel : rightPanel;
+            if (first.nextElementSibling !== second) {
+                // Detaching an active ancestor loses native focus/selection and exits fullscreen.
+                // Move its sibling instead, preserving the same structural reading order.
+                var keepFirst = first.contains(document.fullscreenElement)
+                    || (!second.contains(document.fullscreenElement) && first.contains(document.activeElement));
+                if (keepFirst) row.insertBefore(second, first.nextSibling);
+                else row.insertBefore(first, second);
             }
+            row.dataset.taskOrder = narrowViewport.matches ? 'primary-first' : 'reference-first';
         };
 
         synchronize();

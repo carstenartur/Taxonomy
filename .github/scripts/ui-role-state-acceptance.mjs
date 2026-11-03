@@ -43,6 +43,8 @@ const findings = [];
 const consoleErrors = [];
 const reconciledConsoleErrors = [];
 const navigationConsoleCandidates = [];
+const navigationEvidence = [];
+const navigationRequestStarts = new WeakMap();
 const externalRequests = [];
 const httpFailures = [];
 const draftReconciliations = [];
@@ -150,6 +152,13 @@ function recordConsoleError(text) {
   });
 }
 
+function recordNavigationEvidence(kind, detail = {}) {
+  navigationEvidence.push({
+    kind, observedAt: Date.now(), locale: systemInformationNavigationLocale,
+    ...detail
+  });
+}
+
 try {
   ({ browser, context, page } = await openRoleSession({
     baseUrl, role, browserName, viewport: effectiveViewport,
@@ -172,10 +181,28 @@ try {
   page.on('request', requestEvent => {
     const url = requestEvent.url();
     if (url.startsWith('data:') || url.startsWith('blob:')) return;
-    if (new URL(url).origin !== baseOrigin) externalRequests.push(url);
+    const parsed = new URL(url);
+    if (parsed.origin !== baseOrigin) externalRequests.push(url);
+    if (parsed.origin === baseOrigin && requestEvent.method() === 'GET'
+        && /\/api\/(?:status\/startup|workspace\/sync-state|context\/current|git\/state|ai-status)$/.test(parsed.pathname)) {
+      const started = { url, method: requestEvent.method(), pageUrl: page.url(),
+        startedAt: Date.now(), locale: systemInformationNavigationLocale };
+      navigationRequestStarts.set(requestEvent, started);
+      recordNavigationEvidence('request', { request: started });
+    }
+  });
+  page.on('requestfailed', request => {
+    const started = navigationRequestStarts.get(request);
+    if (started) recordNavigationEvidence('request-failed', {
+      request: started, pageUrl: page.url(), errorText: request.failure()?.errorText || null
+    });
   });
   page.on('response', response => {
     const url = new URL(response.url());
+    const started = navigationRequestStarts.get(response.request());
+    if (started) recordNavigationEvidence('response', {
+      request: started, pageUrl: page.url(), status: response.status()
+    });
     if (url.origin === baseOrigin && response.status() >= 400) {
       const responseHeaders = response.headers();
       const requestHeaders = response.request().headers();
@@ -200,10 +227,14 @@ try {
   });
   page.on('console', message => {
     if (message.type() === 'error' && !message.text().includes('Failed to load resource')) {
+      recordNavigationEvidence('console-error', { message: message.text(), pageUrl: page.url() });
       recordConsoleError(message.text());
     }
   });
-  page.on('pageerror', error => recordConsoleError(error.message));
+  page.on('pageerror', error => {
+    recordNavigationEvidence('page-error', { message: error.message, pageUrl: page.url() });
+    recordConsoleError(error.message);
+  });
 
   taskMeasurements.failedStep = 'isolating resumable analysis draft';
   await isolateRoleStateScenario(page);
@@ -225,8 +256,10 @@ try {
         page, evidence, outputDir,
         onLocaleNavigationStart: locale => {
           systemInformationNavigationLocale = locale;
+          recordNavigationEvidence('navigation-start', { pageUrl: page.url() });
         },
         onLocaleNavigationEnd: locale => {
+          recordNavigationEvidence('navigation-end', { locale, pageUrl: page.url() });
           if (systemInformationNavigationLocale === locale) {
             systemInformationNavigationLocale = null;
           }
@@ -301,6 +334,7 @@ try {
     checks, findings, externalRequests, httpFailures,
     draftReconciliations, reconciledHttpFailures, consoleErrors,
     reconciledConsoleErrors,
+    navigationEvidence,
     auditError, failureEvidence, browserSessions
   };
   await writeFile(path.join(outputDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');

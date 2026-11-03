@@ -16,24 +16,43 @@ window.TaxonomyWorkspaceSync = (function () {
     var syncState = null;
     var POLL_INTERVAL = 15000; // 15 seconds
     var pollTimer = null;
+    var pendingRead = null;
+    var pageActive = true;
 
     // ── Initialization ──────────────────────────────────────────────
 
-    document.addEventListener('DOMContentLoaded', function () {
+    function startPolling() {
+        if (!pageActive || pollTimer !== null) return;
         pollSyncState();
         pollTimer = setInterval(pollSyncState, POLL_INTERVAL);
+    }
+    document.addEventListener('DOMContentLoaded', startPolling);
+    window.addEventListener('pagehide', function () {
+        pageActive = false; clearInterval(pollTimer); pollTimer = null;
+        if (pendingRead) pendingRead.abort();
+    });
+    window.addEventListener('pageshow', function (event) {
+        if (!event.persisted || pageActive) return;
+        pageActive = true; startPolling();
     });
 
     // ── Polling ─────────────────────────────────────────────────────
 
     function pollSyncState() {
-        fetch('/api/workspace/sync-state')
+        if (!pageActive) return;
+        if (pendingRead) pendingRead.abort();
+        var controller = new AbortController();
+        pendingRead = controller;
+        function current() {
+            return pageActive && pendingRead === controller && !controller.signal.aborted;
+        }
+        fetch('/api/workspace/sync-state', { signal: controller.signal })
             .then(function (r) {
-                if (!r.ok) return null;
+                if (!current() || !r.ok) return null;
                 return r.json();
             })
             .then(function (state) {
-                if (!state) return;
+                if (!current() || !state) return;
                 syncState = state;
                 renderSyncIndicator(state);
                 renderDirtyIndicator();

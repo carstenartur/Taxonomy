@@ -107,7 +107,9 @@ function createHarness({ lateConnectivity = false, extraReads = 0,
     }
     assert.ok(predicate(), label);
   }
+  const lifecycle = new EventTarget();
   const window = {
+    addEventListener: lifecycle.addEventListener.bind(lifecycle),
     setTimeout: callback => queued.push(callback),
     TaxonomyContextBar: { getCurrentContext: () => ({ branch: 'draft' }) },
     TaxonomyApiClient: { getJson: async path => (await fetch(path)).json() },
@@ -117,7 +119,7 @@ function createHarness({ lateConnectivity = false, extraReads = 0,
     }
   };
   const context = vm.createContext({
-    window, fetch, setInterval() {},
+    window, fetch, AbortController, setInterval() {},
     document: {
       addEventListener: (type, callback) => listeners.set(type, callback),
       getElementById: id => id === 'syncStatePanel' ? panel : null

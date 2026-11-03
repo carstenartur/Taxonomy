@@ -328,7 +328,7 @@ function createStatusHarness({ session = false, observers = false, draftResponse
   const window = { TaxonomyState: state, setTimeout, clearTimeout,
     setInterval() {}, addEventListener() {},
     requestAnimationFrame: callback => callback(), location: { search: '' } };
-  const sandbox = vm.createContext({ window, document, URLSearchParams, MutationObserver,
+  const sandbox = vm.createContext({ window, document, URLSearchParams, MutationObserver, AbortController,
     CustomEvent: class CustomEvent {
       constructor(type, { detail } = {}) { this.type = type; this.detail = detail; }
     },

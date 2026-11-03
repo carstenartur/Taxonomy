@@ -84,6 +84,45 @@ test('a dirty editor refuses changing the exact source when discard is declined'
     }finally{await page.close();}
 });
 
+test('checkpoint stays visibly busy until the confirmed stand finishes loading',async()=>{
+    const page=await fixture();try{
+        await page.evaluate(async()=>{
+            const original=ArchitectureEditorApi.load;
+            let reads=0;
+            // The about:blank fixture has no secure-context UUID API; the command ID is incidental here.
+            crypto.randomUUID=()=> '123e4567-e89b-42d3-a456-426614174000';
+            window.beforeCheckpoint='a'.repeat(40);window.afterCheckpoint='b'.repeat(40);
+            ArchitectureEditorApi.load=async(...args)=>{
+                const next=await original(...args);
+                next.document.context.commit=++reads===1?beforeCheckpoint:afterCheckpoint;
+                next.document.versions=[{commitId:next.document.context.commit,author:'alice',message:'Checkpoint'}];
+                if(reads>1)await new Promise(resolve=>{window.releaseCheckpointLoad=resolve;});
+                return next;
+            };
+            ArchitectureEditorApi.checkpoint=()=>new Promise(resolve=>{window.acceptCheckpoint=()=>resolve({commitId:afterCheckpoint});});
+            window.editor=TaxonomyArchitectureEditor.mount(document.getElementById('architectureWorkingSource'));
+            await editor.activate({kind:'working',repositoryId:'repo',workspaceScopeKey:'private-a',branch:'draft/a'});
+            window.historicalSource={...editor.getSource(),commit:beforeCheckpoint,revision:null};
+        });
+        await page.locator('#editorRationale').fill('Retain this architecture checkpoint');
+        await page.locator('#editorCheckpoint').click();
+        const pending=await page.evaluate(()=>({busy:document.getElementById('architectureEditor').getAttribute('aria-busy'),
+            disabled:document.getElementById('editorCheckpoint').disabled,canLeave:editor.canLeave(historicalSource,{retain:false})}));
+        assert.equal(pending.disabled,true,'The checkpoint request must be in progress: '+JSON.stringify(pending));
+        assert.equal(pending.canLeave,false,'A running checkpoint must keep its navigation guard');
+        assert.equal(pending.busy,'true','The surface must not claim readiness while the checkpoint blocks navigation');
+        await page.evaluate(()=>acceptCheckpoint());
+        await page.waitForFunction(()=>typeof releaseCheckpointLoad==='function');
+        assert.equal(await page.locator('#architectureEditor').getAttribute('aria-busy'),'true','The accepted response is not yet the loaded stand');
+        assert.equal(await page.evaluate(()=>editor.getData().document.context.commit),'a'.repeat(40));
+        await page.evaluate(()=>releaseCheckpointLoad());
+        await page.waitForFunction(()=>document.getElementById('architectureEditor').getAttribute('aria-busy')==='false');
+        assert.equal(await page.evaluate(()=>editor.getData().document.context.commit),'b'.repeat(40));
+        assert.equal(await page.locator('#editorCheckpoint').isEnabled(),true);
+        assert.equal(await page.evaluate(()=>editor.canLeave(historicalSource,{retain:false})),true,'The confirmed loaded stand permits historical navigation');
+    }finally{await page.close();}
+});
+
 test('an unpinned current working source reads the latest head while an exact retained revision preserves its draft',async()=>{
     const page=await fixture();try{
         await page.evaluate(async()=>{

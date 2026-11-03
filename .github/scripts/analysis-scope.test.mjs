@@ -20,7 +20,8 @@ function harness() {
     const document = {getElementById: id => nodes.get(id), createElement: node,
         documentElement: {lang: 'en'}, addEventListener: (name, fn) => listeners.set(name, fn)};
     const S = {taxonomyData: [{code: 'BP', nameEn: 'Processes'}, {code: 'CP', nameEn: 'Capabilities'}]};
-    const window = {TaxonomyState: S};
+    const lifecycle = new EventTarget();
+    const window = {TaxonomyState: S, addEventListener: lifecycle.addEventListener.bind(lifecycle)};
     if (existsSync(path)) vm.runInNewContext(readFileSync(path, 'utf8'), {window, document, TaxonomyI18n: {t: key => key}});
     const scope = window.TaxonomyAnalysisScope;
     assert.ok(scope, 'scope control module must be available');

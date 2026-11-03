@@ -2134,10 +2134,23 @@
 </div>
 <script>
 (function () {
+    var statusTimer = null;
+    var pendingStatus = null;
+    var statusPageActive = true;
+    function currentStatus(controller) {
+        return statusPageActive && pendingStatus === controller && !controller.signal.aborted;
+    }
     function updateSystemStatus() {
-        TaxonomyI18n.ready().then(function () { return fetch('/api/status/startup'); })
-            .then(function (r) { return r.json(); })
+        if (!statusPageActive) return;
+        if (pendingStatus) pendingStatus.abort();
+        var controller = new AbortController();
+        pendingStatus = controller;
+        TaxonomyI18n.ready().then(function () {
+                if (currentStatus(controller)) return fetch('/api/status/startup', { signal: controller.signal });
+            })
+            .then(function (r) { return currentStatus(controller) && r ? r.json() : null; })
             .then(function (data) {
+                if (!currentStatus(controller) || !data) return;
                 var bar = document.getElementById('systemStatusBar');
                 if (!bar) { return; }
                 var mem = data.memory || {};
@@ -2152,7 +2165,18 @@
             })
             .catch(function () {});
     }
-    setInterval(updateSystemStatus, 15000);
+    window.addEventListener('pagehide', function () {
+        statusPageActive = false;
+        clearInterval(statusTimer); statusTimer = null;
+        if (pendingStatus) pendingStatus.abort();
+    });
+    window.addEventListener('pageshow', function (event) {
+        if (!event.persisted || statusPageActive) return;
+        statusPageActive = true;
+        updateSystemStatus();
+        statusTimer = setInterval(updateSystemStatus, 15000);
+    });
+    statusTimer = setInterval(updateSystemStatus, 15000);
     document.addEventListener('DOMContentLoaded', updateSystemStatus);
     updateSystemStatus();
 }());
