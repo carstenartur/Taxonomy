@@ -81,6 +81,19 @@
     white-space: normal;
 }
 
+/* The application's dark outline text is for light surfaces; this popup owns
+   its foreground and interaction fill without changing other info buttons. */
+.architecture-snapshot-surface .workbench-export-content .btn-outline-info {
+    --bs-btn-hover-bg: #075985;
+    --bs-btn-active-bg: #075985;
+    color: #6edff6 !important;
+    border-color: #6edff6 !important;
+}
+
+.architecture-snapshot-surface .workbench-export-content .btn-outline-info:is(:hover, :focus-visible, :active, .active, .show) {
+    color: #fff !important;
+}
+
 .architecture-snapshot-surface .workbench-export-content small, .architecture-snapshot-surface .workbench-export-content code {
     overflow-wrap: anywhere;
 }

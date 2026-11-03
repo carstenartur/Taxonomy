@@ -186,25 +186,34 @@ async function runAnalysisUxBrowserTests(group, applicationBaseUrl) {
     scenario => scenario.suite === 'special-modes'
       && scenario.id === 'text-spacing-and-offline')) return;
 
-  const bootstrapUrl = `${applicationBaseUrl.replace(/\/+$/, '')}`
-    + '/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css';
-  const response = await fetch(bootstrapUrl);
-  if (!response.ok) {
-    throw new Error(
-      `Could not load bundled Bootstrap 5.3.8 stylesheet: ${response.status} ${bootstrapUrl}`);
-  }
-  if (!response.headers.get('content-type')?.includes('text/css')) {
-    throw new Error(`Bundled Bootstrap resource is not CSS: ${bootstrapUrl}`);
-  }
   const browserResources = path.join(outputRoot, '_browser-resources');
   await mkdir(browserResources, { recursive: true });
-  const bootstrapCss = path.join(browserResources, 'bootstrap-5.3.8.min.css');
-  const css = Buffer.from(await response.arrayBuffer());
-  if (css.length === 0) throw new Error(`Bundled Bootstrap stylesheet is empty: ${bootstrapUrl}`);
-  await writeFile(bootstrapCss, css);
+  async function bundledResource(resourcePath, filename, acceptedTypes) {
+    const url = `${applicationBaseUrl.replace(/\/+$/, '')}${resourcePath}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Could not load bundled browser resource: ${response.status} ${url}`);
+    }
+    const contentType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!acceptedTypes.includes(contentType)) {
+      throw new Error(`Bundled browser resource has unexpected content type ${contentType || '(missing)'}: ${url}`);
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length === 0) throw new Error(`Bundled browser resource is empty: ${url}`);
+    const filenameOnDisk = path.join(browserResources, filename);
+    await writeFile(filenameOnDisk, bytes);
+    return filenameOnDisk;
+  }
+  const [bootstrapCss, d3Script] = await Promise.all([
+    bundledResource('/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css',
+      'bootstrap-5.3.8.min.css', ['text/css']),
+    bundledResource('/webjars/d3/7.9.0/dist/d3.min.js',
+      'd3-7.9.0.min.js', ['text/javascript', 'application/javascript', 'application/x-javascript'])
+  ]);
 
   console.log('\n=== Native Chromium component regressions: analysis/navigation UX ===');
-  // JUnit owns analysis-navigation.browser.test.mjs and analysis-ux.browser.test.mjs.
+  // JUnit owns all registered browser components, including analysis-navigation.browser.test.mjs,
+  // analysis-ux.browser.test.mjs and architecture-diagram.browser.test.mjs.
   await runProcess(path.join(repoRoot, 'mvnw'), [
     '-B', '-f', path.join(repoRoot, 'pom.xml'), '-pl', 'taxonomy-tooling', '-am', 'test',
     '-Dtest=JavascriptContractTest', '-Dsurefire.failIfNoSpecifiedTests=false',
@@ -215,6 +224,7 @@ async function runAnalysisUxBrowserTests(group, applicationBaseUrl) {
     env: {
       ...process.env,
       BOOTSTRAP_CSS: bootstrapCss,
+      TAXONOMY_TEST_D3_SCRIPT: d3Script,
       TAXONOMY_NODE_EXECUTABLE: process.execPath,
       TAXONOMY_TEST_RESOURCE_ROOT: path.join(repoRoot, 'taxonomy-app', 'src', 'main', 'resources')
     }

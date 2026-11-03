@@ -12,6 +12,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.openqa.selenium.By;
+import org.openqa.selenium.Dimension;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.chromium.HasCdp;
@@ -61,6 +62,7 @@ class ArchitectureWorkspaceBrowserIT {
                             session:window.TaxonomyAnalysisSession?.state(),errors:window.__integrationErrors,
                             lensBounds:(()=>{const r=document.getElementById('architectureSourceLensTitle')?.getBoundingClientRect();return r?{top:r.top,bottom:r.bottom,innerHeight,scrollY}:null;})(),
                             snapshotLayout:window.__snapshotLayout,
+                            fullscreen:window.__fullscreenEvidence,
                             sourceError:document.getElementById('architectureWorkspaceError')?.textContent,
                             editorError:document.getElementById('editorError')?.textContent,
                             lensError:document.getElementById('architectureSourceLensError')?.textContent};
@@ -387,6 +389,113 @@ class ArchitectureWorkspaceBrowserIT {
             assertThat(page.driver().executeScript("return __snapshotContextHomes.every(home=>home.node.parentNode===home.parent && home.node.nextSibling===home.next);")).isEqualTo(true);
         }
         noScriptErrors();
+    }
+
+    @ParameterizedTest @ValueSource(ints = {1366, 1024})
+    void embeddedSnapshotFitsShortContentViewportAndKeepsFitAndExports(int width) throws IOException {
+        open("en", width);
+        // Browser-window chrome leaves less content height than the requested outer window.
+        resize(width, 625);
+        source("snapshot", snapshotSource("__shared__"));
+        wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#architectureCanvas [data-node-id='CP-1000']")));
+        var geometry = (Map<?, ?>) page.driver().executeAsyncScript("""
+                const done=arguments[arguments.length-1];scrollTo(0,0);
+                requestAnimationFrame(()=>requestAnimationFrame(()=>{
+                    const rect=selector=>{const r=document.querySelector(selector).getBoundingClientRect();
+                        return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height};};
+                    const canvas=rect('#architectureCanvasShell'),details=rect('.workbench-detail-panel');
+                    const grid=document.querySelector('#architectureSnapshotSource .workbench-grid');
+                    const geometry={innerWidth,innerHeight,outerWidth,outerHeight,scrollY,canvas,details,
+                        grid:rect('#architectureSnapshotSource .workbench-grid'),workbench:rect('#architectureWorkbench'),
+                        controls:rect('#architectureWorkbench .architecture-controls'),
+                        assignedHeight:grid.style.getPropertyValue('--architecture-snapshot-height'),
+                        rows:getComputedStyle(document.getElementById('architectureWorkbench')).gridTemplateRows,
+                        // The original ArchitectureWorkbenchUiIT viewport oracle is unchanged.
+                        valid:canvas.height>0 && canvas.bottom<=innerHeight+1
+                            && details.bottom<=innerHeight+1
+                            && document.documentElement.scrollWidth<=innerWidth+1};
+                    window.__snapshotLayout=geometry;done(geometry);
+                }));
+                """);
+        Path evidence = Path.of("target", "unified-architecture-height", "en-" + width + "-short");
+        Files.createDirectories(evidence);
+        Files.writeString(evidence.resolve("geometry.json"), json(geometry));
+        Files.write(evidence.resolve("viewport.png"), page.driver().getScreenshotAs(OutputType.BYTES));
+        assertThat(geometry.get("valid")).as("The original viewport gate must also hold in a short content area: %s", geometry)
+                .isEqualTo(true);
+        ScenarioBrowserWalkthrough.click(page.driver(), wait, By.id("fitArchitecture"));
+        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("""
+                const canvas=document.getElementById('architectureCanvasShell').getBoundingClientRect();
+                const nodes=[...document.querySelectorAll('#architectureCanvas .architecture-node')];
+                return nodes.length===2 && nodes.every(node=>{const r=node.getBoundingClientRect();
+                    return r.left>=canvas.left-1 && r.right<=canvas.right+1 && r.top>=canvas.top-1 && r.bottom<=canvas.bottom+1;});
+                """)));
+        assertSnapshotExports();
+        noScriptErrors();
+    }
+
+    @Test void embeddedSnapshotEntersAndExitsNativeFullscreenWithoutChangingItsSourceOrSelection() throws IOException {
+        open("en", 1600);
+        // Use the real Scenario browser-window path, rather than an emulated CSS viewport.
+        ((HasCdp) new Augmenter().augment(page.driver())).executeCdpCommand("Emulation.clearDeviceMetricsOverride", Map.of());
+        page.driver().manage().window().setSize(new Dimension(1600, 1100));
+        source("snapshot", snapshotSource("__shared__"));
+        wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#architectureCanvas [data-node-id='CP-1000']")));
+        ScenarioBrowserWalkthrough.click(page.driver(), wait, By.id("fitArchitecture"));
+        ScenarioBrowserWalkthrough.click(page.driver(), wait, By.cssSelector("#architectureCanvas [data-node-id='CP-1000']"));
+        ScenarioBrowserWalkthrough.click(page.driver(), wait, By.id("zoomArchitectureIn"));
+        ScenarioBrowserWalkthrough.click(page.driver(), wait, By.id("zoomArchitectureOut"));
+        ScenarioBrowserWalkthrough.click(page.driver(), wait, By.id("fitArchitecture"));
+        page.driver().executeScript("""
+                window.__fullscreenSource=JSON.stringify(TaxonomyArchitectureWorkspace.getSource());
+                window.__fullscreenData=TaxonomyArchitectureWorkspace.getData();
+                window.__fullscreenDocument=__sameDocument;
+                """);
+        ScenarioBrowserWalkthrough.observeFullscreen(page.driver());
+        Path evidence = Path.of("target", "unified-architecture-fullscreen");
+        Files.createDirectories(evidence);
+        try {
+            assertThat(page.driver().executeScript("return document.fullscreenElement;")).isNull();
+            assertThat(page.driver().executeScript("return document.fullscreenEnabled;")).isEqualTo(true);
+            assertThat(page.driver().findElement(By.id("fullscreenArchitecture")).isEnabled()).isTrue();
+            ScenarioBrowserWalkthrough.click(page.driver(), wait, By.id("fullscreenArchitecture"));
+            wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("""
+                    return document.fullscreenElement===document.getElementById('architectureWorkbench');
+                    """)));
+            page.driver().executeScript("__recordFullscreen('entered');");
+            assertThat(page.driver().executeScript("""
+                    return JSON.stringify(TaxonomyArchitectureWorkspace.getSource())===__fullscreenSource
+                        && TaxonomyArchitectureWorkspace.getData()===__fullscreenData && __sameDocument===__fullscreenDocument;
+                    """)).as("Fullscreen keeps the exact source, loaded data and document").isEqualTo(true);
+            assertThat(page.driver().findElement(By.cssSelector("#architectureCanvas [data-node-id='CP-1000']"))
+                    .getDomAttribute("aria-pressed")).isEqualTo("true");
+            Files.write(evidence.resolve("entered.png"), page.driver().getScreenshotAs(OutputType.BYTES));
+            ScenarioBrowserWalkthrough.click(page.driver(), wait, By.id("fullscreenArchitecture"));
+            wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("return document.fullscreenElement===null;")));
+            page.driver().executeScript("__recordFullscreen('exited');");
+            assertThat(page.driver().executeScript("""
+                    return JSON.stringify(TaxonomyArchitectureWorkspace.getSource())===__fullscreenSource
+                        && TaxonomyArchitectureWorkspace.getData()===__fullscreenData && __sameDocument===__fullscreenDocument;
+                    """)).as("Exiting fullscreen keeps the exact source, loaded data and document").isEqualTo(true);
+            assertThat(page.driver().findElement(By.cssSelector("#architectureCanvas [data-node-id='CP-1000']"))
+                    .getDomAttribute("aria-pressed")).isEqualTo("true");
+            assertThat(page.driver().executeScript("""
+                    return __fullscreenEvidence.events.filter(event=>event.type==='fullscreenchange').map(event=>event.fullscreen);
+                    """)).as("Native fullscreen changes enter once and leave once").isEqualTo(java.util.Arrays.asList("architectureWorkbench", null));
+            assertThat(page.driver().executeScript("""
+                    return __fullscreenEvidence.events.filter(event=>event.type==='click:capture').map(event=>event.isTrusted);
+                    """)).as("Both fullscreen toggles are trusted browser clicks").isEqualTo(List.of(true, true));
+            assertThat(page.driver().executeScript("""
+                    return __fullscreenEvidence.events.filter(event=>event.type==='fullscreenerror' || event.type==='unhandledrejection');
+                    """)).isEqualTo(List.of());
+            assertThat(page.requests().stream().filter(request -> request.path().contains("/architecture-workbench/")).toList()).hasSize(1);
+            noScriptErrors();
+        } finally {
+            page.driver().executeScript("__recordFullscreen('final');");
+            Files.writeString(evidence.resolve("events.json"), json(page.driver().executeScript("return __fullscreenEvidence;")));
+            Files.writeString(evidence.resolve("browser.json"), json(page.driver().getCapabilities().asMap()));
+            Files.write(evidence.resolve("final.png"), page.driver().getScreenshotAs(OutputType.BYTES));
+        }
     }
 
     @ParameterizedTest @CsvSource({"en,1440", "de,390"})

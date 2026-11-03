@@ -160,6 +160,87 @@ erhalten.
 
 ![Mobile gespeicherte Architektur ohne Überlagerung von Überschrift und Aktionen bei 390 Pixeln](images/unified-architecture-workspace-2026-11-03/snapshot-layout-de-390.png)
 
+## Nachprüfung des vollständigen CI-Stands `92a7452c`
+
+Der [Hauptlauf 41651027183](https://github.com/carstenartur/Taxonomy/actions/runs/41651027183)
+ist vollständig ausgewertet: 18 erfolgreiche Jobs, vier fehlgeschlagene Jobs
+und zwei übersprungene Jobs. Die Fehler betreffen zwei UI-Gruppen, die native
+Browsergruppe und deren abhängiges Maven-Aggregat. Die Coverage-Aggregation
+wurde wegen dieser Fehler nicht ausgeführt. Die Dokumentationsgruppe war
+aufgrund der bestehenden Änderungsauswahl nicht vorgesehen.
+
+Core, Plugin-Paketierung, Runtime, Domain-Integration, Recovery und die
+Anwendungsszenarien waren erfolgreich. Die App-Core-Teilmenge enthält
+**3.985 Tests, keine Failures oder Errors und 55 ausgewiesene Skips**; dies ist
+keine behauptete Gesamtzahl des Reaktors. Die drei
+[Datenbankgruppen](https://github.com/carstenartur/Taxonomy/actions/runs/41651027063)
+bestanden **138 Integrationsfälle** ohne Failures, Errors oder Skips:
+33 SQL-Server-, 62 PostgreSQL- und 43 Oracle-Fälle.
+
+Der [Push-CodeQL-Lauf](https://github.com/carstenartur/Taxonomy/actions/runs/41651014238)
+ist für Java und JavaScript erfolgreich. Die neun ursprünglichen
+JavaScript-Befunde sind in den weiterhin aktiven Regeln nicht mehr vorhanden;
+es wurden keine zusätzlichen Baseline-Ausnahmen zugelassen. Ebenfalls
+erfolgreich waren der tatsächliche Word-Download, Reformulierungsabrechnung,
+Security Scan, Kubernetes-Smoke und der JGit-Speicherverbrauchertest.
+
+### Korrekturen aus den Browserbefunden
+
+- **Isolierte Testressourcen:** Der Runner liest Bootstrap und D3 aus derselben
+  laufenden paketierten Anwendung und gibt ihre lokalen Dateien ausdrücklich
+  an die Browserprüfungen weiter. HTTP-Status, Inhaltstyp und nicht leere Bytes
+  werden geprüft. Ein leerer Browser-Maven-Cache funktioniert damit ebenfalls;
+  es wird weder ein CDN noch eine neue Produktabhängigkeit verwendet.
+- **Dunkles Exportmenü:** Die globalen Farben für helle Flächen überschrieben
+  die beiden Info-Schaltflächen im dunklen Menü. Der eng begrenzte Selektor
+  stellt dort lesbare Farben her. Alle sechs aktivierten Exportaktionen werden
+  mit dem tatsächlichen globalen CSS geprüft, einschließlich Axe sowie Hover,
+  gedrücktem Zustand und Tastaturfokus der beiden betroffenen Aktionen.
+- **Historischer Stand:** Der native Adoptionstest klickte als einzige Aktion
+  ohne den vorhandenen expliziten Scrollpfad auf einen Historienlink außerhalb
+  des sichtbaren Viewports. Dieser
+  reproduzierte Fehler verwendet jetzt denselben vorhandenen sofortigen
+  Scroll-/nativen Klickpfad wie die übrigen Aktionen. Produktcode, Zeitgrenzen
+  und sämtliche Übernahme-, Replay-, Checkpoint-, Undo-/Redo- und
+  Neustartprüfungen bleiben erhalten.
+- **Kurze Desktop-Inhaltsfläche:** Bei 1024 × 625 Pixeln verlangte die eingebettete
+  Workbench zusätzlich zur Werkzeugleiste mindestens `50dvh` Zeichenhöhe.
+  Das überschritt ihre korrekt zugewiesene Resthöhe. Nur dieser eingebettete
+  Desktop-Fall verwendet jetzt die tatsächlich verbleibende Höhe. Bei der
+  reproduzierten Geometrie endet der Canvas nun bei **616,75 Pixeln**, genau
+  an der Rasterunterkante, statt bei **628,41 Pixeln** außerhalb des Viewports.
+  Die vorhandenen Mobil-, Druck-, Quellen-, Kamera- und Exportprüfungen bleiben
+  unverändert; zwei zusätzliche kurze Größen verwenden das ursprüngliche
+  Layout-Orakel.
+
+| Frische lokale Nachprüfung | Bestätigtes Ergebnis |
+| --- | --- |
+| Testressourcen-Verträge | Erwarteter RED-Befund, anschließend **28 Verträge + 2 Ownership-Prüfungen bestanden**. |
+| Vollständige Browserinventur mit leerem Browser-Maven-Cache | **111 + 2 Ownership-Prüfungen bestanden**, keine Failures, Errors oder Skips. |
+| Frischer Anwendungsbau | Alle **21 Module** paketiert; Testausführung bei diesem Paketbau ausdrücklich ausgeschaltet. |
+| Vollständiger paketierter ADMIN-Ablauf | **2 Maven-Prüfungen**, **74 Browserchecks**, **21 Axe-Zustände**, keine blockierenden Befunde oder Auditfehler; einschließlich des zuvor fehlgeschlagenen Exportmenüs und aller folgenden Schritte. |
+| Paketierter Textabstands-/Offline-Ablauf | **2 Maven-Prüfungen**, **7 Browserchecks** und die vorgeschalteten **111 Browserfälle** bestanden. Bootstrap und D3 wurden tatsächlich aus dem frisch paketierten Server gelesen und entsprechen seinen WebJar-Bytes. |
+| Historischer Adoptionstest und neuer nativer Vollbildfall | **2/2 Maven-Fälle bestanden**, keine Failures, Errors oder Skips, mit Chrome Headless Shell **150.0.7871.124** und passendem Driver. |
+| Vollständige `ArchitectureWorkspaceBrowserIT` nach der Höhenkorrektur | **13/13 Maven-Fälle bestanden**, keine Failures, Errors oder Skips, mit derselben 150er Runtime: bisherige Quellen-, History-, Entwurfs-, Lupen-, Druck- und Größenprüfungen sowie die neuen Kurzviewport- und Vollbildfälle. |
+
+Der vorherige eigenständige
+[Architektur-Szenariolauf](https://github.com/carstenartur/Taxonomy/actions/runs/41651034467)
+scheiterte beim Vollbildeintritt. Dieser Fehler ließ sich lokal weder mit der
+kleinen nativen Fixture noch mit seiner originalen gespeicherten Projektion
+von **50 Knoten und 36 Beziehungen** reproduzieren. Die tatsächliche Folge aus
+Suche, Auswahl, Fokus, Übersicht, Kontextfilter, Fit, Zoom und Vollbild bestand
+mit Chrome Headless Shell 150 bei 1600 × 1100 und 1600 × 957 Pixeln. Quelle,
+Daten und Auswahl blieben erhalten. Diese Proben ersetzen den ursprünglichen
+vollständigen CI-Ablauf nicht und belegen noch keine Ursache für dessen Fehler.
+
+Der ursprüngliche Ablauf protokolliert deshalb zusätzlich die nativen
+Vollbildereignisse, Browser-Policy, Aktivierung, Fokus und Ablehnungsgründe.
+Die bisherigen Wartezeiten bleiben bestehen. Layoutbilder werden bereits
+vor dem Zurücksetzen der Fenstergröße gesichert; die nativen Fehler- und
+Geometrieartefakte sind im bestehenden CI-Upload enthalten. Normales Chrome
+150 konnte lokal wegen der AF_UNIX-Socketbeschränkung nicht gestartet werden;
+die erfolgreiche Ausführung ist ausdrücklich der Headless Shell zugeordnet.
+
 ## Noch ausstehende oder begrenzte Evidenz
 
 Die vier oben genannten paketierten Profile sind vollständig abgeschlossen.

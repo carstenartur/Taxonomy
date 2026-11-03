@@ -237,17 +237,58 @@ for (const locale of ['de','en']) test(`embedded snapshot resolves translated po
 test('embedded dark export menu retains readable resting text contrast', async () => {
     const page=await snapshotFixture();
     try {
-        const bootstrap=execFileSync('unzip',['-p',path.join(process.env.MAVEN_REPO_LOCAL || path.join(os.homedir(),'.m2/repository'),'org/webjars/npm/bootstrap/5.3.8/bootstrap-5.3.8.jar'),'META-INF/resources/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css'],{encoding:'utf8'});
+        const bootstrap=process.env.BOOTSTRAP_CSS ? await readFile(process.env.BOOTSTRAP_CSS,'utf8')
+            : execFileSync('unzip',['-p',path.join(process.env.MAVEN_REPO_LOCAL || path.join(os.homedir(),'.m2/repository'),'org/webjars/npm/bootstrap/5.3.8/bootstrap-5.3.8.jar'),'META-INF/resources/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css'],{encoding:'utf8'});
         await page.addStyleTag({content:bootstrap});
-        // The application loads Bootstrap before the source styles.
-        for(const css of ['architecture-workbench.css','architecture-workspace.css'])await page.addStyleTag({path:path.join(resources,'static/css',css)});
+        // Include the actual application overrides between Bootstrap and the source styles.
+        for(const css of ['taxonomy.css','taxonomy-ergonomics.css','architecture-workbench.css','architecture-workspace.css'])await page.addStyleTag({path:path.join(resources,'static/css',css)});
+        await page.setViewportSize({width:390,height:844});
+        const experimental=['downloadArchitectureArchiMate','downloadArchitectureVisio'];
+        for(const id of experimental)assert.equal(await page.locator('#'+id).isDisabled(),true,id+' starts disabled');
+        await page.evaluate(()=>snapshotAdapter.activate(sourceA));
+        const exports=['downloadArchitectureSvg','downloadArchitecturePdf','downloadArchitectureWord','downloadDecisionWord',...experimental];
+        for(const id of exports)assert.equal(await page.locator('#'+id).isEnabled(),true,id+' is enabled by the loaded snapshot');
         await page.evaluate(() => document.getElementById('architectureExportOptions').open=true);
-        const contrasts=await page.evaluate(() => ['downloadArchitectureSvg','downloadArchitectureWord','downloadDecisionWord'].map(id=>{
-            const fg=getComputedStyle(document.getElementById(id)).color,bg=getComputedStyle(document.querySelector('.workbench-export-content')).backgroundColor;
-            function luminance(value){const rgb=value.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;}
-            const a=luminance(fg),b=luminance(bg);return {id,contrast:(Math.max(a,b)+.05)/(Math.min(a,b)+.05)};
+        const {default:axeCore}=await import('axe-core');
+        await page.addScriptTag({content:axeCore.source});
+        const axe=await page.evaluate(()=>window.axe.run(document.getElementById('architectureExportOptions'),{
+            runOnly:{type:'rule',values:['color-contrast']}
         }));
-        contrasts.forEach(value=>assert.ok(value.contrast>=4.5,`${value.id}: ${value.contrast.toFixed(2)}:1 resting contrast`));
+        assert.deepEqual(axe.violations.map(violation=>({id:violation.id,nodes:violation.nodes.map(node=>({
+            target:node.target,contrast:node.any.find(check=>check.id==='color-contrast')?.data
+        }))})),[],'Enabled exports retain AA text contrast in the real dark popup');
+        const contrast=async id=>page.locator('#'+id).evaluate(element=>{
+            const fg=getComputedStyle(element).color;
+            let parent=element,bg=getComputedStyle(parent).backgroundColor;
+            while(parent.parentElement && (bg==='transparent'||bg==='rgba(0, 0, 0, 0)')){
+                parent=parent.parentElement;bg=getComputedStyle(parent).backgroundColor;
+            }
+            function luminance(value){const rgb=value.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;}
+            const a=luminance(fg),b=luminance(bg);return {fg,bg,ratio:(Math.max(a,b)+.05)/(Math.min(a,b)+.05)};
+        });
+        const assertContrast=async(id,state)=>{
+            const value=await contrast(id);assert.ok(value.ratio>=4.5,`${id} ${state}: ${JSON.stringify(value)}`);
+        };
+        for(const id of exports)await assertContrast(id,'resting');
+        for(const id of experimental){
+            const button=page.locator('#'+id);
+            await button.hover();assert.equal(await button.evaluate(e=>e.matches(':hover')),true);
+            await assertContrast(id,'hover');
+            await page.mouse.down();
+            try{assert.equal(await button.evaluate(e=>e.matches(':active')),true);await assertContrast(id,'active');}
+            finally{await page.mouse.move(0,0);await page.mouse.up();}
+            const disclosure=page.locator('#architectureExportOptions');
+            await disclosure.locator('summary').focus();
+            if(!await disclosure.evaluate(e=>e.open))await page.keyboard.press('Enter');
+            for(let presses=0;presses<=exports.length && await page.evaluate(()=>document.activeElement.id)!==id;presses++)
+                await page.keyboard.press('Tab');
+            assert.equal(await page.evaluate(()=>document.activeElement.id),id,'Tab reaches '+id);
+            assert.equal(await button.evaluate(e=>e.matches(':focus-visible')),true);
+            await assertContrast(id,'keyboard focus');
+            await button.evaluate(e=>e.blur());
+        }
+        await page.evaluate(()=>snapshotAdapter.suspend());
+        for(const id of exports)assert.equal(await page.locator('#'+id).isDisabled(),true,id+' is disabled when its source is suspended');
     } finally {await page.close();}
 });
 

@@ -224,15 +224,21 @@ class ArchitectureWorkbenchUiIT {
         try {
             for (Dimension size : List.of(new Dimension(1366, 768), new Dimension(1024, 768))) {
                 driver.manage().window().setSize(size);
-                wait.until(browser -> Boolean.TRUE.equals(javascript().executeScript("""
-                        const canvas = document.getElementById('architectureCanvasShell').getBoundingClientRect();
-                        const details = document.querySelector('.workbench-detail-panel').getBoundingClientRect();
-                        return canvas.height > 0 && canvas.bottom <= innerHeight + 1
-                            && details.bottom <= innerHeight + 1
-                            && document.documentElement.scrollWidth <= innerWidth + 1;
-                        """)));
-                fitAndWait();
-                assertDiagramFitsCanvas();
+                try {
+                    wait.until(browser -> Boolean.TRUE.equals(javascript().executeScript("""
+                            const canvas = document.getElementById('architectureCanvasShell').getBoundingClientRect();
+                            const details = document.querySelector('.workbench-detail-panel').getBoundingClientRect();
+                            return canvas.height > 0 && canvas.bottom <= innerHeight + 1
+                                && details.bottom <= innerHeight + 1
+                                && document.documentElement.scrollWidth <= innerWidth + 1;
+                            """)));
+                    fitAndWait();
+                    assertDiagramFitsCanvas();
+                } catch (RuntimeException | AssertionError failure) {
+                    // Capture the failing viewport before finally restores the original window.
+                    saveViewportFailure(size, failure);
+                    throw failure;
+                }
             }
             WebElement exports = driver.findElement(By.cssSelector("#architectureExportOptions > summary"));
             exports.sendKeys(Keys.ENTER);
@@ -247,6 +253,35 @@ class ArchitectureWorkbenchUiIT {
         } finally {
             driver.manage().window().setSize(previousSize);
             fitAndWait();
+        }
+    }
+
+    private static void saveViewportFailure(Dimension requestedSize, Throwable failure) {
+        try {
+            var directory = java.nio.file.Path.of("target", "architecture-workbench-native",
+                    requestedSize.width + "x" + requestedSize.height);
+            java.nio.file.Files.createDirectories(directory);
+            java.nio.file.Files.write(directory.resolve("viewport.png"),
+                    driver.getScreenshotAs(org.openqa.selenium.OutputType.BYTES));
+            String state = String.valueOf(javascript().executeScript("""
+                    const bounds = selector => {
+                        const element = document.querySelector(selector);
+                        if (!element) return null;
+                        const style = getComputedStyle(element);
+                        return {rect:element.getBoundingClientRect().toJSON(),display:style.display,
+                            minHeight:style.minHeight,height:style.height,gridRows:style.gridTemplateRows,
+                            overflow:style.overflow,snapshotHeight:style.getPropertyValue('--architecture-snapshot-height')};
+                    };
+                    return JSON.stringify({url:location.href,requestedWindow:{width:arguments[0],height:arguments[1]},
+                        viewport:{innerWidth,innerHeight,outerWidth,outerHeight,scrollX,scrollY,
+                            documentWidth:document.documentElement.scrollWidth},
+                        canvas:bounds('#architectureCanvasShell'),details:bounds('.workbench-detail-panel'),
+                        grid:bounds('.workbench-grid'),workbench:bounds('#architectureWorkbench'),
+                        controls:bounds('.architecture-controls'),userAgent:navigator.userAgent},null,2);
+                    """, requestedSize.width, requestedSize.height));
+            java.nio.file.Files.writeString(directory.resolve("layout.json"), state);
+        } catch (Exception evidenceFailure) {
+            failure.addSuppressed(evidenceFailure);
         }
     }
 

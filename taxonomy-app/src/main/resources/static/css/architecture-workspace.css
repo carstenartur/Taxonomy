@@ -59,6 +59,8 @@
 }
 @media screen and (min-width: 901px) {
     #architectureSnapshotSource .workbench-grid { height: var(--architecture-snapshot-height, auto); }
+    /* The shared header and wrapped controls already consume part of this height. */
+    #architectureSnapshotSource .architecture-workbench { grid-template-rows: auto minmax(0, 1fr); }
 }
 @media screen and (max-width: 900px) {
     #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) {
