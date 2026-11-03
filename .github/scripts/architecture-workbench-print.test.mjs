@@ -62,12 +62,16 @@ function boot({ ready = true, bounds = { x: -20, y: 10, width: 2400, height: 160
     const ids = { architectureCanvas: svg, printArchitectureView: button,
         fitArchitecture: fit, architecturePrintDiagram: target, architectureCanvasShell: shell };
     const events = {};
-    let observer;
+    let observer, resizeObserver;
     let prints = 0;
     const context = vm.createContext({
         document: { getElementById(id) { return ids[id] || null; } },
         MutationObserver: class {
             constructor(callback) { observer = callback; }
+            observe() {}
+        },
+        ResizeObserver: class {
+            constructor(callback) { resizeObserver = callback; }
             observe() {}
         },
         window: { addEventListener(type, handler) { events[type] = handler; },
@@ -76,8 +80,20 @@ function boot({ ready = true, bounds = { x: -20, y: 10, width: 2400, height: 160
     });
     vm.runInContext(source, context);
     return { svg, viewport, marker, node, target, button, fit, events, embeddedStyle, properties,
-        mutation() { observer?.(); }, prints() { return prints; } };
+        mutation() { observer?.(); }, resize() { resizeObserver?.(); }, prints() { return prints; } };
 }
+
+test('a snapshot loaded in a hidden pane becomes printable when its diagram is revealed', () => {
+    const app = boot({bounds:{x:0,y:0,width:0,height:0}});
+    assert.equal(app.fit.disabled,false);
+    assert.equal(app.button.disabled,true);
+    app.viewport.getBBox=()=>({x:0,y:0,width:1200,height:800});
+    app.resize();
+    assert.equal(app.button.disabled,false);
+    app.button.events.click();assert.equal(app.prints(),1);
+    app.fit.disabled=true;app.resize();
+    assert.equal(app.button.disabled,true);assert.equal(app.target.children.length,0);
+});
 
 test('print follows the loaded view and refuses clicks while loading or after failure', () => {
     const app = boot({ ready: false });

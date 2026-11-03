@@ -3,10 +3,14 @@ window.ArchitectureFocusSession = function (options) {
     'use strict';
     var schedule = options.schedule || setTimeout, cancel = options.cancel || clearTimeout;
     var context = null, key = '', epoch = 0, available = false, enabled = false, paused = false, locked = false;
-    var budget = 16, used = 0, modelCalls = 0, useAi = true, active = null;
+    var sourceMode = options.sourceMode === true;
+    var budget = 16, used = 0, modelCalls = 0, useAi = !sourceMode, active = null;
     var states = Object.create(null), errors = Object.create(null), queue = [], dwell = new Map(), suggestions = [], reviewed = null;
-    function scopeIdentity(c) { return c ? [c.repositoryId, c.workspaceScopeKey, c.branch, c.actor, c.writeMode].join('\u001f') : ''; }
-    function identity(c) { return c ? scopeIdentity(c) + '\u001f' + c.commit + '\u001f' + c.revision : ''; }
+    function scopeIdentity(c) { return c ? [c.repositoryId, c.workspaceScopeKey, c.branch,
+        sourceMode ? c.kind : c.actor, sourceMode ? c.snapshotId : c.writeMode].join('\u001f') : ''; }
+    function identity(c) { return c ? scopeIdentity(c) + '\u001f' + (sourceMode
+        ? [c.version, c.projectId, c.requirementId, c.requirementVersionId].join('\u001f')
+        : c.commit + '\u001f' + c.revision) : ''; }
     function changed() { if (options.changed) options.changed(snapshot()); }
     function snapshot() {
         return { enabled: enabled, available: available, paused: paused, locked: locked, budget: budget, used: used,
@@ -24,19 +28,24 @@ window.ArchitectureFocusSession = function (options) {
     function pump() {
         if (!enabled || !available || paused || locked || active || used >= budget || !queue.length) return;
         var queued = queue.shift();
-        var request = { id: queued.id, retry: queued.retry, epoch: epoch, context: context };
+        var request = { id: queued.id, retry: queued.retry, epoch: epoch, context: context,
+            controller: sourceMode ? new AbortController() : null };
         active = request; used++; states[request.id] = 'examining'; changed();
         Promise.resolve().then(function () {
-            return options.request({ context: request.context, sourceId: request.id, candidateLimit: 8, useAi: useAi,
-                language: options.language ? options.language() : 'en' });
+            if (request.epoch !== epoch) return null;
+            var body = { sourceId: request.id, candidateLimit: 8, useAi: useAi,
+                language: options.language ? options.language() : 'en' };
+            body[sourceMode ? 'source' : 'context'] = request.context;
+            return options.request(body, request.controller ? { signal: request.controller.signal } : {});
         }).then(function (result) {
             // A request may finish after navigation or a semantic edit; its evidence belongs only to its captured revision.
-            modelCalls += Number.isSafeInteger(result.modelCalls) && result.modelCalls > 0 ? result.modelCalls : 0;
             if (request.epoch !== epoch) return;
-            if (identity(result.context) !== key || result.sourceId !== request.id
+            if (!result || identity(result[sourceMode ? 'source' : 'context']) !== key || result.sourceId !== request.id
+                    || sourceMode && !/^[a-f0-9]{64}$/i.test(result.sourceHash || '')
                     || !Array.isArray(result.suggestions) || !['ASSESSED', 'LOCAL_CANDIDATES', 'UNASSESSED', 'NO_CANDIDATES', 'FAILED'].includes(result.outcome)) {
-                throw new Error('Invalid focus response');
+                throw Object.assign(new Error('Invalid focus response'), sourceMode ? { responseBody: { code: 'INVALID_RESPONSE' } } : {});
             }
+            modelCalls += Number.isSafeInteger(result.modelCalls) && result.modelCalls > 0 ? result.modelCalls : 0;
             states[request.id] = result.outcome === 'FAILED' ? 'failed'
                 : result.outcome === 'NO_CANDIDATES' ? 'noCandidates'
                 : result.outcome === 'LOCAL_CANDIDATES' || result.outcome === 'UNASSESSED' ? 'unassessed'
@@ -49,20 +58,24 @@ window.ArchitectureFocusSession = function (options) {
                         || (!previous.stale && previous.outcome === 'ASSESSED' && result.outcome !== 'ASSESSED')
                         || (!previous.stale && !request.retry))) return;
                 if (previous) suggestions = suggestions.filter(function (s) { return s.id !== id; });
-                suggestions.push(Object.assign({}, value, { id: id, context: request.context, method: result.method,
-                    outcome: result.outcome, sourceHash: result.sourceHash, stale: false }));
+                var retained = Object.assign({}, value, { id: id, method: result.method,
+                    outcome: result.outcome, sourceHash: result.sourceHash, stale: false });
+                retained[sourceMode ? 'source' : 'context'] = request.context;
+                suggestions.push(retained);
                 if (!reviewed) reviewed = id;
             });
         }).catch(function (error) {
             if (request.epoch !== epoch) return;
-            states[request.id] = 'failed'; errors[request.id] = error.responseBody && error.responseBody.detail || error.message;
-        }).finally(function () { active = null; changed(); pump(); });
+            states[request.id] = 'failed'; errors[request.id] = options.errorMessage ? options.errorMessage(error)
+                : error.responseBody && error.responseBody.detail || error.message;
+        }).finally(function () { if (active === request) active = null; changed(); pump(); });
     }
     return {
         snapshot: snapshot,
         setContext: function (value, writable) {
             var nextKey = identity(value);
             if (nextKey !== key) {
+                if (sourceMode && active) { active.controller.abort(); active = null; }
                 if (scopeIdentity(value) !== scopeIdentity(context)) { suggestions = []; states = Object.create(null); reviewed = null; }
                 epoch++; key = nextKey; context = value && Object.freeze(Object.assign({}, value)); queue = []; clearDwell();
                 Object.keys(states).forEach(function (id) { states[id] = 'stale'; });
@@ -88,7 +101,8 @@ window.ArchitectureFocusSession = function (options) {
             });
         },
         inspect: function (id, retry) {
-            if (retry && states[id] === 'failed') delete states[id];
+            if (retry && enabled && available && !paused && !locked && used + queue.length < budget
+                    && (states[id] === 'failed' || states[id] === 'unassessed' && useAi)) delete states[id];
             if (dwell.has(id)) { cancel(dwell.get(id)); dwell.delete(id); }
             enqueue(id, retry);
         },
@@ -112,13 +126,22 @@ window.ArchitectureFocusSession = function (options) {
 window.ArchitectureFocusPanel = function (options) {
     'use strict';
     var session, selected = null, lastReview = null, reviewFocus = null;
-    function el(id) { return document.getElementById(id); }
+    var readOnly = options.capabilities && options.capabilities.readOnly === true;
+    function el(id) {
+        var scopedId = id.replace(/^editorLens/, options.idPrefix || 'editorLens');
+        return options.root ? options.root.querySelector('#' + scopedId) : document.getElementById(scopedId);
+    }
     function t() { return options.t.apply(null, arguments); }
     function node(tag, text, className) { var item = document.createElement(tag); item.textContent = text || ''; if (className) item.className = className; return item; }
     function action(label, callback, disabled, focusKey) {
         var item = node('button', label); item.type = 'button'; item.disabled = Boolean(disabled); item.onclick = callback;
         if (focusKey) item.dataset.focusAction = focusKey;
         return item;
+    }
+    function reviewSuggestion(id) {
+        var item = session.snapshot().suggestions.find(function (value) { return value.id === id; });
+        if (readOnly && (!item || options.canReview && !options.canReview(item))) return;
+        session.review(id);
     }
     function render(state) {
         el('editorLensEnabled').checked = state.enabled;
@@ -127,8 +150,9 @@ window.ArchitectureFocusPanel = function (options) {
         el('editorLensPause').textContent = t(state.paused ? 'editor.lens.resume' : 'editor.lens.pause');
         el('editorLensInspect').disabled = !selected || !state.enabled || state.paused || state.locked || state.used >= state.budget;
         el('editorLensUseAi').disabled = state.locked;
+        el('editorLensUseAi').checked = state.useAi;
         el('editorLensSummary').textContent = t('editor.lens.summary', state.used, state.budget, state.queued, state.modelCalls)
-            + ' · ' + t(!state.available ? 'editor.lens.unavailable' : !state.enabled ? 'editor.lens.off' : state.paused ? 'editor.lens.paused'
+            + ' · ' + t(!state.available ? (readOnly ? 'sourceLens.unavailable' : 'editor.lens.unavailable') : !state.enabled ? 'editor.lens.off' : state.paused ? 'editor.lens.paused'
                 : state.active ? 'editor.lens.running' : state.used >= state.budget ? 'editor.lens.budgetReached' : 'editor.lens.ready');
         var statuses = el('editorLensStates'); statuses.replaceChildren();
         Object.keys(state.states).slice(-16).forEach(function (id) {
@@ -141,7 +165,8 @@ window.ArchitectureFocusPanel = function (options) {
         var focusedProposal = list.contains(document.activeElement) ? document.activeElement.dataset.proposalId : null;
         list.replaceChildren();
         state.suggestions.slice(-32).forEach(function (item) {
-            var row = node('li'); var select = action(item.sourceId + ' → ' + item.targetId + ' · ' + item.relationType, function () { session.review(item.id); });
+            var row = node('li'); var select = action(item.sourceId + ' → ' + item.targetId + ' · ' + item.relationType,
+                function () { reviewSuggestion(item.id); });
             select.setAttribute('aria-pressed', String(state.reviewed === item.id));
             select.dataset.proposalId = item.id;
             row.append(select, node('small', t(item.accepted ? (item.undone ? 'editor.lens.undone' : 'editor.lens.accepted') : item.stale ? 'editor.lens.stale'
@@ -166,21 +191,31 @@ window.ArchitectureFocusPanel = function (options) {
             else {
                 review.append(node('h3', chosen.sourceId + ' — ' + chosen.relationType + ' → ' + chosen.targetId));
                 review.append(node('p', t(chosen.stale && !chosen.accepted ? 'editor.lens.stale' : chosen.outcome === 'ASSESSED' ? 'editor.lens.hypothesis' : 'editor.lens.local'), 'editor-lens-notice'));
-                review.append(node('p', t('editor.lens.method', chosen.method, chosen.context.revision)));
+                review.append(node('p', readOnly
+                    ? t('sourceLens.method', chosen.method, chosen.source.kind === 'ANALYSIS_SNAPSHOT'
+                        ? chosen.source.snapshotId : chosen.source.version)
+                    : t('editor.lens.method', chosen.method, chosen.context.revision)));
+                if (readOnly) review.append(node('p', t('sourceLens.sourceHash', chosen.sourceHash)));
                 review.append(node('p', chosen.rationale, 'editor-lens-rationale'));
                 var proof = node('ul'); (chosen.evidence || []).forEach(function (evidence) {
                     var row = node('li', evidence.elementId + ' · ' + evidence.field);
                     row.append(node('blockquote', evidence.quote)); proof.append(row);
                 }); review.append(proof);
                 var actions = node('div', '', 'editor-toolbar');
-                if (chosen.accepted) {
+                if (readOnly) {
+                    actions.append(action(t('editor.lens.dismiss'), function () { session.dismiss(chosen.id); }, state.locked, 'dismiss'));
+                    if (options.capabilities.adopt === true && options.adopt) {
+                        actions.append(action(t(chosen.source.kind === 'ANALYSIS_DRAFT' ? 'sourceLens.saveSource' : 'sourceLens.adopt'),
+                            function () { return options.adopt(chosen); }, chosen.stale || state.locked || !state.available, 'adopt'));
+                    }
+                } else if (chosen.accepted) {
                     actions.append(node('span', t(chosen.undone ? 'editor.lens.undone' : 'editor.lens.accepted')));
                     actions.append(action(t('editor.undo'), function () { options.undo(chosen); }, chosen.undone || state.locked || !options.canUndo(chosen), 'undo'));
                 } else {
                     actions.append(action(t(chosen.command && chosen.previewed ? 'editor.lens.retryAccept' : 'editor.lens.accept'), function () { options.accept(chosen); }, chosen.stale || state.locked || !state.available, 'accept'));
                     actions.append(action(t('editor.lens.dismiss'), function () { session.dismiss(chosen.id); }, state.locked, 'dismiss'));
                 }
-                actions.append(action(t('editor.lens.locate'), function () { options.locate(chosen.targetId); }, state.locked, 'locate'));
+                actions.append(action(t('editor.lens.locate'), function () { options.locate(chosen.targetId, chosen); }, state.locked, 'locate'));
                 review.append(actions);
             }
         }
@@ -196,14 +231,16 @@ window.ArchitectureFocusPanel = function (options) {
         options.present({ enabled: state.enabled, states: state.states, suggestions: state.suggestions.filter(function (s) { return !s.stale && !s.accepted; }),
             reviewed: state.reviewed, label: function (status) { return t('editor.lens.state.' + status); } });
     }
-    session = window.ArchitectureFocusSession({ request: options.request, language: options.language, changed: render });
+    session = window.ArchitectureFocusSession({ request: options.request, language: options.language, changed: render,
+        sourceMode: readOnly, errorMessage: options.errorMessage });
     el('editorLensEnabled').onchange = function () { session.setEnabled(this.checked); };
     el('editorLensPause').onclick = function () { session.setPaused(!session.snapshot().paused); };
     el('editorLensBudget').onchange = function () { session.setBudget(this.value); this.value = session.snapshot().budget; };
     el('editorLensUseAi').onchange = function () { session.setUseAi(this.checked); };
     el('editorLensInspect').onclick = function () { session.inspect(selected, true); };
     return {
-        setContext: session.setContext, setLocked: session.setLocked, observe: session.observe, review: session.review,
+        setContext: session.setContext, setLocked: session.setLocked, observe: session.observe, review: reviewSuggestion,
+        setSource: session.setContext,
         accepted: session.accepted, undone: session.undone,
         select: function (id) { selected = id; render(session.snapshot()); },
         refresh: function () { lastReview = null; render(session.snapshot()); }

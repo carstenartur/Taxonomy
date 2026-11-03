@@ -239,6 +239,35 @@ Exportendpunkt besitzt dessen Verbindlichkeit. Ein Diagramm aus flüchtigen Bewe
 oder einer Editorrevision darf nicht als dasselbe Artefakt ausgegeben werden.
 Siehe [Exportgrenzen](FEATURE_MATRIX.md) und [Architektureditor](ARCHITECTURE_EDITOR.md).
 
+## Gemeinsamer Architekturarbeitsbereich
+
+Die Thymeleaf-Hauptseite enthält Analyse, unveränderlichen Snapshot und semantischen
+Editor unter einem gemeinsamen Architektureintrag. `architecture-workspace.js`
+steuert Quellenaktivierung, exakte URL-Koordinaten und erhaltene Instanzen.
+Ausgeblendete Adapter setzen Anfragen und Kontextveröffentlichung aus; verspätete
+Antworten gelten nur für ihre Aktivierung. Entwurfsprüfungen schützen auch einen
+zurückgestellten Editor vor dem Ersetzen. Bisherige Editor-/Workbench-Routen
+leiten mit Quelle, Auswahl, Layout und Versionsangaben in diesen Bereich weiter.
+
+`shared/architecture-diagram.js` enthält die gemeinsame Darstellung, Auswahl,
+Fokusfunktion, Verschiebung, Zoom, Tastaturbedienung und Lupendarstellung. Die
+Quellenadapter behalten ihre jeweiligen Layouts, Herkunftsangaben, Details und
+Befehle. Die Zusammenführung der Oberfläche vermischt gespeicherte Analysebelege
+nicht mit dem semantischen Änderungsjournal des Editors.
+
+Der lesende Endpunkt `POST /api/architecture/focus/suggestions` löst
+`ANALYSIS_DRAFT` oder `ANALYSIS_SNAPSHOT` serverseitig auf. Berechtigung und exakte
+Quellversion werden vor dem gemeinsamen begrenzten Vorschlagsverfahren geprüft.
+Browsergraphen besitzen keine Nachweisautorität. Entwurfsuntersuchungen benötigen
+einen gespeicherten, bestätigten Analyseentwurf und eine exakte Ergebnisreferenz;
+Snapshots behalten ihre unveränderliche Identität. Antworten enthalten Quelle und
+Nachweis-Hash, aber keinen Editor-Befehlskontext. Der bestehende Editorendpunkt
+behält seine revisionsgebundene Übernahme und Rücknahme. Snapshot-Übernahmen
+benötigen weiterhin eine eigene Zielvorschau und ausdrückliche Annahme.
+
+Siehe [Architektureditor](ARCHITECTURE_EDITOR.md) und
+[Entwurfsbeschreibung](../superpowers/specs/2026-11-03-unified-architecture-workspace-design.md).
+
 ## DSL-Speicherarchitektur
 
 Die Grafik trennt **maßgebliche Zustände und explizite Persistenzübergänge**.

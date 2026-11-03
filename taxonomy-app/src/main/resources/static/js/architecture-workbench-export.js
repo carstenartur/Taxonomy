@@ -2,23 +2,30 @@
 (function () {
     'use strict';
 
-    const body = document.body;
-    const projectId = body.dataset.projectId;
-    const snapshotId = body.dataset.snapshotId;
+    function source() {
+        const workspaceSource = window.TaxonomyArchitectureWorkspace?.getSource?.();
+        if (workspaceSource) return workspaceSource.kind === 'snapshot' ? workspaceSource : null;
+        return document.body.__architectureSnapshot?.getSource?.()
+            || Object.assign({}, window.TaxonomyArchitectureWorkflow?.getScope?.(), document.body.dataset);
+    }
 
     function bind(buttonId, urlFactory) {
         const button = document.getElementById(buttonId);
         if (!button) return;
         button.addEventListener('click', function () {
-            window.location.assign(urlFactory(projectId, snapshotId));
+            const selected=source();
+            if (button.disabled || !selected) return;
+            window.location.assign(urlFactory(selected.projectId, selected.snapshotId, selected));
         });
     }
 
     bind('downloadArchitectureWord', ArchitectureWorkbenchApi.architectureWordUrl);
     const decision = document.getElementById('downloadDecisionWord');
     if (decision) decision.addEventListener('click', function () {
-        window.TaxonomyDecisionExport.openSaved({projectId, snapshotId, language: document.documentElement.lang,
-            api: window.TaxonomyPortfolioApi});
+        const selected=source();
+        if (decision.disabled || !selected) return;
+        window.TaxonomyDecisionExport.openSaved({projectId:selected.projectId, snapshotId:selected.snapshotId, language: document.documentElement.lang,
+            scope: Object.assign({}, selected), api: window.TaxonomyPortfolioApi});
     });
 
     bind(

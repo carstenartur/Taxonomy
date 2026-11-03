@@ -120,5 +120,8 @@
         }
     });
     new MutationObserver(updateReadiness).observe(fit, {attributes: true, attributeFilter: ['disabled']});
+    // A retained snapshot can finish loading before its application pane is visible.
+    // Recheck geometry when the SVG gains a viewport, without changing its zoom.
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(updateReadiness).observe(svg);
     updateReadiness();
 }());

@@ -38,7 +38,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** A bounded, read-only investigation of one exact semantic editor revision. No catalogue or proposal writes. */
+/** Bounded read-only hypothesis engine with an exact-editor adapter. No catalogue or proposal writes. */
 @Service
 public class ArchitectureFocusSuggestionService {
     private static final JsonMapper JSON = JsonMapper.builder()
@@ -78,6 +78,13 @@ public class ArchitectureFocusSuggestionService {
                            int modelCalls, int candidateCount, List<Suggestion> suggestions) {
         public Response { suggestions = List.copyOf(suggestions); }
     }
+    /** No editor context is present in the shared engine's input or output. */
+    private record EngineRequest(String sourceId, int candidateLimit, boolean useAi, String language,
+                                 Map<String, String> provenance) { }
+    record EngineResult(String method, String outcome, int modelCalls, int candidateCount,
+                        List<Suggestion> suggestions) {
+        EngineResult { suggestions = List.copyOf(suggestions); }
+    }
     private record Triple(String sourceId, String targetId, String relationType, int rank, List<Evidence> evidence) {
         String key() { return sourceId + " " + relationType + " " + targetId; }
     }
@@ -90,20 +97,31 @@ public class ArchitectureFocusSuggestionService {
         if (!"WORKSPACE_REVISION".equals(document.source()) || !"READY".equals(document.projectionState()))
             throw problem("CONTEXT_CHANGED", "context", "The current workspace revision is not ready for investigation");
         var model = new ArchitectureDslCommands().model(document.dsl());
-        var source = model.findElement(request.sourceId())
-                .orElseThrow(() -> problem("NOT_FOUND", "sourceId", "The element is not present in this exact editor revision"));
+        if (model.findElement(request.sourceId()).isEmpty())
+            throw problem("NOT_FOUND", "sourceId", "The element is not present in this exact editor revision");
         String hash = sha256(document.dsl());
+        var result = investigateModel(model, request.sourceId(), request.candidateLimit(), request.useAi(),
+                request.language(), hash, Map.of("x-focus-revision", Long.toString(request.context().revision())));
+        return new Response(request.context(),request.sourceId(),hash,result.method(),result.outcome(),
+                result.modelCalls(),result.candidateCount(),result.suggestions());
+    }
+
+    EngineResult investigateModel(CanonicalArchitectureModel model, String sourceId, int candidateLimit,
+                                  boolean useAi, String language, String hash, Map<String, String> provenance) {
+        var request = new EngineRequest(sourceId,candidateLimit,useAi,language,Map.copyOf(provenance));
+        var source = model.findElement(request.sourceId())
+                .orElseThrow(() -> problem("NOT_FOUND", "sourceId", "The element is not present in this exact source"));
         List<Triple> candidates = candidates(model, source, request.candidateLimit());
-        if (candidates.isEmpty()) return response(request, hash, LOCAL, "NO_CANDIDATES", 0, candidates, List.of());
+        if (candidates.isEmpty()) return response(LOCAL, "NO_CANDIDATES", 0, candidates, List.of());
         var local = local(request, hash, candidates, LOCAL);
-        if (!request.useAi()) return response(request, hash, LOCAL, "LOCAL_CANDIDATES", 0, candidates, local);
+        if (!request.useAi()) return response(LOCAL, "LOCAL_CANDIDATES", 0, candidates, local);
         if (llm.isMockMode()) {
             String method = LOCAL + ":MOCK_PROVIDER";
-            return response(request, hash, method, "UNASSESSED", 0, candidates, local(request, hash, candidates, method));
+            return response(method, "UNASSESSED", 0, candidates, local(request, hash, candidates, method));
         }
         if (!llm.supportsGenerativeCompletion()) {
             String method = LOCAL + ":GENERATION_UNSUPPORTED";
-            return response(request, hash, method, "UNASSESSED", 0, candidates, local(request, hash, candidates, method));
+            return response(method, "UNASSESSED", 0, candidates, local(request, hash, candidates, method));
         }
         int[] calls = {0};
         try {
@@ -119,7 +137,7 @@ public class ArchitectureFocusSuggestionService {
             var target = promptBudget.requireWithinBudget(options.budgetText(prompt), providerId);
             if (!target.available()) {
                 String fallbackMethod = LOCAL + ":AI_UNAVAILABLE";
-                return response(request, hash, fallbackMethod, "UNASSESSED", 0, candidates,
+                return response(fallbackMethod, "UNASSESSED", 0, candidates,
                         local(request, hash, candidates, fallbackMethod));
             }
             String raw = AnalysisRunControl.call(provider, "ARCHITECTURE_FOCUS", () -> {
@@ -130,11 +148,11 @@ public class ArchitectureFocusSuggestionService {
                 return detail;
             }).getRawResponse();
             List<Suggestion> assessed = parse(raw, request, hash, method, candidates, fields);
-            return response(request, hash, method, "ASSESSED", calls[0], candidates, assessed);
+            return response(method, "ASSESSED", calls[0], candidates, assessed);
         } catch (RuntimeException failure) {
             AnalysisExecutionFailures.rethrow(failure);
             String method = LOCAL + (calls[0] == 0 ? ":AI_UNAVAILABLE" : ":AI_FAILED");
-            return response(request, hash, method, calls[0] == 0 ? "UNASSESSED" : "FAILED", calls[0],
+            return response(method, calls[0] == 0 ? "UNASSESSED" : "FAILED", calls[0],
                     candidates, local(request, hash, candidates, method));
         }
     }
@@ -193,7 +211,7 @@ public class ArchitectureFocusSuggestionService {
     private static int overlap(Set<String> left, Set<String> right) {
         return (int) right.stream().filter(left::contains).count();
     }
-    private static List<Suggestion> local(Request request, String hash, List<Triple> candidates, String method) {
+    private static List<Suggestion> local(EngineRequest request, String hash, List<Triple> candidates, String method) {
         String rationale = "de".equals(request.language())
                 ? "Ungeprüfter Kandidat aus Textreihenfolge und zulässigen Endpunkttypen. Eine fachliche Prüfung ist erforderlich."
                 : "Unassessed candidate from text ranking and allowed endpoint types. Architectural review is required.";
@@ -221,7 +239,7 @@ public class ArchitectureFocusSuggestionService {
     private static void putField(Map<String, String> fields, String id, String field, String value) {
         if (value != null && !value.isBlank()) fields.put(id + "\n" + field, clip(value, MAX_QUOTE));
     }
-    private static String prompt(Request request, List<Triple> candidates, Map<String, String> fields) {
+    private static String prompt(EngineRequest request, List<Triple> candidates, Map<String, String> fields) {
         List<Map<String, String>> triples = candidates.stream().map(t -> Map.of("sourceId", t.sourceId(),
                 "targetId", t.targetId(), "relationType", t.relationType())).toList();
         List<Evidence> excerpts = fields.entrySet().stream().map(e -> {
@@ -262,7 +280,7 @@ public class ArchitectureFocusSuggestionService {
     }
     private static Map<String, Object> textSchema(int maximum) { return Map.of("type", "string", "minLength", 1, "maxLength", maximum); }
 
-    private static List<Suggestion> parse(String raw, Request request, String hash, String method,
+    private static List<Suggestion> parse(String raw, EngineRequest request, String hash, String method,
                                           List<Triple> candidates, Map<String, String> fields) {
         if (raw == null || raw.isBlank() || raw.length() > MAX_RESPONSE) throw new IllegalArgumentException("Invalid focus response size");
         JsonNode root = JSON.readTree(raw); exactFields(root, "suggestions");
@@ -302,11 +320,11 @@ public class ArchitectureFocusSuggestionService {
             throw new IllegalArgumentException("Invalid focus response text");
         return value.asString();
     }
-    private static Suggestion suggestion(Request request, String hash, String method, Triple triple,
+    private static Suggestion suggestion(EngineRequest request, String hash, String method, Triple triple,
                                           String rationale, List<Evidence> evidence) {
-        Map<String, String> properties = Map.of("provenance", "architecture-focus", "x-focus-rationale", rationale,
-                "x-focus-evidence", persistenceEvidence(evidence), "x-focus-revision", Long.toString(request.context().revision()),
-                "x-focus-method", method, "x-focus-source-hash", hash);
+        Map<String, String> properties = new LinkedHashMap<>(request.provenance());
+        properties.putAll(Map.of("provenance", "architecture-focus", "x-focus-rationale", rationale,
+                "x-focus-evidence", persistenceEvidence(evidence), "x-focus-method", method, "x-focus-source-hash", hash));
         if (properties.values().stream().anyMatch(v -> v.length() > 8_000 || controls(v)))
             throw new IllegalArgumentException("Focus provenance exceeds its bounded relation properties");
         return new Suggestion("focus-" + sha256(hash + "\n" + triple.key()).substring(0, 24), triple.sourceId(),
@@ -325,9 +343,9 @@ public class ArchitectureFocusSuggestionService {
         return safe.toString();
     }
 
-    private static Response response(Request request, String hash, String method, String outcome, int calls,
+    private static EngineResult response(String method, String outcome, int calls,
                                      List<Triple> candidates, List<Suggestion> suggestions) {
-        return new Response(request.context(), request.sourceId(), hash, method, outcome, calls, candidates.size(), suggestions);
+        return new EngineResult(method, outcome, calls, candidates.size(), suggestions);
     }
     private static boolean controls(String value) {
         return value.chars().anyMatch(c -> Character.isISOControl(c) || c == 0xfffe || c == 0xffff);

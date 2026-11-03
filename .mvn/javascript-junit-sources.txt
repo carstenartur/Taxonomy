@@ -24,6 +24,8 @@
 .github/scripts/architecture-workbench-fit.test.mjs
 .github/scripts/architecture-workbench-print.test.mjs
 .github/scripts/architecture-workflow.test.mjs
+.github/scripts/architecture-source-lens.test.mjs
+.github/scripts/architecture-source-lens.browser.test.mjs
 .github/scripts/backup-export.test.mjs
 .github/scripts/browser-sessions-acceptance.test.mjs
 .github/scripts/browser-validation-departure.test.mjs
@@ -90,3 +92,9 @@ taxonomy-app/src/test/js/contextual-help.cjs
 .github/scripts/analysis-snapshot-adoption.test.mjs
 .github/scripts/requirement-intake.test.mjs
 .github/scripts/requirement-promotion-draft.test.mjs
+.github/scripts/architecture-diagram.test.mjs
+.github/scripts/architecture-diagram.browser.test.mjs
+.github/scripts/architecture-workspace.test.mjs
+.github/scripts/architecture-editor-lifecycle.browser.test.mjs
+.github/scripts/architecture-exact-context.test.mjs
+.github/scripts/application-chrome.browser.test.mjs

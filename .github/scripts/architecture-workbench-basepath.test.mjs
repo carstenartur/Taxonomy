@@ -21,6 +21,7 @@ async function boot(prefix, withI18n = true) {
     const clicks = new Map();
     const downloads = [];
     const requests = [];
+    const requestOptions = [];
     const context = vm.createContext({
         URL, console, CustomEvent: class {},
         document: {
@@ -36,8 +37,8 @@ async function boot(prefix, withI18n = true) {
             href: `https://example.test${prefix}/projects/42/architecture-workbench/snapshot_7-v1`,
             assign(url) { downloads.push(url); }
         },
-        async fetch(url) {
-            requests.push(url);
+        async fetch(url, options) {
+            requests.push(url); requestOptions.push(options);
             return { ok: true, async json() { return {}; } };
         }
     });
@@ -49,7 +50,7 @@ async function boot(prefix, withI18n = true) {
     }
     vm.runInContext(apiSource, context);
     vm.runInContext(downloadSource, context);
-    return { api: context.ArchitectureWorkbenchApi, clicks, downloads, requests };
+    return { api: context.ArchitectureWorkbenchApi, clicks, downloads, requests, requestOptions };
 }
 
 for (const prefix of ['', '/taxonomy', '/teams/blue/taxonomy']) {
@@ -77,4 +78,22 @@ test('root deployment remains usable without the optional i18n URL resolver', as
     const app = await boot('', false);
     app.clicks.get('downloadArchitectureArchiMate')();
     assert.deepEqual(app.downloads, ['/api/projects/42/architecture-workbench/snapshot_7-v1.archimate.zip']);
+});
+
+
+for (const workspace of ['private-A','__shared__']) test(`workbench exact snapshot load pins URL and header (${workspace})`,async()=>{
+    const app=await boot('/taxonomy',false);
+    const scope={repositoryId:'repository-A',workspaceScopeKey:workspace,branch:'review/A'};
+    await app.api.load('42','snapshot-A',scope);
+    const url=new URL(app.requests.at(-1),'https://example.test');
+    assert.equal(url.searchParams.get('repositoryId'),'repository-A');
+    assert.equal(url.searchParams.get('workspaceId'),workspace==='__shared__'?'':workspace);
+    assert.equal(url.searchParams.get('branch'),'review/A');
+    assert.equal(app.requestOptions.at(-1).headers['X-Taxonomy-Workspace-Id'],workspace==='__shared__'?'':workspace);
+    for(const method of ['svgUrl','pdfUrl','architectureWordUrl','decisionWordUrl','archiMateBundleUrl','visioBundleUrl']){
+        const download=new URL(app.api[method]('42','snapshot-A',scope),'https://example.test');
+        assert.equal(download.searchParams.get('workspaceScopeKey'),workspace);
+        assert.equal(download.searchParams.get('repositoryId'),'repository-A');
+        assert.equal(download.searchParams.get('branch'),'review/A');
+    }
 });

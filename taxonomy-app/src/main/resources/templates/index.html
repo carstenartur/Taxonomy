@@ -14,6 +14,11 @@
     <link rel="stylesheet" th:href="@{/css/taxonomy-analysis-recovery.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-database-setup.css}"/>
     <link rel="stylesheet" th:href="@{/css/git-status.css}"/>
+    <link rel="stylesheet" th:href="@{/css/architecture-editor.css}" href="/css/architecture-editor.css"/>
+    <link rel="stylesheet" th:href="@{/css/architecture-workbench.css}" href="/css/architecture-workbench.css"/>
+    <link rel="stylesheet" th:href="@{/css/architecture-workflow.css}" href="/css/architecture-workflow.css"/>
+    <link rel="stylesheet" th:href="@{/css/shared/architecture-diagram.css}" href="/css/shared/architecture-diagram.css"/>
+    <link rel="stylesheet" th:href="@{/css/architecture-workspace.css}" href="/css/architecture-workspace.css"/>
     <!-- i18n: load translations before other scripts -->
     <script th:src="@{/js/taxonomy-i18n.js}"></script>
 <script th:src="@{/js/shared/content-language.js}" src="/js/shared/content-language.js"></script>
@@ -83,25 +88,6 @@
                     </li>
                 </ul>
             </div>
-        </div>
-        <div class="application-work-navigation">
-            <ul class="nav nav-tabs nav-tabs-page mb-0" id="mainNavTabs" role="tablist" aria-label="Main sections">
-                <li role="presentation" class="nav-item">
-                <a class="nav-link active" data-page="analyze" href="#analyze">&#128269; <span th:text="#{nav.analyze}">Analyze</span></a>
-            </li>
-                <li role="presentation" class="nav-item">
-                <a class="nav-link" data-page="architecture" data-taxonomy-feature="architecture" href="#architecture">&#127959;&#65039; <span th:text="#{nav.architecture}">Architecture</span></a>
-            </li>
-                <li role="presentation" class="nav-item">
-                <a class="nav-link" data-page="graph" data-taxonomy-feature="architecture" href="#graph">&#128300; <span th:text="#{nav.graph}">Graph</span></a>
-            </li>
-                <li role="presentation" class="nav-item">
-                <a class="nav-link" data-page="versions" href="#versions">&#128339; <span th:text="#{nav.versions}">Versions</span></a>
-            </li>
-                <li role="presentation" class="nav-item">
-                <a class="nav-link" data-page="dsl-editor" href="#dsl-editor">&#128221; <span th:text="#{nav.dsl}">DSL</span></a>
-            </li>
-            </ul>
         </div>
         <div class="application-utilities">
             <details id="applicationSettings" class="application-menu">
@@ -358,8 +344,8 @@
                                     th:text="#{analysis.guide.analyze}" hidden>Analyze current wording</button>
                             <a id="analysisReformulationAction" href="#analysisNextSteps" class="btn btn-sm btn-outline-primary"
                                data-taxonomy-feature="portfolio" th:text="#{analysis.guide.reformulate}">Reformulate requirement…</a>
-                            <a id="analysisLensAction" href="/architecture/editor#editorLensTitle" class="btn btn-sm btn-outline-primary"
-                               data-taxonomy-feature="architecture" th:href="@{/architecture/editor} + '#editorLensTitle'"
+                            <a id="analysisLensAction" href="#architecture" class="btn btn-sm btn-outline-primary"
+                               data-taxonomy-feature="architecture"
                                th:text="#{analysis.guide.lens}">Architecture focus lens</a>
                         </div>
                         <p id="analysisReformulationHint" class="small text-muted mt-2 mb-1"></p>
@@ -560,6 +546,21 @@
                  TAB: ARCHITECTURE
                  ============================================================ -->
             <div id="tab-architecture" class="tab-pane-content d-none">
+                <section id="architectureWorkspace" aria-labelledby="architectureWorkspaceTitle">
+                    <div class="architecture-source-toolbar">
+                        <h2 id="architectureWorkspaceTitle" th:text="#{nav.architecture}">Architecture</h2>
+                        <label for="architectureSource" th:text="#{architecture.workspace.source}">Displayed architecture</label>
+                        <select id="architectureSource" class="form-select" aria-describedby="architectureSourceDescription">
+                            <option value="analysis" th:text="#{architecture.workspace.analysis}">Current analysis</option>
+                            <option value="snapshot" th:text="#{architecture.workspace.snapshot}">Saved analysis snapshot</option>
+                            <option value="working" th:text="#{architecture.workspace.working}">Working architecture</option>
+                        </select>
+                    </div>
+                    <p id="architectureSourceDescription" class="text-muted" th:text="#{architecture.workspace.analysis.help}">The architecture from the current analysis. Your input and results stay available when switching sources.</p>
+                    <p id="architectureWorkspaceError" role="alert" hidden></p>
+                    <section th:replace="~{fragments/architecture-workflow :: context}"></section>
+                    <div id="architectureAnalysisSource">
+
 
                 <!-- Architecture sub-tabs -->
                 <ul class="nav nav-pills nav-fill mb-3" id="architectureSubTabs">
@@ -577,8 +578,8 @@
                 <div id="subtab-arch-overview">
                 <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-7')}"></a></div>
                 <div class="d-flex flex-wrap gap-2 mb-3">
-                    <a id="architectureLensAction" href="/architecture/editor#editorLensTitle" class="btn btn-outline-primary"
-                       th:href="@{/architecture/editor} + '#editorLensTitle'" th:text="#{analysis.guide.lens}">Architecture focus lens</a>
+                    <a id="architectureLensAction" href="#architecture" class="btn btn-outline-primary"
+                        th:text="#{analysis.guide.lens}">Architecture focus lens</a>
                     <a href="#analysisNextSteps" class="btn btn-outline-secondary" id="architectureNextStepsAction"
                        th:text="#{analysis.guide.title}">Next steps</a>
                 </div>
@@ -815,6 +816,18 @@
                 </div><!-- /tab-export -->
                 </div><!-- /subtab-arch-export -->
 
+
+                    </div><!-- /architectureAnalysisSource -->
+                    <section id="architectureSnapshotSource" class="architecture-snapshot-surface" hidden>
+                        <div class="architecture-source-actions workbench-toolbar"><th:block th:replace="~{architecture-workbench :: localActions}"></th:block></div>
+                        <section th:replace="~{architecture-workbench :: surface}"></section>
+                    </section>
+                    <section id="architectureWorkingSource" class="architecture-editor-surface" hidden>
+                        <div class="architecture-source-actions"><a th:href="@{/integrations}" href="/integrations" th:text="#{integration.title}">Tool integrations</a></div>
+                        <section th:replace="~{architecture-editor :: surface}"></section>
+                    </section>
+                    <section th:replace="~{fragments/architecture-source-lens :: panel('architectureSourceLens')}"></section>
+                </section><!-- /architectureWorkspace -->
             </div><!-- /tab-architecture -->
 
             <!-- ============================================================
@@ -1672,6 +1685,7 @@
 <script th:src="@{/js/shared/taxonomy-export.js}"></script>
 <script th:src="@{/js/shared/taxonomy-import.js}"></script>
 <script th:src="@{/js/shared/taxonomy-graph.js}"></script>
+<script th:src="@{/js/shared/architecture-diagram.js}" src="/js/shared/architecture-diagram.js"></script>
 <script th:src="@{/js/shared/taxonomy-impact-map.js}"></script>
 <script th:src="@{/js/shared/taxonomy-search.js}"></script>
 <script th:src="@{/js/relations/taxonomy-quality.js}"></script>
@@ -1888,7 +1902,7 @@
         var leftPanel  = document.getElementById('leftPanel');
         var rightPanel = document.getElementById('rightPanel');
         if (leftPanel && rightPanel) {
-            if (subTabName === 'arch-overview') {
+            if (subTabName === 'arch-overview' && (!window.TaxonomyArchitectureWorkspace || window.TaxonomyArchitectureWorkspace.getSource().kind === 'analysis')) {
                 leftPanel.classList.remove('d-none');
                 leftPanel.className  = 'col-lg-5';
                 rightPanel.className = 'col-lg-7';
@@ -1907,7 +1921,13 @@
         }
     }
 
-    function activatePage(pageName) {
+    function activatePage(pageName, permissionChecked) {
+        if (!permissionChecked && pageName !== 'architecture' && window.TaxonomyArchitectureWorkspace?.isActive()) {
+            return Promise.resolve(window.TaxonomyArchitectureWorkspace.canLeave()).then(function (allowed) {
+                if (allowed) activatePage(pageName, true);
+                else window.TaxonomyArchitectureWorkspace.restoreUrl();
+            });
+        }
         // Backward compatibility: map removed pages to architecture sub-tabs
         if (subTabMapping[pageName]) {
             activatePage('architecture');
@@ -1922,9 +1942,9 @@
         navLinks.forEach(function (link) {
             var active = link.getAttribute('data-page') === pageName;
             link.classList.toggle('active', active);
+            if (active) link.setAttribute('aria-current', 'page');
+            else link.removeAttribute('aria-current');
             if (!link.closest('#mainNavTabs')) {
-                if (active) link.setAttribute('aria-current', 'page');
-                else link.removeAttribute('aria-current');
                 link.setAttribute('aria-controls', 'tab-' + link.getAttribute('data-page'));
             }
         });
@@ -1961,7 +1981,7 @@
             // Delegate width handling to the active sub-tab
             var activeSubTab = document.querySelector('#architectureSubTabs .nav-link.active');
             var subTab = activeSubTab ? activeSubTab.getAttribute('data-subtab') : 'arch-overview';
-            if (subTab === 'arch-overview') {
+            if (subTab === 'arch-overview' && (!window.TaxonomyArchitectureWorkspace || window.TaxonomyArchitectureWorkspace.getSource().kind === 'analysis')) {
                 leftPanel.classList.remove('d-none');
                 leftPanel.className  = 'col-lg-5';
                 rightPanel.className = 'col-lg-7';
@@ -2039,6 +2059,7 @@
     // Click handlers on nav links
     document.querySelectorAll('#mainNavTabs .nav-link').forEach(function (link) {
         link.addEventListener('click', function (e) {
+            if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
             e.preventDefault();
             activatePage(this.getAttribute('data-page'));
         });
@@ -2047,7 +2068,7 @@
     // Also allow deep-linking via data-page attribute on any element
     document.addEventListener('click', function (e) {
         var el = e.target.closest('[data-page]');
-        if (el && el.closest('#mainNavTabs') === null) {
+        if (el && el.closest('#mainNavTabs') === null && e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
             var page = el.getAttribute('data-page');
             if (PAGES.indexOf(page) !== -1 || subTabMapping[page]) {
                 e.preventDefault();
@@ -2091,6 +2112,21 @@
     window.navigateToPage = activatePage;
 }());
 </script>
+
+<script th:src="@{/js/api/architecture-editor-api.js}" src="/js/api/architecture-editor-api.js"></script>
+<script th:src="@{/js/api/architecture-workbench-api.js}" src="/js/api/architecture-workbench-api.js"></script>
+<script th:src="@{/js/architecture-editor-renderer.js}" src="/js/architecture-editor-renderer.js"></script>
+<script th:src="@{/js/architecture-focus.js}" src="/js/architecture-focus.js"></script>
+<script th:src="@{/js/architecture-planning.js}" src="/js/architecture-planning.js"></script>
+<script th:src="@{/js/analysis-snapshot-adoption.js}" src="/js/analysis-snapshot-adoption.js"></script>
+<script th:src="@{/js/architecture-editor.js}" src="/js/architecture-editor.js"></script>
+<script th:src="@{/js/architecture-workbench.js}" src="/js/architecture-workbench.js"></script>
+<script th:src="@{/js/architecture-workbench-print.js}" src="/js/architecture-workbench-print.js"></script>
+<script th:src="@{/js/api/portfolio-api.js}" src="/js/api/portfolio-api.js"></script>
+<script th:src="@{/js/architecture-workbench-export.js}" src="/js/architecture-workbench-export.js"></script>
+<script th:src="@{/js/api/architecture-source-focus-api.js}" src="/js/api/architecture-source-focus-api.js"></script>
+<script th:src="@{/js/shared/architecture-source-lens.js}" src="/js/shared/architecture-source-lens.js"></script>
+<script th:src="@{/js/shared/architecture-workspace.js}" src="/js/shared/architecture-workspace.js"></script>
 
 <!-- System Status Bar -->
 <div id="systemStatusBar" style="position:fixed;bottom:0;left:0;right:0;background:rgba(33,37,41,0.85);color:#adb5bd;font-size:0.72rem;padding:3px 12px;z-index:1050;text-align:center;backdrop-filter:blur(4px);">

@@ -1,6 +1,14 @@
 # Architecture editor
 
-Open **Architecture editor** from Projects or the snapshot workbench. The shared context shows the architecture, project, requirement and selected stand. **Technical details** exposes the exact repository/workspace identities, full commit and available snapshot/version identifiers. Historical revisions/versions and central read contexts are read-only. Use **Create private workspace** when repository membership allows it; editing also requires the ARCHITECT or ADMIN role.
+Open **Architecture** in the shared main navigation and choose **Working architecture** under **Displayed architecture**. Links from Projects or saved analyses open the same workspace with their selected context. The shared context shows the architecture, project, requirement and selected stand. **Technical details** exposes the exact repository/workspace identities, full commit and available snapshot/version identifiers. Historical revisions/versions and central read contexts are read-only. Use **Create private workspace** when repository membership allows it; editing also requires the ARCHITECT or ADMIN role.
+
+**Current analysis**, **Saved analysis snapshot** and **Working architecture** are
+three sources within this architecture workspace. Switching retains analysis text
+and results as well as editor drafts. Replacing an unaccepted form with another
+working context or element selection requires confirmation. Adopting a saved
+analysis remains an explicit preview-and-accept action; selecting a source does
+not import elements or relationships. Existing editor and workbench links resolve
+into this workspace with their source and version coordinates.
 
 ![Architecture editor — selected workspace and element](../images/architecture-editor-current-en.png)
 
@@ -90,14 +98,25 @@ and [Requirement history](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-history).
 
 ## Focus lens and arrangement
 
-Open **Projects → Architecture editor** and scroll below the graph and arrangement
-controls to **Architecture focus lens**. Select the **Enable focus lens** checkbox.
-It is available only in the current editable workspace; historical revisions and
-central read contexts do not allow investigations.
+In **Architecture**, check the displayed source first. The analysis lens opens
+in this workspace and retains the input text and selection. For **Current analysis**,
+the displayed draft is saved and its acknowledged version is checked before
+investigation. For **Saved analysis snapshot**, the lens investigates the exact
+selected snapshot. Both sources remain unchanged. If complete retained evidence
+is unavailable, the application explains why; **Refresh source** checks it again.
+
+In **Working architecture**, scroll below the graph and arrangement controls to
+**Architecture focus lens** and select **Enable focus lens**. Writable investigation
+remains available only for the current editable working revision. This editor
+lens stays disabled for historical working revisions and central read contexts. Analysis
+suggestions can be reviewed and dismissed; **Review adoption into working
+architecture** enters the separate source-check, preview and acceptance workflow.
+A draft that has not been saved as a requirement must be saved first.
 
 ![Architecture focus lens with Enable focus lens checked and the AI option unchecked](../images/architecture-editor-focus-en.png)
 
-*Application capture of the focus-lens panel in an editable example workspace:
+*Earlier application capture of the focus-lens panel in an editable example
+workspace, before the shared navigation was consolidated:
 **Enable focus lens** is checked and the AI option is unchecked.
 [Source revision and capture record](../images/architecture-editor-focus-capture.json).*
 
@@ -115,7 +134,7 @@ unassessed. The current sources are canonical element text and mapped requiremen
 the lens does not discover external systems or verify deployed connections.
 
 Dashed arrows and the proposal list open a pinned review with the full rationale,
-method, source revision and quoted evidence. **Accept relationship** is the
+method, source revision and quoted evidence. In **Working architecture**, **Accept relationship** is the
 confirmation: it stores one audited relation, its rationale and provenance, without
 a second dialog. **Dismiss proposal** applies to this investigation only. **Undo**
 uses the accepted operation; history offers undo/redo after reload. Network retries

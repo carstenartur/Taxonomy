@@ -41,7 +41,11 @@ public class ArchitectureEditorController {
     }
 
     @GetMapping("/architecture/editor")
-    public String page() { return "architecture-editor"; }
+    public String page(@RequestParam org.springframework.util.MultiValueMap<String,String> coordinates) {
+        return ArchitectureWorkspaceRedirect.working(coordinates);
+    }
+
+    public String page() { return page(new org.springframework.util.LinkedMultiValueMap<>()); }
 
     @GetMapping("/api/architecture/editor")
     @ResponseBody

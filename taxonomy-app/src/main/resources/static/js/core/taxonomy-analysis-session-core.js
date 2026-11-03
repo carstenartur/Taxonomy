@@ -37,6 +37,7 @@
             saveLocalInput: 'Save input as a new draft',
             serverUnavailableTitle: 'The server state is currently unconfirmed',
             serverUnavailableBody: 'The last confirmed results remain visible. Saving and analysis actions are paused until the connection and saved state have been checked. You can continue editing the requirement text.',
+            referenceVersionUnavailable: 'The saved analysis has no exact recovery version. Reopen its retained source.',
             checkServer: 'Check connection and load status',
             serverReconnectedTitle: 'Server state confirmed',
             serverReconnectedBody: 'The saved revision is unchanged. Local edits have been retained.',
@@ -101,6 +102,7 @@
             saveLocalInput: 'Eingabe als neuen Entwurf speichern',
             serverUnavailableTitle: 'Der Serverstand ist derzeit nicht bestätigt',
             serverUnavailableBody: 'Die zuletzt bestätigten Ergebnisse bleiben sichtbar. Speichern und Analyseaktionen pausieren, bis Verbindung und gespeicherter Stand geprüft sind. Sie können den Anforderungstext weiter bearbeiten.',
+            referenceVersionUnavailable: 'Der gespeicherten Analyse fehlt eine genaue Wiederherstellungsversion. Öffnen Sie ihre gespeicherte Quelle erneut.',
             checkServer: 'Verbindung prüfen und Status laden',
             serverReconnectedTitle: 'Serverstand bestätigt',
             serverReconnectedBody: 'Die gespeicherte Revision ist unverändert. Lokale Änderungen wurden beibehalten.',
@@ -253,13 +255,18 @@
         function routedFetch(input, init) {
             var url = requestUrl(input);
             var request = Object.assign({}, init || {});
-            if (runtime.workspaceId && url && url.origin === window.location.origin
-                    && url.pathname.indexOf('/api/') === 0) {
+            var basePath = window.TaxonomyI18n?.getBasePath?.() || '';
+            var apiPath = url && basePath && url.pathname.startsWith(basePath + '/') ? url.pathname.slice(basePath.length) : url?.pathname;
+            if (url && url.origin === window.location.origin && apiPath.indexOf('/api/') === 0) {
                 var headers = new Headers(input instanceof Request ? input.headers : undefined);
                 new Headers(request.headers || {}).forEach(function (value, name) {
                     headers.set(name, value);
                 });
-                headers.set(WORKSPACE_HEADER, runtime.workspaceId);
+                // Exact source adapters may address a different workspace from the retained analysis.
+                if (!headers.has(WORKSPACE_HEADER)) {
+                    if (url.searchParams.has('workspaceId')) headers.set(WORKSPACE_HEADER, url.searchParams.get('workspaceId'));
+                    else if (runtime.workspaceId) headers.set(WORKSPACE_HEADER, runtime.workspaceId);
+                }
                 request.headers = headers;
             }
 
@@ -358,8 +365,10 @@
     }
     function retainAnalysisReference(result, request) {
         var continuationId = result.recovery?.id || null;
+        var recoveryVersion = result.recovery?.version;
         var operationId = result.analysisOperationId || S.analysisOperationId || null;
         if (!runtime.workspaceId || (!continuationId && !(operationId && request?.durable))
+                || continuationId && (!Number.isSafeInteger(recoveryVersion) || recoveryVersion < 0)
                 || Object.keys(S.recoveryContext?.followups || {}).length) return;
         var canonical = {
             lastAnalyzedText: request?.businessText ?? S.lastAnalyzedText,
@@ -382,12 +391,16 @@
         if (evidencePayload(currentPayload(true)) !== evidencePayload(canonical)) return;
         runtime.analysisReference = { operationId: operationId, continuationId: continuationId,
             workspaceId: runtime.workspaceId };
+        // A continuation is mutable. The durable reference must name the exact
+        // canonical recovery result whose evidence was accepted above.
+        if (continuationId) runtime.analysisReference.recoveryVersion = recoveryVersion;
         runtime.analysisEvidence = evidencePayload(currentPayload(true));
     }
     function matchesAnalysisReference() {
         var ref = runtime.analysisReference;
         return Boolean(ref && ref.workspaceId === runtime.workspaceId
             && (!ref.continuationId || ref.continuationId === S.analysisRecovery?.id)
+            && (!ref.continuationId || Number.isSafeInteger(ref.recoveryVersion) && ref.recoveryVersion >= 0)
             && (!ref.operationId || ref.operationId === S.analysisOperationId)
             && !Object.keys(S.recoveryContext?.followups || {}).length
             && runtime.analysisEvidence === evidencePayload(currentPayload(true)));
@@ -415,13 +428,20 @@
         }
         var api = window.TaxonomyAnalysisSessionApi, result, request;
         if (ref.continuationId) {
+            if (ref.recoveryVersion !== undefined && (!Number.isSafeInteger(ref.recoveryVersion) || ref.recoveryVersion < 0)) {
+                throw new Error(text('referenceVersionUnavailable'));
+            }
             var response = await api.request('/api/analysis-continuations/' + encodeURIComponent(ref.continuationId),
                 { method: 'GET', cache: 'no-store' }, workspace);
             if (!response.ok) throw new Error('The saved analysis could not be loaded (HTTP ' + response.status + ').');
             var snapshot = await response.json();
-            if (snapshot.recovery?.id !== ref.continuationId || typeof snapshot.request?.businessText !== 'string') {
+            if (snapshot.recovery?.id !== ref.continuationId || !Number.isSafeInteger(snapshot.recovery.version)
+                    || snapshot.recovery.version < 0 || snapshot.recovery.version < (ref.recoveryVersion ?? 0)
+                    || typeof snapshot.request?.businessText !== 'string') {
                 throw new Error('The saved analysis reference could not be confirmed.');
             }
+            // A live draft can resume newer authorized canonical work. Retain the
+            // actually hydrated version below, then save it before source focus.
             if (!snapshot.result || typeof snapshot.result !== 'object') throw new Error('The saved analysis result is not available yet. Refresh its status.');
             result = snapshot.result; request = snapshot.request;
             result = Object.assign({}, result, { recovery: snapshot.recovery });

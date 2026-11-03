@@ -2,12 +2,17 @@
 window.ArchitectureWorkbenchApi = (function () {
     'use strict';
 
-    async function getJson(url) {
+    async function getJson(url, signal, source) {
+        const headers = { Accept: 'application/json' };
+        if (source && (source.workspaceScopeKey !== undefined || source.workspaceId !== undefined)) {
+            const workspace = source.workspaceScopeKey || source.workspaceId || '__shared__';
+            headers['X-Taxonomy-Workspace-Id'] = workspace === '__shared__' ? '' : String(workspace);
+        }
         const response = await fetch(url, {
             method: 'GET',
-            headers: { Accept: 'application/json' },
+            headers: headers,
             credentials: 'same-origin',
-            cache: 'no-store'
+            cache: 'no-store', signal: signal
         });
         if (response.ok) return response.json();
         const problem = await response.json().catch(function () { return null; });
@@ -33,51 +38,57 @@ window.ArchitectureWorkbenchApi = (function () {
         return encodeURIComponent(normalized);
     }
 
-    function scoped(path) {
+    function scoped(path, source) {
+        if (source) {
+            const target = new URL(path, window.location.href);
+            ['repositoryId','workspaceScopeKey','workspaceId','branch'].forEach(function(key){if(source[key]!==undefined && source[key]!==null)target.searchParams.set(key,source[key]);});
+            if(source.workspaceScopeKey)target.searchParams.set('workspaceId',source.workspaceScopeKey==='__shared__'?'':source.workspaceScopeKey);
+            return target.pathname+target.search;
+        }
         return window.TaxonomyArchitectureWorkflow?.scopeUrl(path) || path;
     }
 
-    function base(projectId, snapshotId, suffix) {
+    function base(projectId, snapshotId, suffix, source) {
         const path = '/api/projects/' + positiveInteger(projectId, 'projectId')
             + '/architecture-workbench/' + snapshot(snapshotId) + (suffix || '');
-        return scoped(window.TaxonomyI18n?.resolveUrl?.(path) || path);
+        return scoped(window.TaxonomyI18n?.resolveUrl?.(path) || path, source);
     }
 
-    function wordUrl(projectId, snapshotId, report) {
+    function wordUrl(projectId, snapshotId, report, source) {
         const path = '/api/projects/' + positiveInteger(projectId, 'projectId')
             + '/snapshots/' + snapshot(snapshotId) + '/' + report + '/docx';
         const url = window.TaxonomyI18n?.resolveUrl?.(path) || path;
         const language = window.TaxonomyContentLanguage?.documentLanguage(null);
-        return scoped(language ? url + '?language=' + encodeURIComponent(language) : url);
+        return scoped(language ? url + '?language=' + encodeURIComponent(language) : url, source);
     }
 
     return {
-        architectureWordUrl: function (projectId, snapshotId) {
-            return wordUrl(projectId, snapshotId, 'architecture-report');
+        architectureWordUrl: function (projectId, snapshotId, source) {
+            return wordUrl(projectId, snapshotId, 'architecture-report', source);
         },
-        decisionWordUrl: function (projectId, snapshotId) {
-            return wordUrl(projectId, snapshotId, 'decision-report');
+        decisionWordUrl: function (projectId, snapshotId, source) {
+            return wordUrl(projectId, snapshotId, 'decision-report', source);
         },
-        load: function (projectId, snapshotId) {
-            return getJson(base(projectId, snapshotId));
+        load: function (projectId, snapshotId, source, signal) {
+            return getJson(base(projectId, snapshotId, null, source), signal, source);
         },
-        svgUrl: function (projectId, snapshotId) {
-            return base(projectId, snapshotId, '.svg');
+        svgUrl: function (projectId, snapshotId, source) {
+            return base(projectId, snapshotId, '.svg', source);
         },
-        pdfUrl: function (projectId, snapshotId) {
-            return base(projectId, snapshotId, '.pdf');
+        pdfUrl: function (projectId, snapshotId, source) {
+            return base(projectId, snapshotId, '.pdf', source);
         },
-        archiMateUrl: function (projectId, snapshotId) {
-            return base(projectId, snapshotId, '.archimate.xml');
+        archiMateUrl: function (projectId, snapshotId, source) {
+            return base(projectId, snapshotId, '.archimate.xml', source);
         },
-        visioBundleUrl: function (projectId, snapshotId) {
-            return base(projectId, snapshotId, '.visio.zip');
+        visioBundleUrl: function (projectId, snapshotId, source) {
+            return base(projectId, snapshotId, '.visio.zip', source);
         },
-        archiMateBundleUrl: function (projectId, snapshotId) {
-            return base(projectId, snapshotId, '.archimate.zip');
+        archiMateBundleUrl: function (projectId, snapshotId, source) {
+            return base(projectId, snapshotId, '.archimate.zip', source);
         },
-        visioUrl: function (projectId, snapshotId) {
-            return base(projectId, snapshotId, '.vsdx');
+        visioUrl: function (projectId, snapshotId, source) {
+            return base(projectId, snapshotId, '.vsdx', source);
         }
     };
 }());

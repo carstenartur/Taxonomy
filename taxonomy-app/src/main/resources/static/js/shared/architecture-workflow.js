@@ -40,9 +40,6 @@
         if (workspacePin !== null) {
             value.workspaceId = workspacePin;
             value.workspaceScopeKey = workspacePin || '__shared__';
-        } else if (current.has('workspaceScopeKey')) {
-            value.workspaceScopeKey = current.get('workspaceScopeKey');
-            value.workspaceId = value.workspaceScopeKey === '__shared__' ? '' : value.workspaceScopeKey;
         }
         return value;
     }
@@ -52,6 +49,13 @@
         if (context.branch !== undefined) branchPin = context.branch;
         if (context.workspaceScopeKey !== undefined) workspacePin = context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey;
         else if (context.workspaceId !== undefined) workspacePin = context.workspaceId;
+        decorateLinks();
+    }
+    function replaceScope(context) {
+        context=context || {};
+        repositoryPin=context.repositoryId ?? null;branchPin=context.branch ?? null;
+        workspacePin=context.workspaceScopeKey !== undefined ? (context.workspaceScopeKey==='__shared__'?'':context.workspaceScopeKey)
+            : context.workspaceId ?? null;
         decorateLinks();
     }
     function scopeUrl(value) {
@@ -208,7 +212,7 @@
     }
     decorateLinks();
     window.TaxonomyArchitectureWorkflow = {
-        getScope: getScope, setScope: setScope, adoptionSource: adoptionSource, scopeUrl: scopeUrl, snapshotLinks: snapshotLinks, editorSourceLinks: editorSourceLinks,
+        getScope: getScope, setScope: setScope, replaceScope:replaceScope, adoptionSource: adoptionSource, scopeUrl: scopeUrl, snapshotLinks: snapshotLinks, editorSourceLinks: editorSourceLinks,
         showSnapshot: showSnapshot, showEditor: showEditor, preferredProject: preferredProject,
         portfolioUrl: portfolioUrl, workbenchUrl: workbenchUrl
     };

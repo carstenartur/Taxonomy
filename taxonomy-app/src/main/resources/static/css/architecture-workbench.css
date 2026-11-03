@@ -1,4 +1,4 @@
-:root {
+.architecture-snapshot-surface {
     color-scheme: light;
     --workbench-border: #d7dde7;
     --workbench-panel: #ffffff;
@@ -7,14 +7,13 @@
     --workbench-canvas: #f3f5f7;
 }
 
-html,
-body {
+.architecture-snapshot-surface, .architecture-snapshot-surface {
     height: 100%;
     margin: 0;
     overflow: hidden;
 }
 
-body {
+.architecture-snapshot-surface {
     display: flex;
     flex-direction: column;
     height: 100dvh;
@@ -22,41 +21,41 @@ body {
     color: #0f172a;
 }
 
-.workbench-toolbar {
+.architecture-snapshot-surface .workbench-toolbar {
     position: relative;
     flex: 0 0 auto;
     min-height: 56px;
     gap: 0.5rem 1rem;
 }
 
-.workbench-toolbar .navbar-brand {
+.architecture-snapshot-surface .workbench-toolbar .navbar-brand {
     min-width: 0;
     margin-right: 0;
     white-space: normal;
 }
 
-.workbench-export-options {
+.architecture-snapshot-surface .workbench-export-options {
     position: relative;
 }
 
-.workbench-export-options > summary {
+.architecture-snapshot-surface .workbench-export-options > summary {
     cursor: pointer;
 }
 
-.workbench-export-options > summary::after {
+.architecture-snapshot-surface .workbench-export-options > summary::after {
     content: ' ▾';
 }
 
-.workbench-export-options[open] > summary::after {
+.architecture-snapshot-surface .workbench-export-options[open] > summary::after {
     content: ' ▴';
 }
 
-.workbench-export-options > summary:focus-visible {
+.architecture-snapshot-surface .workbench-export-options > summary:focus-visible {
     outline: 3px solid #fff;
     outline-offset: 3px;
 }
 
-.workbench-export-content {
+.architecture-snapshot-surface .workbench-export-content {
     --workbench-export-width: min(28rem, calc(100vw - 2rem));
     --workbench-export-height-limit: min(70dvh, calc(100dvh - 2rem), var(--workbench-export-preferred-height, 70dvh));
     position: fixed;
@@ -78,20 +77,19 @@ body {
     color: #fff;
 }
 
-.workbench-export-content .btn {
+.architecture-snapshot-surface .workbench-export-content .btn {
     white-space: normal;
 }
 
-.workbench-export-content small,
-.workbench-export-content code {
+.architecture-snapshot-surface .workbench-export-content small, .architecture-snapshot-surface .workbench-export-content code {
     overflow-wrap: anywhere;
 }
 
-.workbench-export-content code {
+.architecture-snapshot-surface .workbench-export-content code {
     color: #f8b4d0;
 }
 
-.workbench-status {
+.architecture-snapshot-surface .workbench-status {
     flex: 0 0 auto;
     min-height: 28px;
     padding: 0.35rem 1rem;
@@ -101,13 +99,13 @@ body {
     font-size: 0.875rem;
 }
 
-#architectureAlert {
+.architecture-snapshot-surface #architectureAlert {
     flex: 0 0 auto;
     max-height: 25dvh;
     overflow: auto;
 }
 
-.workbench-grid {
+.architecture-snapshot-surface .workbench-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 360px;
     flex: 1 1 0;
@@ -116,19 +114,18 @@ body {
     background: var(--workbench-border);
 }
 
-.workbench-canvas-panel,
-.workbench-detail-panel {
+.architecture-snapshot-surface .workbench-canvas-panel, .architecture-snapshot-surface .workbench-detail-panel {
     min-width: 0;
     min-height: 0;
     background: var(--workbench-panel);
 }
 
-.workbench-canvas-panel {
+.architecture-snapshot-surface .workbench-canvas-panel {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
 }
 
-.workbench-heading {
+.architecture-snapshot-surface .workbench-heading {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
@@ -138,7 +135,7 @@ body {
     border-bottom: 1px solid var(--workbench-border);
 }
 
-.architecture-kpis {
+.architecture-snapshot-surface .architecture-kpis {
     display: flex;
     flex: 1 1 24rem;
     flex-wrap: wrap;
@@ -146,7 +143,7 @@ body {
     gap: 0.35rem;
 }
 
-.architecture-kpi {
+.architecture-snapshot-surface .architecture-kpi {
     display: inline-flex;
     align-items: center;
     gap: 0.28rem;
@@ -160,7 +157,7 @@ body {
     white-space: nowrap;
 }
 
-.architecture-workbench {
+.architecture-snapshot-surface .architecture-workbench {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
     min-height: 0;
@@ -168,13 +165,13 @@ body {
     background: #fff;
 }
 
-.architecture-workbench:fullscreen {
+.architecture-snapshot-surface .architecture-workbench:fullscreen {
     width: 100vw;
     height: 100vh;
     background: #fff;
 }
 
-.architecture-controls {
+.architecture-snapshot-surface .architecture-controls {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -184,13 +181,13 @@ body {
     background: #fff;
 }
 
-.architecture-search-wrap {
+.architecture-snapshot-surface .architecture-search-wrap {
     position: relative;
     flex: 1 1 16rem;
     min-width: 13rem;
 }
 
-.architecture-search {
+.architecture-snapshot-surface .architecture-search {
     width: 100%;
     min-height: 2.1rem;
     padding: 0.35rem 2rem 0.35rem 0.7rem;
@@ -201,13 +198,13 @@ body {
     font-size: 0.8rem;
 }
 
-.architecture-search:focus {
+.architecture-snapshot-surface .architecture-search:focus {
     border-color: var(--workbench-focus);
     outline: 0;
     box-shadow: 0 0 0 0.18rem rgb(13 110 253 / 20%);
 }
 
-.architecture-search-clear {
+.architecture-snapshot-surface .architecture-search-clear {
     position: absolute;
     top: 50%;
     right: 0.35rem;
@@ -222,13 +219,12 @@ body {
     line-height: 1;
 }
 
-.architecture-search-clear:hover,
-.architecture-search-clear:focus-visible {
+.architecture-snapshot-surface .architecture-search-clear:hover, .architecture-snapshot-surface .architecture-search-clear:focus-visible {
     background: #f1f3f5;
     color: #212529;
 }
 
-.architecture-toggle {
+.architecture-snapshot-surface .architecture-toggle {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
@@ -241,18 +237,18 @@ body {
     white-space: nowrap;
 }
 
-.architecture-toggle input {
+.architecture-snapshot-surface .architecture-toggle input {
     margin: 0;
 }
 
-.architecture-button-group {
+.architecture-snapshot-surface .architecture-button-group {
     display: inline-flex;
     overflow: hidden;
     border: 1px solid var(--workbench-border);
     border-radius: 0.45rem;
 }
 
-.architecture-control {
+.architecture-snapshot-surface .architecture-control {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -268,41 +264,40 @@ body {
     white-space: nowrap;
 }
 
-.architecture-control:last-child {
+.architecture-snapshot-surface .architecture-control:last-child {
     border-right: 0;
 }
 
-.architecture-control.icon-only {
+.architecture-snapshot-surface .architecture-control.icon-only {
     min-width: 2.15rem;
     font-size: 1rem;
 }
 
-.architecture-control:hover,
-.architecture-control:focus-visible {
+.architecture-snapshot-surface .architecture-control:hover, .architecture-snapshot-surface .architecture-control:focus-visible {
     z-index: 1;
     background: #f1f3f5;
     outline: 2px solid var(--workbench-focus);
     outline-offset: -2px;
 }
 
-.architecture-control[aria-pressed="true"] {
+.architecture-snapshot-surface .architecture-control[aria-pressed="true"] {
     background: var(--workbench-focus);
     color: #fff;
 }
 
-.architecture-control:disabled {
+.architecture-snapshot-surface .architecture-control:disabled {
     cursor: not-allowed;
     opacity: 0.48;
 }
 
-.architecture-visible-status {
+.architecture-snapshot-surface .architecture-visible-status {
     flex: 1 0 100%;
     min-height: 1.1rem;
     color: #6c757d;
     font-size: 0.72rem;
 }
 
-.architecture-canvas-shell {
+.architecture-snapshot-surface .architecture-canvas-shell {
     position: relative;
     min-height: 0;
     overflow: hidden;
@@ -314,7 +309,7 @@ body {
     touch-action: none;
 }
 
-#architectureCanvas {
+.architecture-snapshot-surface #architectureCanvas {
     display: block;
     width: 100%;
     height: 100%;
@@ -323,115 +318,114 @@ body {
     user-select: none;
 }
 
-#architectureCanvas:active {
+.architecture-snapshot-surface #architectureCanvas:active {
     cursor: grabbing;
 }
 
-#architectureCanvas:focus-visible {
+.architecture-snapshot-surface #architectureCanvas:focus-visible {
     box-shadow: inset 0 0 0 3px var(--workbench-focus);
 }
 
-.architecture-layer-column {
+.architecture-snapshot-surface .architecture-layer-column {
     fill: rgb(255 255 255 / 72%);
     stroke: #d9dee3;
     stroke-width: 1;
 }
 
-.architecture-layer-header {
+.architecture-snapshot-surface .architecture-layer-header {
     stroke: rgb(15 23 42 / 25%);
     stroke-width: 1.2;
 }
 
-.architecture-layer-title {
+.architecture-snapshot-surface .architecture-layer-title {
     font-size: 12px;
     font-weight: 700;
     pointer-events: none;
 }
 
-.architecture-layer-count {
+.architecture-snapshot-surface .architecture-layer-count {
     font-size: 10px;
     font-weight: 700;
     pointer-events: none;
 }
 
-.architecture-node {
+.architecture-snapshot-surface .architecture-node {
     cursor: pointer;
     outline: none;
     transition: opacity 120ms ease;
 }
 
-.architecture-node-card {
+.architecture-snapshot-surface .architecture-node-card {
     stroke: rgb(15 23 42 / 40%);
     stroke-width: 1.2;
     filter: drop-shadow(0 2px 3px rgb(15 23 42 / 14%));
 }
 
-.architecture-node:hover .architecture-node-card,
-.architecture-node:focus-visible .architecture-node-card {
+.architecture-snapshot-surface .architecture-node:hover .architecture-node-card, .architecture-snapshot-surface .architecture-node:focus-visible .architecture-node-card {
     stroke: var(--workbench-focus);
     stroke-width: 2.6;
 }
 
-.architecture-node.is-anchor .architecture-node-card {
+.architecture-snapshot-surface .architecture-node.is-anchor .architecture-node-card {
     stroke: #9a6700;
     stroke-width: 2.4;
 }
 
-.architecture-node.is-selected .architecture-node-card {
+.architecture-snapshot-surface .architecture-node.is-selected .architecture-node-card {
     stroke: var(--workbench-focus);
     stroke-width: 3.2;
     filter: drop-shadow(0 0 6px rgb(13 110 253 / 58%));
 }
 
-.architecture-node.is-search-match .architecture-node-card {
+.architecture-snapshot-surface .architecture-node.is-search-match .architecture-node-card {
     stroke: #7c3aed;
     stroke-width: 3.2;
     filter: drop-shadow(0 0 5px rgb(124 58 237 / 60%));
 }
 
-.architecture-node.is-muted {
+.architecture-snapshot-surface .architecture-node.is-muted {
     opacity: 0.2;
 }
 
-.architecture-node-code {
+.architecture-snapshot-surface .architecture-node-code {
     font-size: 11px;
     font-weight: 750;
     letter-spacing: 0.02em;
     pointer-events: none;
 }
 
-.architecture-node-title {
+.architecture-snapshot-surface .architecture-node-title {
     font-size: 13px;
     font-weight: 650;
     pointer-events: none;
 }
 
-.architecture-node-meta {
+.architecture-snapshot-surface .architecture-node-meta {
     font-size: 9px;
     opacity: 0.84;
     pointer-events: none;
 }
 
-.architecture-node-score-pill {
+.architecture-snapshot-surface .architecture-node-score-pill {
     stroke: rgb(255 255 255 / 65%);
     stroke-width: 0.8;
     pointer-events: none;
 }
 
-.architecture-node-score {
+.architecture-snapshot-surface .architecture-node-score {
     font-size: 10px;
     font-weight: 800;
     pointer-events: none;
 }
 
-.architecture-edge-path {
+.architecture-snapshot-surface .architecture-edge-path {
     fill: none;
     stroke-width: 1.7;
     stroke-opacity: 0.58;
     transition: stroke-opacity 120ms ease, stroke-width 120ms ease;
 }
 
-.architecture-edge-hit {
+.architecture-snapshot-surface .architecture-edge-hit {
     fill: none;
     stroke: transparent;
     stroke-width: 14;
@@ -439,17 +433,16 @@ body {
     pointer-events: stroke;
 }
 
-.architecture-edge.is-muted .architecture-edge-path {
+.architecture-snapshot-surface .architecture-edge.is-muted .architecture-edge-path {
     stroke-opacity: 0.09;
 }
 
-.architecture-edge.is-connected .architecture-edge-path,
-.architecture-edge.is-selected .architecture-edge-path {
+.architecture-snapshot-surface .architecture-edge.is-connected .architecture-edge-path, .architecture-snapshot-surface .architecture-edge.is-selected .architecture-edge-path {
     stroke-opacity: 0.98;
     stroke-width: 3;
 }
 
-.architecture-edge-label {
+.architecture-snapshot-surface .architecture-edge-label {
     font-size: 9px;
     font-weight: 650;
     paint-order: stroke;
@@ -459,29 +452,29 @@ body {
     pointer-events: none;
 }
 
-.workbench-detail-panel {
+.architecture-snapshot-surface .workbench-detail-panel {
     padding: 1rem;
     overflow: auto;
 }
 
-.detail-list {
+.architecture-snapshot-surface .detail-list {
     display: grid;
     grid-template-columns: minmax(90px, auto) 1fr;
     gap: 0.4rem 0.75rem;
     font-size: 0.875rem;
 }
 
-.detail-list dt {
+.architecture-snapshot-surface .detail-list dt {
     color: var(--workbench-muted);
     font-weight: 600;
 }
 
-.detail-list dd {
+.architecture-snapshot-surface .detail-list dd {
     margin: 0;
     overflow-wrap: anywhere;
 }
 
-.requirement-text {
+.architecture-snapshot-surface .requirement-text {
     max-height: 16rem;
     padding: 0.75rem;
     overflow: auto;
@@ -492,81 +485,77 @@ body {
     white-space: pre-wrap;
 }
 
-.workbench-detail-panel:focus-visible,
-.requirement-text:focus-visible {
+.architecture-snapshot-surface .workbench-detail-panel:focus-visible, .architecture-snapshot-surface .requirement-text:focus-visible {
     outline: 3px solid var(--workbench-focus);
     outline-offset: -3px;
 }
 
 @media (max-width: 1050px) {
-    .workbench-grid {
+    .architecture-snapshot-surface .workbench-grid {
         grid-template-columns: minmax(0, 1fr) 310px;
     }
 }
 
 @media (max-width: 900px) {
-    html,
-    body {
+    .architecture-snapshot-surface, .architecture-snapshot-surface {
         height: auto;
         overflow: auto;
     }
 
-    body {
+    .architecture-snapshot-surface {
         display: block;
     }
 
-    .workbench-grid {
+    .architecture-snapshot-surface .workbench-grid {
         grid-template-columns: 1fr;
         grid-template-rows: minmax(70vh, 1fr) auto;
         height: auto;
     }
 
-    .workbench-detail-panel {
+    .architecture-snapshot-surface .workbench-detail-panel {
         max-height: none;
     }
 
-    .architecture-workbench {
+    .architecture-snapshot-surface .architecture-workbench {
         min-height: 70vh;
     }
 
-    .architecture-canvas-shell {
+    .architecture-snapshot-surface .architecture-canvas-shell {
         min-height: 60vh;
     }
 
-    .workbench-toolbar {
+    .architecture-snapshot-surface .workbench-toolbar {
         align-items: flex-start;
     }
 
     /* A wrapped trigger may sit at the left edge. Anchor its wide disclosure
        to the toolbar instead of allowing right:0 to push it off the screen. */
-    .workbench-export-options {
+    .architecture-snapshot-surface .workbench-export-options {
         position: static;
     }
 
-    .workbench-toolbar .navbar-brand {
+    .architecture-snapshot-surface .workbench-toolbar .navbar-brand {
         font-size: 1rem;
     }
 
-    .architecture-kpis {
+    .architecture-snapshot-surface .architecture-kpis {
         justify-content: flex-start;
     }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .architecture-node,
-    .architecture-edge-path {
+    .architecture-snapshot-surface .architecture-node, .architecture-snapshot-surface .architecture-edge-path {
         transition: none;
     }
 }
 
 @media (forced-colors: active) {
-    .architecture-node-card,
-    .architecture-edge-path {
+    .architecture-snapshot-surface .architecture-node-card, .architecture-snapshot-surface .architecture-edge-path {
         forced-color-adjust: auto;
     }
 }
 
-.architecture-print-view {
+.architecture-snapshot-surface .architecture-print-view {
     display: none;
 }
 
@@ -576,14 +565,13 @@ body {
 }
 
 @media print {
-    html,
-    body {
+    .architecture-snapshot-surface, .architecture-snapshot-surface {
         height: auto;
         overflow: visible;
         background: #fff;
     }
 
-    body {
+    .architecture-snapshot-surface {
         display: block;
         color: #0f172a;
         font-size: 10pt;
@@ -591,15 +579,11 @@ body {
         -webkit-print-color-adjust: exact;
     }
 
-    .workbench-toolbar,
-    .architecture-controls,
-    body > .visually-hidden-focusable {
+    .architecture-snapshot-surface .workbench-toolbar, .architecture-snapshot-surface .architecture-controls, .architecture-snapshot-surface > .visually-hidden-focusable {
         display: none !important;
     }
 
-    .workbench-grid,
-    .workbench-canvas-panel,
-    .workbench-detail-panel {
+    .architecture-snapshot-surface .workbench-grid, .architecture-snapshot-surface .workbench-canvas-panel, .architecture-snapshot-surface .workbench-detail-panel {
         display: block;
         height: auto;
         min-height: 0;
@@ -608,22 +592,22 @@ body {
         background: #fff;
     }
 
-    .workbench-heading {
+    .architecture-snapshot-surface .workbench-heading {
         display: block;
         padding: 0 0 4mm;
         break-after: avoid;
     }
 
-    .architecture-kpis {
+    .architecture-snapshot-surface .architecture-kpis {
         justify-content: flex-start;
         margin-top: 3mm;
     }
 
-    .architecture-kpi > [aria-hidden="true"] {
+    .architecture-snapshot-surface .architecture-kpi > [aria-hidden="true"] {
         display: none;
     }
 
-    .workbench-status {
+    .architecture-snapshot-surface .workbench-status {
         padding: 0 0 3mm;
         min-height: 0;
         border: 0;
@@ -632,8 +616,7 @@ body {
 
     /* Keep getBBox measurable even when beforeprint follows the media switch.
        Preserve its screen-sized viewport so the existing renderer need not refit. */
-    .architecture-workbench,
-    .architecture-workbench:fullscreen {
+    .architecture-snapshot-surface .architecture-workbench, .architecture-snapshot-surface .architecture-workbench:fullscreen {
         display: block;
         position: fixed;
         top: 0;
@@ -646,7 +629,7 @@ body {
         pointer-events: none;
     }
 
-    .architecture-canvas-shell {
+    .architecture-snapshot-surface .architecture-canvas-shell {
         width: var(--architecture-print-source-width, 900px);
         height: var(--architecture-print-source-height, 540px);
         min-height: 0;
@@ -654,19 +637,19 @@ body {
         background: none;
     }
 
-    .architecture-print-view {
+    .architecture-snapshot-surface .architecture-print-view {
         display: block;
         margin: 3mm 0 5mm;
         break-inside: avoid;
     }
 
-    #architecturePrintScope {
+    .architecture-snapshot-surface #architecturePrintScope {
         margin-bottom: 2mm;
         font-size: 9pt;
         font-weight: 600;
     }
 
-    #architecturePrintDiagram > svg {
+    .architecture-snapshot-surface #architecturePrintDiagram > svg {
         display: block;
         width: 100%;
         height: 160mm;
@@ -674,44 +657,43 @@ body {
         overflow: visible;
     }
 
-    .architecture-print-view .architecture-node.is-muted {
+    .architecture-snapshot-surface .architecture-print-view .architecture-node.is-muted {
         opacity: 1;
     }
 
-    .architecture-print-view .architecture-edge.is-muted .architecture-edge-path {
+    .architecture-snapshot-surface .architecture-print-view .architecture-edge.is-muted .architecture-edge-path {
         stroke-opacity: 0.58;
     }
 
-    .workbench-detail-panel {
+    .architecture-snapshot-surface .workbench-detail-panel {
         padding: 4mm 0 0;
         border-top: 1px solid var(--workbench-border);
     }
 
-    .workbench-detail-panel:focus-visible,
-    .requirement-text:focus-visible {
+    .architecture-snapshot-surface .workbench-detail-panel:focus-visible, .architecture-snapshot-surface .requirement-text:focus-visible {
         outline: none;
     }
 
-    .workbench-detail-panel h2 {
+    .architecture-snapshot-surface .workbench-detail-panel h2 {
         break-after: avoid;
     }
 
-    .detail-list {
+    .architecture-snapshot-surface .detail-list {
         display: block;
         font-size: 10pt;
     }
 
-    .detail-list dt {
+    .architecture-snapshot-surface .detail-list dt {
         margin-top: 2mm;
         break-after: avoid;
     }
 
-    .detail-list dd {
+    .architecture-snapshot-surface .detail-list dd {
         margin: 0 0 2mm;
         white-space: pre-wrap;
     }
 
-    .requirement-text {
+    .architecture-snapshot-surface .requirement-text {
         height: auto;
         max-height: none;
         overflow: visible;
@@ -722,36 +704,36 @@ body {
         overflow-wrap: anywhere;
     }
 
-    #architectureWarnings {
+    .architecture-snapshot-surface #architectureWarnings {
         overflow-wrap: anywhere;
     }
 }
 
 /* The snapshot canvas remains reachable when the shared lifecycle disclosure grows. */
-.workbench-context { flex: 0 0 auto; max-height: 50dvh; overflow-y: auto; scrollbar-gutter: stable; }
+.architecture-snapshot-surface .workbench-context { flex: 0 0 auto; max-height: 50dvh; overflow-y: auto; scrollbar-gutter: stable; }
 
 /* Keep snapshot provenance beside the diagram so loaded context cannot consume its workspace. */
 @media screen {
-    .workbench-canvas-panel { display: contents; }
-    .workbench-grid { grid-template-rows: auto minmax(0, 1fr); }
-    .workbench-heading { grid-column: 2; grid-row: 1; overflow: auto; background: var(--workbench-panel); }
-    .workbench-detail-panel { grid-column: 2; grid-row: 2; contain: size; }
-    .architecture-workbench { grid-column: 1; grid-row: 1 / 3; }
-    .architecture-canvas-shell { contain: size; }
+    .architecture-snapshot-surface .workbench-canvas-panel { display: contents; }
+    .architecture-snapshot-surface .workbench-grid { grid-template-rows: auto minmax(0, 1fr); }
+    .architecture-snapshot-surface .workbench-heading { grid-column: 2; grid-row: 1; overflow: auto; background: var(--workbench-panel); }
+    .architecture-snapshot-surface .workbench-detail-panel { grid-column: 2; grid-row: 2; contain: size; }
+    .architecture-snapshot-surface .architecture-workbench { grid-column: 1; grid-row: 1 / 3; }
+    .architecture-snapshot-surface .architecture-canvas-shell { contain: size; }
 }
 
 @media screen and (min-width: 901px) {
-    .workbench-context { flex: 0 1 auto; min-height: 0; }
-    .workbench-grid { min-height: min-content; }
-    .architecture-workbench { grid-template-rows: auto minmax(50dvh, 1fr); }
+    .architecture-snapshot-surface .workbench-context { flex: 0 1 auto; min-height: 0; }
+    .architecture-snapshot-surface .workbench-grid { min-height: min-content; }
+    .architecture-snapshot-surface .architecture-workbench { grid-template-rows: auto minmax(50dvh, 1fr); }
 }
 
 @media screen and (max-width: 900px) {
-    .workbench-context { max-height: 35dvh; }
-    .workbench-grid { grid-template-rows: auto auto auto; }
-    .architecture-workbench { grid-column: 1; grid-row: 1; }
-    .workbench-heading { grid-column: 1; grid-row: 2; overflow: visible; }
-    .workbench-detail-panel { grid-column: 1; grid-row: 3; contain: none; }
-    .architecture-control, .architecture-toggle, .architecture-search, .taxonomy-app-local .btn { min-height: 44px; }
-    .architecture-control.icon-only { min-width: 44px; }
+    .architecture-snapshot-surface .workbench-context { max-height: 35dvh; }
+    .architecture-snapshot-surface .workbench-grid { grid-template-rows: auto auto auto; }
+    .architecture-snapshot-surface .architecture-workbench { grid-column: 1; grid-row: 1; }
+    .architecture-snapshot-surface .workbench-heading { grid-column: 1; grid-row: 2; overflow: visible; }
+    .architecture-snapshot-surface .workbench-detail-panel { grid-column: 1; grid-row: 3; contain: none; }
+    .architecture-snapshot-surface .architecture-control, .architecture-snapshot-surface .architecture-toggle, .architecture-snapshot-surface .architecture-search, .architecture-snapshot-surface .taxonomy-app-local .btn { min-height: 44px; }
+    .architecture-snapshot-surface .architecture-control.icon-only { min-width: 44px; }
 }

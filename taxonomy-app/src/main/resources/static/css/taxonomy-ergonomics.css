@@ -673,17 +673,15 @@ dialog.onboarding-overlay .onboarding-card {
     }
 }
 
-/* Discoverable responsive primary navigation. */
+/* The common links remain the primary navigation at every viewport width.
+   Older utilities may still create this selector; it must not duplicate them. */
 .mobile-main-navigation {
     display: none;
 }
 
 @media (max-width: 991.98px) {
-    #mainNavTabs {
-        display: none !important;
-    }
     .mobile-main-navigation {
-        display: grid;
+        display: none;
         grid-template-columns: minmax(0, 1fr) auto;
         align-items: end;
         gap: 0.5rem;
@@ -748,7 +746,7 @@ button.summary-layer-element[aria-pressed="true"] { outline: 2px solid currentCo
 .application-file-menus, .application-utilities, .application-support { display: flex; align-items: center; gap: .35rem; }
 .application-file-menus, .application-utilities, .application-support { flex: 0 0 auto; }
 .application-work-navigation { flex: 1 1 auto; min-width: 0; }
-#applicationNavigation #mainNavTabs { flex-wrap: nowrap; border-bottom: 0; }
+#applicationNavigation #mainNavTabs { display: flex; flex-wrap: wrap; border-bottom: 0; }
 #applicationNavigation #mainNavTabs .nav-link { font-size: .875rem; padding: .4rem .45rem; white-space: nowrap; }
 .application-utilities { margin-inline-start: auto; }
 #applicationNavigation .application-menu { position: relative; background: transparent; border: 0; color: #fff; }
@@ -765,11 +763,10 @@ button.summary-layer-element[aria-pressed="true"] { outline: 2px solid currentCo
 #applicationNavigation .mobile-main-navigation-label, #applicationNavigation #mobileCurrentTaskBtn { display: none; }
 #applicationNavigation .mobile-main-navigation { grid-template-columns: minmax(0, 1fr); }
 #applicationNavigation .mobile-main-navigation-select { min-height: 44px; font-size: .875rem; padding-block: .25rem; }
-@media (max-width: 1199.98px) {
-    #applicationNavigation #mainNavTabs { display: none !important; }
-    #applicationNavigation .mobile-main-navigation { display: grid; }
-}
 @media (max-width: 575.98px) {
+    /* Keep the single primary row reachable by swipe and keyboard without
+       pushing the analysis action below the first mobile viewport. */
+    #applicationNavigation #mainNavTabs { flex-wrap: nowrap; overflow-x: auto; }
     #applicationNavigation .application-shell { flex-wrap: wrap; gap: .4rem; }
     #applicationNavigation .application-utilities { order: 1; }
     #applicationNavigation .application-file-menus { order: 2; }

@@ -28,7 +28,7 @@ for (const [locale, suffix, expected] of [
                 layerGroups: Array.from({ length: count }, () => ({}))
             };
             const context = vm.createContext({
-                state,
+                state, el:id=>elements.get(id),
                 document: { getElementById: id => elements.get(id) },
                 t: key => { assert.ok(key in messages, `missing ${locale} translation: ${key}`); return messages[key]; }
             });

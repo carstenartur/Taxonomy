@@ -83,3 +83,17 @@
     .taxonomy-app-primary a, .taxonomy-app-languages a, .taxonomy-app-brand, .taxonomy-app-navigation .context-help { color: LinkText; }
     .taxonomy-app-primary a[aria-current="page"] { color: HighlightText; background: Highlight; }
 }
+
+/* One primary section row; index supplies in-page tab behavior, other pages retain real links. */
+.taxonomy-app-primary { align-items: center; flex: 1 1 auto; }
+.taxonomy-app-primary #mainNavTabs { display: flex; flex-wrap: wrap; list-style: none; padding: 0; margin: 0; border: 0; gap: .15rem; }
+.taxonomy-app-primary #mainNavTabs .nav-link { border-radius: .35rem; border: 1px solid transparent; }
+.taxonomy-app-primary #mainNavTabs .nav-link.active { color: #17243a; background: #fff; }
+.taxonomy-app-local .application-utilities { margin-inline-start: auto; }
+.taxonomy-app-primary .application-work-navigation { min-width: 0; }
+.taxonomy-app-primary .mobile-main-navigation { color: #fff; }
+@media (max-width: 42rem) {
+    .taxonomy-app-primary { flex-wrap: nowrap; align-items: end; }
+    .taxonomy-app-primary .application-work-navigation { flex: 1 1 auto; }
+    .taxonomy-app-primary > a { flex: 0 0 auto; }
+}

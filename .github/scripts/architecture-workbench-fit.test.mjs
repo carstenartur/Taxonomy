@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 const source = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/architecture-workbench.js', import.meta.url), 'utf8');
+const sharedSource = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/architecture-diagram.js', import.meta.url), 'utf8');
 // Exercise the actual Fit handler's geometry without a browser or a copied formula.
 const start = source.indexOf('    function fitView() {');
 const end = source.indexOf('    function centerOnNode(', start);
@@ -20,6 +21,7 @@ function fit(bounds, viewport) {
     };
     const context = vm.createContext({
         state: { bounds, autoFit: false },
+        canvas: { clientWidth: viewport.width, clientHeight: viewport.height },
         viewportSize: () => viewport,
         reducedMotion: true,
         d3: { zoomIdentity: transform },
@@ -60,10 +62,12 @@ assert.ok(contextGuard, 'the production context-control guard must be present');
 
 function contextView(nodes, edges, showContext) {
     const context = vm.createContext({
+        window: {},
         scene: { nodes, edges },
         state: { showContext, mode: 'overview', selectedNodeId: null },
         contextCheckbox: { checked: true, disabled: false }
     });
+    vm.runInContext(sharedSource, context);
     return vm.runInContext(visibilityHandler + '\n' + contextGuard
         + '\n({ control: contextCheckbox, model: visibleModel() })', context);
 }
@@ -103,3 +107,9 @@ for (const [relevance, expected] of [[0.00125, '0.125%'], [1e-12, '<0.000001%'],
         assert.equal(actual, expected);
     });
 }
+
+
+test('snapshot Fit waits when its source pane has no measured size', () => {
+    const { result } = fit({ x: 105, y: 207, width: 2000, height: 700 }, { width: 0, height: 0 });
+    assert.equal(result, undefined, 'hidden source must not commit a fallback viewport');
+});

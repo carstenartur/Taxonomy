@@ -64,6 +64,17 @@ async function fixture(locale='de',width=1366){
     return page;
 }
 for(const locale of ['de','en']){
+    test(`${locale}: Architecture has one destination and switching sections retains the analysis draft`,async()=>{
+        const page=await fixture(locale);try{
+            await page.locator('#businessText').fill('Retained requirement draft');
+            const architecture=page.locator('#applicationNavigation a[data-app-route="architecture"], #applicationNavigation a[data-page="architecture"]');
+            assert.equal(await architecture.count(),1,'One Architecture entry must have one coherent destination');
+            await architecture.click();
+            assert.equal(await page.locator('#tab-architecture').isVisible(),true);
+            await page.locator('#mainNavTabs [data-page="analyze"]').click();
+            assert.equal(await page.locator('#businessText').inputValue(),'Retained requirement draft');
+        }finally{await finish(page);}
+    });
     test(`${locale}: compact desktop header keeps Help and About together`,async()=>{
         const page=await fixture(locale);try{
             const help=page.locator('[data-page="help"]').first(),about=page.locator('#aboutBtn');
@@ -93,12 +104,16 @@ for(const locale of ['de','en']){
             const h=await help.boundingBox(),a=await about.boundingBox();assert.ok(Math.abs(h.y-a.y)<=2);
             const sizes=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));
             assert.ok(sizes.scroll<=sizes.width,JSON.stringify(sizes));
-            const selector=page.locator('#mobileMainNavigationSelect');
-            const selectorBox=await selector.boundingBox();
-            assert.ok(selectorBox&&selectorBox.height>=44,
-                `Mobile section selector must retain its 44px touch target: ${JSON.stringify(selectorBox)}`);
-            await selector.selectOption('versions');
-            assert.equal(await page.locator('#tab-versions').isVisible(),true);
+            assert.equal(await page.locator('#mobileMainNavigationSelect:visible').count(),0,'One visible primary navigation');
+            for(const destination of ['analyze','architecture','graph','versions','dsl-editor']){
+                const link=page.locator('#mainNavTabs [data-page="'+destination+'"]');
+                const box=await link.boundingBox();
+                assert.ok(box&&box.height>=44,`Primary destination retains its 44px touch target: ${destination} ${JSON.stringify(box)}`);
+                await link.click();
+                assert.equal(await page.locator('#tab-'+destination).isVisible(),true);
+            }
+            await page.locator('#mainNavTabs [data-page="analyze"]').focus();await page.keyboard.press('End');
+            assert.equal(await page.locator('#tab-dsl-editor').isVisible(),true);
             await help.click();assert.equal(await page.locator('#tab-help').isVisible(),true);
         }finally{await finish(page);}
     });

@@ -2,8 +2,9 @@
 (function () {
     'use strict';
     var state = {};
+    var sourceContexts = {};
     var groupKeys = ['architecture', 'project', 'requirement', 'source'];
-    var routes = {projects: '/projects', analysis: '/', architecture: '/architecture/editor'};
+    var routes = {projects: '/projects', analysis: '/', architecture: '/', graph: '/', versions: '/', 'dsl-editor': '/'};
     function node(value) { return typeof value === 'string' ? document.getElementById(value) : value; }
     function t(key) { return window.TaxonomyI18n.t.apply(null, arguments); }
     function present(value) { return value !== null && value !== undefined && value !== ''; }
@@ -170,7 +171,7 @@
         if (node('projectFilter')) {
             disclosure.dataset.compactContext = 'projects';
             disclosure.open = false;
-        } else if (node('mainNavTabs')) {
+        } else if (node('architectureWorkspace') && node('tab-analyze')) {
             disclosure.dataset.compactContext = 'analysis';
             disclosure.open = false;
         }
@@ -197,7 +198,7 @@
             else target.searchParams.delete('sourceWorkspaceId');
         }
         target.searchParams.set('lang', window.TaxonomyI18n.getLocale());
-        if (route === 'analysis') target.hash = 'analyze';
+        if (route !== 'projects') target.hash = route === 'analysis' ? 'analyze' : route;
         return target.pathname + target.search + target.hash;
     }
     function refreshNavigation() {
@@ -212,11 +213,22 @@
             if (link.dataset.appLocale === window.TaxonomyI18n.getLocale()) link.setAttribute('aria-current', 'true'); else link.removeAttribute('aria-current');
         });
     }
-    function updateContext(value) {
-        var next = Object.assign({}, state);
+    function activateContext(owner) {
+        state = sourceContexts[owner] || {};
+        renderContext(); refreshNavigation();
+        return getContext();
+    }
+    function updateContext(value, owner) {
+        owner = owner || 'analysis';
+        var workspace = window.TaxonomyArchitectureWorkspace;
+        var unified = Boolean(workspace || node('architectureWorkspace'));
+        var previous = unified ? (sourceContexts[owner] || {}) : state;
+        var next = Object.assign({}, previous);
         Object.keys(value || {}).forEach(function (key) {
-            next[key] = groupKeys.includes(key) && value[key] ? Object.assign({}, state[key] || {}, value[key]) : value[key];
+            next[key] = groupKeys.includes(key) && value[key] ? Object.assign({}, previous[key] || {}, value[key]) : value[key];
         });
+        sourceContexts[owner] = next;
+        if (unified && workspace && owner !== (workspace.isActive() ? workspace.getSource().kind : 'analysis')) return JSON.parse(JSON.stringify(next));
         if (JSON.stringify(next) === JSON.stringify(state)) { refreshNavigation(); return getContext(); }
         state = next; renderContext(); refreshNavigation();
         document.dispatchEvent(new CustomEvent('taxonomy:entity-context-changed', {detail: getContext()}));
@@ -234,7 +246,7 @@
     window.addEventListener('popstate', refreshNavigation);
     window.addEventListener('hashchange', refreshNavigation);
     document.addEventListener('taxonomy-i18n-loaded', function () { renderContext(); refreshNavigation(); });
-    window.TaxonomyAppChrome = Object.freeze({updateContext: updateContext, getContext: getContext,
+    window.TaxonomyAppChrome = Object.freeze({updateContext: updateContext, getContext: getContext, activateContext:activateContext,
         refreshNavigation: refreshNavigation, renderEntity: renderEntity, renderDetails: renderDetails,
         setStatus: setStatus, statusLabel: statusLabel});
     initializeContextDisclosure();

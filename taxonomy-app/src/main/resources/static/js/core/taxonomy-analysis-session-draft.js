@@ -41,19 +41,38 @@
 
     // Server hydration is observation, not a local edit. Rebase only a clean
     // draft, synchronously, so typing or manual evidence changes remain dirty.
+    function referenceIdentity(payload) {
+        var ref = payload && payload.analysisReference;
+        return ref ? JSON.stringify([ref.workspaceId, ref.operationId, ref.continuationId, ref.recoveryVersion]) : null;
+    }
     function observeDraftChanges(update) {
-        var clean = comparable(currentPayload()) === runtime.lastSavedComparable;
-        var result = update();
-        if (clean) {
-            runtime.lastSavedComparable = comparable(currentPayload());
-            runtime.lastObservedComparable = runtime.lastSavedComparable;
+        var before = currentPayload();
+        var serializedBefore = comparable(before);
+        var clean = serializedBefore === runtime.lastSavedComparable;
+        var observationOnly = clean || serializedBefore === runtime.observedDraftComparable;
+        var priorReference = referenceIdentity(before);
+        var result;
+        runtime.draftObservationDepth = (runtime.draftObservationDepth || 0) + 1;
+        try { result = update(); }
+        finally { runtime.draftObservationDepth--; }
+        var after = currentPayload();
+        if (observationOnly) {
+            var serializedAfter = comparable(after);
+            if (clean && priorReference === referenceIdentity(after)) runtime.lastSavedComparable = serializedAfter;
+            runtime.observedDraftComparable = serializedAfter === runtime.lastSavedComparable ? null : serializedAfter;
+            runtime.lastObservedComparable = serializedAfter;
+            window.clearTimeout(runtime.saveTimer); runtime.saveTimer = null;
         }
         return result;
     }
 
     function queueSave(delay) {
         if (runtime.restoring || runtime.invalidating || runtime.resetting
-                || runtime.conflict || runtime.serverUnconfirmed) return;
+                || runtime.conflict || runtime.serverUnconfirmed || runtime.draftObservationDepth) return;
+        if (runtime.observedDraftComparable) {
+            if (comparable(currentPayload()) === runtime.observedDraftComparable) return;
+            runtime.observedDraftComparable = null; // A real local delta supersedes observation-only state.
+        }
         window.clearTimeout(runtime.saveTimer);
         runtime.saveTimer = window.setTimeout(saveDraft, delay === undefined
             ? AUTOSAVE_DELAY_MS : delay);
@@ -194,6 +213,7 @@
 
         var payload = currentPayload();
         var serialized = comparable(payload);
+        var observedAtSave = runtime.observedDraftComparable;
         runtime.lastObservedComparable = serialized;
         if (serialized === runtime.lastSavedComparable) return Promise.resolve(true);
 
@@ -213,6 +233,10 @@
             confirmDraft(view);
             runtime.version = view.version;
             runtime.lastSavedComparable = serialized;
+            // Retire only the observation this write captured or actually saved.
+            // A newer independent observation may have arrived while the PUT ran.
+            if (runtime.observedDraftComparable === observedAtSave || runtime.observedDraftComparable === serialized)
+                runtime.observedDraftComparable = null;
             runtime.conflict = false;
             document.dispatchEvent(new CustomEvent('taxonomy:analysis-draft-saved', {
                 detail: { workspaceId: runtime.workspaceId, version: runtime.version }
@@ -430,8 +454,13 @@
             applyResolvedDraft(Object.assign({}, view, { payload: payload }));
             C.retainAnalysisReference?.(payload.canonicalAnalysisResult,
                 Object.assign({}, payload.canonicalAnalysisRequest, { durable: true }));
-            runtime.lastSavedComparable = comparable(currentPayload());
-            runtime.lastObservedComparable = runtime.lastSavedComparable;
+            var hydrated = currentPayload();
+            var referenceChanged = referenceIdentity(view.payload) !== referenceIdentity(hydrated);
+            // Rehydrating live recovery may advance its canonical evidence pin.
+            // That new reference is not acknowledged by the old persisted row.
+            runtime.lastSavedComparable = comparable(referenceChanged ? view.payload : hydrated);
+            runtime.lastObservedComparable = comparable(hydrated);
+            runtime.observedDraftComparable = referenceChanged ? runtime.lastObservedComparable : null;
         }).catch(function (error) {
             if (!current()) return;
             runtime.restoring = false; setDraftDecisionPending(false);
@@ -747,7 +776,10 @@
 
     installDraftDecisionGuard();
     function recordInputEdit(event) {
-        if (event.target === businessTextElement()) inputEditRevision += 1;
+        if (event.target === businessTextElement()) {
+            inputEditRevision += 1;
+            runtime.observedDraftComparable = null;
+        }
     }
     document.addEventListener('input', recordInputEdit);
     document.addEventListener('change', recordInputEdit);

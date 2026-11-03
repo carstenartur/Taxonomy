@@ -1,12 +1,13 @@
 /* One visible architecture stand. Reads and dialog intents are fenced to that stand. */
 (function () {
     'use strict';
+    function publishContext(value) { window.TaxonomyAppChrome?.updateContext(value, 'working'); }
     var api = window.TaxonomyArchitectureLifecycleApi;
     var root, summary, status, rows, historyList, historySearch, disclosure, currentButton, reconcileButton;
     var listeners = new Set();
     var pendingRequirements = new Map();
     var subjectKey = null;
-    var state = {overview:null, sequence:0, generation:0, selection:selectionFromUrl(), context:null, observed:null, history:null};
+    var state = {suspended:false, overview:null, sequence:0, generation:0, selection:selectionFromUrl(), context:null, observed:null, history:null};
     function t(key) { return window.TaxonomyI18n.t.apply(null, arguments); }
     function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
     function scope() { return window.TaxonomyArchitectureWorkflow?.getScope() || {}; }
@@ -44,23 +45,26 @@
         if (rows) rows.replaceChildren();
         if (summary) summary.textContent = t('lifecycle.title');
         if (reconcileButton) reconcileButton.hidden = true;
-        window.TaxonomyAppChrome?.updateContext({architecture:{modelStand:null}, editable:false, publicationState:null, realizationStatus:null});
+        publishContext({architecture:{modelStand:null}, editable:false, publicationState:null, realizationStatus:null});
     }
     function beginSelection(context, selection) {
+        state.suspended=false;
         var next = selectionOf(selection);
         var changed = scopeKey(context) !== scopeKey(state.context) || JSON.stringify(next) !== JSON.stringify(state.selection);
         ++state.sequence;
         state.context = clone(context || scope()); state.selection = next; state.observed = null;
         resetOverview(); if (changed) clearHistory(); invalidateStand();
-        window.TaxonomyAppChrome?.updateContext({architecture:{repositoryId:state.context.repositoryId,workspaceScopeKey:state.context.workspaceScopeKey || state.context.workspaceId,branch:state.context.branch,modelStand:null,commit:null,revision:null}});
+        publishContext({architecture:{repositoryId:state.context.repositoryId,workspaceScopeKey:state.context.workspaceScopeKey || state.context.workspaceId,branch:state.context.branch,modelStand:null,commit:null,revision:null}});
         if (root) root.hidden = true;
     }
     function failedSelection(error) {
+        if(state.suspended)return;
         ++state.sequence; state.observed = null; resetOverview(); clearHistory(); invalidateStand();
-        window.TaxonomyAppChrome?.updateContext({editable:false, publicationState:'UNAVAILABLE', architecture:{modelStand:null}});
+        publishContext({editable:false, publicationState:'UNAVAILABLE', architecture:{modelStand:null}});
         if (root) { root.hidden = false; status.textContent = errorText(error); currentButton.hidden = false; }
     }
     async function refresh(context, selection) {
+        if(state.suspended)return null;
         var requested = clone(context || state.context || scope());
         var selected = arguments.length > 1 ? selectionOf(selection) : state.selection;
         var changed = scopeKey(requested) !== scopeKey(state.context) || JSON.stringify(selected) !== JSON.stringify(state.selection);
@@ -69,7 +73,7 @@
         if (changed) { state.observed = null; resetOverview(); clearHistory(); invalidateStand(); }
         try {
             var value = await api.overview(requested, selected.commit, selected.revision);
-            if (ticket !== state.sequence) return null;
+            if (ticket !== state.sequence || state.suspended) return null;
             if (state.observed) value.mayEdit = Boolean(value.mayEdit && state.observed.mayEdit);
             if (state.overview && (contextKey(value.context) !== contextKey(state.overview.context)
                     || value.source !== state.overview.source || value.mayEdit !== state.overview.mayEdit)) invalidateStand();
@@ -78,12 +82,13 @@
             render(); signalStandChange();
             return value;
         } catch (error) {
-            if (ticket !== state.sequence) return null;
+            if (ticket !== state.sequence || state.suspended) return null;
             failedSelection(error); return null;
         }
     }
     function observe(documentValue, mayEdit) {
         if (!documentValue?.context) return;
+        state.suspended=false;
         var selected = documentValue.source === 'GIT_CHECKPOINT'
             ? selectionOf(documentValue.context.commit) : selectionOf(documentValue.context.revision);
         state.observed = {projectionState:documentValue.projectionState, source:documentValue.source, mayEdit:Boolean(mayEdit)};
@@ -213,10 +218,10 @@
         // Historical source evidence must not relabel the current business text version.
         if (requirement && !historicalSelection()) facts.requirement = {version:requirement.version, versionId:requirement.versionId};
         if (requirement) facts.realizationStatus = requirement.realization?.state || null;
-        window.TaxonomyAppChrome?.updateContext(facts);
+        publishContext(facts);
     }
     function render() {
-        if (!root || !state.overview) return;
+        if (!root || !state.overview || state.suspended) return;
         var value = state.overview;
         var visible = filteredRequirements(value);
         summary.textContent = t('lifecycle.summary', visible.length);
@@ -643,6 +648,7 @@
     window.addEventListener('popstate',function () { if (!isEditor()) refresh(scope(),selectionFromUrl()); });
     window.TaxonomyArchitectureLifecycle = {state:function () { return clone(state.overview); },
         ready:function () { return initialized.then(function () { return clone(state.overview); }); },
+        suspend:function(){state.suspended=true;state.sequence++;clearHistory();invalidateStand();if(root)root.hidden=true;},
         refresh:refresh, beginSelection:beginSelection, observe:observe,
         failedSelection:failedSelection, saveRequirement:saveRequirement, showPublicationRecovery:showPublicationRecovery, openNewArchitecture:openNewArchitecture};
     var initialized = window.TaxonomyI18n.ready().then(initialize);

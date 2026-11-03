@@ -1,6 +1,15 @@
 # Architektureditor
 
-Den **Architektureditor** über Projekte oder die Snapshot-Workbench öffnen. Der gemeinsame Kontext zeigt Architektur, Projekt, Anforderung und gewählten Stand. **Technische Details** enthält die exakten Repository-/Workspace-Kennungen, den vollständigen Commit und vorhandene Snapshot-/Versionskennungen. Historische Revisionen/Versionen und zentrale Lesekontexte sind schreibgeschützt. **Privaten Workspace anlegen** erstellt bei passender Repository-Mitgliedschaft eine Arbeitskopie. Zum Bearbeiten ist außerdem die Rolle ARCHITECT oder ADMIN nötig.
+**Architektur** in der gemeinsamen Hauptnavigation öffnen und unter **Angezeigte Architektur** die **Arbeitsarchitektur** wählen. Links aus Projekten oder gespeicherten Analysen öffnen denselben Arbeitsbereich mit dem jeweiligen Kontext. Der gemeinsame Kontext zeigt Architektur, Projekt, Anforderung und gewählten Stand. **Technische Details** enthält die exakten Repository-/Workspace-Kennungen, den vollständigen Commit und vorhandene Snapshot-/Versionskennungen. Historische Revisionen/Versionen und zentrale Lesekontexte sind schreibgeschützt. **Privaten Workspace anlegen** erstellt bei passender Repository-Mitgliedschaft eine Arbeitskopie. Zum Bearbeiten ist außerdem die Rolle ARCHITECT oder ADMIN nötig.
+
+**Aktuelle Analyse**, **Gespeicherter Analysezustand** und **Arbeitsarchitektur**
+bezeichnen drei Quellen innerhalb desselben Architekturbereichs. Beim Wechsel
+bleiben Analysetext und Ergebnisse sowie zurückgestellte Editorentwürfe erhalten.
+Ein anderer Arbeitskontext oder eine andere Elementauswahl darf unangenommene
+Formulareingaben erst nach Rückfrage ersetzen. Die Übernahme einer gespeicherten
+Analyse bleibt ein ausdrücklicher Vorgang mit Vorschau und Annahme; die Quellwahl
+übernimmt keine Elemente oder Beziehungen. Alte Editor- und Workbench-Links führen
+mit ihren Quellen- und Versionsangaben in diesen Bereich.
 
 ![Architektureditor — ausgewählter Workspace und Element](../images/architecture-editor-current-de.png)
 
@@ -93,17 +102,29 @@ Editordokument ebenfalls neu.
 Siehe [Architektur-Lifecycle](PROJECT_REQUIREMENT_PORTFOLIO.md#architecture-lifecycle)
 und [Anforderungshistorie](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-history).
 
-## Brennglas und Anordnung
+<a id="brennglas-und-anordnung"></a>
+## Architektur-Lupe und Anordnung
 
-Über **Projekte → Architektureditor** öffnen und unter dem Graphen sowie den
-Anordnungsreglern zum Bereich **Architektur-Brennglas** scrollen. Dort das
-Kontrollkästchen **Brennglas einschalten** aktivieren. Es ist nur im aktuellen
-bearbeitbaren Arbeitsbereich verfügbar; historische Revisionen und zentrale
-Lesekontexte erlauben keine Untersuchung.
+Unter **Architektur** zunächst die angezeigte Quelle prüfen. Die Lupe der Analyse
+öffnet die Untersuchung in diesem Bereich und behält Analysetext und Auswahl bei.
+Bei **Aktuelle Analyse** wird der dargestellte Analyseentwurf vor der Untersuchung
+gespeichert und seine bestätigte Version geprüft. Bei **Gespeicherter Analysezustand**
+untersucht die Lupe den exakt ausgewählten Snapshot. Beide Quellen bleiben
+unverändert. Fehlt eine vollständige gespeicherte Quelle, zeigt die Anwendung den
+Grund; **Quelle aktualisieren** prüft den Stand erneut.
+
+In der **Arbeitsarchitektur** liegt die **Architektur-Lupe** unter Graph und
+Anordnungsreglern. **Lupe einschalten** aktiviert sie für den aktuellen bearbeitbaren
+Arbeitsstand. In historischen Arbeitsrevisionen und zentralen Lesekontexten bleibt
+diese Editor-Lupe deaktiviert. In einer Analyse können Vorschläge
+untersucht und verworfen werden; **Übernahme in die Arbeitsarchitektur prüfen**
+führt zur gesonderten Übernahme mit Quellenprüfung, Vorschau und Annahme. Ein noch
+nicht als Anforderung gespeicherter Analyseentwurf muss zuerst gespeichert werden.
 
 ![Architektur-Brennglas mit aktiviertem Schalter „Brennglas einschalten“ und ausgeschalteter KI-Option](../images/architecture-editor-focus-de.png)
 
-*Aufnahme des Brennglas-Bedienfelds in einem bearbeitbaren Beispiel-Workspace:
+*Frühere Aufnahme des Brennglas-Bedienfelds in einem bearbeitbaren Beispiel-Workspace;
+die gemeinsame Navigation und die Bezeichnung „Lupe“ wurden danach vereinheitlicht:
 **Brennglas einschalten** ist aktiviert, die KI-Option ist ausgeschaltet.
 [Quellstand und Bildnachweis](../images/architecture-editor-focus-capture.json).*
 
@@ -111,7 +132,7 @@ Langsam über Elemente fahren oder ein Element auswählen und **Auswahl untersuc
 wählen. Bei Touch den Finger kurz über einem Element halten. Der Fokus bestimmt
 die Ausgangselemente; mögliche Endpunkte können im gesamten aktuellen Modell
 liegen, auch bei neu angelegten Elementen. Pfeiltasten und Zoom bleiben verfügbar,
-während das Brennglas die Zeigerbewegung verwendet.
+während die Lupe die Zeigerbewegung verwendet.
 
 An jedem untersuchten Element ist erkennbar, ob die Untersuchung vorgemerkt, aktiv,
 bewertet, ungeprüft, fehlgeschlagen oder veraltet ist. Das voreingestellte Limit
@@ -125,7 +146,7 @@ dadurch nicht automatisch ermittelt.
 
 Gestrichelte Pfeile und die Vorschlagsliste öffnen einen festen Prüfbereich mit
 vollständiger Begründung, Methode, untersuchter Revision und Quellenauszügen.
-**Beziehung übernehmen** ist die Bestätigung: Ein protokollierter Befehl speichert
+In der **Arbeitsarchitektur** ist **Beziehung übernehmen** die Bestätigung: Ein protokollierter Befehl speichert
 Beziehung, Begründung und Herkunft ohne zweiten Dialog. **Vorschlag verwerfen**
 gilt nur für diese Untersuchung. **Rückgängig** verwendet die angenommene Operation;
 nach dem Neuladen stehen Rückgängig/Wiederholen in der Historie bereit. Ein erneuter

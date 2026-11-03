@@ -64,6 +64,7 @@ function loadApi() {
       };
     },
   });
+  vm.runInContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/shared/architecture-diagram.js', import.meta.url), 'utf8'), context);
   vm.runInContext(graphSource, context, { filename: 'taxonomy-impact-map.js' });
   return { api: window.TaxonomyImpactMap, graph: window.TaxonomyGraph, originalRenderer };
 }

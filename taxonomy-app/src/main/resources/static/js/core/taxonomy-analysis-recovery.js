@@ -375,12 +375,19 @@
                 // Reading a durable operation in a second tab must not turn that
                 // observer into a competing draft writer. Explicit result adoption
                 // and existing local edits still require normal optimistic saving.
+                var observedPayload = C.currentPayload && C.comparable ? C.comparable(C.currentPayload()) : null;
+                var readOnlyObservation = !options.acceptSavedResult && !options.afterDecision && C.runtime
+                    && observedPayload !== null && (observedPayload === C.runtime.lastSavedComparable
+                        || observedPayload === C.runtime.observedDraftComparable);
                 if (options.acceptSavedResult) applySnapshot();
                 else observeDraftChanges(applySnapshot);
                 if (options.background && !c.evidenceConflict && previousState === snapshot.recovery.state && previousVersion === snapshot.recovery.version && !recovering)
                     reopen = false; // Progress heartbeats do not rebuild an open dialog.
                 if (!busy && snapshot.recovery.state !== 'RUNNING') {
-                    await save();
+                    // A newly hydrated reference stays dirty until an explicit
+                    // save (including source focus); ordinary observation stays read-only.
+                    if (readOnlyObservation) remember();
+                    else await save();
                     if (snapshot.recovery.state === 'PAUSED' && !ui.isDismissed?.()) reopen = true;
                 }
                 return true;
@@ -796,6 +803,28 @@
             }
         });
     }
+    // Bind an already-applied ordinary response without re-reading, hydrating or
+    // releasing Copilot follow-ups. The closure generation belongs to this result.
+    function bindAnalysisResult(result, request, workspaceId) {
+        var ready = window.TaxonomyAnalysisSession?.state?.();
+        var recovery = result?.recovery, accepted = S.analysisRecovery;
+        if (!ready?.ready || C.runtime.invalidating || !workspaceId
+                || workspaceId !== C.runtime.workspaceId || ready.workspaceId !== workspaceId
+                || !request || request.businessText !== input() || S.lastAnalyzedText !== request.businessText
+                || request.resumable !== true || request.continuationAction !== 'START'
+                || !recovery?.id || request.continuationId !== recovery.id
+                || !Number.isSafeInteger(recovery.version) || recovery.version < 0
+                || accepted?.id !== recovery.id || accepted.version !== recovery.version) return false;
+        var context = { id: recovery.id, workspaceId: workspaceId,
+            request: Object.assign({}, request), confirmed: true, noFollowups: true, followups: {} };
+        context.pauseReason = recordedPauseReason(result);
+        rememberNodeEvidence(result, context);
+        clearTimeout(poll); poll = null;
+        generation = C.runtime.analysisGeneration || 0;
+        S.recoveryContext = context;
+        setBusy(false); remember(); update();
+        return true;
+    }
     function startAnalysis(manual) {
         if (busy || decisionBusy) return;
         if (inScope(current()) && (!statusKnown() || S.analysisRecovery?.state === 'RUNNING')) { open(); return; }
@@ -902,6 +931,7 @@
     });
     window.TaxonomyAnalysisSessionReady?.then(restore);
     window.TaxonomyAnalysisRecovery = { startCopilot: startCopilot, startManagedAnalysis: startManagedAnalysis,
+        bindAnalysisResult: bindAnalysisResult,
         extendRelations: extendRelations, nodeEvidenceMatches: nodeEvidenceMatches, stage: stage, open: open,
         refresh: refresh, cancel: cancel, renderCoverage: renderCoverage, partialResultMessage: partialResultMessage,
         isManaged: function () { return inScope(current()); },

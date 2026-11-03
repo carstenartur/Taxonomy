@@ -720,7 +720,27 @@ Die Warnung wird nach einer 300-ms-Verzögerung (Debounce) ausgelöst, wenn Sie 
 <a id="guide-section-7"></a>
 ## 7. Architekturansicht — Anforderungs-Wirkungsanalyse
 
-Die Architekturansicht zeigt, wie die am höchsten bewerteten Taxonomieknoten über bestätigte Architekturbeziehungen (gespeichert in der Wissensbasis) miteinander verbunden sind. Sie bietet eine **Anforderungs-Wirkungsanalyse** — eine schichtbasierte Visualisierung der Architekturelemente, die für Ihre Anforderung relevant sind.
+**Architektur** hat einen gemeinsamen Eintrag in der Hauptnavigation. Unter
+**Angezeigte Architektur** wählen Sie die Quelle:
+
+| Quelle | Zweck und verfügbare Arbeit |
+|---|---|
+| **Aktuelle Analyse** | Die Architektur des aktuellen Analyseergebnisses untersuchen; Analysetext, Diagrammvarianten, Detailansichten und Analyseexporte behalten. |
+| **Gespeicherter Analysezustand** | Einen unveränderlichen Snapshot mit seiner Anforderungsversion und Herkunft prüfen, mit der Lupe untersuchen, drucken oder exakt diesen Stand exportieren. |
+| **Arbeitsarchitektur** | Elemente, Beziehungen und Pakete mit Vorschau und Annahme bearbeiten; Änderungen zurücknehmen, Checkpoints erstellen und historische Stände prüfen. |
+
+Die Lupe untersucht die angezeigte Quelle im selben Bereich. Gespeicherte Analysen
+werden dadurch nicht verändert. Eine Übernahme in die Arbeitsarchitektur bleibt
+ausdrücklich an eine geprüfte Vorschau gebunden. Eingaben und zurückgestellte
+Entwürfe bleiben beim Wechsel der Ansicht erhalten. Bestehende Editor- und
+Workbench-Links öffnen diesen gemeinsamen Bereich mit ihren exakten Quellenangaben.
+Siehe [Architektureditor und Lupe](ARCHITECTURE_EDITOR.md).
+
+Die **Aktuelle Analyse** zeigt ausgewählte Elemente und Beziehungen für die
+analysierte Anforderung. Prüfen Sie, ob eine Beziehung abgeleitet, importiert oder
+menschlich bestätigt ist; ihre Anzeige allein bedeutet keine angenommene
+Entscheidung. Die **Anforderungs-Wirkungsanalyse** visualisiert die relevanten
+Architekturelemente nach Schichten.
 
 ### Das Architekturansicht-Kontrollkästchen aktivieren
 

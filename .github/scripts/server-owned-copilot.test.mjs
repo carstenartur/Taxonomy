@@ -15,7 +15,8 @@ function deferred() {
   return { promise, resolve, reject };
 }
 function fixture(language = 'en') {
-  const elements = new Map(); const listeners = new Map(); const requests = []; const alerts = [];
+  const elements = new Map(); const listeners = new Map(); const requests = []; const alerts = []; const draftWrites = [];
+  const draftControl = {};
   function element(id) {
     const classes = new Set(); const attributes = new Map();
     return { id, value: '', style: {}, dataset: {}, innerHTML: '', textContent: '', children: [],
@@ -23,7 +24,8 @@ function fixture(language = 'en') {
         toggle(value, enabled) { if (enabled) classes.add(value); else classes.delete(value); } },
       setAttribute: (name, value) => attributes.set(name, String(value)), getAttribute: name => attributes.get(name),
       hasAttribute: name => attributes.has(name), removeAttribute: name => attributes.delete(name),
-      addEventListener() {}, appendChild(child) { this.children.push(child); }, replaceChildren(...children) { this.children = children; },
+      addEventListener() {}, appendChild(child) { this.children.push(child); }, append(...children) { this.children.push(...children); },
+      replaceChildren(...children) { this.children = children; }, remove() {}, querySelectorAll() { return []; },
       querySelector() { return null; }, focus() {} };
   }
   const document = { documentElement: { lang: language }, body: element('body'),
@@ -56,7 +58,11 @@ function fixture(language = 'en') {
   Object.assign(C.runtime, { workspaceId: 'ws-1', workspaceResolved: true, analysisGeneration: 1 });
   C.showActionAlert = (kind, title, body, actions, marker) => alerts.push({ kind, title, body, actions, marker });
   C.showStaleActions = () => {};
-  C.jsonRequest = async (_path, options) => ({ version: 1, payload: JSON.parse(options.body).payload });
+  C.jsonRequest = async (_path, options) => {
+    const body=JSON.parse(options.body);draftWrites.push(body);
+    if(draftControl.write)return draftControl.write(body);
+    return {version:(body.expectedVersion??0)+1,payload:body.payload};
+  };
   vm.runInContext(sources['taxonomy-analysis-session-draft.js'], sandbox);
   vm.runInContext(sources['taxonomy-analysis.js'], sandbox);
   const input = elements.get('businessText') || document.getElementById('businessText');
@@ -64,7 +70,7 @@ function fixture(language = 'en') {
   function canonical({ continuation = true, large = false } = {}) {
     const result = { status: 'SUCCESS', provider: 'LOCAL', analysisProviderId: 'LOCAL', analysisOperationId: 'operation-1',
       scores: { BP: 85 }, rawScores: { BP: 85 }, effectiveScores: { BP: 85 }, reasons: { BP: large ? 'e'.repeat(2_100_000) : 'Retained assessment' },
-      recovery: continuation ? { id: 'continuation-1', state: 'COMPLETED', openQuestions: [] } : null,
+      recovery: continuation ? { id: 'continuation-1', version: 9, state: 'COMPLETED', openQuestions: [] } : null,
       tree: [{ code: 'BP', name: 'Retained root', children: [] }], copilot: report() };
     snapshot = { request: { businessText: 'Original requirement', provider: 'LOCAL' }, result, recovery: result.recovery };
     return snapshot;
@@ -72,12 +78,12 @@ function fixture(language = 'en') {
   async function install(options = {}) {
     canonical(options);
     const payload = await C.resolveAnalysisReference({ schemaVersion: 1, draftState: 'ACTIVE', businessText: 'Original requirement', currentView: 'list',
-      analysisReference: { workspaceId: 'ws-1', continuationId: 'continuation-1', operationId: 'operation-1' } });
+      analysisReference: { workspaceId: 'ws-1', continuationId: 'continuation-1', recoveryVersion: 9, operationId: 'operation-1' } });
     C.applyDraft({ version: 1, payload: Object.assign({}, payload, { analysisReference: undefined }) });
     C.retainAnalysisReference(snapshot.result, snapshot.request);
     return snapshot;
   }
-  return { window, document, C, state, input, elements, requests, alerts, canonical, install,
+  return { window, document, sandbox, C, state, input, elements, requests, alerts, draftWrites, draftControl, canonical, install,
     edit(value) { input.value = value; document.dispatchEvent({ type: 'input', target: input }); },
     html(id) { return document.getElementById(id).innerHTML; } };
 }
@@ -90,7 +96,7 @@ function report(state = 'COMPLETED') {
 }
 function referencePayload(extra = {}) {
   return { schemaVersion: 1, draftState: 'ACTIVE', businessText: 'Edited requirement', currentView: 'tree',
-    analysisReference: { workspaceId: 'ws-1', continuationId: 'continuation-1', operationId: 'operation-1' }, ...extra };
+    analysisReference: { workspaceId: 'ws-1', continuationId: 'continuation-1', recoveryVersion: 9, operationId: 'operation-1' }, ...extra };
 }
 
 test('managed historical Copilot never invokes browser report calculations', async () => {
@@ -233,4 +239,134 @@ test('a durable run input from a different workspace cannot hydrate or request t
   await f.C.applyDraft({ version: 2, payload: referencePayload({
     analysisReference: { workspaceId: 'ws-1', operationId: 'operation-1', continuationId: null } }) });
   assert.equal(resultCalls, 0); assert.equal(f.input.value, 'Local work'); assert.equal(f.C.runtime.serverUnconfirmed, true);
+});
+
+test('compacted draft references preserve the exact canonical continuation result version', async()=>{
+  const f=fixture();await f.install();
+  const payload=f.C.currentPayload();assert.equal(payload.analysisReference.recoveryVersion,9);
+  assert.equal(payload.analysisRecovery,undefined,'The compact reference alone must carry the retained version');
+  f.state.analysisRecovery={...f.state.analysisRecovery,version:10};
+  assert.equal(f.C.currentPayload().analysisReference.recoveryVersion,9,'Status metadata cannot repin evidence before a newer result is actually hydrated');
+});
+
+test('a continuation without an exact canonical version remains full evidence instead of an unpinned reference',async()=>{
+  const f=fixture();await f.install();f.C.runtime.analysisReference=null;f.C.runtime.analysisEvidence=null;
+  const saved=f.canonical();delete saved.result.recovery.version;f.state.analysisRecovery=saved.result.recovery;
+  f.C.retainAnalysisReference(saved.result,saved.request);
+  assert.equal(f.C.currentPayload().analysisReference,undefined);assert.ok(f.C.currentPayload().reasons);
+});
+
+for(const version of [-1,'9',Number.MAX_SAFE_INTEGER+1,10]) {
+  test(`reference restoration rejects ${String(version)} instead of silently binding latest continuation evidence`,async()=>{
+    const f=fixture();await f.install();f.edit('Keep local work');
+    const saved=referencePayload();
+    if(version===undefined)delete saved.analysisReference.recoveryVersion;else saved.analysisReference.recoveryVersion=version;
+    await f.C.applyDraft({version:2,payload:saved});
+    assert.equal(f.input.value,'Keep local work');assert.equal(f.state.currentScores.BP,85);
+    assert.equal(f.C.runtime.serverUnconfirmed,true);assert.match(f.alerts.at(-1).title,/unconfirmed/);
+  });
+}
+
+for(const legacy of [false,true]) {
+  test(`${legacy?'legacy unpinned':'newer canonical'} live restoration saves the actually hydrated reference before focus`,async()=>{
+    const f=fixture();const current=f.canonical();current.recovery.version=10;
+    const payload=referencePayload();if(legacy)delete payload.analysisReference.recoveryVersion;
+    await f.C.applyDraft({version:4,payload});
+    assert.equal(f.C.runtime.analysisReference.recoveryVersion,10,'Only the hydrated canonical response establishes the new evidence pin');
+    const writes=f.draftWrites;
+    assert.equal(await f.C.saveCurrentDraft(),true);
+    assert.equal(writes.length,1,'A hydrated reference is not already persisted in the old draft row');
+    assert.equal(writes[0].expectedVersion,4);assert.equal(writes[0].payload.analysisReference.recoveryVersion,10);
+    assert.equal(f.C.runtime.version,5,'The read-only focus call must use this acknowledged new draft revision');
+    assert.equal(writes[0].payload.reasons,undefined,'Large retained evidence stays bounded during resume');
+  });
+}
+
+test('background recovery cannot acknowledge a new canonical reference without an actual draft write',async()=>{
+  const f=fixture();await f.install();await f.C.saveCurrentDraft();
+  const priorVersion=f.C.runtime.version;f.draftWrites.length=0;
+  const saved=f.canonical();saved.recovery.version=10;saved.result.reasons={BP:'New saved canonical rationale'};
+  f.window.TaxonomyRecoveryViewport={mount:()=>({update(){},isOpen:()=>false,isDismissed:()=>true,open(){},close(){},error(){}})};
+  f.window.TaxonomyAnalysisSession={state:()=>({ready:true,workspaceId:'ws-1',version:f.C.runtime.version}),saveNow:f.C.saveCurrentDraft};
+  f.sandbox.clearTimeout=()=>{};f.sandbox.setTimeout=()=>1;
+  vm.runInContext(await readFile(new URL('taxonomy-analysis-recovery.js',root),'utf8'),f.sandbox);
+  assert.equal(await f.window.TaxonomyAnalysisRecovery.refresh({background:true}),true);
+  assert.equal(f.draftWrites.length,0,'A pure status observer does not become a competing draft writer');
+  assert.equal(f.C.currentPayload().analysisReference.recoveryVersion,10);
+  assert.equal(f.state.currentReasons.BP,'New saved canonical rationale');await f.C.saveCurrentDraft();
+  assert.equal(f.draftWrites.length,1);assert.equal(f.C.runtime.version,priorVersion+1);
+  assert.equal(f.draftWrites[0].payload.analysisReference.recoveryVersion,10);
+});
+
+test('repeated canonical observations neither schedule render autosaves nor become periodic polling edits',async()=>{
+  const f=fixture();await f.install();await f.C.saveCurrentDraft();const priorVersion=f.C.runtime.version;f.draftWrites.length=0;
+  const timers=[];f.window.setTimeout=fn=>{timers.push(fn);return timers.length;};
+  f.window.TaxonomyBrowse.renderView=()=>f.C.queueSave();
+  f.window.TaxonomyRecoveryViewport={mount:()=>({update(){},isOpen:()=>false,isDismissed:()=>true,open(){},close(){},error(){}})};
+  f.window.TaxonomyAnalysisSession={state:()=>({ready:true,workspaceId:'ws-1',version:f.C.runtime.version}),saveNow:f.C.saveCurrentDraft};
+  f.sandbox.clearTimeout=()=>{};f.sandbox.setTimeout=()=>1;
+  vm.runInContext(await readFile(new URL('taxonomy-analysis-recovery.js',root),'utf8'),f.sandbox);
+  for(const version of [10,11]) {
+    const saved=f.canonical();saved.recovery.version=version;saved.result.reasons={BP:'Canonical reason '+version};
+    assert.equal(await f.window.TaxonomyAnalysisRecovery.refresh({background:true}),true);
+    assert.equal(f.C.currentPayload().analysisReference.recoveryVersion,version);
+    assert.equal(f.draftWrites.length,0);assert.equal(timers.length,0,'Rendering an observation cannot queue an automatic save');
+    assert.equal(f.C.runtime.lastObservedComparable,f.C.comparable(f.C.currentPayload()),'The ordinary change poll must see an observation, not a local edit');
+  }
+  await f.C.saveCurrentDraft();assert.equal(f.draftWrites.length,1);assert.equal(f.C.runtime.version,priorVersion+1);
+  assert.equal(f.draftWrites[0].payload.analysisReference.recoveryVersion,11);
+});
+
+async function observedRecoveryFixture() {
+  const f=fixture();await f.install();await f.C.saveCurrentDraft();f.draftWrites.length=0;
+  f.window.TaxonomyRecoveryViewport={mount:()=>({update(){},isOpen:()=>false,isDismissed:()=>true,open(){},close(){},error(){}})};
+  f.window.TaxonomyAnalysisSession={state:()=>({ready:true,workspaceId:'ws-1',version:f.C.runtime.version}),saveNow:f.C.saveCurrentDraft};
+  f.sandbox.clearTimeout=()=>{};f.sandbox.setTimeout=()=>1;
+  vm.runInContext(await readFile(new URL('taxonomy-analysis-recovery.js',root),'utf8'),f.sandbox);
+  const saved=f.canonical();saved.recovery.version=10;saved.result.reasons={BP:'Canonical reason 10'};
+  assert.equal(await f.window.TaxonomyAnalysisRecovery.refresh({background:true}),true);
+  return f;
+}
+async function lifecycleObservers(f) {
+  const listeners=new Map();f.document.readyState='loading';f.document.visibilityState='visible';
+  f.window.setInterval=()=>1;f.window.addEventListener=(name,fn)=>listeners.set(name,fn);
+  f.sandbox.MutationObserver=class{observe(){}};f.C.queueStaleActions=()=>{};
+  vm.runInContext(await readFile(new URL('taxonomy-analysis-session-projects.js',root),'utf8'),f.sandbox);
+  f.C.installObservers();return listeners;
+}
+for(const lifecycle of ['pagehide','hidden']) {
+  test(`a pure canonical observer stays read-only through actual ${lifecycle} lifecycle handling`,async()=>{
+    const f=await observedRecoveryFixture();const listeners=await lifecycleObservers(f);
+    if(lifecycle==='pagehide')listeners.get('pagehide')();
+    else{f.document.visibilityState='hidden';f.document.dispatchEvent({type:'visibilitychange'});}
+    await flush();await flush();assert.equal(f.draftWrites.length,0);
+    await f.C.saveCurrentDraft();assert.equal(f.draftWrites.length,1,'Explicit Save now still persists the canonical reference');
+    f.edit('Local input before leaving');
+    if(lifecycle==='pagehide')listeners.get('pagehide')();else f.document.dispatchEvent({type:'visibilitychange'});
+    await flush();await flush();assert.equal(f.draftWrites.length,2,'The same lifecycle still flushes real local edits');
+    assert.equal(f.draftWrites.at(-1).payload.businessText,'Local input before leaving');
+  });
+}
+for(const edit of ['text','reason']) {
+  test(`a confirmed save retires the observer marker so reverting a later ${edit} edit queues persistence`,async()=>{
+    const f=await observedRecoveryFixture();await f.C.saveCurrentDraft();
+    if(edit==='text')f.edit('New local input');else f.state.currentReasons.BP='Local edited rationale';
+    await f.C.saveCurrentDraft();
+    const timers=[];f.window.setTimeout=fn=>{timers.push(fn);return timers.length;};
+    if(edit==='text')f.edit('Original requirement');else f.state.currentReasons.BP='Canonical reason 10';
+    f.C.queueSave();assert.equal(timers.length,1,'Returning to old observed content is a new edit against the acknowledged row');
+    const writes=f.draftWrites.length;await timers[0]();assert.equal(f.draftWrites.length,writes+1);
+  });
+}
+test('a newer observation arriving during a pending write is not acknowledged or retired by the older response',async()=>{
+  const f=await observedRecoveryFixture();const gate=deferred();let submitted;
+  f.draftControl.write=body=>{submitted=body;return gate.promise;};
+  const saving=f.C.saveDraft();await flush();
+  const newer=f.canonical();newer.recovery.version=11;newer.result.reasons={BP:'Canonical reason 11'};
+  assert.equal(await f.window.TaxonomyAnalysisRecovery.refresh({background:true}),true);
+  gate.resolve({version:f.C.runtime.version+1,payload:submitted.payload});await saving;
+  const listeners=await lifecycleObservers(f);const count=f.draftWrites.length;
+  listeners.get('pagehide')();await flush();assert.equal(f.draftWrites.length,count,'The old acknowledgement cannot convert the newer observation into a local edit');
+  delete f.draftControl.write;await f.C.saveCurrentDraft();
+  assert.equal(f.draftWrites.length,count+1);assert.equal(f.draftWrites.at(-1).payload.analysisReference.recoveryVersion,11);
 });

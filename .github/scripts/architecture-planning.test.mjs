@@ -131,13 +131,16 @@ async function editorFixture(conflictAt) {
         removeEventListener(type, callback) { documentEvents.get(type)?.delete(callback); },
         dispatchEvent(event) { for (const callback of documentEvents.get(event.type) || []) callback(event); return true; },
         getElementById:id => {
+        if(id==='architectureWorkspace')return null; // Standalone fixture deliberately has no application shell.
         assert.ok(ids[id], `Production template is missing ${id}`);
         return ids[id];
     }, createElement:tag => new Element(tag), querySelectorAll:() => [], documentElement:{lang:'en'}, activeElement:null};
+    document.body={querySelector:selector=>document.getElementById(selector.slice(1)),querySelectorAll:()=>[]};
     const window = {confirm:() => true, addEventListener:() => {}, ArchitectureEditorApi:api,
         TaxonomyI18n:{t:key => key, ready:() => Promise.resolve()},
         ArchitectureEditorRenderer:() => ({render(){},select(){},focus(){},fit(){},presentFocus(){}})};
     const sandbox = vm.createContext({window,document,URL,URLSearchParams,AbortController,setTimeout,clearTimeout,
+        CustomEvent:class {constructor(type,options){this.type=type;this.detail=options?.detail;}},
         crypto:{randomUUID:() => `00000000-0000-4000-8000-${String(++sequence).padStart(12,'0')}`},
         location:{href:'https://example.invalid/architecture/editor',search:''},
         history:{replaceState(){},pushState(){}}});

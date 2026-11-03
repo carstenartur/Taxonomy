@@ -53,6 +53,8 @@ async function fixture(firstOutcome='unknown') {
         inputHash:'submitted-text-hash',requirement:{text:'The reviewed text',changeReason:'The original rationale'}};
     return {
         lifecycle:context.TaxonomyArchitectureLifecycle, command, writes,
+        deferRead() { let resolve;context.TaxonomyApiClient.getJson=()=>new Promise(r=>resolve=r);return value=>resolve(value); },
+        setScope:value=>{activeScope=copy(value);}, getScope:()=>copy(activeScope),
         async changeStand(contextValue, projection='READY', source='WORKSPACE_REVISION') {
             current=overview(contextValue,projection,source);
             await context.TaxonomyArchitectureLifecycle.refresh(contextValue, projection==='HISTORICAL'?contextValue.revision:null);
@@ -67,6 +69,16 @@ async function fixture(firstOutcome='unknown') {
 function overview(context, projection='READY', source='WORKSPACE_REVISION') {
     return {context:copy(context), source, projectionState:projection, mayEdit:projection==='READY', projects:[], requirements:[], dependencies:[]};
 }
+
+test('suspending working lifecycle prevents a late overview from restoring departed scope',async()=>{
+    const value=await fixture();const resolve=value.deferRead();
+    const pending=value.lifecycle.refresh(originalContext,null);
+    value.lifecycle.suspend();
+    value.setScope({repositoryId:'snapshot',workspaceScopeKey:'snapshot-B',branch:'b'});
+    resolve(overview(originalContext));await pending;
+    assert.equal(value.getScope().workspaceScopeKey,'snapshot-B');
+    assert.equal(await value.lifecycle.refresh(originalContext,null),null,'Hidden lifecycle must not start another request');
+});
 
 test('an unknown accepted requirement outcome replays its original command after a current stand read', async () => {
     const {lifecycle,command,writes,changeStand}=await fixture();

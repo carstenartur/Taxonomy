@@ -43,14 +43,43 @@ class ArchitectureWorkbenchControllerTest {
                     workspaceResolver);
 
     @Test
+    void legacyPageRedirectKeepsPrivateSourceAndPresentationCoordinates() throws Exception {
+        var coordinates = new org.springframework.util.LinkedMultiValueMap<String,String>();
+        coordinates.add("workspaceId", "private +/& Ü"); coordinates.add("repositoryId", "repo"); coordinates.add("branch", "feature/a+b & 東京");
+        coordinates.add("projectId", "42"); coordinates.add("snapshotId", "snapshot +/&");
+        for (String pin : java.util.List.of("sourceRepositoryId","sourceWorkspaceScopeKey","sourceWorkspaceId","sourceBranch","sourceProjectId","sourceRequirementId","sourceRequirementVersionId","sourceSnapshotId","element","revision","commit","viewId","layout","layoutRevision","adoption","lang"))
+            coordinates.add(pin,"value +/& Ü");
+        coordinates.add("architectureSource","wrong");
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller)
+                .setViewResolvers(new org.springframework.web.servlet.view.InternalResourceViewResolver()).build();
+        String target = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/deployed/architecture/workbench")
+                        .contextPath("/deployed").params(coordinates))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().is3xxRedirection())
+                .andReturn().getResponse().getRedirectedUrl();
+        var uri = java.net.URI.create(target);
+        assertThat(uri.getHost()).isNull(); assertThat(uri.getPath()).isEqualTo("/deployed/"); assertThat(uri.getFragment()).isEqualTo("architecture");
+        coordinates.set("architectureSource","snapshot"); assertThat(decodedQuery(uri)).isEqualTo(coordinates);
+        org.mockito.Mockito.verifyNoInteractions(service,projectService,workspaceResolver,snapshotExportService);
+    }
+
+    private static org.springframework.util.MultiValueMap<String,String> decodedQuery(java.net.URI uri) {
+        var decoded = new org.springframework.util.LinkedMultiValueMap<String,String>();
+        for (String pair : uri.getRawQuery().split("&")) {
+            String[] parts = pair.split("=",2);
+            decoded.add(java.net.URLDecoder.decode(parts[0],StandardCharsets.UTF_8),
+                    java.net.URLDecoder.decode(parts.length == 2 ? parts[1] : "",StandardCharsets.UTF_8));
+        }
+        return decoded;
+    }
+
+    @Test
     void pageCarriesExplicitSnapshotCoordinatesWithoutRenderingAnArbitraryPage() {
         ExtendedModelMap model = new ExtendedModelMap();
 
         String view = controller.workbenchPage(42L, "snapshot-1", model);
 
-        assertThat(view).isEqualTo("architecture-workbench");
-        assertThat(model.get("projectId")).isEqualTo(42L);
-        assertThat(model.get("snapshotId")).isEqualTo("snapshot-1");
+        assertThat(view).isEqualTo("redirect:/?architectureSource=snapshot&projectId=42&snapshotId=snapshot-1#architecture");
+        assertThat(model).isEmpty();
     }
 
     @Test
@@ -67,10 +96,41 @@ class ArchitectureWorkbenchControllerTest {
         String target =
                 controller.currentRequirementArchitecture(42L, 7L);
 
-        assertThat(target)
-                .isEqualTo(
-                        "redirect:/architecture/workbench"
-                                + "?projectId=42&snapshotId=snapshot-1");
+        var uri = java.net.URI.create(target.substring("redirect:".length()));
+        assertThat(uri.getPath()).isEqualTo("/"); assertThat(uri.getFragment()).isEqualTo("architecture");
+        assertThat(decodedQuery(uri)).containsEntry("architectureSource",java.util.List.of("snapshot"))
+                .containsEntry("projectId",java.util.List.of("42")).containsEntry("requirementId",java.util.List.of("7"))
+                .containsEntry("snapshotId",java.util.List.of("snapshot-1"))
+                .containsEntry("workspaceId",java.util.List.of("workspace-a"))
+                .containsEntry("repositoryId",java.util.List.of("legacy-primary"))
+                .containsEntry("branch",java.util.List.of("feature-a"));
+    }
+
+    @Test
+    void currentRequirementRedirectPinsResolvedAuthorityAndClearsUnknownVersionWhileRetainingPresentation() throws Exception {
+        for (String workspace : java.util.Arrays.asList("private +/& Ü",null)) {
+            WorkspaceContext context = new WorkspaceContext("alice",workspace,"feature/a+b & 東京","repo +/& Ü");
+            when(workspaceResolver.resolveCurrentUsername()).thenReturn("alice"); when(workspaceResolver.resolveCurrentContext()).thenReturn(context);
+            when(projectService.getRequirement(42L,7L,"alice",context)).thenReturn(requirement("snapshot +/& Ü"));
+            var coordinates = new org.springframework.util.LinkedMultiValueMap<String,String>();
+            for (String key : java.util.List.of("projectId","requirementId","snapshotId","workspaceId","repositoryId","branch","workspaceScopeKey","sourceRepositoryId","sourceWorkspaceId","sourceWorkspaceScopeKey","sourceBranch","sourceProjectId","sourceRequirementId","sourceSnapshotId","requirementVersionId","sourceRequirementVersionId")) coordinates.add(key,"stale");
+            coordinates.add("viewId","view +/&"); coordinates.add("layout","reduce-crossings"); coordinates.add("layoutRevision","12"); coordinates.add("adoption","preview"); coordinates.add("lang","de");
+            var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller)
+                    .setViewResolvers(new org.springframework.web.servlet.view.InternalResourceViewResolver()).build();
+            String target = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/deployed/projects/42/requirements/7/architecture")
+                            .contextPath("/deployed").params(coordinates))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().is3xxRedirection())
+                    .andReturn().getResponse().getRedirectedUrl();
+            var uri = java.net.URI.create(target); assertThat(uri.getPath()).isEqualTo("/deployed/"); assertThat(uri.getFragment()).isEqualTo("architecture");
+            var actual = decodedQuery(uri);
+            String workspaceId = workspace == null ? "" : workspace, scopeKey = workspace == null ? "__shared__" : workspace;
+            coordinates.remove("requirementVersionId"); coordinates.remove("sourceRequirementVersionId"); coordinates.set("architectureSource","snapshot");
+            coordinates.set("projectId","42"); coordinates.set("sourceProjectId","42"); coordinates.set("requirementId","7"); coordinates.set("sourceRequirementId","7");
+            coordinates.set("snapshotId","snapshot +/& Ü"); coordinates.set("sourceSnapshotId","snapshot +/& Ü");
+            coordinates.set("workspaceId",workspaceId); coordinates.set("sourceWorkspaceId",workspaceId); coordinates.set("workspaceScopeKey",scopeKey); coordinates.set("sourceWorkspaceScopeKey",scopeKey);
+            coordinates.set("repositoryId",context.repositoryId()); coordinates.set("sourceRepositoryId",context.repositoryId()); coordinates.set("branch",context.currentBranch()); coordinates.set("sourceBranch",context.currentBranch());
+            assertThat(actual).isEqualTo(coordinates);
+        }
     }
 
     @Test

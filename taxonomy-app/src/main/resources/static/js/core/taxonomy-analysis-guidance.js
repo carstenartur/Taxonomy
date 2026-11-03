@@ -62,7 +62,7 @@
         });
         ['analysisLensAction', 'architectureLensAction'].forEach(function (id) {
             var control = el(id); if (!control) return;
-            control.href = scoped('/architecture/editor') + '#editorLensTitle';
+            control.href = '#architecture';
             control.setAttribute('aria-disabled', String(busy || c.running || c.unpersisted || !c.ready));
             control.title = t(c.unpersisted ? 'workspace' : 'lens.hint');
         });
@@ -100,10 +100,20 @@
         });
     });
     ['analysisLensAction', 'architectureLensAction'].forEach(function (id) {
-        el(id)?.addEventListener('click', function (event) {
+        el(id)?.addEventListener('click', async function (event) {
             render();
             if (this.getAttribute('aria-disabled') === 'true') { event.preventDefault(); return; }
-            navigate(event, this.href);
+            event.preventDefault();
+            if (busy) return;
+            busy = true; render(); el('analysisGuideError').hidden = true;
+            try {
+                var workspace = window.TaxonomyArchitectureWorkspace;
+                if (!workspace || !workspace.openLens) throw new Error(t('unavailable'));
+                if (await workspace.open('analysis') !== false) await workspace.openLens();
+            } catch (failure) {
+                el('analysisGuideError').textContent = failure.message || t('unavailable');
+                el('analysisGuideError').hidden = false;
+            } finally { busy = false; render(); }
         });
     });
     el('analysisClarifyAction').addEventListener('click', function () {
