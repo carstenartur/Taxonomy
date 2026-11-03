@@ -27,12 +27,13 @@ class ArchitectureWorkbenchAssetContractTest {
         assertThat(adapter)
                 .doesNotContain("window.print")
                 .doesNotContain("fetch(")
-                .contains("window.TaxonomyI18n.ready()")
-                .contains("return ArchitectureWorkbenchApi.load(projectId, snapshotId)")
-                .contains(".catch(showError)")
+                .contains("await window.TaxonomyI18n.ready()")
+                .containsPattern("ArchitectureWorkbenchApi\\.load\\(\\s*selectedSource\\.projectId\\s*,"
+                        + "\\s*selectedSource\\.snapshotId\\s*,\\s*selectedSource\\s*,\\s*controller\\.signal\\s*\\)")
+                .containsPattern("catch\\s*\\(([\\w$]+)\\)\\s*\\{[^}]*showError\\(\\1\\)")
                 .contains("ArchitectureWorkbenchApi.pdfUrl");
-        assertThat(adapter.indexOf("window.TaxonomyI18n.ready()"))
-                .isLessThan(adapter.indexOf("return ArchitectureWorkbenchApi.load(projectId, snapshotId)"));
+        assertThat(adapter.indexOf("await window.TaxonomyI18n.ready()"))
+                .isLessThan(adapter.indexOf("ArchitectureWorkbenchApi.load("));
     }
 
     @Test

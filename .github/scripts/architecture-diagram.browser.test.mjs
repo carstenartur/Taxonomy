@@ -14,6 +14,15 @@ before(async () => {
     browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_EXECUTABLE ? { executablePath: process.env.CHROMIUM_EXECUTABLE } : {}), args: ['--no-sandbox', '--disable-dev-shm-usage'] });
 });
 after(async () => { await browser?.close(); });
+async function setSnapshotTemplate(page) {
+    const template = await readFile(path.join(resources, 'templates/architecture-workbench.html'), 'utf8');
+    const markup = await page.evaluate(html => {
+        const parsed = new DOMParser().parseFromString(html, 'text/html');
+        parsed.querySelectorAll('script,link').forEach(node => node.remove());
+        return '<!DOCTYPE html>' + parsed.documentElement.outerHTML;
+    }, template);
+    await page.setContent(markup);
+}
 async function fixture(touch = false) {
     const page = await browser.newPage({ viewport: { width: touch ? 390 : 1200, height: 800 }, hasTouch: touch, reducedMotion: 'reduce' });
     page.errors = []; page.on('pageerror', error => page.errors.push(error.message));
@@ -87,9 +96,7 @@ for (const embedded of [false,true]) test(`snapshot adapter keeps exact geometry
     const page = await browser.newPage({ viewport: { width: 1200, height: 800 }, reducedMotion: 'reduce' });
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     try {
-        const template = (await readFile(path.join(resources, 'templates/architecture-workbench.html'), 'utf8'))
-            .replace(/<script\b[\s\S]*?<\/script>/gi, '').replace(/<link\b[^>]*>/gi, '');
-        await page.setContent(template);
+        await setSnapshotTemplate(page);
         if (embedded) await page.evaluate(()=>{const marker=document.createElement('div');marker.id='architectureWorkspace';document.body.append(marker);});
         await page.addStyleTag({ path: path.join(resources, 'static/css/architecture-workbench.css') });
         await page.addStyleTag({ content: '.d-none { display:none; } #architectureCanvasShell { width:1000px;height:540px; }' });
@@ -133,21 +140,19 @@ for (const embedded of [false,true]) test(`snapshot adapter keeps exact geometry
     } finally { await page.close(); }
 });
 
-async function snapshotFixture(locale = 'en') {
+async function snapshotFixture(locale = 'en', standaloneUrl = null) {
     const page = await browser.newPage({ viewport: { width: 1200, height: 900 }, reducedMotion: 'reduce' });
     await page.route('http://snapshot.test/**', route => route.fulfill({body:'',contentType:'text/html'}));
-    await page.goto('http://snapshot.test/');
-    const template = (await readFile(path.join(resources, 'templates/architecture-workbench.html'), 'utf8'))
-        .replace(/<script\b[\s\S]*?<\/script>/gi, '').replace(/<link\b[^>]*>/gi, '');
-    await page.setContent(template);
-    await page.evaluate(locale => {
+    await page.goto(standaloneUrl || 'http://snapshot.test/');
+    await setSnapshotTemplate(page);
+    await page.evaluate(({locale,standaloneUrl}) => {
         document.documentElement.lang = locale;
-        const marker = document.createElement('div'); marker.id = 'architectureWorkspace'; document.body.append(marker);
+        if(!standaloneUrl){const marker = document.createElement('div'); marker.id = 'architectureWorkspace'; document.body.append(marker);}
         document.body.classList.add('architecture-snapshot-surface');
         document.querySelector('header').classList.add('architecture-source-actions');
         window.TaxonomyI18n = { t: key => ({ 'archview.policy.title.defaultImpact': locale === 'de' ? 'Architektur-Wirkungsansicht' : 'Architecture Impact View' }[key] || key), ready: () => Promise.resolve(), getLocale: () => locale, formatEnum: value => value || '' };
         window.snapshotRequests = [];
-        window.snapshotData = source => ({ projectId: Number(source.projectId), snapshotId: source.snapshotId, workspaceId: source.workspaceId || source.workspaceScopeKey || '', branchName: source.branch, exportProvenance: { repositoryId: source.repositoryId }, policyTitleKey: 'archview.policy.title.defaultImpact', elements: {}, relations: {}, warnings: [], scene: {
+        window.snapshotData = source => ({ projectId: Number(source.projectId), requirementId:source.requirementId,snapshotId: source.snapshotId, workspaceId: source.workspaceId || source.workspaceScopeKey || '', branchName: source.branch, exportProvenance: { repositoryId: source.repositoryId,requirementVersionId:source.requirementVersionId }, policyTitleKey: 'archview.policy.title.defaultImpact', elements: {}, relations: {}, warnings: [], scene: {
             width: 1100, height: 420, nodes: [
                 { id:'A',label:'Capability evidence',type:'Capabilities',layer:0,anchor:true,relevance:0.9,x:100,y:100,width:230,height:86 },
                 { id:'B',label:'Context service',type:'Services',layer:1,anchor:false,relevance:0.5,x:500,y:100,width:230,height:86 },
@@ -155,7 +160,7 @@ async function snapshotFixture(locale = 'en') {
             ], edges: [{ id:'AB',sourceId:'A',targetId:'B',relationType:'SUPPORTS',sourceX:330,sourceY:143,targetX:500,targetY:143 }]
         } });
         window.ArchitectureWorkbenchApi = { load: (projectId,snapshotId,source,signal) => { snapshotRequests.push({ ...source, signal }); return Promise.resolve(snapshotData(source)); } };
-    }, locale);
+    }, {locale,standaloneUrl});
     for (const css of ['architecture-workbench.css','architecture-workspace.css']) await page.addStyleTag({path:path.join(resources,'static/css',css)});
     await page.addStyleTag({ content: '.d-none {display:none} #architectureCanvasShell {width:1000px;height:540px}' });
     await page.addScriptTag({content:d3Source});
@@ -164,6 +169,30 @@ async function snapshotFixture(locale = 'en') {
     await page.evaluate(() => { window.snapshotAdapter = TaxonomyArchitectureSnapshot.mount(document.body); window.sourceA = {kind:'snapshot',projectId:'42',snapshotId:'snapshot-A',repositoryId:'repository-A',workspaceId:'private-A',branch:'review/A'}; });
     return page;
 }
+for(const workspace of ['private-A',''])test(`standalone snapshot keeps exact source pins and rejects URL object keys (${workspace||'shared'})`,async()=>{
+    const pins={repositoryId:'repository-A',workspaceId:workspace,workspaceScopeKey:workspace||'__shared__',branch:'review/A',
+        projectId:'42',requirementId:'7',requirementVersionId:'9',snapshotId:'snapshot-A',element:'A',
+        commit:'a'.repeat(40),revision:'17',viewId:'view-A',layout:'stable',layoutRevision:'3',
+        sourceRepositoryId:'source-repo',sourceWorkspaceId:workspace?'':'source-private',sourceWorkspaceScopeKey:workspace?'__shared__':'source-private',sourceBranch:'frozen/source',
+        sourceProjectId:'52',sourceRequirementId:'8',sourceRequirementVersionId:'11',sourceSnapshotId:'source-A',adoption:'preview'};
+    const query=new URLSearchParams(pins);
+    for(const key of ['__proto__','constructor','prototype','hasOwnProperty','mayEdit','unexpected'])query.set(key,'untrusted');
+    query.set('kind','working');query.set('lang','de');
+    const page=await snapshotFixture('de','http://snapshot.test/taxonomy/architecture/workbench?'+query);
+    try{
+        await page.waitForFunction(()=>snapshotAdapter.getData());
+        const actual=await page.evaluate(()=>snapshotAdapter.getSource());
+        for(const [key,value]of Object.entries(pins))assert.equal(actual[key],value,key);
+        assert.equal(actual.kind,'snapshot');
+        for(const key of ['__proto__','constructor','prototype','hasOwnProperty','mayEdit','unexpected'])
+            assert.equal(Object.hasOwn(actual,key),false,'Untrusted URL property escaped into source: '+key);
+        assert.equal(await page.evaluate(()=>snapshotRequests[0].workspaceScopeKey),workspace||'__shared__');
+        assert.equal(await page.evaluate(()=>snapshotRequests[0].workspaceId),workspace);
+        assert.equal(await page.evaluate(()=>snapshotRequests[0].snapshotId),'snapshot-A');
+        assert.equal(await page.locator('[data-node-id="A"]').getAttribute('aria-pressed'),'true');
+        assert.equal(new URL(page.url()).searchParams.get('lang'),'de');
+    }finally{await page.close();}
+});
 test('snapshot return normalizes loaded IDs and workspace aliases without refetch or losing retained view', async () => {
     const page = await snapshotFixture();
     try {
@@ -190,13 +219,13 @@ test('suspended snapshot disables exports and ignores a late response after the 
         await page.evaluate(() => snapshotAdapter.suspend());
         assert.equal(await page.locator('#downloadDecisionWord').isDisabled(),true);
         assert.equal(await page.locator('#printArchitectureView').isDisabled(),true,'hidden retained snapshot cannot print old evidence');
-        await page.evaluate(() => { window.pendingSnapshots={}; ArchitectureWorkbenchApi.load=(projectId,snapshotId,source,signal)=>new Promise(resolve=>pendingSnapshots[snapshotId]={resolve,source,signal}); window.firstLoad=snapshotAdapter.activate({...sourceA,snapshotId:'slow-A'}); });
-        await page.waitForFunction(() => pendingSnapshots['slow-A']);
+        await page.evaluate(() => { window.pendingSnapshots=new Map(); ArchitectureWorkbenchApi.load=(projectId,snapshotId,source,signal)=>new Promise(resolve=>pendingSnapshots.set(snapshotId,{resolve,source,signal})); window.firstLoad=snapshotAdapter.activate({...sourceA,snapshotId:'slow-A'}); });
+        await page.waitForFunction(() => pendingSnapshots.has('slow-A'));
         await page.evaluate(() => { window.nextLoad=snapshotAdapter.activate({...sourceA,snapshotId:'fast-B'}); });
-        await page.waitForFunction(() => pendingSnapshots['fast-B']);
-        await page.evaluate(async () => { const next=pendingSnapshots['fast-B'];next.resolve(snapshotData(next.source));await nextLoad;const first=pendingSnapshots['slow-A'];first.resolve(snapshotData(first.source));await firstLoad; });
+        await page.waitForFunction(() => pendingSnapshots.has('fast-B'));
+        await page.evaluate(async () => { const next=pendingSnapshots.get('fast-B');next.resolve(snapshotData(next.source));await nextLoad;const first=pendingSnapshots.get('slow-A');first.resolve(snapshotData(first.source));await firstLoad; });
         assert.equal(await page.evaluate(() => snapshotAdapter.getSource().snapshotId),'fast-B');
-        assert.equal(await page.evaluate(() => pendingSnapshots['slow-A'].signal.aborted),true);
+        assert.equal(await page.evaluate(() => pendingSnapshots.get('slow-A').signal.aborted),true);
         assert.equal(await page.locator('#downloadDecisionWord').isDisabled(),false);
     } finally { await page.close(); }
 });

@@ -50,7 +50,10 @@
         <pre id="adoptionSummary" role="status" aria-live="polite" tabindex="0" hidden></pre>
         <label for="adoptionView" data-i18n="adoption.view">Canonical architecture view</label>
         <select id="adoptionView"></select>
-        <details><summary data-i18n="adoption.provenance">Recorded source provenance</summary><pre id="adoptionProvenance"></pre></details>
+        <details>
+            <summary id="adoptionProvenanceTitle" data-i18n="adoption.provenance">Recorded source provenance</summary>
+            <pre id="adoptionProvenance" tabindex="0" role="region" aria-labelledby="adoptionProvenanceTitle"></pre>
+        </details>
     </section>
     <div class="editor-columns">
         <section class="editor-views" aria-labelledby="editorGraphTitle">

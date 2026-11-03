@@ -1063,8 +1063,14 @@
     }
     window.TaxonomyArchitectureSnapshot=Object.freeze({mount:mount});
     if(!document.getElementById('architectureWorkspace') && document.getElementById('architectureCanvas')) {
-        const instance=mount(document.body),source={kind:'snapshot'};
-        new URLSearchParams(location.search).forEach(function(value,key){source[key]=value;});
+        const instance=mount(document.body),source={kind:'snapshot'},params=new URLSearchParams(location.search);
+        // Standalone links accept the same source pins as the application workspace.
+        ['repositoryId', 'workspaceId', 'workspaceScopeKey', 'branch', 'projectId', 'requirementId',
+            'requirementVersionId', 'snapshotId', 'commit', 'revision', 'element', 'viewId', 'layout', 'layoutRevision',
+            'sourceRepositoryId', 'sourceWorkspaceId', 'sourceWorkspaceScopeKey', 'sourceBranch', 'sourceProjectId',
+            'sourceRequirementId', 'sourceRequirementVersionId', 'sourceSnapshotId', 'adoption'].forEach(function (key) {
+                if (params.has(key)) source[key] = params.get(key);
+            });
         source.projectId=source.projectId || document.body.dataset.projectId;
         source.snapshotId=source.snapshotId || document.body.dataset.snapshotId;
         instance.activate(source);

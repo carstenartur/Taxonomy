@@ -15,6 +15,7 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.chromium.HasCdp;
+import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.remote.Augmenter;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.Select;
@@ -59,6 +60,7 @@ class ArchitectureWorkspaceBrowserIT {
                         return {url:location.href,source:window.TaxonomyArchitectureWorkspace?.getSource(),
                             session:window.TaxonomyAnalysisSession?.state(),errors:window.__integrationErrors,
                             lensBounds:(()=>{const r=document.getElementById('architectureSourceLensTitle')?.getBoundingClientRect();return r?{top:r.top,bottom:r.bottom,innerHeight,scrollY}:null;})(),
+                            snapshotLayout:window.__snapshotLayout,
                             sourceError:document.getElementById('architectureWorkspaceError')?.textContent,
                             editorError:document.getElementById('editorError')?.textContent,
                             lensError:document.getElementById('architectureSourceLensError')?.textContent};
@@ -232,6 +234,151 @@ class ArchitectureWorkspaceBrowserIT {
 
     private static void noScriptErrors() {
         assertThat(page.driver().executeScript("return window.__integrationErrors;")).isEqualTo(List.of());
+    }
+
+    private static void resize(int width, int height) {
+        ((HasCdp) new Augmenter().augment(page.driver())).executeCdpCommand("Emulation.setDeviceMetricsOverride",
+                Map.of("width", width, "height", height, "deviceScaleFactor", 1, "mobile", false));
+    }
+
+    private static void assertSnapshotViewport(String phase) {
+        var geometry = (Map<?, ?>) page.driver().executeAsyncScript("""
+                const done=arguments[arguments.length-1];scrollTo(0,0);
+                requestAnimationFrame(()=>requestAnimationFrame(()=>{
+                    const rect=selector=>{const element=document.querySelector(selector);if(!element)return null;
+                        const r=element.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height};};
+                    const canvas=rect('#architectureCanvasShell'),details=rect('.workbench-detail-panel');
+                    const geometry={innerWidth,innerHeight,scrollY,canvas,details,
+                        header:rect('.taxonomy-app-chrome'),sourceToolbar:rect('.architecture-source-toolbar'),
+                        sourceDescription:rect('#architectureSourceDescription'),actions:rect('#architectureSnapshotSource .workbench-toolbar'),
+                        status:rect('#architectureStatus'),grid:rect('#architectureSnapshotSource .workbench-grid'),
+                        controls:rect('#architectureWorkbench .architecture-controls'),
+                        valid:document.documentElement.scrollWidth<=innerWidth+1 && (innerWidth>900
+                            ? canvas.height>=innerHeight*.5 && canvas.bottom<=innerHeight+1 && details.bottom<=innerHeight+1
+                            : canvas.top<=innerHeight*.7 && [...document.querySelectorAll('#architectureSnapshotSource .architecture-control,#architectureSnapshotSource .architecture-toggle,#architectureSnapshotSource .architecture-search')]
+                                .filter(e=>!e.hidden).every(e=>e.getBoundingClientRect().height>=44))};
+                    window.__snapshotLayout=geometry;done(geometry);
+                }));
+                """);
+        assertThat(geometry.get("valid")).as("%s: the embedded snapshot preserves the existing CI canvas, inspector and mobile viewport gates: %s", phase, geometry)
+                .isEqualTo(true);
+    }
+
+    private static void assertSnapshotExports() {
+        var disclosure = page.driver().findElement(By.id("architectureExportOptions"));
+        var summary = disclosure.findElement(By.tagName("summary"));
+        summary.sendKeys(Keys.ENTER);
+        assertThat(disclosure.getDomProperty("open")).isEqualTo("true");
+        assertThat(page.driver().executeScript("""
+                const r=document.querySelector('#architectureExportOptions .workbench-export-content').getBoundingClientRect();
+                return r.left>=0 && r.right<=innerWidth;
+                """)).as("Embedded snapshot exports stay inside the viewport").isEqualTo(true);
+        var controls = disclosure.findElements(By.cssSelector("select, button:not([disabled])"));
+        assertThat(controls).extracting(control -> control.getDomAttribute("id")).containsExactly(
+                "workbenchDocumentLanguage", "downloadArchitectureSvg", "downloadArchitecturePdf", "downloadArchitectureWord",
+                "downloadDecisionWord", "downloadArchitectureArchiMate", "downloadArchitectureVisio");
+        for (var control : controls) {
+            new Actions(page.driver()).sendKeys(Keys.TAB).perform();
+            assertThat(page.driver().switchTo().activeElement()).isEqualTo(control);
+            assertThat(page.driver().executeScript("""
+                    const r=arguments[0].getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+                    return r.top>=0 && r.bottom<=innerHeight && (hit===arguments[0] || arguments[0].contains(hit));
+                    """, control)).as("%s stays keyboard reachable in the embedded export popup", control.getDomAttribute("id")).isEqualTo(true);
+        }
+        new Actions(page.driver()).sendKeys(Keys.ESCAPE).perform();
+        assertThat(disclosure.getDomProperty("open")).isEqualTo("false");
+        assertThat(page.driver().switchTo().activeElement()).isEqualTo(summary);
+    }
+
+    @ParameterizedTest @CsvSource({"en,1920,1080", "de,1366,768", "en,1024,768", "de,390,844"})
+    void embeddedSnapshotUsesRemainingViewportWithoutLosingSourceOrCamera(String locale, int width, int height) throws IOException {
+        open(locale, width);
+        resize(width, height);
+        page.driver().executeScript("""
+                window.__snapshotContextHomes=['architectureSourceDescription','architectureWorkflow','architectureStatus','architectureVisibleStatus']
+                    .map(id=>{const node=document.getElementById(id);return {id,node,parent:node.parentNode,next:node.nextSibling};});
+                """);
+        var snapshot = snapshotSource("__shared__");
+        source("snapshot", snapshot);
+        wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#architectureCanvas [data-node-id='CP-1000']")));
+        assertSnapshotViewport("initial " + width + "x" + height);
+        assertThat(page.driver().executeScript("""
+                const inspector=document.querySelector('#architectureSnapshotSource .workbench-detail-panel');
+                return __snapshotContextHomes.every(home=>document.getElementById(home.id)===home.node && home.node.parentNode===inspector)
+                    && inspector.firstElementChild.id==='detailTitle'
+                    && document.getElementById('architectureSource').getAttribute('aria-describedby')==='architectureSourceDescription';
+                """)).as("The existing source controls and explanation stay accessible after the current selection in the inspector").isEqualTo(true);
+        var fit = page.driver().findElement(By.id("fitArchitecture"));
+        assertThat(fit.isEnabled()).isTrue();
+        page.driver().executeScript("arguments[0].scrollIntoView({behavior:'instant',block:'center',inline:'nearest'});", fit);
+        assertThat(page.driver().executeScript("""
+                const r=arguments[0].getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+                return r.top>=0 && r.bottom<=innerHeight && (hit===arguments[0] || arguments[0].contains(hit));
+                """, fit)).as("The real scenario Fit control passes the native hit test").isEqualTo(true);
+        ScenarioBrowserWalkthrough.click(page.driver(), wait, By.id("fitArchitecture"));
+        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("""
+                const canvas=document.getElementById('architectureCanvasShell').getBoundingClientRect();
+                const nodes=[...document.querySelectorAll('#architectureCanvas .architecture-node')];
+                return nodes.length===2 && nodes.every(node=>{const r=node.getBoundingClientRect();
+                    return r.left>=canvas.left-1 && r.right<=canvas.right+1 && r.top>=canvas.top-1 && r.bottom<=canvas.bottom+1;});
+                """)));
+        assertSnapshotViewport("after native Fit");
+        Path evidence = Path.of("target", "unified-architecture-height", locale + "-" + width);
+        Files.createDirectories(evidence);
+        Files.writeString(evidence.resolve("geometry.json"), json(page.driver().executeScript("return __snapshotLayout;")));
+        if (width == 1920 || width == 390) Files.write(evidence.resolve("viewport.png"), page.driver().getScreenshotAs(OutputType.BYTES));
+        assertSnapshotExports();
+        if (width == 1920) {
+            page.driver().executeScript("""
+                    TaxonomyArchitectureWorkspace.select('CP-1000');
+                    TaxonomyArchitectureWorkspace.getDiagram().restoreViewport({x:23,y:41,k:.8});
+                    """);
+            Object camera = page.driver().executeScript("return TaxonomyArchitectureWorkspace.getDiagram().captureViewport();");
+            Object data = page.driver().executeScript("return JSON.stringify(TaxonomyArchitectureWorkspace.getData());");
+            for (int[] size : List.of(new int[]{390, 844}, new int[]{1366, 768}, new int[]{1920, 1080})) {
+                resize(size[0], size[1]);
+                assertSnapshotViewport("resized " + size[0] + "x" + size[1]);
+                wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("""
+                        const canvas=document.getElementById('architectureCanvasShell'),box=document.getElementById('architectureCanvas').viewBox.baseVal;
+                        return box.width===canvas.clientWidth && box.height===canvas.clientHeight;
+                        """)));
+                assertThat(page.driver().executeScript("return TaxonomyArchitectureWorkspace.getDiagram().captureViewport();"))
+                        .as("Resizing the workspace must preserve the manually retained camera").isEqualTo(camera);
+            }
+            source("analysis", scope("repository-A", "analysis-A", "draft/A"));
+            assertThat(page.driver().executeScript("return __snapshotContextHomes.every(home=>home.node.parentNode===home.parent && home.node.nextSibling===home.next);")).isEqualTo(true);
+            source("snapshot", snapshot);
+            assertSnapshotViewport("returned source");
+            assertThat(page.requests().stream().filter(request -> request.path().contains("/architecture-workbench/")).toList()).hasSize(1);
+            assertThat(page.driver().executeScript("return TaxonomyArchitectureWorkspace.getDiagram().captureViewport();")).isEqualTo(camera);
+            assertThat(page.driver().executeScript("return JSON.stringify(TaxonomyArchitectureWorkspace.getData());")).isEqualTo(data);
+            assertThat(page.driver().findElement(By.cssSelector("#architectureCanvas [data-node-id='CP-1000']")).getDomAttribute("aria-pressed")).isEqualTo("true");
+
+            var cdp = (HasCdp) new Augmenter().augment(page.driver());
+            try {
+                page.driver().executeScript("window.dispatchEvent(new Event('beforeprint'));");
+                cdp.executeCdpCommand("Emulation.setEmulatedMedia", Map.of("media", "print"));
+                assertThat(page.driver().executeScript("""
+                        const grid=document.querySelector('#architectureSnapshotSource .workbench-grid').getBoundingClientRect();
+                        const details=document.querySelector('#architectureSnapshotSource .workbench-detail-panel').getBoundingClientRect();
+                        return grid.bottom+1>=details.bottom;
+                        """)).as("Screen sizing must not constrain the full snapshot details in print media").isEqualTo(true);
+            } finally {
+                cdp.executeCdpCommand("Emulation.setEmulatedMedia", Map.of("media", "screen",
+                        "features", List.of(Map.of("name", "prefers-reduced-motion", "value", "reduce"))));
+                page.driver().executeScript("window.dispatchEvent(new Event('afterprint'));");
+            }
+            assertSnapshotViewport("returned from print");
+            assertThat(page.driver().executeScript("return TaxonomyArchitectureWorkspace.getDiagram().captureViewport();")).isEqualTo(camera);
+            var adopt = page.driver().findElement(By.id("workflow-adopt"));
+            assertThat(adopt.isDisplayed()).as("The existing snapshot adoption entry remains visible in the inspector").isTrue();
+            adopt.click();
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotAdoption")));
+            assertThat(page.driver().getCurrentUrl()).contains("architectureSource=working", "sourceSnapshotId=snapshot-B");
+            assertThat(page.driver().findElement(By.id("adoptionPreview")).isDisplayed()).isTrue();
+            assertThat(page.driver().executeScript("return __snapshotContextHomes.every(home=>home.node.parentNode===home.parent && home.node.nextSibling===home.next);")).isEqualTo(true);
+        }
+        noScriptErrors();
     }
 
     @ParameterizedTest @CsvSource({"en,1440", "de,390"})

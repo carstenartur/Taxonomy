@@ -20,9 +20,9 @@ Produktionsskripten; nur ihre HTTP-Quelldaten sind deterministische Fixtures.
 | `SharedApplicationChromeBrowserIT` und `ArchitectureWorkspaceBrowserIT` | `4740af97` | 35 + 6 = **41 Tests bestanden**, keine Failures, Errors oder Skips. |
 | Vollständige JavaScript-Browserinventur | `4740af97` | **96 Browserfälle + 2 Ownership-Prüfungen bestanden**, keine Fehler oder Skips. Einschließlich DE/EN bei 320 und 390 CSS-Pixeln. |
 | Vollständige JavaScript-Verträge | `4740af97` | **1.748 Verträge + 2 Ownership-Prüfungen bestanden**, keine Fehler oder Skips. |
-| Paketierter ARCHITECT-Ablauf, `forced-colors-architect-chromium` | `4740af97` | **2 Maven-Prüfungen bestanden**, 32 Browserchecks; keine unerwarteten HTTP-, Konsolen- oder externen Browseranfragen. |
+| Vier paketierte Abläufe: ARCHITECT mit erzwungenen Farben, Mobilgerät, USER mit 200-%-Reflow und gewöhnliche Desktop-Analyse | `4740af97` | **8 Maven-Prüfungen bestanden**, zusammen **101 Browserchecks** (32 + 16 + 32 + 21); keine unerwarteten HTTP-, Konsolen- oder externen Browseranfragen. |
 | Testkatalog und Navigationsvertrag | `59f3f1f4` | 7 + 3 = **10 Tests bestanden**; Registrierung der neuen Browserklasse und aktualisierte Menüverträge geprüft. |
-| Paketierter gewöhnlicher Analyze-Ablauf mit lokaler Lupe | `97abd6ba` | **2 Maven-Prüfungen bestanden**, 21 Browserchecks; echter `ANALYSIS_DRAFT`-Request mit HTTP 200, exakten Quellkoordinaten, Quellhash und `modelCalls: 0`. |
+| Paketierter gewöhnlicher Analyze-Ablauf mit lokaler Lupe, enthalten in den vier Profilen | `4740af97` | Echter `ANALYSIS_DRAFT`-Request mit HTTP 200, exakten Quellkoordinaten, Quellhash und `modelCalls: 0`; Eingabe und angezeigter Graph bleiben unverändert. |
 
 ## Nachgewiesene Abläufe
 
@@ -48,6 +48,12 @@ Produktionsskripten; nur ihre HTTP-Quelldaten sind deterministische Fixtures.
   die unveränderte Quelle und `modelCalls: 0`. Ihr Quellhash lautet
   `3a535466d3afd4999092f27cc0eb9c78f5b8db9f9a58cc9ac3cb070370eca81e`.
   Untersuchung und Vorschlagsanzeige verändern das eingefrorene Modell nicht.
+- Der gewöhnliche Desktop-Analyze-Ablauf bestätigt ebenfalls die lokale Lupe auf
+  dem tatsächlich gespeicherten Analyseentwurf. Sein Quellhash lautet
+  `6fc293b35940d1e418160a5109ec45c8a0f348cea7662063488b539437ed8977`.
+  Beide Rollenprofile prüfen jeweils acht axe-Zustände ohne blockierende Befunde.
+  Die 200-%-Prüfung verwendet 720 × 500 effektive CSS-Pixel bei nominell
+  1440 × 1000 Pixeln; sie ist ein Reflow-Nachweis, kein bedienter Browser-Zoomknopf.
 - Der ARCHITECT-Ablauf prüft tatsächlichen SVG-Export, eingefrorenen
   Interoperabilitätsexport, deutschen Reload und erreichbare Editorkontrollen
   bei 720 und 360 CSS-Pixeln. Die native Snapshot-Prüfung erhält alle sechs
@@ -74,10 +80,9 @@ Produktionsimplementierung. Die Bilder wurden nicht nachbearbeitet.
 
 ## Noch ausstehende oder begrenzte Evidenz
 
-Zum Zeitpunkt dieses Commits sind die zusätzlichen paketierten Profile
-`mobile-chromium`, `zoom-200-user-chromium` und der erneute gewöhnliche
-Desktop-Analyze-Ablauf am finalen Produktstand noch nicht abgeschlossen.
-Ihre Ergebnisse und die vollständigen CI-Gates sind anhand der PR-Artefakte
+Die vier oben genannten paketierten Profile sind vollständig abgeschlossen.
+Die vollständigen CI-Gates und ihre Bindung an den jeweils aktuellen Quellstand
+sind anhand der Artefakte von [PR #1367](https://github.com/carstenartur/Taxonomy/pull/1367)
 zu beurteilen. CSS-Breitenprüfungen werden nicht als ungeprüfter Browserzoom
 oder als vollständige Screenreaderprüfung ausgegeben.
 

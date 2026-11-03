@@ -574,7 +574,8 @@
     function sameSelection(source) {
         var current = getSource();
         if (view && view.document.source === 'GIT_CHECKPOINT' && source.commit !== current.commit) return false;
-        if (view && view.document.projectionState === 'HISTORICAL' && !source.commit && String(source.revision ?? '') !== String(current.revision ?? '')) return false;
+        // An unpinned source requests the current branch head, which can have advanced.
+        if (view && !source.commit && String(source.revision ?? '') !== String(current.revision ?? '')) return false;
         if ((source.commit || null) !== (current.commit || null)) return false;
         if ((source.viewId || null) !== (current.viewId || null)) return false;
         return ['repositoryId','workspaceScopeKey','branch','commit','revision','viewId','layout','layoutRevision'].every(function (key) {
@@ -620,7 +621,17 @@
     // Compatibility for standalone templates; the application workspace mounts lazily.
     if (!document.getElementById('architectureWorkspace') && document.getElementById('architectureEditor')) {
         var standalone = mount(document.body);
-        function readSelection() { var value = {kind:'working'}; new URLSearchParams(location.search).forEach(function(v,k){value[k]=v;}); return value; }
+        function readSelection() {
+            var value = {kind:'working'}, params = new URLSearchParams(location.search);
+            // Standalone links accept the same source pins as the application workspace.
+            ['repositoryId', 'workspaceId', 'workspaceScopeKey', 'branch', 'projectId', 'requirementId',
+                'requirementVersionId', 'snapshotId', 'commit', 'revision', 'element', 'viewId', 'layout', 'layoutRevision',
+                'sourceRepositoryId', 'sourceWorkspaceId', 'sourceWorkspaceScopeKey', 'sourceBranch', 'sourceProjectId',
+                'sourceRequirementId', 'sourceRequirementVersionId', 'sourceSnapshotId', 'adoption'].forEach(function (key) {
+                    if (params.has(key)) value[key] = params.get(key);
+                });
+            return value;
+        }
         standalone.activate(readSelection());
         window.addEventListener('popstate',function () { if (standalone.canLeave(readSelection(),{})) standalone.activate(readSelection()); else standalone.restoreUrl(); });
     }

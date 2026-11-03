@@ -3,6 +3,8 @@ package com.taxonomy;
 import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
+import com.tngtech.archunit.core.domain.JavaFieldAccess;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.Test;
@@ -161,6 +163,176 @@ class ArchitectureContextDependencyRatchetTest {
                 "AnalysisSnapshotAdoptionService$PreviewResult -> com.taxonomy.editor.ArchitectureCommandPort$Preview",
                 "AnalysisSnapshotAdoptionService$Request -> com.taxonomy.editor.ArchitectureCommandPort$Context",
                 "AnalysisSnapshotAdoptionService$Request -> com.taxonomy.editor.ArchitectureCommandPort$Metadata");
+    }
+
+    @Test
+    void sourceFocusBridgeRetainsOnlyItsReviewedReadOnlyBoundaries() throws Exception {
+        ContextPolicy policy = readAndValidateContextPolicy(
+                findRepositoryRoot().resolve(".github/architecture-contexts.json"));
+        String compositionPackage = "com.taxonomy.composition.architecture.";
+        String sourcePrefix = compositionPackage + "ArchitectureSourceFocus";
+        var classes = new ClassFileImporter()
+                .withImportOption(new ImportOption.DoNotIncludeTests())
+                .importPackages("com.taxonomy.composition.architecture");
+        Set<String> pairs = new TreeSet<>();
+        Set<String> compositionTargets = new TreeSet<>();
+        Set<String> calls = new TreeSet<>();
+        Set<String> directPersistence = new TreeSet<>();
+        List<String> persistencePackages = List.of("jakarta.persistence.", "java.sql.", "javax.sql.",
+                "org.hibernate.", "org.springframework.data.", "org.springframework.jdbc.", "org.eclipse.jgit.");
+        for (JavaClass origin : classes) {
+            if (!origin.getName().startsWith(sourcePrefix)) continue;
+            for (Dependency dependency : origin.getDirectDependenciesFromSelf()) {
+                JavaClass target = dependency.getTargetClass();
+                if (persistencePackages.stream().anyMatch(target.getName()::startsWith)) {
+                    directPersistence.add(origin.getName() + " -> " + target.getName());
+                }
+                ContextDefinition targetContext = contextFor(target, policy);
+                if (targetContext == null || target.getName().startsWith(sourcePrefix)) continue;
+                if (targetContext.id().equals("app-composition")) compositionTargets.add(target.getName());
+                else pairs.add(origin.getName().substring(compositionPackage.length()) + " -> " + target.getName());
+            }
+            // Include method/constructor references as well as ordinary calls. A mutation
+            // on an already reviewed class must fail even when every package count stays equal.
+            for (var access : origin.getCodeUnitAccessesFromSelf()) {
+                if (!access.getTargetOwner().getName().startsWith(sourcePrefix)
+                        && contextFor(access.getTargetOwner(), policy) != null) calls.add(callSignature(access));
+            }
+            for (var access : origin.getFieldAccessesFromSelf()) {
+                if (!access.getTargetOwner().getName().startsWith(sourcePrefix)
+                        && contextFor(access.getTargetOwner(), policy) != null) {
+                    assertThat(access.getAccessType()).as("read-only retained source: %s", access)
+                            .isEqualTo(JavaFieldAccess.AccessType.GET);
+                }
+            }
+        }
+        assertThat(pairs).containsExactlyInAnyOrder(
+                "ArchitectureSourceFocusController -> com.taxonomy.workspace.service.WorkspaceResolver",
+                "ArchitectureSourceFocusService -> com.taxonomy.analysis.cluster.ClusterAnalysisObservation",
+                "ArchitectureSourceFocusService -> com.taxonomy.analysis.cluster.ClusterAnalysisObservation$RecoveryInput",
+                "ArchitectureSourceFocusService -> com.taxonomy.analysis.cluster.ClusterAnalysisView$ObservationScope",
+                "ArchitectureSourceFocusService -> com.taxonomy.analysis.recovery.AnalysisContinuationService",
+                "ArchitectureSourceFocusService -> com.taxonomy.analysis.recovery.AnalysisContinuationStore$Snapshot",
+                "ArchitectureSourceFocusService -> com.taxonomy.analysis.session.AnalysisDraftDtos$AnalysisDraftView",
+                "ArchitectureSourceFocusService -> com.taxonomy.analysis.session.AnalysisWorkingDraftService",
+                "ArchitectureSourceFocusService -> com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotDetail",
+                "ArchitectureSourceFocusService -> com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary",
+                "ArchitectureSourceFocusService -> com.taxonomy.portfolio.model.PortfolioTypes$AnalysisStatus",
+                "ArchitectureSourceFocusService -> com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService",
+                "ArchitectureSourceFocusService -> com.taxonomy.workspace.model.UserWorkspace",
+                "ArchitectureSourceFocusService -> com.taxonomy.workspace.repository.UserWorkspaceRepository",
+                "ArchitectureSourceFocusService -> com.taxonomy.workspace.service.RepositoryContext",
+                "ArchitectureSourceFocusService -> com.taxonomy.workspace.service.RepositoryMembershipService",
+                "ArchitectureSourceFocusService -> com.taxonomy.workspace.service.SystemRepositoryService",
+                "ArchitectureSourceFocusService -> com.taxonomy.workspace.service.WorkspaceContext");
+        assertThat(compositionTargets).containsExactlyInAnyOrder(
+                compositionPackage + "ArchitectureFocusSuggestionService",
+                compositionPackage + "ArchitectureFocusSuggestionService$EngineResult",
+                compositionPackage + "ArchitectureFocusSuggestionService$Suggestion",
+                "com.taxonomy.shared.features.ConditionalOnFeature");
+        assertThat(directPersistence).as("source focus must not bypass its reviewed read APIs").isEmpty();
+        assertThat(calls).containsExactlyInAnyOrder(
+                "com.taxonomy.analysis.cluster.ClusterAnalysisObservation.request(java.lang.String,java.lang.String,com.taxonomy.workspace.service.WorkspaceContext)",
+                "com.taxonomy.analysis.cluster.ClusterAnalysisObservation.result(java.lang.String,java.lang.String,com.taxonomy.workspace.service.WorkspaceContext)",
+                "com.taxonomy.analysis.cluster.ClusterAnalysisObservation$RecoveryInput.operationId()",
+                "com.taxonomy.analysis.cluster.ClusterAnalysisObservation$RecoveryInput.scope()",
+                "com.taxonomy.analysis.cluster.ClusterAnalysisView$ObservationScope.branch()",
+                "com.taxonomy.analysis.cluster.ClusterAnalysisView$ObservationScope.repositoryId()",
+                "com.taxonomy.analysis.cluster.ClusterAnalysisView$ObservationScope.workspaceId()",
+                "com.taxonomy.analysis.recovery.AnalysisContinuationService.readEvidence(java.lang.String,java.lang.String,com.taxonomy.workspace.service.WorkspaceContext)",
+                "com.taxonomy.analysis.recovery.AnalysisContinuationStore$Snapshot.clusterOperationId()",
+                "com.taxonomy.analysis.recovery.AnalysisContinuationStore$Snapshot.recovery()",
+                "com.taxonomy.analysis.recovery.AnalysisContinuationStore$Snapshot.request()",
+                "com.taxonomy.analysis.recovery.AnalysisContinuationStore$Snapshot.result()",
+                "com.taxonomy.analysis.session.AnalysisDraftDtos$AnalysisDraftView.branch()",
+                "com.taxonomy.analysis.session.AnalysisDraftDtos$AnalysisDraftView.payload()",
+                "com.taxonomy.analysis.session.AnalysisDraftDtos$AnalysisDraftView.version()",
+                "com.taxonomy.analysis.session.AnalysisDraftDtos$AnalysisDraftView.workspaceId()",
+                "com.taxonomy.analysis.session.AnalysisWorkingDraftService.read(java.lang.String,java.lang.String)",
+                "com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService.investigateModel(com.taxonomy.dsl.model.CanonicalArchitectureModel,java.lang.String,int,boolean,java.lang.String,java.lang.String,java.util.Map)",
+                "com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService$EngineResult.candidateCount()",
+                "com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService$EngineResult.method()",
+                "com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService$EngineResult.modelCalls()",
+                "com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService$EngineResult.outcome()",
+                "com.taxonomy.composition.architecture.ArchitectureFocusSuggestionService$EngineResult.suggestions()",
+                "com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotDetail.analysis()",
+                "com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotDetail.summary()",
+                "com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary.branchName()",
+                "com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary.commitSha()",
+                "com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary.createdAt()",
+                "com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary.id()",
+                "com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary.modelName()",
+                "com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary.projectId()",
+                "com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary.provider()",
+                "com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary.requirementId()",
+                "com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary.requirementVersionId()",
+                "com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary.status()",
+                "com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary.taxonomyFingerprint()",
+                "com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary.workspaceId()",
+                "com.taxonomy.portfolio.model.PortfolioTypes$AnalysisStatus.name()",
+                "com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService.getSnapshot(java.lang.Long,java.lang.String,java.lang.String,com.taxonomy.workspace.service.WorkspaceContext)",
+                "com.taxonomy.workspace.model.UserWorkspace.getCurrentBranch()",
+                "com.taxonomy.workspace.model.UserWorkspace.getSourceRepositoryId()",
+                "com.taxonomy.workspace.model.UserWorkspace.getUsername()",
+                "com.taxonomy.workspace.model.UserWorkspace.isArchived()",
+                "com.taxonomy.workspace.model.UserWorkspace.isShared()",
+                "com.taxonomy.workspace.repository.UserWorkspaceRepository.findByWorkspaceId(java.lang.String)",
+                "com.taxonomy.workspace.service.RepositoryContext.repositoryId()",
+                "com.taxonomy.workspace.service.RepositoryContext.username()",
+                "com.taxonomy.workspace.service.RepositoryMembershipService.canRead(com.taxonomy.workspace.model.SystemRepository,java.lang.String)",
+                "com.taxonomy.workspace.service.SystemRepositoryService.getRepository(java.lang.String)",
+                "com.taxonomy.workspace.service.WorkspaceContext.<init>(java.lang.String,java.lang.String,java.lang.String,java.lang.String)",
+                "com.taxonomy.workspace.service.WorkspaceContext.username()",
+                "com.taxonomy.workspace.service.WorkspaceContext.workspaceId()",
+                "com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentRepositoryContext()");
+    }
+
+    @Test
+    void snapshotRedirectRetainsOnlyItsReviewedWorkspaceNavigationBoundary() throws Exception {
+        ContextPolicy policy = readAndValidateContextPolicy(
+                findRepositoryRoot().resolve(".github/architecture-contexts.json"));
+        String controller = "com.taxonomy.portfolio.workbench.ArchitectureWorkbenchController";
+        var classes = new ClassFileImporter()
+                .withImportOption(new ImportOption.DoNotIncludeTests())
+                .importPackages("com.taxonomy.portfolio.workbench", "com.taxonomy.editor");
+        Set<String> pairs = new TreeSet<>();
+        Set<String> calls = new TreeSet<>();
+        for (JavaClass origin : classes) {
+            if (!origin.getName().equals(controller) && !origin.getName().startsWith(controller + "$")) continue;
+            for (Dependency dependency : origin.getDirectDependenciesFromSelf()) {
+                ContextDefinition target = contextFor(dependency.getTargetClass(), policy);
+                if (target != null && !target.id().equals("portfolio")) {
+                    pairs.add(origin.getName() + " -> " + dependency.getTargetClass().getName());
+                }
+            }
+            for (var access : origin.getCodeUnitAccessesFromSelf()) {
+                ContextDefinition target = contextFor(access.getTargetOwner(), policy);
+                if (target != null && !target.id().equals("portfolio")) calls.add(callSignature(access));
+            }
+        }
+        assertThat(pairs).containsExactlyInAnyOrder(
+                controller + " -> com.taxonomy.editor.ArchitectureWorkspaceRedirect",
+                controller + " -> com.taxonomy.workspace.service.WorkspaceContext",
+                controller + " -> com.taxonomy.workspace.service.WorkspaceResolver",
+                controller + "$RequestScope -> com.taxonomy.workspace.service.WorkspaceContext");
+        assertThat(calls).containsExactlyInAnyOrder(
+                "com.taxonomy.editor.ArchitectureWorkspaceRedirect.snapshot(org.springframework.util.MultiValueMap)",
+                "com.taxonomy.workspace.service.WorkspaceContext.currentBranch()",
+                "com.taxonomy.workspace.service.WorkspaceContext.repositoryId()",
+                "com.taxonomy.workspace.service.WorkspaceContext.workspaceId()",
+                "com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentContext()",
+                "com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentUsername()");
+        var helper = classes.get(com.taxonomy.editor.ArchitectureWorkspaceRedirect.class);
+        assertThat(helper.getFields()).as("the shared legacy redirect helper must remain stateless").isEmpty();
+        assertThat(helper.getDirectDependenciesFromSelf().stream()
+                .map(dependency -> dependency.getTargetClass().getName())
+                .filter(name -> name.startsWith("com.taxonomy.") && !name.equals(helper.getName())))
+                .as("the redirect helper must not reach feature services or application composition").isEmpty();
+    }
+
+    private static String callSignature(JavaCodeUnitAccess<?> access) {
+        return access.getTargetOwner().getName() + "." + access.getName() + "("
+                + String.join(",", access.getTarget().getRawParameterTypes().stream().map(JavaClass::getName).toList()) + ")";
     }
 
     @Test

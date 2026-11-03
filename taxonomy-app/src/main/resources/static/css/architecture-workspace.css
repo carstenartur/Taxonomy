@@ -10,7 +10,6 @@
 .architecture-source-actions .btn-outline-light:not(.workbench-export-content .btn-outline-light) { color: #17243a; border-color: #8795a8; }
 .architecture-source-actions .btn-outline-light:not(.workbench-export-content .btn-outline-light):hover { color: #fff; background: #31425c; }
 #architectureSnapshotSource { display: block; height: auto; overflow: visible; margin: 0; }
-#architectureSnapshotSource .workbench-grid { min-height: 38rem; height: min(78dvh, 70rem); }
 #architectureWorkingSource main { padding: 0; max-width: none; }
 #architectureWorkingSource .editor-columns { gap: 1rem; }
 #architectureWorkspaceError { white-space: pre-wrap; color: #8f210f; }
@@ -22,6 +21,67 @@
     .architecture-source-toolbar { display: grid; grid-template-columns: 1fr; }
     .architecture-source-toolbar select { width: 100%; }
 }
+/* Keep the source and its actions together. The existing snapshot nodes retain
+   their adapter ownership while participating in the workspace's first row. */
+@media screen {
+    #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: .35rem .75rem;
+    }
+    #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) > .architecture-source-toolbar {
+        grid-column: 1;
+        grid-row: 1;
+        margin-bottom: 0;
+    }
+    #architectureSnapshotSource,
+    #architectureSnapshotSource > .architecture-snapshot-content { display: contents; }
+    #architectureSnapshotSource > .architecture-source-actions {
+        grid-column: 2;
+        grid-row: 1;
+        min-height: 44px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+    }
+    #architectureSnapshotSource .workbench-grid {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        min-height: 0;
+    }
+    #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) > #architectureSourceLens,
+    #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) > #architectureWorkspaceError {
+        grid-column: 1 / -1;
+    }
+    #architectureSnapshotSource .workbench-detail-panel > #architectureSourceDescription { margin: 1rem 0 .5rem; }
+    #architectureSnapshotSource .workbench-detail-panel > #architectureWorkflow { padding: .75rem; }
+    #architectureSnapshotSource .workbench-detail-panel > #architectureStatus { margin-top: .75rem; }
+}
+@media screen and (min-width: 901px) {
+    #architectureSnapshotSource .workbench-grid { height: var(--architecture-snapshot-height, auto); }
+}
+@media screen and (max-width: 900px) {
+    #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) { row-gap: .25rem; }
+    #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) > .architecture-source-toolbar { display: contents; }
+    #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) > .architecture-source-toolbar h2 {
+        grid-column: 1;
+        grid-row: 1;
+        align-self: center;
+        margin: 0;
+    }
+    #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) > .architecture-source-toolbar label {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        font-size: .875rem;
+    }
+    #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) > .architecture-source-toolbar select {
+        grid-column: 1 / -1;
+        grid-row: 3;
+        width: 100%;
+    }
+    #architectureSnapshotSource .workbench-grid { grid-row: 4; }
+    #architectureSnapshotSource .architecture-controls { padding-block: .35rem; }
+}
 @media print {
     body:has(#architectureSnapshotSource:not([hidden])) #leftPanel,
     body:has(#architectureSnapshotSource:not([hidden])) #systemStatusBar,
@@ -29,6 +89,7 @@
     #architectureWorkspace .architecture-source-actions,
     #architectureWorkspace #architectureSourceDescription,
     #architectureWorkspace #architectureSourceLens,
+    #architectureWorkspace #architectureVisibleStatus,
     #architectureWorkspace #architectureWorkflow { display: none !important; }
     #architectureSnapshotSource .workbench-grid { height: auto; min-height: 0; }
 }

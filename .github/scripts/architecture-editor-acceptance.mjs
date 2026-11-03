@@ -217,6 +217,13 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
   assert.equal(await page.locator('#editorHistory li').count(),1);
   await page.locator('#snapshotAdoption details > summary').click();
   assert.match(await page.locator('#adoptionProvenance').innerText(),new RegExp(snapshot));
+  const provenance=page.locator('#adoptionProvenance');
+  assert.equal(await provenance.getAttribute('tabindex'),'0','Scrollable source evidence must be keyboard reachable in every browser');
+  assert.equal(await provenance.getAttribute('role'),'region');
+  assert.equal(await provenance.getAttribute('aria-labelledby'),'adoptionProvenanceTitle');
+  await page.locator('#adoptionProvenanceTitle').focus();
+  await page.keyboard.press('Tab');
+  assert.equal(await provenance.evaluate(element=>document.activeElement===element),true,'Tab from the provenance disclosure reaches its scrollable evidence');
   const returnUrl = new URL(await page.locator('#adoptionSourceLink').getAttribute('href'),base);
   assert.equal(returnUrl.searchParams.get('workspaceId'),sourceWorkspace);assert.equal(returnUrl.searchParams.get('repositoryId'),repository);
   await page.locator('#editorRationale').fill('Retain frozen adoption checkpoint');

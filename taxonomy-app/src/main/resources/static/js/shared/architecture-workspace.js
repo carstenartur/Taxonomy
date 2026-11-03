@@ -145,6 +145,44 @@
         var split = workspace.getSource().kind === 'analysis' && overview;
         if (el('leftPanel')) el('leftPanel').className = split ? 'col-lg-5' : 'd-none';
         if (el('rightPanel')) el('rightPanel').className = split ? 'col-lg-7' : 'col-12';
+        scheduleSnapshotHeight();
+    }
+    var snapshotContextHomes = [], snapshotHeightPending = false;
+    function positionSnapshotContext(enabled) {
+        if (enabled && !snapshotContextHomes.length) {
+            var inspector = el('architectureSnapshotSource')?.querySelector?.('.workbench-detail-panel');
+            if (!inspector) return;
+            ['architectureSourceDescription','architectureWorkflow','architectureStatus','architectureVisibleStatus'].forEach(function (id) {
+                var node = el(id);
+                if (!node?.parentNode) return;
+                snapshotContextHomes.push({node:node,parent:node.parentNode,next:node.nextSibling});
+                inspector.appendChild(node);
+            });
+        } else if (!enabled) {
+            snapshotContextHomes.forEach(function (home) {
+                home.parent.insertBefore(home.node, home.next?.parentNode === home.parent ? home.next : null);
+            });
+            snapshotContextHomes = [];
+        }
+    }
+    function scheduleSnapshotHeight() {
+        if (snapshotHeightPending || !window.requestAnimationFrame) return;
+        snapshotHeightPending = true;
+        window.requestAnimationFrame(function () {
+            snapshotHeightPending = false;
+            var grid = el('architectureSnapshotSource')?.querySelector?.('.workbench-grid');
+            if (!grid || window.matchMedia?.('print').matches) return;
+            if (!workspace.isActive() || workspace.getSource().kind !== 'snapshot' || window.innerWidth <= 900) {
+                grid.style.removeProperty('--architecture-snapshot-height');
+                return;
+            }
+            if (!grid.getClientRects().length) return;
+            // Document coordinates keep ordinary page scrolling from resizing the diagram.
+            var height = Math.max(0, Math.floor(window.innerHeight - grid.getBoundingClientRect().top - window.scrollY - 8)) + 'px';
+            if (grid.style.getPropertyValue('--architecture-snapshot-height') !== height) {
+                grid.style.setProperty('--architecture-snapshot-height', height);
+            }
+        });
     }
     function writeUrl(source, settings) {
         var target = urlFor(new URL(location.href), source, window.TaxonomyI18n.resolveUrl('/'));
@@ -190,6 +228,7 @@
             el('architectureWorkspaceError').hidden=true;
             if(source.kind!=='working')window.TaxonomyArchitectureLifecycle?.suspend?.();
             kinds.forEach(function (kind) { el('architecture' + kind[0].toUpperCase() + kind.slice(1) + 'Source').hidden = kind !== source.kind; });
+            positionSnapshotContext(source.kind === 'snapshot');
             el('architectureSource').value = source.kind;
             window.TaxonomyArchitectureWorkflow?.replaceScope(source);
             el('architectureWorkflow').hidden = true;
@@ -218,9 +257,16 @@
     el('architectureSource').addEventListener('change',function () { open(this.value).then(function(ok){if(!ok)el('architectureSource').value=workspace.getSource().kind;}); });
     document.addEventListener('taxonomy:page-activated',function (event) {
         if (event.detail.page === 'architecture') { if (!workspace.isActive()) open(workspace.getSource().kind,{replace:true}); else dimensions(); }
-        else { workspace.suspend(); lens?.suspend(); window.TaxonomyArchitectureLifecycle?.suspend?.(); restoreAnalysisContext(event.detail.page).catch(report); }
+        else { workspace.suspend(); positionSnapshotContext(false); lens?.suspend(); window.TaxonomyArchitectureLifecycle?.suspend?.(); restoreAnalysisContext(event.detail.page).catch(report); }
     });
     document.addEventListener('taxonomy:architecture-diagram-updated',function () { if(workspace.isActive()) { lens?.refresh(); dimensions(); } });
+    window.addEventListener('resize', scheduleSnapshotHeight);
+    if (typeof ResizeObserver !== 'undefined') {
+        var snapshotChromeObserver = new ResizeObserver(scheduleSnapshotHeight);
+        [document.querySelector('.taxonomy-app-chrome'),root.querySelector?.('.architecture-source-toolbar')].forEach(function (node) {
+            if (node) snapshotChromeObserver.observe(node);
+        });
+    }
     document.addEventListener('click',function (event) {
         if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         var link = event.target.closest?.('a[href]'); if (!link) return;

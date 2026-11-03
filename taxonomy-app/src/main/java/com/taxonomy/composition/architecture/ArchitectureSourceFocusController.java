@@ -2,6 +2,7 @@ package com.taxonomy.composition.architecture;
 
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +18,10 @@ public class ArchitectureSourceFocusController {
         this.service=service; this.resolver=resolver;
     }
     @PostMapping("/api/architecture/focus/suggestions")
+    @Operation(summary = "Investigate retained architecture evidence",
+            description = "Returns bounded suggestions for an authorized analysis draft or saved snapshot. "
+                    + "The exact source identity and retained version are validated before investigation. "
+                    + "The operation does not modify the source evidence or the working architecture.")
     public ResponseEntity<ArchitectureSourceFocusDtos.Response> investigate(@RequestBody ArchitectureSourceFocusDtos.Request request) {
         var result = service.investigate(resolver.resolveCurrentRepositoryContext(),request);
         return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL,"no-store").body(result);
