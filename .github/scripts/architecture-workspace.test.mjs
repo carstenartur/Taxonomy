@@ -128,25 +128,29 @@ test('workspaceId aliases are normalized before a retained dirty editor decides 
 });
 
 async function mountedWorkspace(initialKind='analysis',loaderOnly=false,options={}){
-    const events=new Map(),nodes=new Map(),scopes=[],metadata=[];let ready;
+    const events=new Map(),windowEvents=new Map(),nodes=new Map(),scopes=[],metadata=[],headers=[];let ready;
     const readyPromise=new Promise(resolve=>ready=resolve),loaderEvents=new Map();
     const node=id=>{if(!nodes.has(id))nodes.set(id,{hidden:false,value:'',textContent:'',addEventListener(){}});return nodes.get(id);};
     const document={getElementById:node,querySelector:selector=>selector==='script[data-taxonomy-analysis-session]'&&loaderOnly?{
         addEventListener:(name,callback)=>loaderEvents.set(name,callback),removeEventListener:(name)=>loaderEvents.delete(name)
     }:null,addEventListener:(name,callback)=>events.set(name,callback),dispatchEvent(){}};
     const context=vm.createContext({document,URL,URLSearchParams,console,CustomEvent:class{constructor(type,options){this.type=type;this.detail=options.detail;}},
-        location:new URL('https://example.test/?architectureSource='+initialKind+(options.query || '')+'#architecture'),history:{replaceState(){},pushState(){}}});
-    context.window=context;context.addEventListener=()=>{};
+        location:new URL('https://example.test/?architectureSource='+initialKind+(options.query || '')+'#'+(options.page || 'architecture')),history:{}});
+    context.history.replaceState=context.history.pushState=(_state,_title,url)=>{context.location=new URL(String(url),context.location.href);};
+    context.window=context;context.addEventListener=(name,callback)=>windowEvents.set(name,callback);
+    context.TaxonomyState={currentArchView:{nodes:[{nodeCode:'A-evidence'}],requestPayloadHash:'retained-analysis-hash'}};
     context.TaxonomyI18n={t:key=>key,ready:()=>Promise.resolve(),resolveUrl:path=>path};
+    context.TaxonomyAppChrome={updateContext:(value,owner)=>headers.push({value,owner}),activateContext(){},refreshNavigation(){}};
     context.TaxonomyArchitectureWorkflow={getScope:()=>({}),replaceScope:value=>scopes.push({...value})};
     context.TaxonomyArchitectureLifecycleApi={overview:async scope=>{metadata.push({...scope});return options.overview ? options.overview(scope) : {context:{repositoryId:'analysis-repo',branch:'analysis-branch',workspaceScopeKey:scope.workspaceScopeKey}};}};
-    context.TaxonomyArchitectureEditor={mount:()=>({activate:async()=>{},suspend(){},canLeave:()=>true,getData:()=>null,getDiagram:()=>null,getSource:()=>({workspaceId:'B',workspaceScopeKey:'B',repositoryId:'working-repo',branch:'working-branch'})})};
+    context.TaxonomyArchitectureEditor={mount:()=>({activate:async()=>{},suspend(){},canLeave:()=>context.editorCanLeave!==false,getData:()=>null,getDiagram:()=>null,getSource:()=>({workspaceId:'B',workspaceScopeKey:'B',repositoryId:'working-repo',branch:'working-branch'})})};
     if(!loaderOnly)context.TaxonomyAnalysisSessionReady=readyPromise;
     vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/architecture-workspace.js',import.meta.url),'utf8'),context);
     const settle=async()=>{for(let i=0;i<20;i++)await Promise.resolve();};
     await settle();
-    return {context,scopes,metadata,settle,activatePage:page=>events.get('taxonomy:page-activated')({detail:{page}}),
-        ready:async()=>{context.TaxonomyAnalysisSession={whenInitialized:()=>Promise.resolve(true),state:()=>({workspaceId:'A'})};
+    return {context,scopes,metadata,headers,settle,activatePage:page=>events.get('taxonomy:page-activated')({detail:{page}}),
+        restoreHistory:async url=>{context.location=new URL(url,context.location.href);windowEvents.get('popstate')();await settle();},
+        ready:async()=>{context.TaxonomyAnalysisSession={whenInitialized:()=>Promise.resolve(true),state:()=>({workspaceId:'A',version:7})};
             context.TaxonomyAnalysisSessionReady=readyPromise;loaderEvents.get('load')?.();ready(true);await settle();}};
 }
 for(const loaderOnly of [false,true])test('analysis waits for '+(loaderOnly?'the dynamic session loader':'the session readiness promise')+' before resolving its private source',async()=>{
@@ -185,4 +189,119 @@ test('analysis business-source pins survive returning from its architecture to A
     assert.equal(fixture.scopes.at(-1).requirementId,'7');
     assert.equal(fixture.scopes.at(-1).requirementVersionId,'9');
     assert.equal(fixture.scopes.at(-1).branch,'analysis-branch');
+});
+
+async function importTransport(fixture){
+    const requests=[];
+    fixture.context.TaxonomyApiClient={request:async(path,options,policy)=>{
+        requests.push({url:new URL(path,fixture.context.location.href),options,policy});return {json:async()=>({})};
+    }};
+    fixture.context.__TaxonomyAnalysisSessionContext={runtime:{workspaceId:'A'}};
+    vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-api-routing.js',import.meta.url),'utf8'),fixture.context);
+    vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/api/import-api.js',import.meta.url),'utf8'),fixture.context);
+    return {requests,preview:()=>fixture.context.ImportApi.previewArchiReturn({original:'catalogue',returned:'Archi'}),
+        apply:()=>fixture.context.ImportApi.applyArchiReturn({original:'catalogue',returned:'Archi',accepted:true})};
+}
+function assertImportDestination(request,{repositoryId,workspaceId,branch}){
+    for(const [key,value] of Object.entries({repositoryId,workspaceId,branch})){
+        assert.equal(request.url.searchParams.has(key),value!==undefined,'Explicit presence of '+key);
+        if(value!==undefined)assert.equal(request.url.searchParams.get(key),value,key);
+    }
+    assert.equal(request.options.headers['X-Taxonomy-Workspace-Id'],workspaceId);
+    assert.equal(request.policy.pinnedWorkspaceId,workspaceId);
+}
+for(const workspaceId of ['', 'destination-private'])test('Archi return keeps the explicit '+(workspaceId||'shared')+' destination while retained analysis keeps its own source',async()=>{
+    const destination={repositoryId:'destination-repo',workspaceId,branch:'destination-branch'};
+    const query='&'+new URLSearchParams({...destination,projectId:'42',requirementId:'7',requirementVersionId:'9',lang:'de'});
+    const fixture=await mountedWorkspace('analysis',false,{page:'analyze',query});
+    const transport=await importTransport(fixture),evidence=fixture.context.TaxonomyState.currentArchView;
+    await fixture.ready();await transport.preview();
+    fixture.activatePage('architecture');await fixture.settle();
+    await transport.preview();await transport.apply();
+    const workspace=fixture.context.TaxonomyArchitectureWorkspace;
+    assert.equal(workspace.getSource().workspaceScopeKey,'A');
+    assert.equal(workspace.getSource().repositoryId,'analysis-repo');
+    assert.equal(workspace.getData(),evidence);
+    assert.equal(fixture.scopes.at(-1).workspaceScopeKey,'A','Workflow links must describe the displayed analysis');
+    assert.equal(fixture.headers.at(-1).owner,'analysis');
+    assert.equal(fixture.headers.at(-1).value.architecture.workspaceScopeKey,'A');
+    assert.equal(fixture.headers.at(-1).value.architecture.repositoryId,'analysis-repo');
+    await workspace.open('working');await workspace.open('analysis');
+    await transport.preview();
+    assert.equal(workspace.getData(),evidence);
+    assert.equal(workspace.getSource().workspaceScopeKey,'A');
+    assert.equal(fixture.context.TaxonomyAnalysisSession.state().version,7);
+    assert.equal(workspace.getData().requestPayloadHash,'retained-analysis-hash');
+    fixture.activatePage('analyze');await fixture.settle();await transport.preview();
+    for(const request of transport.requests)assertImportDestination(request,destination);
+    assert.equal(fixture.context.location.searchParams.get('lang'),'de');
+    assert.equal(fixture.context.location.searchParams.get('projectId'),'42');
+    assert.equal(fixture.context.location.searchParams.get('requirementId'),'7');
+    assert.equal(fixture.context.location.searchParams.get('requirementVersionId'),'9');
+    assert.equal(fixture.metadata.every(scope=>scope.workspaceScopeKey==='A'),true,'Import destinations must not relabel or reload the retained analysis');
+});
+test('an unpinned shell resolves its private analysis and never invents a shared import destination',async()=>{
+    const fixture=await mountedWorkspace('analysis',false,{page:'analyze'}),transport=await importTransport(fixture);
+    await fixture.ready();await transport.preview();
+    assertImportDestination(transport.requests[0],{repositoryId:'analysis-repo',workspaceId:'A',branch:'analysis-branch'});
+});
+test('an explicit repository-only destination leaves the missing workspace pin to existing session routing',async()=>{
+    const fixture=await mountedWorkspace('analysis',false,{page:'analyze',query:'&repositoryId=destination-repo&branch=main'}),transport=await importTransport(fixture);
+    await fixture.ready();await transport.preview();
+    const request=transport.requests[0];
+    assert.equal(request.url.searchParams.get('repositoryId'),'destination-repo');
+    assert.equal(request.url.searchParams.get('branch'),'main');
+    assert.equal(request.url.searchParams.get('workspaceId'),'A','Absent pins retain ordinary private-session routing');
+    assert.equal(request.policy.pinnedWorkspaceId,undefined);
+    assert.equal(request.options.headers['X-Taxonomy-Workspace-Id'],undefined);
+    assert.equal(fixture.context.location.searchParams.has('workspaceId'),false);
+    assert.equal(fixture.context.location.searchParams.has('workspaceScopeKey'),false);
+});
+test('accepted history targets replace explicit import pins and clearing them restores the actual analysis source',async()=>{
+    const fixture=await mountedWorkspace('analysis',false,{query:'&repositoryId=first-repo&workspaceId=first&branch=first'}),transport=await importTransport(fixture);
+    await fixture.ready();
+    for(const workspaceId of ['', 'next-private']){
+        await fixture.restoreHistory('/?architectureSource=analysis&repositoryId=next-repo&workspaceId='+workspaceId+'&branch=next#architecture');
+        await transport.preview();
+        assertImportDestination(transport.requests.at(-1),{repositoryId:'next-repo',workspaceId,branch:'next'});
+        assert.equal(fixture.context.TaxonomyArchitectureWorkspace.getSource().workspaceScopeKey,'A');
+        assert.equal(fixture.scopes.at(-1).workspaceScopeKey,'A');
+    }
+    await fixture.restoreHistory('/?architectureSource=analysis#architecture');await transport.preview();
+    assertImportDestination(transport.requests.at(-1),{repositoryId:'analysis-repo',workspaceId:'A',branch:'analysis-branch'});
+});
+test('a declined source change cannot replace the retained import destination',async()=>{
+    const fixture=await mountedWorkspace('analysis',false,{query:'&repositoryId=destination-repo&workspaceId=&branch=main'}),transport=await importTransport(fixture);
+    await fixture.ready();const workspace=fixture.context.TaxonomyArchitectureWorkspace;
+    await workspace.open('working');fixture.context.editorCanLeave=false;
+    await fixture.restoreHistory('/?architectureSource=analysis&repositoryId=declined-repo&workspaceId=declined&branch=declined#architecture');
+    assert.equal(workspace.getSource().kind,'working');
+    assert.equal(fixture.context.location.searchParams.get('workspaceId'),'B');
+    fixture.context.editorCanLeave=true;await workspace.open('analysis');await transport.preview();
+    assertImportDestination(transport.requests[0],{repositoryId:'destination-repo',workspaceId:'',branch:'main'});
+});
+test('same-page Analyze history adopts its explicit destination and can clear that selection',async()=>{
+    const fixture=await mountedWorkspace('analysis',false,{page:'analyze',query:'&repositoryId=first-repo&workspaceId=first&branch=first'}),transport=await importTransport(fixture);
+    await fixture.ready();
+    await fixture.restoreHistory('/?architectureSource=analysis&repositoryId=next-repo&workspaceId=&branch=next#analyze');
+    fixture.activatePage('analyze');await fixture.settle();await transport.preview();
+    assertImportDestination(transport.requests.at(-1),{repositoryId:'next-repo',workspaceId:'',branch:'next'});
+    fixture.activatePage('architecture');await fixture.settle();await transport.preview();
+    assertImportDestination(transport.requests.at(-1),{repositoryId:'next-repo',workspaceId:'',branch:'next'});
+    assert.equal(fixture.context.TaxonomyArchitectureWorkspace.getSource().workspaceScopeKey,'A');
+    await fixture.restoreHistory('/?architectureSource=analysis#analyze');
+    fixture.activatePage('analyze');await fixture.settle();await transport.preview();
+    assertImportDestination(transport.requests.at(-1),{repositoryId:'analysis-repo',workspaceId:'A',branch:'analysis-branch'});
+});
+test('a rejected history departure from Working to Analyze cannot replace the previous import destination',async()=>{
+    const fixture=await mountedWorkspace('analysis',false,{query:'&repositoryId=destination-repo&workspaceId=&branch=main'}),transport=await importTransport(fixture);
+    await fixture.ready();const workspace=fixture.context.TaxonomyArchitectureWorkspace;
+    await workspace.open('working');fixture.context.editorCanLeave=false;
+    await fixture.restoreHistory('/?architectureSource=analysis&repositoryId=declined-repo&workspaceId=declined&branch=declined#analyze');
+    assert.equal(await workspace.canLeave(),false);
+    workspace.restoreUrl();
+    assert.equal(workspace.getSource().kind,'working');
+    assert.equal(fixture.context.location.searchParams.get('workspaceId'),'B');
+    fixture.context.editorCanLeave=true;await workspace.open('analysis');await transport.preview();
+    assertImportDestination(transport.requests[0],{repositoryId:'destination-repo',workspaceId:'',branch:'main'});
 });

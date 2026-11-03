@@ -1,8 +1,8 @@
 # QA: Gemeinsamer Architekturarbeitsbereich — 3. November 2026
 
-## Bestätigter Stand
+## Erste Produktabnahme
 
-Die lokale Abnahme bestätigt eine gemeinsame Primärnavigation und den Wechsel
+Die erste lokale Abnahme bestätigt eine gemeinsame Primärnavigation und den Wechsel
 zwischen Analyseentwurf, eingefrorenem Snapshot und Arbeitsarchitektur in der
 Anwendung. Der geprüfte Produktstand ist
 `4740af975add155868ffddcd5fa9c16caa5c0e37`. Die Teständerungen und die beiden
@@ -78,6 +78,88 @@ Produktionsimplementierung. Die Bilder wurden nicht nachbearbeitet.
 
 ![Architecture focus lens und Analysegraph im gemeinsamen Arbeitsbereich](images/unified-architecture-workspace-2026-11-03/analysis-lens-en-1440.png)
 
+## Integrationskorrekturen nach dem ersten CI-Lauf
+
+Der erste vollständige CI-Durchlauf hat zusätzliche Integrationsgrenzen
+aufgedeckt. Die Korrekturen erhalten die bestehenden Prüfziele und decken die
+beobachteten Fehler zusätzlich ab:
+
+- Die automatische Einführung überdeckt keinen direkten Architekturaufruf
+  mehr. Ihre manuelle Hilfe und der gewöhnliche erste Analyseaufruf bleiben
+  erhalten.
+- Eine wieder aufgenommene Arbeitsarchitektur behält ihren exakt gepinnten
+  Stand und unbestätigten Formularentwurf. Ein ausdrücklich ungepinnter Aufruf
+  liest dagegen den aktuellen Branchstand; ein unbestätigter Entwurf wird dabei
+  weiterhin durch die vorhandene Bestätigung geschützt.
+- Ein ausdrücklich gewähltes Importziel bleibt beim Wechsel zwischen Analyse
+  und Architektur sowie in der Browserhistorie erhalten. Leerer gemeinsamer
+  Workspace, privater Workspace und fehlender Pin behalten ihre unterschiedliche
+  Bedeutung. Angezeigte Analysedaten, Version, Hash, Kontextanzeige und Workflow
+  bleiben an die tatsächliche Analysequelle gebunden.
+- Die gespeicherte Herkunft ist mit der Tastatur erreichbar und scrollbar.
+  Die neuen REST-Operationen sind im bestehenden OpenAPI-Inventar dokumentiert.
+- Lange URLs in Fehlermeldungen der Anforderungsansicht umbrechen innerhalb
+  der sichtbaren Meldung. Eine deterministische fehlgeschlagene Versionsabfrage
+  prüft die vollständigen Textzeilen; bloßes Abschneiden würde weiterhin
+  scheitern. Die übrigen Leseantworten der Fixture sind gültig.
+- Die eingebettete Snapshot-Zeichenfläche nutzt die verbleibende Desktop-Höhe.
+  Quelle, Workflow und Status bleiben als dieselben DOM-Knoten im scrollbar
+  erreichbaren Inspektor erhalten und kehren beim Quellenwechsel an ihre genaue
+  ursprüngliche Position zurück. Mobil überlagern die Druck-/Exportaktionen
+  den Überschriftentext nicht; alle bisherigen Höhen- und Exportprüfungen
+  bleiben bestehen.
+- Die Standalone-Quellenparser übernehmen ausschließlich die kanonischen
+  Quellfelder. Die Browser-Fixtures verwenden den HTML-Parser statt einer
+  unvollständigen Bereinigung durch reguläre Ausdrücke.
+- Die tatsächlich hinzugekommenen Architekturabhängigkeiten sind einzeln
+  geprüft und dokumentiert. Zusätzliche strikte Wächter sichern die lesende
+  Quellauflösung; die Kontextgrenzen und bestehenden Gate-Regeln bleiben
+  bestehen.
+
+Frische, getrennte Prüfläufe nach diesen Korrekturen:
+
+| Prüfung | Bestätigtes Ergebnis |
+| --- | --- |
+| Vollständige JavaScript-Verträge | **1.756 + 2 Ownership-Prüfungen bestanden**, keine Failures, Errors oder Skips. |
+| Vollständige JavaScript-Browserinventur | **111 + 2 Ownership-Prüfungen bestanden**, keine Failures, Errors oder Skips. |
+| `ArchitectureWorkspaceBrowserIT` und `SharedApplicationChromeBrowserIT` | **10 + 35 = 45 Tests bestanden**, einschließlich tatsächlicher Textgrenzen, vier Snapshot-Viewportgrößen und vollständiger History-/Entwurfsprüfung. |
+| `ArchitectureStandSelectionBrowserIT` | **34 Tests bestanden**, einschließlich aller sieben Wiederholungsfälle nach verlorener Dialogantwort. |
+| `RestApiDocumentationTest` | **3 Tests bestanden**, tatsächlich **423 REST-Methoden** inventarisiert. |
+| `ArchitectureContextDependencyRatchetTest` | **34 Tests bestanden**; zusätzliche mutierte Nur-Lesen-Verletzung wurde zuvor erwartungsgemäß erkannt. |
+| Unveränderte `ArchiMateReturnUiIT` | **1 Test mit drei vollständigen Browser-/HTTP-/Datenbankdurchgängen bestanden**: privater Import, idempotente Wiederholung, gemeinsamer schreibgeschützter Preview. |
+
+Nach der deterministischen Fehlerfixture und der Alert-Umbruchkorrektur wurde
+die vollständige Navigationsklasse nochmals ausgeführt: **35/35 bestanden**.
+Die vollständige Browserinventur wurde auf diesem letzten Produktstand ebenfalls
+erneut ausgeführt: **111 + 2 bestanden**, jeweils ohne Fehler oder Skips.
+
+Der Importfall prüft weiterhin genau eine importierte Relation im privaten
+Arbeitsbereich des zweiten Repositorys, korrekte Herkunft und unveränderte
+Relations-IDs im primären Repository. Die Erfolgsaufnahme zeigt den ausdrücklich
+gemeinsamen Zielbereich und deaktivierte Übernahmeaktionen. Die ausgeführten
+JavaScript-Assets stimmen mit dem geprüften Quellcode überein.
+
+### Snapshot nach der Layoutkorrektur
+
+Diese unveränderten Browseraufnahmen stammen aus
+`embeddedSnapshotUsesRemainingViewportWithoutLosingSourceOrCamera` nach einem
+echten Fit-Klick. Quelle: Snapshot **`snapshot-B`**, Repository **`repository-B`**,
+gemeinsamer Workspace, Branch **`review/B`**, Projekt **42**, Anforderung **7**,
+Anforderungsversion **11**. Es gelten dieselben kontrollierten HTTP-Fixtures und
+echten Templates, Skripte und CSS wie oben beschrieben.
+
+Bei 1920 × 1080 Pixeln reicht die Zeichenfläche von y = **273,13** bis
+**1071,75**, bei einer Höhe von **798,63 Pixeln**. Der Inspektor bleibt innerhalb
+des Viewports und scrollt unabhängig. Bei 390 × 844 Pixeln liegen zwischen
+Überschriftentext und Aktionen **12 Pixel**; die Zeichenfläche beginnt bei
+y = **584,59** und erfüllt die unveränderte Grenze von 70 Prozent der
+Viewporthöhe. Auswahl und Kamera bleiben auch bei anschließendem Resize
+erhalten.
+
+![Gespeicherte Architektur mit großer Zeichenfläche und vollständigem Inspektor bei 1920 Pixeln](images/unified-architecture-workspace-2026-11-03/snapshot-layout-en-1920.png)
+
+![Mobile gespeicherte Architektur ohne Überlagerung von Überschrift und Aktionen bei 390 Pixeln](images/unified-architecture-workspace-2026-11-03/snapshot-layout-de-390.png)
+
 ## Noch ausstehende oder begrenzte Evidenz
 
 Die vier oben genannten paketierten Profile sind vollständig abgeschlossen.
@@ -97,4 +179,8 @@ Zwei vorangegangene Versuche wurden während voller temporärer Platte durch
 Chromium-Abstürze beziehungsweise Schreibfehler invalidiert und nicht als
 bestandene Abnahme gezählt. Der oben genannte Paketbau, die 41 nativen Fälle
 und der ARCHITECT-Ablauf wurden danach mit stabiler Runtime vollständig
-ausgeführt. Vollständige Logs und Bildserien bleiben in den Test-/CI-Artefakten.
+ausgeführt. Ein weiterer kombinierter Lauf wurde durch einen Neustart der
+Arbeitsumgebung unterbrochen und nicht als bestanden gewertet. Die oben unter
+Integrationskorrekturen genannten Nachprüfungen wurden anschließend mit frischer
+Runtime ausgeführt. Die ausgewählten Bilder sind eingecheckt; die vollständigen
+aktuellen CI-Protokolle und Artefakte gehören zum jeweiligen PR-Stand.

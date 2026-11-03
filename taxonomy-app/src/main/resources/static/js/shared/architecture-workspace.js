@@ -78,6 +78,27 @@
     if (initial.kind === 'analysis') ['repositoryId','workspaceId','workspaceScopeKey','branch','projectId','requirementId','requirementVersionId'].forEach(function (key) {
         if (initial[key] !== undefined) analysisScope[key] = initial[key];
     });
+    var contextKeys = ['repositoryId','workspaceId','workspaceScopeKey','branch'];
+    var analysisUrlSource = initial.kind === 'analysis' ? explicitAnalysisUrlSource(initial) : null;
+    var pendingAnalysisHistory = null;
+    function explicitAnalysisUrlSource(source) {
+        if (!contextKeys.some(function (key) { return source[key] !== undefined; })) return null;
+        var value = {kind:'analysis'};
+        pinKeys.forEach(function (key) { if (source[key] !== undefined) value[key] = source[key]; });
+        if (value.workspaceScopeKey !== undefined) value.workspaceId = value.workspaceScopeKey === '__shared__' ? '' : value.workspaceScopeKey;
+        else if (value.workspaceId !== undefined) value.workspaceScopeKey = value.workspaceId || '__shared__';
+        return value;
+    }
+    function sourceForUrl(source) {
+        if (source.kind !== 'analysis' || !analysisUrlSource) return source;
+        // Shell links can explicitly select an import destination, including shared.
+        // The retained analysis owns its separate evidence, header and workflow scope.
+        var value = Object.assign({},analysisUrlSource);
+        ['element','viewId','layout','layoutRevision'].forEach(function (key) {
+            if (source[key] !== undefined) value[key] = source[key];
+        });
+        return value;
+    }
     var analysisGeneration = 0, analysisMetadata = null;
     var workingScope = Object.assign({kind:'working'}, initialScope);
     var snapshotScope = Object.assign({kind:'snapshot'}, initialScope);
@@ -125,6 +146,12 @@
         return Object.assign({},exact,{repositoryId:value.context.repositoryId,branch:value.context.branch});
     }
     async function restoreAnalysisContext(page) {
+        if (pendingAnalysisHistory) {
+            var pending = pendingAnalysisHistory; pendingAnalysisHistory = null;
+            if (pending.url.pathname === location.pathname && pending.url.search === location.search && pending.source.kind === 'analysis') {
+                analysisUrlSource = explicitAnalysisUrlSource(pending.source);
+            }
+        }
         var ticket = ++analysisGeneration;
         var resolved = await resolveAnalysisScope();
         if (ticket !== analysisGeneration || (workspace.isActive() && workspace.getSource().kind !== 'analysis')) return;
@@ -135,7 +162,7 @@
             modelStand:null,commit:null,revision:null},editable:false},'analysis');
         window.TaxonomyAppChrome?.activateContext?.('analysis');
         if (page) {
-            var target = new URL(urlFor(new URL(location.href),Object.assign({kind:'analysis'},analysisScope),window.TaxonomyI18n.resolveUrl('/')));
+            var target = new URL(urlFor(new URL(location.href),sourceForUrl(Object.assign({kind:'analysis'},analysisScope)),window.TaxonomyI18n.resolveUrl('/')));
             target.hash=page;history.replaceState(null,'',target);
         }
     }
@@ -185,7 +212,7 @@
         });
     }
     function writeUrl(source, settings) {
-        var target = urlFor(new URL(location.href), source, window.TaxonomyI18n.resolveUrl('/'));
+        var target = urlFor(new URL(location.href), sourceForUrl(source), window.TaxonomyI18n.resolveUrl('/'));
         history[settings?.replace ? 'replaceState' : 'pushState'](null, '', target);
         window.TaxonomyAppChrome?.refreshNavigation();
     }
@@ -224,6 +251,10 @@
             }
         },
         beforeChange:function (source,settings) {
+            if (source.kind === 'analysis' && (settings.source || contextKeys.some(function (key) { return settings[key] !== undefined; }))) {
+                pendingAnalysisHistory = null;
+                analysisUrlSource = explicitAnalysisUrlSource(settings.source || settings);
+            }
             lens?.suspend();
             el('architectureWorkspaceError').hidden=true;
             if(source.kind!=='working')window.TaxonomyArchitectureLifecycle?.suspend?.();
@@ -245,7 +276,7 @@
     workspace.openLens = function () {
         if (workspace.getSource().kind === 'working') editor?.openLens(); else { lens?.select(workspace.getSource().element);lens?.open(); }
     };
-    workspace.restoreUrl=function(){writeUrl(workspace.getSource(),{replace:true});};
+    workspace.restoreUrl=function(){pendingAnalysisHistory=null;writeUrl(workspace.getSource(),{replace:true});};
     window.TaxonomyArchitectureWorkspace = workspace;
     if (window.TaxonomyArchitectureSourceLens) lens = window.TaxonomyArchitectureSourceLens.create({root:el('architectureSourceLens'),workspace:workspace,idPrefix:'architectureSourceLens'});
     function open(kind, settings) {
@@ -279,8 +310,15 @@
         open(source.kind,{source:source}).then(function (ok) { if(ok)window.navigateToPage?.('architecture'); });
     });
     window.addEventListener('popstate',function () {
-        if (location.hash !== '#architecture') return;
-        var source = parseSource(new URL(location.href));
+        var target = new URL(location.href), source = parseSource(target);
+        if (location.hash !== '#architecture') {
+            // A visible working source may still refuse the page change. Commit
+            // this destination only when its normal page activation is accepted.
+            pendingAnalysisHistory = {url:target,source:source};
+            if (!workspace.isActive()) restoreAnalysisContext(location.hash.slice(1) || 'analyze').catch(report);
+            return;
+        }
+        pendingAnalysisHistory = null;
         open(source.kind,{source:source,replace:true}).then(function(ok){if(!ok)workspace.restoreUrl();});
     });
     document.addEventListener('taxonomy:architecture-selection',function(event){

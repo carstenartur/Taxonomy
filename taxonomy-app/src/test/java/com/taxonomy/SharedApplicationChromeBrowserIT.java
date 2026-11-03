@@ -37,6 +37,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SharedApplicationChromeBrowserIT {
     private static PortfolioClientTestPage page;
     private static WebDriverWait wait;
+    private static final String REQUIREMENT_LOAD_ERROR =
+            "No fixture response for GET /taxonomy/api/projects/42/requirements/7/versions";
     private static final String PINS = "projectId=42&repositoryId=architecture-a&workspaceId=private-a"
             + "&workspaceScopeKey=private-a&branch=review%2Fcurrent&sourceProjectId=12"
             + "&sourceRequirementId=7&sourceRequirementVersionId=9&sourceSnapshotId=frozen-7"
@@ -82,6 +84,39 @@ class SharedApplicationChromeBrowserIT {
         viewport(width, 1000);
         page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of()));
         page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", features)));
+        if (view.template().equals("requirement-detail")) {
+            // A single failed read makes the long error deterministic instead of racing six unrelated 404s.
+            var currentVersion = PortfolioRequirementFixture.version(9, 1, "Retain this requirement while its history is unavailable.");
+            var requirement = Map.ofEntries(
+                    Map.entry("id", 7), Map.entry("projectId", 42), Map.entry("requirementKey", "REQ-7"),
+                    Map.entry("title", "Requirement with unavailable history"), Map.entry("status", "DRAFT"),
+                    Map.entry("reviewStatus", "PROPOSED"), Map.entry("requirementType", "FUNCTIONAL"),
+                    Map.entry("criticality", "HIGH"), Map.entry("ownerUsername", "fixture"),
+                    Map.entry("currentVersionId", 9), Map.entry("currentVersion", currentVersion));
+            page.route("GET", "/taxonomy/api/projects/42", request -> json(200,
+                    Map.of("id", 42, "projectKey", "FIXTURE", "title", "Requirement navigation fixture", "status", "ACTIVE")));
+            page.route("GET", "/taxonomy/api/projects/42/requirements/7", request -> json(200, requirement));
+            page.route("GET", "/taxonomy/api/projects/42/requirements/7/versions", request -> json(404,
+                    Map.of("error", REQUIREMENT_LOAD_ERROR)));
+            page.route("GET", "/taxonomy/api/projects/42/requirements/7/snapshots", request -> json(200, List.of()));
+            page.route("GET", "/taxonomy/api/projects/42/portfolio", request -> json(200,
+                    Map.of("requirements", List.of(requirement), "solutions", List.of())));
+            page.route("GET", "/taxonomy/api/account/me", request -> json(200,
+                    Map.of("username", "fixture", "architectureMutationAllowed", false)));
+            page.route("GET", "/taxonomy/api/projects/42/requirements/7/reformulations", request -> json(200, List.of()));
+            page.route("GET", "/taxonomy/api/projects/42/requirements/7/copilot/latest", request ->
+                    new PortfolioClientTestPage.Response(204, "application/json", ""));
+            page.route("GET", "/taxonomy/api/ai-automation", request -> json(200, new AiAutomationStatus(
+                    AiCostPolicy.METERED, false, false, false, false, null, null,
+                    AnalysisAutomationProfile.FULL, AnalysisAutomationProfile.FULL, 1, 1, 100,
+                    "No provider configured for this browser fixture.", List.of(), List.of("Human review remains required."))));
+            page.route("GET", "/taxonomy/api/architecture/lifecycle", request -> json(200, Map.of(
+                    "context", Map.of("repositoryId", "architecture-a", "workspaceScopeKey", "private-a",
+                            "branch", "review/current", "commit", "a".repeat(40), "revision", 1),
+                    "architectureTitle", "Requirement navigation fixture", "source", "WORKSPACE_REVISION",
+                    "projectionState", "CURRENT", "publicationState", "CURRENT", "mayEdit", false,
+                    "projects", List.of(), "requirements", List.of(), "dependencies", List.of())));
+        }
         page.openAt(view.template(), "/taxonomy", "/taxonomy" + view.path(), locale,
                 """
                 (function () {
@@ -97,6 +132,14 @@ class SharedApplicationChromeBrowserIT {
                 Map.of("projectId", 42, "snapshotId", "frozen-7"));
         wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript(
                 "return !!window.TaxonomyI18n && TaxonomyI18n.isLoaded();")));
+        if (view.template().equals("requirement-detail")) {
+            wait.until(ExpectedConditions.textToBe(By.id("detailError"), REQUIREMENT_LOAD_ERROR));
+            wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("detailBusy")));
+            wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#reformulationList > p")));
+            wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("copilotPolicy"),
+                    "No provider configured for this browser fixture."));
+            assertThat(page.driver().findElement(By.id("copilotError")).isDisplayed()).isFalse();
+        }
         if (view.template().equals("index")) {
             // Complete the real first-run dialog before testing the page behind it.
             wait.until(ExpectedConditions.elementToBeClickable(By.id("onboardingDismiss"))).click();
@@ -106,7 +149,7 @@ class SharedApplicationChromeBrowserIT {
 
     @ParameterizedTest(name = "{0} shares navigation in {1} at {2}px")
     @MethodSource("views")
-    void existingViewsShareAccessibleNavigationWithoutLosingTheirControls(View view, String locale, int width) {
+    void existingViewsShareAccessibleNavigationWithoutLosingTheirControls(View view, String locale, int width) throws IOException {
         open(view, locale, width);
         var navigation = page.driver().findElements(By.id("applicationNavigation"));
         assertThat(navigation).as("Every existing view has the same application navigation").hasSize(1);
@@ -148,12 +191,34 @@ class SharedApplicationChromeBrowserIT {
                             left:bounds.left,right:bounds.right,width:bounds.width,height:bounds.height,viewport:innerWidth};
                     }
                     const right=nav.getBoundingClientRect().right,scrollWidth=document.documentElement.scrollWidth;
-                    return {valid:right<=innerWidth+1 && scrollWidth<=innerWidth+1,right,scrollWidth,viewport:innerWidth};
+                    const overflow=scrollWidth>innerWidth+1 ? [...document.body.querySelectorAll('*')]
+                        .filter(element=>element.getClientRects().length && element.getBoundingClientRect().right>innerWidth+1)
+                        .slice(0,30).map(element=>{
+                            const r=element.getBoundingClientRect(),css=getComputedStyle(element);
+                            return {tag:element.tagName,id:element.id,classes:element.className,
+                                left:r.left,right:r.right,width:r.width,display:css.display,
+                                minWidth:css.minWidth,whiteSpace:css.whiteSpace,overflowX:css.overflowX};
+                        }) : [];
+                    return {valid:right<=innerWidth+1 && scrollWidth<=innerWidth+1,right,scrollWidth,viewport:innerWidth,overflow};
                 })().then(done);
                 """);
+        if (!Boolean.TRUE.equals(navigationGeometry.get("valid"))) {
+            Path evidence = Path.of("target", "shared-application-chrome", view.template() + "-" + locale + "-" + width);
+            Files.createDirectories(evidence);
+            Files.write(evidence.resolve("viewport.png"), page.driver().getScreenshotAs(OutputType.BYTES));
+            Files.writeString(evidence.resolve("geometry.json"), json(navigationGeometry));
+        }
         assertThat(navigationGeometry.get("valid"))
                 .as("Every focused navigation destination remains fully visible with a 44px target and no page overflow: %s", navigationGeometry)
                 .isEqualTo(true);
+        if (view.template().equals("requirement-detail")) {
+            assertThat(page.driver().executeScript("""
+                    const error=document.getElementById('detailError'),box=error.getBoundingClientRect(),range=document.createRange();
+                    range.selectNodeContents(error);
+                    return [...range.getClientRects()].every(r=>r.left>=box.left && r.right<=box.right
+                        && r.top>=box.top && r.bottom<=box.bottom && r.right<=innerWidth);
+                    """)).as("The complete failed-read message wraps visibly inside its alert, without clipping the URL").isEqualTo(true);
+        }
         if (view.template().equals("index")) {
             assertThat(page.driver().findElement(By.id("projectMenuButton")).isDisplayed()).isTrue();
             assertThat(page.driver().findElements(By.id("mainNavTabs"))).hasSize(1);

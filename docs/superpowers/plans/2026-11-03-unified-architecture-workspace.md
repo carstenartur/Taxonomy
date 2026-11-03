@@ -153,12 +153,20 @@ and explicit adoption entry; only the editor can accept an architecture command.
 DE/EN user/architecture editor documentation; concise QA findings and selected
 real screenshots with exact source provenance.
 
-- [ ] Execute complete deterministic analyze/inspect/snapshot/adopt/edit/undo/
+- [x] Execute complete deterministic analyze/inspect/snapshot/adopt/edit/undo/
   checkpoint/history/export/print/return workflows in DE/EN and narrow/keyboard.
-- [ ] Update old route/selector assertions without weakening substantive tests;
+- [x] Update old route/selector assertions without weakening substantive tests;
   keep all feature parity checks and error audits.
-- [ ] Run focused suites followed by canonical Maven verification and applicable
+- [x] Run focused suites followed by canonical Maven verification and applicable
   CI gates. Separate any unavailable local prerequisites from actual passes.
-- [ ] Independent final code/ergonomics review; fix concrete findings and rerun
+- [x] Independent final code/ergonomics review; fix concrete findings and rerun
   only affected verification plus required gates.
-- [ ] Publish one reviewable PR with source-bound evidence and precise limitations.
+- [x] Publish one reviewable PR with source-bound evidence and precise limitations.
+
+Execution and review evidence is recorded in
+`docs/qa/2026-11-03-unified-architecture-workspace.md`. These completed execution
+steps do not turn an interrupted or failed run into a pass: the local canonical
+GPG limitation and the initial CI integration findings are recorded explicitly.
+The checks attached to the current head of
+[PR #1367](https://github.com/carstenartur/Taxonomy/pull/1367) are the authoritative
+repository completion gate. The PR does not merge or deploy the application.

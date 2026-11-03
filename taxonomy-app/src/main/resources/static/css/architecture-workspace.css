@@ -61,7 +61,10 @@
     #architectureSnapshotSource .workbench-grid { height: var(--architecture-snapshot-height, auto); }
 }
 @media screen and (max-width: 900px) {
-    #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) { row-gap: .25rem; }
+    #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) {
+        grid-template-columns: auto minmax(0, 1fr);
+        row-gap: .25rem;
+    }
     #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) > .architecture-source-toolbar { display: contents; }
     #architectureWorkspace:has(> #architectureSnapshotSource:not([hidden])) > .architecture-source-toolbar h2 {
         grid-column: 1;

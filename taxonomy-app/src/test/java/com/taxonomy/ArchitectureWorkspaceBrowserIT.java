@@ -248,12 +248,20 @@ class ArchitectureWorkspaceBrowserIT {
                     const rect=selector=>{const element=document.querySelector(selector);if(!element)return null;
                         const r=element.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height};};
                     const canvas=rect('#architectureCanvasShell'),details=rect('.workbench-detail-panel');
+                    const titleRange=document.createRange();
+                    titleRange.selectNodeContents(document.querySelector('.architecture-source-toolbar h2'));
+                    const titleBounds=titleRange.getBoundingClientRect();
+                    const sourceTitle={top:titleBounds.top,bottom:titleBounds.bottom,left:titleBounds.left,right:titleBounds.right};
+                    const sourceActions=rect('#architectureSnapshotSource .architecture-source-actions');
+                    const titleClearOfActions=sourceTitle.right<=sourceActions.left || sourceTitle.left>=sourceActions.right
+                        || sourceTitle.bottom<=sourceActions.top || sourceTitle.top>=sourceActions.bottom;
                     const geometry={innerWidth,innerHeight,scrollY,canvas,details,
+                        sourceTitle,sourceActions,titleClearOfActions,
                         header:rect('.taxonomy-app-chrome'),sourceToolbar:rect('.architecture-source-toolbar'),
                         sourceDescription:rect('#architectureSourceDescription'),actions:rect('#architectureSnapshotSource .workbench-toolbar'),
                         status:rect('#architectureStatus'),grid:rect('#architectureSnapshotSource .workbench-grid'),
                         controls:rect('#architectureWorkbench .architecture-controls'),
-                        valid:document.documentElement.scrollWidth<=innerWidth+1 && (innerWidth>900
+                        valid:titleClearOfActions && document.documentElement.scrollWidth<=innerWidth+1 && (innerWidth>900
                             ? canvas.height>=innerHeight*.5 && canvas.bottom<=innerHeight+1 && details.bottom<=innerHeight+1
                             : canvas.top<=innerHeight*.7 && [...document.querySelectorAll('#architectureSnapshotSource .architecture-control,#architectureSnapshotSource .architecture-toggle,#architectureSnapshotSource .architecture-search')]
                                 .filter(e=>!e.hidden).every(e=>e.getBoundingClientRect().height>=44))};
@@ -479,8 +487,20 @@ class ArchitectureWorkspaceBrowserIT {
                 """, next)).isEqualTo(false);
         assertAgreement("analysis", scope("repository-A", "analysis-A", "draft/A"));
         assertThat(page.driver().executeScript("return __guardCalls;")).isEqualTo(1L);
-        source("working", first);
+        // The source picker resumes the retained revision; an explicit unpinned source reads the latest head.
+        new Select(page.driver().findElement(By.id("architectureSource"))).selectByValue("working");
+        wait.until(driver -> "working".equals(page.driver().executeScript("return TaxonomyArchitectureWorkspace.getSource().kind;")));
+        assertAgreement("working", first);
         assertThat(page.driver().findElement(By.id("editorTitle")).getDomProperty("value")).isEqualTo("Retain my unaccepted draft");
+        assertThat(page.driver().executeScript("return __guardCalls;"))
+                .as("Resuming the retained working source does not ask to discard its draft").isEqualTo(1L);
+        assertThat(page.requests().stream().filter(request -> request.method().equals("GET")
+                && request.path().equals("/taxonomy/api/architecture/editor")).toList())
+                .as("Refusing another source and resuming the retained one must not reload the editor").hasSize(1);
+        assertThat(page.driver().executeScript("""
+                return [TaxonomyArchitectureWorkspace.getSource().revision,new URL(location.href).searchParams.get('revision')];
+                """))
+                .as("The retained revision remains pinned in both the workspace and URL").isEqualTo(List.of(7L, "7"));
         page.driver().executeScript("window.confirm=()=>true;");
         source("working", next);
         page.driver().findElement(By.id("editorTitle")).sendKeys("Draft for C");
