@@ -12,10 +12,25 @@
             <div class="taxonomy-app-primary">
                 <a data-app-route="projects" data-taxonomy-feature="portfolio" th:href="@{/projects}" href="/projects"
                    th:attr="aria-current=${active == 'projects' ? 'page' : null}" th:text="#{app.navigation.projects}">Projects</a>
-                <a data-app-route="analysis" th:href="@{/}" href="/"
-                   th:attr="aria-current=${active == 'analysis' ? 'page' : null}" th:text="#{app.navigation.analysis}">Analysis</a>
-                <a data-app-route="architecture" data-taxonomy-feature="architecture" th:href="@{/architecture/editor}" href="/architecture/editor"
-                   th:attr="aria-current=${active == 'architecture' ? 'page' : null}" th:text="#{app.navigation.architecture}">Architecture</a>
+        <div class="application-work-navigation">
+            <ul class="nav nav-tabs nav-tabs-page mb-0" id="mainNavTabs" aria-label="Main sections">
+                <li class="nav-item">
+                <a class="nav-link" th:classappend="${active == 'analysis' ? 'active' : ''}" th:attr="aria-current=${active == 'analysis' ? 'page' : null}" data-page="analyze" data-app-route="analysis" th:href="@{/#analyze}" href="/#analyze">&#128269; <span th:text="#{nav.analyze}">Analyze</span></a>
+            </li>
+                <li class="nav-item">
+                <a class="nav-link" th:classappend="${active == 'architecture' ? 'active' : ''}" th:attr="aria-current=${active == 'architecture' ? 'page' : null}" data-page="architecture" data-taxonomy-feature="architecture" data-app-route="architecture" th:href="@{/#architecture}" href="/#architecture">&#127959;&#65039; <span th:text="#{nav.architecture}">Architecture</span></a>
+            </li>
+                <li class="nav-item">
+                <a class="nav-link" th:classappend="${active == 'graph' ? 'active' : ''}" th:attr="aria-current=${active == 'graph' ? 'page' : null}" data-page="graph" data-taxonomy-feature="architecture" data-app-route="graph" th:href="@{/#graph}" href="/#graph">&#128300; <span th:text="#{nav.graph}">Graph</span></a>
+            </li>
+                <li class="nav-item">
+                <a class="nav-link" th:classappend="${active == 'versions' ? 'active' : ''}" th:attr="aria-current=${active == 'versions' ? 'page' : null}" data-page="versions" data-app-route="versions" th:href="@{/#versions}" href="/#versions">&#128339; <span th:text="#{nav.versions}">Versions</span></a>
+            </li>
+                <li class="nav-item">
+                <a class="nav-link" th:classappend="${active == 'dsl-editor' ? 'active' : ''}" th:attr="aria-current=${active == 'dsl-editor' ? 'page' : null}" data-page="dsl-editor" data-app-route="dsl-editor" th:href="@{/#dsl-editor}" href="/#dsl-editor">&#128221; <span th:text="#{nav.dsl}">DSL</span></a>
+            </li>
+            </ul>
+        </div>
             </div>
             <div class="taxonomy-app-utilities">
                 <div class="taxonomy-app-languages" role="group" th:aria-label="#{lang.selector.label}" aria-label="Language">

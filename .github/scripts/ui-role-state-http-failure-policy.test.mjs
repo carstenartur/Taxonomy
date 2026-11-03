@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createNavigationPollEvidence } from './ui-navigation-poll-evidence.mjs';
 
 const source = await readFile(
   new URL('./ui-role-state-acceptance.mjs', import.meta.url),
@@ -44,8 +45,8 @@ test('webkit reconciliation is bound to each locale navigation window', () => {
   assert.match(source, /let systemInformationNavigationLocale = null;/);
   assert.match(source, /const navigationConsoleCandidates = \[\];/);
   assert.match(source, /locale: systemInformationNavigationLocale/);
-  assert.match(source, /onLocaleNavigationStart: locale => \{/);
-  assert.match(source, /onLocaleNavigationEnd: locale => \{/);
+  assert.match(source, /onLocaleNavigationStart: async locale => \{/);
+  assert.match(source, /onLocaleNavigationEnd: async \(locale, succeeded\) => \{/);
   assert.match(source, /webkit-locale-navigation-ai-status-cancelled/);
   assert.doesNotMatch(source,
     /for \(let index = consoleErrors\.length - 1; index >= previousSystemConsoleErrors; index -= 1\)/);
@@ -56,7 +57,7 @@ test('AI bootstrap never treats the untranslated unknown key as settled', () => 
   assert.match(systemInformationSource, /value !== 'browse\.ai\.badge\.unknown'/);
   assert.match(systemInformationSource, /AI status bootstrap must settle after locale navigation/);
   assert.match(systemInformationSource, /onLocaleNavigationStart\?\.\(locale\)/);
-  assert.match(systemInformationSource, /onLocaleNavigationEnd\?\.\(locale\)/);
+  assert.match(systemInformationSource, /onLocaleNavigationEnd\?\.\(locale, navigationSucceeded\)/);
   assert.match(systemInformationSource, /aiStatusSettled: true/);
 });
 
@@ -118,12 +119,14 @@ function consoleAudit(browserName = 'webkit') {
   const observersEnd = source.indexOf("\n  taskMeasurements.failedStep = 'isolating", observersStart);
   assert.ok(functionsStart >= 0 && functionsEnd > functionsStart);
   assert.ok(observersStart >= 0 && observersEnd > observersStart);
-  return new Function('browserName', `
+  return new Function('browserName', 'createNavigationPollEvidence', `
     const baseUrl = 'http://127.0.0.1:8080';
-    const consoleErrors = [], reconciledConsoleErrors = [], navigationConsoleCandidates = [];
+    const consoleErrors = [], reconciledConsoleErrors = [], navigationConsoleCandidates = [], navigationEvidence = [];
+    const navigationPollEvidence = createNavigationPollEvidence({ browserName, baseUrl });
     let systemInformationNavigationLocale = null;
     const handlers = {};
-    const page = { on: (event, handler) => { handlers[event] = handler; } };
+    const page = { on: (event, handler) => { handlers[event] = handler; },
+      url: () => 'http://127.0.0.1:8080/?lang=de#admin' };
     ${source.slice(functionsStart, functionsEnd)}
     ${source.slice(observersStart, observersEnd)}
     return {
@@ -136,7 +139,7 @@ function consoleAudit(browserName = 'webkit') {
       },
       settle(cases) { reconcileSystemInformationConsoleErrors(cases); }
     };
-  `)(browserName);
+  `)(browserName, createNavigationPollEvidence);
 }
 
 const settledLocale = { locale: 'de', aiStatusSettled: true, operationalStatusSettled: true,
@@ -198,6 +201,8 @@ test('navigation reconciliation never admits other origins, endpoints or ordinar
     'Fetch API cannot load https://other.invalid/api/ai-status due to access control checks.',
     '/127.0.0.1:8080/api/analysis-drafts/123 due to access control checks.',
     '/127.0.0.1:8080/api/admin/system-information due to access control checks.',
+    '/127.0.0.1:8080/api/status/startup due to access control checks.',
+    '/127.0.0.1:8080/api/workspace/sync-state due to access control checks.',
     '/127.0.0.1:8080/api/context/current?unexpected=1 due to access control checks.',
     '/127.0.0.1:8080/api/git/state?branch=draft&unexpected=1 due to access control checks.',
     '/127.0.0.1:8080/api/context/current failed with HTTP 503',

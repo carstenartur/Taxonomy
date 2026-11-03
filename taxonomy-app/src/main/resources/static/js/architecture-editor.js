@@ -1,5 +1,8 @@
 (function () {
     'use strict';
+    function mount(root) {
+    if (root.__architectureEditor) return root.__architectureEditor;
+    var active = false, activeSource = {}, refreshNeeded = false, draftBaseline = '';
     var api = window.ArchitectureEditorApi;
     var view = null;
     var selected = null;
@@ -41,7 +44,7 @@
             renderer.fit({initial:true});
         }
     });
-    function el(id) { return document.getElementById(id); }
+    function el(id) { return root.querySelector('#' + id); }
     function t(key) { return window.TaxonomyI18n.t.apply(null, arguments); }
     function short(commit) { return commit ? commit.substring(0, 12) : t('editor.emptyBranch'); }
     function context() { return view.document.context; }
@@ -64,13 +67,13 @@
         node.disabled = Boolean(disabled); node.addEventListener('click', action); return node;
     }
     function scopeFromUrl() {
-        var params = new URLSearchParams(location.search);
         var result = {};
-        ['repositoryId', 'workspaceScopeKey', 'branch'].forEach(function (key) { if (params.has(key)) result[key] = params.get(key); });
-        if (!result.workspaceScopeKey && params.has('workspaceId')) result.workspaceScopeKey = params.get('workspaceId') || '__shared__';
+        ['repositoryId', 'workspaceScopeKey', 'branch'].forEach(function (key) { if (activeSource[key] !== undefined) result[key] = activeSource[key]; });
+        if (!result.workspaceScopeKey && activeSource.workspaceId !== undefined) result.workspaceScopeKey = activeSource.workspaceId || '__shared__';
         return result;
     }
     function linkSelection(replace) {
+        if (!active || !view) return;
         var url = new URL(location.href);
         ['repositoryId', 'workspaceScopeKey', 'branch'].forEach(function (key) {
             if (context()[key]) url.searchParams.set(key, context()[key]); else url.searchParams.delete(key);
@@ -87,10 +90,11 @@
         if (replace) history.replaceState(null, '', url); else history.pushState(null, '', url);
     }
     function permissions() {
-        var writable = view && view.mayEdit && !busy && !loading;
+        var writable = active && view && view.mayEdit && !busy && !loading;
+        el('architectureEditor').setAttribute('aria-busy', String(busy || loading));
         adoptionPanel.setLocked(busy || loading);
         planningPanel.setEnabled(writable);
-        focusPanel.setLocked(busy || loading);
+        focusPanel.setLocked(!active || busy || loading);
         el('editorArrange').disabled = busy || loading || !view;
         el('editorCheckpoint').disabled = !writable;
         el('editorResumeCheckpoint').disabled = busy;
@@ -103,6 +107,7 @@
         el('editorAccept').disabled = busy || !pending;
     }
     async function load(scope, commit, preserveDraft) {
+        if (!active) return false;
         var ticket = ++generation;
         loading = true;
         window.TaxonomyArchitectureLifecycle?.beginSelection(scope, commit);
@@ -110,13 +115,12 @@
         if (loader) loader.abort();
         loader = new AbortController();
         focusPanel.setLocked(true);
-        el('architectureEditor').setAttribute('aria-busy', 'true');
         setStatus(t('editor.loading'));
         el('editorError').hidden = true;
         try {
             if ((view && !sameScope(scope, context())) || /^[a-f0-9]{40}$/i.test(String(commit))) layoutRevision = null;
             var next = await api.load(scope, commit, loader.signal, layout, layoutRevision, selectedView);
-            if (ticket !== generation) return false;
+            if (ticket !== generation || !active) return false;
             view = next;
             layout = view.schema.layoutStrategy || 'stable';
             layoutRevision = view.schema.layoutRevision === undefined ? null : view.schema.layoutRevision;
@@ -129,21 +133,26 @@
             if (ticket === generation) { report(error); view = null; window.TaxonomyArchitectureLifecycle?.failedSelection(error); focusPanel.setContext(null, false); permissions(); }
             return false;
         } finally {
-            if (ticket === generation) { loading = false; el('architectureEditor').setAttribute('aria-busy', 'false'); permissions(); }
+            if (ticket === generation) { loading = false; permissions(); }
         }
     }
-    function render(preserveDraft) {
-        renderPackages();
-        planningPanel.render(view, preserveDraft);
+    function publishContext() {
+        if (!active || !view) return;
         var c = context();
         window.TaxonomyArchitectureLifecycle?.observe(view.document, view.mayEdit);
         adoptionPanel.update(view);
         window.TaxonomyArchitectureWorkflow?.showEditor(c,adoptionPanel.getSource());
         var contextLabel = view.document.source === 'GIT_CHECKPOINT' ? t('editor.selectedVersion', short(c.commit))
             : t('editor.revision', c.revision) + ' · ' + t('editor.lastCheckpoint', short(c.commit));
-        window.TaxonomyAppChrome?.updateContext({architecture:{repositoryId:c.repositoryId, workspaceScopeKey:c.workspaceScopeKey, branch:c.branch, modelStand:contextLabel,commit:c.commit,revision:c.revision}, editable:Boolean(view.mayEdit), source:adoptionPanel.getSource()});
+        window.TaxonomyAppChrome?.updateContext({architecture:{repositoryId:c.repositoryId, workspaceScopeKey:c.workspaceScopeKey, branch:c.branch, modelStand:contextLabel,commit:c.commit,revision:c.revision}, editable:Boolean(view.mayEdit), source:adoptionPanel.getSource()}, 'working');
         el('editorContext').hidden = Boolean(window.TaxonomyAppChrome);
         el('editorContext').textContent = c.repositoryId + ' / ' + c.workspaceScopeKey + ' / ' + c.branch + ' · ' + contextLabel + ' · ' + c.actor;
+    }
+    function render(preserveDraft) {
+        renderPackages();
+        planningPanel.render(view, preserveDraft);
+        var c = context();
+        publishContext();
         var state = view.document.projectionState;
         setStatus(t('editor.projection.' + state));
         el('editorMode').textContent = view.mayEdit ? t('editor.writable') : t('editor.readOnly');
@@ -172,6 +181,8 @@
         focusPanel.setContext(c, view.mayEdit && state === 'READY' && view.document.source === 'WORKSPACE_REVISION');
         focusPanel.select(selected);
         permissions();
+        if (!preserveDraft) draftBaseline = draftValue();
+        document.dispatchEvent(new CustomEvent('taxonomy:architecture-diagram-updated'));
     }
     function renderTree() {
         var query = el('editorSearch').value.toLowerCase();
@@ -214,7 +225,9 @@
         el('editorDraft').hidden = true;
     }
     function selectElement(id, fromHistory) {
-        if (busy || loading || !view) return;
+        if (!active || busy || loading || !view) return false;
+        if (!fromHistory && id === selected) return true;
+        if (!fromHistory && hasDraft() && !window.confirm(t('architecture.workspace.discardDraft'))) return false;
         selected = id; pending = null;
         renderForm(); renderRelations(); permissions();
         renderer.select(selected);
@@ -226,14 +239,19 @@
         if (offset >= 0) el('editorDsl').setSelectionRange(offset, view.document.dsl.indexOf('\n}', offset) + 2);
         if (!fromHistory) linkSelection(false);
         setStatus(selected ? t('editor.selected', selected) : t('editor.newDraft'));
+        draftBaseline = draftValue();
+        return true;
     }
     function selectRelation(edge) {
-        selectElement(edge.sourceId);
+        var sameElement = edge.sourceId === selected;
+        if (sameElement && hasDraft() && !window.confirm(t('architecture.workspace.discardDraft'))) return;
+        if (!selectElement(edge.sourceId, sameElement)) return;
         el('editorRelationTarget').value = edge.targetId;
         el('editorRelationType').value = edge.relationType;
         var relation = view.model.relations.find(function (item) { return relationId(item) === edge.id; });
         el('editorRelationStatus').value = relation && relation.status || 'proposed';
         el('editorRelationType').focus();
+        draftBaseline = draftValue();
     }
     function renderRelations() {
         var list = el('editorRelations'); list.replaceChildren();
@@ -524,11 +542,13 @@
         finally { busy = false; permissions(); el('editorWorkspace').disabled = false; }
     };
     document.addEventListener('taxonomy:architecture-stand-requested', function (event) {
+        if (!active) return;
         if (dialog.open) dialog.close(); pending = null;
         var selection = event.detail?.selection || {};
         load(event.detail?.context || scopeFromUrl(), selection.commit || selection.revision || null, true);
     });
     function applyLifecycleChange(event) {
+        if (!active) { refreshNeeded = true; return; }
         var result = event.detail?.publication || event.detail;
         var resultContext = result?.context;
         if (busy || loading || !view || !resultContext || !sameScope(resultContext, context())
@@ -538,17 +558,81 @@
     }
     document.addEventListener('taxonomy:lifecycle-changed', applyLifecycleChange);
     document.addEventListener('taxonomy:architecture-reconciled', applyLifecycleChange);
-    window.addEventListener('popstate', function () {
-        if (dialog.open) dialog.close(); pending = null;
-        selected = new URLSearchParams(location.search).get('element');
-        selectedView = new URLSearchParams(location.search).get('viewId');
-        layout = new URLSearchParams(location.search).get('layout') || 'stable';
-        layoutRevision = new URLSearchParams(location.search).get('layoutRevision');
-        load(scopeFromUrl(), new URLSearchParams(location.search).get('commit') || new URLSearchParams(location.search).get('revision')).then(function (ok) { if (ok) renderer.focus(); });
-    });
-    window.TaxonomyI18n.ready().then(function () {
-        document.querySelectorAll('[data-i18n]').forEach(function (node) { node.textContent = t(node.getAttribute('data-i18n')); });
-        selected = new URLSearchParams(location.search).get('element');
-        return load(scopeFromUrl(), new URLSearchParams(location.search).get('commit') || new URLSearchParams(location.search).get('revision'));
-    }).then(function (ok) { if (ok) { renderer.fit({ initial: true }); if (selected) renderer.focus(); } });
+    function draftValue() {
+        return JSON.stringify(Array.from(root.querySelectorAll('#editorForm input, #editorForm select, #editorForm textarea, #editorRelationForm input, #editorRelationForm select, #editorPackageFields input, #editorPackageFields select, #editorPackageFields textarea, #editorPlanningForm input, #editorPlanningForm select, #editorPlanningForm textarea, #editorRationale')).map(function (node) { return [node.id,node.value,node.checked]; }));
+    }
+    function hasDraft() { return Boolean(view && draftBaseline && draftValue() !== draftBaseline); }
+    function getSource() {
+        var result = Object.assign({}, activeSource, view ? context() : null, {kind:'working',element:selected,viewId:selectedView,layout:layout,layoutRevision:layoutRevision});
+        if (view) {
+            result.workspaceId = context().workspaceScopeKey === '__shared__' ? '' : context().workspaceScopeKey;
+            if (view.document.source === 'GIT_CHECKPOINT') result.revision = null;
+            else result.commit = null;
+        }
+        return result;
+    }
+    function sameSelection(source) {
+        var current = getSource();
+        if (view && view.document.source === 'GIT_CHECKPOINT' && source.commit !== current.commit) return false;
+        // An unpinned source requests the current branch head, which can have advanced.
+        if (view && !source.commit && String(source.revision ?? '') !== String(current.revision ?? '')) return false;
+        if ((source.commit || null) !== (current.commit || null)) return false;
+        if ((source.viewId || null) !== (current.viewId || null)) return false;
+        return ['repositoryId','workspaceScopeKey','branch','commit','revision','viewId','layout','layoutRevision'].every(function (key) {
+            return source[key] === undefined || String(source[key] ?? '') === String(current[key] ?? '');
+        });
+    }
+    function canLeave(next, settings) {
+        if (busy || dialog.open) { if (dialog.open) dialog.focus(); return false; }
+        if (settings?.retain || (sameSelection(next) && (next.element || null) === selected)) return true;
+        return !hasDraft() || window.confirm(t('architecture.workspace.discardDraft'));
+    }
+    async function activate(source) {
+        active = true;
+        var reuse = view && sameSelection(source) && !refreshNeeded;
+        activeSource = Object.assign({},source);
+        await window.TaxonomyI18n.ready();
+        root.querySelectorAll('[data-i18n]').forEach(function (node) { node.textContent = t(node.getAttribute('data-i18n')); });
+        if (!active) return false;
+        if (reuse) {
+            var nextElement = source.element && view.model.elements.some(function (item) { return item.id === source.element; }) ? source.element : null;
+            if (nextElement !== selected) selectElement(nextElement, true);
+            publishContext(); permissions(); linkSelection(true);
+            return true;
+        }
+        selected = source.element || null;
+        selectedView = source.viewId || null;
+        layout = source.layout || 'stable'; layoutRevision = source.layoutRevision ?? null;
+        var ok = await load(scopeFromUrl(),source.commit || source.revision,refreshNeeded && hasDraft());
+        refreshNeeded = false;
+        if (ok) { renderer.fit({initial:true}); if(selected) renderer.focus(); }
+        return ok;
+    }
+    var instance = {activate:activate, suspend:function () {
+        active = false; generation++; loader?.abort(); loading = false; window.TaxonomyArchitectureLifecycle?.suspend?.(); focusPanel.setLocked(true); permissions();
+    }, canLeave:canLeave, hasDraft:hasDraft, getSource:getSource, getData:function () { return view; },
+        getDiagram:function () { return renderer; }, select:selectElement,restoreUrl:function(){linkSelection(true);},
+        openLens:function () { el('editorLensTitle').scrollIntoView({block:'nearest'}); el('editorLensEnabled').focus(); }
+    };
+    root.__architectureEditor = instance;
+    return instance;
+    }
+    window.TaxonomyArchitectureEditor = Object.freeze({mount:mount});
+    // Compatibility for standalone templates; the application workspace mounts lazily.
+    if (!document.getElementById('architectureWorkspace') && document.getElementById('architectureEditor')) {
+        var standalone = mount(document.body);
+        function readSelection() {
+            var value = {kind:'working'}, params = new URLSearchParams(location.search);
+            // Standalone links accept the same source pins as the application workspace.
+            ['repositoryId', 'workspaceId', 'workspaceScopeKey', 'branch', 'projectId', 'requirementId',
+                'requirementVersionId', 'snapshotId', 'commit', 'revision', 'element', 'viewId', 'layout', 'layoutRevision',
+                'sourceRepositoryId', 'sourceWorkspaceId', 'sourceWorkspaceScopeKey', 'sourceBranch', 'sourceProjectId',
+                'sourceRequirementId', 'sourceRequirementVersionId', 'sourceSnapshotId', 'adoption'].forEach(function (key) {
+                    if (params.has(key)) value[key] = params.get(key);
+                });
+            return value;
+        }
+        standalone.activate(readSelection());
+        window.addEventListener('popstate',function () { if (standalone.canLeave(readSelection(),{})) standalone.activate(readSelection()); else standalone.restoreUrl(); });
+    }
 }());

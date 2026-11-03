@@ -325,6 +325,11 @@ jobs:
           name: native-browser-diagnostics
           path: |
             taxonomy-app/target/archi-return-native/
+            taxonomy-app/target/snapshot-adoption-native/
+            taxonomy-app/target/architecture-workbench-native/
+            taxonomy-app/target/unified-architecture-acceptance/
+            taxonomy-app/target/unified-architecture-fullscreen/
+            taxonomy-app/target/unified-architecture-height/
             taxonomy-app/target/portfolio-context-evidence/
             taxonomy-app/target/portfolio-workflow-evidence/
             taxonomy-app/target/complete-copilot-session-evidence/

@@ -704,7 +704,22 @@ The warning triggers after a 300 ms debounce when you type in the business text 
 <a id="guide-section-7"></a>
 ## 7. Architecture View — Requirement Impact Map
 
-The Architecture View shows the selected elements and relationships for the analysed requirement. Inspect whether a relationship is inferred, imported or human-confirmed; displaying it does not make it an accepted decision. It provides a **Requirement Impact Map** — a layered visualization of the architecture elements that are relevant to your requirement.
+**Architecture** has one shared main-navigation entry. Choose its source under
+**Displayed architecture**:
+
+| Source | Purpose and available work |
+|---|---|
+| **Current analysis** | Inspect the current analysis architecture while retaining the input text, diagram variants, details and analysis exports. |
+| **Saved analysis snapshot** | Inspect an immutable snapshot with its requirement version and provenance, investigate with the lens, print or export that exact source. |
+| **Working architecture** | Edit elements, relationships and packages through preview and acceptance; undo changes, create checkpoints and inspect historical versions. |
+
+The lens investigates the displayed source in this workspace. Investigating saved
+analysis does not change it. Adoption into the working architecture remains an
+explicit reviewed preview-and-accept action. Inputs and retained drafts survive
+view changes. Existing editor and workbench links open this shared workspace with
+their exact source coordinates. See [Architecture editor and focus lens](ARCHITECTURE_EDITOR.md).
+
+**Current analysis** shows the selected elements and relationships for the analysed requirement. Inspect whether a relationship is inferred, imported or human-confirmed; displaying it does not make it an accepted decision. It provides a **Requirement Impact Map** — a layered visualization of the architecture elements that are relevant to your requirement.
 
 ### Enabling the Architecture View Checkbox
 

@@ -235,6 +235,34 @@ that snapshot's authority. A diagram produced from transient scores or an editor
 revision must not be presented as the same artifact. See [the export support boundary](FEATURE_MATRIX.md#architecture-export-support-boundary)
 and [Architecture editor](ARCHITECTURE_EDITOR.md).
 
+## Unified architecture workspace
+
+The main Thymeleaf page composes the analysis, immutable snapshot and semantic
+editor surfaces under one Architecture navigation entry. `architecture-workspace.js`
+owns source activation, exact URL coordinates and retained instances. Hidden
+adapters suspend requests and context publication; delayed replies are fenced to
+their activation. Draft guards apply before replacing even a hidden editor.
+Legacy editor/workbench routes redirect to this surface and preserve source,
+selection, layout and version coordinates.
+
+`shared/architecture-diagram.js` implements common rendering, selection, focus,
+pan/zoom, keyboard interaction and lens presentation. Source adapters preserve
+their distinct layouts, provenance, details and commands. This composition does
+not merge persisted analysis evidence with the semantic editor journal.
+
+The read-only `POST /api/architecture/focus/suggestions` endpoint resolves
+`ANALYSIS_DRAFT` or `ANALYSIS_SNAPSHOT` on the server before invoking the shared
+bounded suggestion engine. It checks ownership and exact source version before
+provider work. Browser graphs are not evidence authority. Draft investigations
+require a saved, acknowledged draft and an exact retained result reference;
+snapshots retain their immutable identity. Replies identify the source and evidence
+hash, without supplying an editor command context. The existing editor endpoint
+retains its revision-bound acceptance and undo contract. Snapshot adoption still
+requires its own target preview and explicit acceptance.
+
+See [Architecture editor](ARCHITECTURE_EDITOR.md) and the
+[workspace design](../superpowers/specs/2026-11-03-unified-architecture-workspace-design.md).
+
 ## DSL Storage Architecture
 
 The following diagram separates **state authorities and explicit persistence

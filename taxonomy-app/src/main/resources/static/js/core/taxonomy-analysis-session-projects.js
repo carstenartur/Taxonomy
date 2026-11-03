@@ -605,6 +605,13 @@
         return C.reconcileDraft();
     }
 
+    function saveLocalDraft() {
+        // Lifecycle events flush local edits; they do not publish a pure server observation.
+        if (runtime.observedDraftComparable && comparable(currentPayload()) === runtime.observedDraftComparable)
+            return Promise.resolve(true);
+        return saveDraft();
+    }
+
     function installObservers() {
         var input = businessTextElement();
         if (input) {
@@ -657,7 +664,7 @@
         }, CHANGE_POLL_MS);
 
         document.addEventListener('visibilitychange', function () {
-            if (document.visibilityState === 'hidden') saveDraft();
+            if (document.visibilityState === 'hidden') saveLocalDraft();
             else retryServerState();
         });
         document.addEventListener('taxonomy:server-contact', function (event) {
@@ -674,7 +681,7 @@
         window.addEventListener('pageshow', function (event) {
             if (event.persisted) retryServerState();
         });
-        window.addEventListener('pagehide', function () { saveDraft(); });
+        window.addEventListener('pagehide', function () { saveLocalDraft(); });
     }
 
     function initialize() {

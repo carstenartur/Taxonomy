@@ -773,6 +773,17 @@ public class AnalysisContinuationStore {
                 || report.warnings().stream().anyMatch(warning -> reasons.stream().anyMatch(warning::startsWith));
     }
 
+    /** Read retained evidence without expiring claims, mutation locks or recovery bookkeeping writes. */
+    @Transactional(readOnly = true)
+    public Snapshot readEvidence(String id, WorkspaceContext scope) {
+        requireScope(scope);
+        var run = em.find(AnalysisContinuationRun.class, requireId(id));
+        if (run == null) throw notFound();
+        authorize(run, scope);
+        var recovery = view(run);
+        return new Snapshot(recovery, readResult(run, recovery), mapper.readValue(run.requestJson, AnalysisRequest.class), run.clusterOperationId);
+    }
+
     @Transactional
     public Snapshot read(String id, WorkspaceContext scope) {
         var run = scoped(id, scope); expire(run); em.flush();

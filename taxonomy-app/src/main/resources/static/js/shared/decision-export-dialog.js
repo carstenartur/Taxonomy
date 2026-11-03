@@ -200,9 +200,11 @@
     }
     function openSaved(config) {
         const projectId=String(config.projectId), snapshotId=String(config.snapshotId);
+        const openingScope = config.scope || window.TaxonomyArchitectureWorkflow?.getScope?.();
+        const scope = openingScope ? Object.freeze(Object.assign({}, openingScope)) : undefined;
         return open({...config,saved:true,source:config.source || ('Snapshot: '+snapshotId),
-            load:()=>config.api.decisionReportOptions(projectId,snapshotId,window.TaxonomyContentLanguage?.documentLanguage(null) || null),
-            submit:config.submit || (async ({format,descriptor,options,language,signal})=>download(await config.api.downloadDecisionReport(projectId,snapshotId,format,language,options,{signal}),format,snapshotId,signal,undefined,descriptor))});
+            load:()=>config.api.decisionReportOptions(projectId,snapshotId,window.TaxonomyContentLanguage?.documentLanguage(null) || null, {scope}),
+            submit:config.submit || (async ({format,descriptor,options,language,signal})=>download(await config.api.downloadDecisionReport(projectId,snapshotId,format,language,options,{signal,scope}),format,snapshotId,signal,undefined,descriptor))});
     }
     window.TaxonomyDecisionExport={open,openSaved,selection,query,download};
 }());

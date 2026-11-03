@@ -3,6 +3,29 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { csrfJson } from './ui-role-fixtures.mjs';
 
+async function confirmDraftDiscard(page, action, confirmations, intent) {
+  let handled = null;
+  let unexpected = null;
+  const expected = 'Changing the architecture context would discard unaccepted form changes. Discard these changes and continue?';
+  const onDialog = dialog => {
+    if (dialog.type() !== 'confirm' || dialog.message() !== expected) {
+      unexpected = `${dialog.type()}: ${dialog.message()}`;
+      handled = dialog.dismiss();
+      return;
+    }
+    confirmations.push(intent);
+    handled = dialog.accept();
+  };
+  page.on('dialog', onDialog);
+  try {
+    await action();
+    if (handled) await handled;
+    assert.equal(unexpected, null, 'Only the explicit unaccepted-draft confirmation may be accepted');
+  } finally {
+    page.off('dialog', onDialog);
+  }
+}
+
 export async function measureEditorFrame(page, selected = false) {
   return page.locator('#editorGraph').evaluate(async (svg, selected) => {
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -120,6 +143,34 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
   await request(`/api/projects/${project.id}/requirements/${requirement.id}/versions`,{text:'Later edited requirement must not replace frozen evidence.',changeReason:'Retained version regression'});
   await page.goto(base+`/architecture/workbench?projectId=${project.id}&snapshotId=${snapshot}&${pin}&lang=en`);
   await page.locator('#workflow-adopt').waitFor({state:'visible'});
+  const frozenEvidence = await page.evaluate(() => JSON.stringify(window.TaxonomyArchitectureWorkspace.getData()));
+  const frozenNode = page.locator('#architectureCanvas [data-node-id]').first();
+  await frozenNode.focus(); await page.keyboard.press('Enter');
+  const frozenSelection = await frozenNode.getAttribute('data-node-id');
+  await page.locator('#architectureSourceLensUseAi').uncheck();
+  await page.locator('#architectureSourceLensEnabled').check();
+  const frozenInvestigationResponse = page.waitForResponse(response =>
+    new URL(response.url()).pathname.endsWith('/api/architecture/focus/suggestions')
+      && response.request().method() === 'POST');
+  await page.locator('#architectureSourceLensInspect').click();
+  const frozenInvestigationHttp = await frozenInvestigationResponse;
+  assert.equal(frozenInvestigationHttp.status(),200,await frozenInvestigationHttp.text());
+  const frozenInvestigation = await frozenInvestigationHttp.json();
+  const frozenRequest = frozenInvestigationHttp.request().postDataJSON();
+  assert.equal(frozenRequest.useAi,false); assert.equal(frozenInvestigation.modelCalls,0);
+  assert.equal(frozenRequest.sourceId,frozenSelection);
+  assert.deepEqual(frozenInvestigation.source,frozenRequest.source);
+  assert.equal(frozenInvestigation.source.kind,'ANALYSIS_SNAPSHOT');
+  assert.equal(frozenInvestigation.source.snapshotId,snapshot);
+  assert.equal(frozenInvestigation.source.repositoryId,repository);
+  assert.equal(frozenInvestigation.source.workspaceScopeKey,sourceWorkspace);
+  assert.equal(frozenInvestigation.source.branch,branch);
+  assert.equal(frozenInvestigation.source.projectId,project.id);
+  assert.equal(frozenInvestigation.source.requirementId,requirement.id);
+  assert.match(frozenInvestigation.sourceHash,/^[0-9a-f]{64}$/i);
+  assert.equal(await page.evaluate(() => JSON.stringify(window.TaxonomyArchitectureWorkspace.getData())),frozenEvidence);
+  assert.equal(await page.locator('#architectureSourceLensReview [data-focus-action="accept"], #architectureSourceLensReview [data-focus-action="undo"]').count(),0);
+  await page.locator('#architectureSourceLensEnabled').uncheck();
   const sourceUrl = await page.locator('#workflow-adopt').getAttribute('href');
   assert.equal(new URL(sourceUrl,base).searchParams.get('sourceRepositoryId'),repository);
   assert.equal(new URL(sourceUrl,base).searchParams.get('sourceWorkspaceScopeKey'),sourceWorkspace);
@@ -166,12 +217,25 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
   assert.equal(await page.locator('#editorHistory li').count(),1);
   await page.locator('#snapshotAdoption details > summary').click();
   assert.match(await page.locator('#adoptionProvenance').innerText(),new RegExp(snapshot));
+  const provenance=page.locator('#adoptionProvenance');
+  assert.equal(await provenance.getAttribute('tabindex'),'0','Scrollable source evidence must be keyboard reachable in every browser');
+  assert.equal(await provenance.getAttribute('role'),'region');
+  assert.equal(await provenance.getAttribute('aria-labelledby'),'adoptionProvenanceTitle');
+  await page.locator('#adoptionProvenanceTitle').focus();
+  await page.keyboard.press('Tab');
+  assert.equal(await provenance.evaluate(element=>document.activeElement===element),true,'Tab from the provenance disclosure reaches its scrollable evidence');
   const returnUrl = new URL(await page.locator('#adoptionSourceLink').getAttribute('href'),base);
   assert.equal(returnUrl.searchParams.get('workspaceId'),sourceWorkspace);assert.equal(returnUrl.searchParams.get('repositoryId'),repository);
   await page.locator('#editorRationale').fill('Retain frozen adoption checkpoint');
   const checkpointResponse=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith('/editor/checkpoints'));
   await page.locator('#editorCheckpoint').click();const checkpoint=await (await checkpointResponse).json();
-  await page.waitForFunction(()=>document.getElementById('architectureEditor').getAttribute('aria-busy')==='false');
+  assert.ok(checkpoint.commitId);
+  await page.waitForFunction(commit=>{
+    const current=window.TaxonomyArchitectureWorkspace?.getData();
+    return current?.document?.context?.commit===commit
+      && document.getElementById('architectureEditor')?.getAttribute('aria-busy')==='false'
+      && !document.getElementById('editorCheckpoint').disabled;
+  },checkpoint.commitId);
   // A checkpoint made before adoption has no adopted view. Its history link must open a usable full model.
   const beforeCommit = preview.preview.context.commit;
   assert.ok(beforeCommit);
@@ -188,7 +252,7 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
   await page.waitForFunction(()=>new URL(location.href).searchParams.get('revision')==='1'&&document.getElementById('architectureEditor').getAttribute('aria-busy')==='false');
   await page.locator('#adoptionView').selectOption(adopted.viewId);
   await page.waitForFunction(id=>new URL(location.href).searchParams.get('viewId')===id,adopted.viewId);
-  // Historical version navigation opens a new document, so supply a fresh audit rationale.
+  // Historical version navigation selects a different stand, so supply a fresh audit rationale.
   await page.locator('#editorRationale').fill('Review undo and redo after historical navigation');
   async function invert(kind) {
     const preview=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith('/editor/preview'));
@@ -210,6 +274,7 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
   await page.locator('#workflow-adopt').waitFor({state:'visible'});
   assert.match(await page.locator('#requirementText').innerText(),/Provide secure resilient command information exchange/);
   return {snapshot,sourceRepository:repository,targetWorkspace:copy.workspaceId,viewId:adopted.viewId,acceptedRevision:1,
+    localSourceInvestigation:{source:frozenInvestigation.source,sourceHash:frozenInvestigation.sourceHash,modelCalls:frozenInvestigation.modelCalls},
     replayed:true,checkpoint:checkpoint.commitId,undo:undone.operationId,redo:redone.operationId,retainedOldRequirement:true,sourceReturn:true,
     projectSelectionVerified:true,productCompletionObserved:true,terminalJobStatus:completed.status};
 }
@@ -232,7 +297,7 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
   assert.ok(initial.document.context.repositoryId);
   assert.ok(initial.document.context.workspaceScopeKey);
   assert.ok(initial.document.context.actor);
-  const measurements = { role, initialElements: initial.model.elements.length, commands: [], expectedFailures, reflow: [] };
+  const measurements = { role, initialElements: initial.model.elements.length, commands: [], expectedFailures, reflow: [], explicitDraftDiscards: [] };
   if (initial.scene.nodes.length) {
     measurements.initialFrame = await measureEditorFrame(page);
     assertReadableEditorFrame(measurements.initialFrame, 'Initial catalogue graph');
@@ -282,7 +347,8 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     return value;
   }
   async function create(type, title, owner = '') {
-    await page.locator('#editorNew').click();
+    await confirmDraftDiscard(page, () => page.locator('#editorNew').click(),
+      measurements.explicitDraftDiscards, 'new element');
     await page.locator('#editorType').selectOption(type);
     await page.locator('#editorTitle').fill(title);
     await page.locator('#editorOwner').fill(owner);
@@ -292,7 +358,8 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
   }
   async function select(id) {
     await page.locator('#editorSearch').fill(id);
-    await page.locator('#editorTree button').first().click();
+    await confirmDraftDiscard(page, () => page.locator('#editorTree button').first().click(),
+      measurements.explicitDraftDiscards, `select ${id}`);
     assert.equal(await page.locator('#editorSelection').innerText(), id);
   }
   async function reflow() {
@@ -325,7 +392,10 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
       await page.locator('#editorNew').waitFor();
     }
     await page.locator('#editorRationale').fill('Browser acceptance architecture decision');
-    await page.locator('#editorTree button').first().click();
+    await confirmDraftDiscard(page, () => page.locator('#editorTree button').first().click(),
+      measurements.explicitDraftDiscards, 'select initial imported element');
+    assert.deepEqual(measurements.explicitDraftDiscards, ['select initial imported element'],
+      'Selecting another element must explicitly confirm the unaccepted rationale');
     const unchanged = await preview(() => page.locator('#editorPreviewElement').click());
     assert.deepEqual(unchanged.change.changes, [], 'Unchanged imported properties must not gain empty fields or defaults');
     assert.equal(await page.locator('#editorAccept').isDisabled(), true);

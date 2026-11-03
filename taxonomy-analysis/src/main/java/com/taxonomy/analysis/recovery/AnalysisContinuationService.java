@@ -246,6 +246,10 @@ public class AnalysisContinuationService {
         return new RequirementRelationSearch.BudgetPolicy(budget.maxCalls(), budget.maxTotalCalls(), store.relationCallsSpent(claim),
                 budget.autoContinue(), budget.maxSources(), budget.maxWorkItems(), cohort);
     }
+    /** Authorized read-only evidence lookup; ordinary recovery reads retain their existing expiry lifecycle. */
+    public AnalysisContinuationStore.Snapshot readEvidence(String id, String username, WorkspaceContext scope) {
+        authorize(username, scope); return store.readEvidence(id, scope);
+    }
     public AnalysisContinuationStore.Snapshot read(String id, String username, WorkspaceContext scope) {
         authorize(username, scope); return store.read(id, scope);
     }

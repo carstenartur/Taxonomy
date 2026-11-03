@@ -109,7 +109,9 @@ function harness(locale = 'en') {
     async copyText(value) { copiedDiagnostics.push(value); }
   };
   const graphSelections = [];
+  const lifecycle = new EventTarget();
   const window = { TaxonomyState: state, TaxonomyI18n: { getLocale: () => locale }, TaxonomyUtils: sharedUtils,
+    addEventListener: lifecycle.addEventListener.bind(lifecycle),
     TaxonomyGraph: {selectNode: code => graphSelections.push(code)},
     TaxonomyBrowse: {
       renderView() { renders++; }, ensureNodeRendered() {}, showStatus(...args) { statuses.push(args); }, clearStatus() {},
@@ -790,7 +792,9 @@ function interactiveHarness(response) {
     applyLocalRawScores(scores) { Object.assign(state.currentRawScores, scores); Object.assign(state.currentScores, scores); },
     appendLlmLogEntry(...args) { logs.push(args); }, syncVisibleScoreNodes() {}
   };
-  const window = { TaxonomyState: state, TaxonomyScoring: scoring };
+  const lifecycle = new EventTarget();
+  const window = { TaxonomyState: state, TaxonomyScoring: scoring,
+    addEventListener: lifecycle.addEventListener.bind(lifecycle) };
   const context = vm.createContext({
     window,
     document: { documentElement: { lang: 'en' }, addEventListener() {}, getElementById: id => id === 'statusArea' ? status : null },

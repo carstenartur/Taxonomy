@@ -173,7 +173,9 @@ function harness({ view = 'list', data = catalogue(), scores = null, interactive
         }));
     const i18n = { getLocale: () => language, t: (key, ...args) => messages.get(key) || (key === 'browse.container.relevance'
         ? 'Area relevance: ' + args[0] + '%' : key === 'browse.container.empty' ? 'No catalogue entries' : key + (args.length ? ': ' + args.join(', ') : '')) };
-    const window = { TaxonomyState: state, TaxonomyI18n: i18n };
+    const lifecycle = new EventTarget();
+    const window = { TaxonomyState: state, TaxonomyI18n: i18n,
+        addEventListener: lifecycle.addEventListener.bind(lifecycle) };
     const context = vm.createContext({ window, document, TaxonomyI18n: i18n, CSS: { escape: value => value },
         CustomEvent: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
         requestAnimationFrame: fn => fn(),

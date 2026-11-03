@@ -550,6 +550,31 @@
 
     // ── Load taxonomy tree from API ───────────────────────────────────────────
     var LOADING_MSG = t('browse.loading.message');
+    var startupPageActive = true;
+    var startupRead = null;
+    var startupRetryTimer = null;
+    var taxonomyLoading = false;
+
+    window.addEventListener('pagehide', function () {
+        startupPageActive = false;
+        clearTimeout(startupRetryTimer); startupRetryTimer = null;
+        if (startupRead) startupRead.abort();
+    });
+    window.addEventListener('pageshow', function (event) {
+        if (!event.persisted || startupPageActive) return;
+        startupPageActive = true;
+        if (taxonomyLoading) loadTaxonomy();
+    });
+
+    function beginStartupRead() {
+        if (startupRead) startupRead.abort();
+        startupRead = new AbortController();
+        return startupRead;
+    }
+
+    function currentStartupRead(controller) {
+        return startupPageActive && startupRead === controller && !controller.signal.aborted;
+    }
 
     /** Shows or hides the global startup banner and disables/enables interactive elements. */
     function setStartupBanner(show, statusText) {
@@ -571,8 +596,13 @@
     }
 
     function loadTaxonomy() {
-        fetch('/api/taxonomy')
+        if (!startupPageActive) return;
+        clearTimeout(startupRetryTimer); startupRetryTimer = null;
+        taxonomyLoading = true;
+        var controller = beginStartupRead();
+        fetch('/api/taxonomy', { signal: controller.signal })
             .then(function (r) {
+                if (!currentStartupRead(controller)) return null;
                 if (r.status === 503) {
                     // Taxonomy is still loading — show global banner and poll until ready
                     setStartupBanner(true);
@@ -584,7 +614,8 @@
                 return r.json();
             })
             .then(function (data) {
-                if (!data) return; // 503 branch already handled
+                if (!currentStartupRead(controller) || !data) return; // 503 branch already handled
+                taxonomyLoading = false;
                 setStartupBanner(false);
                 S.taxonomyData = data;
                 window.TaxonomyAnalysisScope?.render(data);
@@ -596,6 +627,8 @@
                 }
             })
             .catch(function (err) {
+                if (!currentStartupRead(controller)) return;
+                taxonomyLoading = false;
                 setStartupBanner(false);
                 document.getElementById('taxonomyTree').innerHTML =
                     '<div class="alert alert-danger">' + t('browse.load.failed', err) + '</div>';
@@ -604,10 +637,16 @@
 
     /** Polls /api/status/startup every 5 s until the taxonomy is ready, then reloads the tree. */
     function pollStartupStatus() {
-        setTimeout(function () {
-            fetch('/api/status/startup')
-                .then(function (r) { return r.json(); })
+        if (!startupPageActive) return;
+        clearTimeout(startupRetryTimer);
+        var timer = setTimeout(function () {
+            if (!startupPageActive || startupRetryTimer !== timer) return;
+            startupRetryTimer = null;
+            var controller = beginStartupRead();
+            fetch('/api/status/startup', { signal: controller.signal })
+                .then(function (r) { return currentStartupRead(controller) ? r.json() : null; })
                 .then(function (s) {
+                    if (!currentStartupRead(controller)) return;
                     if (s && s.initialized) {
                         setStartupBanner(false);
                         loadTaxonomy();
@@ -622,9 +661,10 @@
                     }
                 })
                 .catch(function () {
-                    pollStartupStatus(); // retry on network error
+                    if (currentStartupRead(controller)) pollStartupStatus(); // retry on network error
                 });
         }, 5000);
+        startupRetryTimer = timer;
     }
 
     function populateTreeRootSelect(data) {

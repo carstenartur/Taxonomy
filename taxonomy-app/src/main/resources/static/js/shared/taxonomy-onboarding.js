@@ -757,24 +757,32 @@
         installExpertShortcuts();
     }
 
-    function init() {
+    function init(automatic) {
         installOverlayLane();
         var preparation = window.TaxonomyDatabaseSetup
             ? window.TaxonomyDatabaseSetup.prepareWelcome() : Promise.resolve(false);
         return preparation.then(function (databasePrompt) {
-            initWelcomeOverlay(databasePrompt);
+            // A direct architecture entry already identifies the user's task.
+            // Leave the guide available on demand without marking it as seen.
+            if (!automatic || window.location.hash !== '#architecture') {
+                initWelcomeOverlay(databasePrompt);
+            }
             initTaskHierarchy();
         });
     }
 
-    function scheduleInit() {
-        return TaxonomyI18n.ready().then(init);
+    function scheduleInit(automatic) {
+        return TaxonomyI18n.ready().then(function () { return init(automatic === true); });
+    }
+
+    function scheduleAutomaticInit() {
+        return scheduleInit(true);
     }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', scheduleInit);
+        document.addEventListener('DOMContentLoaded', scheduleAutomaticInit);
     } else {
-        scheduleInit();
+        scheduleAutomaticInit();
     }
 
     window.TaxonomyOnboarding = {

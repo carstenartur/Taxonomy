@@ -602,7 +602,9 @@
             }
         }
         window.TaxonomyAnalysis?.renderCopilotResult?.(S.currentCopilot);
-        window.__TaxonomyAnalysisSessionContext?.retainAnalysisReference?.(result, { businessText: text, durable: settings.durable === true });
+        window.__TaxonomyAnalysisSessionContext?.retainAnalysisReference?.(result, {
+            businessText:text,provider:provider,analysisScope:requestedScope,durable:settings.durable === true
+        });
         return result;
     }
 
@@ -709,6 +711,11 @@
             if (progress) progress.finish(result.status, true, result.analysisDurationMillis);
             acceptedResult = applyAnalysisResult(result, { text: text, requestedScope: requestedScope, provider: provider,
                 options: options, analysisStart: analysisStart, operationId: operationId, durable: clusterObserved });
+            if (!options.continuation && requestBody.resumable) {
+                // Bind the accepted result and Recovery's private generation together;
+                // ordinary analysis keeps its presentation and has no automatic follow-ups.
+                window.TaxonomyAnalysisRecovery?.bindAnalysisResult(result,requestBody,sessionState.workspaceId);
+            }
             resultHandled = true;
             return acceptedResult;
         }
@@ -765,6 +772,11 @@
         }
 
         if (options.continuation) requestBody = Object.assign({}, options.continuation);
+        else if (requestBody.includeArchitectureView) {
+            requestBody.resumable = true;
+            requestBody.continuationId = operationId;
+            requestBody.continuationAction = 'START';
+        }
         S.activeAnalysisLanguage = requestBody.analysisLanguage || null;
         const workspacePin = sessionState.workspaceId == null ? '' : sessionState.workspaceId;
         var posted = fetch('/api/analyze', {

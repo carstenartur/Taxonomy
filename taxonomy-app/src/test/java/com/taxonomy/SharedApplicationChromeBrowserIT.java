@@ -37,6 +37,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SharedApplicationChromeBrowserIT {
     private static PortfolioClientTestPage page;
     private static WebDriverWait wait;
+    private static final String REQUIREMENT_LOAD_ERROR =
+            "No fixture response for GET /taxonomy/api/projects/42/requirements/7/versions";
     private static final String PINS = "projectId=42&repositoryId=architecture-a&workspaceId=private-a"
             + "&workspaceScopeKey=private-a&branch=review%2Fcurrent&sourceProjectId=12"
             + "&sourceRequirementId=7&sourceRequirementVersionId=9&sourceSnapshotId=frozen-7"
@@ -82,6 +84,39 @@ class SharedApplicationChromeBrowserIT {
         viewport(width, 1000);
         page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of()));
         page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", features)));
+        if (view.template().equals("requirement-detail")) {
+            // A single failed read makes the long error deterministic instead of racing six unrelated 404s.
+            var currentVersion = PortfolioRequirementFixture.version(9, 1, "Retain this requirement while its history is unavailable.");
+            var requirement = Map.ofEntries(
+                    Map.entry("id", 7), Map.entry("projectId", 42), Map.entry("requirementKey", "REQ-7"),
+                    Map.entry("title", "Requirement with unavailable history"), Map.entry("status", "DRAFT"),
+                    Map.entry("reviewStatus", "PROPOSED"), Map.entry("requirementType", "FUNCTIONAL"),
+                    Map.entry("criticality", "HIGH"), Map.entry("ownerUsername", "fixture"),
+                    Map.entry("currentVersionId", 9), Map.entry("currentVersion", currentVersion));
+            page.route("GET", "/taxonomy/api/projects/42", request -> json(200,
+                    Map.of("id", 42, "projectKey", "FIXTURE", "title", "Requirement navigation fixture", "status", "ACTIVE")));
+            page.route("GET", "/taxonomy/api/projects/42/requirements/7", request -> json(200, requirement));
+            page.route("GET", "/taxonomy/api/projects/42/requirements/7/versions", request -> json(404,
+                    Map.of("error", REQUIREMENT_LOAD_ERROR)));
+            page.route("GET", "/taxonomy/api/projects/42/requirements/7/snapshots", request -> json(200, List.of()));
+            page.route("GET", "/taxonomy/api/projects/42/portfolio", request -> json(200,
+                    Map.of("requirements", List.of(requirement), "solutions", List.of())));
+            page.route("GET", "/taxonomy/api/account/me", request -> json(200,
+                    Map.of("username", "fixture", "architectureMutationAllowed", false)));
+            page.route("GET", "/taxonomy/api/projects/42/requirements/7/reformulations", request -> json(200, List.of()));
+            page.route("GET", "/taxonomy/api/projects/42/requirements/7/copilot/latest", request ->
+                    new PortfolioClientTestPage.Response(204, "application/json", ""));
+            page.route("GET", "/taxonomy/api/ai-automation", request -> json(200, new AiAutomationStatus(
+                    AiCostPolicy.METERED, false, false, false, false, null, null,
+                    AnalysisAutomationProfile.FULL, AnalysisAutomationProfile.FULL, 1, 1, 100,
+                    "No provider configured for this browser fixture.", List.of(), List.of("Human review remains required."))));
+            page.route("GET", "/taxonomy/api/architecture/lifecycle", request -> json(200, Map.of(
+                    "context", Map.of("repositoryId", "architecture-a", "workspaceScopeKey", "private-a",
+                            "branch", "review/current", "commit", "a".repeat(40), "revision", 1),
+                    "architectureTitle", "Requirement navigation fixture", "source", "WORKSPACE_REVISION",
+                    "projectionState", "CURRENT", "publicationState", "CURRENT", "mayEdit", false,
+                    "projects", List.of(), "requirements", List.of(), "dependencies", List.of())));
+        }
         page.openAt(view.template(), "/taxonomy", "/taxonomy" + view.path(), locale,
                 """
                 (function () {
@@ -97,6 +132,14 @@ class SharedApplicationChromeBrowserIT {
                 Map.of("projectId", 42, "snapshotId", "frozen-7"));
         wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript(
                 "return !!window.TaxonomyI18n && TaxonomyI18n.isLoaded();")));
+        if (view.template().equals("requirement-detail")) {
+            wait.until(ExpectedConditions.textToBe(By.id("detailError"), REQUIREMENT_LOAD_ERROR));
+            wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("detailBusy")));
+            wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#reformulationList > p")));
+            wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("copilotPolicy"),
+                    "No provider configured for this browser fixture."));
+            assertThat(page.driver().findElement(By.id("copilotError")).isDisplayed()).isFalse();
+        }
         if (view.template().equals("index")) {
             // Complete the real first-run dialog before testing the page behind it.
             wait.until(ExpectedConditions.elementToBeClickable(By.id("onboardingDismiss"))).click();
@@ -106,14 +149,16 @@ class SharedApplicationChromeBrowserIT {
 
     @ParameterizedTest(name = "{0} shares navigation in {1} at {2}px")
     @MethodSource("views")
-    void existingViewsShareAccessibleNavigationWithoutLosingTheirControls(View view, String locale, int width) {
+    void existingViewsShareAccessibleNavigationWithoutLosingTheirControls(View view, String locale, int width) throws IOException {
         open(view, locale, width);
         var navigation = page.driver().findElements(By.id("applicationNavigation"));
         assertThat(navigation).as("Every existing view has the same application navigation").hasSize(1);
         assertThat(navigation.getFirst().getAccessibleName()).isNotBlank();
         var links = page.driver().findElements(By.cssSelector(".taxonomy-app-primary [data-app-route]"));
         assertThat(links).extracting(link -> link.getDomAttribute("data-app-route"))
-                .containsExactly("projects", "analysis", "architecture");
+                .containsExactly("projects", "analysis", "architecture", "graph", "versions", "dsl-editor");
+        assertThat(page.driver().findElements(By.cssSelector("[data-app-route='architecture']")))
+                .as("Architecture has one primary destination in every application view").hasSize(1);
         assertThat(page.driver().findElement(By.cssSelector("[data-app-route='" + view.active() + "']"))
                 .getDomAttribute("aria-current")).isEqualTo("page");
         for (var link : links) {
@@ -125,15 +170,55 @@ class SharedApplicationChromeBrowserIT {
                             "branch=review%2Fcurrent", "sourceSnapshotId=frozen-7", "sourceRepositoryId=architecture-source",
                             "sourceBranch=review%2Fsource", "lang=" + locale);
         }
-        assertThat(links.get(2).getDomAttribute("href")).startsWith("/taxonomy/architecture/editor?");
+        assertThat(links.get(2).getDomAttribute("href")).startsWith("/taxonomy/?").endsWith("#architecture");
         assertThat(page.driver().findElements(By.id(view.retainedControl()))).hasSize(1);
-        assertThat(page.driver().executeScript("""
-                const nav=document.getElementById('applicationNavigation'), r=nav.getBoundingClientRect();
-                return [...nav.querySelectorAll('.taxonomy-app-primary a')].every(a => {
-                    const b=a.getBoundingClientRect();
-                    return b.width>=44 && b.height>=44 && b.left>=0 && b.right<=innerWidth+1;
-                }) && r.right<=innerWidth+1;
-                """)).as("Navigation stays usable without horizontal clipping").isEqualTo(true);
+        var navigationGeometry = (Map<?, ?>) page.driver().executeAsyncScript("""
+                const done=arguments[arguments.length-1];
+                (async()=>{
+                    const nav=document.getElementById('applicationNavigation');
+                    for (const link of nav.querySelectorAll('.taxonomy-app-primary a')) {
+                        // The shared mobile row may scroll, but browser focus must reveal every destination.
+                        link.focus();
+                        const deadline=performance.now()+1500;
+                        let bounds;
+                        do {
+                            await new Promise(resolve=>requestAnimationFrame(resolve));
+                            bounds=link.getBoundingClientRect();
+                        } while ((bounds.left<0 || bounds.right>innerWidth+1) && performance.now()<deadline);
+                        if (document.activeElement!==link || bounds.width<44 || bounds.height<44
+                                || bounds.left<0 || bounds.right>innerWidth+1) return {valid:false,
+                            route:link.dataset.appRoute,focused:document.activeElement===link,
+                            left:bounds.left,right:bounds.right,width:bounds.width,height:bounds.height,viewport:innerWidth};
+                    }
+                    const right=nav.getBoundingClientRect().right,scrollWidth=document.documentElement.scrollWidth;
+                    const overflow=scrollWidth>innerWidth+1 ? [...document.body.querySelectorAll('*')]
+                        .filter(element=>element.getClientRects().length && element.getBoundingClientRect().right>innerWidth+1)
+                        .slice(0,30).map(element=>{
+                            const r=element.getBoundingClientRect(),css=getComputedStyle(element);
+                            return {tag:element.tagName,id:element.id,classes:element.className,
+                                left:r.left,right:r.right,width:r.width,display:css.display,
+                                minWidth:css.minWidth,whiteSpace:css.whiteSpace,overflowX:css.overflowX};
+                        }) : [];
+                    return {valid:right<=innerWidth+1 && scrollWidth<=innerWidth+1,right,scrollWidth,viewport:innerWidth,overflow};
+                })().then(done);
+                """);
+        if (!Boolean.TRUE.equals(navigationGeometry.get("valid"))) {
+            Path evidence = Path.of("target", "shared-application-chrome", view.template() + "-" + locale + "-" + width);
+            Files.createDirectories(evidence);
+            Files.write(evidence.resolve("viewport.png"), page.driver().getScreenshotAs(OutputType.BYTES));
+            Files.writeString(evidence.resolve("geometry.json"), json(navigationGeometry));
+        }
+        assertThat(navigationGeometry.get("valid"))
+                .as("Every focused navigation destination remains fully visible with a 44px target and no page overflow: %s", navigationGeometry)
+                .isEqualTo(true);
+        if (view.template().equals("requirement-detail")) {
+            assertThat(page.driver().executeScript("""
+                    const error=document.getElementById('detailError'),box=error.getBoundingClientRect(),range=document.createRange();
+                    range.selectNodeContents(error);
+                    return [...range.getClientRects()].every(r=>r.left>=box.left && r.right<=box.right
+                        && r.top>=box.top && r.bottom<=box.bottom && r.right<=innerWidth);
+                    """)).as("The complete failed-read message wraps visibly inside its alert, without clipping the URL").isEqualTo(true);
+        }
         if (view.template().equals("index")) {
             assertThat(page.driver().findElement(By.id("projectMenuButton")).isDisplayed()).isTrue();
             assertThat(page.driver().findElements(By.id("mainNavTabs"))).hasSize(1);
@@ -255,19 +340,26 @@ class SharedApplicationChromeBrowserIT {
             Files.writeString(evidence.resolve("page.html"), page.driver().getPageSource());
         }
         assertThat(geometry.get("valid")).as("The loaded German analysis preserves the existing CI useful-input and primary-action viewport gates: %s", geometry).isEqualTo(true);
+        assertThat(page.driver().executeScript("""
+                const source=TaxonomyAppChrome.getContext().architecture;
+                return source.repositoryId===arguments[0] && source.branch==='draft'
+                    && [source.modelStand,source.commit,source.revision].every(value=>value==null);
+                """, COMPACT_REPOSITORY))
+                .as("Analysis metadata identifies its repository and branch without claiming the working model's stand").isEqualTo(true);
         var context = page.driver().findElement(By.id("applicationContextDisclosure"));
         if (width == 390) {
             assertThat(context.getDomProperty("open")).isEqualTo("false");
             var summary = page.driver().findElement(By.id("applicationContextSummary"));
-            assertThat(summary.getText()).contains("Shared Architecture Repository", "draft", COMPACT_COMMIT.substring(0, 12));
+            assertThat(summary.getText()).contains("Shared Architecture Repository", "draft").doesNotContain(COMPACT_COMMIT.substring(0, 12));
             assertThat(summary.findElement(By.cssSelector(".taxonomy-status[data-state='READ_ONLY']")).isDisplayed()).isTrue();
             summary.sendKeys(Keys.ENTER);
             assertThat(context.getDomProperty("open")).isEqualTo("true");
             assertThat(page.driver().findElement(By.id("applicationCurrentContext")).isDisplayed()).isTrue();
-            assertThat(page.driver().findElement(By.id("architectureLifecycle")).isDisplayed()).isTrue();
+            assertThat(page.driver().findElement(By.id("architectureLifecycle")).isDisplayed())
+                    .as("Working-model lifecycle controls belong to the Working architecture source").isFalse();
             var technical = page.driver().findElement(By.id("applicationTechnicalContext"));
             technical.findElement(By.tagName("summary")).sendKeys(Keys.ENTER);
-            assertThat(technical.getText()).contains(COMPACT_REPOSITORY, COMPACT_COMMIT);
+            assertThat(technical.getText()).contains(COMPACT_REPOSITORY).doesNotContain(COMPACT_COMMIT);
             summary.sendKeys(Keys.ENTER);
             assertThat(context.getDomProperty("open")).isEqualTo("false");
             assertThat(page.driver().switchTo().activeElement()).isEqualTo(summary);
@@ -293,9 +385,31 @@ class SharedApplicationChromeBrowserIT {
                         Map.entry("version", 2), Map.entry("versionId", 22), Map.entry("contentHash", "fixture-hash"),
                         Map.entry("text", "Authored fixture requirement"), Map.entry("realization", Map.of("state", "INVALID_EVIDENCE")),
                         Map.entry("contributors", List.of()), Map.entry("links", List.of()))))));
+        if (status == 404) {
+            // A failed working stand belongs to the explicit working source;
+            // Analysis must never inherit this commit as its evidence identity.
+            var workingContext = Map.of("repositoryId", "architecture-a", "workspaceScopeKey", "private-a",
+                    "branch", "review/current", "commit", COMPACT_COMMIT, "revision", 4,
+                    "actor", "acceptance", "writeMode", "READ_ONLY");
+            page.route("GET", "/taxonomy/api/architecture/editor", request -> json(200, Map.of(
+                    "document", Map.of("context", workingContext, "source", "GIT_CHECKPOINT", "projectionState", "READY",
+                            "dsl", "", "history", List.of(), "versions", List.of()), "mayEdit", false,
+                    "model", Map.of("elements", List.of(), "relations", List.of(), "evidence", List.of(),
+                            "packages", List.of(), "views", List.of(), "requirements", List.of()),
+                    "scene", Map.of("nodes", List.of(), "edges", List.of(), "width", 1000, "height", 420),
+                    "searchIndex", List.of(), "schema", Map.of("elementTypes", List.of("capability"), "relationTypes", List.of("SUPPORTS"),
+                            "relationStatuses", List.of("proposed"), "layoutStrategy", "stable", "layoutRevision", 0))));
+            assertThat(page.driver().executeAsyncScript("""
+                    const done=arguments[arguments.length-1];
+                    TaxonomyArchitectureWorkspace.open('working',{source:{repositoryId:'architecture-a',
+                        workspaceScopeKey:'private-a',branch:'review/current'}}).then(done);
+                    """)).isEqualTo(true);
+            assertThat(page.driver().findElement(By.id("editorError")).isDisplayed()).isFalse();
+        }
         page.driver().executeAsyncScript("""
                 const done=arguments[arguments.length-1];
-                TaxonomyAppChrome.updateContext({requirement:{id:7,key:'REQ-7',title:'Access requirement',version:2}});
+                TaxonomyAppChrome.updateContext({requirement:{id:7,key:'REQ-7',title:'Access requirement',version:2}},
+                    window.TaxonomyArchitectureWorkspace?.isActive()?'working':undefined);
                 TaxonomyArchitectureLifecycle.refresh().then(done);
                 """);
         var context = page.driver().findElement(By.id("applicationContextDisclosure"));

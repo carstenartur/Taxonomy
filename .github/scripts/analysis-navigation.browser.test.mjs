@@ -33,9 +33,12 @@ function headerMarkup(locale){
     assert.ok(end>afterHeader,'Retain the production operational-status staging area');
     return header+template.slice(afterHeader,end);
 }
-async function fixture(locale='de',width=1366){
+async function fixture(locale='de',width=1366,entry=null){
     const page=await browser.newPage({viewport:{width,height:768}});page.setDefaultTimeout(2500);
     page.uiErrors=[]; page.on('pageerror',error=>page.uiErrors.push(error.message));
+    await page.route('http://taxonomy.test/taxonomy/',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><html></html>'}));
+    await page.goto('http://taxonomy.test/taxonomy/');
+    if(entry)await page.evaluate(url=>history.replaceState(null,'',url),entry);
     let dict={};
     for(const name of ['messages.properties',...(locale==='de'?['messages_de.properties']:[])]){
         for(const line of (await readFile(path.join(resources,'i18n',name),'utf8')).split('\n')){
@@ -59,11 +62,75 @@ async function fixture(locale='de',width=1366){
         await page.addStyleTag({path:path.join(resources,'static/css',css)});
     await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-state.js')});
     await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-utils.js')});
+    await page.addScriptTag({path:path.join(resources,'static/js/shared/application-chrome.js')});
     const nav=template.match(/<!-- Page Navigation Script -->\s*<script>([\s\S]*?)<\/script>/);
     assert.ok(nav);await page.addScriptTag({content:nav[1]});
     return page;
 }
+async function firstVisitWelcome(page,databasePrompt=false){
+    await page.evaluate(prompt=>{
+        localStorage.removeItem('taxonomy_onboarded');
+        window.welcomePromptDismissals=0;
+        window.TaxonomyDatabaseSetup={
+            prepareWelcome:()=>Promise.resolve(prompt),
+            decorateWelcome:dialog=>{dialog.dataset.databaseSetupPrompt='true';},
+            dismissPrompt:()=>{window.welcomePromptDismissals++;}
+        };
+    },databasePrompt);
+    await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-onboarding.js')});
+    await page.locator('#analysisTaskProgress').waitFor({state:'attached'});
+}
+for(const [source,entry] of [
+    ['current','/taxonomy/#architecture'],
+    ['analysis','/taxonomy/?architectureSource=analysis#architecture'],
+    ['snapshot','/taxonomy/?architectureSource=snapshot&projectId=42&snapshotId=recorded-A#architecture'],
+    ['working','/taxonomy/?architectureSource=working&repositoryId=repo&workspaceId=&workspaceScopeKey=__shared__&branch=draft#architecture']
+])for(const databasePrompt of [false,true])test(`${source} architecture entry remains usable before onboarding (${databasePrompt?'database prompt':'welcome only'})`,async()=>{
+    const page=await fixture('en',1366,entry);try{
+        await firstVisitWelcome(page,databasePrompt);
+        assert.equal(await page.locator('#onboardingOverlay').count(),0,'An explicit architecture destination must not become inert behind the first-visit dialog');
+        assert.equal(await page.evaluate(()=>localStorage.getItem('taxonomy_onboarded')),null,'Opening architecture must not pretend that the introduction was seen');
+        assert.equal(await page.evaluate(()=>window.welcomePromptDismissals),0,'A retained database setup prompt must not be dismissed implicitly');
+        assert.equal(await page.locator('#tab-architecture').isVisible(),true);
+        const architecture=page.locator('#mainNavTabs [data-page="architecture"]');
+        await architecture.click();
+        await page.locator('[data-page="help"]').first().click();
+        assert.equal(await page.locator('#tab-help').isVisible(),true,'Help remains explicitly available');
+        await architecture.click();
+        await page.evaluate(async()=>{TaxonomyOnboarding.reset();await TaxonomyOnboarding.init();});
+        await page.locator('#onboardingOverlay[open]').waitFor({state:'visible'});
+        await page.waitForFunction(()=>document.activeElement?.id==='onboardingDismiss');
+        await page.keyboard.press('Escape');
+        await page.locator('#onboardingOverlay').waitFor({state:'detached'});
+        await page.waitForFunction(()=>document.activeElement?.matches('#mainNavTabs [data-page="architecture"]'));
+        assert.equal(await page.evaluate(()=>localStorage.getItem('taxonomy_onboarded')),'1');
+        assert.equal(await page.evaluate(()=>window.welcomePromptDismissals),databasePrompt?1:0);
+    }finally{await finish(page);}
+});
+for(const entry of ['/taxonomy/','/taxonomy/?architectureSource=snapshot#analyze'])test(`first analysis visit still opens its welcome dialog (${entry})`,async()=>{
+    const page=await fixture('en',1366,entry);try{
+        await firstVisitWelcome(page,true);
+        await page.locator('#onboardingOverlay[open]').waitFor({state:'visible'});
+        assert.equal(await page.evaluate(()=>localStorage.getItem('taxonomy_onboarded')),null);
+        await page.locator('#onboardingDismiss').click();
+        await page.locator('#onboardingOverlay').waitFor({state:'detached'});
+        assert.equal(await page.locator('#tab-analyze').isVisible(),true);
+        assert.equal(await page.evaluate(()=>localStorage.getItem('taxonomy_onboarded')),'1');
+        assert.equal(await page.evaluate(()=>window.welcomePromptDismissals),1);
+    }finally{await finish(page);}
+});
 for(const locale of ['de','en']){
+    test(`${locale}: Architecture has one destination and switching sections retains the analysis draft`,async()=>{
+        const page=await fixture(locale);try{
+            await page.locator('#businessText').fill('Retained requirement draft');
+            const architecture=page.locator('#applicationNavigation a[data-app-route="architecture"], #applicationNavigation a[data-page="architecture"]');
+            assert.equal(await architecture.count(),1,'One Architecture entry must have one coherent destination');
+            await architecture.click();
+            assert.equal(await page.locator('#tab-architecture').isVisible(),true);
+            await page.locator('#mainNavTabs [data-page="analyze"]').click();
+            assert.equal(await page.locator('#businessText').inputValue(),'Retained requirement draft');
+        }finally{await finish(page);}
+    });
     test(`${locale}: compact desktop header keeps Help and About together`,async()=>{
         const page=await fixture(locale);try{
             const help=page.locator('[data-page="help"]').first(),about=page.locator('#aboutBtn');
@@ -93,12 +160,32 @@ for(const locale of ['de','en']){
             const h=await help.boundingBox(),a=await about.boundingBox();assert.ok(Math.abs(h.y-a.y)<=2);
             const sizes=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));
             assert.ok(sizes.scroll<=sizes.width,JSON.stringify(sizes));
-            const selector=page.locator('#mobileMainNavigationSelect');
-            const selectorBox=await selector.boundingBox();
-            assert.ok(selectorBox&&selectorBox.height>=44,
-                `Mobile section selector must retain its 44px touch target: ${JSON.stringify(selectorBox)}`);
-            await selector.selectOption('versions');
-            assert.equal(await page.locator('#tab-versions').isVisible(),true);
+            assert.equal(await page.locator('#mobileMainNavigationSelect:visible').count(),0,'One visible primary navigation');
+            for(const destination of ['analyze','architecture','graph','versions','dsl-editor']){
+                const link=page.locator('#mainNavTabs [data-page="'+destination+'"]');
+                const box=await link.boundingBox();
+                assert.ok(box&&box.height>=44,`Primary destination retains its 44px touch target: ${destination} ${JSON.stringify(box)}`);
+                await link.focus();
+                await page.waitForFunction(destination=>{
+                    const link=document.querySelector('#mainNavTabs [data-page="'+destination+'"]');
+                    const box=link.getBoundingClientRect(),row=link.closest('#mainNavTabs').getBoundingClientRect();
+                    return document.activeElement===link && box.left>=Math.max(0,row.left)-1
+                        && box.right<=Math.min(innerWidth,row.right)+1;
+                },destination).catch(async()=>{
+                    const geometry=await link.evaluate(link=>{
+                        const row=link.closest('#mainNavTabs'),box=link.getBoundingClientRect(),bounds=row.getBoundingClientRect();
+                        return {destination:link.dataset.page,focused:document.activeElement===link,
+                            left:box.left,right:box.right,rowLeft:bounds.left,rowRight:bounds.right,
+                            scrollLeft:row.scrollLeft,scrollWidth:row.scrollWidth,clientWidth:row.clientWidth,
+                            snap:getComputedStyle(row).scrollSnapType,overflow:getComputedStyle(row).overflowX,viewport:innerWidth};
+                    });
+                    assert.fail('Focused destination must be completely visible: '+JSON.stringify(geometry));
+                });
+                await link.click();
+                assert.equal(await page.locator('#tab-'+destination).isVisible(),true);
+            }
+            await page.locator('#mainNavTabs [data-page="analyze"]').focus();await page.keyboard.press('End');
+            assert.equal(await page.locator('#tab-dsl-editor').isVisible(),true);
             await help.click();assert.equal(await page.locator('#tab-help').isVisible(),true);
         }finally{await finish(page);}
     });

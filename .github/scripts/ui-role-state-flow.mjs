@@ -262,9 +262,8 @@ export async function runRoleStateFlow({
     const secondary = document.getElementById('analysisSecondaryTools');
     const progressRect = progress?.getBoundingClientRect();
     const primaryRect = primary?.getBoundingClientRect();
-    const responsiveNavigation = document.getElementById('mobileMainNavigation');
-    const responsiveSelect = document.getElementById('mobileMainNavigationSelect');
-    const responsiveRect = responsiveNavigation?.getBoundingClientRect();
+    const navigation = document.querySelector('.taxonomy-app-primary');
+    const navigationRect = navigation?.getBoundingClientRect();
     const authorizedPages = Array.from(
       document.querySelectorAll('#mainNavTabs .nav-link[data-page]'))
       .filter(link => {
@@ -272,9 +271,8 @@ export async function runRoleStateFlow({
         return item && getComputedStyle(item).display !== 'none';
       })
       .map(link => link.dataset.page);
-    const responsivePages = Array.from(responsiveSelect?.options || [], option => option)
-      .filter(option => option.value && !option.disabled)
-      .map(option => option.value);
+    const primaryRoutes = Array.from(navigation?.querySelectorAll('[data-app-route]') || [])
+      .map(link => link.dataset.appRoute);
     const focusable = Boolean(primary && !primary.disabled
       && primary.tabIndex >= 0 && getComputedStyle(primary).visibility !== 'hidden');
     return {
@@ -282,14 +280,14 @@ export async function runRoleStateFlow({
       progressTop: progressRect?.top ?? Number.POSITIVE_INFINITY,
       viewportHeight: window.innerHeight,
       viewportWidth: window.innerWidth,
-      responsiveNavigationVisible: Boolean(responsiveRect
-        && responsiveRect.width > 0 && responsiveRect.height > 0),
-      responsiveNavigationInsideViewport: Boolean(responsiveRect
-        && responsiveRect.top >= 0 && responsiveRect.bottom <= window.innerHeight),
+      navigationVisible: Boolean(navigationRect
+        && navigationRect.width > 0 && navigationRect.height > 0),
+      navigationInsideViewport: Boolean(navigationRect
+        && navigationRect.top >= 0 && navigationRect.bottom <= window.innerHeight),
       taskReachable: Boolean((progressRect && progressRect.top < window.innerHeight)
         || (primaryRect && primaryRect.top >= 0 && primaryRect.bottom <= window.innerHeight)),
       authorizedPages,
-      responsivePages,
+      primaryRoutes,
       primaryVisible: Boolean(primaryRect && primaryRect.width > 0 && primaryRect.height > 0),
       primaryEnabled: Boolean(primary && !primary.disabled),
       primaryFocusable: focusable,
@@ -315,14 +313,15 @@ export async function runRoleStateFlow({
   assert(taskSurface.primaryVisible && taskSurface.primaryEnabled && taskSurface.primaryFocusable,
     'Primary Analyze action is not visible, enabled and focusable');
   if (taskSurface.viewportWidth < 992) {
-    assert(taskSurface.responsiveNavigationVisible
-      && taskSurface.responsiveNavigationInsideViewport,
-    'Responsive section navigation is not discoverable before any automatic scroll');
+    assert(taskSurface.navigationVisible && taskSurface.navigationInsideViewport,
+      'Shared primary navigation is not discoverable before any automatic scroll');
     assert(taskSurface.taskReachable,
       'Neither task progression nor the primary action is initially reachable');
-    assert(JSON.stringify(taskSurface.responsivePages)
-      === JSON.stringify(taskSurface.authorizedPages),
-    `Responsive destinations differ from authorized tabs: ${JSON.stringify(taskSurface)}`);
+    assert(JSON.stringify(taskSurface.primaryRoutes)
+      === JSON.stringify(['projects', 'analysis', 'architecture', 'graph', 'versions', 'dsl-editor'])
+      && JSON.stringify(taskSurface.authorizedPages)
+      === JSON.stringify(['analyze', 'architecture', 'graph', 'versions', 'dsl-editor']),
+    `Shared navigation lost a primary destination: ${JSON.stringify(taskSurface)}`);
     assert(taskSurface.progressTop <= taskSurface.viewportHeight
       || taskSurface.primaryInsideViewport,
     `Neither task progression nor the primary action is initially reachable: `
@@ -722,10 +721,6 @@ export async function runRoleStateFlow({
     const right = document.getElementById('rightPanel');
     const row = left?.parentElement;
     const navigation = document.getElementById('mainNavTabs');
-    const responsiveNavigation = document.getElementById('mobileMainNavigation');
-    const responsiveSelect = document.getElementById('mobileMainNavigationSelect');
-    const responsiveRect = responsiveNavigation?.getBoundingClientRect();
-    const selectorRect = responsiveSelect?.getBoundingClientRect();
     const authorizedPages = Array.from(navigation?.querySelectorAll('.nav-link[data-page]') || [])
       .filter(link => {
         const item = link.closest('.nav-item');
@@ -741,15 +736,7 @@ export async function runRoleStateFlow({
       leftPrecedesRightInDom: Boolean(left && right
         && (left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING)),
       taskOrder: row?.dataset.taskOrder || '',
-      desktopNavigationDisplayed: getComputedStyle(navigation).display !== 'none',
-      responsiveNavigationVisible: Boolean(responsiveRect
-        && responsiveRect.width > 0 && responsiveRect.height > 0),
-      responsiveSelectorKeyboardReachable: Boolean(responsiveSelect
-        && !responsiveSelect.disabled && responsiveSelect.tabIndex >= 0
-        && selectorRect && selectorRect.width > 0 && selectorRect.height > 0),
-      responsivePages: Array.from(responsiveSelect?.options || [], option => option)
-        .filter(option => option.value && !option.disabled)
-        .map(option => option.value),
+      sharedNavigationDisplayed: getComputedStyle(navigation).display !== 'none',
       authorizedPages
     };
   });
@@ -760,15 +747,36 @@ export async function runRoleStateFlow({
     assert(taskHierarchy.rightPrecedesLeftInDom && taskHierarchy.taskOrder === 'primary-first',
       'Primary task must also precede the taxonomy browser in reading and focus order');
     passed('primary task precedes taxonomy browser visually and structurally');
-    assert(!taskHierarchy.desktopNavigationDisplayed
-      && taskHierarchy.responsiveNavigationVisible,
-    'Narrow viewport must retain explicit responsive navigation after task interactions');
-    assert(taskHierarchy.responsiveSelectorKeyboardReachable,
-      'Responsive section selector is not keyboard reachable after task interactions');
-    assert(JSON.stringify(taskHierarchy.responsivePages)
-      === JSON.stringify(taskHierarchy.authorizedPages),
-    `Responsive navigation lost authorized destinations: ${JSON.stringify(taskHierarchy)}`);
-    passed('responsive navigation remains structurally available after task interactions');
+    assert(taskHierarchy.sharedNavigationDisplayed,
+      'Narrow viewport must retain the shared primary navigation after task interactions');
+    assert(JSON.stringify(taskHierarchy.authorizedPages)
+      === JSON.stringify(['analyze', 'architecture', 'graph', 'versions', 'dsl-editor']),
+    `Shared navigation lost authorized destinations: ${JSON.stringify(taskHierarchy)}`);
+    assert(await page.locator('.mobile-main-navigation:visible, #mobileMainNavigationSelect:visible').count() === 0,
+      'The application exposes a second visible primary navigation');
+    await navigateToPage(page, 'analyze');
+    await page.locator('#mainNavTabs [data-page="analyze"]').focus();
+    for (const [index, destination] of taskHierarchy.authorizedPages.entries()) {
+      if (index) await page.keyboard.press('ArrowRight');
+      await page.waitForFunction(destination => document.querySelector(
+        `#mainNavTabs [data-page="${destination}"]`)?.getAttribute('aria-selected') === 'true', destination);
+      const link = page.locator(`#mainNavTabs [data-page="${destination}"]`);
+      assert(await link.evaluate(element => document.activeElement === element),
+        `Arrow-key navigation lost focus at ${destination}`);
+      const bounds = await link.boundingBox();
+      assert(bounds && bounds.height >= 44 && bounds.x >= 0
+        && bounds.x + bounds.width <= taskHierarchy.viewportWidth + 1,
+      `The focused ${destination} destination is not visible with its 44px touch target: ${JSON.stringify(bounds)}`);
+      assert(await page.locator(`#tab-${destination}`).isVisible(),
+        `Keyboard navigation did not reveal ${destination}`);
+    }
+    await page.keyboard.press('Home');
+    await page.locator('#tab-analyze').waitFor({ state: 'visible' });
+    const projects = page.locator('.taxonomy-app-primary [data-app-route="projects"]');
+    await projects.focus();
+    assert(await projects.isVisible() && await projects.evaluate(element => document.activeElement === element),
+      'The Projects destination is not keyboard reachable');
+    passed('shared navigation retains every destination and keyboard access after task interactions');
   } else {
     assert(taskHierarchy.leftPrecedesRightInDom && taskHierarchy.taskOrder === 'reference-first',
       'Desktop reading and focus order must match the left-to-right panel layout');

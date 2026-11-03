@@ -1,6 +1,8 @@
 package com.taxonomy.portfolio.workbench;
 
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.editor.ArchitectureWorkspaceRedirect;
+import com.taxonomy.model.WorkspaceOverlayScope;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.portfolio.workbench.ArchitectureSnapshotExportService.Artifact;
@@ -20,7 +22,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.util.MultiValueMap;
+import org.springframework.util.LinkedMultiValueMap;
 
 import java.nio.charset.StandardCharsets;
 
@@ -65,20 +68,22 @@ public class ArchitectureWorkbenchController {
     }
 
     @GetMapping("/architecture/workbench")
-    public String workbenchPage(
-            @RequestParam(required = false) Long projectId,
-            @RequestParam(required = false) String snapshotId,
-            Model model) {
-        model.addAttribute("projectId", projectId);
-        model.addAttribute("snapshotId", snapshotId);
-        model.addAttribute("archimateMappingProfile", com.taxonomy.archimate.exchange.ArchiMateExchangeProfile.VERSION);
-        return "architecture-workbench";
+    public String workbenchPage(@RequestParam MultiValueMap<String,String> coordinates) {
+        return ArchitectureWorkspaceRedirect.snapshot(coordinates);
+    }
+
+    public String workbenchPage(Long projectId, String snapshotId, Model model) {
+        var coordinates = new LinkedMultiValueMap<String,String>();
+        if (projectId != null) coordinates.set("projectId",projectId.toString());
+        if (snapshotId != null) coordinates.set("snapshotId",snapshotId);
+        return workbenchPage(coordinates);
     }
 
     @GetMapping("/projects/{projectId}/requirements/{requirementId}/architecture")
     public String currentRequirementArchitecture(
             @PathVariable Long projectId,
-            @PathVariable Long requirementId) {
+            @PathVariable Long requirementId,
+            @RequestParam MultiValueMap<String,String> requestedCoordinates) {
         RequestScope scope = scope();
         RequirementView requirement = projectService.getRequirement(
                 projectId,
@@ -92,13 +97,25 @@ public class ArchitectureWorkbenchController {
                             + " has no current architecture snapshot. "
                             + "Analyze the current version first.");
         }
-        String target = UriComponentsBuilder.fromPath("/architecture/workbench")
-                .queryParam("projectId", projectId)
-                .queryParam("snapshotId", snapshotId)
-                .build()
-                .encode()
-                .toUriString();
-        return "redirect:" + target;
+        // Use the already authorized effective scope, never stale incoming source pins.
+        var coordinates = new LinkedMultiValueMap<>(requestedCoordinates);
+        String workspaceId = scope.context().workspaceId() == null ? "" : scope.context().workspaceId();
+        String scopeKey = workspaceId.isBlank() ? WorkspaceOverlayScope.CENTRAL_SCOPE_KEY : workspaceId;
+        coordinates.set("projectId",projectId.toString()); coordinates.set("sourceProjectId",projectId.toString());
+        coordinates.set("requirementId",requirementId.toString()); coordinates.set("sourceRequirementId",requirementId.toString());
+        coordinates.set("snapshotId",snapshotId); coordinates.set("sourceSnapshotId",snapshotId);
+        coordinates.set("workspaceId",workspaceId); coordinates.set("sourceWorkspaceId",workspaceId);
+        coordinates.set("workspaceScopeKey",scopeKey); coordinates.set("sourceWorkspaceScopeKey",scopeKey);
+        coordinates.set("repositoryId",scope.context().repositoryId()); coordinates.set("sourceRepositoryId",scope.context().repositoryId());
+        coordinates.set("branch",scope.context().currentBranch()); coordinates.set("sourceBranch",scope.context().currentBranch());
+        // The current requirement version can differ from the snapshot's captured version.
+        // The authoritative workbench projection supplies that version after the redirect.
+        coordinates.remove("requirementVersionId"); coordinates.remove("sourceRequirementVersionId");
+        return ArchitectureWorkspaceRedirect.snapshot(coordinates);
+    }
+
+    public String currentRequirementArchitecture(Long projectId, Long requirementId) {
+        return currentRequirementArchitecture(projectId,requirementId,new LinkedMultiValueMap<>());
     }
 
     @GetMapping("/api/projects/{projectId}/architecture-workbench/{snapshotId}")

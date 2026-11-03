@@ -358,8 +358,28 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
   await verifyReadingErgonomics({ page, evidence });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('#mobileMainNavigation').waitFor({ state: 'visible', timeout: 10_000 });
+  const sharedNavigation = page.locator('#applicationNavigation #mainNavTabs');
+  await sharedNavigation.waitFor({ state: 'visible', timeout: 10_000 });
+  const destinations = await sharedNavigation.locator('.nav-link[data-page]').evaluateAll(links =>
+    links.filter(link => getComputedStyle(link.closest('.nav-item')).display !== 'none')
+      .map(link => link.dataset.page));
+  assert(JSON.stringify(destinations)
+    === JSON.stringify(['analyze', 'architecture', 'graph', 'versions', 'dsl-editor']),
+  `Mobile shared navigation lost an authorized destination: ${JSON.stringify(destinations)}`);
+  assert(await page.locator('.mobile-main-navigation:visible').count() === 0,
+    'Mobile analysis must not expose a second primary navigation');
   await navigateToPage(page, 'analyze');
+  const analyzeTab = sharedNavigation.locator('[data-page="analyze"]');
+  await analyzeTab.focus();
+  const analyzeTarget = await analyzeTab.evaluate(link => {
+    const rect = link.getBoundingClientRect();
+    return { focused: document.activeElement === link, left: rect.left, right: rect.right,
+      width: rect.width, height: rect.height, viewport: innerWidth };
+  });
+  assert(analyzeTarget.focused && analyzeTarget.width >= 44 && analyzeTarget.height >= 44
+    && analyzeTarget.left >= 0 && analyzeTarget.right <= analyzeTarget.viewport + 1,
+  `Mobile Analyze navigation must retain a fully visible keyboard/touch target: ${JSON.stringify(analyzeTarget)}`);
+  passed('mobile shared navigation retains all destinations and a visible keyboard/touch target');
   await page.locator('#businessText').fill(changedRequirement);
   await page.locator('#businessText.stale-results').waitFor({ state: 'visible', timeout: 10_000 });
   await page.waitForFunction(() =>

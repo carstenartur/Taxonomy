@@ -68,6 +68,52 @@ function harness(language = 'en') {
     reject: error=>rejectPending(error), recovery:window.TaxonomyAnalysisRecovery};
 }
 async function settle(){for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));}
+function ordinaryResult(h) {
+ const request={businessText:h.fields.businessText.value.trim(),resumable:true,continuationAction:'START',
+  continuationId:'ordinary-result',analysisScope:{mode:'FULL',taxonomyRoots:[]},includeArchitectureView:true};
+ const result={status:'PARTIAL',recovery:{id:request.continuationId,version:3,state:'PAUSED',completedCalls:2,
+  openQuestions:[{key:'ordinary-question',nodes:['BP-1327'],error:'Invalid JSON',attempts:1}]},
+  rawScores:{BP:100},scores:{BP:100},reasons:{BP:'Confirmed ordinary result'}};
+ h.S.analysisRecovery=result.recovery;h.S.lastAnalyzedText=request.businessText;
+ h.S.currentRawScores=result.rawScores;h.S.currentEffectiveScores=result.scores;
+ h.S.currentScores=result.scores;h.S.currentReasons=result.reasons;
+ return {request,result};
+}
+test('ordinary confirmed results bind recovery to the current generation without reads, saves or a modal',()=>{
+ const h=harness();h.runtime.analysisGeneration++;
+ const {result,request}=ordinaryResult(h);
+ assert.equal(h.recovery.bindAnalysisResult(result,request,'ws-a'),true);
+ assert.equal(h.recovery.isManaged(),true);
+ assert.equal(h.S.recoveryContext.confirmed,true);assert.equal(h.S.recoveryContext.noFollowups,true);
+ assert.equal(h.S.recoveryContext.id,result.recovery.id);
+ assert.deepEqual(JSON.parse(JSON.stringify(h.S.recoveryContext.request)),request);
+ assert.equal(h.recovery.nodeEvidenceMatches(h.S.recoveryContext),true);
+ assert.equal(h.ui.opened,undefined);assert.equal(h.requests.length,0);assert.equal(h.analyses.length,0);
+ assert.equal(h.saved.length,0);assert.equal(h.followups(),0);assert.equal(h.timers.size,0);
+ h.recovery.open();assert.equal(h.ui.opened,true);
+ assert.ok(h.options().some(option=>option.id==='analysisRecoveryRetry'));
+ h.runtime.analysisGeneration++;assert.equal(h.recovery.isManaged(),false);
+});
+for(const mismatch of ['workspace','input','last analyzed text','request id','result id','result version','invalid version','not ready','invalidating'])
+ test(`ordinary recovery binding rejects ${mismatch} without replacing its prior context`,()=>{
+ const h=harness();const {result,request}=ordinaryResult(h);
+ const prior={id:'prior',workspaceId:'ws-a',request:{businessText:request.businessText}};
+ h.S.recoveryContext=prior;
+ let workspace='ws-a';
+ if(mismatch==='workspace')workspace='ws-b';
+ if(mismatch==='input')h.fields.businessText.value='Different input';
+ if(mismatch==='last analyzed text')h.S.lastAnalyzedText='Earlier input';
+ if(mismatch==='request id')request.continuationId='other';
+ if(mismatch==='result id')h.S.analysisRecovery={...result.recovery,id:'other'};
+ if(mismatch==='result version')h.S.analysisRecovery={...result.recovery,version:4};
+ if(mismatch==='invalid version')result.recovery.version=-1;
+ if(mismatch==='not ready')h.window.TaxonomyAnalysisSession.state=()=>({ready:false,workspaceId:'ws-a'});
+ if(mismatch==='invalidating')h.runtime.invalidating=true;
+ assert.equal(h.recovery.bindAnalysisResult(result,request,workspace),false);
+ assert.equal(h.S.recoveryContext,prior);assert.equal(h.ui.opened,undefined);
+ assert.equal(h.requests.length,0);assert.equal(h.saved.length,0);assert.equal(h.analyses.length,0);
+});
+
 test('a changed server result requires an explicit load choice when retained draft evidence cannot be replaced', async () => {
  const h=harness();h.recovery.startCopilot();h.complete();await settle();
  const C=h.window.__TaxonomyAnalysisSessionContext;

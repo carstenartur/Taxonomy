@@ -10,14 +10,16 @@
     <link rel="stylesheet" th:href="@{/css/architecture-workflow.css}" href="/css/architecture-workflow.css"/>
     <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
     <th:block th:replace="~{fragments/application-chrome :: styles}"></th:block>
+    <link rel="stylesheet" th:href="@{/css/shared/architecture-diagram.css}" href="/css/shared/architecture-diagram.css"/>
 </head>
-<body>
+<body class="architecture-editor-page architecture-editor-surface">
 <a class="editor-skip" href="#editorForm" data-i18n="editor.skip">Skip to properties</a>
 <header th:replace="~{fragments/application-chrome :: navigation('architecture', ~{:: localActions}, 'ARCHITECTURE_EDITOR', '')}">
     <th:block th:fragment="localActions"><h1 data-i18n="editor.title">Architecture editor</h1>
         <a th:href="@{/integrations}" href="/integrations" data-i18n="integration.title">Tool integrations</a></th:block>
 </header>
 <section th:replace="~{fragments/architecture-workflow :: context}"></section>
+<section th:fragment="surface" class="architecture-editor-surface">
 <main id="architectureEditor">
     <p id="editorContext" class="editor-context"></p>
     <p id="editorStatus" role="status" aria-live="polite" data-i18n="editor.loading">Loading architecture…</p>
@@ -48,7 +50,10 @@
         <pre id="adoptionSummary" role="status" aria-live="polite" tabindex="0" hidden></pre>
         <label for="adoptionView" data-i18n="adoption.view">Canonical architecture view</label>
         <select id="adoptionView"></select>
-        <details><summary data-i18n="adoption.provenance">Recorded source provenance</summary><pre id="adoptionProvenance"></pre></details>
+        <details>
+            <summary id="adoptionProvenanceTitle" data-i18n="adoption.provenance">Recorded source provenance</summary>
+            <pre id="adoptionProvenance" tabindex="0" role="region" aria-labelledby="adoptionProvenanceTitle"></pre>
+        </details>
     </section>
     <div class="editor-columns">
         <section class="editor-views" aria-labelledby="editorGraphTitle">
@@ -204,12 +209,14 @@
         <button id="editorCancel" type="button" data-i18n="editor.cancel">Cancel</button>
     </div>
 </dialog>
+</section>
 <script th:src="@{/webjars/d3/7.9.0/dist/d3.min.js}" src="/webjars/d3/7.9.0/dist/d3.min.js"></script>
 <script th:src="@{/js/taxonomy-i18n.js}" src="/js/taxonomy-i18n.js"></script>
 <script th:src="@{/js/shared/architecture-workflow.js}" src="/js/shared/architecture-workflow.js"></script>
 <script th:src="@{/js/api/taxonomy-api-client.js}" src="/js/api/taxonomy-api-client.js"></script>
 <th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/api/architecture-editor-api.js}" src="/js/api/architecture-editor-api.js"></script>
+<script th:src="@{/js/shared/architecture-diagram.js}" src="/js/shared/architecture-diagram.js"></script>
 <script th:src="@{/js/architecture-editor-renderer.js}" src="/js/architecture-editor-renderer.js"></script>
 <script th:src="@{/js/architecture-focus.js}" src="/js/architecture-focus.js"></script>
 <script th:src="@{/js/architecture-planning.js}" src="/js/architecture-planning.js"></script>

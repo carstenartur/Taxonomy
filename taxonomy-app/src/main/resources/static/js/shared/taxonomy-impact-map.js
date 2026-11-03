@@ -144,33 +144,7 @@
     }
 
     function calculateFitTransform(layout, viewport, options) {
-        options = options || {};
-        var padding = Math.max(0, safeNumber(options.padding, 34));
-        var minimumScale = Math.max(0.001, safeNumber(options.minimumScale, 0.01));
-        var maximumScale = Math.max(minimumScale, safeNumber(options.maximumScale, 1.25));
-        var layoutWidth = Math.max(1, safeNumber(layout && layout.width, 1));
-        var layoutHeight = Math.max(1, safeNumber(layout && layout.height, 1));
-        var viewportWidth = Math.max(padding * 2 + 1,
-            safeNumber(viewport && viewport.width, 320));
-        var viewportHeight = Math.max(padding * 2 + 1,
-            safeNumber(viewport && viewport.height, 300));
-        var scale = Math.min(
-            (viewportWidth - padding * 2) / layoutWidth,
-            (viewportHeight - padding * 2) / layoutHeight,
-            maximumScale
-        );
-        scale = clamp(scale, minimumScale, maximumScale);
-        var x = (viewportWidth - layoutWidth * scale) / 2;
-        var y = (viewportHeight - layoutHeight * scale) / 2;
-        return {
-            scale: scale,
-            x: x,
-            y: y,
-            left: x,
-            top: y,
-            right: x + layoutWidth * scale,
-            bottom: y + layoutHeight * scale
-        };
+        return window.TaxonomyArchitectureDiagram.calculateFitTransform(layout, viewport, options);
     }
 
     function shouldMuteEdge(options) {
@@ -386,34 +360,14 @@
     }
 
     function visibleModel(state) {
-        var candidates = state.allNodes.filter(function (node) {
-            return state.showContext || !node.context;
-        });
-
-        if (state.mode === 'focus' && state.selectedNodeId) {
-            var included = new Set([state.selectedNodeId]);
-            state.allEdges.forEach(function (edge) {
-                if (edge.source === state.selectedNodeId || edge.target === state.selectedNodeId) {
-                    included.add(edge.source);
-                    included.add(edge.target);
-                }
-            });
-            candidates = candidates.filter(function (node) { return included.has(node.id); });
-        }
-
+        var model = window.TaxonomyArchitectureDiagram.visibleModel({ nodes: state.allNodes, edges: state.allEdges }, state);
         var preferredNodeIds = new Set();
         if (state.selectedNodeId) preferredNodeIds.add(state.selectedNodeId);
-        var limited = limitNodes(candidates, preferredNodeIds);
+        var limited = limitNodes(model.nodes, preferredNodeIds);
         var ids = new Set(limited.nodes.map(function (node) { return node.id; }));
-        var visibleEdges = state.allEdges.filter(function (edge) {
+        return { nodes: limited.nodes, edges: model.edges.filter(function (edge) {
             return ids.has(edge.source) && ids.has(edge.target);
-        });
-        return {
-            nodes: limited.nodes,
-            edges: visibleEdges,
-            nodeIds: ids,
-            omitted: limited.omitted
-        };
+        }), nodeIds: ids, omitted: limited.omitted };
     }
 
     function buildLayout(model) {
@@ -480,55 +434,11 @@
     }
 
     function edgePath(source, target, lane) {
-        var sourceY = source.y + source.height / 2;
-        var targetY = target.y + target.height / 2;
-        var laneOffset = lane * 12;
-        var sourceX;
-        var targetX;
-        var controlDistance;
-
-        if (source.layerIndex < target.layerIndex) {
-            sourceX = source.x + source.width;
-            targetX = target.x;
-            controlDistance = Math.max(42, (targetX - sourceX) * 0.43);
-            return 'M' + sourceX + ',' + sourceY +
-                ' C' + (sourceX + controlDistance) + ',' + (sourceY + laneOffset) +
-                ' ' + (targetX - controlDistance) + ',' + (targetY + laneOffset) +
-                ' ' + targetX + ',' + targetY;
-        }
-        if (source.layerIndex > target.layerIndex) {
-            sourceX = source.x;
-            targetX = target.x + target.width;
-            controlDistance = Math.max(42, (sourceX - targetX) * 0.43);
-            return 'M' + sourceX + ',' + sourceY +
-                ' C' + (sourceX - controlDistance) + ',' + (sourceY + laneOffset) +
-                ' ' + (targetX + controlDistance) + ',' + (targetY + laneOffset) +
-                ' ' + targetX + ',' + targetY;
-        }
-
-        sourceX = source.x + source.width;
-        targetX = target.x + target.width;
-        controlDistance = 42 + Math.min(80, Math.abs(targetY - sourceY) * 0.22) + Math.abs(laneOffset);
-        return 'M' + sourceX + ',' + sourceY +
-            ' C' + (sourceX + controlDistance) + ',' + (sourceY + laneOffset) +
-            ' ' + (targetX + controlDistance) + ',' + (targetY + laneOffset) +
-            ' ' + targetX + ',' + targetY;
+        return window.TaxonomyArchitectureDiagram.edgePath(source, target, lane);
     }
 
     function relationshipLanes(edges) {
-        var groups = new Map();
-        edges.forEach(function (edge) {
-            var key = edge.source + '\u0000' + edge.target;
-            if (!groups.has(key)) groups.set(key, []);
-            groups.get(key).push(edge);
-        });
-        var lanes = new Map();
-        groups.forEach(function (group) {
-            group.forEach(function (edge, index) {
-                lanes.set(edge.id, index - (group.length - 1) / 2);
-            });
-        });
-        return lanes;
+        return window.TaxonomyArchitectureDiagram.relationshipLanes(edges);
     }
 
     function createButton(icon, label, title, optionalLabel) {
@@ -599,6 +509,7 @@
             destroyed: false
         };
 
+        var publishedSelection = null;
         var root = createElement('section', 'impact-map-workbench');
         root.setAttribute('aria-labelledby', instanceId + '-title');
         root.dataset.impactMapInstance = instanceId;
@@ -701,6 +612,7 @@
             .on('zoom', function (event) {
                 if (event.sourceEvent) markUserControlled();
                 viewportSelection.attr('transform', event.transform);
+                if (state.diagram) state.diagram.viewportChanged();
             });
         svgSelection.call(zoomBehavior).on('dblclick.zoom', null);
 
@@ -834,8 +746,10 @@
         }
 
         function setSelection(nodeId, edgeId, center) {
+            var leavingFocus = !nodeId && state.mode === 'focus';
             state.selectedNodeId = nodeId || null;
             state.selectedEdgeId = edgeId || null;
+            if (leavingFocus) { state.mode = 'overview'; renderDiagram(false); }
             updateInteractionStyles();
             renderDetails();
             if (nodeId) window.TaxonomyGraph?.selectNode?.(nodeId);
@@ -951,65 +865,20 @@
 
         function renderEdges() {
             var lanes = relationshipLanes(state.visible.edges);
-            var showAllLabels = state.visible.edges.length <= 14;
             state.visible.edges.forEach(function (edge) {
-                var source = state.layout.positions.get(edge.source);
-                var target = state.layout.positions.get(edge.target);
+                var source = state.layout.positions.get(edge.source), target = state.layout.positions.get(edge.target);
                 if (!source || !target) return;
-                var pathData = edgePath(source, target, lanes.get(edge.id) || 0);
-                var markerId = instanceId + '-arrow-' + edge.type.replace(/[^a-z0-9_-]/gi, '-');
-                var group = createSvgElement('g', {
-                    'class': 'impact-map-edge-group',
-                    'data-edge-id': edge.id,
-                    'data-source': edge.source,
-                    'data-target': edge.target
-                });
-                var path = createSvgElement('path', {
-                    'class': 'impact-map-edge',
-                    'd': pathData,
-                    'stroke': relationColor(edge.type),
-                    'marker-end': 'url(#' + markerId + ')'
-                });
-                var hit = createSvgElement('path', {
-                    'class': 'impact-map-edge-hit',
-                    'd': pathData,
-                    'tabindex': '0',
-                    'role': 'button',
-                    'aria-label': t('impactmap.aria.relationship', edge.type, edge.source, edge.target)
-                });
-                var tooltip = createSvgElement('title');
-                tooltip.textContent = edge.source + ' → ' + edge.target + '\n' + edge.type +
-                    (edge.includedBecause ? '\n' + edge.includedBecause : '');
-                hit.appendChild(tooltip);
-                hit.addEventListener('click', function (event) {
-                    event.stopPropagation();
-                    setSelection(null, edge.id, false);
-                });
-                hit.addEventListener('keydown', function (event) {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        setSelection(null, edge.id, false);
-                    }
-                });
-                group.appendChild(path);
-                group.appendChild(hit);
-
-                var sourceCenterX = source.x + source.width / 2;
-                var targetCenterX = target.x + target.width / 2;
-                var sourceCenterY = source.y + source.height / 2;
-                var targetCenterY = target.y + target.height / 2;
-                var label = appendText(
-                    group,
-                    'impact-map-edge-label',
-                    (sourceCenterX + targetCenterX) / 2,
-                    (sourceCenterY + targetCenterY) / 2 - 5,
-                    edge.type,
-                    relationColor(edge.type)
-                );
-                label.setAttribute('text-anchor', 'middle');
-                label.style.display = showAllLabels ? '' : 'none';
-                group._label = label;
-                viewport.appendChild(group);
+                var group = window.TaxonomyArchitectureDiagram.renderEdge(viewport, {
+                    id: edge.id, source: edge.source, target: edge.target, prefix: 'impact-map',
+                    className: 'impact-map-edge-group', pathClass: 'impact-map-edge',
+                    path: edgePath(source, target, lanes.get(edge.id) || 0), color: relationColor(edge.type),
+                    markerId: instanceId + '-arrow-' + edge.type.replace(/[^a-z0-9_-]/gi, '-'),
+                    ariaLabel: t('impactmap.aria.relationship', edge.type, edge.source, edge.target),
+                    tooltip: edge.source + ' → ' + edge.target + '\n' + edge.type + (edge.includedBecause ? '\n' + edge.includedBecause : ''),
+                    label: edge.type, labelX: (source.x + source.width / 2 + target.x + target.width / 2) / 2,
+                    labelY: (source.y + source.height / 2 + target.y + target.height / 2) / 2 - 5,
+                    showLabel: state.visible.edges.length <= 14
+                }, { select: function (id) { setSelection(null, id, false); } });
                 state.edgeElements.set(edge.id, group);
             });
         }
@@ -1018,100 +887,30 @@
             state.visible.nodes.forEach(function (node) {
                 var position = state.layout.positions.get(node.id);
                 if (!position) return;
-                var color = nodeColor(node.sheet);
-                var textColor = readableTextColor(color);
-                var groupClass = 'impact-map-node';
-                if (node.anchor) groupClass += ' is-anchor';
-                if (node.hotspot) groupClass += ' is-hotspot';
-                var group = createSvgElement('g', {
-                    'class': groupClass,
-                    'transform': 'translate(' + position.x + ',' + position.y + ')',
-                    'data-node-id': node.id,
-                    'tabindex': '0',
-                    'role': 'button',
-                    'aria-label': t(
-                        'impactmap.aria.node',
-                        node.id,
-                        node.title,
-                        Math.round(node.relevance * 100),
-                        node.anchor ? t('impactmap.direct') : t('impactmap.hop', node.hop)
-                    )
+                var color = nodeColor(node.sheet), textColor = readableTextColor(color);
+                var group = window.TaxonomyArchitectureDiagram.renderNode(viewport, {
+                    id: node.id, x: position.x, y: position.y, width: CARD_WIDTH, height: CARD_HEIGHT, prefix: 'impact-map',
+                    className: 'impact-map-node' + (node.anchor ? ' is-anchor' : '') + (node.hotspot ? ' is-hotspot' : ''),
+                    color: color, textColor: textColor, scoreWidth: 56, metaY: 77, hotspot: node.hotspot,
+                    ariaLabel: t('impactmap.aria.node', node.id, node.title, Math.round(node.relevance * 100), node.anchor ? t('impactmap.direct') : t('impactmap.hop', node.hop)),
+                    score: (node.anchor ? '★ ' : '') + Math.round(node.relevance * 100) + '%',
+                    scoreFill: rgba(textColor, textColor === '#ffffff' ? 0.18 : 0.12), titleLines: wrapLabel(node.title, 32, 2),
+                    meta: (node.anchor ? t('impactmap.direct') : t('impactmap.hop', node.hop)) + ' · ' + node.sheetLabel,
+                    tooltip: node.id + ' — ' + node.title + '\n' + node.sheetLabel + '\n' + Math.round(node.relevance * 100) + '%\n'
+                        + (node.includedBecause || '') + (node.hotspotReason ? '\n' + t('impactmap.hotspot') + ': ' + node.hotspotReason : '')
+                }, {
+                    select: function (id) { setSelection(id, null, false); },
+                    focus: function (id) { setSelection(id, null, false); state.mode = 'focus'; renderDiagram(true); }
                 });
-                group.appendChild(createSvgElement('rect', {
-                    'class': 'impact-map-node-card',
-                    'x': 0,
-                    'y': 0,
-                    'width': CARD_WIDTH,
-                    'height': CARD_HEIGHT,
-                    'rx': 9,
-                    'fill': color
-                }));
-
-                appendText(group, 'impact-map-node-code', 12, 19, node.id, textColor);
-
-                var scoreWidth = 56;
-                group.appendChild(createSvgElement('rect', {
-                    'class': 'impact-map-node-score-pill',
-                    'x': CARD_WIDTH - scoreWidth - 8,
-                    'y': 7,
-                    'width': scoreWidth,
-                    'height': 22,
-                    'rx': 11,
-                    'fill': rgba(textColor, textColor === '#ffffff' ? 0.18 : 0.12)
-                }));
-                var score = (node.anchor ? '★ ' : '') + Math.round(node.relevance * 100) + '%';
-                var scoreText = appendText(group, 'impact-map-node-score', CARD_WIDTH - 36, 22, score, textColor);
-                scoreText.setAttribute('text-anchor', 'middle');
-
-                var titleLines = wrapLabel(node.title, 32, 2);
-                titleLines.forEach(function (line, index) {
-                    appendText(group, 'impact-map-node-title', 12, 43 + index * 15, line, textColor);
-                });
-
-                var meta = node.anchor ? t('impactmap.direct') : t('impactmap.hop', node.hop);
-                appendText(group, 'impact-map-node-meta', 12, 77, meta + ' · ' + node.sheetLabel, textColor);
-
-                if (node.hotspot) {
-                    var hotspotText = appendText(group, 'impact-map-hotspot-mark', CARD_WIDTH - 13, 80, '⚠', '#b42318');
-                    hotspotText.setAttribute('text-anchor', 'end');
-                }
-
-                var tooltip = createSvgElement('title');
-                tooltip.textContent = node.id + ' — ' + node.title + '\n' +
-                    node.sheetLabel + '\n' + Math.round(node.relevance * 100) + '%\n' +
-                    (node.includedBecause || '') +
-                    (node.hotspotReason ? '\n' + t('impactmap.hotspot') + ': ' + node.hotspotReason : '');
-                group.appendChild(tooltip);
-
-                group.addEventListener('click', function (event) {
-                    event.stopPropagation();
-                    setSelection(node.id, null, false);
-                });
-                group.addEventListener('dblclick', function (event) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setSelection(node.id, null, false);
-                    state.mode = 'focus';
-                    renderDiagram(true);
-                });
-                group.addEventListener('keydown', function (event) {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        setSelection(node.id, null, false);
-                    } else if (event.key.toLowerCase() === 'f') {
-                        event.preventDefault();
-                        setSelection(node.id, null, false);
-                        state.mode = 'focus';
-                        renderDiagram(true);
-                    }
-                });
-
-                viewport.appendChild(group);
                 state.nodeElements.set(node.id, group);
             });
         }
 
         function updateInteractionStyles() {
+            if (publishedSelection !== state.selectedNodeId) {
+                publishedSelection = state.selectedNodeId;
+                document.dispatchEvent(new CustomEvent('taxonomy:architecture-selection', {detail:{kind:'analysis',elementId:state.selectedNodeId}}));
+            }
             var selectedNode = state.selectedNodeId;
             var selectedEdge = state.selectedEdgeId;
             var connectedNodeIds = new Set();
@@ -1140,6 +939,7 @@
                     searchMatch: searchMatch
                 });
                 element.classList.toggle('is-selected', id === selectedNode);
+                element.setAttribute('aria-pressed', id === selectedNode);
                 element.classList.toggle('is-search-match', hasSearch && searchMatch);
                 element.classList.toggle('is-muted', muted);
             });
@@ -1336,6 +1136,7 @@
             renderLayers();
             renderEdges();
             renderNodes();
+            if (state.diagram) state.diagram.render();
             updateViewBox();
             updateKpis();
             updateModeButtons();
@@ -1460,8 +1261,21 @@
             : null;
         if (resizeObserver) resizeObserver.observe(canvas);
 
+        state.diagram = window.TaxonomyArchitectureDiagram.connect(svg, {
+            getNodes: function () { return state.layout ? Array.from(state.layout.positions.entries()).map(function (entry) { return Object.assign({ id: entry[0] }, entry[1]); }) : []; },
+            getNodeElements: function () { return state.nodeElements; },
+            select: function (id) { setSelection(id, null, false); },
+            focus: function (id) { if (id) state.selectedNodeId = id; if (state.selectedNodeId) { state.mode = 'focus'; renderDiagram(true); } },
+            unfocus: function () { state.mode = 'overview'; renderDiagram(true); },
+            fit: fitView, applyTransform: applyTransform,
+            zoom: function (factor) { markUserControlled(); svgSelection.call(zoomBehavior.scaleBy, factor); },
+            onRegion: options.onRegion, onSuggestion: options.onSuggestion
+        });
+        container.__taxonomyImpactMapDiagram = state.diagram;
         container.__taxonomyImpactMapCleanup = function () {
             state.destroyed = true;
+            state.diagram.destroy();
+            delete container.__taxonomyImpactMapDiagram;
             window.clearTimeout(resizeTimer);
             cancelScheduledFit();
             document.removeEventListener('fullscreenchange', onFullscreenChange);

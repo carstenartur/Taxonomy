@@ -28,6 +28,32 @@ test('opening adoption panel never previews or accepts automatically',()=>{
     panel.update(view(target,false));assert.equal(node('adoptionPreview').disabled,true);
 });
 
+test('changing the frozen source invalidates a reviewed preview even when the target stays the same',async()=>{
+    const {context,node,source}=boot();const accepted=[];let current={...source};
+    context.TaxonomyArchitectureWorkflow.adoptionSource=()=>current;
+    const panel=context.AnalysisSnapshotAdoption({t:key=>key,metadata:()=>({commandId:'one'}),report:error=>{throw error;},api:{
+        previewAdoption:async()=>({fingerprint:'old-preview',summary:{addedElements:[],reusedElements:[],addedRelations:[],reusedRelations:[],differences:[],conflicts:[]}}),
+        adoptSnapshot:async request=>accepted.push(request)
+    }});
+    panel.update(view());await node('adoptionPreview').click();assert.equal(node('adoptionAccept').disabled,false);
+    current={...source,snapshotId:'new-snapshot',requirementVersionId:10};panel.update(view());
+    assert.match(node('adoptionSource').textContent,/new-snapshot/);
+    assert.equal(node('adoptionAccept').disabled,true);assert.equal(node('adoptionSummary').hidden,true);
+    await node('adoptionAccept').click();assert.equal(accepted.length,0);
+});
+
+test('a late preview cannot enable acceptance after its source has been replaced',async()=>{
+    const {context,node,source}=boot();let complete,current={...source};
+    context.TaxonomyArchitectureWorkflow.adoptionSource=()=>current;
+    const panel=context.AnalysisSnapshotAdoption({t:key=>key,metadata:()=>({commandId:'one'}),report:error=>{throw error;},api:{
+        previewAdoption:()=>new Promise(resolve=>complete=resolve)
+    }});
+    panel.update(view());const preview=node('adoptionPreview').click();
+    current={...source,snapshotId:'new-snapshot'};panel.update(view());
+    complete({fingerprint:'old-preview',summary:{addedElements:[],reusedElements:[],addedRelations:[],reusedRelations:[],differences:[],conflicts:[]}});await preview;
+    assert.equal(node('adoptionAccept').disabled,true);assert.equal(node('adoptionSummary').hidden,true);
+});
+
 test('explicit preview freezes source target metadata and ambiguous retry keeps the same acceptance identity',async()=>{
     const {context,node,source}=boot();const accepted=[];const errors=[];let requests=[];let attempts=0;
     const panel=context.AnalysisSnapshotAdoption({t:key=>key,metadata:()=>({commandId:'one',rationale:'Adopt reviewed snapshot'}),report:error=>errors.push(error),

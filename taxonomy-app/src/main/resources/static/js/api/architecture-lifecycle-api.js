@@ -12,19 +12,21 @@ window.TaxonomyArchitectureLifecycleApi = (function () {
         else if (scope.workspaceId !== undefined) params.set('workspaceId', scope.workspaceId);
         return params;
     }
+    function policy(params) { return params.has('workspaceId') ? {pinnedWorkspaceId:params.get('workspaceId')} : {}; }
     function read(path, context, values) {
         var params = query(context);
         Object.keys(values || {}).forEach(function (key) {
             if (values[key] !== undefined && values[key] !== null && values[key] !== '') params.set(key, values[key]);
         });
-        return window.TaxonomyApiClient.getJson(path + '?' + params);
+        return window.TaxonomyApiClient.getJson(path + '?' + params, policy(params));
     }
     function write(path, body, exact, context) {
         var headers = {'Content-Type': 'application/json'};
         if (exact) headers['If-Match'] = '"workspace-revision-' + body.context.revision + '"';
-        return window.TaxonomyApiClient.request(path + '?' + query(context || body.context), {
+        var params = query(context || body.context);
+        return window.TaxonomyApiClient.request(path + '?' + params, {
             method:'POST', headers:headers, body:JSON.stringify(body)
-        }, {retries:0}).then(function (response) { return response.json(); });
+        }, Object.assign({retries:0},policy(params))).then(function (response) { return response.json(); });
     }
     return {
         architectures:function () { return read(base + '/architectures', {}); },

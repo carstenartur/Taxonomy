@@ -27,6 +27,17 @@ function boot(search = '', prefix = '') {
 }
 function url(value) {return new URL(value, 'https://example.test');}
 
+test('restoring an unpinned analysis clears all departed architecture scope pins',()=>{
+    const {api}=boot('');
+    api.setScope({repositoryId:'repo-B',workspaceScopeKey:'B',branch:'b'});
+    api.replaceScope({});
+    assert.deepEqual(JSON.parse(JSON.stringify(api.getScope())),{});
+    assert.equal(api.scopeUrl('/projects/42'),'/projects/42');
+    api.replaceScope({workspaceId:'',workspaceScopeKey:'__shared__'});
+    assert.equal(url(api.scopeUrl('/projects/42')).searchParams.get('workspaceId'),'');
+    assert.equal(url(api.scopeUrl('/projects/42')).searchParams.has('branch'),false);
+});
+
 for (const prefix of ['', '/taxonomy', '/teams/blue/taxonomy']) {
     test(`snapshot handoff retains requirement, source and selected element under ${prefix || '/'}`, () => {
         const {api} = boot('', prefix);

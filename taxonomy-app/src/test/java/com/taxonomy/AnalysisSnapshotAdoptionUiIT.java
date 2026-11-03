@@ -135,7 +135,7 @@ class AnalysisSnapshotAdoptionUiIT {
                 click("editorCheckpoint"); wait.until(browser -> app.getBean(EditorJournal.class).read(target).state().checkpointRevision() == 1); ready();
                 var historical = wait.until(browser -> browser.findElements(By.cssSelector("#editorVersions a")).stream()
                         .filter(link -> link.getDomAttribute("href").contains("commit=" + beforeCommit)).findFirst().orElse(null));
-                historical.click(); ready();
+                click(historical); ready();
                 assertThat(driver.getCurrentUrl()).doesNotContain("viewId=");
                 assertThat(driver.findElement(By.id("editorError")).isDisplayed()).isFalse();
                 click("editorRefresh"); wait.until(browser -> browser.getCurrentUrl().contains("revision=1")); ready();
@@ -178,6 +178,9 @@ class AnalysisSnapshotAdoptionUiIT {
     private JavascriptExecutor javascript() { return (JavascriptExecutor)driver; }
     private void click(String id) {
         var element = wait.until(browser -> { var value = browser.findElement(By.id(id)); return value.isDisplayed() && value.isEnabled() ? value : null; });
+        click(element);
+    }
+    private void click(WebElement element) {
         javascript().executeScript("arguments[0].scrollIntoView({behavior:'instant',block:'center'});",element); element.click();
     }
     private void invert(String kind,int revision) {

@@ -31,6 +31,35 @@ class ArchitectureEditorControllerTest {
     private static final String HEAD = "a1".repeat(20);
 
     @Test
+    void legacyPageRedirectPreservesEveryDecodedCoordinateWithoutDoubleEncodingOrChangingOrigin() throws Exception {
+        var coordinates = new org.springframework.util.LinkedMultiValueMap<String,String>();
+        coordinates.add("workspace", ""); coordinates.add("workspaceScopeKey", "__shared__");
+        coordinates.add("repositoryId", "repo + / & Ü"); coordinates.add("branch", "feature/a+b & 東京");
+        coordinates.add("projectId", "42"); coordinates.add("requirementId", "7"); coordinates.add("snapshotId", "snapshot +/&");
+        coordinates.add("sourceWorkspaceId", "private copy"); coordinates.add("sourceBranch", "source/a+b");
+        coordinates.add("element", "arch + &"); coordinates.add("revision", "17"); coordinates.add("commit", HEAD);
+        coordinates.add("viewId", "view/%2F+ Ü"); coordinates.add("layout", "reduce-crossings"); coordinates.add("layoutRevision", "12");
+        coordinates.add("adoption", "review + preview"); coordinates.add("lang", "de");
+        coordinates.add("unknown", "one"); coordinates.add("unknown", "two & three");
+        coordinates.add("returnTo", "https://evil.example/path?x=1"); coordinates.add("payload", "\r\nLocation: //evil.example");
+        var mvc = standaloneSetup(controller).setViewResolvers(new org.springframework.web.servlet.view.InternalResourceViewResolver()).build();
+        String target = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/deployed/architecture/editor")
+                        .contextPath("/deployed").params(coordinates))
+                .andExpect(status().is3xxRedirection()).andReturn().getResponse().getRedirectedUrl();
+        var uri = java.net.URI.create(target);
+        assertThat(uri.getPath()).isEqualTo("/deployed/"); assertThat(uri.getHost()).isNull();
+        assertThat(uri.getFragment()).isEqualTo("architecture"); assertThat(target).doesNotContain("\r", "\n");
+        var decoded = new org.springframework.util.LinkedMultiValueMap<String,String>();
+        for (String pair : uri.getRawQuery().split("&")) {
+            String[] parts = pair.split("=",2);
+            decoded.add(java.net.URLDecoder.decode(parts[0], java.nio.charset.StandardCharsets.UTF_8),
+                    java.net.URLDecoder.decode(parts.length == 2 ? parts[1] : "", java.nio.charset.StandardCharsets.UTF_8));
+        }
+        coordinates.set("architectureSource", "working"); assertThat(decoded).isEqualTo(coordinates);
+        verifyNoInteractions(service, resolver);
+    }
+
+    @Test
     void missingAndContradictoryPreconditionsNeverReachTheCommandPort() {
         var command = wire();
         assertThatThrownBy(() -> controller.execute(command, null, null))

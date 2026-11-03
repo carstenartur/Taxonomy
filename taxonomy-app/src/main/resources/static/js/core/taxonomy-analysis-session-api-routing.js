@@ -76,7 +76,9 @@
                 var args = Array.prototype.slice.call(arguments);
                 // Explicitly scoped operation calls (including cancellation after a
                 // tab switch) must retain the same workspace in URL and header.
-                var policy = methodName === 'request' ? args[2] : null;
+                var policy = methodName === 'request' ? args[2]
+                    : methodName === 'getJson' || methodName === 'deleteJson' ? args[1]
+                    : typeof args[2] === 'object' ? args[2] : args[3];
                 args[0] = workspaceScopedUrl(args[0], policy ? policy.pinnedWorkspaceId : undefined);
                 return original.apply(client, args);
             };

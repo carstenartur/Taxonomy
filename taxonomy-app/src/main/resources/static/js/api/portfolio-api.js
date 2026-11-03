@@ -36,17 +36,36 @@ window.TaxonomyPortfolioApi = (function () {
         throw error;
     }
 
+    function sourceRequest(url, options) {
+        const scope = options?.scope;
+        if (!scope) return {url:url,headers:{}};
+        const target = new URL(applicationUrl(url), window.location.href);
+        ['repositoryId','workspaceScopeKey','workspaceId','branch'].forEach(function(key) {
+            if (scope[key] !== undefined && scope[key] !== null) target.searchParams.set(key,String(scope[key]));
+        });
+        const headers = {};
+        if (scope.workspaceScopeKey !== undefined || scope.workspaceId !== undefined) {
+            const workspace = scope.workspaceScopeKey || scope.workspaceId || '__shared__';
+            const workspaceId = workspace === '__shared__' ? '' : String(workspace);
+            target.searchParams.set('workspaceScopeKey',workspace === '__shared__' ? '__shared__' : String(workspace));
+            target.searchParams.set('workspaceId',workspaceId);
+            headers['X-Taxonomy-Workspace-Id'] = workspaceId;
+        }
+        return {url:target.pathname + target.search,headers:headers};
+    }
+
     async function getResponse(url, accept, options) {
-        return requireOk(await fetch(url, {
-            headers: { Accept: accept || 'application/json' },
+        const request = sourceRequest(url, options);
+        return requireOk(await fetch(request.url, {
+            headers: Object.assign({ Accept: accept || 'application/json' }, request.headers),
             credentials: 'same-origin',
             cache: 'no-store',
             signal: options?.signal
         }));
     }
 
-    async function getJson(url) {
-        return responsePayload(await getResponse(url, 'application/json'));
+    async function getJson(url, options) {
+        return responsePayload(await getResponse(url, 'application/json', options));
     }
 
     async function sendJsonResponse(url, method, body) {
@@ -236,9 +255,9 @@ window.TaxonomyPortfolioApi = (function () {
             return getJson(projectPath(projectId) + '/snapshots/'
                 + encodeURIComponent(String(snapshotId)));
         },
-        decisionReportOptions: function (projectId, snapshotId, language) {
+        decisionReportOptions: function (projectId, snapshotId, language, requestOptions) {
             return getJson(projectPath(projectId) + '/snapshots/' + encodeURIComponent(String(snapshotId))
-                + '/decision-report/options' + (language ? '?language=' + encodeURIComponent(language) : ''));
+                + '/decision-report/options' + (language ? '?language=' + encodeURIComponent(language) : ''), requestOptions);
         },
         downloadDecisionReport: function (projectId, snapshotId, format, language, options, requestOptions) {
             const query = new URLSearchParams(window.TaxonomyDecisionExport?.query(options) || '');

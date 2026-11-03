@@ -18,16 +18,19 @@ window.ArchitectureEditorApi = (function () {
         if (layoutRevision !== null && layoutRevision !== undefined) params.set('layoutRevision', layoutRevision);
         return params.toString();
     }
+    function exactPolicy(context) {
+        return context && context.workspaceScopeKey !== undefined ? {pinnedWorkspaceId:context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey} : {};
+    }
     function write(path, body, context, policy) {
         var headers = { 'Content-Type': 'application/json' };
         headers['If-Match'] = '"workspace-revision-' + context.revision + '"';
         return window.TaxonomyApiClient.request(base + path + '?' + query(context), {
             method: 'POST', headers: headers, body: JSON.stringify(body)
-        }, Object.assign({ retries: 0 }, policy)).then(function (response) { return response.json(); });
+        }, Object.assign({ retries: 0 }, exactPolicy(context), policy)).then(function (response) { return response.json(); });
     }
     return {
         load: function (context, revision, signal, layout, layoutRevision, viewId) {
-            return window.TaxonomyApiClient.getJson(base + '?' + query(context, revision, layout, layoutRevision, viewId), { signal: signal });
+            return window.TaxonomyApiClient.getJson(base + '?' + query(context, revision, layout, layoutRevision, viewId), Object.assign({ signal: signal }, exactPolicy(context)));
         },
         suggest: function (request) { return write('/focus/suggestions', request, request.context, { timeoutMillis: 120000 }); },
         previewAdoption: function (request) { return write('/snapshot-adoptions/preview', request, request.context); },
@@ -46,7 +49,7 @@ window.ArchitectureEditorApi = (function () {
             return window.TaxonomyApiClient.sendJson(base + '/workspaces?' + query(context), {
                 repositoryId: context.repositoryId, branch: context.branch,
                 displayName: window.TaxonomyI18n.t('workflow.editor')
-            });
+            }, exactPolicy(context));
         }
     };
 }());

@@ -15,8 +15,9 @@
     <link rel="stylesheet" th:href="@{/css/architecture-workflow.css}" href="/css/architecture-workflow.css"/>
     <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
     <th:block th:replace="~{fragments/application-chrome :: styles}"></th:block>
+    <link rel="stylesheet" th:href="@{/css/shared/architecture-diagram.css}" href="/css/shared/architecture-diagram.css"/>
 </head>
-<body th:attr="data-project-id=${projectId},
+<body class="architecture-snapshot-page architecture-snapshot-surface" th:attr="data-project-id=${projectId},
                data-snapshot-id=${snapshotId},
                data-policy-title-default-impact=#{archview.policy.title.defaultImpact},
                data-policy-title-leaf-only=#{archview.policy.title.leafOnly},
@@ -74,6 +75,7 @@
 <section th:replace="~{fragments/architecture-workflow :: context}"></section>
 </div>
 
+<section th:fragment="surface" class="architecture-snapshot-content">
 <div id="architectureStatus" class="workbench-status" role="status" aria-live="polite" th:text="#{workbench.ui.loading}">
     Loading persisted Copilot architecture snapshot…
 </div>
@@ -184,6 +186,7 @@
         </section>
     </aside>
 </main>
+</section>
 
 <script th:src="@{/webjars/d3/7.9.0/dist/d3.min.js}"
         src="/webjars/d3/7.9.0/dist/d3.min.js"></script>
@@ -195,6 +198,7 @@
 <th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/api/architecture-workbench-api.js}"
         src="/js/api/architecture-workbench-api.js"></script>
+<script th:src="@{/js/shared/architecture-diagram.js}" src="/js/shared/architecture-diagram.js"></script>
 <script th:src="@{/js/architecture-workbench.js}"
         src="/js/architecture-workbench.js"></script>
 <script th:src="@{/js/architecture-workbench-print.js}"

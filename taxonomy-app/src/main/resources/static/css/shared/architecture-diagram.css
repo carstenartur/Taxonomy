@@ -1,0 +1,14 @@
+/* Shared lens decoration preserves each source's card fills and metadata. */
+:is(.architecture-node, .impact-map-node).lens-queued > rect:first-child { stroke-dasharray: 4 4; }
+:is(.architecture-node, .impact-map-node).lens-examining > rect:first-child { stroke: #7142a0; stroke-width: 4; stroke-dasharray: 10 4; animation: architecture-lens-scan 1.2s linear infinite; }
+:is(.architecture-node, .impact-map-node).lens-suggestions > rect:first-child { stroke: #146b55; stroke-width: 4; }
+:is(.architecture-node, .impact-map-node).lens-unassessed > rect:first-child { stroke: #986000; stroke-width: 3; stroke-dasharray: 3 4; }
+:is(.architecture-node, .impact-map-node):is(.lens-failed, .lens-stale) > rect:first-child { stroke: #8f210f; stroke-dasharray: 2 5; }
+.architecture-lens-suggestions .editor-ghost { cursor: pointer; }
+.architecture-lens-suggestions .editor-ghost:is(.selected, :focus) { stroke-width: 5; outline: none; }
+@keyframes architecture-lens-scan { to { stroke-dashoffset: -28; } }
+@media (prefers-reduced-motion: reduce) { :is(.architecture-node, .impact-map-node).lens-examining > rect:first-child { animation: none; } }
+@media (forced-colors: active) {
+    .architecture-lens-ring, .architecture-lens-suggestions .editor-ghost,
+    :is(.architecture-node, .impact-map-node)[data-lens-state] > rect:first-child { stroke: Highlight; }
+}

@@ -1,11 +1,15 @@
 /* Deliberate frozen-source handoff. The server owns graph retrieval, preview and mutation. */
 window.AnalysisSnapshotAdoption = function (options) {
     'use strict';
-    var view = null, pending = null, busy = false, locked = false;
+    var view = null, pending = null, busy = false, locked = false, generation = 0;
     var source = window.TaxonomyArchitectureWorkflow?.adoptionSource();
     function el(id) { return document.getElementById(id); }
     function t(key) { return options.t.apply(null, arguments); }
     function setBusy(value) { busy = value; if (options.onBusy) options.onBusy(value); render(); }
+    function sourceKey(value) {
+        return JSON.stringify(['repositoryId','workspaceScopeKey','branch','projectId','requirementId','requirementVersionId','snapshotId']
+            .map(function (key) { return value?.[key] == null ? null : String(value[key]); }));
+    }
     function render() {
         el('snapshotAdoption').hidden = !source && !(view?.model.views || []).some(function (item) { return item.extensions?.['x-analysis-snapshot-id']; });
         el('adoptionPreview').disabled = !source || !view?.mayEdit || locked || busy;
@@ -41,10 +45,11 @@ window.AnalysisSnapshotAdoption = function (options) {
     }
     async function preview() {
         if (busy || locked || !view?.mayEdit || !source) return;
-        pending = null; setBusy(true);
+        pending = null; setBusy(true); var ticket = generation;
         try {
             var request = {context:view.document.context,metadata:options.metadata(),source:Object.assign({},source)};
             var result = await options.api.previewAdoption(request);
+            if (ticket !== generation) return;
             pending = result.summary.conflicts.length ? null : Object.freeze(Object.assign({},request,{previewFingerprint:result.fingerprint}));
             showSummary(result);
         } catch (error) { options.report(error); }
@@ -70,11 +75,14 @@ window.AnalysisSnapshotAdoption = function (options) {
     return {
         getSource:function () { return source ? Object.assign({},source) : null; },
         update:function (next) {
-            if (view && JSON.stringify(view.document.context) !== JSON.stringify(next.document.context)) pending = null;
-            view = next;
             var selectedId = options.selectedView ? options.selectedView() : null;
-            var selected = view.model.views.find(function (item) { return item.id === selectedId; });
-            source = sourceFromView(selected) || window.TaxonomyArchitectureWorkflow?.adoptionSource();
+            var selected = next.model.views.find(function (item) { return item.id === selectedId; });
+            var nextSource = sourceFromView(selected) || window.TaxonomyArchitectureWorkflow?.adoptionSource();
+            if ((view && JSON.stringify(view.document.context) !== JSON.stringify(next.document.context)) || sourceKey(source) !== sourceKey(nextSource)) {
+                pending = null; generation++; el('adoptionSummary').hidden = true; el('adoptionSummary').textContent = '';
+            }
+            view = next;
+            source = nextSource ? Object.assign({},nextSource) : null;
             var selector = el('adoptionView'); selector.replaceChildren();
             var full = document.createElement('option'); full.value = ''; full.textContent = t('adoption.fullModel'); selector.append(full);
             view.model.views.forEach(function (item) { var option = document.createElement('option'); option.value = item.id; option.textContent = item.title || item.id; selector.append(option); });

@@ -259,10 +259,27 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         click(By.id("zoomArchitectureOut"));
         wait.until(browser -> zoom() <= before + .01);
         click(By.id("fitArchitecture"));
-        click(By.id("fullscreenArchitecture"));
-        wait.until(browser -> Boolean.TRUE.equals(driver.executeScript("return !!document.fullscreenElement")));
-        click(By.id("fullscreenArchitecture"));
-        wait.until(browser -> Boolean.FALSE.equals(driver.executeScript("return !!document.fullscreenElement")));
+        observeFullscreen(driver);
+        try {
+            click(By.id("fullscreenArchitecture"));
+            wait.until(browser -> Boolean.TRUE.equals(driver.executeScript(
+                    "return document.fullscreenElement===document.getElementById('architectureWorkbench')")));
+            driver.executeScript("__recordFullscreen('entered');");
+            click(By.id("fullscreenArchitecture"));
+            wait.until(browser -> Boolean.TRUE.equals(driver.executeScript("return document.fullscreenElement===null")));
+            driver.executeScript("__recordFullscreen('exited');");
+        } finally {
+            // Save the real browser's decision even if the existing bounded wait fails.
+            // Diagnostic failures must not replace the original interaction failure.
+            try {
+                driver.executeScript("__recordFullscreen('final');");
+                new ObjectMapper().writerWithDefaultPrettyPrinter().writeValue(output.resolve("browser-fullscreen.json").toFile(),
+                        Map.of("browser", driver.getCapabilities().asMap(),
+                                "evidence", driver.executeScript("return __fullscreenEvidence;")));
+            } catch (Exception evidenceFailure) {
+                System.err.println("Unable to capture fullscreen evidence: " + evidenceFailure);
+            }
+        }
         Map<String, String> buttons = new LinkedHashMap<>();
         buttons.put("downloadArchitectureSvg", "architecture.svg");
         buttons.put("downloadArchitecturePdf", "architecture.pdf");
@@ -462,7 +479,14 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
     }
 
     private void showNativePackagePanel() {
+        showNativePackagePanel(driver, wait);
+    }
+
+    static void showNativePackagePanel(RemoteWebDriver driver, WebDriverWait wait) {
         driver.executeScript("arguments[0].scrollIntoView({block:'center'})", driver.findElement(By.id("editorPackageFields")));
+        // The shared page uses Bootstrap's native smooth scroll when motion is allowed.
+        wait.withMessage("Saved package controls are inside the actual screenshot viewport").until(browser ->
+                Boolean.TRUE.equals(driver.executeScript("return ['editorPackageTitle','editorSavePackage','editorDeletePackage','editorMovePackage','editorPlaceElement','editorDetachElement'].every(id=>{const r=document.getElementById(id).getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;});")));
         assertThat((Boolean) driver.executeScript("return ['editorPackageTitle','editorSavePackage','editorDeletePackage','editorMovePackage','editorPlaceElement','editorDetachElement'].every(id=>{const r=document.getElementById(id).getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;});")).as("Saved package controls are inside the actual screenshot viewport").isTrue();
     }
 
@@ -552,6 +576,43 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
     private void click(By selector) {
         click(driver, wait, selector);
     }
+    /** Observe native fullscreen without changing APIs, Promises, activation or input events. */
+    static void observeFullscreen(RemoteWebDriver driver) {
+        driver.executeScript("""
+                const workbench=document.getElementById('architectureWorkbench');
+                const button=document.getElementById('fullscreenArchitecture');
+                const policy=document.permissionsPolicy || document.featurePolicy;
+                window.__fullscreenEvidence={events:[],userAgent:navigator.userAgent};
+                const state=()=>({time:performance.now(),fullscreen:document.fullscreenElement?.id || null,
+                    fullscreenEnabled:document.fullscreenEnabled,allowsFullscreen:policy?.allowsFeature('fullscreen') ?? null,
+                    hasFocus:document.hasFocus(),activation:{isActive:navigator.userActivation?.isActive,
+                        hasBeenActive:navigator.userActivation?.hasBeenActive},
+                    workbenchConnected:workbench.isConnected,workbenchDisplay:getComputedStyle(workbench).display,
+                    buttonConnected:button.isConnected,buttonDisabled:button.disabled,
+                    activeElement:document.activeElement?.id,viewport:{width:innerWidth,height:innerHeight},
+                    workbenchBounds:workbench.getBoundingClientRect().toJSON(),
+                    source:TaxonomyArchitectureWorkspace.getSource(),
+                    selected:[...document.querySelectorAll('#architectureCanvas [data-node-id][aria-pressed="true"]')]
+                        .map(node=>node.dataset.nodeId)});
+                window.__recordFullscreen=(type,detail={})=>__fullscreenEvidence.events.push({type,...state(),...detail});
+                for (const type of ['fullscreenchange','fullscreenerror']) {
+                    document.addEventListener(type,event=>__recordFullscreen(type,
+                        {isTrusted:event.isTrusted,target:event.target.id || event.target.nodeName}));
+                }
+                addEventListener('unhandledrejection',event=>__recordFullscreen('unhandledrejection',
+                    {isTrusted:event.isTrusted,reason:{name:event.reason?.name || null,
+                        message:event.reason?.message || String(event.reason)}}));
+                // Observe native events only: no replacement fullscreen APIs, Promise handlers or synthetic clicks.
+                for (const capture of [true,false]) for (const type of ['pointerdown','click']) {
+                    document.addEventListener(type,event=>{
+                        if (button===event.target || button.contains(event.target))
+                            __recordFullscreen(type+(capture?':capture':':bubble'),{isTrusted:event.isTrusted});
+                    },capture);
+                }
+                __recordFullscreen('before-entry');
+                """);
+    }
+
     static void click(RemoteWebDriver driver, WebDriverWait wait, By selector) {
         wait.until(browser -> {
             try {

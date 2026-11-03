@@ -22,7 +22,7 @@ function fixture(options = {}) {
     } };
     const textField = { value: 'communications', classList: { remove() {} } };
     const document = { documentElement: { lang: 'en' }, querySelector: () => null, querySelectorAll: () => [], getElementById: id => id === 'businessText' ? textField
-        : id === 'includeArchitectureView' ? { checked: true } : null };
+        : id === 'includeArchitectureView' ? { checked: options.includeArchitecture !== false } : null };
     const sandbox = { window, document, CSS: { escape: value => value }, console: { log() {}, error() {} },
         TaxonomyI18n: { t: (key, ...values) => [key, ...values].join(': ') }, TaxonomyUtils: { escapeHtml: text => text },
         crypto: { randomUUID: () => 'cb2a3d71-e849-4a50-9855-1f9cb8f81402' },
@@ -98,6 +98,38 @@ test('once lifecycle is ready full analysis always starts observation before its
     assert.equal(f.calls[0][1].headers['X-Taxonomy-Workspace-Id'], 'workspace-a');
     assert.equal(f.calls[0][1].headers['X-Analysis-Operation-Id'], f.observations[0][0]);
     assert.equal(JSON.parse(f.calls[0][1].body).includeArchitectureView, true);
+});
+
+test('ordinary architecture analysis requests a real retained server continuation while keeping the normal request', () => {
+    const f=fixture();f.progress();f.window.TaxonomyAnalysisSession={state:()=>f.sessionState};
+    f.window.TaxonomyScoring.runAnalysis();
+    const request=JSON.parse(f.calls[0][1].body);
+    assert.equal(request.resumable,true);assert.equal(request.continuationAction,'START');
+    assert.equal(request.continuationId,f.calls[0][1].headers['X-Analysis-Operation-Id']);
+    assert.equal(request.businessText,'communications');assert.equal(request.includeArchitectureView,true);
+    assert.equal(f.calls.length,1);
+});
+test('ordinary analysis with architecture disabled keeps its opt-out and does not create an unnecessary continuation', () => {
+    const f=fixture({includeArchitecture:false});f.progress();f.window.TaxonomyAnalysisSession={state:()=>f.sessionState};
+    f.window.TaxonomyScoring.runAnalysis();
+    const request=JSON.parse(f.calls[0][1].body);
+    assert.equal(request.includeArchitectureView,false);assert.equal(request.resumable,undefined);
+    assert.equal(request.continuationId,undefined);
+});
+for(const status of ['SUCCESS','PARTIAL'])for(const generation of [0,1])test('ordinary '+status+' analysis binds its retained request in generation '+generation+' without automatic follow-ups',async()=>{
+    const f=fixture();f.progress();f.window.TaxonomyAnalysisSession={state:()=>f.sessionState};
+    const recovery=f.loadRecovery();f.window.__TaxonomyAnalysisSessionContext.runtime.analysisGeneration=generation;
+    f.window.TaxonomyScoring.runAnalysis();
+    const request=JSON.parse(f.calls[0][1].body);
+    f.requests[0].resolve({ok:true,json:async()=>({status,scores:{},reasons:{},warnings:[],analysisOperationId:f.observations[0][0],
+        recovery:{id:request.continuationId,version:1,state:status==='PARTIAL'?'PAUSED':'COMPLETED',openQuestions:[]}})});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(recovery.isManaged(),true);
+    assert.equal(f.state.recoveryContext.id,request.continuationId);
+    assert.equal(f.state.recoveryContext.workspaceId,f.sessionState.workspaceId);
+    assert.equal(f.state.recoveryContext.request.businessText,request.businessText);
+    assert.equal(f.state.recoveryContext.noFollowups,true);assert.equal(f.state.recoveryContext.confirmed,true);
+    assert.equal(f.calls.length,1,'A retained result never adds automatic follow-up work');
 });
 
 

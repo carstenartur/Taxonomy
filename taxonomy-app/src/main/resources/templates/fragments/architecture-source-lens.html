@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<section th:fragment="panel(idPrefix)" class="architecture-editor-surface editor-lens-panel architecture-source-lens text-break" th:id="${idPrefix}"
+         th:attr="aria-labelledby=${idPrefix + 'Title'}" hidden>
+    <h2 th:id="${idPrefix + 'Title'}" tabindex="-1" th:text="#{editor.lens.title}">Architecture focus lens</h2>
+    <p th:text="#{sourceLens.readOnly}">Investigate the displayed saved evidence. Suggestions do not change this source.</p>
+    <p th:id="${idPrefix + 'Source'}" role="status"></p>
+    <label class="editor-check"><input th:id="${idPrefix + 'Enabled'}" type="checkbox" disabled/>
+        <span th:text="#{editor.lens.enable}">Enable focus lens</span></label>
+    <p th:text="#{editor.lens.help}">Select an element to investigate its connections. Results remain hypotheses until reviewed.</p>
+    <div class="editor-toolbar">
+        <button th:id="${idPrefix + 'Inspect'}" type="button" disabled th:text="#{editor.lens.inspect}">Investigate selection</button>
+        <button th:id="${idPrefix + 'Pause'}" type="button" disabled th:text="#{editor.lens.pause}">Pause new investigations</button>
+        <label th:for="${idPrefix + 'Budget'}" th:text="#{editor.lens.budget}">Investigation limit</label>
+        <input th:id="${idPrefix + 'Budget'}" type="number" min="1" max="128" value="16"/>
+        <button th:id="${idPrefix + 'Refresh'}" type="button" th:text="#{sourceLens.refresh}">Refresh source</button>
+    </div>
+    <label class="editor-check"><input th:id="${idPrefix + 'UseAi'}" type="checkbox"/>
+        <span th:text="#{editor.lens.useAi}">Ask the configured AI provider when available</span></label>
+    <p th:text="#{editor.lens.cost}">Each investigation may send one request to the configured provider. Local candidates remain unassessed.</p>
+    <p th:id="${idPrefix + 'Summary'}" role="status" aria-live="polite"></p>
+    <ul th:id="${idPrefix + 'States'}" class="editor-lens-states"></ul>
+    <h3 th:id="${idPrefix + 'Count'}"></h3>
+    <ul th:id="${idPrefix + 'Suggestions'}" class="editor-lens-suggestions"></ul>
+    <section th:id="${idPrefix + 'Review'}" th:aria-label="#{editor.lens.review}"></section>
+    <p th:id="${idPrefix + 'Error'}" role="alert" hidden></p>
+</section>
+</body>
+</html>

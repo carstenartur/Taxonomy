@@ -128,7 +128,9 @@ test('Sunburst keeps an unassessed branch color when the preceding zero branch i
     const container=element('div'),filterControl={value:'all'};
     const document={activeElement:null,readyState:'loading',createElement:element,addEventListener(){},dispatchEvent(){},
         getElementById:id=>id==='taxonomyTree'?container:id==='diagramRelevanceFilter'?filterControl:null};
-    const runtime={window:{TaxonomyState:{currentView:'sunburst',taxonomyData:nodes,currentScores:scores,currentScoreDetails:{}}},
+    const lifecycle=new EventTarget();
+    const runtime={window:{addEventListener:lifecycle.addEventListener.bind(lifecycle),
+        TaxonomyState:{currentView:'sunburst',taxonomyData:nodes,currentScores:scores,currentScoreDetails:{}}},
         document,d3,TaxonomyI18n:{t:key=>key},CustomEvent:class{},
         ResizeObserver:class{observe(){}disconnect(){}},console:{error(message,error){throw error;}}};
     for(const name of ['shared/taxonomy-utils.js','core/taxonomy-views.js','core/taxonomy-browse.js']) {

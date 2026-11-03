@@ -1,95 +1,94 @@
-:root { color-scheme: light dark; font-family: system-ui, sans-serif; background: #f5f7fa; color: #17243a; }
-* { box-sizing: border-box; }
-body { margin: 0; }
-.editor-header { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center; padding: 1rem 2rem; background: #17243a; color: white; }
-.editor-header a { color: white; }
-h1 { font-size: 1.4rem; margin: 0; flex: 1; }
-h2 { font-size: 1.15rem; margin-top: 1.5rem; }
-h3 { font-size: 1rem; }
-main { max-width: 1600px; margin: auto; padding: 1.5rem; }
-.editor-context, pre, #editorSelection { overflow-wrap: anywhere; }
-.editor-context { font-family: ui-monospace, monospace; }
-.editor-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: .7rem 0; }
-button, .editor-toolbar a { border: 1px solid #8795a8; border-radius: .3rem; padding: .65rem .85rem; background: #fff; color: #17243a; cursor: pointer; font: inherit; min-height: 44px; }
-button:disabled { cursor: default; opacity: .55; }
-a { color: #174cb3; }
-:focus-visible { outline: 3px solid #ac5100; outline-offset: 3px; }
-.editor-columns { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(20rem, 1fr); gap: 1.5rem; }
-.editor-columns > section { min-width: 0; padding: 1rem; border: 1px solid #c8d1dd; background: white; border-radius: .5rem; }
-label { display: block; font-weight: 600; margin: .7rem 0 .25rem; }
-input, select, textarea { display: block; width: 100%; font: inherit; padding: .55rem; border: 1px solid #8795a8; border-radius: .25rem; background: white; color: #17243a; }
-textarea { resize: vertical; }
-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
-#editorGraph { width: 100%; height: 27rem; border: 1px solid #aab5c4; touch-action: none; background: #f8fafc; }
-#editorGraph .editor-node rect { fill: #e5edf9; stroke: #476286; stroke-width: 1.5; }
-#editorGraph text { fill: #17243a; font: 14px system-ui, sans-serif; pointer-events: none; }
-#editorGraph .editor-node.selected rect { stroke: #8d3d00; stroke-width: 4; }
-#editorGraph .editor-edge { stroke: #536579; stroke-width: 2; fill: none; }
-#editorGraph .editor-edge:focus { stroke: #8d3d00; stroke-width: 5; outline: none; }
-#editorTree ul, #editorRelations { padding-left: 1.4rem; }
-#editorTree button { display: block; text-align: left; width: 100%; margin: .25rem 0; overflow-wrap: anywhere; }
-#editorTree button[aria-current="true"] { border: 2px solid #8d3d00; }
-#editorTree small { display: block; }
-#editorTree { max-height: 24rem; overflow-y: auto; scrollbar-gutter: stable; padding: .25rem; }
-.editor-history-region { max-height: 18rem; overflow-y: auto; scrollbar-gutter: stable; padding: .25rem; }
-#editorHistory li { margin: 1rem 0; overflow-wrap: anywhere; }
-#editorRelations li { margin: .6rem 0; overflow-wrap: anywhere; }
-#editorError, #editorPreviewError { color: #8f210f; white-space: pre-wrap; overflow-wrap: anywhere; }
-#editorDraft { padding: .6rem; border-left: 4px solid #8d3d00; }
-pre { white-space: pre-wrap; font: .85rem ui-monospace, monospace; }
-#editorDsl { font: .85rem ui-monospace, monospace; }
-details { margin: 1rem 0; }
-summary { cursor: pointer; padding: .4rem; }
-dialog { max-width: min(72rem, 94vw); max-height: 90vh; width: 100%; overflow: auto; padding: 1.5rem; border: 2px solid #476286; background: white; color: #17243a; }
-dialog::backdrop { background: #17243aaa; }
-.editor-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-.editor-diff pre { padding: .7rem; background: #f1f4f8; min-width: 0; }
-.editor-skip, .editor-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.editor-skip:focus { clip-path: none; width: auto; height: auto; padding: 1rem; background: white; z-index: 2; }
-[hidden] { display: none !important; }
-@media (max-width: 62rem) { .editor-columns, .editor-diff { grid-template-columns: 1fr; } main { padding: .7rem; } .editor-header { padding: 1rem; } }
-@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+.architecture-editor-surface { color-scheme: light dark; font-family: system-ui, sans-serif; background: #f5f7fa; color: #17243a; }
+.architecture-editor-surface * { box-sizing: border-box; }
+.architecture-editor-surface { margin: 0; }
+.architecture-editor-surface .editor-header { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center; padding: 1rem 2rem; background: #17243a; color: white; }
+.architecture-editor-surface .editor-header a { color: white; }
+.architecture-editor-surface h1 { font-size: 1.4rem; margin: 0; flex: 1; }
+.architecture-editor-surface h2 { font-size: 1.15rem; margin-top: 1.5rem; }
+.architecture-editor-surface h3 { font-size: 1rem; }
+.architecture-editor-surface main { max-width: 1600px; margin: auto; padding: 1.5rem; }
+.architecture-editor-surface .editor-context, .architecture-editor-surface pre, .architecture-editor-surface #editorSelection { overflow-wrap: anywhere; }
+.architecture-editor-surface .editor-context { font-family: ui-monospace, monospace; }
+.architecture-editor-surface .editor-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: .7rem 0; }
+.architecture-editor-surface button, .architecture-editor-surface .editor-toolbar a { border: 1px solid #8795a8; border-radius: .3rem; padding: .65rem .85rem; background: #fff; color: #17243a; cursor: pointer; font: inherit; min-height: 44px; }
+.architecture-editor-surface button:disabled { cursor: default; opacity: .55; }
+.architecture-editor-surface a { color: #174cb3; }
+.architecture-editor-surface :focus-visible { outline: 3px solid #ac5100; outline-offset: 3px; }
+.architecture-editor-surface .editor-columns { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(20rem, 1fr); gap: 1.5rem; }
+.architecture-editor-surface .editor-columns > section { min-width: 0; padding: 1rem; border: 1px solid #c8d1dd; background: white; border-radius: .5rem; }
+.architecture-editor-surface label { display: block; font-weight: 600; margin: .7rem 0 .25rem; }
+.architecture-editor-surface input, .architecture-editor-surface select, .architecture-editor-surface textarea { display: block; width: 100%; font: inherit; padding: .55rem; border: 1px solid #8795a8; border-radius: .25rem; background: white; color: #17243a; }
+.architecture-editor-surface textarea { resize: vertical; }
+.architecture-editor-surface fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.architecture-editor-surface #editorGraph { width: 100%; height: 27rem; border: 1px solid #aab5c4; touch-action: none; background: #f8fafc; }
+.architecture-editor-surface #editorGraph .editor-node rect { fill: #e5edf9; stroke: #476286; stroke-width: 1.5; }
+.architecture-editor-surface #editorGraph text { fill: #17243a; font: 14px system-ui, sans-serif; pointer-events: none; }
+.architecture-editor-surface #editorGraph .editor-node.selected rect { stroke: #8d3d00; stroke-width: 4; }
+.architecture-editor-surface #editorGraph .editor-edge { stroke: #536579; stroke-width: 2; fill: none; }
+.architecture-editor-surface #editorGraph .editor-edge:focus { stroke: #8d3d00; stroke-width: 5; outline: none; }
+.architecture-editor-surface #editorTree ul, .architecture-editor-surface #editorRelations { padding-left: 1.4rem; }
+.architecture-editor-surface #editorTree button { display: block; text-align: left; width: 100%; margin: .25rem 0; overflow-wrap: anywhere; }
+.architecture-editor-surface #editorTree button[aria-current="true"] { border: 2px solid #8d3d00; }
+.architecture-editor-surface #editorTree small { display: block; }
+.architecture-editor-surface #editorTree { max-height: 24rem; overflow-y: auto; scrollbar-gutter: stable; padding: .25rem; }
+.architecture-editor-surface .editor-history-region { max-height: 18rem; overflow-y: auto; scrollbar-gutter: stable; padding: .25rem; }
+.architecture-editor-surface #editorHistory li { margin: 1rem 0; overflow-wrap: anywhere; }
+.architecture-editor-surface #editorRelations li { margin: .6rem 0; overflow-wrap: anywhere; }
+.architecture-editor-surface #editorError, .architecture-editor-surface #editorPreviewError { color: #8f210f; white-space: pre-wrap; overflow-wrap: anywhere; }
+.architecture-editor-surface #editorDraft { padding: .6rem; border-left: 4px solid #8d3d00; }
+.architecture-editor-surface pre { white-space: pre-wrap; font: .85rem ui-monospace, monospace; }
+.architecture-editor-surface #editorDsl { font: .85rem ui-monospace, monospace; }
+.architecture-editor-surface details { margin: 1rem 0; }
+.architecture-editor-surface summary { cursor: pointer; padding: .4rem; }
+.architecture-editor-surface dialog { max-width: min(72rem, 94vw); max-height: 90vh; width: 100%; overflow: auto; padding: 1.5rem; border: 2px solid #476286; background: white; color: #17243a; }
+.architecture-editor-surface dialog::backdrop { background: #17243aaa; }
+.architecture-editor-surface .editor-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.architecture-editor-surface .editor-diff pre { padding: .7rem; background: #f1f4f8; min-width: 0; }
+.architecture-editor-surface .editor-skip, .architecture-editor-surface .editor-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.architecture-editor-surface .editor-skip:focus { clip-path: none; width: auto; height: auto; padding: 1rem; background: white; z-index: 2; }
+.architecture-editor-surface [hidden] { display: none !important; }
+@media (max-width: 62rem) { .architecture-editor-surface .editor-columns, .architecture-editor-surface .editor-diff { grid-template-columns: 1fr; } .architecture-editor-surface main { padding: .7rem; } .architecture-editor-surface .editor-header { padding: 1rem; } }
+@media (prefers-reduced-motion: reduce) { .architecture-editor-surface * { scroll-behavior: auto !important; } }
 @media (forced-colors: active) {
-    #editorGraph .editor-node rect { fill: Canvas; stroke: CanvasText; }
-    #editorGraph text { fill: CanvasText; }
-    #editorGraph .editor-edge { stroke: CanvasText; }
-    #editorGraph .editor-node.selected rect { stroke: Highlight; }
-    button:disabled { opacity: 1; color: GrayText; }
+    .architecture-editor-surface #editorGraph .editor-node rect { fill: Canvas; stroke: CanvasText; }
+    .architecture-editor-surface #editorGraph text { fill: CanvasText; }
+    .architecture-editor-surface #editorGraph .editor-edge { stroke: CanvasText; }
+    .architecture-editor-surface #editorGraph .editor-node.selected rect { stroke: Highlight; }
+    .architecture-editor-surface button:disabled { opacity: 1; color: GrayText; }
 }
 
 /* Planning metadata is readable without nested scrolling, including unknown profiles. */
-#editorPlanningValues dd { margin-inline-start: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-#editorPlanningStatus { overflow-wrap: anywhere; }
+.architecture-editor-surface #editorPlanningValues dd { margin-inline-start: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.architecture-editor-surface #editorPlanningStatus { overflow-wrap: anywhere; }
 
-.editor-layout-controls select { width: auto; flex: 1; min-width: 10rem; }
-.editor-lens-panel { border-top: 1px solid #aab5c4; margin-top: 1rem; }
-.editor-check { display: flex; gap: .6rem; align-items: center; }
-.editor-check input { width: 1.2rem; height: 1.2rem; }
-#editorLensBudget { width: 5rem; }
-.editor-lens-states, .editor-lens-suggestions { padding-left: 1.3rem; overflow-wrap: anywhere; }
-.editor-lens-state { margin: .4rem 0; }
-.editor-lens-state.examining { font-weight: 700; text-decoration: underline; }
-.editor-lens-suggestions li { margin: .5rem 0; }
-.editor-lens-suggestions button { text-align: left; overflow-wrap: anywhere; }
-.editor-lens-suggestions small { display: block; }
-.editor-lens-suggestions button[aria-pressed="true"] { border: 2px solid #7142a0; }
-#editorLensReview { border-left: 4px solid #7142a0; padding: 0 1rem; overflow-wrap: anywhere; }
-.editor-lens-rationale, #editorLensReview blockquote { white-space: pre-wrap; }
-#editorLensReview blockquote { margin: .5rem 0; padding: .5rem; background: #f1f4f8; }
-.editor-lens-notice { font-weight: 600; }
-#editorLensError { color: #8f210f; white-space: pre-wrap; overflow-wrap: anywhere; }
-#editorGraph .editor-lens-ring { fill: #7142a00c; stroke: #7142a0; stroke-width: 2; pointer-events: none; }
-#editorGraph .editor-ghost { stroke: #7142a0; stroke-width: 3; stroke-dasharray: 8 5; fill: none; cursor: pointer; }
-#editorGraph .editor-ghost.selected, #editorGraph .editor-ghost:focus { stroke-width: 5; outline: none; }
-#editorGraph .lens-queued rect { stroke-dasharray: 4 4; }
-#editorGraph .lens-examining rect { stroke: #7142a0; stroke-width: 4; stroke-dasharray: 10 4; animation: editor-lens-scan 1.2s linear infinite; }
-#editorGraph .lens-suggestions rect { stroke: #146b55; stroke-width: 4; }
-#editorGraph .lens-unassessed rect { stroke: #986000; stroke-width: 3; stroke-dasharray: 3 4; }
-#editorGraph .lens-failed rect, #editorGraph .lens-stale rect { stroke: #8f210f; stroke-dasharray: 2 5; }
+.architecture-editor-surface .editor-layout-controls select { width: auto; flex: 1; min-width: 10rem; }
+.architecture-editor-surface .editor-lens-panel { border-top: 1px solid #aab5c4; margin-top: 1rem; }
+.architecture-editor-surface .editor-check { display: flex; gap: .6rem; align-items: center; }
+.architecture-editor-surface .editor-check input { width: 1.2rem; height: 1.2rem; }
+.architecture-editor-surface #editorLensBudget { width: 5rem; }
+.architecture-editor-surface .editor-lens-states, .architecture-editor-surface .editor-lens-suggestions { padding-left: 1.3rem; overflow-wrap: anywhere; }
+.architecture-editor-surface .editor-lens-state { margin: .4rem 0; }
+.architecture-editor-surface .editor-lens-state.examining { font-weight: 700; text-decoration: underline; }
+.architecture-editor-surface .editor-lens-suggestions li { margin: .5rem 0; }
+.architecture-editor-surface .editor-lens-suggestions button { text-align: left; overflow-wrap: anywhere; }
+.architecture-editor-surface .editor-lens-suggestions small { display: block; }
+.architecture-editor-surface .editor-lens-suggestions button[aria-pressed="true"] { border: 2px solid #7142a0; }
+.architecture-editor-surface #editorLensReview { border-left: 4px solid #7142a0; padding: 0 1rem; overflow-wrap: anywhere; }
+.architecture-editor-surface .editor-lens-rationale, .architecture-editor-surface #editorLensReview blockquote { white-space: pre-wrap; }
+.architecture-editor-surface #editorLensReview blockquote { margin: .5rem 0; padding: .5rem; background: #f1f4f8; }
+.architecture-editor-surface .editor-lens-notice { font-weight: 600; }
+.architecture-editor-surface #editorLensError { color: #8f210f; white-space: pre-wrap; overflow-wrap: anywhere; }
+.architecture-editor-surface #editorGraph .editor-lens-ring { fill: #7142a00c; stroke: #7142a0; stroke-width: 2; pointer-events: none; }
+.architecture-editor-surface #editorGraph .editor-ghost { stroke: #7142a0; stroke-width: 3; stroke-dasharray: 8 5; fill: none; cursor: pointer; }
+.architecture-editor-surface #editorGraph .editor-ghost.selected, .architecture-editor-surface #editorGraph .editor-ghost:focus { stroke-width: 5; outline: none; }
+.architecture-editor-surface #editorGraph .lens-queued rect { stroke-dasharray: 4 4; }
+.architecture-editor-surface #editorGraph .lens-examining rect { stroke: #7142a0; stroke-width: 4; stroke-dasharray: 10 4; animation: editor-lens-scan 1.2s linear infinite; }
+.architecture-editor-surface #editorGraph .lens-suggestions rect { stroke: #146b55; stroke-width: 4; }
+.architecture-editor-surface #editorGraph .lens-unassessed rect { stroke: #986000; stroke-width: 3; stroke-dasharray: 3 4; }
+.architecture-editor-surface #editorGraph .lens-failed rect, .architecture-editor-surface #editorGraph .lens-stale rect { stroke: #8f210f; stroke-dasharray: 2 5; }
 @keyframes editor-lens-scan { to { stroke-dashoffset: -28; } }
-@media (prefers-reduced-motion: reduce) { #editorGraph .lens-examining rect { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .architecture-editor-surface #editorGraph .lens-examining rect { animation: none; } }
 @media (forced-colors: active) {
-    #editorGraph .editor-ghost, #editorGraph .editor-lens-ring { stroke: Highlight; }
-    #editorGraph .lens-examining rect, #editorGraph .lens-suggestions rect, #editorGraph .lens-unassessed rect,
-    #editorGraph .lens-failed rect, #editorGraph .lens-stale rect { stroke: Highlight; }
+    .architecture-editor-surface #editorGraph .editor-ghost, .architecture-editor-surface #editorGraph .editor-lens-ring { stroke: Highlight; }
+    .architecture-editor-surface #editorGraph .lens-examining rect, .architecture-editor-surface #editorGraph .lens-suggestions rect, .architecture-editor-surface #editorGraph .lens-unassessed rect, .architecture-editor-surface #editorGraph .lens-failed rect, .architecture-editor-surface #editorGraph .lens-stale rect { stroke: Highlight; }
 }

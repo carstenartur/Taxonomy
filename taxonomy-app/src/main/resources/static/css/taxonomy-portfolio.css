@@ -3,6 +3,7 @@
 }
 
 #newVersionButton { min-height: 44px; }
+#requirementMain .alert { overflow-wrap: anywhere; }
 
 @media (max-width: 767.98px) {
     #requirementMain .btn { min-height: 44px; }

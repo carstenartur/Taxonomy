@@ -56,7 +56,7 @@ export async function settleDraftBeforeLocaleNavigation(page) {
 
 /** Continue in the existing authenticated browser/app; no extra service or LLM calls. */
 export async function runSystemInformationAcceptance({
-  page, evidence, outputDir, onLocaleNavigationStart, onLocaleNavigationEnd
+  page, evidence, outputDir, onLocaleNavigationStart, onLocaleNavigationEnd, onLocaleVerified
 }) {
   const { navigateToPage } = await import('./ui-role-fixtures.mjs');
   const cases = [];
@@ -69,11 +69,13 @@ export async function runSystemInformationAcceptance({
       const url = new URL(page.url());
       url.searchParams.set('lang', locale);
       await settleDraftBeforeLocaleNavigation(page);
-      onLocaleNavigationStart?.(locale);
+      await onLocaleNavigationStart?.(locale);
+      let navigationSucceeded = false;
       try {
         await page.goto(url.toString(), { waitUntil: 'domcontentloaded' });
+        navigationSucceeded = true;
       } finally {
-        onLocaleNavigationEnd?.(locale);
+        await onLocaleNavigationEnd?.(locale, navigationSucceeded);
       }
       await page.evaluate(() => window.TaxonomyI18n?.ready?.());
       await navigateToPage(page, 'admin');
@@ -166,6 +168,7 @@ export async function runSystemInformationAcceptance({
       // Two bounded, focused images, rather than another full application-page capture.
       const screenshot = `system-information-${locale}.png`;
       await panel.screenshot({ path: path.join(outputDir, screenshot), animations: 'disabled' });
+      await onLocaleVerified?.(locale);
       cases.push({ locale, screenshot, dimensions, requests,
         databaseVersionSource: next.database.versionSource, storage: next.database.storage,
         warnings: next.database.warnings, refreshed: true, keyboardOperated: true,

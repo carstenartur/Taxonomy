@@ -202,6 +202,8 @@ public class AuthorizationRulesConfigurer {
 
         auth.requestMatchers(HttpMethod.POST, "/api/account/change-password").authenticated();
         auth.requestMatchers(HttpMethod.POST, "/api/analyze").authenticated();
+        // Read-only hypotheses: the loader separately authorizes every exact retained source pin.
+        auth.requestMatchers(HttpMethod.POST, "/api/architecture/focus/suggestions").authenticated();
         auth.requestMatchers(HttpMethod.POST, "/api/analysis-runs/*/cancel").authenticated();
         // Inner continuation service additionally checks exact owner/workspace/repository/branch.
         auth.requestMatchers(HttpMethod.POST, "/api/analysis-continuations/*/cancel").authenticated();

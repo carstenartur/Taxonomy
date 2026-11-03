@@ -868,6 +868,8 @@ function guidanceFixture(search = '') {
         analysisRecovery:{state:'COMPLETED_WITH_GAPS',openQuestions:[{key:'CI'}]}};
     const window={TaxonomyState:state, location:{search,assign:url=>calls.push(['navigate',url])},
         TaxonomyI18n:{t:key=>key,resolveUrl:path=>'/taxonomy'+path},
+        TaxonomyArchitectureWorkspace:{open:async(kind,options)=>{calls.push(['architecture',kind,options||null]);return true;},
+            openLens:()=>calls.push(['lens'])},
         TaxonomyAnalysisSession:{state:()=>({ready:true}),saveNow:async()=>true,addAsRequirement:options=>calls.push(['save-requirement',options])},
         TaxonomyAnalysisRecovery:{open:()=>calls.push(['clarify'])}};
     f.document.getElementById('analyzeBtn').addEventListener('click',()=>calls.push(['analyze']));
@@ -876,10 +878,10 @@ function guidanceFixture(search = '') {
     return {...f,window,state,calls};
 }
 
-test('partial analysis guides clarification and explicit project promotion with a scoped lens link', async()=>{
+test('partial analysis guides clarification and explicit project promotion with an in-page lens', async()=>{
     const f=guidanceFixture('?workspaceScopeKey=private-alice&branch=feature');
     assert.equal(f.document.getElementById('analysisNextStepText').textContent,'analysis.guide.partial');
-    assert.equal(f.document.getElementById('analysisLensAction').href,'/taxonomy/architecture/editor?workspaceScopeKey=private-alice&branch=feature#editorLensTitle');
+    assert.equal(f.document.getElementById('analysisLensAction').href,'#architecture');
     await f.document.getElementById('analysisClarifyAction').fire('click');
     await f.document.getElementById('analysisReformulationAction').fire('click');
     assert.equal(JSON.stringify(f.calls),JSON.stringify([['clarify'],['save-requirement',{preserveDraft:true}]]));
@@ -900,17 +902,18 @@ test('saved requirement navigation waits for successful draft saving and preserv
     assert.deepEqual(f.calls,[['navigate','/taxonomy/projects/7/requirements/9?branch=review&snapshot=snapshot-4#reformulationOffers']]);
 });
 
-test('lens pins the live analysis workspace even when the URL has no pin or an obsolete pin', ()=>{
+test('lens delegates the current analysis to its workspace without copying obsolete URL pins', async()=>{
     for (const search of ['', '?workspaceScopeKey=obsolete&branch=review']) {
         const f=guidanceFixture(search);
         f.window.TaxonomyAnalysisSession.state=()=>({ready:true,workspaceId:'workspace-a'});
         f.document.fire('taxonomy:view-rendered');
-        const target=new URL(f.document.getElementById('analysisLensAction').href,'https://example.test');
-        assert.equal(target.searchParams.get('workspaceScopeKey'),'workspace-a');
-        if(search) assert.equal(target.searchParams.get('branch'),'review');
+        assert.equal(f.document.getElementById('analysisLensAction').href,'#architecture');
+        await f.document.getElementById('analysisLensAction').fire('click');await tick();
+        assert.deepEqual(f.calls,[['architecture','analysis',null],['lens']]);
+        assert.equal(f.window.location.search,search,'No external navigation or URL pin rewrite');
         f.window.TaxonomyAnalysisSession.state=()=>({ready:true,workspaceId:null});
         f.document.fire('taxonomy:view-rendered');
-        assert.match(f.document.getElementById('analysisLensAction').href,/workspaceScopeKey=__shared__/);
+        assert.equal(f.document.getElementById('analysisLensAction').getAttribute('aria-disabled'),'true','Shared unsaved evidence stays guarded');
     }
 });
 
@@ -956,7 +959,7 @@ test('shared lens navigation requires an empty evidence-free draft and needs no 
     meaningful=false;f.document.getElementById('businessText').value='';f.state.lastAnalyzedText=null;
     f.document.fire('taxonomy:view-rendered');
     await button.fire('click');await tick();
-    assert.deepEqual(f.calls,[['navigate','/taxonomy/architecture/editor?workspaceScopeKey=__shared__#editorLensTitle']]);
+    assert.deepEqual(f.calls,[['architecture','analysis',null],['lens']]);
 });
 
 test('editor transport pins shared and private contexts independently of another tab',async()=>{

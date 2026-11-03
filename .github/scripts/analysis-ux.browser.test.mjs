@@ -903,6 +903,8 @@ async function guidanceFixture(locale='de', search='') {
         window.guideCalls=[];
         window.TaxonomyAnalysisSession={state:()=>({ready:true}),saveNow:async()=>true,
             addAsRequirement:()=>guideCalls.push('save-requirement')};
+        window.TaxonomyArchitectureWorkspace={open:async kind=>{guideCalls.push('architecture-'+kind);return true;},
+            openLens:()=>guideCalls.push('open-lens')};
         window.TaxonomyAnalysisRecovery={open:()=>guideCalls.push('clarify')};
         document.getElementById('analyzeBtn').addEventListener('click',()=>guideCalls.push('analyze'));
         document.getElementById('businessText').value='Arbeitsschutz';
@@ -924,11 +926,14 @@ for(const locale of ['de','en']) test(`${locale}: partial results expose clarifi
         assert.equal(await page.locator('#analysisReformulationAction').isVisible(),true);
         assert.equal(await page.locator('#analysisLensAction').isVisible(),true);
         assert.match(await page.locator('#analysisNextStepText').textContent(),locale==='de'?/offen|klären/i:/open|clarif/i);
-        assert.equal(await page.locator('#analysisLensAction').getAttribute('href'),'/taxonomy/architecture/editor?workspaceScopeKey=private-alice&branch=feature#editorLensTitle');
+        assert.equal(await page.locator('#analysisLensAction').getAttribute('href'),'#architecture');
         await page.locator('#analysisClarifyAction').click();
         assert.deepEqual(await page.evaluate(()=>guideCalls),['clarify']);
         await page.locator('#analysisReformulationAction').click();
         assert.deepEqual(await page.evaluate(()=>guideCalls),['clarify','save-requirement']);
+        await page.locator('#analysisLensAction').click();
+        assert.deepEqual(await page.evaluate(()=>guideCalls),['clarify','save-requirement','architecture-analysis','open-lens']);
+        assert.match(page.url(),/workspaceScopeKey=private-alice&branch=feature/);
         assert.match(await page.locator('#analysisReformulationHint').textContent(),locale==='de'?/Snapshot|Projekt/:/snapshot|project/);
         assert.equal(await page.locator('#businessText').inputValue(),'Arbeitsschutz');
     }finally{await finish(page);}
