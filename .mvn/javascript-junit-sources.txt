@@ -101,3 +101,4 @@ taxonomy-app/src/test/js/contextual-help.cjs
 .github/scripts/architecture-exact-context.test.mjs
 .github/scripts/application-chrome.browser.test.mjs
 .github/scripts/database-setup.browser.test.mjs
+.github/scripts/git-sync-status.browser.test.mjs
