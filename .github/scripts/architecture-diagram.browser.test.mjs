@@ -396,6 +396,68 @@ test('snapshot return normalizes loaded IDs and workspace aliases without refetc
             'returning from another snapshot must retain the overview camera saved before focus');
     } finally { await page.close(); }
 });
+for (const requested of ['B', 'C']) test(`explicit snapshot element ${requested} is revealed after restoring another focused source`, async () => {
+    const page = await snapshotFixture();
+    try {
+        await page.evaluate(() => snapshotAdapter.activate(sourceA));
+        await page.locator('#showArchitectureContext').uncheck();
+        await page.evaluate(() => { snapshotAdapter.getDiagram().focus('A'); snapshotAdapter.suspend(); });
+        await page.evaluate(() => snapshotAdapter.activate({ ...sourceA, snapshotId: 'snapshot-B' }));
+        await page.evaluate(id => {
+            snapshotAdapter.suspend();
+            // The workspace passes its current source by reference and remembers
+            // synchronous selection events on that same object while activate renders.
+            window.requestedSnapshotSource = { ...sourceA, element: id };
+            window.restoredSelections = [];
+            document.addEventListener('taxonomy:architecture-selection', event => {
+                if (event.detail?.kind !== requestedSnapshotSource.kind) return;
+                requestedSnapshotSource.element = event.detail.elementId;
+                restoredSelections.push(event.detail.elementId);
+            });
+            return snapshotAdapter.activate(requestedSnapshotSource);
+        }, requested);
+        const actual = await page.evaluate(() => ({ state: snapshotAdapter.getDiagram().getState(),
+            source: snapshotAdapter.getSource(), loads: snapshotRequests.length }));
+        assert.equal(actual.loads, 2, 'a retained snapshot is reused');
+        assert.equal(actual.state.selectedNodeId, requested, 'the explicit route selection overrides retained selection');
+        assert.equal(actual.state.mode, 'overview', 'the requested element is revealed outside the previous neighborhood');
+        assert.equal(actual.state.showContext, true, 'hidden context is revealed when needed');
+        assert.equal(actual.source.element, requested);
+        assert.deepEqual(await page.evaluate(() => restoredSelections), ['A', requested],
+            'the requested element survives the workspace remembering the intermediate restored selection');
+        assert.equal(await page.locator(`[data-node-id="${requested}"]`).getAttribute('aria-pressed'), 'true');
+        assert.equal(await page.locator('.architecture-node').count(), 3);
+    } finally { await page.close(); }
+});
+test('snapshot zoom continues from its full-model fit after focus and source remount', async () => {
+    const page = await snapshotFixture();
+    try {
+        await page.evaluate(() => {
+            const original = snapshotData;
+            window.snapshotData = source => {
+                const data = original(source); data.scene.width = 50230;
+                data.scene.nodes.find(node => node.id === 'C').x = 50000;
+                return data;
+            };
+            return snapshotAdapter.activate(sourceA);
+        });
+        await page.waitForFunction(() => document.getElementById('architectureWorkbench').dataset.fitState === 'complete');
+        const fitted = await page.evaluate(() => snapshotAdapter.getDiagram().captureViewport().k);
+        assert.ok(fitted < 0.2);
+        await page.evaluate(() => snapshotAdapter.getDiagram().focus('A'));
+        await page.waitForFunction(() => document.getElementById('architectureWorkbench').dataset.fitState === 'complete');
+        await page.evaluate(() => snapshotAdapter.getDiagram().unfocus());
+        for (const stage of ['after focus', 'after remount']) {
+            if (stage === 'after remount') await page.evaluate(async () => {
+                snapshotAdapter.suspend(); await snapshotAdapter.activate({ ...sourceA, snapshotId: 'snapshot-B' });
+                snapshotAdapter.suspend(); await snapshotAdapter.activate(sourceA);
+            });
+            await page.evaluate(() => snapshotAdapter.getDiagram().zoom(1.4));
+            assert.ok(Math.abs(await page.evaluate(() => snapshotAdapter.getDiagram().captureViewport().k) - fitted * 1.4) < 1e-9, stage);
+            await page.evaluate(() => snapshotAdapter.getDiagram().zoom(1 / 1.4));
+        }
+    } finally { await page.close(); }
+});
 test('suspended snapshot disables exports and ignores a late response after the next source loads', async () => {
     const page = await snapshotFixture();
     try {

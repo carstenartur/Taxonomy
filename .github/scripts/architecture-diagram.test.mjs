@@ -109,7 +109,8 @@ function engineHarness() {
   svg.getBoundingClientRect = () => ({ width: svg.width, height: svg.height });
   Object.defineProperties(svg, { clientWidth: { get: () => svg.width }, clientHeight: { get: () => svg.height } });
   return { api: window.TaxonomyArchitectureDiagram, svg, document, d3, frames, observers, zooms,
-    flush() { for (let turn = 0; frames.size && turn < 12; turn++) { const pending = [...frames.values()]; frames.clear(); pending.forEach(fn => fn()); } },
+    frame() { const pending = [...frames.values()]; frames.clear(); pending.forEach(fn => fn()); },
+    flush() { for (let turn = 0; frames.size && turn < 12; turn++) this.frame(); },
     resize() { observers.filter(observer => !observer.disconnected).forEach(observer => observer.fn()); },
     node(id) { return svg.querySelector(`[data-node-id="${id}"]`); },
     edge(id) { return svg.querySelector(`[data-edge-id="${id}"]`); }
@@ -362,6 +363,23 @@ test('working initial framing stays readable after resize and inactive fit reque
   renderer.destroy();
 });
 
+test('the initial resize notification does not postpone a stable readable working frame', () => {
+  const h = engineHarness(), fitStates = [];
+  h.svg.width = 300; h.svg.getScreenCTM = () => ({ a: 0.3, b: 0, c: 0, d: 0.3 });
+  const renderer = h.api.create(h.svg, { onFitState: state => fitStates.push(state) });
+  renderer.render({ width: 366, height: 684, edges: [], nodes: [
+    { id: 'A', label: 'First card', x: 52, y: 52, width: 238, height: 82 },
+    { id: 'B', label: 'Second card', x: 52, y: 168, width: 238, height: 82 }
+  ] });
+  renderer.fit({ initial: true });
+  h.frame(); h.resize(); h.frame();
+  const scale = renderer.captureViewport().k * 0.3;
+  assert.ok(238 * scale >= 180 && 82 * scale >= 50,
+    'a stable visible editor must reach readable framing within the two measured frames despite its initial observer notification');
+  assert.deepEqual(fitStates, ['pending', 'complete'], 'one observer must not restart an already pending fit');
+  renderer.destroy();
+});
+
 test('explicit working Fit covers a large server scene below the ordinary zoom floor', () => {
   const h = engineHarness(), renderer = h.api.create(h.svg, {}), width = 262104;
   renderer.render({ width, height: 420, nodes: [scene.nodes[0], { ...scene.nodes[2], x: width - 230 }], edges: [] });
@@ -371,6 +389,32 @@ test('explicit working Fit covers a large server scene below the ordinary zoom f
   assert.ok(fitted.x + width * fitted.k <= 990 + 1e-7);
   renderer.zoom(1.1); h.flush();
   assert.ok(Math.abs(renderer.captureViewport().k - fitted.k * 1.1) < 1e-9, 'manual zoom starts from the full-model fit');
+  renderer.destroy();
+});
+
+for (const restoredThrough of ['unfocus', 'remount']) test(`snapshot zoom continues smoothly from a large fitted camera after ${restoredThrough}`, () => {
+  const h = engineHarness(), options = { viewport: { minimumScale: 0.2, extendMinimumForFit: true,
+    fixedWidth: 1000, fixedHeight: 420 } };
+  const wide = { ...scene, nodes: [scene.nodes[0], scene.nodes[1], { ...scene.nodes[2], x: 50000 }] };
+  let renderer = configured(h, 'snapshot', options);
+  renderer.render(wide); renderer.fit(); h.flush();
+  const overview = copy(renderer.captureViewport());
+  assert.ok(overview.k < 0.2, 'the full snapshot requires a fit below the ordinary zoom floor');
+  if (restoredThrough === 'unfocus') {
+    renderer.focus('A'); h.flush();
+    assert.ok(renderer.captureViewport().k > 0.2, 'the focused neighborhood uses its normal zoom range');
+    renderer.unfocus();
+  } else {
+    const saved = renderer.captureSession(); renderer.destroy();
+    renderer = configured(h, 'snapshot', options); renderer.render(wide); renderer.restoreSession(saved);
+  }
+  h.flush();
+  assert.deepEqual(copy(renderer.captureViewport()), overview);
+  renderer.zoom(1.4); h.flush();
+  assert.ok(Math.abs(renderer.captureViewport().k - overview.k * 1.4) < 1e-9,
+    'the next zoom must scale the restored camera instead of jumping to the default minimum');
+  renderer.zoom(1 / 1.4); h.flush();
+  assert.ok(Math.abs(renderer.captureViewport().k - overview.k) < 1e-9);
   renderer.destroy();
 });
 

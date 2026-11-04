@@ -676,8 +676,8 @@
             diagramController.setActive(true);
             setExportsEnabled(true);
             window.TaxonomyArchitectureWorkflow?.setScope(getSource());
-            if (source.element && source.element !== diagramController.getState().selectedNodeId) {
-                diagramController.select(source.element, null, { center: true, reveal: true });
+            if (selectedSource.element && selectedSource.element !== diagramController.getState().selectedNodeId) {
+                diagramController.select(selectedSource.element, null, { center: true, reveal: true });
             }
             publishContext();
             return true;
@@ -705,7 +705,7 @@
         alertBox.classList.add('d-none');
         setStatus(t('workbench.ui.loading'));
         pendingState = {
-            selectedNodeId: source.element || null,
+            selectedNodeId: selectedSource.element || null,
             selectedEdgeId: null,
             mode: 'overview',
             searchQuery: '',
@@ -725,10 +725,11 @@
             const data = saved?.data || await ArchitectureWorkbenchApi.load(
                 selectedSource.projectId, selectedSource.snapshotId, selectedSource, controller.signal);
             if (!active || ticket !== generation) return false;
-            const initialState = saved
-                ? Object.assign({}, saved.session.state, { selectedNodeId: source.element || saved.session.state.selectedNodeId })
-                : pendingState;
+            const initialState = saved ? saved.session.state : pendingState;
             render(data, initialState, saved?.session);
+            if (saved && selectedSource.element && selectedSource.element !== diagramController.getState().selectedNodeId) {
+                diagramController.select(selectedSource.element, null, { center: true, reveal: true });
+            }
             activeSource = getSource();
             sourceKey = keyForSource(activeSource);
             projectId = activeSource.projectId;

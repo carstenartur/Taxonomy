@@ -13,10 +13,15 @@ class ArchitectureWorkbenchAssetContractTest {
 
         assertThat(page)
                 .contains("/js/api/architecture-workbench-api.js")
+                .contains("/js/shared/architecture-diagram.js")
                 .contains("/js/architecture-workbench.js")
                 .contains("/webjars/d3/7.9.0/dist/d3.min.js")
                 .contains("Download PDF");
         assertThat(page.indexOf("/js/api/architecture-workbench-api.js"))
+                .isLessThan(page.indexOf("/js/architecture-workbench.js"));
+        assertThat(page.indexOf("/webjars/d3/7.9.0/dist/d3.min.js"))
+                .isLessThan(page.indexOf("/js/shared/architecture-diagram.js"));
+        assertThat(page.indexOf("/js/shared/architecture-diagram.js"))
                 .isLessThan(page.indexOf("/js/architecture-workbench.js"));
     }
 
@@ -44,12 +49,21 @@ class ArchitectureWorkbenchAssetContractTest {
                 .contains("let queueIndex = 0")
                 .contains("while (queueIndex < queue.length)")
                 .doesNotContain("queue.shift()")
-                .contains("const leavingFocusMode = !nodeId && state.mode === 'focus'")
-                .contains("state.mode = 'overview'")
                 .contains("searchInput,")
                 .contains("contextCheckbox,")
                 .contains("fullscreenButton")
                 .contains("control.disabled = true");
+
+        // The shared controller's behavioral suite covers clearing focus and restoring
+        // its camera. This asset contract requires the snapshot to use that same owner.
+        assertThat(adapter)
+                .contains("window.TaxonomyArchitectureDiagram.create(svg,")
+                .contains("onChange: onDiagramChange")
+                .contains("diagramController.getState()")
+                .contains("diagramController.unfocus()")
+                .contains("diagramController.focus()")
+                .doesNotContain("TaxonomyArchitectureDiagram.connect(", "d3.zoom(", "new ResizeObserver(")
+                .doesNotContainPattern("\\bstate\\.mode\\s*=(?!=)");
     }
 
     @Test

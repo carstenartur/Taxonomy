@@ -297,6 +297,7 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
     function restoreViewport(value) {
         if (destroyed || !validViewport(value)) return;
         markUserControlled();
+        if (viewport.extendMinimumForFit) zoom.scaleExtent([Math.min(zoom.scaleExtent()[0], value.k), viewport.maximumScale]);
         applyTransform(d3.zoomIdentity.translate(value.x, value.y).scale(value.k));
     }
     function defaultBounds(nodes) {
@@ -582,7 +583,10 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
     function onBackground(event) { if (behavior.clearOnBackground && common.shouldClearSelectionFromClick(event)) requestSelection(null); }
     var observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(function () {
         if (!active || destroyed) return;
-        updateViewBox(); if (autoFit) fit(lastFitSettings); else if (limits.cull) draw();
+        updateViewBox();
+        // The pending fit already measures changing bounds; initial observer delivery must not restart it.
+        if (autoFit) { if (fitFrame === null) fit(lastFitSettings); }
+        else if (limits.cull) draw();
     }) : null;
     if (observer) observer.observe(container);
     var listeners = { keydown: onKeyDown, pointermove: onPointer, pointerdown: onPointer, pointerleave: leaveRegion, pointercancel: leaveRegion, click: onBackground };

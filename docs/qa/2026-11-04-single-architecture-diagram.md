@@ -27,7 +27,7 @@ SVG drawing loops, selection-class mutation or search implementations.
 patch and its CSS are removed. Scoring calls `TaxonomyImpactMap.render` directly.
 Graph Explorer's separate `renderForceGraph` feature and semantic color consumers
 remain intact. Its renderer body was compared against the baseline unchanged.
-The production change removes a net 988 lines; added regression tests and design
+The production change removes a net 983 lines; added regression tests and design
 documentation are not counted as deleted application code.
 
 ## Preserved contracts and regression checks
@@ -53,6 +53,14 @@ documentation are not counted as deleted application code.
   until an explicit focus command. Controller-owned sessions capture both the current
   camera and the overview camera preceding focus. Returning A → B → A and then leaving
   focus restores the original overview, including the snapshot adapter lifecycle.
+- Explicit element links override retained snapshot selection after session restoration,
+  reveal hidden context/neighborhood members, and survive synchronous workspace selection
+  callbacks mutating the incoming source object. Restored small-scale cameras extend the
+  zoom range, so the next zoom continues from the restored view.
+- The initial ResizeObserver notification does not restart a pending fit. A frame-step
+  regression checks the real first-frame/observer/second-frame order and readable cards
+  at a 0.3 screen transform. Existing native two-frame readiness, physical readability
+  and 1,500 ms performance assertions remain unchanged.
 - Lens hit regions are checked with both camera zoom and a nonidentity screen transform.
   Pointer leave/cancel, source suspension, proposal filtering and teardown are covered.
 - The editor Focus toolbar explicitly calls `focus()` without passing a browser event
@@ -76,12 +84,22 @@ regressions were separately demonstrated failing before their fixes.
 
 The focused Maven-owned diagram/workspace/lens/export contracts passed: 165 cases,
 zero failures/errors/skips, before the additional readable-frame regression. The
-complete local non-browser JavaScript run passed **1,869 cases**, zero
-failures/errors/skips, including all **26 shared-controller cases**. The late
+complete local non-browser JavaScript run passed **1,872 cases**, zero
+failures/errors/skips, including all **29 shared-controller cases**. The late
 focus-panel regressions failed in both enabled states before the fix, then passed
 through the same Maven-owned suite. The Java
 design-token and renderer-boundary gate passed all seven checks, including the actual
 shared engine's transport/storage boundary.
+All five workbench asset contracts also pass. The stale private-focus assertion found
+by the first PR run now checks shared-controller ownership and script order; its BFS,
+failed-load controls, API, PDF and navigation requirements are retained.
+
+The first PR browser run exposed an initial ResizeObserver notification restarting
+the pending fit before the existing readability measurement. This was reproduced as
+a failing frame-step regression and corrected in the single scheduler. The two restored
+zoom cases were likewise demonstrated failing before correction. Updated native tests
+cover explicit retained-snapshot routes and actual zoom continuation after focus and
+source return. Full native and production results must come from the updated PR head.
 
 The final combined gate ran with the Maven build cache disabled, as in authoritative
 CI, after a local cache restore could not resolve reactor snapshot artifacts. This
@@ -103,9 +121,9 @@ Use Java 25 with its `bin` directory on `PATH` (the Word archive fixtures invoke
 `jar`), and the repository's pinned Node runtime provisioned by Maven.
 
 ```bash
-./mvnw -B -pl taxonomy-tooling,taxonomy-app -am test \
+./mvnw -B -pl taxonomy-tooling,taxonomy-build,taxonomy-app -am test \
   -Dmaven.build.cache.enabled=false \
-  -Dtest=JavascriptContractTest,TaxonomyDesignTokenContractTest,ArchitectureEditorBoundaryTest \
+  -Dtest=JavascriptContractTest,TaxonomyDesignTokenContractTest,ArchitectureEditorBoundaryTest,ArchitectureWorkbenchAssetContractTest \
   -Dsurefire.failIfNoSpecifiedTests=false
 
 ./mvnw -B -pl taxonomy-tooling -am test \
