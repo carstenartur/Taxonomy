@@ -27,7 +27,7 @@ SVG drawing loops, selection-class mutation or search implementations.
 patch and its CSS are removed. Scoring calls `TaxonomyImpactMap.render` directly.
 Graph Explorer's separate `renderForceGraph` feature and semantic color consumers
 remain intact. Its renderer body was compared against the baseline unchanged.
-The production change removes a net 983 lines; added regression tests and design
+The production change removes a net 976 lines; added regression tests and design
 documentation are not counted as deleted application code.
 
 ## Preserved contracts and regression checks
@@ -61,6 +61,11 @@ documentation are not counted as deleted application code.
   regression checks the real first-frame/observer/second-frame order and readable cards
   at a 0.3 screen transform. Existing native two-frame readiness, physical readability
   and 1,500 ms performance assertions remain unchanged.
+- Resize delivery never writes to the observed SVG or invokes layout-affecting status
+  callbacks. One cancellable animation frame coalesces resize work, unchanged viewBox
+  values are not rewritten, and a user gesture canceling a pending fit cannot discard
+  the viewport resize. All three sources have automatic/manual camera lifecycle cases;
+  restore, zoom and pointer-camera cancellation are checked separately.
 - Lens hit regions are checked with both camera zoom and a nonidentity screen transform.
   Pointer leave/cancel, source suspension, proposal filtering and teardown are covered.
 - The editor Focus toolbar explicitly calls `focus()` without passing a browser event
@@ -84,8 +89,8 @@ regressions were separately demonstrated failing before their fixes.
 
 The focused Maven-owned diagram/workspace/lens/export contracts passed: 165 cases,
 zero failures/errors/skips, before the additional readable-frame regression. The
-complete local non-browser JavaScript run passed **1,872 cases**, zero
-failures/errors/skips, including all **29 shared-controller cases**. The late
+complete local non-browser JavaScript run passed **1,881 cases**, zero
+failures/errors/skips, including all **38 shared-controller cases**. The late
 focus-panel regressions failed in both enabled states before the fix, then passed
 through the same Maven-owned suite. The Java
 design-token and renderer-boundary gate passed all seven checks, including the actual
@@ -100,6 +105,17 @@ a failing frame-step regression and corrected in the single scheduler. The two r
 zoom cases were likewise demonstrated failing before correction. Updated native tests
 cover explicit retained-snapshot routes and actual zoom continuation after focus and
 source return. Full native and production results must come from the updated PR head.
+
+The second PR head (`6b385e4`) passed all 125 native browser component cases, including
+the six real-panel double-click cases and the new retained-selection/zoom cases. Five
+production UI shards passed. The remaining mobile WebKit shard completed the editor
+and all eight neutral renderer measurements, but its unchanged console gate caught
+four ResizeObserver loop errors on fresh editor documents. The shared observer's
+synchronous SVG writes were moved to the deferred resize phase. Six new controller
+cases failed before correction and passed afterwards. Independent review then exposed
+a pending-fit/user-camera race; its three regressions also failed before correction
+and passed afterwards. All 38 controller cases pass with both changes. The unchanged
+production WebKit gate remains required on the updated head.
 
 The final combined gate ran with the Maven build cache disabled, as in authoritative
 CI, after a local cache restore could not resolve reactor snapshot artifacts. This

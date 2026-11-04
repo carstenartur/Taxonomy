@@ -334,6 +334,62 @@ for (const method of ['restore', 'zoom', 'manual']) test(`${method} cancels a pe
   renderer.destroy();
 });
 
+for (const method of ['restore', 'zoom', 'manual']) test(`${method} during a pending fit retains deferred resize dimensions`, () => {
+  const h = engineHarness(), renderer = configured(h, 'snapshot', { viewport: { fixedWidth: null, fixedHeight: null } });
+  renderer.render(scene); renderer.fit();
+  h.svg.width = 800; h.svg.height = 500; h.resize();
+  if (method === 'restore') renderer.restoreViewport({ x: 20, y: 30, k: 0.8 });
+  else if (method === 'zoom') renderer.zoom(1.4);
+  else h.zooms[0].manual(h.svg, { x: 17, y: 31, k: 0.9 });
+  const camera = copy(renderer.captureViewport());
+  h.flush();
+  assert.equal(h.svg.getAttribute('viewBox'), '0 0 800 500', 'canceling a pending fit must not lose its resize');
+  assert.deepEqual(copy(renderer.captureViewport()), camera, 'deferred resizing must respect the user camera');
+  renderer.destroy();
+});
+
+for (const source of ['analysis', 'snapshot', 'working']) for (const automatic of [false, true]) {
+  test(`${source}: resize delivery defers DOM writes and preserves the ${automatic ? 'automatic' : 'manual'} camera lifecycle`, () => {
+    const h = engineHarness(), fitStates = [], summaries = [];
+    const renderer = configured(h, source, {
+      viewport: { fixedWidth: null, fixedHeight: null }, limits: { cull: source === 'working' },
+      onFitState: value => fitStates.push(value), onSummary: (...value) => summaries.push(value)
+    });
+    renderer.render(scene);
+    if (automatic) renderer.fit(); else renderer.restoreViewport({ x: 20, y: 30, k: 0.8 });
+    h.flush();
+    const camera = copy(renderer.captureViewport()), card = h.node('A'), writes = [];
+    const setAttribute = h.svg.setAttribute.bind(h.svg);
+    h.svg.setAttribute = (key, value) => { writes.push(key); setAttribute(key, value); };
+    fitStates.length = 0; summaries.length = 0;
+    h.svg.width = 800; h.svg.height = 500;
+    h.resize(); h.resize();
+    assert.deepEqual(writes, [], 'observer delivery must not mutate the observed SVG');
+    assert.equal(h.node('A'), card, 'observer delivery must not replace the observed subtree');
+    assert.deepEqual(summaries, [], 'summary callbacks can change surrounding layout');
+    assert.deepEqual(fitStates, [], 'fit status callbacks can mutate the observed container');
+    assert.equal(h.frames.size, 1, 'repeated resize notifications share one pending update');
+    h.flush();
+    assert.equal(h.svg.getAttribute('viewBox'), '0 0 800 500');
+    assert.equal(writes.filter(key => key === 'viewBox').length, 1);
+    if (!automatic) assert.deepEqual(copy(renderer.captureViewport()), camera);
+    else assert.equal(fitStates.at(-1), 'complete');
+    writes.length = 0;
+    h.resize(); h.flush();
+    assert.deepEqual(writes, [], 'an unchanged viewBox must not invalidate SVG layout again');
+    h.svg.width = 640; h.resize();
+    renderer.setActive(false);
+    assert.equal(h.frames.size, 0, 'suspension cancels pending resize and fit work');
+    assert.equal(h.svg.getAttribute('viewBox'), '0 0 800 500');
+    renderer.setActive(true); h.flush();
+    assert.equal(h.svg.getAttribute('viewBox'), '0 0 640 500');
+    if (!automatic) assert.deepEqual(copy(renderer.captureViewport()), camera);
+    h.svg.width = 700; h.resize(); renderer.destroy();
+    assert.equal(h.frames.size, 0, 'teardown cancels pending resize work');
+    assert.equal(h.svg.children.length, 0);
+  });
+}
+
 test('hidden source fits once measurable and reports readiness without duplicating handlers or observers', () => {
   const h = engineHarness(), fitStates = []; h.svg.width = 0; h.svg.height = 0;
   const renderer = configured(h, 'snapshot', { onFitState: value => fitStates.push(value) });

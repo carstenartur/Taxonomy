@@ -225,7 +225,7 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
     var transform = d3.zoomTransform(svg), focusViewport = null, lens = { enabled: false, states: {}, suggestions: [] };
     var onRegion = options.onRegion, onSuggestion = options.onSuggestion;
     var active = true, destroyed = false, hasScene = false, autoFit = false, pendingFit = null, lastFitSettings = {};
-    var drawFrame = null, fitFrame = null, fitGeneration = 0;
+    var drawFrame = null, resizeFrame = null, fitFrame = null, fitGeneration = 0;
     var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var source = common.sourceId, target = common.targetId;
     var stateKeys = ['selectedNodeId', 'selectedEdgeId', 'focusedNodeId', 'mode', 'showContext', 'searchQuery'];
@@ -263,8 +263,8 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
             height: viewport.fixedHeight || Math.max(viewport.minimumHeight, size.height || viewport.fallbackHeight) };
     }
     function updateViewBox() {
-        var size = viewportSize();
-        svg.setAttribute('viewBox', '0 0 ' + size.width + ' ' + size.height);
+        var size = viewportSize(), value = '0 0 ' + size.width + ' ' + size.height;
+        if (svg.getAttribute('viewBox') !== value) svg.setAttribute('viewBox', value);
     }
     function reportFit(value, scale) { if (options.onFitState) options.onFitState(value, scale); }
     function cancelScheduledFit() {
@@ -582,11 +582,16 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
     function leaveRegion() { ring.setAttribute('display', 'none'); if (onRegion) onRegion([]); }
     function onBackground(event) { if (behavior.clearOnBackground && common.shouldClearSelectionFromClick(event)) requestSelection(null); }
     var observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(function () {
-        if (!active || destroyed) return;
-        updateViewBox();
-        // The pending fit already measures changing bounds; initial observer delivery must not restart it.
-        if (autoFit) { if (fitFrame === null) fit(lastFitSettings); }
-        else if (limits.cull) draw();
+        if (!active || destroyed || resizeFrame !== null) return;
+        // Preserve a pending fit's two-frame readiness, but retain the resize if user control cancels it.
+        var fitting = autoFit && fitFrame !== null;
+        // Never change the observed SVG or surrounding layout during resize delivery.
+        resizeFrame = requestAnimationFrame(function () {
+            resizeFrame = null;
+            if (!active || destroyed) return;
+            if (autoFit) { if (fitFrame === null && (!fitting || pendingFit)) fit(lastFitSettings); }
+            else { updateViewBox(); if (limits.cull) draw(); }
+        });
     }) : null;
     if (observer) observer.observe(container);
     var listeners = { keydown: onKeyDown, pointermove: onPointer, pointerdown: onPointer, pointerleave: leaveRegion, pointercancel: leaveRegion, click: onBackground };
@@ -634,6 +639,7 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
             if (destroyed) return;
             active = Boolean(value); cancelScheduledFit(); selection.interrupt();
             if (drawFrame !== null) cancelAnimationFrame(drawFrame); drawFrame = null;
+            if (resizeFrame !== null) cancelAnimationFrame(resizeFrame); resizeFrame = null;
             if (observer) { observer.disconnect(); if (active) observer.observe(container); }
             if (active) { updateViewBox(); draw(); if (autoFit) fit(lastFitSettings); }
             else leaveRegion();
@@ -642,6 +648,7 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
             if (destroyed) return;
             destroyed = true; active = false; cancelScheduledFit(); selection.interrupt();
             if (drawFrame !== null) cancelAnimationFrame(drawFrame);
+            if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
             if (observer) observer.disconnect();
             Object.keys(listeners).forEach(function (name) { svg.removeEventListener(name, listeners[name]); });
             selection.on('.zoom', null); definitions.remove(); canvas.remove(); ring.remove();
