@@ -368,10 +368,20 @@
                 if (!response.ok) throw new Error('Account context unavailable');
                 return response.json();
             });
-        return account.then(function (data) {
+        function applyAccount(data) {
             administrator = data && data.administrator === true;
             updateAdminVisibility();
             if (isAdminMode()) { initPromptEditor(); loadDiagnostics(); }
+        }
+        function applyAuthoritativeAccount(data) {
+            // The dynamically loaded surface can arrive after this check chose
+            // its fallback fetch. Its pending default is not a settled denial,
+            // including when that older fallback request has failed.
+            const surface = window.TaxonomyRoleSurface;
+            return surface ? surface.ready.then(applyAccount) : applyAccount(data);
+        }
+        return account.then(applyAuthoritativeAccount, function () {
+            return applyAuthoritativeAccount(null);
         }).catch(function () {
             administrator = false;
             updateAdminVisibility();
