@@ -37,8 +37,8 @@ const ready = {outcome: 'READY', role: 'CREATE', database: 'CREATE',
 const complete = {outcome: 'COMPLETE', role: 'CREATED', database: 'CREATED',
     finding: {key: 'database.provision.complete', status: 'OK', message: 'Application login verified'}};
 
-async function fixture({locale = 'en', width = 1000, responses = [success], realTransport = false} = {}) {
-    const page = await browser.newPage({viewport: {width, height: 850}});
+async function fixture({locale = 'en', width = 1000, height = 850, responses = [success], realTransport = false} = {}) {
+    const page = await browser.newPage({viewport: {width, height}});
     page.errors = [];
     page.on('pageerror', error => page.errors.push(error.message));
     await page.route('http://database-setup.test/**', route => route.fulfill({body: '', contentType: 'text/html'}));
@@ -129,7 +129,7 @@ async function check(page) {
 }
 
 test('a successful plaintext check is the primary result and TLS is a single separate warning', async () => {
-    const page = await fixture();
+    const page = await fixture({width: 420, height: 720});
     try {
         await connection(page);
         await page.locator('#databaseSetupTls').uncheck();
@@ -144,6 +144,13 @@ test('a successful plaintext check is the primary result and TLS is a single sep
         await page.waitForFunction(() => !document.getElementById('databaseSetupProperties').closest('[data-database-step]').hidden);
         assert.equal(await page.locator('#databaseSetupTlsWarning').isVisible(), true, 'Transport remains visible when applying the export');
         assert.equal(await page.locator('#databaseSetupTlsWarning').count(), 1);
+        assert.equal(await page.evaluate(() => {
+            const body = document.querySelector('#databaseSetupDialog .database-setup-body');
+            const focused = document.activeElement;
+            const bounds = body.getBoundingClientRect();
+            const focusBounds = focused.getBoundingClientRect();
+            return body.contains(focused) && focusBounds.top >= bounds.top && focusBounds.bottom <= bounds.bottom;
+        }), true, 'Deployment focus remains fully visible in the mobile scroll area');
         assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
 });

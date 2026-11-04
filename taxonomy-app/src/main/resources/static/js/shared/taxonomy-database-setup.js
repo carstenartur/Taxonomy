@@ -285,6 +285,9 @@ window.TaxonomyDatabaseSetup = (function () {
                 setStep(2);
                 showResult('info', 'database.setup.preview.ready', t('database.setup.preview.message'), 'database.setup.preview.next');
                 findings(result.findings);
+                // Rendering the result above the deployment section can move its old focus
+                // outside the mobile scroll area. Focus the visible outcome after layout.
+                element('Status').focus();
             }
         }).catch(function (error) {
             if (version !== generation || !element('Dialog').open) return;
