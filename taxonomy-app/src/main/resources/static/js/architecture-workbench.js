@@ -1,52 +1,6 @@
-/* Read-only architecture graph adapter. The persisted server projection remains authoritative. */
+/* Snapshot data and controls adapter. The shared diagram owns all rendering and interaction. */
 (function () {
     'use strict';
-
-    function mount(root) {
-    if (root.__architectureSnapshot) return root.__architectureSnapshot;
-    let active = false, generation = 0, request = null, activeSource = {}, sourceKey = null;
-    const retained = new Map();
-    function el(id) { return root.querySelector('#' + id); }
-    function t() { return window.TaxonomyI18n.t.apply(null, arguments); }
-
-    // Display only. The frozen graph keeps its unrounded normalized relevance.
-    function relevanceText(value) {
-        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) return '—';
-        const percentage = value * 100;
-        if (percentage > 0 && percentage < 0.000001) return '<0.000001';
-        return String(Number(percentage.toFixed(6)));
-    }
-
-    const SVG_NS = 'http://www.w3.org/2000/svg';
-    const body = root;
-    let projectId = body.dataset.projectId;
-    let snapshotId = body.dataset.snapshotId;
-    const workbench = el('architectureWorkbench');
-    const canvas = el('architectureCanvasShell');
-    const svg = el('architectureCanvas');
-    const status = el('architectureStatus');
-    const visibleStatus = el('architectureVisibleStatus');
-    const alertBox = el('architectureAlert');
-    const details = el('architectureDetails');
-    const detailHint = el('detailHint');
-    const searchInput = el('architectureSearch');
-    const clearSearch = el('clearArchitectureSearch');
-    const contextCheckbox = el('showArchitectureContext');
-    const overviewButton = el('architectureOverview');
-    const focusButton = el('architectureFocus');
-    const fitButton = el('fitArchitecture');
-    const zoomInButton = el('zoomArchitectureIn');
-    const zoomOutButton = el('zoomArchitectureOut');
-    const fullscreenButton = el('fullscreenArchitecture');
-    const reducedMotion = window.matchMedia
-        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    const policyTitles = Object.freeze({
-        'archview.policy.title.defaultImpact': body.dataset.policyTitleDefaultImpact,
-        'archview.policy.title.leafOnly': body.dataset.policyTitleLeafOnly,
-        'archview.policy.title.clustering': body.dataset.policyTitleClustering,
-        'archview.policy.title.trace': body.dataset.policyTitleTrace
-    });
 
     const layerColors = Object.freeze({
         Capabilities: '#cfe2ff',
@@ -77,161 +31,12 @@
         RELATED_TO: '#6c757d'
     });
 
-    let projection = null;
-    let scene = null;
-    let nodeById = new Map();
-    let edgeById = new Map();
-    let hopDistances = new Map();
-    let svgSelection = null;
-    let viewportSelection = null;
-    let zoomBehavior = null;
-    let resizeObserver = null;
-    let resizeTimer = null;
-    let diagramController = null;
-    let publishedSelection = null;
-
-    const state = {
-        showContext: true,
-        mode: 'overview',
-        searchQuery: '',
-        selectedNodeId: null,
-        selectedEdgeId: null,
-        visibleNodes: [],
-        visibleEdges: [],
-        visibleNodeIds: new Set(),
-        nodeElements: new Map(),
-        edgeElements: new Map(),
-        layerGroups: [],
-        bounds: null,
-        autoFit: true
-    };
-
-    function setStatus(message) {
-        status.textContent = message;
-    }
-
-    function showError(error) {
-        if (!active) return;
-        alertBox.textContent = error instanceof Error ? error.message : String(error);
-        alertBox.classList.remove('d-none');
-        setStatus(t('workbench.ui.loadFailed'));
-        searchInput.value = '';
-        clearSearch.hidden = true;
-        [
-            searchInput,
-            clearSearch,
-            contextCheckbox,
-            overviewButton,
-            focusButton,
-            fitButton,
-            zoomInButton,
-            zoomOutButton,
-            fullscreenButton
-        ].forEach(function (control) { control.disabled = true; });
-    }
-
-    function text(value, fallback) {
-        return value === null || value === undefined || String(value).trim() === ''
-            ? (fallback || '—')
-            : String(value);
-    }
-
-    function resolvePolicyTitle(value) {
-        const key = text(value, '');
-        const localized = t(key);
-        const translated = localized && localized !== key ? localized : policyTitles[key];
-        if (translated && translated !== key) return translated;
-        if (key.startsWith('archview.policy.title.')) {
-            return key.substring('archview.policy.title.'.length)
-                .replace(/([a-z])([A-Z])/g, '$1 $2')
-                .replace(/^./, function (character) { return character.toUpperCase(); });
-        }
-        return key || 'Persisted Copilot architecture';
-    }
-
-    function createSvgElement(tagName, attributes) {
-        const element = document.createElementNS(SVG_NS, tagName);
-        Object.entries(attributes || {}).forEach(function (entry) {
-            if (entry[1] !== undefined && entry[1] !== null) {
-                element.setAttribute(entry[0], String(entry[1]));
-            }
-        });
-        return element;
-    }
-
-    function appendSvgText(parent, className, x, y, value, fill) {
-        const element = createSvgElement('text', {
-            class: className,
-            x: x,
-            y: y,
-            fill: fill
-        });
-        element.textContent = value;
-        parent.appendChild(element);
-        return element;
-    }
-
-    function wrapLabel(value, maximumCharacters, maximumLines) {
-        const words = text(value, '').trim().split(/\s+/).filter(Boolean);
-        if (words.length === 0) return [''];
-        const lines = [];
-        let current = '';
-        words.forEach(function (word) {
-            const candidate = current ? current + ' ' + word : word;
-            if (candidate.length <= maximumCharacters || current.length === 0) {
-                current = candidate;
-            } else {
-                lines.push(current);
-                current = word;
-            }
-        });
-        if (current) lines.push(current);
-        if (lines.length > maximumLines) {
-            lines.splice(maximumLines);
-            const lastIndex = maximumLines - 1;
-            lines[lastIndex] = lines[lastIndex]
-                .substring(0, Math.max(1, maximumCharacters - 1))
-                .replace(/[\s.,;:]+$/, '') + '…';
-        }
-        return lines;
-    }
-
-    function parseColor(color) {
-        const value = String(color || '').trim();
-        let match = value.match(/^#([0-9a-f]{3})$/i);
-        if (match) {
-            return match[1].split('').map(function (part) {
-                return parseInt(part + part, 16);
-            });
-        }
-        match = value.match(/^#([0-9a-f]{6})$/i);
-        if (match) {
-            return [
-                parseInt(match[1].substring(0, 2), 16),
-                parseInt(match[1].substring(2, 4), 16),
-                parseInt(match[1].substring(4, 6), 16)
-            ];
-        }
-        return [233, 236, 239];
-    }
-
-    function readableTextColor(color) {
-        const components = parseColor(color).map(function (component) {
-            const normalized = component / 255;
-            return normalized <= 0.03928
-                ? normalized / 12.92
-                : Math.pow((normalized + 0.055) / 1.055, 2.4);
-        });
-        const luminance = 0.2126 * components[0]
-            + 0.7152 * components[1]
-            + 0.0722 * components[2];
-        return luminance > 0.47 ? '#17212b' : '#ffffff';
-    }
-
-    function rgba(color, alpha) {
-        const components = parseColor(color);
-        return 'rgba(' + components[0] + ',' + components[1] + ','
-            + components[2] + ',' + alpha + ')';
+    // Display only. The frozen graph keeps its unrounded normalized relevance.
+    function relevanceText(value) {
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) return '—';
+        const percentage = value * 100;
+        if (percentage > 0 && percentage < 0.000001) return '<0.000001';
+        return String(Number(percentage.toFixed(6)));
     }
 
     function colorForLayer(type) {
@@ -242,62 +47,7 @@
         return relationColors[type] || '#6c757d';
     }
 
-    function detailRows(rows) {
-        details.replaceChildren();
-        rows.forEach(function (row) {
-            const term = document.createElement('dt');
-            term.textContent = row[0];
-            const description = document.createElement('dd');
-            description.textContent = text(row[1]);
-            details.append(term, description);
-        });
-        detailHint.classList.add('d-none');
-    }
-
-    function clearDetails() {
-        details.replaceChildren();
-        detailHint.classList.remove('d-none');
-    }
-
-    function relationSignature(edge) {
-        return edge.sourceId + '|' + edge.targetId + '|' + edge.relationType;
-    }
-
-    function renderNodeDetails(node) {
-        const metadata = projection.elements[node.id] || {};
-        detailRows([
-            [t('workbench.ui.detail.element'), node.id],
-            [t('workbench.ui.detail.title'), node.label],
-            [t('workbench.ui.detail.layer'), node.type],
-            [t('workbench.ui.detail.relevance'), relevanceText(node.relevance) + '%'],
-            [t('workbench.ui.detail.direct_score'), metadata.directScore],
-            [t('workbench.ui.detail.anchor'), node.anchor ? t('ui.yes') : t('ui.no')],
-            [t('workbench.ui.detail.origin'), window.TaxonomyI18n.formatEnum(metadata.mappingOrigin)],
-            [t('workbench.ui.detail.review'), window.TaxonomyI18n.formatEnum(metadata.reviewStatus)],
-            [t('workbench.ui.detail.action'), window.TaxonomyI18n.formatEnum(metadata.actionStatus)],
-            [t('workbench.ui.detail.reason'), metadata.presenceReason],
-            [t('workbench.ui.detail.evidence'), metadata.actionEvidence],
-            [t('workbench.ui.detail.hierarchy'), metadata.hierarchyPath],
-            [t('workbench.ui.detail.decision'), metadata.decisionComment]
-        ]);
-    }
-
-    function renderEdgeDetails(edge) {
-        const metadata = projection.relations[relationSignature(edge)] || {};
-        detailRows([
-            [t('workbench.ui.detail.relationship'), edge.relationType],
-            [t('workbench.ui.detail.source'), edge.sourceId],
-            [t('workbench.ui.detail.target'), edge.targetId],
-            [t('workbench.ui.detail.category'), edge.relationCategory],
-            [t('workbench.ui.detail.relevance'), relevanceText(edge.relevance) + '%'],
-            [t('workbench.ui.detail.origin'), window.TaxonomyI18n.formatEnum(metadata.relationOrigin)],
-            [t('workbench.ui.detail.review'), window.TaxonomyI18n.formatEnum(metadata.reviewStatus)],
-            [t('workbench.ui.detail.reason'), metadata.presenceReason],
-            [t('workbench.ui.detail.decision'), metadata.decisionComment]
-        ]);
-    }
-
-    function computeHopDistances() {
+    function computeHopDistances(scene) {
         const adjacency = new Map();
         scene.nodes.forEach(function (node) { adjacency.set(node.id, []); });
         scene.edges.forEach(function (edge) {
@@ -332,10 +82,6 @@
             }
         });
         return distances;
-    }
-
-    function visibleModel() {
-        return window.TaxonomyArchitectureDiagram.visibleModel(scene, state);
     }
 
     function buildLayerGroups(nodes) {
@@ -393,332 +139,281 @@
         };
     }
 
-    function viewportSize() {
+
+    // Adapt the persisted scene without changing its authoritative geometry or metadata.
+    function prepareScene(data, translate) {
+        const t = translate || window.TaxonomyI18n.t;
+        if (!data || !data.scene || !Array.isArray(data.scene.nodes)) {
+            throw new Error(t('workbench.ui.noScene'));
+        }
+        const common = window.TaxonomyArchitectureDiagram;
+        const source = data.scene;
+        const edges = Array.isArray(source.edges) ? source.edges : [];
+        const hops = computeHopDistances({ nodes: source.nodes, edges: edges });
+        const nodes = source.nodes.map(function (node) {
+            const color = colorForLayer(node.type);
+            const textColor = common.readableTextColor(color);
+            const metadata = (data.elements || {})[node.id] || {};
+            return Object.assign({}, node, {
+                context: node.context === undefined ? !node.anchor : Boolean(node.context),
+                searchText: [node.id, node.label, node.type].join(' '),
+                prefix: 'architecture',
+                className: 'architecture-node' + (node.anchor ? ' is-anchor' : ''),
+                color: color,
+                textColor: textColor,
+                ariaLabel: t('workbench.ui.nodeLabel', node.id, node.label, node.type, relevanceText(node.relevance)),
+                score: (node.anchor ? '★ ' : '') + relevanceText(node.relevance) + '%',
+                scoreFill: common.rgba(textColor, textColor === '#ffffff' ? 0.18 : 0.12),
+                titleLines: common.wrapLabel(node.label, 32, 2),
+                meta: (node.anchor ? t('workbench.ui.directMatch') : t('workbench.ui.hop', hops.get(node.id))) + ' · ' + node.type,
+                tooltip: node.id + ' — ' + node.label + '\n' + node.type + '\n' + relevanceText(node.relevance) + '%'
+                    + (metadata.presenceReason ? '\n' + metadata.presenceReason : '')
+            });
+        });
+        return Object.assign({}, source, {
+            nodes: nodes,
+            hasAnchors: nodes.some(function (node) { return node.anchor; }),
+            edges: edges.map(function (edge, index) {
+                return Object.assign({}, edge, {
+                    id: edge.id || 'edge-' + index + '-' + edge.sourceId + '-' + edge.targetId,
+                    source: edge.sourceId,
+                    target: edge.targetId,
+                    prefix: 'architecture',
+                    color: colorForRelation(edge.relationType),
+                    ariaLabel: t('workbench.ui.edgeLabel', edge.relationType, edge.sourceId, edge.targetId),
+                    tooltip: edge.sourceId + ' → ' + edge.targetId + '\n' + edge.relationType,
+                    label: edge.relationType
+                });
+            })
+        });
+    }
+
+    function layoutScene(model) {
+        const common = window.TaxonomyArchitectureDiagram;
+        const groups = buildLayerGroups(model.nodes);
+        const bounds = calculateBounds(model.nodes, groups);
+        const nodeById = new Map(model.nodes.map(function (node) { return [node.id, node]; }));
+        const lanes = common.relationshipLanes(model.edges);
         return {
-            width: Math.max(320, canvas.clientWidth || 900),
-            height: Math.max(300, canvas.clientHeight || 540)
+            nodes: model.nodes,
+            edges: model.edges.map(function (edge) {
+                const lane = lanes.get(edge.id) || 0;
+                return Object.assign({}, edge, {
+                    path: common.edgePath(nodeById.get(edge.sourceId), nodeById.get(edge.targetId), lane, edge),
+                    labelX: (edge.sourceX + edge.targetX) / 2,
+                    labelY: (edge.sourceY + edge.targetY) / 2 + lane * 12 - 6
+                });
+            }),
+            layers: groups.map(function (layer) {
+                return {
+                    x: layer.x,
+                    y: bounds.y,
+                    width: layer.width,
+                    height: bounds.contentBottom + 12 - bounds.y,
+                    color: layer.color,
+                    backgroundFill: common.rgba(layer.color, 0.08),
+                    headerHeight: 34,
+                    textColor: common.readableTextColor(layer.color),
+                    label: common.wrapLabel(layer.label, 24, 1)[0],
+                    count: layer.nodes.length,
+                    labelOffsetY: 29
+                };
+            }),
+            bounds: bounds
         };
     }
 
-    function updateViewBox() {
-        const size = viewportSize();
-        svg.setAttribute('viewBox', '0 0 ' + size.width + ' ' + size.height);
+    function mount(root) {
+    if (root.__architectureSnapshot) return root.__architectureSnapshot;
+    let active = false, generation = 0, request = null, activeSource = {}, sourceKey = null;
+    const retained = new Map();
+    function el(id) { return root.querySelector('#' + id); }
+    function t() { return window.TaxonomyI18n.t.apply(null, arguments); }
+
+    const body = root;
+    let projectId = body.dataset.projectId;
+    let snapshotId = body.dataset.snapshotId;
+    const workbench = el('architectureWorkbench');
+    const canvas = el('architectureCanvasShell');
+    const svg = el('architectureCanvas');
+    const status = el('architectureStatus');
+    const visibleStatus = el('architectureVisibleStatus');
+    const alertBox = el('architectureAlert');
+    const details = el('architectureDetails');
+    const detailHint = el('detailHint');
+    const searchInput = el('architectureSearch');
+    const clearSearch = el('clearArchitectureSearch');
+    const contextCheckbox = el('showArchitectureContext');
+    const overviewButton = el('architectureOverview');
+    const focusButton = el('architectureFocus');
+    const fitButton = el('fitArchitecture');
+    const zoomInButton = el('zoomArchitectureIn');
+    const zoomOutButton = el('zoomArchitectureOut');
+    const fullscreenButton = el('fullscreenArchitecture');
+
+    const policyTitles = Object.freeze({
+        'archview.policy.title.defaultImpact': body.dataset.policyTitleDefaultImpact,
+        'archview.policy.title.leafOnly': body.dataset.policyTitleLeafOnly,
+        'archview.policy.title.clustering': body.dataset.policyTitleClustering,
+        'archview.policy.title.trace': body.dataset.policyTitleTrace
+    });
+
+    let projection = null;
+    let scene = null;
+    let nodeById = new Map();
+    let edgeById = new Map();
+    let diagramController = null;
+    let pendingState = null;
+    let publishedSelection = null;
+
+    function setStatus(message) {
+        status.textContent = message;
     }
 
-    function applyTransform(transform) {
-        state.autoFit = false;
-        if (reducedMotion) {
-            svgSelection.call(zoomBehavior.transform, transform);
-        } else {
-            svgSelection.transition().duration(180).call(zoomBehavior.transform, transform);
+    function showError(error) {
+        if (!active) return;
+        alertBox.textContent = error instanceof Error ? error.message : String(error);
+        alertBox.classList.remove('d-none');
+        setStatus(t('workbench.ui.loadFailed'));
+        searchInput.value = '';
+        clearSearch.hidden = true;
+        [
+            searchInput,
+            clearSearch,
+            contextCheckbox,
+            overviewButton,
+            focusButton,
+            fitButton,
+            zoomInButton,
+            zoomOutButton,
+            fullscreenButton
+        ].forEach(function (control) { control.disabled = true; });
+    }
+
+    function text(value, fallback) {
+        return value === null || value === undefined || String(value).trim() === ''
+            ? (fallback || '—')
+            : String(value);
+    }
+
+    function resolvePolicyTitle(value) {
+        const key = text(value, '');
+        const localized = t(key);
+        const translated = localized && localized !== key ? localized : policyTitles[key];
+        if (translated && translated !== key) return translated;
+        if (key.startsWith('archview.policy.title.')) {
+            return key.substring('archview.policy.title.'.length)
+                .replace(/([a-z])([A-Z])/g, '$1 $2')
+                .replace(/^./, function (character) { return character.toUpperCase(); });
         }
+        return key || 'Persisted Copilot architecture';
     }
 
-    function fitView() {
-        if (!state.bounds || !zoomBehavior) return;
-        if (!canvas.clientWidth || !canvas.clientHeight) { state.autoFit = true; return; }
-        const size = viewportSize();
-        const padding = 34;
-        const scale = Math.min(
-            (size.width - padding * 2) / Math.max(1, state.bounds.width),
-            (size.height - padding * 2) / Math.max(1, state.bounds.height),
-            1.35
-        );
-        // Large scenes must fit narrow viewports, including subsequent manual zoom.
-        zoomBehavior.scaleExtent([Math.min(0.2, scale), 4]);
-        const translateX = (size.width - state.bounds.width * scale) / 2
-            - state.bounds.x * scale;
-        const translateY = (size.height - state.bounds.height * scale) / 2
-            - state.bounds.y * scale;
-        state.autoFit = true;
-        const transform = d3.zoomIdentity.translate(translateX, translateY).scale(scale);
-        if (reducedMotion) {
-            svgSelection.call(zoomBehavior.transform, transform);
-        } else {
-            svgSelection.transition().duration(220).call(zoomBehavior.transform, transform);
-        }
-    }
-
-    function centerOnNode(nodeId) {
-        const node = nodeById.get(nodeId);
-        if (!node) return;
-        const size = viewportSize();
-        const current = d3.zoomTransform(svg);
-        const scale = Math.max(0.9, Math.min(1.55, Math.max(current.k, 1.05)));
-        const centerX = node.x + node.width / 2;
-        const centerY = node.y + node.height / 2;
-        applyTransform(d3.zoomIdentity
-            .translate(size.width / 2 - centerX * scale, size.height / 2 - centerY * scale)
-            .scale(scale));
-    }
-
-    function renderMarkers(defs) {
-        const types = new Set(state.visibleEdges.map(function (edge) { return edge.relationType; }));
-        types.forEach(function (type) {
-            const markerId = 'architecture-arrow-' + type.replace(/[^a-z0-9_-]/gi, '-');
-            const marker = createSvgElement('marker', {
-                id: markerId,
-                viewBox: '0 -5 10 10',
-                refX: 9,
-                refY: 0,
-                markerWidth: 6,
-                markerHeight: 6,
-                orient: 'auto',
-                markerUnits: 'strokeWidth'
-            });
-            marker.appendChild(createSvgElement('path', {
-                d: 'M0,-5L10,0L0,5Z',
-                fill: colorForRelation(type)
-            }));
-            defs.appendChild(marker);
+    function detailRows(rows) {
+        details.replaceChildren();
+        rows.forEach(function (row) {
+            const term = document.createElement('dt');
+            term.textContent = row[0];
+            const description = document.createElement('dd');
+            description.textContent = text(row[1]);
+            details.append(term, description);
         });
+        detailHint.classList.add('d-none');
     }
 
-    function renderLayers(viewport) {
-        const top = state.bounds.y;
-        const bottom = state.bounds.contentBottom + 12;
-        state.layerGroups.forEach(function (layer) {
-            const group = createSvgElement('g', {class: 'architecture-layer'});
-            group.appendChild(createSvgElement('rect', {
-                class: 'architecture-layer-column',
-                x: layer.x - 10,
-                y: top,
-                width: layer.width + 20,
-                height: bottom - top,
-                rx: 12,
-                fill: rgba(layer.color, 0.08)
-            }));
-            group.appendChild(createSvgElement('rect', {
-                class: 'architecture-layer-header',
-                x: layer.x,
-                y: top + 7,
-                width: layer.width,
-                height: 34,
-                rx: 8,
-                fill: layer.color
-            }));
-            const textColor = readableTextColor(layer.color);
-            appendSvgText(group, 'architecture-layer-title', layer.x + 12, top + 29,
-                wrapLabel(layer.label, 24, 1)[0], textColor);
-            const count = appendSvgText(
-                group,
-                'architecture-layer-count',
-                layer.x + layer.width - 12,
-                top + 29,
-                String(layer.nodes.length),
-                textColor
-            );
-            count.setAttribute('text-anchor', 'end');
-            viewport.appendChild(group);
-        });
+    function clearDetails() {
+        details.replaceChildren();
+        detailHint.classList.remove('d-none');
     }
 
-    function relationshipLanes(edges) {
-        return window.TaxonomyArchitectureDiagram.relationshipLanes(edges);
+    function relationSignature(edge) {
+        return edge.sourceId + '|' + edge.targetId + '|' + edge.relationType;
     }
 
-    function edgePath(edge, lane) {
-        return window.TaxonomyArchitectureDiagram.edgePath(nodeById.get(edge.sourceId), nodeById.get(edge.targetId), lane, edge);
+    function renderNodeDetails(node) {
+        const metadata = projection.elements[node.id] || {};
+        detailRows([
+            [t('workbench.ui.detail.element'), node.id],
+            [t('workbench.ui.detail.title'), node.label],
+            [t('workbench.ui.detail.layer'), node.type],
+            [t('workbench.ui.detail.relevance'), relevanceText(node.relevance) + '%'],
+            [t('workbench.ui.detail.direct_score'), metadata.directScore],
+            [t('workbench.ui.detail.anchor'), node.anchor ? t('ui.yes') : t('ui.no')],
+            [t('workbench.ui.detail.origin'), window.TaxonomyI18n.formatEnum(metadata.mappingOrigin)],
+            [t('workbench.ui.detail.review'), window.TaxonomyI18n.formatEnum(metadata.reviewStatus)],
+            [t('workbench.ui.detail.action'), window.TaxonomyI18n.formatEnum(metadata.actionStatus)],
+            [t('workbench.ui.detail.reason'), metadata.presenceReason],
+            [t('workbench.ui.detail.evidence'), metadata.actionEvidence],
+            [t('workbench.ui.detail.hierarchy'), metadata.hierarchyPath],
+            [t('workbench.ui.detail.decision'), metadata.decisionComment]
+        ]);
     }
 
-    function renderEdges(viewport) {
-        const lanes = relationshipLanes(state.visibleEdges);
-        state.visibleEdges.forEach(function (edge) {
-            const group = window.TaxonomyArchitectureDiagram.renderEdge(viewport, {
-                id: edge.id, source: edge.sourceId, target: edge.targetId, prefix: 'architecture',
-                path: edgePath(edge, lanes.get(edge.id) || 0), color: colorForRelation(edge.relationType),
-                markerId: 'architecture-arrow-' + edge.relationType.replace(/[^a-z0-9_-]/gi, '-'),
-                ariaLabel: t('workbench.ui.edgeLabel', edge.relationType, edge.sourceId, edge.targetId),
-                tooltip: edge.sourceId + ' → ' + edge.targetId + '\n' + edge.relationType,
-                label: edge.relationType, labelX: (edge.sourceX + edge.targetX) / 2,
-                labelY: (edge.sourceY + edge.targetY) / 2 + (lanes.get(edge.id) || 0) * 12 - 6,
-                showLabel: state.visibleEdges.length <= 12
-            }, { select: function (id) { setSelection(null, id, false); } });
-            state.edgeElements.set(edge.id, group);
-        });
+    function renderEdgeDetails(edge) {
+        const metadata = projection.relations[relationSignature(edge)] || {};
+        detailRows([
+            [t('workbench.ui.detail.relationship'), edge.relationType],
+            [t('workbench.ui.detail.source'), edge.sourceId],
+            [t('workbench.ui.detail.target'), edge.targetId],
+            [t('workbench.ui.detail.category'), edge.relationCategory],
+            [t('workbench.ui.detail.relevance'), relevanceText(edge.relevance) + '%'],
+            [t('workbench.ui.detail.origin'), window.TaxonomyI18n.formatEnum(metadata.relationOrigin)],
+            [t('workbench.ui.detail.review'), window.TaxonomyI18n.formatEnum(metadata.reviewStatus)],
+            [t('workbench.ui.detail.reason'), metadata.presenceReason],
+            [t('workbench.ui.detail.decision'), metadata.decisionComment]
+        ]);
     }
 
-    function renderNodes(viewport) {
-        state.visibleNodes.forEach(function (node) {
-            const color = colorForLayer(node.type), textColor = readableTextColor(color);
-            const metadata = projection.elements[node.id] || {};
-            const score = (node.anchor ? '★ ' : '') + relevanceText(node.relevance) + '%';
-            const group = window.TaxonomyArchitectureDiagram.renderNode(viewport, {
-                id: node.id, x: node.x, y: node.y, width: node.width, height: node.height, prefix: 'architecture',
-                className: 'architecture-node' + (node.anchor ? ' is-anchor' : ''),
-                color: color, textColor: textColor,
-                ariaLabel: t('workbench.ui.nodeLabel', node.id, node.label, node.type, relevanceText(node.relevance)),
-                score: score,
-                scoreFill: rgba(textColor, textColor === '#ffffff' ? 0.18 : 0.12),
-                titleLines: wrapLabel(node.label, 32, 2),
-                meta: (node.anchor ? t('workbench.ui.directMatch') : t('workbench.ui.hop', hopDistances.get(node.id))) + ' · ' + node.type,
-                tooltip: node.id + ' — ' + node.label + '\n' + node.type + '\n' + relevanceText(node.relevance) + '%'
-                    + (metadata.presenceReason ? '\n' + metadata.presenceReason : '')
-            }, {
-                select: function (id) { setSelection(id, null, false); },
-                focus: function (id) { setSelection(id, null, false); state.mode = 'focus'; renderDiagram(true); }
-            });
-            state.nodeElements.set(node.id, group);
-        });
-    }
-
-    function matchingNodeIds() {
-        const query = state.searchQuery.trim().toLowerCase();
-        if (!query) return [];
-        return scene.nodes.filter(function (node) {
-            return node.id.toLowerCase().includes(query)
-                || node.label.toLowerCase().includes(query)
-                || node.type.toLowerCase().includes(query);
-        }).map(function (node) { return node.id; });
-    }
-
-    function updateInteractionStyles() {
-        if (active && publishedSelection !== state.selectedNodeId) {
-            publishedSelection = state.selectedNodeId;
-            document.dispatchEvent(new CustomEvent('taxonomy:architecture-selection', {detail:{kind:'snapshot',elementId:state.selectedNodeId}}));
-        }
-        if (active) window.TaxonomyArchitectureWorkflow?.showSnapshot(projection, state.selectedNodeId);
-        const selectedNode = state.selectedNodeId;
-        const selectedEdge = state.selectedEdgeId;
-        const connectedNodeIds = new Set();
-        const connectedEdgeIds = new Set();
-        if (selectedNode) {
-            connectedNodeIds.add(selectedNode);
-            state.visibleEdges.forEach(function (edge) {
-                if (edge.sourceId === selectedNode || edge.targetId === selectedNode) {
-                    connectedNodeIds.add(edge.sourceId);
-                    connectedNodeIds.add(edge.targetId);
-                    connectedEdgeIds.add(edge.id);
-                }
-            });
-        }
-        const matches = new Set(matchingNodeIds());
-        const hasSearch = state.searchQuery.trim().length > 0;
-
-        state.nodeElements.forEach(function (element, id) {
-            const connected = connectedNodeIds.has(id);
-            const searchMatch = matches.has(id);
-            const muted = id !== selectedNode
-                && ((selectedNode && !connected) || (hasSearch && !searchMatch));
-            element.classList.toggle('is-selected', id === selectedNode);
-            element.setAttribute('aria-pressed', id === selectedNode);
-            element.classList.toggle('is-search-match', hasSearch && searchMatch);
-            element.classList.toggle('is-muted', Boolean(muted));
-        });
-
-        state.edgeElements.forEach(function (element, id) {
-            const source = element.dataset.source;
-            const target = element.dataset.target;
-            const connected = connectedEdgeIds.has(id);
-            const searchRelevant = !hasSearch || matches.has(source) || matches.has(target);
-            const muted = id !== selectedEdge
-                && ((selectedNode && !connected) || (hasSearch && !searchRelevant));
-            element.classList.toggle('is-selected', id === selectedEdge);
-            element.classList.toggle('is-connected', connected);
-            element.classList.toggle('is-muted', Boolean(muted));
-            if (element._label) {
-                element._label.style.display = state.visibleEdges.length <= 12
-                    || connected || id === selectedEdge || (hasSearch && searchRelevant)
-                    ? '' : 'none';
-            }
-        });
-        updateVisibleStatus();
-    }
-
-    function updateVisibleStatus() {
-        const matches = matchingNodeIds();
-        if (state.searchQuery.trim()) {
-            const visibleMatches = matches.filter(function (id) {
-                return state.visibleNodeIds.has(id);
+    function updateVisibleStatus(view) {
+        if (view.state.searchQuery.trim()) {
+            const visibleMatches = view.matches.filter(function (id) {
+                return view.model.nodeIds.has(id);
             }).length;
-            visibleStatus.textContent = t('workbench.ui.matching', matches.length, visibleMatches);
+            visibleStatus.textContent = t('workbench.ui.matching', view.matches.length, visibleMatches);
         } else {
-            visibleStatus.textContent = t('workbench.ui.showing', state.visibleNodes.length, scene.nodes.length, state.visibleEdges.length);
+            visibleStatus.textContent = t('workbench.ui.showing', view.model.nodes.length, scene.nodes.length, view.model.edges.length);
         }
     }
 
-    function updateKpis() {
-        // Reuse the translated singular detail labels instead of deriving grammar
-        // from the plural text. Both supported locales use the singular only for 1.
+    function updateKpis(model) {
         function countLabel(count, singularKey, pluralKey) {
             return count + ' ' + t(count === 1 ? singularKey : pluralKey);
         }
-        el('directKpi').textContent = state.visibleNodes.filter(function (node) {
+        el('directKpi').textContent = model.nodes.filter(function (node) {
             return node.anchor;
         }).length + ' ' + t('workbench.ui.direct');
-        el('elementKpi').textContent = countLabel(state.visibleNodes.length,
+        el('elementKpi').textContent = countLabel(model.nodes.length,
             'workbench.ui.detail.element', 'workbench.ui.elements');
-        el('relationKpi').textContent = countLabel(state.visibleEdges.length,
+        el('relationKpi').textContent = countLabel(model.edges.length,
             'workbench.ui.detail.relationship', 'workbench.ui.relationships');
-        el('layerKpi').textContent = countLabel(state.layerGroups.length,
+        el('layerKpi').textContent = countLabel(model.layers.length,
             'workbench.ui.detail.layer', 'workbench.ui.layers');
     }
 
-    function updateModeButtons() {
+    function onDiagramChange(view) {
+        if (!active || !projection) return;
+        const state = view.state;
+        searchInput.value = state.searchQuery;
+        clearSearch.hidden = !state.searchQuery;
+        contextCheckbox.checked = state.showContext;
         overviewButton.setAttribute('aria-pressed', state.mode === 'overview' ? 'true' : 'false');
         focusButton.setAttribute('aria-pressed', state.mode === 'focus' ? 'true' : 'false');
         focusButton.disabled = !state.selectedNodeId;
-    }
+        updateVisibleStatus(view);
+        updateKpis(view.model);
 
-    function setSelection(nodeId, edgeId, center) {
-        const leavingFocusMode = !nodeId && state.mode === 'focus';
-        state.selectedNodeId = nodeId || null;
-        state.selectedEdgeId = edgeId || null;
-        if (leavingFocusMode) {
-            state.mode = 'overview';
-            renderDiagram(true);
-        }
-        updateModeButtons();
-        updateInteractionStyles();
-        if (state.selectedNodeId) {
-            renderNodeDetails(nodeById.get(state.selectedNodeId));
-        } else if (state.selectedEdgeId) {
-            renderEdgeDetails(edgeById.get(state.selectedEdgeId));
-        } else {
-            clearDetails();
-        }
-        if (center && state.selectedNodeId) centerOnNode(state.selectedNodeId);
-    }
+        const selectedNode = nodeById.get(state.selectedNodeId);
+        const selectedEdge = edgeById.get(state.selectedEdgeId);
+        if (selectedNode) renderNodeDetails(selectedNode);
+        else if (selectedEdge) renderEdgeDetails(selectedEdge);
+        else clearDetails();
 
-    function renderDiagram(autoFit) {
-        if (!active || !scene) return;
-        const model = visibleModel();
-        state.visibleNodes = model.nodes;
-        state.visibleEdges = model.edges;
-        state.visibleNodeIds = model.nodeIds;
-        state.layerGroups = buildLayerGroups(model.nodes);
-        state.bounds = calculateBounds(model.nodes, state.layerGroups);
-        state.nodeElements.clear();
-        state.edgeElements.clear();
-        svg.replaceChildren();
-
-        const defs = createSvgElement('defs');
-        const viewport = createSvgElement('g', {class: 'architecture-viewport'});
-        svg.append(defs, viewport);
-        viewportSelection = d3.select(viewport).attr('transform', d3.zoomTransform(svg));
-        renderMarkers(defs);
-        renderLayers(viewport);
-        renderEdges(viewport);
-        renderNodes(viewport);
-        if (diagramController) diagramController.render();
-        if (state.selectedNodeId && !state.visibleNodeIds.has(state.selectedNodeId)) {
-            state.selectedNodeId = null;
-            state.selectedEdgeId = null;
-            state.mode = 'overview';
-            clearDetails();
-        }
-        if (state.selectedEdgeId
-                && !state.visibleEdges.some(function (edge) { return edge.id === state.selectedEdgeId; })) {
-            state.selectedEdgeId = null;
-            clearDetails();
-        }
-        updateViewBox();
-        updateKpis();
-        updateModeButtons();
-        updateInteractionStyles();
-        if (autoFit !== false) {
-            state.autoFit = true;
-            window.requestAnimationFrame(function () { if (state.autoFit) fitView(); });
+        window.TaxonomyArchitectureWorkflow?.showSnapshot(projection, state.selectedNodeId);
+        if (publishedSelection !== state.selectedNodeId) {
+            publishedSelection = state.selectedNodeId;
+            document.dispatchEvent(new CustomEvent('taxonomy:architecture-selection', {
+                detail: { kind: 'snapshot', elementId: state.selectedNodeId }
+            }));
         }
     }
 
@@ -754,142 +449,105 @@
     function publishContext() {
         if (!active || !projection) return;
         const data = projection;
-        window.TaxonomyArchitectureWorkflow?.showSnapshot(data, state.selectedNodeId);
+        window.TaxonomyArchitectureWorkflow?.showSnapshot(data, diagramController?.getState().selectedNodeId || null);
         window.TaxonomyAppChrome?.updateContext({source:{projectId:data.projectId,projectKey:data.projectKey,
             requirementId:data.requirementId,requirementKey:data.requirementKey,requirementTitle:data.requirementTitle,
             snapshotId:data.snapshotId,requirementVersionId:data.exportProvenance?.requirementVersionId,
             requirementVersion:data.requirementVersionNumber,repositoryId:data.exportProvenance?.repositoryId,
             workspaceScopeKey:data.workspaceId || '__shared__',branch:data.branchName},editable:false}, 'snapshot');
     }
-    function render(data) {
-        if (!data || !data.scene || !Array.isArray(data.scene.nodes)) {
-            throw new Error(t('workbench.ui.noScene'));
-        }
+    function render(data, initialState, session) {
+        scene = prepareScene(data, t);
         projection = data;
-        scene = data.scene;
-        scene.edges = Array.isArray(scene.edges) ? scene.edges : [];
         nodeById = new Map(scene.nodes.map(function (node) { return [node.id, node]; }));
-        edgeById = new Map(scene.edges.map(function (edge, index) {
-            if (!edge.id) edge.id = 'edge-' + index + '-' + edge.sourceId + '-' + edge.targetId;
-            return [edge.id, edge];
-        }));
-        hopDistances = computeHopDistances();
+        edgeById = new Map(scene.edges.map(function (edge) { return [edge.id, edge]; }));
         alertBox.classList.add('d-none');
 
-        svgSelection = d3.select(svg);
-        zoomBehavior = d3.zoom()
-            .scaleExtent([0.2, 4])
-            .on('zoom', function (event) {
-                if (event.sourceEvent) state.autoFit = false;
-                if (viewportSelection) viewportSelection.attr('transform', event.transform);
-                if (diagramController) diagramController.viewportChanged();
-            });
-        svgSelection.call(zoomBehavior).on('dblclick.zoom', null);
         if (diagramController) diagramController.destroy();
-        diagramController = window.TaxonomyArchitectureDiagram.connect(svg, {
-            getNodes: function () { return state.visibleNodes; },
-            getNodeElements: function () { return state.nodeElements; },
-            select: function (id) { setSelection(id, null, false); },
-            focus: function (id) { if (id) setSelection(id, null, false); if (state.selectedNodeId) { state.mode = 'focus'; renderDiagram(true); } },
-            unfocus: function () { state.mode = 'overview'; renderDiagram(true); },
-            fit: fitView, applyTransform: applyTransform,
-            zoom: function (factor) { state.autoFit = false; svgSelection.call(zoomBehavior.scaleBy, factor); }
+        diagramController = window.TaxonomyArchitectureDiagram.create(svg, {
+            container: canvas,
+            prefix: 'architecture',
+            presentation: {
+                viewportClass: 'architecture-viewport',
+                selectedClass: 'is-selected',
+                edgeLabelLimit: 12,
+                highlightNeighbors: true
+            },
+            viewport: {
+                minimumWidth: 320, minimumHeight: 300, fallbackWidth: 900, fallbackHeight: 540,
+                minimumScale: 0.2, maximumScale: 4, fitPadding: 34, fitMaximumScale: 1.35,
+                extendMinimumForFit: true
+            },
+            behavior: { focus: 'neighbors', clearOnBackground: true },
+            layout: layoutScene,
+            onChange: onDiagramChange,
+            onFitState: function (fitState, scale) {
+                workbench.dataset.fitState = fitState;
+                if (Number.isFinite(scale)) workbench.dataset.fitScale = scale.toFixed(6);
+            }
         });
         window.TaxonomySnapshotDiagram = diagramController;
-        setExportsEnabled(true);
 
         el('architectureTitle').textContent = resolvePolicyTitle(data.policyTitleKey || scene.title);
         renderProvenance(data);
-        publishContext();
-        const archiMateDownload = el('downloadArchitectureArchiMate');
-        if (archiMateDownload) archiMateDownload.disabled = false;
         el('requirementText').textContent = data.requirementText || '';
         renderWarnings(data);
-        contextCheckbox.disabled = !scene.nodes.some(function (node) { return node.anchor; });
-        [fitButton, zoomInButton, zoomOutButton, overviewButton].forEach(function (button) {
+        contextCheckbox.disabled = !scene.hasAnchors;
+        [searchInput, clearSearch, zoomInButton, zoomOutButton, overviewButton].forEach(function (button) {
             button.disabled = false;
         });
+        fullscreenButton.disabled = false;
         fullscreenButton.hidden = typeof workbench.requestFullscreen !== 'function';
-        renderDiagram(true);
+        diagramController.render(scene, initialState);
+        pendingState = null;
+        if (session) diagramController.restoreSession(Object.assign({}, session, { state: initialState }));
+        else diagramController.fit();
+        setExportsEnabled(true);
+        publishContext();
         setStatus(t('workbench.ui.loaded', scene.nodes.length, scene.edges.length));
-
-        if (resizeObserver) resizeObserver.disconnect();
-        resizeObserver = typeof ResizeObserver !== 'undefined'
-            ? new ResizeObserver(function () {
-                window.clearTimeout(resizeTimer);
-                resizeTimer = window.setTimeout(function () {
-                    updateViewBox();
-                    if (state.autoFit) fitView();
-                }, 80);
-            })
-            : null;
-        if (resizeObserver) resizeObserver.observe(canvas);
         document.dispatchEvent(new CustomEvent('taxonomy:architecture-diagram-updated'));
     }
 
     searchInput.addEventListener('input', function () {
-        state.searchQuery = searchInput.value;
-        clearSearch.hidden = state.searchQuery.length === 0;
-        updateInteractionStyles();
+        if (active) diagramController?.setSearch(searchInput.value);
     });
-
     searchInput.addEventListener('keydown', function (event) {
+        if (!active || !diagramController) return;
         if (event.key === 'Escape') {
-            searchInput.value = '';
-            state.searchQuery = '';
-            clearSearch.hidden = true;
-            updateInteractionStyles();
+            diagramController.setSearch('');
             return;
         }
         if (event.key !== 'Enter') return;
-        const matches = matchingNodeIds();
-        if (matches.length === 0) return;
-        const first = matches[0];
-        if (!state.visibleNodeIds.has(first)) {
-            state.showContext = true;
-            contextCheckbox.checked = true;
-            state.mode = 'overview';
-            state.selectedNodeId = first;
-            state.selectedEdgeId = null;
-            renderDiagram(false);
-        }
-        setSelection(first, null, true);
+        const first = diagramController.matchingNodeIds()[0];
+        if (first) diagramController.select(first, null, { center: true, reveal: true });
     });
-
     clearSearch.addEventListener('click', function () {
-        searchInput.value = '';
-        state.searchQuery = '';
-        clearSearch.hidden = true;
+        if (!active || !diagramController) return;
+        diagramController.setSearch('');
         searchInput.focus();
-        updateInteractionStyles();
     });
-
     contextCheckbox.addEventListener('change', function () {
-        state.showContext = contextCheckbox.checked;
-        renderDiagram(true);
+        if (active) diagramController?.setContext(contextCheckbox.checked);
     });
-
     overviewButton.addEventListener('click', function () {
-        state.mode = 'overview';
-        renderDiagram(true);
+        if (active) diagramController?.unfocus();
     });
-
     focusButton.addEventListener('click', function () {
+        if (!active || !diagramController) return;
+        const state = diagramController.getState();
         if (!state.selectedNodeId) return;
-        state.mode = state.mode === 'focus' ? 'overview' : 'focus';
-        renderDiagram(true);
+        if (state.mode === 'focus') diagramController.unfocus();
+        else diagramController.focus();
     });
-
-    fitButton.addEventListener('click', fitView);
+    fitButton.addEventListener('click', function () {
+        if (active) diagramController?.fit();
+    });
     zoomInButton.addEventListener('click', function () {
-        state.autoFit = false;
-        svgSelection.call(zoomBehavior.scaleBy, 1.25);
+        if (active) diagramController?.zoom(1.25);
     });
     zoomOutButton.addEventListener('click', function () {
-        state.autoFit = false;
-        svgSelection.call(zoomBehavior.scaleBy, 0.8);
+        if (active) diagramController?.zoom(0.8);
     });
-
     fullscreenButton.addEventListener('click', function () {
         if (document.fullscreenElement === workbench) {
             document.exitFullscreen();
@@ -897,24 +555,14 @@
             workbench.requestFullscreen();
         }
     });
-
     document.addEventListener('fullscreenchange', function () {
         if (!active) return;
         const full = document.fullscreenElement === workbench;
         fullscreenButton.title = full ? t('workbench.ui.exitFullscreen') : t('workbench.ui.fullscreen');
         fullscreenButton.setAttribute('aria-label', fullscreenButton.title);
         window.setTimeout(function () {
-            updateViewBox();
-            fitView();
+            if (active) diagramController?.fit();
         }, 0);
-    });
-
-    svg.addEventListener('click', function (event) {
-        const target = event.target;
-        if (!target || typeof target.closest !== 'function'
-                || !target.closest('.architecture-node, .architecture-edge-hit')) {
-            setSelection(null, null, false);
-        }
     });
 
     const exportOptions = el('architectureExportOptions');
@@ -996,7 +644,7 @@
     }
     function getSource() {
         const data = projection;
-        const source = Object.assign({}, activeSource, {kind:'snapshot',element:state.selectedNodeId});
+        const source = Object.assign({}, activeSource, {kind:'snapshot',element:diagramController?.getState().selectedNodeId || pendingState?.selectedNodeId || null});
         if (data) {
             if (data.exportProvenance?.repositoryId != null) source.repositoryId = data.exportProvenance.repositoryId;
             if (Object.prototype.hasOwnProperty.call(data,'workspaceId')) {
@@ -1012,56 +660,110 @@
         return normalizeSource(source);
     }
     function remember() {
-        if (!projection || !sourceKey) return;
-        retained.set(sourceKey,{data:projection,viewport:diagramController?.captureViewport(),
-            mode:state.mode,selected:state.selectedNodeId,search:state.searchQuery,showContext:state.showContext});
-        while(retained.size>8)retained.delete(retained.keys().next().value);
+        if (!projection || !sourceKey || !diagramController) return;
+        retained.set(sourceKey, {
+            data: projection,
+            session: diagramController.captureSession()
+        });
+        while (retained.size > 8) retained.delete(retained.keys().next().value);
     }
+
     async function activate(source) {
         const selectedSource = normalizeSource(source), key = keyForSource(selectedSource);
-        if (key === sourceKey && projection) {
-            active = true; activeSource = selectedSource; setExportsEnabled(true);
-            if (resizeObserver) resizeObserver.observe(canvas); updateViewBox();
-            window.TaxonomyArchitectureWorkflow?.setScope(getSource()); publishContext();
-            if (source.element && source.element !== state.selectedNodeId) setSelection(source.element,null,true);
+        if (key === sourceKey && projection && diagramController) {
+            active = true;
+            activeSource = selectedSource;
+            diagramController.setActive(true);
+            setExportsEnabled(true);
+            window.TaxonomyArchitectureWorkflow?.setScope(getSource());
+            if (selectedSource.element && selectedSource.element !== diagramController.getState().selectedNodeId) {
+                diagramController.select(selectedSource.element, null, { center: true, reveal: true });
+            }
+            publishContext();
             return true;
         }
         remember();
-        active = true; activeSource = selectedSource; projectId = selectedSource.projectId; snapshotId = selectedSource.snapshotId; sourceKey = key;
-        body.dataset.projectId = projectId || ''; body.dataset.snapshotId = snapshotId || '';
+        active = true;
+        activeSource = selectedSource;
+        projectId = selectedSource.projectId;
+        snapshotId = selectedSource.snapshotId;
+        sourceKey = key;
+        body.dataset.projectId = projectId || '';
+        body.dataset.snapshotId = snapshotId || '';
         window.TaxonomyArchitectureWorkflow?.setScope(selectedSource);
-        const ticket = ++generation; request?.abort();
-        const controller = new AbortController(); request = controller;
-        projection = null; scene = null; diagramController?.destroy(); diagramController = null;
-        if (resizeObserver) resizeObserver.disconnect(); window.clearTimeout(resizeTimer); state.autoFit = false;
-        svg.replaceChildren(); clearDetails(); setExportsEnabled(false);
-        alertBox.classList.add('d-none'); setStatus(t('workbench.ui.loading'));
-        state.selectedNodeId = source.element || null; state.selectedEdgeId = null; state.mode = 'overview'; state.searchQuery = ''; state.showContext = true;
-        searchInput.value = ''; clearSearch.hidden = true; contextCheckbox.checked = true;
-        if (!projectId || !snapshotId) { showError(new Error(t('workbench.ui.missingScope'))); return false; }
+        const ticket = ++generation;
+        request?.abort();
+        const controller = new AbortController();
+        request = controller;
+        projection = null;
+        scene = null;
+        diagramController?.destroy();
+        diagramController = null;
+        window.TaxonomySnapshotDiagram = null;
+        clearDetails();
+        setExportsEnabled(false);
+        alertBox.classList.add('d-none');
+        setStatus(t('workbench.ui.loading'));
+        pendingState = {
+            selectedNodeId: selectedSource.element || null,
+            selectedEdgeId: null,
+            mode: 'overview',
+            searchQuery: '',
+            showContext: true
+        };
+        searchInput.value = '';
+        clearSearch.hidden = true;
+        contextCheckbox.checked = true;
+        if (!projectId || !snapshotId) {
+            showError(new Error(t('workbench.ui.missingScope')));
+            return false;
+        }
         try {
             await window.TaxonomyI18n.ready();
             if (!active || ticket !== generation) return false;
             const saved = retained.get(key);
-            const data = saved?.data || await ArchitectureWorkbenchApi.load(selectedSource.projectId,selectedSource.snapshotId,selectedSource,controller.signal);
+            const data = saved?.data || await ArchitectureWorkbenchApi.load(
+                selectedSource.projectId, selectedSource.snapshotId, selectedSource, controller.signal);
             if (!active || ticket !== generation) return false;
-            if (saved) { state.mode=saved.mode; state.selectedNodeId=source.element || saved.selected; state.searchQuery=saved.search; state.showContext=saved.showContext; searchInput.value=saved.search; contextCheckbox.checked=saved.showContext; }
-            render(data);
-            activeSource = getSource(); sourceKey = keyForSource(activeSource);
-            projectId = activeSource.projectId; snapshotId = activeSource.snapshotId;
-            searchInput.disabled=false; clearSearch.disabled=false; clearSearch.hidden=!state.searchQuery;
-            if (saved?.viewport) diagramController.restoreViewport(saved.viewport);
-            if (state.selectedNodeId) setSelection(state.selectedNodeId,null,false);
+            const initialState = saved ? saved.session.state : pendingState;
+            render(data, initialState, saved?.session);
+            if (saved && selectedSource.element && selectedSource.element !== diagramController.getState().selectedNodeId) {
+                diagramController.select(selectedSource.element, null, { center: true, reveal: true });
+            }
+            activeSource = getSource();
+            sourceKey = keyForSource(activeSource);
+            projectId = activeSource.projectId;
+            snapshotId = activeSource.snapshotId;
             return true;
-        } catch (error) { if (active && ticket === generation) showError(error); return false; }
+        } catch (error) {
+            if (active && ticket === generation) showError(error);
+            return false;
+        }
     }
-    const instance={activate:activate,suspend:function(){remember();active=false;generation++;request?.abort();state.autoFit=false;setExportsEnabled(false);if(resizeObserver)resizeObserver.disconnect();window.clearTimeout(resizeTimer);if(exportOptions)exportOptions.open=false;},
-        getSource:getSource,getData:function(){return projection;},getDiagram:function(){return diagramController;},
-        select:function(id){if(active && projection)setSelection(id,null,false);}};
-    root.__architectureSnapshot=instance;setExportsEnabled(false);
+
+    const instance = {
+        activate: activate,
+        suspend: function () {
+            remember();
+            active = false;
+            generation++;
+            request?.abort();
+            diagramController?.setActive(false);
+            setExportsEnabled(false);
+            if (exportOptions) exportOptions.open = false;
+        },
+        getSource: getSource,
+        getData: function () { return projection; },
+        getDiagram: function () { return diagramController; },
+        select: function (id) {
+            if (active && projection) diagramController?.select(id);
+        }
+    };
+    root.__architectureSnapshot = instance;
+    setExportsEnabled(false);
     return instance;
     }
-    window.TaxonomyArchitectureSnapshot=Object.freeze({mount:mount});
+    window.TaxonomyArchitectureSnapshot=Object.freeze({mount:mount, prepareScene:prepareScene, layoutScene:layoutScene});
     if(!document.getElementById('architectureWorkspace') && document.getElementById('architectureCanvas')) {
         const instance=mount(document.body),source={kind:'snapshot'},params=new URLSearchParams(location.search);
         // Standalone links accept the same source pins as the application workspace.

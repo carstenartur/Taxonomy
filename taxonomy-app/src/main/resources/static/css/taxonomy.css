@@ -1492,19 +1492,6 @@
     padding: 2px 10px;
 }
 
-.impact-graph-container {
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-    overflow: hidden;
-    position: relative;
-}
-
-.impact-graph-container svg text {
-    fill: #e0e0e0;
-    font-family: 'Segoe UI', system-ui, sans-serif;
-}
-
 /* Pulsing animation for hotspot nodes */
 @keyframes hotspot-pulse {
     0% { stroke-opacity: 1; }
@@ -1776,11 +1763,6 @@
 
 [data-bs-theme="dark"] .force-graph-legend {
     background: #2b3035;
-    border-color: #444;
-}
-
-[data-bs-theme="dark"] .impact-graph-container {
-    background: linear-gradient(135deg, #0d0d1a 0%, #0f1729 100%);
     border-color: #444;
 }
 

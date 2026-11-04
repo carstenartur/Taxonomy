@@ -669,10 +669,15 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
         const visibleNodes = svg.querySelectorAll('.editor-node').length;
         const visibleEdges = svg.querySelectorAll('.editor-edge, .editor-ghost').length;
         const visibleSuggestions = svg.querySelectorAll('.editor-ghost').length;
-        const markerId = svg.querySelector('marker').id;
-        const markerIsUnique = document.querySelectorAll('#' + markerId).length === 1;
+        const markers = [...svg.querySelectorAll('marker')];
+        const markerIds = new Set(markers.map(marker => marker.id));
+        const markerIsUnique = markers.length > 0 && markerIds.size === markers.length
+          && markers.every(marker => document.querySelectorAll('#' + marker.id).length === 1);
         const edgesUseOwnMarker = [...svg.querySelectorAll('.editor-edge, .editor-ghost')]
-          .every(edge => edge.getAttribute('marker-end') === 'url(#' + markerId + ')');
+          .every(edge => {
+            const reference = (edge.getAttribute('marker-end') || '').match(/^url\(#([^)]*)\)$/);
+            return reference !== null && markerIds.has(reference[1]);
+          });
         const focusStarted = performance.now();
         adapter.select(scene.nodes[count - 1].id); adapter.focus(); await settle();
         const focusMs = Math.round(performance.now() - focusStarted);

@@ -662,60 +662,6 @@
         syncTaskProgress();
     }
 
-    function improveImpactGraph(container) {
-        if (!container) return;
-        var svg = container.querySelector('.impact-graph-container svg');
-        if (!svg) return;
-
-        var width = Number(svg.getAttribute('width')) || container.clientWidth || 600;
-        var height = Number(svg.getAttribute('height')) || 400;
-        // The force layout deliberately clamps circle centres to the SVG boundary.
-        // Add a stable optical margin so circles and short labels remain visible.
-        svg.setAttribute('viewBox', '-110 -50 ' + (width + 220) + ' ' + (height + 100));
-        svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-        svg.setAttribute('role', 'img');
-
-        Array.from(svg.querySelectorAll('g > g')).forEach(function (group) {
-            var circle = group.querySelector(':scope > circle');
-            var label = group.querySelector(':scope > text');
-            var datum = group.__data__;
-            if (!circle || !label || !datum || !datum.id) return;
-
-            var percent = Math.round((Number(datum.relevance) || 0) * 100);
-            label.textContent = datum.id + (datum.isAnchor ? ' ★' + percent + '%' : ' ' + percent + '%');
-            label.setAttribute('font-size', '10px');
-            label.setAttribute('dx', '18');
-            label.setAttribute('dy', '4');
-            group.setAttribute('tabindex', '0');
-            group.setAttribute('role', 'button');
-            group.setAttribute('aria-label',
-                datum.id + ', ' + (datum.title || datum.id) + ', ' + percent + ' percent');
-        });
-        container.dataset.readabilityEnhanced = 'true';
-    }
-
-    function installImpactGraphReadability() {
-        var graphApi = window.TaxonomyGraph;
-        if (!graphApi || graphApi.impactReadabilityInstalled ||
-                typeof graphApi.renderImpactForceGraph !== 'function') {
-            return;
-        }
-        var original = graphApi.renderImpactForceGraph;
-        graphApi.renderImpactForceGraph = function (container) {
-            var result = original.apply(this, arguments);
-            requestAnimationFrame(function () {
-                improveImpactGraph(container);
-            });
-            // D3 continues to settle node positions, but label text and the expanded
-            // viewBox remain stable. Refresh once more after the first visible layout.
-            window.setTimeout(function () {
-                improveImpactGraph(container);
-            }, 900);
-            return result;
-        };
-        graphApi.impactReadabilityInstalled = true;
-    }
-
     function installExpertShortcuts() {
         var analyzeLink = document.querySelector('#mainNavTabs [data-page="analyze"]');
         var operationalSummary = document.querySelector('#operationalContextDetails > summary');
@@ -753,7 +699,6 @@
         createOperationalContext();
         createSecondaryToolsDisclosure();
         monitorTaskProgress();
-        installImpactGraphReadability();
         installExpertShortcuts();
     }
 
@@ -791,7 +736,6 @@
         reset: reset,
         syncTaskProgress: syncTaskProgress,
         refreshOverlayLane: refreshOverlayLane,
-        isElementUnobscured: isElementUnobscured,
-        improveImpactGraph: improveImpactGraph
+        isElementUnobscured: isElementUnobscured
     };
 })();

@@ -3,36 +3,35 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
-const source = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/architecture-workbench.js', import.meta.url), 'utf8');
-const sharedSource = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/architecture-diagram.js', import.meta.url), 'utf8');
-// Exercise the actual Fit handler's geometry without a browser or a copied formula.
-const start = source.indexOf('    function fitView() {');
-const end = source.indexOf('    function centerOnNode(', start);
-assert.ok(start >= 0 && end > start, 'the production Fit handler must be present');
-const fitHandler = source.slice(start, end);
+const resources = '../../taxonomy-app/src/main/resources/static/js/';
+const [sharedSource, snapshotSource] = await Promise.all([
+    readFile(new URL(resources + 'shared/architecture-diagram.js', import.meta.url), 'utf8'),
+    readFile(new URL(resources + 'architecture-workbench.js', import.meta.url), 'utf8')
+]);
+const context = vm.createContext({
+    window: { TaxonomyI18n: { t: (key, ...values) => [key, ...values].join(':') } },
+    document: { getElementById: () => null }
+});
+vm.runInContext(sharedSource, context);
+vm.runInContext(snapshotSource, context);
+const shared = context.window.TaxonomyArchitectureDiagram;
+const snapshot = context.window.TaxonomyArchitectureSnapshot;
 
-function fit(bounds, viewport) {
-    let result;
-    let extent = [0.2, 4];
-    const transform = {
-        x: 0, y: 0, k: 1,
-        translate(x, y) { this.x = x; this.y = y; return this; },
-        scale(k) { this.k = k; return this; }
-    };
-    const context = vm.createContext({
-        state: { bounds, autoFit: false },
-        canvas: { clientWidth: viewport.width, clientHeight: viewport.height },
-        viewportSize: () => viewport,
-        reducedMotion: true,
-        d3: { zoomIdentity: transform },
-        zoomBehavior: {
-            transform() {},
-            scaleExtent(value) { extent = value; return this; }
-        },
-        svgSelection: { call(handler, value) { result = value; } }
-    });
-    vm.runInContext(fitHandler + '\nfitView();', context);
-    return { result, extent };
+function node(id, overrides = {}) {
+    return { id, label: id, type: 'Capabilities', layer: 0,
+        x: 100, y: 100, width: 230, height: 86, relevance: 0.85, anchor: false,
+        ...overrides };
+}
+
+function projection(nodes, edges = []) {
+    return { scene: { title: 'Evidence', width: 1000, height: 420, nodes, edges },
+        elements: {}, relations: {} };
+}
+
+function visible(data, state) {
+    const scene = snapshot.prepareScene(data);
+    return { scene, model: shared.visibleModel(scene, { mode: 'overview', selectedNodeId: null,
+        showContext: true, ...state }) };
 }
 
 for (const [name, bounds, viewport] of [
@@ -40,76 +39,87 @@ for (const [name, bounds, viewport] of [
     ['tall graph', { x: 20, y: -70, width: 900, height: 6000 }, { width: 1100, height: 600 }],
     ['compact focused graph', { x: 100, y: 40, width: 400, height: 260 }, { width: 1200, height: 900 }]
 ]) {
-    test(`Fit keeps every bound inside the viewport: ${name}`, () => {
-        const { result: { x, y, k }, extent } = fit(bounds, viewport);
-        assert.ok(k > 0 && k <= 1.35, 'finite readable magnification ceiling');
-        assert.ok(x + bounds.x * k >= 33.99, 'left margin');
-        assert.ok(y + bounds.y * k >= 33.99, 'top margin');
-        assert.ok(x + (bounds.x + bounds.width) * k <= viewport.width - 33.99, 'right margin');
-        assert.ok(y + (bounds.y + bounds.height) * k <= viewport.height - 33.99, 'bottom margin');
-        assert.ok(extent[0] <= k, 'manual zoom must retain the fitted scale instead of jumping to 20%');
+    test('shared Fit keeps every snapshot bound inside the viewport: ' + name, () => {
+        const { x, y, scale } = shared.calculateFitTransform(bounds, viewport,
+            { padding: 34, minimumScale: 0.001, maximumScale: 1.35, requireVisible: true });
+        assert.ok(Number.isFinite(scale) && scale > 0 && scale <= 1.35);
+        assert.ok(x + bounds.x * scale >= 33.99, 'left margin');
+        assert.ok(y + bounds.y * scale >= 33.99, 'top margin');
+        assert.ok(x + (bounds.x + bounds.width) * scale <= viewport.width - 33.99, 'right margin');
+        assert.ok(y + (bounds.y + bounds.height) * scale <= viewport.height - 33.99, 'bottom margin');
+        if (name !== 'compact focused graph') assert.ok(scale < 0.2, 'large scenes fit below the old 20% zoom floor');
     });
 }
 
-// Preserve the legacy filter contract as the scenario browser fixture now
-// exercises the default evidence graph (which deliberately has no impact anchors).
-const visibilityStart = source.indexOf('    function visibleModel() {');
-const visibilityEnd = source.indexOf('    function buildLayerGroups(', visibilityStart);
-assert.ok(visibilityStart >= 0 && visibilityEnd > visibilityStart);
-const visibilityHandler = source.slice(visibilityStart, visibilityEnd);
-const contextGuard = source.match(/contextCheckbox\.disabled = .*$/m)?.[0];
-assert.ok(contextGuard, 'the production context-control guard must be present');
-
-function contextView(nodes, edges, showContext) {
-    const context = vm.createContext({
-        window: {},
-        scene: { nodes, edges },
-        state: { showContext, mode: 'overview', selectedNodeId: null },
-        contextCheckbox: { checked: true, disabled: false }
+for (const viewport of [{ width: 0, height: 0 }, { width: 900, height: 0 }, { width: 0, height: 540 }]) {
+    test('shared Fit waits for a measured snapshot viewport ' + viewport.width + 'x' + viewport.height, () => {
+        const fit = shared.calculateFitTransform({ x: 105, y: 207, width: 2000, height: 700 }, viewport,
+            { padding: 34, maximumScale: 1.35, requireVisible: true });
+        assert.equal(fit, null, 'a hidden source must not commit a fallback viewport');
     });
-    vm.runInContext(sharedSource, context);
-    return vm.runInContext(visibilityHandler + '\n' + contextGuard
-        + '\n({ control: contextCheckbox, model: visibleModel() })', context);
 }
 
-test('evidence-only model keeps every node and disables the empty anchor filter', () => {
-    const nodes = [{ id: 'source', anchor: false }, { id: 'target', anchor: false }];
-    const edges = [{ sourceId: 'source', targetId: 'target' }];
-    const { control, model } = contextView(nodes, edges, true);
-    assert.equal(control.disabled, true);
-    assert.equal(control.checked, true);
+test('evidence-only snapshots expose no anchor filter and keep every node in overview', () => {
+    const { scene, model } = visible(projection([node('source'), node('target')],
+        [{ sourceId: 'source', targetId: 'target', relationType: 'USES' }]));
+    assert.equal(scene.hasAnchors, false, 'the adapter disables the empty anchor control');
     assert.deepEqual(Array.from(model.nodeIds), ['source', 'target']);
     assert.equal(model.edges.length, 1);
 });
 
-test('legacy anchor-only mode hides context nodes and incident edges', () => {
-    const nodes = [{ id: 'anchor', anchor: true }, { id: 'context', anchor: false }];
-    const edges = [{ sourceId: 'anchor', targetId: 'context' }];
-    const hidden = contextView(nodes, edges, false);
-    assert.equal(hidden.control.disabled, false);
+test('anchor-only snapshots hide context nodes and their incident edges', () => {
+    const data = projection([node('anchor', { anchor: true }), node('context')],
+        [{ sourceId: 'anchor', targetId: 'context', relationType: 'USES' }]);
+    const hidden = visible(data, { showContext: false });
+    assert.equal(hidden.scene.hasAnchors, true);
     assert.deepEqual(Array.from(hidden.model.nodeIds), ['anchor']);
     assert.equal(hidden.model.edges.length, 0);
-    const restored = contextView(nodes, edges, true);
+    const restored = visible(data, { showContext: true });
     assert.deepEqual(Array.from(restored.model.nodeIds), ['anchor', 'context']);
     assert.equal(restored.model.edges.length, 1);
 });
 
-// Execute the actual node caption expression; no copied percentage formula.
+test('focused snapshots retain only the selected node and its immediate neighbors', () => {
+    const data = projection([node('selected'), node('neighbor'), node('remote')], [
+        { sourceId: 'selected', targetId: 'neighbor', relationType: 'USES' },
+        { sourceId: 'neighbor', targetId: 'remote', relationType: 'USES' }
+    ]);
+    const { model } = visible(data, { mode: 'focus', selectedNodeId: 'selected' });
+    assert.deepEqual(Array.from(model.nodeIds), ['selected', 'neighbor']);
+    assert.equal(model.edges.length, 1);
+});
+
 for (const [relevance, expected] of [[0.00125, '0.125%'], [1e-12, '<0.000001%'], [0.85, '85%']]) {
-    test(`architecture node caption preserves relevance ${relevance}`, () => {
-        const caption = source.match(/const score = ([^;\n]+);/)?.[1];
-        assert.ok(caption, 'production node caption is present');
-        const helperStart = source.indexOf('    function relevanceText(');
-        const helperEnd = source.indexOf("    const SVG_NS", helperStart);
-        const helper = helperStart >= 0 && helperEnd > helperStart ? source.slice(helperStart, helperEnd) : '';
-        const actual = vm.runInNewContext(helper + '\n' + caption,
-            {node: {anchor: false, relevance}});
-        assert.equal(actual, expected);
+    test('snapshot node presentation preserves relevance ' + relevance, () => {
+        const scene = snapshot.prepareScene(projection([node('score', { relevance })]));
+        assert.equal(scene.nodes[0].score, expected);
+        assert.equal(scene.nodes[0].relevance, relevance, 'display formatting never rounds authoritative relevance');
     });
 }
 
-
-test('snapshot Fit waits when its source pane has no measured size', () => {
-    const { result } = fit({ x: 105, y: 207, width: 2000, height: 700 }, { width: 0, height: 0 });
-    assert.equal(result, undefined, 'hidden source must not commit a fallback viewport');
+test('snapshot preparation preserves immutable source geometry and domain metadata', () => {
+    const originalNode = Object.freeze(node('source', { anchor: true, presenceReason: 'direct evidence' }));
+    const target = Object.freeze(node('target', { x: 500, layer: 1 }));
+    const originalEdge = Object.freeze({ sourceId: 'source', targetId: 'target', relationType: 'USES',
+        sourceX: 330, sourceY: 143, targetX: 500, targetY: 143, derivationReason: 'persisted' });
+    const data = projection(Object.freeze([originalNode, target]), Object.freeze([originalEdge]));
+    Object.freeze(data.scene);
+    const scene = snapshot.prepareScene(data);
+    const layout = snapshot.layoutScene(shared.visibleModel(scene, { showContext: true }));
+    assert.notEqual(scene.nodes[0], originalNode);
+    assert.equal(scene.nodes[0].presenceReason, 'direct evidence');
+    assert.equal(scene.edges[0].derivationReason, 'persisted');
+    assert.equal(originalEdge.id, undefined, 'generated edge IDs belong to the adapter copy');
+    assert.equal(scene.edges[0].id, 'edge-0-source-target');
+    assert.deepEqual(Array.from(layout.nodes, ({ id, x, y, width, height }) => ({ id, x, y, width, height })), [
+        { id: 'source', x: 100, y: 100, width: 230, height: 86 },
+        { id: 'target', x: 500, y: 100, width: 230, height: 86 }
+    ]);
+    assert.equal(layout.layers.length, 2);
+    assert.equal(layout.layers[0].headerHeight, 34);
+    assert.equal(layout.layers[0].count, 1);
+    assert.match(layout.edges[0].path, /^M330,143 C/);
+    assert.match(layout.edges[0].path, /500,143$/);
+    assert.equal(layout.edges[0].sourceX, 330);
+    assert.equal(layout.edges[0].targetX, 500);
 });

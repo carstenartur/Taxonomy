@@ -450,7 +450,8 @@
     el('editorNext').onclick = function () { page++; renderTree(); el('editorSearch').focus(); };
     el('editorZoomIn').onclick = function () { renderer.zoom(1.4); };
     el('editorZoomOut').onclick = function () { renderer.zoom(1 / 1.4); };
-    el('editorFit').onclick = renderer.fit; el('editorFocus').onclick = renderer.focus;
+    el('editorFit').onclick = function () { renderer.fit(); };
+    el('editorFocus').onclick = function () { renderer.focus(); };
     el('editorArrange').onclick = async function () {
         if (busy || !view) return;
         layout = el('editorLayout').value;
@@ -589,6 +590,7 @@
     }
     async function activate(source) {
         active = true;
+        renderer.setActive(true);
         var reuse = view && sameSelection(source) && !refreshNeeded;
         activeSource = Object.assign({},source);
         await window.TaxonomyI18n.ready();
@@ -609,7 +611,7 @@
         return ok;
     }
     var instance = {activate:activate, suspend:function () {
-        active = false; generation++; loader?.abort(); loading = false; window.TaxonomyArchitectureLifecycle?.suspend?.(); focusPanel.setLocked(true); permissions();
+        active = false; renderer.setActive(false); generation++; loader?.abort(); loading = false; window.TaxonomyArchitectureLifecycle?.suspend?.(); focusPanel.setLocked(true); permissions();
     }, canLeave:canLeave, hasDraft:hasDraft, getSource:getSource, getData:function () { return view; },
         getDiagram:function () { return renderer; }, select:selectElement,restoreUrl:function(){linkSelection(true);},
         openLens:function () { el('editorLensTitle').scrollIntoView({block:'nearest'}); el('editorLensEnabled').focus(); }
