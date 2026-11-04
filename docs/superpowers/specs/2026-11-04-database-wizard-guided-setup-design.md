@@ -23,7 +23,7 @@ This is an implementation decision based on the user's request, not a claim that
 - Connection failures distinguish known DNS, refused connection, timeout, TLS/certificate, login, missing database and permission cases. Unknown failures remain explicitly unknown. Never show raw driver messages or credentials.
 - A selected TLS setting is not a successful test. Plaintext is one clear transport warning, not duplicate warning rows. Informational scope/deployment notes live in an expandable detail section.
 - Changing connection inputs clears stale results and exports. Reopening keeps non-secret choices for the current page session and clears passwords. Every manual test click initiates a fresh request.
-- During provisioning disable edits and navigation; browser cancellation is not represented as rollback. If the response is lost, say the outcome is uncertain and offer inspection before another write.
+- During provisioning disable edits and navigation; browser cancellation is not represented as rollback. Bound the full decoded response, including a stalled body after headers (75 seconds for creation, 25 seconds for inspection). If the creation response is lost or late, say the outcome is uncertain and offer inspection before another write; a late reply must not overwrite that outcome.
 - Preserve native dialog focus handling, keyboard access, readable live status, responsive layout and complete English/German localization.
 
 ## PostgreSQL provisioning boundary

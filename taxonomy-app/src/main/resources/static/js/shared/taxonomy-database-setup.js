@@ -310,6 +310,20 @@ window.TaxonomyDatabaseSetup = (function () {
         element('Review').scrollIntoView({ block: 'nearest' });
     }
 
+    function withResponseDeadline(response, timeoutMillis) {
+        var timer;
+        // The shared transport timer ends at response headers. Bound JSON decoding too;
+        // reaching this deadline does not cancel or roll back a server-side creation.
+        var deadline = new Promise(function (resolve, reject) {
+            timer = setTimeout(function () {
+                var error = new Error('Database setup response timed out');
+                error.name = 'TimeoutError';
+                reject(error);
+            }, timeoutMillis);
+        });
+        return Promise.race([response, deadline]).finally(function () { clearTimeout(timer); });
+    }
+
     function preparePostgres(create) {
         if (mutating || (create && !provisionPlan) || !validConnection()) return;
         var payload = { target: settings(true), maintenanceDatabase: element('Maintenance').value.trim(),
@@ -321,9 +335,11 @@ window.TaxonomyDatabaseSetup = (function () {
         request = create ? null : new AbortController();
         busy(true);
         showResult('info', create ? 'database.setup.provision.running' : 'database.setup.inspect.running', '', '');
-        api.sendJson(base + (create ? '/postgres/provision' : '/postgres/inspect'), payload, {
-            signal: request ? request.signal : undefined, timeoutMillis: create ? 75000 : 25000
-        }).then(function (result) {
+        var timeoutMillis = create ? 75000 : 25000;
+        var response = api.sendJson(base + (create ? '/postgres/provision' : '/postgres/inspect'), payload, {
+            signal: request ? request.signal : undefined, timeoutMillis: timeoutMillis, retries: 0
+        });
+        withResponseDeadline(response, timeoutMillis).then(function (result) {
             if (version !== generation || !element('Dialog').open) return;
             var outcome = result.outcome;
             needsInspection = outcome !== 'READY' && outcome !== 'COMPLETE';

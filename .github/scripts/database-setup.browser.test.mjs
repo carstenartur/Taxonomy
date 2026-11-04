@@ -37,7 +37,7 @@ const ready = {outcome: 'READY', role: 'CREATE', database: 'CREATE',
 const complete = {outcome: 'COMPLETE', role: 'CREATED', database: 'CREATED',
     finding: {key: 'database.provision.complete', status: 'OK', message: 'Application login verified'}};
 
-async function fixture({locale = 'en', width = 1000, responses = [success]} = {}) {
+async function fixture({locale = 'en', width = 1000, responses = [success], realTransport = false} = {}) {
     const page = await browser.newPage({viewport: {width, height: 850}});
     page.errors = [];
     page.on('pageerror', error => page.errors.push(error.message));
@@ -53,7 +53,7 @@ async function fixture({locale = 'en', width = 1000, responses = [success]} = {}
             if (match) translations[match[1]] = match[2].replace(/\\u([0-9a-fA-F]{4})/g, (_, value) => String.fromCharCode(parseInt(value, 16)));
         }
     }
-    await page.evaluate(({translations, responses}) => {
+    await page.evaluate(({translations, responses, realTransport}) => {
         window.TaxonomyI18n = {t: (key, ...args) => (translations[key] || key).replace(/\{(\d+)\}/g, (_, index) => args[index] ?? '')};
         document.querySelectorAll('[th\\:text], [th\\:aria-label]').forEach(node => {
             for (const attribute of ['text', 'aria-label']) {
@@ -81,10 +81,36 @@ async function fixture({locale = 'en', width = 1000, responses = [success]} = {}
                 return result;
             }
         };
-    }, {translations, responses});
+        if (realTransport) {
+            // Exercise the production API client with real Response/ReadableStream bodies.
+            window.fetch = async (url, init = {}) => {
+                const headers = {'Content-Type': 'application/json'};
+                const json = value => new Response(JSON.stringify(value), {status: 200, headers});
+                if (url.endsWith('/api/account/me')) return json({administrator: true});
+                if ((init.method || 'GET') === 'GET') return json({database: 'hsqldb', inMemory: true, promptRequired: false});
+                const body = JSON.parse(init.body || '{}');
+                window.databaseRequests.push({url, body});
+                const result = window.databaseResponses.shift();
+                if (result?.pending) {
+                    const stream = new ReadableStream({start(controller) {
+                        window.finishDatabaseRequest = () => {
+                            controller.enqueue(new TextEncoder().encode(JSON.stringify(result.value)));
+                            controller.close();
+                        };
+                        init.signal?.addEventListener('abort', () => controller.error(new DOMException('Aborted', 'AbortError')), {once: true});
+                    }});
+                    window.databaseHeadersReceived = true;
+                    return new Response(stream, {status: 200, headers});
+                }
+                if (result?.reject) throw result.reject;
+                return json(result);
+            };
+        }
+    }, {translations, responses, realTransport});
     // The actual component styles are used, including its mobile layout and result hierarchy.
     await page.addStyleTag({content: bootstrap});
     await page.addStyleTag({path: path.join(resources, 'static/css/taxonomy-database-setup.css')});
+    if (realTransport) await page.addScriptTag({path: path.join(resources, 'static/js/api/taxonomy-api-client.js')});
     await page.addScriptTag({path: path.join(resources, 'static/js/shared/taxonomy-database-setup.js')});
     await page.evaluate(() => window.TaxonomyDatabaseSetup.open());
     return page;
@@ -223,6 +249,35 @@ test('creation locks navigation and a lost response requires inspection before a
     } finally { await lost.close(); }
 });
 
+test('a stalled JSON body releases creation controls into UNKNOWN and ignores late success', async () => {
+    const page = await fixture({realTransport: true,
+        responses: [ready, {pending: true, value: complete}, {...ready, role: 'REUSE', database: 'REUSE'}]});
+    try {
+        await page.clock.install();
+        await connection(page, {create: true});
+        await check(page);
+        await page.locator('#databaseSetupProvision').click();
+        await page.waitForFunction(() => window.databaseHeadersReceived);
+        assert.equal(await page.locator('#databaseSetupClose').isDisabled(), true);
+        await page.clock.fastForward(75001);
+        await page.waitForFunction(() => !document.getElementById('databaseSetupCheck').disabled);
+        assert.match(await page.locator('#databaseSetupStatus').innerText(), /outcome.*unknown|could not be confirmed/i);
+        assert.equal(await page.locator('#databaseSetupClose').isDisabled(), false);
+        assert.equal(await page.locator('#databaseSetupHost').isDisabled(), false);
+        assert.equal(await page.locator('#databaseSetupProvision').isVisible(), false);
+        assert.equal(await page.locator('#databaseSetupNext').isVisible(), false);
+        await page.evaluate(() => window.finishDatabaseRequest());
+        assert.match(await page.locator('#databaseSetupStatus').innerText(), /outcome.*unknown|could not be confirmed/i);
+        assert.equal(await page.locator('#databaseSetupAdminPassword').inputValue(), 'ADMIN_SECRET_SENTINEL');
+        await check(page);
+        assert.deepEqual(await page.evaluate(() => window.databaseRequests.map(item => item.url)),
+            ['/api/admin/database-setup/postgres/inspect', '/api/admin/database-setup/postgres/provision', '/api/admin/database-setup/postgres/inspect']);
+        await page.keyboard.press('Escape');
+        assert.equal(await page.locator('#databaseSetupDialog').evaluate(node => node.open), false);
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
+
 for (const locale of ['en', 'de']) test(`${locale}: mobile result and review are localized, keyboard accessible and fit the viewport`, async () => {
     const page = await fixture({locale, width: 390, responses: [ready]});
     try {
@@ -236,8 +291,8 @@ for (const locale of ['en', 'de']) test(`${locale}: mobile result and review are
         assert.equal(await page.locator('#databaseSetupReview').isVisible(), true);
         await page.locator('#databaseSetupProvision').focus();
         assert.equal(await page.locator('#databaseSetupProvision').evaluate(node => document.activeElement === node), true);
-        await mkdir('target/scenario-acceptance/database-setup-guided', {recursive: true});
-        await page.screenshot({path: `target/scenario-acceptance/database-setup-guided/review-${locale}-mobile.png`});
+        await mkdir('target/ui-verification/database-setup-guided', {recursive: true});
+        await page.screenshot({path: `target/ui-verification/database-setup-guided/review-${locale}-mobile.png`});
         assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
 });
