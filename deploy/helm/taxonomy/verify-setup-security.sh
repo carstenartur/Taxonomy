@@ -74,6 +74,28 @@ accept 'Secret transport without schema remains valid' --set-json 'secretEnv.CUS
 # Custom provider URLs use the same endpoint restrictions, with HTTP only on exact loopback hosts.
 for schema in present absent; do
   if [[ "$schema" == present ]]; then TEST_CHART=$CHART; else TEST_CHART="$TMP/no-schema"; fi
+  # Oracle's required @ separator is not a credential; user/password@ is.
+  for url in 'jdbc:oracle:thin:@oracle.database.svc:1521/FREEPDB1' \
+      'jdbc:oracle:thin:@//oracle.database.svc:1521/FREEPDB1' \
+      'jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(HOST=oracle.database.svc)(PORT=2484))(CONNECT_DATA=(SERVICE_NAME=FREEPDB1))(SECURITY=(SSL_SERVER_DN_MATCH=YES)))'; do
+    printf '%s' "$url" >"$TMP/endpoint-value"
+    accept "Oracle URL without embedded credentials ($schema schema)" --set database.type=oracle --set-file "database.url=$TMP/endpoint-value"
+  done
+  for url in 'jdbc:oracle:thin:app/fixture-secret-never-print@oracle.database.svc:1521/FREEPDB1' \
+      'jdbc:oracle:thin:@//app:fixture-secret-never-print@oracle.database.svc:1521/FREEPDB1' \
+      'jdbc:oracle:thin:@oracle.database.svc:1521/FREEPDB1?password=fixture-secret-never-print' \
+      'jdbc:oracle:thin:@(DESCRIPTION=(PASSWORD=fixture-secret-never-print))'; do
+    printf '%s' "$url" >"$TMP/endpoint-value"
+    reject "Oracle credentials cannot enter visible values ($schema schema)" 'database.url' --set database.type=oracle --set-file "database.url=$TMP/endpoint-value"
+  done
+  for pair in 'postgres|jdbc:postgresql://app:fixture-secret-never-print@postgres.database.svc/taxonomy' \
+      'mssql|jdbc:sqlserver://mssql.database.svc;password=fixture-secret-never-print' \
+      'oracle|jdbc:oracle:thin:@oracle.database.svc /FREEPDB1' \
+      'postgres|jdbc:postgresql://postgres.database.svc /taxonomy'; do
+    engine=${pair%%|*}
+    printf '%s' "${pair#*|}" >"$TMP/endpoint-value"
+    reject "Unsafe visible JDBC URL ($schema schema)" 'database.url' --set "database.type=$engine" --set-file "database.url=$TMP/endpoint-value"
+  done
   reject "Keycloak extraEnv cannot restore local bootstrap ($schema schema)" 'TAXONOMY_ADMIN_PASSWORD' "${OIDC[@]}" \
     --set-json 'extraEnv=[{"name":"TAXONOMY_ADMIN_PASSWORD","valueFrom":{"secretKeyRef":{"name":"local-admin","key":"password"}}}]'
   accept "Keycloak still permits unrelated Secret refs ($schema schema)" "${OIDC[@]}" \

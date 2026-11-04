@@ -10,6 +10,27 @@ export function validateSystemSnapshot(snapshot) {
   assert.ok(Number.isInteger(snapshot.runtime.availableProcessors)
     && snapshot.runtime.availableProcessors > 0);
   assert.ok(snapshot.instanceId && Number.isFinite(Date.parse(snapshot.timestamp)));
+  const {identity, engineStart} = snapshot.database;
+  assert.equal(identity.status, 'AVAILABLE');
+  assert.equal(identity.source, 'DATABASE_QUERY');
+  for (const key of ['user', 'sessionUser', 'database', 'schema']) {
+    assert.ok(typeof identity[key] === 'string' && identity[key].length > 0);
+  }
+  if (engineStart.status === 'AVAILABLE') {
+    assert.equal(engineStart.source, 'DATABASE_QUERY');
+    assert.ok(['UTC', 'SERVER_LOCAL_TIME'].includes(engineStart.timeBasis));
+    if (engineStart.timeBasis === 'UTC') {
+      assert.match(engineStart.value, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z$/);
+      assert.ok(Number.isFinite(Date.parse(engineStart.value)));
+    } else {
+      assert.match(engineStart.value, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?$/);
+    }
+  } else {
+    assert.ok(['NOT_SUPPORTED', 'NOT_PERMITTED', 'UNAVAILABLE'].includes(engineStart.status));
+    assert.equal(engineStart.value, null);
+    assert.equal(engineStart.timeBasis, null);
+    assert.equal(engineStart.source, 'UNAVAILABLE');
+  }
   const { storage, lifetime, schemaAction, warnings } = snapshot.database;
   assert.notEqual(storage, 'UNKNOWN');
   assert.notEqual(schemaAction, 'UNKNOWN');
@@ -131,6 +152,15 @@ export async function runSystemInformationAcceptance({
       const rendered = await content.innerText();
       assert.ok(rendered.includes(snapshot.database.product));
       assert.ok(rendered.includes(snapshot.database.version));
+      for (const key of ['user', 'sessionUser', 'database', 'schema']) {
+        assert.ok(rendered.includes(snapshot.database.identity[key]));
+      }
+      const startKey = snapshot.database.engineStart.status === 'AVAILABLE'
+        ? `system.timeBasis.${snapshot.database.engineStart.timeBasis}`
+        : `system.probe.${snapshot.database.engineStart.status}`;
+      const startDescription = await page.evaluate(key => window.TaxonomyI18n.t(key), startKey);
+      assert.ok(startDescription && startDescription !== startKey);
+      assert.ok(rendered.includes(startDescription));
       const translations = await page.evaluate(warnings => warnings.map(warning =>
         window.TaxonomyI18n.t(`system.warning.${warning}`)), snapshot.database.warnings);
       for (const warning of translations) {
@@ -171,6 +201,8 @@ export async function runSystemInformationAcceptance({
       await onLocaleVerified?.(locale);
       cases.push({ locale, screenshot, dimensions, requests,
         databaseVersionSource: next.database.versionSource, storage: next.database.storage,
+        databaseIdentitySource: next.database.identity.source,
+        databaseStartStatus: next.database.engineStart.status, databaseStartTimeBasis: next.database.engineStart.timeBasis,
         warnings: next.database.warnings, refreshed: true, keyboardOperated: true,
         aiStatusSettled: true, operationalStatusSettled: true, operationalBranch });
     } finally {

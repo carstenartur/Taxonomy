@@ -131,6 +131,8 @@ tmpVolume:
   sizeLimit: 1Gi
 
 persistence:
+  # Protects /app/data only. It neither persists an in-memory HSQLDB nor an external DB.
+  # Back up existing data before changing mounts; see DATABASE_PODS.md.
   enabled: false
   accessModes: ["ReadWriteOnce"]
   size: 10Gi
@@ -223,6 +225,14 @@ secretEnv:
   CUSTOM_LLM_API_KEY:
     key: CUSTOM_LLM_API_KEY
     optional: true
+
+# Existing mode retains manually selected profiles. MSSQL/Oracle are compatibility
+# profiles; they do not run PostgreSQL migrations or initialize a complete schema.
+# A blank URL/username uses the existingSecret mappings above. Passwords stay there.
+database:
+  type: existing
+  url: ""
+  username: ""
 
 config:
   SPRING_PROFILES_ACTIVE: postgres,kubernetes

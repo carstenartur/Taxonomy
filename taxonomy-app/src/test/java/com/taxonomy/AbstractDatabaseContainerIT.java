@@ -17,6 +17,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -182,6 +183,47 @@ abstract class AbstractDatabaseContainerIT {
         assertThat(database.get("versionSource").textValue()).isEqualTo("DATABASE_QUERY");
         assertThat(database.get("version").textValue()).isNotBlank();
         assertThat(database.get("product").textValue()).isNotBlank();
+        JsonNode identity = database.get("identity");
+        assertThat(identity.get("status").textValue()).isEqualTo("AVAILABLE");
+        assertThat(identity.get("source").textValue()).isEqualTo("DATABASE_QUERY");
+        assertThat(identity.get("user").textValue()).isNotBlank();
+        assertThat(identity.get("database").textValue()).isNotBlank();
+        assertThat(identity.get("schema").textValue()).isNotBlank();
+        assertThat(identity.get("sessionUser").textValue()).isEqualToIgnoringCase(
+                getAppContainer().getEnvMap().getOrDefault("SPRING_DATASOURCE_USERNAME", "SA"));
+        JsonNode engineStart = database.get("engineStart");
+        String product = database.get("product").textValue();
+        if (product.contains("PostgreSQL")) {
+            assertThat(identity.get("database").textValue()).isEqualTo("taxonomy");
+            assertThat(identity.get("user").textValue()).isEqualTo("taxonomy");
+            assertThat(engineStart.get("status").textValue()).isEqualTo("AVAILABLE");
+            assertThat(engineStart.get("timeBasis").textValue()).isEqualTo("UTC");
+            assertThat(Instant.parse(engineStart.get("value").textValue())).isBefore(Instant.now().plusSeconds(5));
+        } else if (product.contains("Microsoft SQL Server")) {
+            assertThat(identity.get("database").textValue()).isEqualTo("master");
+            assertThat(identity.get("user").textValue()).isEqualTo("dbo");
+            assertThat(engineStart.get("status").textValue()).isEqualTo("AVAILABLE");
+            assertThat(engineStart.get("timeBasis").textValue()).isEqualTo("SERVER_LOCAL_TIME");
+            assertThat(LocalDateTime.parse(engineStart.get("value").textValue())).isNotNull();
+        } else if (product.contains("Oracle")) {
+            assertThat(identity.get("database").textValue()).isEqualToIgnoringCase("taxonomy");
+            assertThat(identity.get("schema").textValue()).isEqualToIgnoringCase("taxonomy");
+            // The application account has no extra dynamic-view grants for this optional field.
+            assertThat(engineStart.get("status").textValue()).isIn("AVAILABLE", "NOT_PERMITTED", "UNAVAILABLE");
+            if ("AVAILABLE".equals(engineStart.get("status").textValue())) {
+                assertThat(engineStart.get("timeBasis").textValue()).isEqualTo("SERVER_LOCAL_TIME");
+                assertThat(LocalDateTime.parse(engineStart.get("value").textValue())).isNotNull();
+            }
+        } else if (product.contains("HSQL")) {
+            assertThat(engineStart.get("status").textValue()).isEqualTo("NOT_SUPPORTED");
+        }
+        if ("AVAILABLE".equals(engineStart.get("status").textValue())) {
+            assertThat(engineStart.get("source").textValue()).isEqualTo("DATABASE_QUERY");
+        } else {
+            assertThat(engineStart.get("value").isNull()).isTrue();
+            assertThat(engineStart.get("timeBasis").isNull()).isTrue();
+            assertThat(engineStart.get("source").textValue()).isEqualTo("UNAVAILABLE");
+        }
         assertThat(snapshot.get("runtime").get("availableProcessors").intValue()).isPositive();
         if (database.get("product").textValue().contains("HSQL")) {
             assertThat(database.get("storageSource").textValue()).isEqualTo("DATABASE_QUERY");

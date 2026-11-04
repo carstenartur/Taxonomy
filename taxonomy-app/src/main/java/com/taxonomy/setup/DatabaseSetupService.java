@@ -117,7 +117,7 @@ public class DatabaseSetupService {
         List<SetupChecks.Finding> findings = new ArrayList<>(SetupChecks.check(proposed::get, Set.of(input.type()))
                 .stream().filter(f -> f.key().startsWith("database.") || f.key().startsWith("spring.datasource.")
                         || f.key().equals("spring.profiles.active") || SCHEMA_PROPERTIES.contains(f.key())).toList());
-        findings.add(new SetupChecks.Finding(tls ? SetupChecks.Status.OK : SetupChecks.Status.WARNING, "database.tls",
+        findings.add(new SetupChecks.Finding(tls ? SetupChecks.Status.NOT_CHECKED : SetupChecks.Status.WARNING, "database.tls",
                 tls ? "TLS with server identity verification is selected; trusted CA certificates must be provisioned in the target environment."
                         : "TLS is disabled explicitly; credentials and data may cross the network without transport protection."));
         if (!input.type().equals("postgres")) {
@@ -139,11 +139,12 @@ public class DatabaseSetupService {
         connection.put("spring.datasource.url", preview.jdbcUrl());
         connection.put("spring.datasource.username", input.username());
         connection.put("spring.datasource.password", input.password() == null ? "" : input.password());
-        List<SetupChecks.Finding> findings = new ArrayList<>(preview.findings());
+        List<SetupChecks.Finding> findings = new ArrayList<>();
+        findings.add(SetupProbe.checkDatabase(connection::get));
+        findings.addAll(preview.findings());
         if (hasSchemaConflict()) {
             findings.add(new SetupChecks.Finding(SetupChecks.Status.WARNING, "database.schema-overrides", SCHEMA_CONFLICT_MESSAGE));
         }
-        findings.add(SetupProbe.checkDatabase(connection::get));
         return new CheckResult(List.copyOf(findings));
     }
 
@@ -202,13 +203,13 @@ public class DatabaseSetupService {
         return result;
     }
 
-    private static void validate(ConnectionSettings input) {
+    static void validate(ConnectionSettings input) {
         if (input == null || input.type() == null || !Set.of("postgres", "mssql", "oracle").contains(input.type())
                 || input.host() == null || input.host().length() > 253
                 || !(input.host().matches("[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?")
                     || input.host().matches("\\[[A-Fa-f0-9:]{2,45}\\]"))
                 || input.port() == null || input.port() < 1 || input.port() > 65535
-                || input.database() == null || !input.database().matches("[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
+                || input.database() == null || !input.database().matches("[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}")
                 || input.username() == null || !input.username().matches("[A-Za-z0-9_@.$\\\\-]{1,128}")
                 || (input.password() != null && input.password().length() > 4096)) { throw invalid(); }
         String ca = input.caCertificate();
@@ -218,7 +219,7 @@ public class DatabaseSetupService {
         }
     }
 
-    private static String jdbcUrl(ConnectionSettings input, boolean tls) {
+    static String jdbcUrl(ConnectionSettings input, boolean tls) {
         String address = input.host() + ":" + input.port();
         return switch (input.type()) {
             case "postgres" -> "jdbc:postgresql://" + address + "/" + input.database()

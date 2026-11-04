@@ -17,6 +17,29 @@
                 <li data-database-stage="1" th:text="#{database.setup.step.connection}">2. Connection</li>
                 <li data-database-stage="2" th:text="#{database.setup.step.deployment}">3. Deployment</li>
             </ol>
+            <section id="databaseSetupResult" class="database-setup-result" role="status" aria-live="polite" aria-atomic="true" hidden>
+                <h3 id="databaseSetupStatus" class="h5 mb-2" tabindex="-1"></h3>
+                <p id="databaseSetupResultMessage" class="mb-2"></p>
+                <p id="databaseSetupResultContext" class="small mb-2"></p>
+                <p id="databaseSetupResultNext" class="fw-semibold mb-0"></p>
+            </section>
+            <section id="databaseSetupReview" class="database-setup-review" aria-labelledby="databaseSetupReviewTitle" hidden>
+                <h3 id="databaseSetupReviewTitle" class="h5" th:text="#{database.setup.review.title}">Review before creating</h3>
+                <dl class="database-setup-plan">
+                    <dt th:text="#{database.setup.host}">Server</dt><dd id="databaseSetupReviewServer"></dd>
+                    <dt id="databaseSetupReviewDatabaseLabel" th:text="#{database.setup.name}">Database</dt><dd id="databaseSetupReviewDatabase"></dd>
+                    <dt id="databaseSetupReviewRoleLabel" th:text="#{database.setup.username}">Application user</dt><dd id="databaseSetupReviewRole"></dd>
+                    <dt id="databaseSetupReviewStorageLabel" th:text="#{database.setup.oracle.storage}" hidden>Tablespace and quota</dt><dd id="databaseSetupReviewStorage" hidden></dd>
+                    <dt th:text="#{database.setup.transport}">Connection protection</dt><dd id="databaseSetupReviewTransport"></dd>
+                </dl>
+                <p id="databaseSetupReviewHelp" class="small" th:text="#{database.setup.review.help}">The application user owns its database. Existing accounts and databases are reused only after verification.</p>
+                <button type="button" id="databaseSetupProvision" class="btn btn-primary" th:text="#{database.setup.provision}">Create database and account now</button>
+            </section>
+            <p id="databaseSetupTlsWarning" class="alert alert-warning mt-2" hidden th:text="#{database.setup.tls.warning}">TLS is disabled.</p>
+            <section id="databaseSetupCompatibility" class="alert alert-warning" hidden>
+                <p class="mb-1" th:text="#{database.setup.compatibility.schema}">SQL Server and Oracle: creating resources does not initialize application tables. The exported configuration validates an existing schema.</p>
+                <a target="_blank" rel="noopener noreferrer" th:href="@{/(lang=${#locale.language})} + '#help/DATABASE_SETUP/schema-initialization'" th:text="#{database.setup.compatibility.help}">Schema initialization for evaluation (opens a new tab)</a>
+            </section>
             <form id="databaseSetupForm" autocomplete="off">
                 <section data-database-step="0" aria-labelledby="databaseSetupTypeLabel">
                     <label id="databaseSetupTypeLabel" for="databaseSetupType" class="form-label fw-bold"
@@ -27,8 +50,25 @@
                         <option value="oracle">Oracle Database</option>
                     </select>
                     <p id="databaseSetupSupport" class="alert alert-info mt-3"></p>
+                    <fieldset class="database-setup-choices">
+                        <legend class="h6" th:text="#{database.setup.mode.title}">How would you like to set up the database?</legend>
+                        <label class="database-setup-choice" for="databaseSetupModeExisting">
+                            <input id="databaseSetupModeExisting" name="databaseSetupMode" type="radio" value="existing" checked/>
+                            <span><strong th:text="#{database.setup.mode.existing}">Connect an existing database</strong>
+                                <span th:text="#{database.setup.mode.existing.help}">You already have a database and its application login.</span></span>
+                        </label>
+                        <label id="databaseSetupCreateOption" class="database-setup-choice" for="databaseSetupModeCreate">
+                            <input id="databaseSetupModeCreate" name="databaseSetupMode" type="radio" value="create"/>
+                            <span><strong id="databaseSetupCreateLabel" th:text="#{database.setup.mode.create}">Create a PostgreSQL database and account</strong>
+                                <span id="databaseSetupCreateHelp" th:text="#{database.setup.mode.create.help}">Use your server administrator login once to prepare a separate Taxonomy account.</span></span>
+                        </label>
+                    </fieldset>
                     <p th:text="#{database.setup.server.required}">Create the database server and application account first.</p>
                     <p class="fw-semibold" th:text="#{database.setup.no.transfer}">Existing data is not transferred.</p>
+                    <p class="small" th:text="#{database.setup.persistence.choose}">The retention guide covers database storage, Pod volumes and Secrets, including file-backed HSQLDB.</p>
+                    <a id="databaseSetupPersistenceStartHelp" target="_blank" rel="noopener noreferrer"
+                       th:href="@{/(lang=${#locale.language})} + '#help/DATABASE_SETUP/persistent-installation'"
+                       th:text="#{database.setup.persistence.help}">Rancher: keep data and settings across restarts (opens a new tab)</a>
                 </section>
                 <section data-database-step="1" hidden aria-labelledby="databaseSetupConnectionTitle">
                     <h3 id="databaseSetupConnectionTitle" class="h5" th:text="#{database.setup.connection.title}">Connection from the Taxonomy server</h3>
@@ -46,25 +86,25 @@
                         <div class="col-md-6">
                             <label id="databaseSetupNameLabel" for="databaseSetupName" class="form-label" th:text="#{database.setup.name}">Database name</label>
                             <input id="databaseSetupName" class="form-control" type="text" required maxlength="128"
-                                   pattern="[A-Za-z0-9][A-Za-z0-9_.\-]*" value="taxonomy" aria-describedby="databaseSetupNameHelp"/>
+                                   pattern="[A-Za-z0-9_][A-Za-z0-9_.\-]*" value="taxonomy" aria-describedby="databaseSetupNameHelp"/>
                             <div id="databaseSetupNameHelp" class="form-text" th:text="#{database.setup.name.help}">Letters, digits, dots, underscores and hyphens.</div>
                         </div>
                         <div class="col-md-6">
-                            <label for="databaseSetupUsername" class="form-label" th:text="#{database.setup.username}">Database user</label>
+                            <label id="databaseSetupUsernameLabel" for="databaseSetupUsername" class="form-label" th:text="#{database.setup.username}">Database user</label>
                             <input id="databaseSetupUsername" class="form-control" type="text" required maxlength="128" value="taxonomy_app" autocomplete="off"/>
                         </div>
                         <div class="col-12">
-                            <label for="databaseSetupPassword" class="form-label" th:text="#{database.setup.password}">Password for the connection test</label>
+                            <label id="databaseSetupPasswordLabel" for="databaseSetupPassword" class="form-label" th:text="#{database.setup.password}">Application password</label>
                             <input id="databaseSetupPassword" class="form-control" type="password" maxlength="4096"
                                    autocomplete="new-password" aria-describedby="databaseSetupPasswordHelp"/>
                             <div id="databaseSetupPasswordHelp" class="form-text" th:text="#{database.setup.password.help}">Used only for the test; cleared when the assistant closes.</div>
                         </div>
                         <div class="col-12">
                             <div class="form-check">
-                                <input id="databaseSetupTls" class="form-check-input" type="checkbox" checked/>
+                                <input id="databaseSetupTls" class="form-check-input" type="checkbox" checked aria-describedby="databaseSetupTlsHelp databaseSetupTlsWarning"/>
                                 <label for="databaseSetupTls" class="form-check-label" th:text="#{database.setup.tls}">TLS with certificate and server identity verification</label>
                             </div>
-                            <p id="databaseSetupTlsWarning" class="alert alert-warning mt-2" hidden th:text="#{database.setup.tls.warning}">TLS is disabled.</p>
+                            <p id="databaseSetupTlsHelp" class="form-text" th:text="#{database.setup.tls.help}">This setting must match the database server. It does not enable TLS on the server.</p>
                         </div>
                         <div class="col-12" id="databaseSetupCaGroup">
                             <label for="databaseSetupCa" class="form-label" th:text="#{database.setup.ca}">Optional PostgreSQL CA path on the Taxonomy server</label>
@@ -74,11 +114,42 @@
                         </div>
                         <p id="databaseSetupJvmTrust" class="small text-muted" hidden th:text="#{database.setup.jvm.trust}">Provision trusted certificates in the JVM truststore before testing.</p>
                     </div>
+                    <fieldset id="databaseSetupAdminFields" class="database-setup-admin mt-3" hidden disabled>
+                        <legend class="h6" th:text="#{database.setup.admin.title}">Server administrator — for this setup only</legend>
+                        <p id="databaseSetupAdminHelp" class="small" th:text="#{database.setup.admin.help}">For a fresh official PostgreSQL container initialized with POSTGRES_PASSWORD only, use the postgres user and that password here.</p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="databaseSetupAdminUsername" class="form-label" th:text="#{database.setup.admin.username}">Administrator username</label>
+                                <input id="databaseSetupAdminUsername" class="form-control" type="text" required maxlength="128" value="postgres" autocomplete="off"/>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="databaseSetupAdminPassword" class="form-label" th:text="#{database.setup.admin.password}">Administrator password</label>
+                                <input id="databaseSetupAdminPassword" class="form-control" type="password" required maxlength="4096" autocomplete="new-password"/>
+                            </div>
+                            <div id="databaseSetupMaintenanceGroup" class="col-12">
+                                <label for="databaseSetupMaintenance" class="form-label" th:text="#{database.setup.admin.database}">Existing database for the administrator login</label>
+                                <input id="databaseSetupMaintenance" class="form-control" type="text" required maxlength="63" pattern="[a-z_][a-z0-9_]{0,62}" value="postgres"/>
+                            </div>
+                        </div>
+                        <div id="databaseSetupOracleStorage" class="row g-3 mt-1" hidden>
+                            <div class="col-md-6">
+                                <label for="databaseSetupTablespace" class="form-label" th:text="#{database.setup.oracle.tablespace}">Existing tablespace</label>
+                                <input id="databaseSetupTablespace" class="form-control" type="text" required maxlength="30" pattern="[A-Za-z][A-Za-z0-9_]{0,29}" value="USERS" aria-describedby="databaseSetupQuotaHelp"/>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="databaseSetupQuota" class="form-label" th:text="#{database.setup.oracle.quota}">Storage quota (MiB)</label>
+                                <input id="databaseSetupQuota" class="form-control" type="number" required min="1" max="1048576" step="1" value="100" aria-describedby="databaseSetupQuotaHelp"/>
+                            </div>
+                            <p id="databaseSetupQuotaHelp" class="form-text" th:text="#{database.setup.oracle.quota.help}">A finite quota for the new schema in an existing permanent tablespace. Existing quotas are verified, never changed.</p>
+                        </div>
+                    </fieldset>
                     <button type="button" id="databaseSetupCheck" class="btn btn-outline-primary mt-3" th:text="#{database.setup.check}">Test connection</button>
-                    <p class="small text-muted mt-2" th:text="#{database.setup.check.scope}">The test checks a separate connection. Schema and migration permissions remain untested.</p>
+                    <p id="databaseSetupCheckScope" class="small text-muted mt-2" th:text="#{database.setup.check.scope}">The test checks reachability and login.</p>
                 </section>
                 <section data-database-step="2" hidden aria-labelledby="databaseSetupApplyTitle">
                     <h3 id="databaseSetupApplyTitle" class="h5" tabindex="-1" th:text="#{database.setup.apply.title}">Apply through your deployment</h3>
+                    <p id="databaseSetupPersistence" class="alert alert-info" th:text="#{database.setup.persistence.body}">Application settings and saved work live in the active database. A connection change does not transfer them.</p>
+                    <p><a id="databaseSetupPersistenceHelp" target="_blank" rel="noopener noreferrer" th:href="@{/(lang=${#locale.language})} + '#help/DATABASE_SETUP/persistent-installation'" th:text="#{database.setup.persistence.help}">Rancher: keep data and settings across restarts (opens a new tab)</a></p>
                     <ol class="database-setup-apply">
                         <li th:text="#{database.setup.apply.secrets}">Set URL, user and password in the deployment Secret or protected Spring configuration.</li>
                         <li th:text="#{database.setup.apply.profiles}">Review profiles, TLS mounts, driver and schema settings.</li>
@@ -100,8 +171,10 @@
                     <p class="fw-semibold mt-3" th:text="#{database.setup.no.transfer}">Existing data is not transferred.</p>
                 </section>
             </form>
-            <div id="databaseSetupStatus" class="mt-3" role="status" aria-live="polite"></div>
-            <ul id="databaseSetupResults" class="database-setup-results mt-3" aria-live="polite" hidden></ul>
+            <details id="databaseSetupDetails" class="database-setup-details mt-3" hidden>
+                <summary th:text="#{database.setup.details}">What was checked and deployment notes</summary>
+                <ul id="databaseSetupResults" class="database-setup-results mt-3"></ul>
+            </details>
             <a id="databaseSetupHelp" class="d-inline-block mt-3" target="_blank" rel="noopener noreferrer"
                th:href="@{/(lang=${#locale.language})} + '#help/DATABASE_SETUP'"
                th:text="#{database.setup.help}">Database and Pod setup help (opens a new tab)</a>

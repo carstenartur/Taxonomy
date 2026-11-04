@@ -131,7 +131,11 @@
             parts.push('<span class="git-indicator"><span class="badge bg-warning text-dark" style="font-size:0.7rem;">READ-ONLY</span></span>');
         }
 
+        // Workspace sync owns this separately updated child. Keep its accepted
+        // state when the Git poll replaces the rest of the status bar.
+        var syncIndicator = statusBar.querySelector('#syncStatusIndicator');
         statusBar.innerHTML = parts.join(' ');
+        if (syncIndicator) statusBar.appendChild(syncIndicator);
         statusBar.classList.remove('d-none');
 
         // Apply action guards based on the current state

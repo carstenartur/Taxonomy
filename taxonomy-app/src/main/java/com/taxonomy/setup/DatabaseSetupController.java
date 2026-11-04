@@ -40,8 +40,12 @@ public class DatabaseSetupController {
             .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
             .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS).build();
     private final DatabaseSetupService service;
+    private final DatabaseProvisioningService provisioning;
 
-    public DatabaseSetupController(DatabaseSetupService service) { this.service = service; }
+    public DatabaseSetupController(DatabaseSetupService service, DatabaseProvisioningService provisioning) {
+        this.service = service;
+        this.provisioning = provisioning;
+    }
 
     @GetMapping
     @Operation(summary = "Read database setup guidance status",
@@ -99,7 +103,7 @@ public class DatabaseSetupController {
             content = @Content(mediaType = "application/json", schema = @Schema(type = "object",
                     requiredProperties = {"code", "message"}, additionalPropertiesSchema = String.class)))
     public ResponseEntity<DatabaseSetupService.Preview> preview(HttpServletRequest request) throws IOException {
-        return noStore(service.preview(read(request)));
+        return noStore(service.preview(read(request, DatabaseSetupService.ConnectionSettings.class)));
     }
 
     @PostMapping(value = "/check", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -129,17 +133,69 @@ public class DatabaseSetupController {
             content = @Content(mediaType = "application/json", schema = @Schema(type = "object",
                     requiredProperties = {"code", "message"}, additionalPropertiesSchema = String.class)))
     public ResponseEntity<DatabaseSetupService.CheckResult> check(HttpServletRequest request) throws IOException {
-        return noStore(service.check(read(request)));
+        return noStore(service.check(read(request, DatabaseSetupService.ConnectionSettings.class)));
     }
 
-    private static DatabaseSetupService.ConnectionSettings read(HttpServletRequest request) throws IOException {
+    @PostMapping(value = {"/inspect", "/postgres/inspect"}, consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Inspect a database resource creation plan",
+            description = "ADMIN only; session-authenticated requests require CSRF. Checks the existing server, "
+                    + "administrator capabilities, target names and any existing application login without creating resources. "
+                    + "READY describes a plan; it does not mean resources were created. Domain failures remain HTTP 200 findings.")
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+            description = "Strict JSON up to 16 KiB. PostgreSQL, SQL Server or Oracle target settings including the application password, "
+                    + "maintenanceDatabase and separate administrator credentials. Oracle also requires an existing tablespace and finite quotaMiB; the target service must already exist. Credentials are used only for this operation.",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = DatabaseProvisioningService.ProvisionSettings.class)))
+    @ApiResponse(responseCode = "200", description = "Inspected plan or safe diagnostic; no resources were created",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = DatabaseProvisioningService.ProvisionResult.class)))
+    @ApiResponse(responseCode = "400", description = "Invalid settings or JSON; DATABASE_SETUP_INVALID_REQUEST", content = @Content)
+    @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content)
+    @ApiResponse(responseCode = "403", description = "Administrator and valid CSRF protection required", content = @Content)
+    @ApiResponse(responseCode = "413", description = "Request exceeds 16 KiB", content = @Content)
+    @ApiResponse(responseCode = "415", description = "Content-Type must be application/json", content = @Content)
+    @ApiResponse(responseCode = "503", description = "The request could not be read", content = @Content)
+    public ResponseEntity<DatabaseProvisioningService.ProvisionResult> inspect(HttpServletRequest request) throws IOException {
+        return noStore(provisioning.inspect(provisionSettings(request)));
+    }
+
+    @PostMapping(value = {"/provision", "/postgres/provision"}, consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Prepare database resources and a restricted application account",
+            description = "ADMIN only; session-authenticated requests require CSRF and confirmed=true. Reinspects names and "
+                    + "capabilities, creates missing resources or verifies compatible existing resources, and checks the "
+                    + "application login. Existing resources are never altered or dropped. CREATE DATABASE is not atomic "
+                    + "with role creation: inspect PARTIAL or UNKNOWN outcomes before retrying. Does not switch the active datasource.")
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+            description = "Strict JSON up to 16 KiB. Reviewed database target settings and separate administrator credentials, "
+                    + "plus confirmed=true and expectedRole/expectedDatabase set to the inspected CREATE or REUSE actions. "
+                    + "Changed actions require a new inspection. Both passwords are transient and never returned or exported.",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = DatabaseProvisioningService.ProvisionSettings.class)))
+    @ApiResponse(responseCode = "200", description = "Creation/reuse state and safe diagnostic; COMPLETE includes verified application login",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = DatabaseProvisioningService.ProvisionResult.class)))
+    @ApiResponse(responseCode = "400", description = "Invalid settings or JSON; DATABASE_SETUP_INVALID_REQUEST", content = @Content)
+    @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content)
+    @ApiResponse(responseCode = "403", description = "Administrator and valid CSRF protection required", content = @Content)
+    @ApiResponse(responseCode = "413", description = "Request exceeds 16 KiB", content = @Content)
+    @ApiResponse(responseCode = "415", description = "Content-Type must be application/json", content = @Content)
+    @ApiResponse(responseCode = "503", description = "The request could not be read", content = @Content)
+    public ResponseEntity<DatabaseProvisioningService.ProvisionResult> provision(HttpServletRequest request) throws IOException {
+        return noStore(provisioning.provision(provisionSettings(request)));
+    }
+
+    private static DatabaseProvisioningService.ProvisionSettings provisionSettings(HttpServletRequest request) throws IOException {
+        var input = read(request, DatabaseProvisioningService.ProvisionSettings.class);
+        String path = request.getRequestURI().substring(request.getContextPath().length());
+        if (path.startsWith("/api/admin/database-setup/postgres/")
+                && (input.target() == null || !"postgres".equals(input.target().type()))) throw new IllegalArgumentException();
+        return input;
+    }
+
+    private static <T> T read(HttpServletRequest request, Class<T> type) throws IOException {
         if (request.getContentLengthLong() > MAX_REQUEST_BYTES) { throw new RequestTooLarge(); }
         byte[] bytes = request.getInputStream().readNBytes(MAX_REQUEST_BYTES + 1);
         if (bytes.length > MAX_REQUEST_BYTES) { throw new RequestTooLarge(); }
         try {
             var value = INPUT.readTree(bytes);
             if (value == null || !value.isObject()) { throw new IllegalArgumentException(); }
-            return INPUT.treeToValue(value, DatabaseSetupService.ConnectionSettings.class);
+            return INPUT.treeToValue(value, type);
         } catch (RuntimeException invalid) {
             // Parser failures may include source values. Neither retain nor log their exceptions.
             throw new IllegalArgumentException("Invalid database setup request.");

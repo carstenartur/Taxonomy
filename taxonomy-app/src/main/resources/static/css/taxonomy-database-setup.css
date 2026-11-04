@@ -9,6 +9,7 @@
     background: var(--bs-body-bg, #fff);
 }
 .database-setup-dialog:not([open]) { display: none; }
+.database-setup-dialog [hidden] { display: none !important; }
 .database-setup-dialog[open] { display: flex; flex-direction: column; }
 .database-setup-dialog::backdrop { background: #0009; }
 .database-setup-heading, .database-setup-footer {
@@ -28,6 +29,56 @@
 .database-setup-results { padding-inline-start: 1.25rem; font-size: .9rem; }
 .database-setup-results li { margin-bottom: .6rem; }
 .database-setup-results .badge { margin-inline-end: .5rem; }
+.database-setup-choices { margin-block: 1rem; }
+.database-setup-choice {
+    display: grid;
+    grid-template-columns: 1.25rem 1fr;
+    align-items: start;
+    gap: .75rem;
+    margin-block: .75rem;
+    padding: 1rem;
+    border: 1px solid var(--bs-border-color, #bbb);
+    border-radius: .5rem;
+    cursor: pointer;
+}
+.database-setup-choice:has(input:checked) {
+    border-color: var(--bs-primary, #0d6efd);
+    background: var(--bs-primary-bg-subtle, #eaf2ff);
+}
+.database-setup-choice:focus-within { outline: 2px solid var(--bs-primary, #0d6efd); outline-offset: 2px; }
+.database-setup-choice input { margin-top: .25rem; }
+.database-setup-choice strong, .database-setup-choice span span { display: block; }
+.database-setup-choice span span { margin-top: .25rem; font-size: .9rem; }
+.database-setup-result, .database-setup-review, .database-setup-admin {
+    padding: 1rem;
+    margin-block: 1rem;
+    border: 1px solid var(--bs-border-color, #bbb);
+    border-radius: .5rem;
+    overflow-wrap: anywhere;
+}
+.database-setup-result { border-inline-start-width: .3rem; }
+.database-setup-result[data-status="success"] {
+    border-color: var(--bs-success, #198754);
+    background: var(--bs-success-bg-subtle, #d1e7dd);
+    color: var(--bs-success-text-emphasis, #0a3622);
+}
+.database-setup-result[data-status="error"] {
+    border-color: var(--bs-danger, #dc3545);
+    background: var(--bs-danger-bg-subtle, #f8d7da);
+    color: var(--bs-danger-text-emphasis, #58151c);
+}
+.database-setup-result[data-status="warning"] {
+    border-color: var(--bs-warning, #ffc107);
+    background: var(--bs-warning-bg-subtle, #fff3cd);
+    color: var(--bs-warning-text-emphasis, #664d03);
+}
+.database-setup-result[data-status="info"] { border-color: var(--bs-primary, #0d6efd); }
+.database-setup-admin { background: var(--bs-tertiary-bg, #f8f9fa); }
+.database-setup-admin legend { float: none; width: auto; padding-inline: .25rem; }
+.database-setup-plan { display: grid; grid-template-columns: minmax(7rem, 1fr) 2fr; gap: .5rem 1rem; }
+.database-setup-plan dd { margin: 0; }
+.database-setup-details summary { min-height: 44px; padding-block: .75rem; cursor: pointer; }
+.database-setup-details { color: var(--bs-secondary-color, #495057); }
 .database-setup-apply li { margin-bottom: .5rem; }
 .database-setup-dialog button, .database-setup-invitation button { min-height: 44px; }
 .database-setup-dialog .btn-close, .database-setup-welcome-close { min-width: 44px; min-height: 44px; }
@@ -38,4 +89,8 @@
 @media (max-width: 575px) {
     .database-setup-heading, .database-setup-footer, .database-setup-body { padding: 1rem; }
     .database-setup-footer > button { width: 100%; }
+    .database-setup-footer > div { width: 100%; margin-inline-start: 0 !important; }
+    .database-setup-footer > div button { flex: 1; min-width: 0; white-space: normal; }
+    .database-setup-plan { grid-template-columns: 1fr; gap: .25rem; }
+    .database-setup-plan dd { margin-bottom: .5rem; }
 }

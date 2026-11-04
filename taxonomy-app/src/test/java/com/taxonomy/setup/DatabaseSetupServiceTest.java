@@ -177,7 +177,8 @@ class DatabaseSetupServiceTest {
                 var result = conflictedService.check(new DatabaseSetupService.ConnectionSettings("postgres", "127.0.0.1", listener.getLocalPort(),
                         "taxonomy", "taxonomy", "PRIVATE_SENTINEL", false, ""));
                 accepted.get(3, java.util.concurrent.TimeUnit.SECONDS);
-                assertTrue(result.findings().stream().anyMatch(f -> f.key().equals("database.connection")));
+                assertTrue(result.findings().getFirst().key().startsWith("database.connection"),
+                        "The actual connection outcome must precede scope and deployment notes");
                 assertTrue(result.findings().stream().anyMatch(f -> f.key().equals("database.schema-overrides") && f.status() == SetupChecks.Status.WARNING), key);
                 assertFalse(result.toString().contains("PRIVATE_SENTINEL"));
             }
@@ -267,6 +268,13 @@ class DatabaseSetupServiceTest {
         var preview = service.preview(input("postgres", false, ""));
         assertTrue(preview.jdbcUrl().contains("sslmode=disable"));
         assertTrue(preview.findings().stream().anyMatch(f -> f.key().equals("database.tls") && f.status() == SetupChecks.Status.WARNING));
+    }
+
+    @Test void selectedTlsIsNotReportedAsASuccessfulConnection() {
+        var preview = service.preview(input("postgres", true, ""));
+        var tls = preview.findings().stream().filter(f -> f.key().equals("database.tls")).findFirst().orElseThrow();
+        assertEquals(SetupChecks.Status.NOT_CHECKED, tls.status(),
+                "Choosing verified TLS does not prove that a server handshake succeeded");
     }
 
     @Test void delimiterInjectionInvalidPortsAndUnsupportedCaPathsAreRejectedWithoutEcho() {

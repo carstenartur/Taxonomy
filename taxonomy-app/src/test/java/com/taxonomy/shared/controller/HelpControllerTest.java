@@ -144,6 +144,10 @@ class HelpControllerTest {
                             "https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/DATABASE_PODS.md")))
                     .andExpect(content().string(containsString(
                             "https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/values-postgres-service.yaml")))
+                    .andExpect(content().string(containsString(
+                            "https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/values-oracle-service.yaml")))
+                    .andExpect(content().string(containsString("id=\"persistent-installation\"")))
+                    .andExpect(content().string(containsString("id=\"schema-initialization\"")))
                     .andExpect(content().string(not(containsString("href=\"../../deploy/"))));
         }
     }

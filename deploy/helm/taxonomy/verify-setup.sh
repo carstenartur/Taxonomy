@@ -51,6 +51,7 @@ fail --set authentication.mode=local --set-json 'extraEnvFrom=[{"configMapRef":{
 # Separate database Pods are addressed by Services; this does not provision a DB.
 PG_URL='jdbc:postgresql://postgres.database.svc.cluster.local:5432/taxonomy?sslmode=verify-full'
 MS_URL='jdbc:sqlserver://mssql.database.svc.cluster.local:1433;databaseName=taxonomy;encrypt=true;trustServerCertificate=false'
+ORACLE_URL='jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(HOST=oracle.database.svc.cluster.local)(PORT=2484))(CONNECT_DATA=(SERVICE_NAME=FREEPDB1))(SECURITY=(SSL_SERVER_DN_MATCH=YES)))'
 helm template taxonomy "$CHART" "${COMMON[@]}" --set database.type=postgres \
   --set-string "database.url=$PG_URL" >"$TMP/postgres-service"
 grep -Fq "value: \"$PG_URL\"" "$TMP/postgres-service"
@@ -72,6 +73,23 @@ fi
 helm template taxonomy "$CHART" "${COMMON[@]}" --set database.type=mssql >"$TMP/mssql-secret-url"
 grep -q 'value: "mssql,kubernetes"' "$TMP/mssql-secret-url"
 grep -q 'key: "SPRING_DATASOURCE_URL"' "$TMP/mssql-secret-url"
+helm template taxonomy "$CHART" "${COMMON[@]}" --set database.type=oracle \
+  --set authentication.mode=local --set-string "database.url=$ORACLE_URL" \
+  --set-string 'config.SPRING_PROFILES_ACTIVE=production\,hsqldb-file\,mssql\,kubernetes' >"$TMP/oracle-service"
+grep -Fq "value: \"$ORACLE_URL\"" "$TMP/oracle-service"
+grep -q 'value: "oracle,production,kubernetes,local-user-management"' "$TMP/oracle-service"
+grep -q 'key: "SPRING_DATASOURCE_PASSWORD"' "$TMP/oracle-service"
+test "$(grep -c 'name: SPRING_DATASOURCE_URL$' "$TMP/oracle-service")" -eq 1
+if grep -q 'key: "SPRING_DATASOURCE_URL"' "$TMP/oracle-service"; then
+  echo "An explicit Oracle URL must replace the URL Secret mapping" >&2; exit 1
+fi
+grep -A1 'name: TAXONOMY_DDL_AUTO$' "$TMP/oracle-service" | grep -q 'value: "validate"'
+if grep -Eq 'name: (TAXONOMY_SCHEMA_MIGRATION_ENABLED|SPRING_FLYWAY_ENABLED|SPRING_DATASOURCE_DRIVER_CLASS_NAME)' "$TMP/oracle-service"; then
+  echo "Oracle selection must retain the profile's migration/driver policy" >&2; exit 1
+fi
+helm template taxonomy "$CHART" "${COMMON[@]}" --set database.type=oracle >"$TMP/oracle-secret-url"
+grep -q 'value: "oracle,kubernetes"' "$TMP/oracle-secret-url"
+grep -q 'key: "SPRING_DATASOURCE_URL"' "$TMP/oracle-secret-url"
 helm template taxonomy "$CHART" "${COMMON[@]}" \
   --set-string 'config.SPRING_PROFILES_ACTIVE=mssql\,kubernetes' >"$TMP/manual-mssql"
 grep -q 'value: "mssql,kubernetes"' "$TMP/manual-mssql"
@@ -87,6 +105,8 @@ fi
 reject 'database' --set database.type=mysql
 reject 'database' --set database.type=mssql --set-string "database.url=$PG_URL"
 reject 'database' --set database.type=postgres --set-string "database.url=$MS_URL"
+reject 'database' --set database.type=oracle --set-string "database.url=$PG_URL"
+reject 'database' --set database.type=mssql --set-string "database.url=$ORACLE_URL"
 reject 'does not match the database profile' --set-string "database.url=$MS_URL"
 reject 'requires one database profile' --set-string "database.url=$MS_URL" \
   --set-string 'config.SPRING_PROFILES_ACTIVE=postgres\,mssql\,kubernetes'
@@ -97,7 +117,7 @@ reject 'extraEnv duplicates managed setting' --set database.type=mssql \
   --set-json 'extraEnv=[{"name":"SPRING_PROFILES_ACTIVE","value":"postgres"}]'
 reject 'Guided setup cannot verify extraEnvFrom precedence' --set database.type=mssql \
   --set-json 'extraEnvFrom=[{"configMapRef":{"name":"ambiguous"}}]'
-for engine in postgres mssql; do
+for engine in postgres mssql oracle; do
   helm template taxonomy "$CHART" "${COMMON[@]}" --namespace taxonomy \
     --values "$CHART/values-$engine-service.yaml" >"$TMP/$engine-example"
   grep -q 'kind: NetworkPolicy' "$TMP/$engine-example"
@@ -107,4 +127,5 @@ for engine in postgres mssql; do
 done
 grep -q 'port: 5432' "$TMP/postgres-example"
 grep -q 'port: 1433' "$TMP/mssql-example"
+grep -q 'port: 2484' "$TMP/oracle-example"
 echo "Guided setup Helm contracts passed"

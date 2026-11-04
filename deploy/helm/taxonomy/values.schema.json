@@ -31,59 +31,20 @@
           "enum": [
             "existing",
             "postgres",
-            "mssql"
+            "mssql",
+            "oracle"
           ],
           "default": "existing"
         },
         "url": {
           "type": "string",
-          "pattern": "^$|^jdbc:(postgresql|sqlserver)://[^\\s@]+$"
+          "description": "JDBC URL without embedded credentials. Templates validate syntax and engine compatibility without echoing a rejected credential-bearing URL."
         },
         "username": {
           "type": "string",
           "pattern": "^[^\\r\\n]*$"
         }
-      },
-      "allOf": [
-        {
-          "if": {
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "const": "postgres"
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "url": {
-                "pattern": "^$|^jdbc:postgresql://[^\\s@]+$"
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "const": "mssql"
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "url": {
-                "pattern": "^$|^jdbc:sqlserver://[^\\s@]+$"
-              }
-            }
-          }
-        }
-      ]
+      }
     },
     "existingSecret": {
       "type": "string"

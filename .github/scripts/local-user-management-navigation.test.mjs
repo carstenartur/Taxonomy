@@ -162,3 +162,144 @@ for (const page of ['preferences', 'admin']) {
     assert.equal(ui.unlocked(), false);
   });
 }
+
+const indexTemplate = readFileSync(new URL('../../taxonomy-app/src/main/resources/templates/index.html', import.meta.url), 'utf8');
+const pageNavigationSource = indexTemplate.match(/<!-- Page Navigation Script -->\s*<script>([\s\S]*?)<\/script>/)?.[1];
+assert.ok(pageNavigationSource, 'Exercise the complete production page router');
+
+// Both modules and the router run unchanged. Only DOM/network boundaries are
+// replaced so a dynamically loaded RoleSurface can arrive after DOMContentLoaded
+// but before the browse module's independent fallback account response settles.
+function lateRoleSurfaceNavigation(page) {
+  const elements = new Map(), listeners = new Map(), requests = [], activations = [];
+  const deferred = () => {
+    let resolve, reject;
+    const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+    return {promise, resolve, reject};
+  };
+  const fallback = deferred(), authority = deferred();
+  let accountRead = authority.promise;
+  let location = new URL('https://example.test/#' + page);
+  function element(id) {
+    const classes = new Set(), attributes = new Map();
+    const value = {
+      id, children: [], dataset: {}, style: {}, nodeType: 1, hidden: false, disabled: false,
+      classList: {
+        contains: name => classes.has(name),
+        add: name => classes.add(name), remove: name => classes.delete(name),
+        toggle(name, enabled) { enabled ? classes.add(name) : classes.delete(name); }
+      },
+      setAttribute(name, content) { attributes.set(name, content); },
+      getAttribute: name => attributes.get(name) ?? null,
+      addEventListener() {}, querySelectorAll() { return []; }, querySelector() { return null; },
+      append(...children) { children.forEach(child => this.appendChild(child)); },
+      appendChild(child) { this.children.push(child); if (child.id) elements.set(child.id, child); },
+      insertBefore(child) { this.appendChild(child); },
+      remove() { elements.delete(this.id); this.children.forEach(child => child.remove()); }
+    };
+    if (id) elements.set(id, value);
+    return value;
+  }
+  const body = element();
+  for (const name of ['analyze', 'architecture', 'graph', 'versions', 'dsl-editor', 'help', 'admin', 'preferences']) {
+    element('tab-' + name).classList.add('d-none');
+  }
+  for (const id of ['leftPanel', 'rightPanel', 'analyzeBtn', 'expandAll', 'collapseAll', 'diagnosticsContent']) element(id);
+  const adminControl = element('wsCreateBtn');
+  adminControl.hidden = adminControl.disabled = true;
+  const document = {
+    body, readyState: 'loading', currentScript: null,
+    createElement: () => element(),
+    getElementById: id => elements.get(id) || null,
+    querySelector() { return null; },
+    querySelectorAll(selector) { return selector === '#wsCreateBtn' || selector === '.admin-only' ? [adminControl] : []; },
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(listener);
+    },
+    dispatchEvent(event) { for (const listener of listeners.get(event.type) || []) listener(event); }
+  };
+  const sandbox = {
+    document, URL, AbortController, Promise, setTimeout, clearTimeout,
+    setInterval() {}, clearInterval() {}, addEventListener() {}, alert() {},
+    CustomEvent: class { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } },
+    MutationObserver: class { observe() {} }, Node: {ELEMENT_NODE: 1},
+    console: {error() {}},
+    TaxonomyState: {}, TaxonomyUtils: {escapeHtml: String},
+    TaxonomyI18n: {t: key => key, ready: () => Promise.resolve(), resolveUrl: path => path},
+    TaxonomyApiClient: {getJson: () => accountRead},
+    fetch(path) {
+      requests.push(path);
+      return path === '/api/account/me' ? fallback.promise : new Promise(() => {});
+    },
+    get location() { return location; },
+    history: {replaceState(_state, _title, value) { location = new URL(value, location); }}
+  };
+  sandbox.window = sandbox;
+  const context = vm.createContext(sandbox);
+  document.addEventListener('taxonomy:page-activated', event => activations.push(event.detail.page));
+  vm.runInContext(browseSource, context, {filename: 'taxonomy-browse.js'});
+  vm.runInContext(pageNavigationSource, context, {filename: 'index-page-navigation.js'});
+  document.dispatchEvent({type: 'DOMContentLoaded'});
+  assert.equal(requests.filter(path => path === '/api/account/me').length, 1,
+    'DOMContentLoaded must take the real account fallback before RoleSurface exists');
+  document.readyState = 'complete';
+  vm.runInContext(source, context, {filename: 'taxonomy-role-surface.js'});
+  return {
+    visible: name => !elements.get('tab-' + name).classList.contains('d-none'),
+    page: () => location.hash.slice(1),
+    unlocked: () => body.classList.contains('admin-unlocked'),
+    administrator: () => sandbox.TaxonomyRoleSurface.isAdministrator(),
+    adminControl, requests, activations,
+    async settleFallback(failed) {
+      if (failed) fallback.reject(new Error('Older fallback failed'));
+      else fallback.resolve({ok: true, json: async () => ({administrator: true, roles: ['ADMIN']})});
+      await new Promise(resolve => setImmediate(resolve));
+    },
+    async settleAuthority(result) {
+      if (result === 'ERROR') authority.reject(new Error('Authoritative account unavailable'));
+      else authority.resolve({username: result.toLowerCase(), roles: [result], administrator: result === 'ADMIN'});
+      await sandbox.TaxonomyRoleSurface.ready;
+      await new Promise(resolve => setImmediate(resolve));
+    },
+    async revoke() {
+      accountRead = Promise.resolve({username: 'reader', roles: ['USER'], administrator: false});
+      await sandbox.TaxonomyRoleSurface.refresh();
+    }
+  };
+}
+
+for (const page of ['preferences', 'admin']) {
+  for (const failedFallback of [false, true]) {
+    for (const result of ['ADMIN', 'USER', 'ERROR']) {
+      test(`late role bootstrap preserves ${page} through ${failedFallback ? 'failed' : 'successful'} fallback until ${result}`, async () => {
+        const ui = lateRoleSurfaceNavigation(page);
+        assert.equal(ui.visible(page), true);
+        await ui.settleFallback(failedFallback);
+        assert.equal(ui.visible(page), true, 'Pending authority must preserve the direct-link pane');
+        assert.equal(ui.page(), page, 'Pending authority must preserve the requested route');
+        assert.equal(ui.unlocked(), false, 'Preserving a route must not unlock administrator controls');
+        assert.equal(ui.administrator(), false);
+        assert.equal(ui.adminControl.hidden, true);
+        assert.equal(ui.adminControl.disabled, true);
+        assert.equal(ui.requests.includes('/api/diagnostics'), false);
+        await ui.settleAuthority(result);
+        const allowed = result === 'ADMIN';
+        assert.equal(ui.visible(page), allowed);
+        assert.equal(ui.page(), allowed ? page : 'analyze');
+        assert.equal(ui.unlocked(), allowed);
+        assert.equal(ui.administrator(), allowed);
+        assert.equal(ui.adminControl.hidden, !allowed);
+        assert.equal(ui.adminControl.disabled, !allowed);
+        assert.equal(ui.requests.includes('/api/diagnostics'), allowed);
+        if (allowed) {
+          await ui.revoke();
+          assert.equal(ui.visible(page), false, 'A later confirmed denial must still leave the administrative pane');
+          assert.equal(ui.page(), 'analyze');
+          assert.equal(ui.unlocked(), false);
+          assert.equal(ui.adminControl.disabled, true);
+        }
+      });
+    }
+  }
+}
