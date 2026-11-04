@@ -8,13 +8,15 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.sql.*;
 import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
-import com.taxonomy.setup.PostgresProvisioningService.*;
+import com.taxonomy.setup.DatabaseProvisioningService.*;
 
 /** Actual PostgreSQL 18 SQL, SCRAM authentication and least-privilege proof. */
 @Testcontainers
 @Tag("db-postgres")
 @Tag("docker-required")
 class PostgresProvisioningServiceIT {
+    private static DatabaseProvisioningService service() { return new DatabaseProvisioningService(new PostgresProvisioningService()); }
+    private static DatabaseProvisioningService service(Connector connector) { return new DatabaseProvisioningService(new PostgresProvisioningService(connector)); }
     @Container static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:18-alpine")
             .withDatabaseName("postgres").withUsername("bootstrap").withPassword("bootstrap-integration-password")
             .withCommand("postgres", "-c", "log_statement=all");
@@ -23,7 +25,7 @@ class PostgresProvisioningServiceIT {
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         String role = "tax_user_" + suffix, database = "tax_db_" + suffix, password = "Secret-ö-'\\-" + suffix;
         var settings = input(database, role, password);
-        var service = new PostgresProvisioningService();
+        var service = service();
         try {
             assertEquals(Outcome.READY, service.inspect(settings).outcome());
             try (var admin = admin(); var check = admin.prepareStatement("SELECT 1 FROM pg_roles WHERE rolname = ?")) {
@@ -69,7 +71,7 @@ class PostgresProvisioningServiceIT {
         try {
             var settings = input(db, app, "app-test-password");
             settings = new ProvisionSettings(settings.target(), "postgres", limited, "limited-test-password", true, ResourceState.CREATE, ResourceState.CREATE);
-            var result = new PostgresProvisioningService().provision(settings);
+            var result = service().provision(settings);
             assertEquals(Outcome.FAILED, result.outcome()); assertEquals("database.provision.permission", result.finding().key());
             try (var admin = admin(); var statement = admin.prepareStatement("SELECT 1 FROM pg_roles WHERE rolname = ?")) {
                 statement.setString(1, app); try (var rows = statement.executeQuery()) { assertFalse(rows.next()); }
@@ -82,7 +84,7 @@ class PostgresProvisioningServiceIT {
         return new ProvisionSettings(new DatabaseSetupService.ConnectionSettings("postgres", postgres.getHost(),
                 postgres.getMappedPort(5432), database, role, password, false, ""), "postgres", "bootstrap", postgres.getPassword(), true, ResourceState.CREATE, ResourceState.CREATE);
     }
-    private static ProvisionSettings reviewed(PostgresProvisioningService service, ProvisionSettings input) {
+    private static ProvisionSettings reviewed(DatabaseProvisioningService service, ProvisionSettings input) {
         var plan = service.inspect(input); assertEquals(Outcome.READY, plan.outcome(), plan.toString());
         return new ProvisionSettings(input.target(), input.maintenanceDatabase(), input.adminUsername(), input.adminPassword(),
                 true, plan.role(), plan.database());

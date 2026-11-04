@@ -8,6 +8,8 @@ import os from 'node:os';
 import path from 'node:path';
 const {chromium} = createRequire(import.meta.url)('playwright');
 const resources = process.env.TAXONOMY_TEST_RESOURCE_ROOT || path.resolve('taxonomy-app/src/main/resources');
+const screenshotRoot = process.env.TAXONOMY_UI_OUTPUT_ROOT
+    ? path.join(process.env.TAXONOMY_UI_OUTPUT_ROOT, 'database-setup-guided') : 'target/database-setup-guided';
 let browser, fragment, bootstrap;
 before(async () => {
     const html = await readFile(path.join(resources, 'templates/fragments/database-setup.html'), 'utf8');
@@ -198,14 +200,14 @@ test('creating requires an inspected plan and a separate explicit confirmation; 
         await connection(page, {create: true});
         assert.equal(await page.locator('#databaseSetupProvision').isVisible(), false);
         await check(page);
-        assert.deepEqual(await page.evaluate(() => window.databaseRequests.map(item => item.url)), ['/api/admin/database-setup/postgres/inspect']);
+        assert.deepEqual(await page.evaluate(() => window.databaseRequests.map(item => item.url)), ['/api/admin/database-setup/inspect']);
         assert.equal(await page.locator('#databaseSetupReview').isVisible(), true);
         assert.match(await page.locator('#databaseSetupReview').innerText(), /taxonomy_app/);
         assert.match(await page.locator('#databaseSetupReview').innerText(), /taxonomy/);
         assert.equal(await page.locator('#databaseSetupNext').isVisible(), false);
         await page.locator('#databaseSetupProvision').click();
         await page.waitForFunction(() => !document.getElementById('databaseSetupCheck').disabled);
-        assert.match(await page.locator('#databaseSetupStatus').innerText(), /Database ready/i);
+        assert.match(await page.locator('#databaseSetupStatus').innerText(), /Database access prepared/i);
         assert.equal(await page.locator('#databaseSetupAdminPassword').inputValue(), '');
         const creation = await page.evaluate(() => window.databaseRequests.find(item => item.url.endsWith('/provision')));
         assert.equal(creation.body.confirmed, true);
@@ -250,7 +252,7 @@ test('creation locks navigation and a lost response requires inspection before a
         assert.equal(await lost.locator('#databaseSetupNext').isVisible(), false);
         await check(lost);
         const urls = await lost.evaluate(() => window.databaseRequests.map(item => item.url));
-        assert.deepEqual(urls, ['/api/admin/database-setup/postgres/inspect', '/api/admin/database-setup/postgres/provision', '/api/admin/database-setup/postgres/inspect']);
+        assert.deepEqual(urls, ['/api/admin/database-setup/inspect', '/api/admin/database-setup/provision', '/api/admin/database-setup/inspect']);
         assert.match(await lost.locator('#databaseSetupReview').innerText(), /reuse|existing/i);
         assert.deepEqual(lost.errors, []);
     } finally { await lost.close(); }
@@ -278,7 +280,7 @@ test('a stalled JSON body releases creation controls into UNKNOWN and ignores la
         assert.equal(await page.locator('#databaseSetupAdminPassword').inputValue(), 'ADMIN_SECRET_SENTINEL');
         await check(page);
         assert.deepEqual(await page.evaluate(() => window.databaseRequests.map(item => item.url)),
-            ['/api/admin/database-setup/postgres/inspect', '/api/admin/database-setup/postgres/provision', '/api/admin/database-setup/postgres/inspect']);
+            ['/api/admin/database-setup/inspect', '/api/admin/database-setup/provision', '/api/admin/database-setup/inspect']);
         await page.keyboard.press('Escape');
         assert.equal(await page.locator('#databaseSetupDialog').evaluate(node => node.open), false);
         assert.deepEqual(page.errors, []);
@@ -298,8 +300,85 @@ for (const locale of ['en', 'de']) test(`${locale}: mobile result and review are
         assert.equal(await page.locator('#databaseSetupReview').isVisible(), true);
         await page.locator('#databaseSetupProvision').focus();
         assert.equal(await page.locator('#databaseSetupProvision').evaluate(node => document.activeElement === node), true);
-        await mkdir('target/ui-verification/database-setup-guided', {recursive: true});
-        await page.screenshot({path: `target/ui-verification/database-setup-guided/review-${locale}-mobile.png`});
+        await mkdir(screenshotRoot, {recursive: true});
+        await page.screenshot({path: `${screenshotRoot}/review-${locale}-mobile.png`});
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
+
+
+for (const locale of ['en', 'de']) for (const type of ['mssql', 'oracle']) {
+    test(`${locale}: ${type} preparation reviews its own resources and preserves deployment guidance`, async () => {
+        const oracle = type === 'oracle';
+        const plan = {...ready, database: oracle ? 'REUSE' : 'CREATE', finding: {
+            key: `database.provision.${type}.ready`, status: 'NOT_CHECKED', message: 'Inspected'}};
+        const done = {...complete, database: oracle ? 'REUSED' : 'CREATED', finding: {
+            key: `database.provision.${type}.complete`, status: 'OK', message: 'Access prepared'}};
+        const page = await fixture({locale, width: 390, height: 780, responses: [plan, done]});
+        try {
+            await page.locator('#databaseSetupType').selectOption(type);
+            assert.equal(await page.locator('#databaseSetupCreateOption').isVisible(), true);
+            await connection(page, {create: true});
+            await page.locator('#databaseSetupHost').fill(`${type}.database.svc.cluster.local`);
+            await page.locator('#databaseSetupTls').uncheck();
+            assert.equal(await page.locator('#databaseSetupAdminUsername').inputValue(), oracle ? 'SYSTEM' : 'sa');
+            assert.equal(await page.locator('#databaseSetupPort').inputValue(), oracle ? '1521' : '1433');
+            assert.equal(await page.locator('#databaseSetupOracleStorage').isVisible(), oracle);
+            assert.equal(await page.locator('#databaseSetupMaintenanceGroup').isVisible(), !oracle);
+            assert.equal(await page.locator('#databaseSetupCompatibility').isVisible(), true);
+            await check(page);
+            assert.equal(await page.locator('#databaseSetupReview').isVisible(), true);
+            const inspection = await page.evaluate(() => window.databaseRequests[0]);
+            assert.equal(inspection.url, '/api/admin/database-setup/inspect');
+            assert.equal(inspection.body.target.type, type);
+            assert.equal(inspection.body.confirmed, false);
+            assert.equal(inspection.body.maintenanceDatabase, oracle ? 'FREEPDB1' : 'master');
+            if (oracle) {
+                assert.equal(inspection.body.tablespace, 'USERS');
+                assert.equal(inspection.body.quotaMiB, 100);
+                assert.match(await page.locator('#databaseSetupReviewStorage').innerText(), /USERS.*100 MiB/);
+                assert.match(await page.locator('#databaseSetupReviewDatabase').innerText(), /FREEPDB1/);
+            } else {
+                assert.equal(Object.hasOwn(inspection.body, 'tablespace'), false);
+            }
+            assert.doesNotMatch(await page.locator('#databaseSetupDialog').innerText(), /database\.setup\.|APP_SECRET_SENTINEL|ADMIN_SECRET_SENTINEL/);
+            await page.locator('#databaseSetupProvision').click();
+            await page.waitForFunction(() => !document.getElementById('databaseSetupCheck').disabled);
+            const creation = await page.evaluate(() => window.databaseRequests.find(item => item.url.endsWith('/provision')));
+            assert.equal(creation.body.expectedDatabase, oracle ? 'REUSE' : 'CREATE');
+            assert.equal(creation.body.expectedRole, 'CREATE');
+            assert.equal(await page.locator('#databaseSetupAdminPassword').inputValue(), '');
+            assert.equal(await page.locator('#databaseSetupResult').getAttribute('data-status'), 'success');
+            assert.equal(await page.locator('#databaseSetupCompatibility').isVisible(), true);
+            await page.locator('#databaseSetupNext').click();
+            await page.waitForFunction(() => !document.getElementById('databaseSetupProperties').closest('[data-database-step]').hidden);
+            assert.match(await page.locator('#databaseSetupPersistence').innerText(), locale === 'de' ? /Arbeitsspeicher.*Neustart/s : /memory.*Restarting/s);
+            assert.equal(await page.locator('#databaseSetupPersistenceHelp').isVisible(), true);
+            assert.equal(await page.locator('#databaseSetupCompatibility').isVisible(), true);
+            assert.doesNotMatch(await page.locator('#databaseSetupProperties').innerText(), /ADMIN_SECRET_SENTINEL|APP_SECRET_SENTINEL/);
+            assert.equal(await page.locator('#databaseSetupDialog').evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+            await mkdir(screenshotRoot, {recursive: true});
+            await page.screenshot({path: `${screenshotRoot}/${type}-${locale}-deployment.png`});
+            assert.deepEqual(page.errors, []);
+        } finally { await page.close(); }
+    });
+}
+
+test('changing the reviewed Oracle quota invalidates confirmation and the next inspection binds the new quota', async () => {
+    const plan = {...ready, database: 'REUSE'};
+    const page = await fixture({responses: [plan, plan]});
+    try {
+        await page.locator('#databaseSetupType').selectOption('oracle');
+        await connection(page, {create: true});
+        await check(page);
+        assert.equal(await page.locator('#databaseSetupReview').isVisible(), true);
+        await page.locator('#databaseSetupQuota').fill('200');
+        assert.equal(await page.locator('#databaseSetupReview').isVisible(), false);
+        assert.equal(await page.locator('#databaseSetupProvision').isVisible(), false);
+        await check(page);
+        assert.equal(await page.evaluate(() => window.databaseRequests[1].body.quotaMiB), 200);
+        assert.match(await page.locator('#databaseSetupReviewStorage').innerText(), /200 MiB/);
+        assert.equal(await page.evaluate(() => window.databaseRequests.some(item => item.url.endsWith('/provision'))), false);
         assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
 });

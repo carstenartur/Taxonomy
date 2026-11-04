@@ -6,16 +6,18 @@ import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
-import com.taxonomy.setup.PostgresProvisioningService.*;
+import com.taxonomy.setup.DatabaseProvisioningService.*;
 
 /** Real service with a deterministic JDBC boundary; SQL writes and login attempts remain observable. */
 class PostgresProvisioningServiceTest {
+    private static DatabaseProvisioningService service() { return new DatabaseProvisioningService(new PostgresProvisioningService()); }
+    private static DatabaseProvisioningService service(Connector connector) { return new DatabaseProvisioningService(new PostgresProvisioningService(connector)); }
     private static final String SECRET = "private-app-secret-2026";
     private static ProvisionSettings input(boolean confirmed) {
         return new ProvisionSettings(new DatabaseSetupService.ConnectionSettings("postgres", "db", 5432,
                 "taxonomy", "taxonomy_app", SECRET, false, ""), "postgres", "bootstrap", "private-admin-secret", confirmed, ResourceState.CREATE, ResourceState.CREATE);
     }
-    private static ProvisionSettings reviewed(PostgresProvisioningService service) {
+    private static ProvisionSettings reviewed(DatabaseProvisioningService service) {
         var request = input(false); var plan = service.inspect(request);
         assertEquals(Outcome.READY, plan.outcome());
         return actions(plan.role(), plan.database());
@@ -31,7 +33,7 @@ class PostgresProvisioningServiceTest {
                 var db = new Database(); db.role = true; db.database = !roleChanges;
                 if (roleChanges) db.role = disappear;
                 else db.database = disappear;
-                var service = new PostgresProvisioningService(db::connect);
+                var service = service(db::connect);
                 var reviewed = reviewed(service);
                 if (roleChanges) db.role = !db.role; else db.database = !db.database;
                 var result = service.provision(reviewed);
@@ -42,7 +44,7 @@ class PostgresProvisioningServiceTest {
         }
     }
     @Test void confirmedProvisionRequiresOnlyCreateOrReuseExpectedActionsBeforeConnecting() {
-        var db = new Database(); var service = new PostgresProvisioningService(db::connect);
+        var db = new Database(); var service = service(db::connect);
         assertThrows(IllegalArgumentException.class, () -> service.provision(actions(null, ResourceState.CREATE)));
         assertThrows(IllegalArgumentException.class, () -> service.provision(actions(ResourceState.CREATE, null)));
         for (var invalid : List.of(ResourceState.CREATED, ResourceState.REUSED, ResourceState.NOT_CREATED, ResourceState.UNKNOWN)) {
@@ -52,7 +54,7 @@ class PostgresProvisioningServiceTest {
         assertEquals(0, db.connections); assertTrue(db.writes.isEmpty());
     }
     @Test void inspectionPlansWithoutDdlAndCreationNeedsExplicitConfirmation() {
-        var db = new Database(); var service = new PostgresProvisioningService(db::connect);
+        var db = new Database(); var service = service(db::connect);
         var plan = service.inspect(input(false));
         assertEquals(Outcome.READY, plan.outcome()); assertEquals(ResourceState.CREATE, plan.role());
         assertEquals(ResourceState.CREATE, plan.database()); assertTrue(db.writes.isEmpty());
@@ -60,7 +62,7 @@ class PostgresProvisioningServiceTest {
     }
     @Test void createsRestrictedScramRoleAndOwnedDatabaseThenChecksApplicationLogin() {
         var db = new Database();
-        var result = new PostgresProvisioningService(db::connect).provision(input(true));
+        var result = service(db::connect).provision(input(true));
         assertEquals(Outcome.COMPLETE, result.outcome());
         assertEquals(ResourceState.CREATED, result.role()); assertEquals(ResourceState.CREATED, result.database());
         assertEquals(2, db.writes.size());
@@ -72,47 +74,47 @@ class PostgresProvisioningServiceTest {
     }
     @Test void conflictingDatabasePreventsEvenTheMissingRoleFromBeingCreated() {
         var db = new Database(); db.database = true; db.owner = "someone_else";
-        assertEquals(Outcome.CONFLICT, new PostgresProvisioningService(db::connect).provision(input(true)).outcome());
+        assertEquals(Outcome.CONFLICT, service(db::connect).provision(input(true)).outcome());
         assertTrue(db.writes.isEmpty());
     }
     @Test void existingRestrictedObjectsAreVerifiedAndReusedWithoutAnyWrites() {
         var db = new Database(); db.role = db.database = true;
-        var service = new PostgresProvisioningService(db::connect);
+        var service = service(db::connect);
         var result = service.provision(reviewed(service));
         assertEquals(Outcome.COMPLETE, result.outcome()); assertEquals(ResourceState.REUSED, result.role());
         assertEquals(ResourceState.REUSED, result.database()); assertTrue(db.writes.isEmpty());
     }
     @Test void wrongExistingPasswordAndPrivilegedRoleBlockAllWrites() {
         var badPassword = new Database(); badPassword.role = true; badPassword.badPassword = true;
-        assertEquals(Outcome.FAILED, new PostgresProvisioningService(badPassword::connect).provision(actions(ResourceState.REUSE, ResourceState.CREATE)).outcome());
+        assertEquals(Outcome.FAILED, service(badPassword::connect).provision(actions(ResourceState.REUSE, ResourceState.CREATE)).outcome());
         assertTrue(badPassword.writes.isEmpty());
         var privileged = new Database(); privileged.role = true; privileged.privileged = true;
-        assertEquals(Outcome.CONFLICT, new PostgresProvisioningService(privileged::connect).provision(input(true)).outcome());
+        assertEquals(Outcome.CONFLICT, service(privileged::connect).provision(input(true)).outcome());
         assertTrue(privileged.writes.isEmpty());
     }
     @Test void nonSuperuserCannotPromiseOwnershipOfANotYetCreatedRole() {
         var db = new Database(); db.superuser = false;
-        assertEquals(Outcome.FAILED, new PostgresProvisioningService(db::connect).provision(input(true)).outcome());
+        assertEquals(Outcome.FAILED, service(db::connect).provision(input(true)).outcome());
         assertTrue(db.writes.isEmpty());
     }
     @Test void existingRoleCanBeUsedByNonSuperuserOnlyWhenSetRoleWorks() {
         var db = new Database(); db.superuser = false; db.role = true;
-        var service = new PostgresProvisioningService(db::connect);
+        var service = service(db::connect);
         assertEquals(Outcome.COMPLETE, service.provision(reviewed(service)).outcome());
         var denied = new Database(); denied.superuser = false; denied.role = true; denied.setRoleDenied = true;
-        assertEquals(Outcome.FAILED, new PostgresProvisioningService(denied::connect).provision(actions(ResourceState.REUSE, ResourceState.CREATE)).outcome());
+        assertEquals(Outcome.FAILED, service(denied::connect).provision(actions(ResourceState.REUSE, ResourceState.CREATE)).outcome());
         assertTrue(denied.writes.isEmpty());
     }
     @Test void databaseFailureRetainsCreatedRoleAndNeverCleansUpOrLeaksExceptions() {
         var db = new Database(); db.createDatabaseFailure = new SQLException("private-admin-secret " + SECRET, "42501");
-        var result = new PostgresProvisioningService(db::connect).provision(input(true));
+        var result = service(db::connect).provision(input(true));
         assertEquals(Outcome.PARTIAL, result.outcome()); assertEquals(ResourceState.CREATED, result.role());
         assertEquals(ResourceState.NOT_CREATED, result.database()); assertEquals(2, db.writes.size());
         assertFalse(result.toString().contains("private-"));
     }
     @Test void retryAfterPartialCreationReusesTheRoleWithoutRotatingItsPassword() {
         var db = new Database(); db.createDatabaseFailure = new SQLException(SECRET, "42501");
-        var service = new PostgresProvisioningService(db::connect);
+        var service = service(db::connect);
         assertEquals(Outcome.PARTIAL, service.provision(input(true)).outcome());
         db.createDatabaseFailure = null;
         var retry = service.provision(reviewed(service));
@@ -122,28 +124,28 @@ class PostgresProvisioningServiceTest {
     }
     @Test void postCreateApplicationLoginFailureReportsPartialInsteadOfComplete() {
         var db = new Database(); db.badPassword = true;
-        var result = new PostgresProvisioningService(db::connect).provision(input(true));
+        var result = service(db::connect).provision(input(true));
         assertEquals(Outcome.PARTIAL, result.outcome());
         assertEquals(ResourceState.CREATED, result.role()); assertEquals(ResourceState.CREATED, result.database());
         assertFalse(result.toString().contains(SECRET));
     }
     @Test void lostConnectionDuringCreateReportsUncertainOutcomeInsteadOfRollback() {
         var db = new Database(); db.createDatabaseFailure = new SQLException(SECRET, "08006");
-        var result = new PostgresProvisioningService(db::connect).provision(input(true));
+        var result = service(db::connect).provision(input(true));
         assertEquals(Outcome.UNKNOWN, result.outcome()); assertEquals(ResourceState.UNKNOWN, result.database());
         assertFalse(result.toString().contains(SECRET));
     }
     @Test void statementCompletionUnknownAndServerTerminationPreserveEachActiveResource() {
         for (String state : List.of("40003", "57P01", "57P02")) {
             var roleFailure = new Database(); roleFailure.createRoleFailure = new SQLException(SECRET, state);
-            var roleResult = new PostgresProvisioningService(roleFailure::connect).provision(input(true));
+            var roleResult = service(roleFailure::connect).provision(input(true));
             assertEquals(Outcome.UNKNOWN, roleResult.outcome(), "role state " + state);
             assertEquals(ResourceState.UNKNOWN, roleResult.role());
             assertEquals(ResourceState.NOT_CREATED, roleResult.database());
             assertEquals(1, roleFailure.writes.size());
             assertFalse(roleResult.toString().contains(SECRET));
             var databaseFailure = new Database(); databaseFailure.createDatabaseFailure = new SQLException(SECRET, state);
-            var databaseResult = new PostgresProvisioningService(databaseFailure::connect).provision(input(true));
+            var databaseResult = service(databaseFailure::connect).provision(input(true));
             assertEquals(Outcome.UNKNOWN, databaseResult.outcome(), "database state " + state);
             assertEquals(ResourceState.CREATED, databaseResult.role());
             assertEquals(ResourceState.UNKNOWN, databaseResult.database());
@@ -158,7 +160,7 @@ class PostgresProvisioningServiceTest {
             if (nextException) outer.setNextException(inner); else outer.initCause(inner);
             inner.initCause(outer); // The traversal must terminate even with cycles.
             var db = new Database(); db.createDatabaseFailure = outer;
-            var result = new PostgresProvisioningService(db::connect).provision(input(true));
+            var result = service(db::connect).provision(input(true));
             assertEquals(Outcome.UNKNOWN, result.outcome());
             assertEquals(ResourceState.UNKNOWN, result.database());
             assertEquals(ResourceState.CREATED, result.role()); assertEquals(2, db.writes.size());
@@ -169,7 +171,7 @@ class PostgresProvisioningServiceTest {
         var db = new Database(); var original = input(false);
         var target = new DatabaseSetupService.ConnectionSettings("postgres", "db", 5432,
                 "_taxonomy", "taxonomy_app", SECRET, false, "");
-        var result = new PostgresProvisioningService(db::connect).inspect(new ProvisionSettings(target,
+        var result = service(db::connect).inspect(new ProvisionSettings(target,
                 "postgres", "bootstrap", original.adminPassword(), false, null, null));
         assertEquals(Outcome.READY, result.outcome()); assertEquals(ResourceState.CREATE, result.database());
         assertTrue(db.writes.isEmpty());
@@ -182,8 +184,8 @@ class PostgresProvisioningServiceTest {
             db.roleCreateEntered = entered; db.roleCreateRelease = release; db.connectionClosed = exited;
         }
         var results = new CopyOnWriteArrayList<ProvisionResult>();
-        Thread first = Thread.ofVirtual().start(() -> results.add(new PostgresProvisioningService(firstDb::connect).provision(input(true))));
-        Thread second = Thread.ofVirtual().start(() -> results.add(new PostgresProvisioningService(secondDb::connect).provision(input(true))));
+        Thread first = Thread.ofVirtual().start(() -> results.add(service(firstDb::connect).provision(input(true))));
+        Thread second = Thread.ofVirtual().start(() -> results.add(service(secondDb::connect).provision(input(true))));
         try {
             assertTrue(entered.await(3, TimeUnit.SECONDS));
             first.interrupt(); second.interrupt(); first.join(3000); second.join(3000);
@@ -192,7 +194,7 @@ class PostgresProvisioningServiceTest {
                 assertEquals(Outcome.UNKNOWN, result.outcome()); assertEquals(ResourceState.UNKNOWN, result.role());
                 assertEquals(ResourceState.NOT_CREATED, result.database());
             }
-            var available = new PostgresProvisioningService(new Database()::connect);
+            var available = service(new Database()::connect);
             assertEquals(Outcome.BUSY, available.inspect(input(false)).outcome());
             release.countDown();
             assertTrue(exited.await(3, TimeUnit.SECONDS));
@@ -201,24 +203,24 @@ class PostgresProvisioningServiceTest {
             assertTrue(secondDb.writes.getFirst().startsWith("CREATE ROLE"));
         } finally {
             release.countDown(); first.interrupt(); second.interrupt();
-            var recovery = new PostgresProvisioningService(new Database()::connect);
+            var recovery = service(new Database()::connect);
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
             while (recovery.inspect(input(false)).outcome() == Outcome.BUSY && System.nanoTime() < deadline) Thread.sleep(10);
         }
     }
     @Test void lockContentionAndOldOrReadOnlyServersDoNotWrite() {
         var db = new Database(); db.lock = false;
-        assertEquals(Outcome.BUSY, new PostgresProvisioningService(db::connect).provision(input(true)).outcome());
+        assertEquals(Outcome.BUSY, service(db::connect).provision(input(true)).outcome());
         db.lock = true; db.version = 14;
-        assertEquals(Outcome.FAILED, new PostgresProvisioningService(db::connect).inspect(input(false)).outcome());
+        assertEquals(Outcome.FAILED, service(db::connect).inspect(input(false)).outcome());
         db.version = 18; db.readonly = true;
-        assertEquals(Outcome.FAILED, new PostgresProvisioningService(db::connect).provision(input(true)).outcome());
+        assertEquals(Outcome.FAILED, service(db::connect).provision(input(true)).outcome());
         assertTrue(db.writes.isEmpty());
     }
     @Test void interruptedCallersDoNotReleasePermitsWhileJdbcIsStillRunning() throws Exception {
         var entered = new CountDownLatch(2); var release = new CountDownLatch(1);
         var results = new java.util.concurrent.CopyOnWriteArrayList<ProvisionResult>();
-        var service = new PostgresProvisioningService((url, properties) -> {
+        var service = service((url, properties) -> {
             entered.countDown();
             boolean done = false;
             while (!done) {
@@ -235,7 +237,7 @@ class PostgresProvisioningServiceTest {
             assertEquals(Outcome.BUSY, service.inspect(input(false)).outcome());
         } finally {
             release.countDown(); first.interrupt(); second.interrupt();
-            var recovery = new PostgresProvisioningService(new Database()::connect);
+            var recovery = service(new Database()::connect);
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
             while (recovery.inspect(input(false)).outcome() == Outcome.BUSY && System.nanoTime() < deadline) Thread.sleep(10);
         }
@@ -244,7 +246,7 @@ class PostgresProvisioningServiceTest {
         var db = new Database();
         for (String name : List.of("postgres", "template0", "pg_internal", "MixedCase", "bad;sql", "a".repeat(64))) {
             var target = new DatabaseSetupService.ConnectionSettings("postgres", "db", 5432, name, "taxonomy_app", SECRET, false, "");
-            assertThrows(IllegalArgumentException.class, () -> new PostgresProvisioningService(db::connect)
+            assertThrows(IllegalArgumentException.class, () -> service(db::connect)
                     .inspect(new ProvisionSettings(target, "postgres", "bootstrap", "secret", false, null, null)));
         }
         assertEquals(0, db.connections);

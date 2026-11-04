@@ -32,6 +32,14 @@ The OCI chart includes `questions.yaml` for the existing credential Secret, stor
 
 ## Fresh installation versus upgrade
 
+Before restarting an in-memory trial or attaching storage to an existing workload,
+follow the [data/settings retention guide](../../../docs/en/DATABASE_SETUP.md#persistent-installation)
+([Deutsch](../../../docs/de/DATABASE_SETUP.md#persistent-installation)). A PVC alone
+does not persist `jdbc:hsqldb:mem:...`, and mounting a blank volume does not migrate
+the old container's files. Keep valuable in-memory state running until a verified
+transfer exists. Back up retained databases and deployment configuration before
+cutover; the setup wizard prepares a target but does not transfer current data.
+
 A fresh installation requires all of the following:
 
 - a new namespace or otherwise non-conflicting release name;
@@ -66,6 +74,29 @@ upgrade:
 Do not set that acknowledgement merely to avoid downtime. It is appropriate only when the selected release proves that the old application remains compatible with every database state produced by the new migration stream. `persistence.enabled=true` always requires `Recreate`.
 
 Before a production upgrade, create and verify a restorable PostgreSQL backup. A Helm rollback changes Kubernetes resources and the application image; it does not reverse an already executed database migration.
+
+## Verify storage in Rancher
+
+In the target cluster/namespace, inspect the workload's volumes and mounts, and its
+environment/Secret references. In the storage view, inspect **PersistentVolumeClaims**,
+their bound PVs, StorageClass, capacity and reclaim policy. Menu labels vary by
+Rancher version; the workload YAML identifies the actual `claimName` and `mountPath`.
+Check that the database's data directory is under that mount and writable by its
+container user. A bound claim alone does not prove that the process writes there.
+
+The existing chart's `persistence.enabled=true` mounts its own PVC at `/app/data`.
+Use it for retained application files, or with an explicit HSQLDB **file** URL for
+a single-instance embedded baseline. External PostgreSQL, SQL Server and Oracle
+need their own durable storage. Vendor image paths and Service values are in
+[DATABASE_PODS.md](DATABASE_PODS.md). SQL Server/Oracle remain compatibility paths;
+read [schema initialization](../../../docs/en/DATABASE_SETUP.md#schema-initialization)
+before connecting an empty target.
+
+Preserve Helm values, Secrets, public trust material and separately retained source
+files alongside a consistent database backup. The chart has no `existingClaim`
+option or promise of application-PVC retention across Helm uninstall, namespace or
+PVC deletion. The PV's reclaim policy can remove backing storage. Verify recovery
+before resource deletion; test restart retention without deleting the claim.
 
 ## 1. Select and prepare the values
 

@@ -97,6 +97,10 @@ docker run --rm -p 8080:8080 \
 ### Persistent HSQLDB data
 
 A volume alone is not sufficient: point HSQLDB at a file below the mounted directory and use the persistent schema mode.
+The following starts a **new file-backed installation**; it does not save an already
+running in-memory database. Before restarting a temporary installation containing
+valuable settings or work, follow
+[Keep data and settings across restarts](DATABASE_SETUP.md#persistent-installation).
 
 ```bash
 docker run -d --name taxonomy-analyzer \
@@ -225,6 +229,13 @@ See [Configuration Reference](CONFIGURATION_REFERENCE.md) for the full applicati
 
 ## 5. Persistence and backup
 
+Server-side preferences are versioned in the database-backed
+`taxonomy-preferences` repository. Retaining the active database retains those
+settings and their history; retaining `/app/data` alone does not back up an external
+PostgreSQL, SQL Server or Oracle server. Keep deployment values, Secrets, TLS/trust
+configuration and identity-provider recovery material separately. Browser-only
+state and process sessions are outside the database backup.
+
 The production Compose stack stores mutable state below `/app/data`:
 
 | Path | Contents |
@@ -232,6 +243,14 @@ The production Compose stack stores mutable state below `/app/data`:
 | `/app/data/taxonomydb*` | File-backed HSQLDB catalogue, users and Git pack/ref/reflog data |
 | `/app/data/lucene-index` | Hibernate Search/Lucene indexes |
 | Configured retained-source directory (normally `./data/source-content`) | Original source/version bytes; include it in the stopped data volume or back up its separate mount explicitly |
+
+The image's working directory is `/app`, so `./data/...` defaults resolve below
+`/app/data`. Bundled ONNX models under `/opt/taxonomy/models` belong to the image;
+custom model mounts and an external broker have separate storage requirements.
+Do not discard a filesystem index on the assumption that every search scope
+rebuilds at startup; see [index recovery limits](OPERATIONS_GUIDE.md#backup-and-recovery).
+For Rancher/PVC configuration and the safe transition from temporary storage, use
+the [same setup guide](DATABASE_SETUP.md#persistent-installation).
 
 Named volumes configured by `docker-compose.prod.yml` survive container recreation.
 Stop every writer to the HSQLDB files, including any separately started

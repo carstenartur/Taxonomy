@@ -4,6 +4,9 @@ services:
     environment:
       ORACLE_DATABASE: taxonomy
       ORACLE_PASSWORD: taxonomy
+      # ORACLE_DATABASE creates the PDB; the application schema user is separate.
+      APP_USER: taxonomy
+      APP_USER_PASSWORD: taxonomy
     ports:
       - "1521:1521"
     volumes:

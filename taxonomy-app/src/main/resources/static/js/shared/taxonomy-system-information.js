@@ -24,6 +24,29 @@ window.TaxonomySystemInformation = (function () {
             ? t('system.unavailable') : value, 'col-sm-7 text-break'));
     }
 
+    function probeStatus(probe) {
+        var status = probe && probe.status;
+        return t('system.probe.' + (['PARTIAL', 'NOT_SUPPORTED', 'NOT_PERMITTED'].indexOf(status) >= 0
+            ? status : 'UNAVAILABLE'));
+    }
+
+    function engineStarted(probe) {
+        if (!probe || probe.status !== 'AVAILABLE' || !probe.value) return probeStatus(probe);
+        if (probe.timeBasis === 'SERVER_LOCAL_TIME') {
+            // This clock reading has no offset. Parsing it with Date would invent
+            // the browser's timezone and silently change its meaning.
+            return probe.value.replace('T', ' ') + ' (' + t('system.timeBasis.SERVER_LOCAL_TIME') + ')';
+        }
+        if (probe.timeBasis === 'UTC') {
+            var instant = new Date(probe.value);
+            if (Number.isFinite(instant.getTime())) {
+                return instant.toLocaleString(TaxonomyI18n.getLocale(), { timeZone: 'UTC' })
+                    + ' (' + t('system.timeBasis.UTC') + ')';
+            }
+        }
+        return t('system.probe.UNAVAILABLE');
+    }
+
     function render(target, snapshot) {
         target.replaceChildren();
         var db = snapshot.database;
@@ -36,11 +59,26 @@ window.TaxonomySystemInformation = (function () {
         row(database, 'system.database', db.product);
         row(database, 'system.version', db.version);
         row(database, 'system.versionSource', t('system.source.' + db.versionSource));
+        var identity = db.identity || {};
+        row(database, 'system.identity.user', identity.user);
+        if (identity.sessionUser && identity.sessionUser !== identity.user) {
+            row(database, 'system.identity.sessionUser', identity.sessionUser);
+        }
+        row(database, 'system.identity.database', identity.database);
+        row(database, 'system.identity.schema', identity.schema);
+        row(database, 'system.identity.source', t('system.source.' + (identity.source || 'UNAVAILABLE')));
+        if (identity.status !== 'AVAILABLE') row(database, 'system.identity.status', probeStatus(identity));
+        row(database, 'system.engineStarted', engineStarted(db.engineStart));
+        if (db.engineStart && db.engineStart.status === 'AVAILABLE') {
+            row(database, 'system.engineStartSource', t('system.source.' + db.engineStart.source));
+        }
         row(database, 'system.storage', t('system.storage.' + db.storage));
         row(database, 'system.storageSource', t('system.source.' + db.storageSource));
         row(database, 'system.schemaAction', db.schemaAction);
         row(database, 'system.driver', [db.driver, db.driverVersion].filter(Boolean).join(' '));
         target.appendChild(database);
+        target.appendChild(node('p', t('system.identity.note'), 'small text-muted mb-2'));
+        target.appendChild(node('p', t('system.engineStartNote'), 'small text-muted mb-2'));
 
         var runtime = node('dl', null, 'row mb-2');
         row(runtime, 'system.applicationVersion', snapshot.applicationVersion);

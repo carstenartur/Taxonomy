@@ -11,9 +11,11 @@ import org.hibernate.type.StandardBasicTypes;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.env.MockEnvironment;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.nio.file.Path;
 import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.util.Map;
 import java.util.UUID;
 
@@ -43,6 +45,145 @@ class SystemInformationServiceTest {
                         .isEqualTo(connection.getMetaData().getDatabaseProductVersion());
             }
         }
+    }
+
+    @Test
+    void identityDescribesTheActiveSessionRatherThanTheConfiguredWizardTarget() throws Exception {
+        String url = "jdbc:hsqldb:mem:" + UUID.randomUUID();
+        try (var connection = DriverManager.getConnection(url, "SA", "");
+             var statement = connection.createStatement()) {
+            statement.execute("CREATE USER \"runtime_user\" PASSWORD 'runtime-password'");
+            statement.execute("CREATE SCHEMA \"runtime_schema\" AUTHORIZATION \"runtime_user\"");
+            statement.execute("ALTER USER \"runtime_user\" SET INITIAL SCHEMA \"runtime_schema\"");
+        }
+        try (SessionFactory factory = factory(url, "runtime_user", "runtime-password")) {
+            var env = environment().withProperty("spring.datasource.username", "draft-user")
+                    .withProperty("spring.datasource.url", "jdbc:postgresql://draft-host/draft-database");
+            var snapshot = new SystemInformationService(factory, env).snapshot();
+            var database = JsonMapper.builder().build().valueToTree(snapshot.database());
+            assertThat(database.path("identity").has("user")).isTrue();
+            assertThat(database.path("identity").path("user").textValue()).isEqualTo("runtime_user");
+            assertThat(database.path("identity").has("sessionUser")).isTrue();
+            assertThat(database.path("identity").path("sessionUser").textValue()).isEqualTo("runtime_user");
+            assertThat(database.path("identity").path("database").textValue()).isEqualTo("PUBLIC");
+            assertThat(database.path("identity").path("schema").textValue()).isEqualTo("runtime_schema");
+            assertThat(database.path("identity").path("status").textValue()).isEqualTo("AVAILABLE");
+            assertThat(database.path("identity").path("source").textValue()).isEqualTo("DATABASE_QUERY");
+            assertThat(database.path("engineStart").path("status").textValue()).isEqualTo("NOT_SUPPORTED");
+            assertThat(database.path("engineStart").path("value").isNull()).isTrue();
+            assertThat(database.path("engineStart").path("timeBasis").isNull()).isTrue();
+            assertThat(snapshot.runtime().startTime()).isNotNull();
+            assertThat(snapshot.toString()).doesNotContain("draft-user", "draft-host", "draft-database", "runtime-password");
+        }
+    }
+
+    @Test
+    void optionalStartProbeFailuresLeaveTheMeasuredIdentityAndPersistenceIntact() {
+        try (SessionFactory factory = factory("jdbc:hsqldb:mem:" + UUID.randomUUID())) {
+            diagnosticExpression(factory, DatabaseDiagnosticFunctions.ENGINE_START, "cast(1 / 0 as varchar(60))");
+            var database = new SystemInformationService(factory, environment()).database();
+            assertThat(database.engineStart().status()).isEqualTo("UNAVAILABLE");
+            assertThat(database.engineStart().value()).isNull();
+            assertThat(database.engineStart().timeBasis()).isNull();
+            assertThat(database.engineStart().source()).isEqualTo("UNAVAILABLE");
+            assertThat(database.identity().status()).isEqualTo("AVAILABLE");
+            assertThat(database.identity().user()).isEqualTo("SA");
+            assertThat(database.status()).isEqualTo("AVAILABLE");
+            assertThat(database.versionSource()).isEqualTo("DATABASE_QUERY");
+            assertThat(database.storage()).isEqualTo("IN_MEMORY");
+            assertThat(database.warnings()).containsExactly("IN_MEMORY_APPLICATION_PROCESS");
+        }
+    }
+
+    @Test
+    void failedIdentityDoesNotDiscardIndependentCoreDatabaseMetadata() {
+        try (SessionFactory factory = factory("jdbc:hsqldb:mem:" + UUID.randomUUID())) {
+            diagnosticExpression(factory, DatabaseDiagnosticFunctions.CURRENT_USER, "cast(1 / 0 as varchar(60))");
+            var database = new SystemInformationService(factory, environment()).database();
+            assertThat(database.identity().status()).isEqualTo("UNAVAILABLE");
+            assertThat(database.identity().source()).isEqualTo("UNAVAILABLE");
+            assertThat(database.identity().user()).isNull();
+            assertThat(database.status()).isEqualTo("AVAILABLE");
+            assertThat(database.versionSource()).isEqualTo("DATABASE_QUERY");
+            assertThat(database.storage()).isEqualTo("IN_MEMORY");
+            assertThat(database.engineStart().status()).isEqualTo("NOT_SUPPORTED");
+        }
+    }
+
+    @Test
+    void unavailableSchemaDoesNotHideTheMeasuredUserAndDatabase() {
+        try (SessionFactory factory = factory("jdbc:hsqldb:mem:" + UUID.randomUUID())) {
+            diagnosticExpression(factory, DatabaseDiagnosticFunctions.CURRENT_SCHEMA, "cast(null as varchar(60))");
+            var identity = new SystemInformationService(factory, environment()).database().identity();
+            assertThat(identity.status()).isEqualTo("PARTIAL");
+            assertThat(identity.source()).isEqualTo("DATABASE_QUERY");
+            assertThat(identity.user()).isEqualTo("SA");
+            assertThat(identity.database()).isEqualTo("PUBLIC");
+            assertThat(identity.schema()).isNull();
+        }
+    }
+
+    @Test
+    void effectivePrincipalAndSessionUserKeepTheirSeparateMeanings() {
+        try (SessionFactory factory = factory("jdbc:hsqldb:mem:" + UUID.randomUUID())) {
+            diagnosticExpression(factory, DatabaseDiagnosticFunctions.CURRENT_USER, "'delegated_role'");
+            var identity = new SystemInformationService(factory, environment()).database().identity();
+            assertThat(identity.user()).isEqualTo("delegated_role");
+            assertThat(identity.sessionUser()).isEqualTo("SA");
+            assertThat(identity.source()).isEqualTo("DATABASE_QUERY");
+        }
+    }
+
+    @Test
+    void offsetStartIsNormalizedButServerLocalTimeIsNeverGivenAnInventedTimezone() {
+        try (SessionFactory factory = factory("jdbc:hsqldb:mem:" + UUID.randomUUID())) {
+            diagnosticExpression(factory, DatabaseDiagnosticFunctions.ENGINE_START, "'2026-07-01T14:20:30+02:00'");
+            var instant = new SystemInformationService(factory, environment()).database().engineStart();
+            assertThat(instant.status()).isEqualTo("AVAILABLE");
+            assertThat(instant.value()).isEqualTo("2026-07-01T12:20:30Z");
+            assertThat(instant.timeBasis()).isEqualTo("UTC");
+            assertThat(instant.source()).isEqualTo("DATABASE_QUERY");
+        }
+        try (SessionFactory factory = factory("jdbc:hsqldb:mem:" + UUID.randomUUID())) {
+            diagnosticExpression(factory, DatabaseDiagnosticFunctions.ENGINE_START, "'2026-07-01T14:20:30.123'");
+            var local = new SystemInformationService(factory, environment()).database().engineStart();
+            assertThat(local.status()).isEqualTo("AVAILABLE");
+            assertThat(local.value()).isEqualTo("2026-07-01T14:20:30.123");
+            assertThat(local.timeBasis()).isEqualTo("SERVER_LOCAL_TIME");
+            assertThat(local.source()).isEqualTo("DATABASE_QUERY");
+        }
+    }
+
+    @Test
+    void invalidStartValuesDoNotReachTheUiOrReplaceTheApplicationStart() {
+        try (SessionFactory factory = factory("jdbc:hsqldb:mem:" + UUID.randomUUID())) {
+            diagnosticExpression(factory, DatabaseDiagnosticFunctions.ENGINE_START, "'not-a-date private-error-detail'");
+            var snapshot = new SystemInformationService(factory, environment()).snapshot();
+            assertThat(snapshot.database().engineStart().status()).isEqualTo("UNAVAILABLE");
+            assertThat(snapshot.database().engineStart().value()).isNull();
+            assertThat(snapshot.runtime().startTime()).isNotNull();
+            assertThat(snapshot.toString()).doesNotContain("private-error-detail");
+        }
+    }
+
+    @Test
+    void onlyUnambiguousVendorPermissionErrorsAreReportedAsDenied() {
+        assertThat(SystemInformationService.diagnosticFailure(new RuntimeException(
+                new SQLException("secret jdbc:postgresql://private", "42501")), new PostgreSQLDialect()))
+                .isEqualTo("NOT_PERMITTED");
+        for (int code : new int[]{229, 297, 300}) {
+            assertThat(SystemInformationService.diagnosticFailure(new SQLException("private SQL error", "42000", code),
+                    new SQLServerDialect())).isEqualTo("NOT_PERMITTED");
+        }
+        assertThat(SystemInformationService.diagnosticFailure(new SQLException("private Oracle error", "42000", 1031),
+                new OracleDialect())).isEqualTo("NOT_PERMITTED");
+        // These codes can mean a missing object, not just a missing privilege.
+        assertThat(SystemInformationService.diagnosticFailure(new SQLException("private Oracle error", "42000", 942),
+                new OracleDialect())).isEqualTo("UNAVAILABLE");
+        assertThat(SystemInformationService.diagnosticFailure(new SQLException("private HSQL error", "42501", -5501),
+                new HSQLDialect())).isEqualTo("UNAVAILABLE");
+        assertThat(SystemInformationService.diagnosticFailure(new SQLException("connection timed out", "08006"),
+                new PostgreSQLDialect())).isEqualTo("UNAVAILABLE");
     }
 
     @Test
@@ -232,10 +373,21 @@ class SystemInformationServiceTest {
         return new MockEnvironment().withProperty("spring.jpa.properties.hibernate.search.backend.directory.type", "local-heap");
     }
 
+    private static void diagnosticExpression(SessionFactory factory, String name, String expression) {
+        var internal = factory.unwrap(SessionFactoryImplementor.class);
+        var text = internal.getTypeConfiguration().getBasicTypeRegistry().resolve(StandardBasicTypes.STRING);
+        internal.getQueryEngine().getSqmFunctionRegistry().patternDescriptorBuilder(name, expression)
+                .setExactArgumentCount(0).setInvariantType(text).register();
+    }
+
     private static SessionFactory factory(String url) {
+        return factory(url, "SA", "");
+    }
+
+    private static SessionFactory factory(String url, String username, String password) {
         return new Configuration().setProperty("hibernate.connection.driver_class", "org.hsqldb.jdbc.JDBCDriver")
-                .setProperty("hibernate.connection.url", url).setProperty("hibernate.connection.username", "SA")
-                .setProperty("hibernate.connection.password", "").setProperty("hibernate.connection.pool_size", "1")
+                .setProperty("hibernate.connection.url", url).setProperty("hibernate.connection.username", username)
+                .setProperty("hibernate.connection.password", password).setProperty("hibernate.connection.pool_size", "1")
                 .setProperty("hibernate.hbm2ddl.auto", "none").setProperty("hibernate.search.enabled", "false")
                 .buildSessionFactory();
     }

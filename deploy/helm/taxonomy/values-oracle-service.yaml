@@ -1,0 +1,24 @@
+# COMPATIBILITY/TEST profile, not a production migration/restore certification.
+# Prepare the PDB, application schema, Service and trusted TCPS listener first.
+# A default oracle-free container exposes plain TCP 1521, not this TCPS 2484 example.
+# Provision the trusted server CA in the JVM truststore; see DATABASE_PODS.md.
+existingSecret: taxonomy-secrets
+database:
+  type: oracle
+  url: "jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(HOST=oracle.database.svc.cluster.local)(PORT=2484))(CONNECT_DATA=(SERVICE_NAME=FREEPDB1))(SECURITY=(SSL_SERVER_DN_MATCH=YES)))"
+  username: TAXONOMY_APP
+networkPolicy:
+  allowSameNamespaceEgress: false
+  # The database-side ingress policy must also allow the Taxonomy Pods.
+  # Adapt labels and listener port to the actual database; preserve other egress rules.
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: database
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: oracle
+      ports:
+        - protocol: TCP
+          port: 2484

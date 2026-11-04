@@ -8,6 +8,8 @@ Diese Anleitung erläutert, wie Sie den Taxonomy Architecture Analyzer mit versc
 
 - [Übersicht](#übersicht)
 - [Optionaler Datenbankassistent](#optionaler-datenbankassistent)
+- [Daten und Einstellungen über Neustarts hinweg behalten](#persistent-installation)
+- [Leeres SQL-Server- oder Oracle-Schema initialisieren](#schema-initialization)
 - [PostgreSQL-Pod in Rancher oder Kubernetes](#postgresql-pod-in-rancher-oder-kubernetes)
 - [HSQLDB (Standard)](#hsqldb-standard)
 - [PostgreSQL](#postgresql)
@@ -47,11 +49,19 @@ solange diese Datenbank besteht. Ein Zurücksetzen oder Neuerstellen der Daten
 entfernt auch die gespeicherte Entscheidung. Administratoren können den
 Assistenten unter **Einstellungen > Datenbank einrichten** erneut öffnen.
 
-1. Wählen Sie **PostgreSQL**, **SQL Server** oder **Oracle**. Wählen Sie **Vorhandene Datenbank verbinden** oder bei PostgreSQL **PostgreSQL-Datenbank und Benutzer anlegen**. Der PostgreSQL-Server und ein erreichbarer Service müssen bereits vorhanden sein; das automatische Anlegen unterstützt PostgreSQL 15 oder neuer.
+**Voraussetzung für Host/Service:** Der gewählte Endpunkt muss zu einer logisch
+zusammengehörigen, beschreibbaren Datenbank führen. Verteilen Sie Verbindungen
+nicht auf unabhängig initialisierte Datenbanken hinter demselben Service. Verwenden
+Sie bei Hochverfügbarkeit den vorgesehenen schreibfähigen Primary-Endpunkt oder
+beschreibbaren Oracle-PDB-Service des Datenbank-Operators. Der Assistent prüft
+logische Namen, Zugangsdaten und Berechtigungen; Replikation und Datenbanktopologie
+prüft er nicht.
+
+1. Wählen Sie **PostgreSQL**, **SQL Server** oder **Oracle** und eine vorhandene Verbindung oder das optionale Anlegen. Server und erreichbarer Service müssen bereits vorhanden sein. PostgreSQL legt Datenbank und eingeschränkten Benutzer an, SQL Server eine Datenbank mit Login und zugeordnetem Datenbankbenutzer. Oracle erstellt einen lokalen Anwendungsbenutzer samt Schema in einer **vorhandenen PDB**; Server und PDB legt der Assistent nicht an. Das Anlegen für PostgreSQL benötigt Version 15 oder neuer.
 2. Geben Sie den **vom Taxonomy-Pod erreichbaren Host**, Port, Anwendungsdatenbank und Anwendungsbenutzer ein. Stellen Sie TLS passend zum Server ein. Geprüftes TLS benötigt Serverunterstützung, ein zum Hostnamen passendes Zertifikat und eine vertrauenswürdige CA im Taxonomy-Pod. Der optionale CA-Pfad bezeichnet eine eingebundene Serverdatei, etwa `/etc/taxonomy-db-ca/ca.crt`. Die TLS-Auswahl schaltet TLS in PostgreSQL nicht ein. Bei ausdrücklich gewählter unverschlüsselter Verbindung zeigt der Assistent einen Hinweis; ein automatisches Zurückfallen von TLS findet nicht statt.
 3. Bei einer **vorhandenen Datenbank** wählen Sie **Verbindung testen**. Das Hauptergebnis zeigt Erfolg, einen diagnostizierten Fehler oder eine unbekannte Fehlerursache. Ein Erfolg bestätigt die Anmeldung über eine separate Verbindung mit den eingegebenen Einstellungen; Schemamigration und Inbetriebnahme folgen separat. Sie können Eingaben ändern und erneut testen. Hinweise zum Prüfumfang sind aufklappbar.
-4. Zum **Anlegen** geben Sie einen getrennten Serveradministratorzugang und ein Anwendungspasswort ein. Wählen Sie **Server und geplante Einrichtung prüfen**, kontrollieren Sie Namen und Aktionen und bestätigen Sie anschließend **Datenbank und Benutzer jetzt anlegen**. Die Vorprüfung legt nichts an. Ein erfolgreicher Abschluss prüft eine Anwendungsverbindung, das Datenbankeigentum und die nötigen Rechte am public-Schema.
-5. Wählen Sie **Deployment-Konfiguration prüfen**. Hinterlegen Sie das Anwendungspasswort im Rancher-Deployment-Secret, übernehmen Sie die angezeigten Verbindungs- und Profileinstellungen und starten Sie Taxonomy neu. Downloads enthalten keines der Passwörter. Der Assistent bereitet die Konfiguration vor; aktiv wird die neue Datenbank durch Ihr Deployment und die Migrationen beim Start.
+4. Zum **Anlegen** geben Sie einen getrennten Administratorzugang und ein Anwendungspasswort ein. Wählen Sie **Server und geplante Einrichtung prüfen**, kontrollieren Sie Namen und Aktionen und bestätigen Sie das Anlegen ausdrücklich. Oracle benötigt zusätzlich einen vorhandenen Anwendungstablespace und ein begrenztes Kontingent. Die Vorprüfung legt nichts an. Bei Änderungen zwischen Prüfung und Bestätigung ist eine neue Prüfung erforderlich. Der Abschluss prüft die Anwendungsanmeldung und datenbankspezifische Eigentums-/Zugriffsrechte; er bestätigt nicht das Vorhandensein aller Taxonomy-Tabellen.
+5. Wählen Sie **Deployment-Konfiguration prüfen**. Beachten Sie zuerst [Daten und Einstellungen behalten](#persistent-installation); ein neues Ziel enthält Ihre bisherige Installation nicht. Hinterlegen Sie das Anwendungspasswort im Rancher-Secret und prüfen Sie bei SQL Server/Oracle die [Schema-Initialisierung](#schema-initialization), bevor Sie die Konfiguration übernehmen und neu starten. Downloads enthalten keines der Passwörter. Das Deployment aktiviert die neue Verbindung; bei PostgreSQL initialisieren die freigegebenen Startmigrationen das frische Schema.
 
 ### Ausgangspunkt: offizielles PostgreSQL-Image
 
@@ -63,16 +73,49 @@ Sind Ressourcen zwischen Prüfung und Bestätigung hinzugekommen oder weggefalle
 
 Vorhandene Ressourcen werden nach Prüfung der Benutzerrechte und Rollenmitgliedschaften, des eingegebenen Anwendungszugangs und des Datenbankeigentums weiterverwendet. Der Assistent ändert keine vorhandenen Passwörter oder Eigentümer und löscht keine Ressourcen. Eine erfolgreiche Anmeldung folgt den Authentifizierungsregeln des Servers; bei administrativ eingestellter `trust`-Authentifizierung bestätigt sie nicht die Richtigkeit des eingegebenen Passworts.
 
+### Voraussetzungen zum Anlegen für SQL Server und Oracle
+
+Für **SQL Server ab 2019** SQL-Authentifizierung und einen vorübergehend verwendeten
+Einrichtungsadministrator mit `sysadmin` über die Verwaltungsdatenbank `master`
+nutzen. Dieser Weg richtet SQL-Server-Instanzen ein, keine Azure-SQL-Provisionierung.
+Er erstellt SQL-Login und Datenbank; das Login besitzt die neue Datenbank und
+verbindet sich dort als Datenbankbenutzer `dbo`. Ein zusätzliches `CREATE USER`
+oder serverweite Administratorrechte für die Anwendung gehören nicht dazu.
+Wiederverwendung benötigt ein passendes aktives SQL-Login ohne zusätzliche
+Serverrollen/-rechte sowie dessen bestehende, beschreibbare Online-Datenbank
+mit ausgeschaltetem `TRUSTWORTHY` und `DB_CHAINING`. Vorhandene Eigentümer und
+Passwörter bleiben erhalten.
+
+Für **Oracle ab 19** den vorhandenen, beschreibbaren **PDB-Service**, etwa `FREEPDB1`,
+verwenden. Als Einrichtungsadministrator `SYSTEM` oder ein Konto mit aktiver
+`DBA`-Rolle und Zugriff auf `SYS.DBMS_LOCK` nutzen. Fehlende Rechte werden gemeldet
+und nicht automatisch erteilt. Einen vorhandenen permanenten Online-Anwendungs-
+tablespace wählen, normalerweise `USERS`, sowie ein endliches Kontingent in MiB
+(Standard **100 MiB**, Bereich **1–1048576 MiB**). Der Assistent legt einen lokalen
+Anwendungsbenutzer samt Schema mit `CREATE SESSION`, `CREATE TABLE` und
+`CREATE SEQUENCE` an. Root-/Seed-Container sowie Systemkonten und -speicher sind
+ausgeschlossen. Wiederverwendung setzt ein passendes offenes lokales Passwortkonto
+ohne zusätzliche Rollen/Systemrechte, denselben Tablespace und genau das gewählte
+endliche Kontingent voraus. Konten werden nicht repariert und Rechte/Kontingente
+nicht nachträglich geändert. Durch ein Image erzeugte `APP_USER`-Konten können
+andere Rechte haben und erfüllen diese Wiederverwendungsprüfung nicht automatisch.
+
+Beide Wege trennen [Ressourcenvorbereitung und Initialisierung der Anwendungstabellen](#schema-initialization).
+Administratorpasswörter gehören nicht ins Anwendungsdeployment. Nach einem
+teilweisen oder ungewissen Ergebnis muss vor einem weiteren ausdrücklich
+bestätigten Anlegeversuch erneut geprüft werden; automatische Bereinigung oder
+Wiederholung von Schreibzugriffen erfolgt nicht.
+
 | Hauptergebnis | Bedeutung und nächster Schritt |
 |---|---|
 | Verbindung erfolgreich | Taxonomy konnte sich mit den eingegebenen Verbindungseinstellungen anmelden. Prüfen und übernehmen Sie die Deployment-Konfiguration. |
 | Verbindung fehlgeschlagen | Folgen Sie der Diagnose zu DNS, abgelehnter Verbindung, TLS, Anmeldung, fehlender Datenbank, Berechtigungen oder Zeitlimit und testen Sie erneut. |
 | Angaben geprüft — Plan kontrollieren | Es wurde noch nichts angelegt. Prüfen Sie pro Ressource das Anlegen oder Weiterverwenden und bestätigen Sie ausdrücklich. |
-| Datenbank bereit | Anwendungsverbindung, Eigentum und public-Schemarechte wurden geprüft. Übernehmen Sie den Anwendungszugang und starten Sie Taxonomy neu. |
+| Datenbankzugang vorbereitet | Anwendungsverbindung und datenbankspezifische Konto-/Datenbankrechte wurden geprüft. Prüfen Sie Schema-Initialisierung und Datenerhalt vor dem Übernehmen der Konfiguration. |
 | Einrichtung teilweise abgeschlossen | Das Ergebnis nennt bereits angelegte Ressourcen. Prüfen Sie den aktuellen Zustand vor dem Fortfahren; es gibt keine automatische Bereinigung. |
 | Ergebnis der Einrichtung ist ungewiss | Antwort oder Datenbankvorgang wurden unterbrochen. Ressourcen können bereits vorhanden sein. Prüfen Sie den Zustand vor einem weiteren Anlegeversuch. |
 
-`CREATE DATABASE` kann mit dem Anlegen der Rolle keine gemeinsame Transaktion bilden. Teilweise oder ungewisse Ergebnisse sind deshalb relevante Zustände; der Assistent behauptet keinen vollständigen Rollback. Während des Anlegens sperrt er Eingaben und Navigation und wiederholt Schreibzugriffe nicht automatisch. Eine spätere Inspektion liest den Serverzustand neu und kann passende Ressourcen weiterverwenden. Siehe [CREATE DATABASE](https://www.postgresql.org/docs/18/sql-createdatabase.html).
+Bei PostgreSQL kann `CREATE DATABASE` mit dem Anlegen der Rolle keine gemeinsame Transaktion bilden. Teilweise oder ungewisse Ergebnisse sind deshalb relevante Zustände; der Assistent behauptet keinen vollständigen Rollback. Während des Anlegens sperrt er Eingaben und Navigation und wiederholt Schreibzugriffe nicht automatisch. Eine spätere Inspektion liest den Serverzustand neu und kann passende Ressourcen weiterverwenden. Siehe [CREATE DATABASE](https://www.postgresql.org/docs/18/sql-createdatabase.html).
 
 Beim Schließen und erneuten Öffnen innerhalb derselben Seite bleiben nicht geheime Eingaben und die TLS-Auswahl erhalten. Beide Passwörter werden gelöscht; das Administratorpasswort außerdem nach erfolgreicher Vorbereitung. Ein Neuladen der Seite beginnt mit einem frischen Formular. Der Konfigurationsexport behält andere aktive beziehungsweise Standardprofile bei, ersetzt das bisherige Datenbankprofil und ergänzt bei Helm `kubernetes`. Ein bereits aktives `production` bleibt erhalten; es wird nicht automatisch ergänzt.
 
@@ -92,7 +135,7 @@ später ergänzte Einstellungen des Zieldeployments.
 
 Der Betreiber übernimmt die Konfiguration und startet beziehungsweise deployt
 Taxonomy anschließend bewusst neu. Der Assistent wechselt keine laufende
-Datenquelle, erstellt keine Pods oder Schemata und startet die Anwendung nicht
+Datenquelle, erstellt keine Pods oder Taxonomy-Tabellen und startet die Anwendung nicht
 neu. Er **überträgt keine vorhandenen HSQLDB-Daten**. Bewahren Sie die
 Quelldatenbank und eine geprüfte Sicherung auf, wenn deren Datensätze erhalten
 bleiben müssen; siehe [Wechsel von HSQLDB zu PostgreSQL](#wechsel-von-hsqldb-zu-postgresql).
@@ -100,6 +143,176 @@ bleiben müssen; siehe [Wechsel von HSQLDB zu PostgreSQL](#wechsel-von-hsqldb-zu
 TLS-Referenzen: [pgJDBC](https://jdbc.postgresql.org/documentation/ssl/),
 [Microsoft JDBC](https://learn.microsoft.com/en-us/sql/connect/jdbc/connecting-with-ssl-encryption)
 und [Oracle JDBC](https://docs.oracle.com/en/database/oracle/oracle-database/23/jjdbc/client-side-security.html).
+
+<a id="persistent-installation"></a>
+## Daten und Einstellungen über Neustarts hinweg behalten
+
+**Prüfen Sie den aktuellen Speicher vor dem ersten Neustart oder Ändern eines
+Mounts.** Anwendungseinstellungen werden in der aktiven Datenbank gespeichert.
+Ein eingebundenes Volume, ein erfolgreicher Verbindungstest oder eine neu angelegte
+leere Datenbank übertragen keine vorhandene Installation. Insbesondere verliert
+`jdbc:hsqldb:mem:...` seine Inhalte beim Ende des Anwendungsprozesses, auch wenn
+`/app/data` auf einem PVC liegt.
+
+### Wo der Zustand gespeichert ist
+
+| Zustand | Zu erhaltender Speicher |
+|---|---|
+| Gespeicherte Arbeit, Benutzer/Rollen, serverseitige Einstellungen und deren Historie | Die aktive Datenbank. Einstellungen liegen im dort gespeicherten Git-Repository `taxonomy-preferences`; auch Git-Objekte, Refs und Reflogs sind datenbankgestützt. Es gibt keinen separaten Speicher `/app/data/git`. |
+| Dateibasierte HSQLDB | Alle Dateien `/app/data/taxonomydb*` auf dem Taxonomy-PVC, sofern die JDBC-URL diesen Pfad verwendet. |
+| Externe PostgreSQL-, SQL-Server- oder Oracle-Datenbank | Eigener dauerhafter Speicher des Datenbankservers und datenbankeigene Sicherungen. Das Taxonomy-PVC enthält diese Datenbank nicht. |
+| Aufbewahrte Quelldateien und dateibasierte Suchindizes | Die konfigurierten Pfade, normalerweise `/app/data/source-content` und `/app/data/lucene-index`. Separat eingebundene Pfade ebenfalls sichern. Ein fehlender Index wird beim Start nicht in jedem Fall vollständig neu aufgebaut. |
+| Deployment-Konfiguration, Verbindungspasswörter und Vertrauensmaterial | Aufbewahrte Helm-Values/Manifeste, Secrets und ConfigMaps. Zugangsdaten gehören in Secrets; öffentliche CA-Zertifikate können in ConfigMaps liegen. Externe Identitätsanbieter separat sichern. |
+
+Mitgelieferte ONNX-Modelle sind unveränderlicher Image-Inhalt unter
+`/opt/taxonomy/models`. Eigene Modell-Mounts, ein externer Artemis-Broker und optionale
+Backup-Auftragsverzeichnisse haben eigene Speicheranforderungen. Browsereinstellungen,
+ungespeicherte Browseränderungen, Sitzungen und Prozess-Caches werden durch ein
+Datenbankvolume nicht dauerhaft. Siehe [Betrieb und Sicherung](OPERATIONS_GUIDE.md).
+
+### Den passenden Ausgangsfall wählen
+
+| Bisherige Installation | Vor der Änderung |
+|---|---|
+| Verwerfbarer In-Memory-Test | Bewusst entscheiden, dass die bisherigen Inhalte entfallen dürfen. Neues dauerhaftes Ziel vorbereiten, dann konfigurieren und starten. |
+| In-Memory-Installation mit wichtigen Daten oder Einstellungen | Den laufenden Prozess erhalten. Einstellungen und Deployment-Konfiguration festhalten und vor dem Neustart einen geprüften Übertragungs-/Wiederherstellungsweg herstellen. Das Projekt liefert keinen automatischen Export einer laufenden In-Memory-Installation und keine vollständige Übertragung zwischen Datenbanktypen. Manuell notierte Einstellungen sind keine vollständige Sicherung. |
+| Vorhandene dateibasierte oder externe Datenbank | Konsistente Sicherung und isolierte Wiederherstellung prüfen. Den bisherigen dauerhaften Speicher weiterverwenden oder vor dem Verbindungswechsel in ein getrenntes dauerhaftes Ziel wiederherstellen. |
+
+Ein leeres PVC über einem befüllten Containerverzeichnis kopiert dessen bisherige
+Dateien nicht. Verwendet eine externe Datenbank bisher flüchtigen Speicher, zuerst
+bei noch verfügbarem Ursprung eine konsistente datenbankeigene Sicherung erstellen,
+im dauerhaften Ziel wiederherstellen und vor dem Umschalten prüfen. Bei dateibasierter
+HSQLDB müssen vor einer Dateisystemsicherung **alle Schreiber** gestoppt sein;
+verwenden Sie das geprüfte Verfahren zur
+[kalten Wiederherstellung derselben Version](CONTAINER_IMAGE.md#5-persistenz-und-backup).
+Es stellt keine bereits beendete In-Memory-Datenbank wieder her. Portabler
+`.taxbackup`-Import und automatischer Wechsel von HSQLDB auf einen anderen
+Datenbanktyp sind keine freigegebenen Wiederherstellungswege.
+
+### In Rancher prüfen und vorhandene Chart-Values nutzen
+
+Öffnen Sie im gewählten Rancher-Cluster und Namespace beim Workload die **Volumes**
+und Umgebungs-/Secret-Referenzen sowie unter Speicher die **PersistentVolumeClaims**.
+Die Menübezeichnungen hängen von der Rancher-Version ab. Prüfen Sie den tatsächlich
+eingebundenen Pfad und Claim: Ein vorhandenes PVC beweist weder seine Verwendung
+durch den Pod noch, dass die Datenbank dorthin schreibt. Prüfen Sie bei Bedarf das
+Workload-YAML.
+
+1. Tatsächlichen JDBC-Modus und Datenbank, Image/Version, Mountpfad und gebundenen
+   Claim feststellen. StorageClass, Kapazität, Schreibrechte und Reclaim-Policy des
+   PV prüfen. Ein Dateipfad allein bestätigt keinen dauerhaften Speicher.
+2. Helm-Values/Manifeste, Secret-Referenzen und geschützte Zugangsdaten außerhalb
+   des Pods sichern. **Vor** Mountänderungen oder dem Neustart einer flüchtigen
+   Installation einen Wiederherstellungspunkt festhalten. Ein Kubernetes-Secret
+   erhält Deployment-Zugangsdaten und ersetzt keine Anwendungsdatensicherung.
+3. Für eingebettete Datei-HSQLDB eine Anwendungsinstanz, `Recreate`, eine Datei-URL
+   unter `/app/data` und ein dort eingebundenes PVC nutzen. Für eine externe
+   Datenbank ein eigenes Daten-PVC oder verwalteten Speicher konfigurieren;
+   zusätzlich die tatsächlich genutzten lokalen Taxonomy-Quell-/Indexdateien erhalten.
+4. Nach geprüftem Umschalten Anmeldung, eine zuvor gespeicherte Einstellung,
+   Workspaces, Historie und typische Suchanfragen testen. Danach einen kontrollierten
+   Anwendungsneustart durchführen und erneut prüfen. Datenbankwiederherstellung
+   gesondert testen; kein PVC als Persistenztest löschen.
+
+Das vorhandene Chart erhält Anwendungsdateien mit diesem Values-Ausschnitt:
+
+```yaml
+replicaCount: 1
+upgrade:
+  strategy: Recreate
+persistence:
+  enabled: true
+  accessModes: [ReadWriteOnce]
+  size: 10Gi
+  storageClass: "" # Vorhandene Klasse wählen oder bewusst den Cluster-Standard nutzen.
+```
+
+Damit erstellt das Chart sein PVC für `/app/data`. Die Datenquelle wird dadurch
+nicht geändert und eine externe Datenbank nicht gesichert. Für einen **frischen
+dateibasierten HSQLDB-Basisbetrieb** `database.type=existing`,
+`config.SPRING_PROFILES_ACTIVE=production,hsqldb,kubernetes` und
+`config.TAXONOMY_DDL_AUTO=update` verwenden; `TAXONOMY_INIT_RELOAD_EXISTING=false`
+beibehalten. Im referenzierten Secret `SPRING_DATASOURCE_URL` auf
+`jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;hsqldb.write_delay_millis=0;shutdown=true`
+setzen und den vorgesehenen HSQLDB-Benutzer samt Passwort sowie die benötigten
+Anmelde-Secret-Schlüssel hinterlegen. Bei `TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem`
+auch den Indexpfad im geschützten Verzeichnis halten. Diese Einstellungen bereiten
+eine neue Dateidatenbank vor; sie übertragen keine vorhandenen In-Memory-Inhalte.
+
+Das Chart erstellt sein Anwendungs-PVC selbst; es bietet keine Einstellung
+`existingClaim` und verspricht keinen Erhalt nach Helm-Deinstallation, Namespace-
+oder PVC-Löschung. Die Reclaim-Policy `Delete` kann den darunterliegenden Speicher
+löschen. Vor Ressourcenlöschungen Lebenszyklus und Wiederherstellung klären; ein
+PVC ist kein Backup. Siehe
+[Kubernetes Persistent Volumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
+und die [vorhandene Rancher-Anleitung](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/RANCHER.md).
+
+### Speicher des Datenbank-Pods nach Image
+
+| Datenbank-Image | Dauerhaftes Verzeichnis | Ersteinrichtung |
+|---|---|---|
+| Offizielles `postgres:18` | `/var/lib/postgresql` mounten; Standard: `PGDATA=/var/lib/postgresql/18/docker` | Bootstrap-Zugang aus einem Secret; anschließend separates Anwendungskonto samt Datenbank anlegen. Bis Version 17 lautet der Standardpfad `/var/lib/postgresql/data`. |
+| Microsoft SQL Server unter Linux | `/var/opt/mssql` einschließlich Systemdatenbanken und geschützter Secrets oder die ausdrücklich konfigurierten Daten-/Log-/Secret-Pfade | `ACCEPT_EULA` und passend lizenziertes `MSSQL_PID` konfigurieren; Administratorpasswort aus einem Secret beziehen und Anwendungslogin samt Datenbank separat anlegen. |
+| Repository-Beispiel `gvenzl/oracle-free:23-slim-faststart` | `/opt/oracle/oradata` | `ORACLE_PASSWORD` setzt SYS-/SYSTEM-Passwörter; `ORACLE_DATABASE` erstellt eine PDB. `APP_USER`/`APP_USER_PASSWORD` legen einen separaten Anwendungsbenutzer samt Schema an; alternativ den Assistenten für diesen Benutzer in einer vorhandenen PDB nutzen. |
+
+Eigentümer und Schreibrechte müssen zum **Datenbank-Image** passen, nicht zur
+Containeridentität von Taxonomy. Oracle-eigene Images verwenden andere Variablen,
+etwa `ORACLE_PWD` und `ORACLE_PDB`; maßgeblich ist die konkrete Image-Anleitung.
+SQL Server Developer ist für Entwicklung/Tests vorgesehen; Oracle Free hat
+editionsabhängige Grenzen und Nutzungsbedingungen. Ein größeres PVC ändert weder
+die Lizenz noch die Unterstützungsstufe von Taxonomy. Referenzen:
+[PostgreSQL-Image](https://hub.docker.com/_/postgres),
+[SQL-Server-Speicher](https://learn.microsoft.com/en-us/sql/linux/containers/configure),
+[SQL-Server-Editionen](https://www.microsoft.com/licensing/guidance/SQL),
+[gvenzl-Oracle-Image](https://github.com/gvenzl/oci-oracle-free),
+[Oracle-eigene Images](https://github.com/oracle/docker-images/blob/main/OracleDatabase/SingleInstance/README.md).
+
+Die [Datenbank-Pod-Anleitung](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/DATABASE_PODS.md)
+und die Service-Values für [PostgreSQL](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/values-postgres-service.yaml),
+[SQL Server](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/values-mssql-service.yaml)
+und [Oracle](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/values-oracle-service.yaml)
+nutzen das vorhandene Chart. Sie halten den Datenbankspeicher unabhängig und beschreiben DNS, TLS und
+NetworkPolicies. Ein ClusterIP-Service stellt interne Adressierung bereit; für
+Zugriff ausschließlich durch Taxonomy sind zusätzlich passende, durchgesetzte
+NetworkPolicies erforderlich. TLS und Netzwerkisolation schützen unterschiedliche
+Teile der Verbindung und müssen zur gewählten Betriebsrichtlinie passen.
+
+<a id="schema-initialization"></a>
+## Leeres SQL-Server- oder Oracle-Schema initialisieren
+
+**Ein Konto und eine erfolgreiche Anmeldung initialisieren keine Taxonomy-Tabellen.**
+Das optionale Anlegen für SQL Server/Oracle bereitet Datenbankkonten und Rechte vor.
+Oracle arbeitet in einer vorhandenen PDB und erstellt den Anwendungsbenutzer samt
+Schema mit begrenztem Tablespace-Kontingent. Das normale Deployment wird weiterhin
+mit `TAXONOMY_DDL_AUTO=validate` exportiert; die Profile behalten
+`spring.flyway.enabled=false`. Aktivieren Sie nicht die PostgreSQL-Flyway-Strecke
+für diese Datenbanken. Die portablen Vertragsmigrationen allein bilden keine
+vollständige Initialisierung eines leeren Schemas.
+
+Für aufbewahrte Installationen müssen datenbankspezifische Schemaanlage, Upgrade
+und Wiederherstellung für den vorgesehenen Release vor dem Deployment abgenommen
+sein. Ein Validierungsfehler ist anhand dieses Verfahrens zu untersuchen. Verwenden
+Sie niemals `create` oder `create-drop` zur Reparatur einer Datenbank mit zu
+erhaltenden Inhalten.
+
+Nur ein **frisches, isoliertes, verwerfbares Evaluierungsziel** darf dem
+Testaufbau des Repositorys folgen: Eine einzelne Taxonomy-Instanz mit
+`TAXONOMY_DDL_AUTO=create` zum Anlegen der Hibernate-Tabellen starten, erfolgreichen
+Start prüfen und das Deployment **vor jedem weiteren Anwendungsneustart** auf
+`TAXONOMY_DDL_AUTO=validate` umstellen. Die mitgelieferten Compose-Dateien für
+SQL Server und Oracle behalten bewusst `create` und sind daher verwerfbare
+Beispiele, obwohl ihre Datenbankdateien auf einem Volume liegen. Verwenden Sie
+sie nicht wiederholt mit Daten, die erhalten bleiben sollen. Überschreibungen
+beim Start müssen zum gewählten Modus passen. Der Helm-Export des Assistenten setzt
+zusätzlich `SPRING_JPA_HIBERNATE_DDL_AUTO=validate` und
+`SPRING_JPA_PROPERTIES_HIBERNATE_HBM2DDL_AUTO=validate`; allein
+`TAXONOMY_DDL_AUTO` zu ändern übersteuert diese Werte nicht. Verwenden Sie eine
+separate verwerfbare Initialisierungskonfiguration ohne widersprüchliche native
+Hibernate-/JPA-Schemaaktionen. Anschließend die vollständige geprüfte
+Validierungskonfiguration für den aufbewahrten Betrieb wiederherstellen. Diese
+Schutzwerte niemals aus einer bereits zu erhaltenden Datenbankinstallation entfernen.
+Der normale Assistentenexport aktiviert keinen destruktiven Initialisierungsmodus. Dieser Evaluierungsweg
+begründet keine Unterstützung für produktive Migration oder Wiederherstellung.
 
 ## PostgreSQL-Pod in Rancher oder Kubernetes
 
@@ -175,7 +388,7 @@ Die Anwendung wird mit einer eingebetteten HSQLDB-Datenbank ausgeliefert. Es ist
 
 **Wesentliche Eigenschaften:**
 - Läuft **In-Process** (gleiche JVM, kein Netzwerk-Hop)
-- Verwendet einen begrenzten HikariCP-Pool (`minimum-idle=1`, `maximum-pool-size=4`)
+- Verwendet einen begrenzten HikariCP-Pool (`minimum-idle=1`, `maximum-pool-size=8`)
 - Nutzt standardmäßig eine In-Memory-URL für Entwicklung und Tests ohne Einrichtung
 - Unterstützt für persistente Installationen eine Datei-URL; der Pool hält eine Verbindung offen, damit `shutdown=true` HSQLDB nicht während des Spring-Starts beendet
 - Verwendet einen vorhandenen persistierten Katalog nach einem Neustart weiter; `TAXONOMY_INIT_RELOAD_EXISTING=true` löst bewusst ein destruktives Neuladen aus
@@ -287,6 +500,10 @@ docker compose -f docker-compose-mssql.yml up
 ```
 
 Dies startet einen SQL-Server-2022-Developer-Edition-Container zusammen mit der Taxonomy-Anwendung. Die Daten werden in einem Docker-Volume (`mssql-data`) persistiert.
+Der Anwendungs-Testaufbau nutzt `TAXONOMY_DDL_AUTO=create`: Das Volume allein schützt
+Hibernate-Tabellen nicht bei Anwendungsneustarts. Nur für verwerfbare Ziele verwenden;
+vor dem Aufbewahren von Daten [Schema-Initialisierung](#schema-initialization) lesen.
+Developer Edition verleiht keine Produktionsnutzungsrechte.
 
 ```bash
 # Tear down and remove data
@@ -310,7 +527,7 @@ export SPRING_PROFILES_ACTIVE=mssql
 export TAXONOMY_DATASOURCE_URL="jdbc:sqlserver://myserver.example.com:1433;databaseName=taxonomy;encrypt=true;trustServerCertificate=false"
 export SPRING_DATASOURCE_USERNAME=taxonomy_user
 export SPRING_DATASOURCE_PASSWORD=SecurePassword123!
-export TAXONOMY_DDL_AUTO=update
+export TAXONOMY_DDL_AUTO=validate
 
 java -jar taxonomy-app/target/taxonomy-app-*.jar
 ```
@@ -354,6 +571,13 @@ docker compose -f docker-compose-oracle.yml up
 ```
 
 Dies startet einen Oracle-Database-23c-Free-Container zusammen mit der Taxonomy-Anwendung. Die Daten werden in einem Docker-Volume (`oracle-data`) persistiert.
+Das Image legt mit `ORACLE_DATABASE` die PDB `taxonomy` und mit
+`APP_USER`/`APP_USER_PASSWORD` den Anwendungsbenutzer an. `ORACLE_PASSWORD` allein
+setzt nur die Administratorpasswörter. Diese Initialisierungsvariablen ändern kein
+vorhandenes Datenvolume. Die Anwendung verwendet weiterhin `TAXONOMY_DDL_AUTO=create`;
+das Beispiel bleibt daher trotz Volume verwerfbar. Vor dem Aufbewahren von Daten
+[Schema-Initialisierung](#schema-initialization) und
+[Image-Anleitung](https://github.com/gvenzl/oci-oracle-free) lesen.
 
 > **Hinweis:** Der Oracle-Container benötigt beim ersten Start möglicherweise 1–2 Minuten, während die Datenbank initialisiert wird. Das Image `gvenzl/oracle-free:23-slim-faststart` ist für einen schnellen Start optimiert.
 
@@ -379,7 +603,7 @@ export SPRING_PROFILES_ACTIVE=oracle
 export TAXONOMY_DATASOURCE_URL="jdbc:oracle:thin:@myserver.example.com:1521/ORCLPDB1"
 export SPRING_DATASOURCE_USERNAME=taxonomy_user
 export SPRING_DATASOURCE_PASSWORD=SecurePassword123!
-export TAXONOMY_DDL_AUTO=update
+export TAXONOMY_DDL_AUTO=validate
 
 java -jar taxonomy-app/target/taxonomy-app-*.jar
 ```
@@ -461,7 +685,7 @@ Alle externen Datenbankprofile (PostgreSQL, MSSQL, Oracle) konfigurieren HikariC
 export SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=20
 ```
 
-> **Hinweis:** Das HSQLDB-Profil verwendet einen kleinen begrenzten HikariCP-Pool (`minimum-idle=1`, `maximum-pool-size=4`). Die Leerlaufverbindung ist für einen stabilen Lebenszyklus dateibasierter Datenbanken mit `shutdown=true` erforderlich.
+> **Hinweis:** Das HSQLDB-Profil verwendet einen kleinen begrenzten HikariCP-Pool (`minimum-idle=1`, `maximum-pool-size=8`). Die Leerlaufverbindung ist für einen stabilen Lebenszyklus dateibasierter Datenbanken mit `shutdown=true` erforderlich.
 
 ---
 

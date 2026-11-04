@@ -53,7 +53,7 @@ kubectl -n taxonomy create secret generic taxonomy-secrets \
 
 The Secret key `ADMIN_PASSWORD` is mapped to the application variable `TAXONOMY_ADMIN_PASSWORD` and bootstraps the interactive local administrator account. The distinct `ADMIN_TOKEN` key is mapped to the application variable `ADMIN_PASSWORD` and is used for Actuator/admin-token checks and the optional ServiceMonitor. Never reuse the interactive login credential as the machine token. Existing installations that do not enable the ServiceMonitor may omit the optional `ADMIN_TOKEN` key. Optional LLM keys may be added to the same Secret. Database credentials remain mandatory; login credentials depend on the selected mode. Guided `authentication.mode=keycloak` uses `KEYCLOAK_CLIENT_SECRET` and removes the local bootstrap-password mapping. The production guard remains enabled, validating central settings and any configured machine token without demanding a local account. Do not work around OIDC startup by providing a dummy local password. Guided Keycloak rejects attempts to restore `TAXONOMY_ADMIN_PASSWORD` through `extraEnv`, even with a Secret reference; unrelated Secret references remain supported.
 
-The guided database selector supports PostgreSQL and the existing MSSQL compatibility profile, including separately operated database Pods. See [DATABASE_PODS.md](DATABASE_PODS.md) for the Service/TLS/network-policy examples and MSSQL limitations. The Taxonomy chart never provisions or deletes the external database.
+The guided database selector supports PostgreSQL and the existing MSSQL/Oracle compatibility profiles, including separately operated database Pods. See [DATABASE_PODS.md](DATABASE_PODS.md) for the Service/TLS/network-policy examples and compatibility limits. The Taxonomy chart never provisions or deletes the external database.
 
 Set custom-provider endpoints in `config.CUSTOM_LLM_URL`, not `extraEnv`. They require HTTPS (HTTP only on exact loopback hosts), no URL credentials, query, fragment, whitespace or backslash. Authentication belongs in `secretEnv.CUSTOM_LLM_API_KEY`. These checks apply even in `existing` mode and still run without JSON Schema validation. A model service in another Pod is not loopback. See [installation setup](../../../docs/INSTALLATION_SETUP.md) for validation and native configuration contracts.
 
@@ -256,9 +256,20 @@ The portable Kubernetes default runs as numeric user/group `10001:10001`, drops 
 - `/app/data`: `emptyDir` by default, or a PVC when `persistence.enabled=true`;
 - additional explicitly configured mounts.
 
-PostgreSQL is the authoritative persistent store. The default in-memory Lucene directory is rebuilt per pod. When `TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem`, the chart requires a PVC and restricts the deployment to one replica.
+The active database is the authoritative store for application records and server-side preferences, including database-backed Git history. PostgreSQL is the supported external production default and requires its own persistent storage. A Taxonomy PVC does not protect that external database or turn an in-memory HSQLDB into a file database. The default Lucene directory is in memory; complete recovery of every index is not guaranteed merely by restarting. When `TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem`, the chart requires a PVC and restricts the deployment to one replica.
 
 The same `Recreate` strategy that prevents mixed-version schema access also avoids ReadWriteOnce multi-attach failures. Enabling persistence does not change the strategy because the safe strategy is already the default.
+
+Before replacing a temporary installation or changing a mount, follow
+[Keep data and settings across restarts](../../../docs/en/DATABASE_SETUP.md#persistent-installation)
+([Deutsch](../../../docs/de/DATABASE_SETUP.md#persistent-installation)). It distinguishes
+disposable in-memory state, valuable data that must remain available until a verified
+transfer exists, file HSQLDB with a PVC, and an external DB with separate application
+file storage. The wizard does not copy existing data. Preserve Secrets/values and
+retained source files as well as the database; a blank PVC does not copy files from
+the old container. This chart creates its own application PVC without an
+`existingClaim` setting. It does not promise retention after Helm uninstall or
+PVC/namespace deletion; review PV reclaim policy and tested backups first.
 
 ## Scaling and disruption budgets
 

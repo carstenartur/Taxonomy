@@ -35,9 +35,13 @@
 {{- if not (has $mode (list "existing" "local" "keycloak")) -}}
 {{- fail "authentication.mode must be existing, local or keycloak" -}}
 {{- end -}}
-{{- if not (has $databaseType (list "existing" "postgres" "mssql")) -}}
-{{- fail "database.type must be existing, postgres or mssql" -}}
+{{- if not (has $databaseType (list "existing" "postgres" "mssql" "oracle")) -}}
+{{- fail "database.type must be existing, postgres, mssql or oracle" -}}
 {{- end -}}
+{{/* Keep URL validation here: JSON Schema diagnostics can echo rejected credential-bearing values. */}}
+{{- $postgresUrl := "^jdbc:postgresql://[^@[:space:]]+$" -}}
+{{- $mssqlUrl := "^jdbc:sqlserver://[^@[:space:]]+$" -}}
+{{- $oracleUrl := "^jdbc:oracle:thin:@[^@[:space:]]+$" -}}
 {{- $httpsEndpoint := "(?i)^https://(\\[[0-9a-f:.]+\\]|([a-z0-9]([a-z0-9-]*[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]*[a-z0-9])?\\.?)(:[0-9]+)?(/[^?#[:space:]]*)?$" -}}
 {{- $customUrl := get $config "CUSTOM_LLM_URL" | default "" | toString -}}
 {{- if $customUrl -}}
@@ -55,7 +59,7 @@
 {{- range splitList "," (get $config "SPRING_PROFILES_ACTIVE" | default "postgres,kubernetes") -}}
 {{- if trim . -}}{{- $profiles = append $profiles (trim .) -}}{{- end -}}
 {{- end -}}
-{{- $knownDatabaseProfiles := list "postgres" "mssql" "hsqldb" "oracle" -}}
+{{- $knownDatabaseProfiles := list "postgres" "mssql" "hsqldb" "hsqldb-file" "oracle" -}}
 {{- if ne $databaseType "existing" -}}
 {{/* The explicit selection replaces database profiles only, not deployment/auth profiles. */}}
 {{- $otherProfiles := list -}}
@@ -72,8 +76,11 @@
 {{- $value := get $database $setting | default "" -}}
 {{- if $value -}}
 {{- if hasKey $config $env -}}{{- fail (printf "database.%s conflicts with config.%s; configure this setting in one place" $setting $env) -}}{{- end -}}
-{{- if and (eq $setting "url") (or (contains "@" $value) (regexMatch "(?i)(password|sslpassword|user(name)?|uid|pwd)\\s*=" $value)) -}}
+{{- if and (eq $setting "url") (or (and (contains "@" $value) (not (regexMatch $oracleUrl $value))) (regexMatch "(?i)(password|sslpassword|user(name)?|uid|pwd)\\s*=" $value)) -}}
 {{- fail "database.url must not contain credentials; use the selected Secret instead" -}}
+{{- end -}}
+{{- if and (eq $setting "url") (not (or (regexMatch $postgresUrl $value) (regexMatch $mssqlUrl $value) (regexMatch $oracleUrl $value))) -}}
+{{- fail "database.url requires a PostgreSQL, SQL Server or Oracle thin JDBC URL without whitespace or embedded credentials" -}}
 {{- end -}}
 {{- $_ := set $config $env $value -}}
 {{- $_ := unset $secrets $env -}}
@@ -90,7 +97,7 @@
 {{- $databaseProfiles = uniq $databaseProfiles -}}
 {{- if ne (len $databaseProfiles) 1 -}}{{- fail "A guided database URL requires one database profile; select database.type explicitly" -}}{{- end -}}
 {{- $activeDatabase := first $databaseProfiles -}}
-{{- if not (or (and (eq $activeDatabase "postgres") (hasPrefix "jdbc:postgresql://" $url)) (and (eq $activeDatabase "mssql") (hasPrefix "jdbc:sqlserver://" $url))) -}}
+{{- if not (or (and (eq $activeDatabase "postgres") (regexMatch $postgresUrl $url)) (and (eq $activeDatabase "mssql") (regexMatch $mssqlUrl $url)) (and (eq $activeDatabase "oracle") (regexMatch $oracleUrl $url))) -}}
 {{- fail "The JDBC URL does not match the database profile; select the matching database.type" -}}
 {{- end -}}
 {{- end -}}

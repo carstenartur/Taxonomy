@@ -101,6 +101,10 @@ docker run --rm -p 8080:8080 \
 ### Persistente HSQLDB-Daten
 
 Ein Volume allein reicht nicht aus: Verweisen Sie HSQLDB auf eine Datei unterhalb des gemounteten Verzeichnisses und verwenden Sie den persistenten Schema-Modus.
+Der folgende Start erstellt eine **neue dateibasierte Installation**; er sichert
+keine bereits laufende In-Memory-Datenbank. Folgen Sie vor dem Neustart einer
+flüchtigen Installation mit wichtigen Einstellungen oder Arbeitsergebnissen der
+Anleitung [Daten und Einstellungen behalten](DATABASE_SETUP.md#persistent-installation).
 
 ```bash
 docker run -d --name taxonomy-analyzer \
@@ -232,6 +236,13 @@ Siehe [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md) für alle Anwendungse
 
 ## 5. Persistenz und Backup
 
+Serverseitige Einstellungen werden im datenbankgestützten Repository
+`taxonomy-preferences` versioniert. Die aktive Datenbank erhält diese Einstellungen
+samt Historie. `/app/data` allein sichert keinen externen PostgreSQL-, SQL-Server-
+oder Oracle-Server. Deployment-Values, Secrets, TLS-/Vertrauenskonfiguration und
+Wiederherstellungsdaten externer Identitätsanbieter separat aufbewahren. Reiner
+Browserzustand und Prozesssitzungen liegen außerhalb der Datenbanksicherung.
+
 Der [native Wiederherstellungstest](../testing/native-installation-recovery.md)
 startet die vollständige Anwendung in getrennten JVMs und prüft die kalte
 Wiederherstellung einer dateibasierten HSQL-Installation gleicher Version. Das
@@ -251,6 +262,16 @@ Der Produktions-Compose-Stack speichert veränderlichen Zustand unterhalb von `/
 |---|---|
 | `/app/data/taxonomydb*` | Dateibasierter HSQLDB-Katalog, Benutzer sowie Git-Pack-/Ref-/Reflog-Daten |
 | `/app/data/lucene-index` | Hibernate-Search-/Lucene-Indizes |
+| Konfiguriertes Quellinhaltsverzeichnis, normalerweise `./data/source-content` | Originalbytes von Quellen/Versionen; in die Sicherung des gestoppten Datenvolumens aufnehmen oder einen separaten Mount ausdrücklich mitsichern |
+
+Das Arbeitsverzeichnis des Images ist `/app`; Standardpfade `./data/...` liegen
+damit unter `/app/data`. Mitgelieferte ONNX-Modelle unter `/opt/taxonomy/models`
+gehören zum Image. Eigene Modell-Mounts und externe Broker haben gesonderte
+Speicheranforderungen. Dateibasierte Indizes nicht in der Annahme verwerfen, dass
+beim Start alle Suchbereiche wiederhergestellt werden; siehe die Grenzen der
+Indexwiederherstellung im [Betriebshandbuch](OPERATIONS_GUIDE.md). Rancher-/PVC-
+Konfiguration und den sicheren Übergang von flüchtigem Speicher beschreibt
+dieselbe [Einrichtungsanleitung](DATABASE_SETUP.md#persistent-installation).
 
 Die in `docker-compose.prod.yml` konfigurierten benannten Volumes überleben
 eine Container-Neuerstellung. Stoppen Sie alle Schreiber der HSQLDB-Dateien,

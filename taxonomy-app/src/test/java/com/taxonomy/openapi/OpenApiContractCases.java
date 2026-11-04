@@ -12,6 +12,7 @@ import com.taxonomy.shared.config.OpenApiConfig;
 import com.taxonomy.security.controller.AccountApiController;
 import com.taxonomy.security.service.PasswordChangeService;
 import com.taxonomy.setup.DatabaseSetupController;
+import com.taxonomy.shared.controller.SystemInformationController;
 import com.taxonomy.templates.DocumentTemplateAdminController;
 import org.springdoc.core.configuration.SpringDocConfiguration;
 import org.springdoc.webmvc.core.configuration.SpringDocWebMvcConfiguration;
@@ -150,6 +151,7 @@ public final class OpenApiContractCases {
         }
         checkAccountContract(document, errors);
         checkDatabaseSetupContract(document, errors);
+        checkSystemInformationContract(document, errors);
         for (String suffix : List.of("/adoption-previews", "/adoptions")) {
             var operation = operation(document, ADOPTION + suffix, "post", errors);
             var header = parameter(operation, "If-Match", "header");
@@ -362,27 +364,52 @@ public final class OpenApiContractCases {
                         "Database connection checks report schema overrides as findings, not a 409 conflict", errors);
             }
         }
-        for (String suffix : List.of("/postgres/inspect", "/postgres/provision")) {
+        for (String suffix : List.of("/inspect", "/provision", "/postgres/inspect", "/postgres/provision")) {
             var operation = operation(document, DATABASE_SETUP + suffix, "post", errors);
             for (String status : List.of("200", "400", "401", "403", "413", "415", "503")) {
-                check(operation.path("responses").has(status), "PostgreSQL setup response missing: " + suffix + " " + status, errors);
+                check(operation.path("responses").has(status), "Database preparation response missing: " + suffix + " " + status, errors);
             }
-            check(operation.path("requestBody").path("required").asBoolean(false), "PostgreSQL setup JSON body is required", errors);
+            check(operation.path("requestBody").path("required").asBoolean(false), "Database preparation JSON body is required", errors);
             var request = resolve(document, operation.path("requestBody").path("content").path("application/json").path("schema"));
             for (String field : List.of("target", "maintenanceDatabase", "adminUsername", "adminPassword")) {
-                check(contains(request.path("required"), field), "PostgreSQL setup required field missing: " + field, errors);
+                check(contains(request.path("required"), field), "Database preparation required field missing: " + field, errors);
             }
             check(request.path("properties").path("adminPassword").path("writeOnly").asBoolean(false), "Administrator password must be write-only", errors);
             for (String field : List.of("expectedRole", "expectedDatabase")) {
-                check(request.path("properties").has(field), "PostgreSQL confirmation must bind reviewed action: " + field, errors);
+                check(request.path("properties").has(field), "Database preparation confirmation must bind reviewed action: " + field, errors);
+            }
+            for (String field : List.of("tablespace", "quotaMiB")) {
+                check(request.path("properties").has(field), "Oracle preparation optional field missing: " + field, errors);
+                check(!contains(request.path("required"), field), "Oracle-only preparation field must be optional: " + field, errors);
             }
             var target = resolve(document, request.path("properties").path("target"));
             check(target.path("properties").path("password").path("writeOnly").asBoolean(false), "Application password must be write-only", errors);
             var response = resolve(document, operation.path("responses").path("200").path("content").path("application/json").path("schema"));
             for (String field : List.of("outcome", "role", "database", "finding")) {
-                check(response.path("properties").has(field), "PostgreSQL setup result field missing: " + field, errors);
+                check(response.path("properties").has(field), "Database preparation result field missing: " + field, errors);
             }
-            check(!response.path("properties").has("adminPassword") && !response.path("properties").has("target"), "PostgreSQL result must never echo credential-bearing input", errors);
+            check(!response.path("properties").has("adminPassword") && !response.path("properties").has("target"), "Database preparation result must never echo credential-bearing input", errors);
+        }
+    }
+
+    private static void checkSystemInformationContract(JsonNode document, List<String> errors) {
+        var operation = operation(document, "/api/admin/system-information", "get", errors);
+        for (String status : List.of("200", "401", "403")) {
+            check(operation.path("responses").has(status), "System information response missing: " + status, errors);
+        }
+        var snapshot = resolve(document, operation.path("responses").path("200").path("content").path("application/json").path("schema"));
+        var database = resolve(document, snapshot.path("properties").path("database"));
+        var identity = resolve(document, database.path("properties").path("identity"));
+        for (String field : List.of("status", "user", "sessionUser", "database", "schema", "source")) {
+            check(identity.path("properties").has(field), "Database identity field missing: " + field, errors);
+        }
+        var engineStart = resolve(document, database.path("properties").path("engineStart"));
+        for (String field : List.of("status", "value", "source", "timeBasis")) {
+            check(engineStart.path("properties").has(field), "Database engine start field missing: " + field, errors);
+        }
+        for (String secret : List.of("password", "jdbcUrl", "adminPassword")) {
+            check(!database.path("properties").has(secret) && !identity.path("properties").has(secret),
+                    "System information must not expose " + secret, errors);
         }
     }
 
@@ -437,6 +464,9 @@ public final class OpenApiContractCases {
         }
         @Bean BackupJobController backupController() {
             return new BackupJobController(null, null);
+        }
+        @Bean SystemInformationController systemInformationController() {
+            return new SystemInformationController(null);
         }
         @Bean DatabaseSetupController databaseSetupController() {
             return new DatabaseSetupController(null, null);

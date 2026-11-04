@@ -19,7 +19,7 @@ window.TaxonomyDatabaseSetup = (function () {
 
     function element(name) { return document.getElementById('databaseSetup' + name); }
     function text(name, value) { element(name).textContent = value; }
-    function createMode() { return element('Type').value === 'postgres' && element('ModeCreate').checked; }
+    function createMode() { return element('ModeCreate').checked; }
 
     function navigation() {
         element('Back').hidden = step === 0;
@@ -102,6 +102,7 @@ window.TaxonomyDatabaseSetup = (function () {
     function setStep(value) {
         step = value;
         element('TlsWarning').hidden = step === 0 || element('Tls').checked;
+        element('Compatibility').hidden = step === 0 || element('Type').value === 'postgres';
         element('Dialog').querySelectorAll('[data-database-step]').forEach(function (section) {
             section.hidden = Number(section.dataset.databaseStep) !== step;
         });
@@ -126,24 +127,47 @@ window.TaxonomyDatabaseSetup = (function () {
                 element('Name').value = type === 'oracle' ? 'FREEPDB1' : 'taxonomy';
             }
             element('Ca').value = '';
-        }
-        element('CreateOption').hidden = type !== 'postgres';
-        if (type !== 'postgres') {
-            element('ModeExisting').checked = true;
-            element('ModeCreate').checked = false;
+            element('AdminUsername').value = { postgres: 'postgres', mssql: 'sa', oracle: 'SYSTEM' }[type];
+            element('Maintenance').value = type === 'mssql' ? 'master' : type === 'oracle' ? element('Name').value : 'postgres';
+            if (['taxonomy_app', 'TAXONOMY_APP'].indexOf(element('Username').value) >= 0) {
+                element('Username').value = type === 'oracle' ? 'TAXONOMY_APP' : 'taxonomy_app';
+            }
+            element('AdminPassword').value = '';
+            element('Password').value = '';
         }
         var creating = createMode();
         text('Support', t(type === 'postgres' ? 'database.setup.support.postgres' : 'database.setup.support.evaluation'));
+        text('CreateLabel', t('database.setup.mode.create.' + type));
+        text('CreateHelp', t('database.setup.mode.create.help.' + type));
         text('NameLabel', t(type === 'oracle' ? 'database.setup.service' : 'database.setup.name'));
-        text('NameHelp', t(creating ? 'database.setup.create.name.help' : 'database.setup.name.help'));
-        element('Name').maxLength = creating ? 63 : 128;
-        element('Name').pattern = creating ? '[a-z_][a-z0-9_]{0,62}' : '[A-Za-z0-9_][A-Za-z0-9_.\\-]*';
-        element('Username').maxLength = creating ? 63 : 128;
-        if (creating) element('Username').pattern = '[a-z_][a-z0-9_]{0,62}';
+        text('UsernameLabel', t(type === 'oracle' ? 'database.setup.oracle.user' : type === 'mssql' ? 'database.setup.mssql.user' : 'database.setup.username'));
+        text('NameHelp', t(creating ? 'database.setup.create.name.help.' + type : 'database.setup.name.help'));
+        element('Name').maxLength = creating && type === 'postgres' ? 63 : 128;
+        element('Name').pattern = creating && type !== 'oracle'
+            ? (type === 'postgres' ? '[a-z_][a-z0-9_]{0,62}' : '[a-z_][a-z0-9_]{0,127}')
+            : '[A-Za-z0-9_][A-Za-z0-9_.\\-]*';
+        element('Username').maxLength = creating ? {postgres: 63, mssql: 128, oracle: 30}[type] : 128;
+        if (creating) element('Username').pattern = {postgres: '[a-z_][a-z0-9_]{0,62}',
+            mssql: '[a-z_][a-z0-9_]{0,127}', oracle: '[A-Za-z][A-Za-z0-9_]{0,29}'}[type];
         else element('Username').removeAttribute('pattern');
         element('Password').required = creating;
+        element('Password').minLength = creating && type === 'mssql' ? 8 : 0;
+        element('Password').maxLength = creating ? {postgres: 4096, mssql: 128, oracle: 30}[type] : 4096;
+        if (creating && type === 'mssql') element('Password').pattern = "[^'\\x00-\\x1F\\x7F]{8,128}";
+        else if (creating && type === 'oracle') element('Password').pattern = '[\\x20-\\x21\\x23-\\x7E]{1,30}';
+        else element('Password').removeAttribute('pattern');
         text('PasswordLabel', t(creating ? 'database.setup.create.password' : 'database.setup.password'));
-        text('PasswordHelp', t(creating ? 'database.setup.create.password.help' : 'database.setup.password.help'));
+        text('PasswordHelp', t(creating ? 'database.setup.create.password.help.' + type : 'database.setup.password.help'));
+        text('AdminHelp', t('database.setup.admin.help.' + type));
+        element('MaintenanceGroup').hidden = type === 'oracle';
+        element('Maintenance').readOnly = type === 'mssql';
+        element('OracleStorage').hidden = type !== 'oracle';
+        element('Compatibility').hidden = step === 0 || type === 'postgres';
+        text('ReviewHelp', t('database.setup.review.help.' + type));
+        text('ReviewDatabaseLabel', t(type === 'oracle' ? 'database.setup.service' : 'database.setup.name'));
+        text('ReviewRoleLabel', t(type === 'oracle' ? 'database.setup.oracle.user' : type === 'mssql' ? 'database.setup.mssql.user' : 'database.setup.username'));
+        element('ReviewStorageLabel').hidden = type !== 'oracle';
+        element('ReviewStorage').hidden = type !== 'oracle';
         element('AdminFields').hidden = !creating;
         element('AdminFields').disabled = !creating || mutating;
         text('Check', t(creating ? (needsInspection ? 'database.setup.inspect.again' : 'database.setup.inspect') : 'database.setup.check'));
@@ -161,7 +185,8 @@ window.TaxonomyDatabaseSetup = (function () {
             host: element('Host').value.trim(),
             port: Number(element('Port').value),
             database: element('Name').value.trim(),
-            username: element('Username').value.trim(),
+            username: element('Type').value === 'oracle' && createMode()
+                ? element('Username').value.trim().toUpperCase() : element('Username').value.trim(),
             password: includePassword ? element('Password').value : '',
             tls: element('Tls').checked,
             caCertificate: element('Type').value === 'postgres' && element('Tls').checked
@@ -265,7 +290,7 @@ window.TaxonomyDatabaseSetup = (function () {
 
     function submit(check) {
         if (mutating) return;
-        if (check && createMode()) { preparePostgres(false); return; }
+        if (check && createMode()) { prepareDatabase(false); return; }
         if (!validConnection()) return;
         invalidate();
         var version = generation;
@@ -307,8 +332,9 @@ window.TaxonomyDatabaseSetup = (function () {
         text('ReviewServer', target.host + ':' + target.port);
         text('ReviewDatabase', target.database + ' — ' + resourceText(result.database));
         text('ReviewRole', target.username + ' — ' + resourceText(result.role));
+        text('ReviewStorage', element('Tablespace').value.trim().toUpperCase() + ' · ' + element('Quota').value + ' MiB');
         text('ReviewTransport', t(target.tls ? 'database.setup.transport.tls' : 'database.setup.transport.plain'));
-        text('Provision', t(result.role === 'REUSE' && result.database === 'REUSE' ? 'database.setup.provision.reuse' : 'database.setup.provision'));
+        text('Provision', t(result.role === 'REUSE' && result.database === 'REUSE' ? 'database.setup.provision.reuse' : 'database.setup.provision.' + target.type));
         element('Review').hidden = false;
         element('Review').scrollIntoView({ block: 'nearest' });
     }
@@ -327,11 +353,15 @@ window.TaxonomyDatabaseSetup = (function () {
         return Promise.race([response, deadline]).finally(function () { clearTimeout(timer); });
     }
 
-    function preparePostgres(create) {
+    function prepareDatabase(create) {
         if (mutating || (create && !provisionPlan) || !validConnection()) return;
-        var payload = { target: settings(true), maintenanceDatabase: element('Maintenance').value.trim(),
+        var payload = { target: settings(true), maintenanceDatabase: element('Type').value === 'oracle' ? element('Name').value.trim() : element('Maintenance').value.trim(),
             adminUsername: element('AdminUsername').value.trim(), adminPassword: element('AdminPassword').value, confirmed: create,
             expectedRole: create ? provisionPlan.role : null, expectedDatabase: create ? provisionPlan.database : null };
+        if (payload.target.type === 'oracle') {
+            payload.tablespace = element('Tablespace').value.trim().toUpperCase();
+            payload.quotaMiB = Number(element('Quota').value);
+        }
         invalidate();
         var version = generation;
         mutating = create;
@@ -339,7 +369,7 @@ window.TaxonomyDatabaseSetup = (function () {
         busy(true);
         showResult('info', create ? 'database.setup.provision.running' : 'database.setup.inspect.running', '', '');
         var timeoutMillis = create ? 75000 : 25000;
-        var response = api.sendJson(base + (create ? '/postgres/provision' : '/postgres/inspect'), payload, {
+        var response = api.sendJson(base + (create ? '/provision' : '/inspect'), payload, {
             signal: request ? request.signal : undefined, timeoutMillis: timeoutMillis, retries: 0
         });
         withResponseDeadline(response, timeoutMillis).then(function (result) {
@@ -348,19 +378,20 @@ window.TaxonomyDatabaseSetup = (function () {
             needsInspection = outcome !== 'READY' && outcome !== 'COMPLETE';
             if (outcome === 'COMPLETE') {
                 element('AdminPassword').value = '';
+                element('Username').value = payload.target.username;
                 element('ModeExisting').checked = true;
                 element('ModeCreate').checked = false;
             }
             var status = outcome === 'COMPLETE' ? 'success' : outcome === 'READY' ? 'info' : outcome === 'BUSY' ? 'warning' : 'error';
             var message = result.finding ? findingText(result.finding) : t('database.setup.request.failed');
-            if (outcome !== 'READY') message += ' ' + t('database.setup.provision.resources', resourceText(result.role), resourceText(result.database));
+            if (outcome !== 'READY') message += ' ' + t('database.setup.provision.resources.' + payload.target.type, resourceText(result.role), resourceText(result.database));
             showResult(status, 'database.setup.provision.outcome.' + outcome, message,
-                outcome === 'COMPLETE' ? 'database.setup.check.next' : outcome === 'READY' ? '' : 'database.setup.provision.retry');
+                outcome === 'COMPLETE' ? (payload.target.type === 'postgres' ? 'database.setup.check.next' : 'database.setup.compatibility.next') : outcome === 'READY' ? '' : 'database.setup.provision.retry');
             if (outcome === 'READY') reviewPlan(result);
             updateTarget(false);
         }).catch(function (error) {
             if (version !== generation || !element('Dialog').open) return;
-            // A lost creation response says nothing about whether PostgreSQL committed the operation.
+            // A lost creation response says nothing about whether the database committed the operation.
             var uncertain = create && [400, 401, 403, 413, 415].indexOf(error.status) < 0;
             needsInspection = uncertain;
             showResult('error', uncertain ? 'database.setup.provision.outcome.UNKNOWN' : 'database.setup.request.title',
@@ -440,7 +471,7 @@ window.TaxonomyDatabaseSetup = (function () {
         element('Next').addEventListener('click', function () { if (step === 0) setStep(1); else submit(false); });
         element('Back').addEventListener('click', function () { setStep(Math.max(0, step - 1)); });
         element('Check').addEventListener('click', function () { submit(true); });
-        element('Provision').addEventListener('click', function () { preparePostgres(true); });
+        element('Provision').addEventListener('click', function () { prepareDatabase(true); });
         element('Form').addEventListener('submit', function (event) { event.preventDefault(); if (step === 1) submit(true); });
         element('Form').addEventListener('input', function () { invalidate(); updateTarget(false); });
         element('Type').addEventListener('change', function () { updateTarget(true); });
@@ -476,6 +507,7 @@ window.TaxonomyDatabaseSetup = (function () {
             element('AdminPassword').value = '';
             updateTarget(false);
             text('Current', t('database.setup.current', currentDatabase()));
+            text('Persistence', t(state.inMemory ? 'database.setup.persistence.memory' : 'database.setup.persistence.body'));
             element('Dialog').showModal();
             setStep(0);
         });
