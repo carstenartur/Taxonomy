@@ -1,6 +1,10 @@
 package com.taxonomy.setup;
 
 import java.net.URI;
+import java.net.ConnectException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
+import java.nio.channels.UnresolvedAddressException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -8,8 +12,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.SQLTimeoutException;
+import java.security.cert.CertificateException;
+import java.security.cert.CertPathValidatorException;
+import javax.net.ssl.SSLException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
@@ -17,6 +29,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
 /** Explicit, bounded connection probes. Never starts Spring, Flyway or an AI provider. */
@@ -129,6 +142,68 @@ public final class SetupProbe {
         }
     }
 
+    /** Classifies known failure semantics without including any exception text or connection values. */
+    static SetupChecks.Finding databaseFailure(Throwable failure) {
+        var pending = new ArrayDeque<Throwable>();
+        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        if (failure != null) { pending.add(failure); }
+        // Drivers can chain SQLExceptions independently of causes, or return cyclic/deep graphs.
+        for (int remaining = 64; remaining > 0 && !pending.isEmpty(); remaining--) {
+            Throwable current = pending.removeFirst();
+            if (!visited.add(current)) { continue; }
+            if (current instanceof UnknownHostException || current instanceof UnresolvedAddressException) {
+                return databaseError("dns", "The database server name could not be resolved. Check the hostname and DNS in the target environment.");
+            }
+            if (current instanceof ConnectException) {
+                return databaseError("refused", "The database connection was refused. Check the host, port, database listener and network policy.");
+            }
+            if (current instanceof SocketTimeoutException || current instanceof SQLTimeoutException
+                    || current instanceof TimeoutException) {
+                return databaseError("timeout", "The database connection check timed out. Check server availability and network policy, then retry.");
+            }
+            if (current instanceof SSLException || current instanceof CertificateException
+                    || current instanceof CertPathValidatorException) {
+                return databaseError("tls", "The secure database connection could not be established. Check server TLS support, the certificate hostname and trusted certificate authorities; TLS was not downgraded.");
+            }
+            if (current instanceof InterruptedException) {
+                return databaseError("interrupted", "The database connection check was interrupted. Run the check again when ready.");
+            }
+            if (current instanceof SQLException sql) {
+                String state = sql.getSQLState();
+                // pgJDBC reports a negative SSLRequest response without an SSLException cause.
+                // SQLState 08004 alone also covers authentication/protocol failures: require
+                // its exact fixed driver message and driver exception type, never echo either.
+                if ("08004".equals(state)
+                        && "org.postgresql.util.PSQLException".equals(sql.getClass().getName())
+                        && "The server does not support SSL.".equals(sql.getMessage())) {
+                    return databaseError("tls", "The secure database connection could not be established. Check server TLS support, the certificate hostname and trusted certificate authorities; TLS was not downgraded.");
+                }
+                if (state != null && state.startsWith("28")) {
+                    return databaseError("authentication", "The database rejected the login. Check the application username, password and server authentication rules.");
+                }
+                if ("3D000".equals(state)) {
+                    return databaseError("missing-database", "The selected database does not exist. Check its name or use PostgreSQL preparation to create it.");
+                }
+                if ("42501".equals(state)) {
+                    return databaseError("permission", "The database account lacks permission for this operation. Ask the database administrator to grant the required access.");
+                }
+                if ("HYT00".equals(state) || "HYT01".equals(state)) {
+                    return databaseError("timeout", "The database connection check timed out. Check server availability and network policy, then retry.");
+                }
+                SQLException next = sql.getNextException();
+                if (next != null) { pending.addLast(next); }
+            }
+            Throwable cause = current.getCause();
+            if (cause != null) { pending.addLast(cause); }
+        }
+        return new SetupChecks.Finding(SetupChecks.Status.ERROR, "database.connection",
+                "The database connection failed for an unknown reason. Check server availability, connection settings and database administrator diagnostics.");
+    }
+
+    private static SetupChecks.Finding databaseError(String category, String message) {
+        return new SetupChecks.Finding(SetupChecks.Status.ERROR, "database.connection." + category, message);
+    }
+
     static SetupChecks.Finding bounded(String key, Callable<SetupChecks.Finding> operation, Duration timeout) {
         FutureTask<SetupChecks.Finding> task = new FutureTask<>(operation);
         Thread thread = Thread.ofVirtual().name("taxonomy-setup-probe").unstarted(task);
@@ -137,9 +212,11 @@ public final class SetupProbe {
             return task.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            return new SetupChecks.Finding(SetupChecks.Status.ERROR, key, "Connection check interrupted.");
+            return key.equals("database.connection") ? databaseFailure(interrupted)
+                    : new SetupChecks.Finding(SetupChecks.Status.ERROR, key, "Connection check interrupted.");
         } catch (Exception failure) {
             // Driver/TLS exceptions can contain credentials and full connection URLs.
+            if (key.equals("database.connection")) { return databaseFailure(failure); }
             return new SetupChecks.Finding(SetupChecks.Status.ERROR, key,
                     "Connection failed or timed out; check DNS, network policy, TLS trust and credentials in the target environment.");
         } finally {

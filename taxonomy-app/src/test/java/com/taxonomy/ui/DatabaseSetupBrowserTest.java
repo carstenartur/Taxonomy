@@ -85,7 +85,7 @@ class DatabaseSetupBrowserTest {
                     "spring.jpa.properties.hibernate.hbm2ddl.auto", "create-drop")));
             try {
                 driver.findElement(By.id("databaseSetupNext")).click();
-                wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("databaseSetupStatus"),
+                wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("databaseSetupResultMessage"),
                         "Existing schema-generation settings would override this template"));
                 assertThat(driver.findElement(By.id("databaseSetupProperties")).isDisplayed()).isFalse();
                 wait.until(ExpectedConditions.elementToBeClickable(By.id("databaseSetupNext")));

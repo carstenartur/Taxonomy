@@ -13,9 +13,20 @@ window.TaxonomyDatabaseSetup = (function () {
     var request = null;
     var preview = null;
     var returnFocus = null;
+    var provisionPlan = null;
+    var mutating = false;
+    var needsInspection = false;
 
     function element(name) { return document.getElementById('databaseSetup' + name); }
     function text(name, value) { element(name).textContent = value; }
+    function createMode() { return element('Type').value === 'postgres' && element('ModeCreate').checked; }
+
+    function navigation() {
+        element('Back').hidden = step === 0;
+        element('Next').hidden = step === 2 || (step === 1 && createMode());
+        text('Next', t(step === 1 ? 'database.setup.prepare' : 'database.setup.next'));
+        text('Dismiss', t(step === 2 ? 'database.setup.done' : 'database.setup.continue'));
+    }
 
     function prepareWelcome() {
         if (preparation) return preparation.then(function () { return Boolean(state && state.promptRequired); });
@@ -90,6 +101,7 @@ window.TaxonomyDatabaseSetup = (function () {
 
     function setStep(value) {
         step = value;
+        element('TlsWarning').hidden = step === 0 || element('Tls').checked;
         element('Dialog').querySelectorAll('[data-database-step]').forEach(function (section) {
             section.hidden = Number(section.dataset.databaseStep) !== step;
         });
@@ -97,11 +109,10 @@ window.TaxonomyDatabaseSetup = (function () {
             if (Number(item.dataset.databaseStage) === step) item.setAttribute('aria-current', 'step');
             else item.removeAttribute('aria-current');
         });
-        element('Back').hidden = step === 0;
-        element('Next').hidden = step === 2;
-        text('Next', t(step === 1 ? 'database.setup.prepare' : 'database.setup.next'));
-        text('Status', '');
-        element('Results').hidden = true;
+        navigation();
+        clearResult();
+        provisionPlan = null;
+        element('Review').hidden = true;
         var focus = step === 0 ? element('Type') : step === 1 ? element('Host') : element('ApplyTitle');
         element('Dialog').querySelector('.database-setup-body').scrollTop = 0;
         focus.focus();
@@ -116,12 +127,32 @@ window.TaxonomyDatabaseSetup = (function () {
             }
             element('Ca').value = '';
         }
+        element('CreateOption').hidden = type !== 'postgres';
+        if (type !== 'postgres') {
+            element('ModeExisting').checked = true;
+            element('ModeCreate').checked = false;
+        }
+        var creating = createMode();
         text('Support', t(type === 'postgres' ? 'database.setup.support.postgres' : 'database.setup.support.evaluation'));
         text('NameLabel', t(type === 'oracle' ? 'database.setup.service' : 'database.setup.name'));
+        text('NameHelp', t(creating ? 'database.setup.create.name.help' : 'database.setup.name.help'));
+        element('Name').maxLength = creating ? 63 : 128;
+        element('Name').pattern = creating ? '[a-z_][a-z0-9_]{0,62}' : '[A-Za-z0-9_][A-Za-z0-9_.\\-]*';
+        element('Username').maxLength = creating ? 63 : 128;
+        if (creating) element('Username').pattern = '[a-z_][a-z0-9_]{0,62}';
+        else element('Username').removeAttribute('pattern');
+        element('Password').required = creating;
+        text('PasswordLabel', t(creating ? 'database.setup.create.password' : 'database.setup.password'));
+        text('PasswordHelp', t(creating ? 'database.setup.create.password.help' : 'database.setup.password.help'));
+        element('AdminFields').hidden = !creating;
+        element('AdminFields').disabled = !creating || mutating;
+        text('Check', t(creating ? (needsInspection ? 'database.setup.inspect.again' : 'database.setup.inspect') : 'database.setup.check'));
+        text('CheckScope', t(creating ? 'database.setup.inspect.scope' : 'database.setup.check.scope'));
         var tls = element('Tls').checked;
-        element('TlsWarning').hidden = tls;
+        element('TlsWarning').hidden = step === 0 || tls;
         element('CaGroup').hidden = type !== 'postgres' || !tls;
         element('JvmTrust').hidden = type === 'postgres' || !tls;
+        navigation();
     }
 
     function settings(includePassword) {
@@ -140,80 +171,188 @@ window.TaxonomyDatabaseSetup = (function () {
 
     function validConnection() {
         return Array.from(element('Form').querySelectorAll('[data-database-step="1"] input'))
-            .every(function (input) { return input.reportValidity(); });
+            .every(function (input) {
+                return input.disabled || input.closest('fieldset[disabled]') || input.closest('[hidden]') || input.reportValidity();
+            });
     }
 
     function busy(value) {
         element('Check').disabled = value;
         element('Next').disabled = value;
         element('Back').disabled = value;
+        element('Provision').disabled = value || !provisionPlan;
+        element('Close').disabled = value && mutating;
+        element('Dismiss').disabled = value && mutating;
+        element('Form').querySelectorAll('input, select').forEach(function (input) { input.disabled = value && mutating; });
         element('Form').setAttribute('aria-busy', String(value));
+        element('AdminFields').disabled = !createMode() || (value && mutating);
+    }
+
+    function clearResult() {
+        element('Result').hidden = true;
+        element('Details').hidden = true;
+        element('Details').open = false;
+        element('Results').replaceChildren();
+        text('Status', '');
+        text('ResultMessage', '');
+        text('ResultNext', '');
+        text('ResultContext', '');
     }
 
     function invalidate() {
+        if (mutating) return;
         generation += 1;
         if (request) request.abort();
         request = null;
         preview = null;
+        provisionPlan = null;
+        element('Review').hidden = true;
         busy(false);
-        element('Results').replaceChildren();
-        element('Results').hidden = true;
-        text('Status', '');
+        clearResult();
         text('Properties', '');
         text('Helm', '');
+    }
+
+    function findingText(finding) {
+        var key = 'database.setup.finding.' + finding.key + '.' + finding.status;
+        var translated = t(key);
+        return translated === key ? finding.message : translated;
     }
 
     function findings(items) {
         var list = element('Results');
         list.replaceChildren();
         (items || []).forEach(function (finding) {
+            if (finding.key.indexOf('database.connection') === 0 || finding.key === 'database.tls') return;
             var item = document.createElement('li');
-            var badge = document.createElement('span');
-            var colors = { OK: 'success', WARNING: 'warning text-dark', ERROR: 'danger', NOT_CHECKED: 'secondary' };
-            badge.className = 'badge bg-' + (colors[finding.status] || 'secondary');
-            badge.textContent = t('database.setup.status.' + finding.status);
-            var key = 'database.setup.finding.' + finding.key + '.' + finding.status;
-            var translated = t(key);
-            item.append(badge, document.createTextNode(translated === key ? finding.message : translated));
+            item.textContent = findingText(finding);
             list.appendChild(item);
         });
-        list.hidden = !list.children.length;
+        element('Details').hidden = !list.children.length;
+    }
+
+    function showResult(status, title, message, next) {
+        var result = element('Result');
+        result.dataset.status = status;
+        text('Status', t(title));
+        text('ResultMessage', message || '');
+        text('ResultNext', next ? t(next) : '');
+        var target = settings(false);
+        text('ResultContext', step === 0 ? '' : t('database.setup.result.context', target.host, target.port, target.database, target.username));
+        result.hidden = false;
+        result.scrollIntoView({ block: 'nearest' });
+    }
+
+    function connectionResult(result) {
+        var items = result.findings || [];
+        var outcome = items.find(function (finding) { return finding.key.indexOf('database.connection') === 0; });
+        var ok = outcome && outcome.status === 'OK';
+        var waiting = outcome && outcome.status === 'WARNING';
+        var schemaConflict = items.some(function (finding) { return finding.key === 'database.schema-overrides'; });
+        showResult(ok ? 'success' : waiting ? 'warning' : 'error',
+            ok ? 'database.setup.check.success' : waiting ? 'database.setup.check.waiting' : 'database.setup.check.failed',
+            outcome ? findingText(outcome) : t('database.setup.finding.database.connection.ERROR'),
+            ok ? (schemaConflict ? 'database.setup.schema.conflict' : 'database.setup.check.next') : 'database.setup.check.retry');
+        findings(items);
+    }
+
+    function requestMessage(error) {
+        if (error.status === 400 || error.status === 413) return createMode() ? 'database.setup.create.invalid' : 'database.setup.invalid';
+        if (error.status === 401 || error.status === 403) return 'database.setup.session.failed';
+        if (error.status === 409 && error.responseBody && error.responseBody.code === 'DATABASE_SETUP_SCHEMA_CONFLICT') return 'database.setup.schema.conflict';
+        return 'database.setup.request.failed';
     }
 
     function submit(check) {
+        if (mutating) return;
+        if (check && createMode()) { preparePostgres(false); return; }
         if (!validConnection()) return;
         invalidate();
         var version = generation;
         request = new AbortController();
         busy(true);
-        text('Status', t(check ? 'database.setup.checking' : 'database.setup.preparing'));
+        showResult('info', check ? 'database.setup.checking' : 'database.setup.preparing', '', '');
         api.sendJson(base + (check ? '/check' : '/preview'), settings(check), {
             signal: request.signal,
             timeoutMillis: check ? 15000 : 5000
         }).then(function (result) {
             if (version !== generation || !element('Dialog').open) return;
-            text('Status', t(check ? 'database.setup.check.finished' : 'database.setup.preview.ready'));
-            if (!check) {
+            if (check) connectionResult(result);
+            else {
                 preview = result;
                 text('Properties', result.properties);
                 text('Helm', result.helmValues);
                 setStep(2);
-                text('Status', t('database.setup.preview.ready'));
+                showResult('info', 'database.setup.preview.ready', t('database.setup.preview.message'), 'database.setup.preview.next');
+                findings(result.findings);
             }
-            findings(result.findings);
         }).catch(function (error) {
             if (version !== generation || !element('Dialog').open) return;
-            var message = 'database.setup.request.failed';
-            if (error.status === 400 || error.status === 413) message = 'database.setup.invalid';
-            if (error.status === 409 && error.responseBody
-                    && error.responseBody.code === 'DATABASE_SETUP_SCHEMA_CONFLICT') {
-                message = 'database.setup.schema.conflict';
-            }
-            text('Status', t(message));
+            showResult('error', 'database.setup.request.title', t(requestMessage(error)), 'database.setup.check.retry');
         }).finally(function () {
             if (version !== generation) return;
             request = null;
             busy(false);
+        });
+    }
+
+    function resourceText(state) { return t('database.setup.resource.' + state); }
+
+    function reviewPlan(result) {
+        provisionPlan = result;
+        var target = settings(false);
+        text('ReviewServer', target.host + ':' + target.port);
+        text('ReviewDatabase', target.database + ' — ' + resourceText(result.database));
+        text('ReviewRole', target.username + ' — ' + resourceText(result.role));
+        text('ReviewTransport', t(target.tls ? 'database.setup.transport.tls' : 'database.setup.transport.plain'));
+        text('Provision', t(result.role === 'REUSE' && result.database === 'REUSE' ? 'database.setup.provision.reuse' : 'database.setup.provision'));
+        element('Review').hidden = false;
+        element('Review').scrollIntoView({ block: 'nearest' });
+    }
+
+    function preparePostgres(create) {
+        if (mutating || (create && !provisionPlan) || !validConnection()) return;
+        var payload = { target: settings(true), maintenanceDatabase: element('Maintenance').value.trim(),
+            adminUsername: element('AdminUsername').value.trim(), adminPassword: element('AdminPassword').value, confirmed: create,
+            expectedRole: create ? provisionPlan.role : null, expectedDatabase: create ? provisionPlan.database : null };
+        invalidate();
+        var version = generation;
+        mutating = create;
+        request = create ? null : new AbortController();
+        busy(true);
+        showResult('info', create ? 'database.setup.provision.running' : 'database.setup.inspect.running', '', '');
+        api.sendJson(base + (create ? '/postgres/provision' : '/postgres/inspect'), payload, {
+            signal: request ? request.signal : undefined, timeoutMillis: create ? 75000 : 25000
+        }).then(function (result) {
+            if (version !== generation || !element('Dialog').open) return;
+            var outcome = result.outcome;
+            needsInspection = outcome !== 'READY' && outcome !== 'COMPLETE';
+            if (outcome === 'COMPLETE') {
+                element('AdminPassword').value = '';
+                element('ModeExisting').checked = true;
+                element('ModeCreate').checked = false;
+            }
+            var status = outcome === 'COMPLETE' ? 'success' : outcome === 'READY' ? 'info' : outcome === 'BUSY' ? 'warning' : 'error';
+            var message = result.finding ? findingText(result.finding) : t('database.setup.request.failed');
+            if (outcome !== 'READY') message += ' ' + t('database.setup.provision.resources', resourceText(result.role), resourceText(result.database));
+            showResult(status, 'database.setup.provision.outcome.' + outcome, message,
+                outcome === 'COMPLETE' ? 'database.setup.check.next' : outcome === 'READY' ? '' : 'database.setup.provision.retry');
+            if (outcome === 'READY') reviewPlan(result);
+            updateTarget(false);
+        }).catch(function (error) {
+            if (version !== generation || !element('Dialog').open) return;
+            // A lost creation response says nothing about whether PostgreSQL committed the operation.
+            var uncertain = create && [400, 401, 403, 413, 415].indexOf(error.status) < 0;
+            needsInspection = uncertain;
+            showResult('error', uncertain ? 'database.setup.provision.outcome.UNKNOWN' : 'database.setup.request.title',
+                uncertain ? t('database.setup.finding.database.provision.unknown.ERROR') : t(requestMessage(error)),
+                uncertain ? 'database.setup.provision.retry' : 'database.setup.check.retry');
+        }).finally(function () {
+            if (version !== generation) return;
+            mutating = false;
+            request = null;
+            busy(false);
+            updateTarget(false);
         });
     }
 
@@ -241,15 +380,17 @@ window.TaxonomyDatabaseSetup = (function () {
     }
 
     function close() {
+        if (mutating) return;
         dismissPrompt();
         invalidate();
         element('Password').value = '';
+        element('AdminPassword').value = '';
         element('Dialog').close();
     }
 
     function trapFocus(event) {
         if (event.key !== 'Tab') return;
-        var controls = Array.from(element('Dialog').querySelectorAll('button:not([disabled]), input, select, a[href], [tabindex="0"]'))
+        var controls = Array.from(element('Dialog').querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), summary, a[href], [tabindex="0"]'))
             .filter(function (control) { return control.getClientRects().length > 0; });
         var first = controls[0];
         var last = controls[controls.length - 1];
@@ -269,8 +410,10 @@ window.TaxonomyDatabaseSetup = (function () {
         element('Dialog').addEventListener('cancel', function (event) { event.preventDefault(); close(); });
         element('Dialog').addEventListener('keydown', trapFocus);
         element('Dialog').addEventListener('close', function () {
+            if (mutating) return;
             invalidate();
             element('Password').value = '';
+            element('AdminPassword').value = '';
             if (returnFocus && returnFocus.isConnected) {
                 requestAnimationFrame(function () { if (!element('Dialog').open) returnFocus.focus({ preventScroll: true }); });
             }
@@ -278,10 +421,13 @@ window.TaxonomyDatabaseSetup = (function () {
         element('Next').addEventListener('click', function () { if (step === 0) setStep(1); else submit(false); });
         element('Back').addEventListener('click', function () { setStep(Math.max(0, step - 1)); });
         element('Check').addEventListener('click', function () { submit(true); });
+        element('Provision').addEventListener('click', function () { preparePostgres(true); });
         element('Form').addEventListener('submit', function (event) { event.preventDefault(); if (step === 1) submit(true); });
-        element('Form').addEventListener('input', invalidate);
+        element('Form').addEventListener('input', function () { invalidate(); updateTarget(false); });
         element('Type').addEventListener('change', function () { updateTarget(true); });
         element('Tls').addEventListener('change', function () { updateTarget(false); });
+        element('ModeExisting').addEventListener('change', function () { updateTarget(false); });
+        element('ModeCreate').addEventListener('change', function () { updateTarget(false); });
         element('Dialog').querySelectorAll('[data-database-download]').forEach(function (button) {
             button.addEventListener('click', function () { download(button.dataset.databaseDownload); });
         });
@@ -306,9 +452,10 @@ window.TaxonomyDatabaseSetup = (function () {
             returnFocus = menu && menu.contains(document.activeElement)
                 ? menu.querySelector('summary') : document.getElementById('businessText');
             if (menu) menu.open = false;
-            element('Form').reset();
             invalidate();
-            updateTarget(true);
+            element('Password').value = '';
+            element('AdminPassword').value = '';
+            updateTarget(false);
             text('Current', t('database.setup.current', currentDatabase()));
             element('Dialog').showModal();
             setStep(0);

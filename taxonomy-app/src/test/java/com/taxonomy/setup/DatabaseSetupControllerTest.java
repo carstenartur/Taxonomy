@@ -27,10 +27,60 @@ class DatabaseSetupControllerTest {
     @Autowired MockMvc mvc;
     @Autowired org.springframework.core.env.ConfigurableEnvironment environment;
     @MockitoBean PreferencesService preferences;
+    @MockitoBean PostgresProvisioningService provisioning;
     @MockitoBean com.taxonomy.backup.runtime.BackupAccessPolicy navigationAccess;
     @MockitoBean com.taxonomy.security.service.PrincipalIdentityService navigationIdentities;
     private static final String BASE = "/api/admin/database-setup";
     private static final String REQUEST = "{\"type\":\"postgres\",\"host\":\"db.example.test\",\"port\":5432,\"database\":\"taxonomy\",\"username\":\"taxonomy\",\"password\":\"PRIVATE_SENTINEL\",\"tls\":true,\"caCertificate\":\"\"}";
+    private static final String PROVISION_REQUEST = "{\"target\":" + REQUEST
+            + ",\"maintenanceDatabase\":\"postgres\",\"adminUsername\":\"postgres\",\"adminPassword\":\"ADMIN_SENTINEL\",\"confirmed\":true,\"expectedRole\":\"CREATE\",\"expectedDatabase\":\"CREATE\"}";
+
+    @Test void postgresPreparationRequiresAdminAndCsrfAndRejectsInvalidJsonBeforeConnecting() throws Exception {
+        for (String action : new String[]{"postgres/inspect", "postgres/provision"}) {
+            mvc.perform(post(BASE + "/" + action).with(csrf()).contentType("application/json").content(PROVISION_REQUEST))
+                    .andExpect(status().isUnauthorized());
+            mvc.perform(post(BASE + "/" + action).with(user("reader").roles("USER")).with(csrf()).contentType("application/json").content(PROVISION_REQUEST))
+                    .andExpect(status().isForbidden());
+            mvc.perform(post(BASE + "/" + action).with(user("admin").roles("ADMIN")).contentType("application/json").content(PROVISION_REQUEST))
+                    .andExpect(status().isForbidden());
+            for (String invalid : new String[]{"null", "[]", "{ADMIN_SENTINEL", PROVISION_REQUEST + " PRIVATE_SENTINEL",
+                    PROVISION_REQUEST.replace("\"confirmed\":true", "\"confirmed\":\"PRIVATE_SENTINEL\""),
+                    PROVISION_REQUEST.replace("\"confirmed\":true", "\"confirmed\":true,\"confirmed\":false"),
+                    PROVISION_REQUEST.replace("\"expectedRole\":\"CREATE\"", "\"expectedRole\":\"PRIVATE_SENTINEL\""),
+                    PROVISION_REQUEST.replace("\"confirmed\":true", "\"unexpected\":\"PRIVATE_SENTINEL\"")}) {
+                mvc.perform(post(BASE + "/" + action).with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json").content(invalid))
+                        .andExpect(status().isBadRequest()).andExpect(header().string("Cache-Control", "no-store"))
+                        .andExpect(content().string(not(containsString("PRIVATE_SENTINEL"))))
+                        .andExpect(content().string(not(containsString("ADMIN_SENTINEL"))));
+            }
+            mvc.perform(post(BASE + "/" + action).with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json").content(" ".repeat(16 * 1024 + 1)))
+                    .andExpect(status().isPayloadTooLarge()).andExpect(header().string("Cache-Control", "no-store"));
+        }
+        verifyNoInteractions(provisioning, preferences);
+    }
+
+    @Test void inspectedPlanAndProvisionedResultNeverReturnEitherCredential() throws Exception {
+        var result = new PostgresProvisioningService.ProvisionResult(PostgresProvisioningService.Outcome.READY,
+                PostgresProvisioningService.ResourceState.CREATE, PostgresProvisioningService.ResourceState.CREATE,
+                new SetupChecks.Finding(SetupChecks.Status.OK, "database.provision.ready", "Ready to create."));
+        when(provisioning.inspect(any())).thenReturn(result);
+        when(provisioning.provision(any())).thenReturn(result);
+        for (String action : new String[]{"postgres/inspect", "postgres/provision"}) {
+            mvc.perform(post(BASE + "/" + action).with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json").content(PROVISION_REQUEST))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.outcome").value("READY"))
+                    .andExpect(jsonPath("$.role").value("CREATE"))
+                    .andExpect(header().string("Cache-Control", "no-store"))
+                    .andExpect(content().string(not(containsString("PRIVATE_SENTINEL"))))
+                    .andExpect(content().string(not(containsString("ADMIN_SENTINEL"))));
+        }
+        var input = org.mockito.ArgumentCaptor.forClass(PostgresProvisioningService.ProvisionSettings.class);
+        verify(provisioning).inspect(input.capture());
+        org.junit.jupiter.api.Assertions.assertEquals("taxonomy", input.getValue().target().username());
+        org.junit.jupiter.api.Assertions.assertEquals("postgres", input.getValue().adminUsername());
+        org.junit.jupiter.api.Assertions.assertEquals(PostgresProvisioningService.ResourceState.CREATE, input.getValue().expectedRole());
+        org.junit.jupiter.api.Assertions.assertEquals(PostgresProvisioningService.ResourceState.CREATE, input.getValue().expectedDatabase());
+        verify(provisioning).provision(any());
+    }
 
     @Test void administratorCanReadAndDismissButAnonymousAndOrdinaryUsersCannot() throws Exception {
         mvc.perform(get(BASE)).andExpect(status().isUnauthorized()).andExpect(header().string("Cache-Control", containsString("no-store")));

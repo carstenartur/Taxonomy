@@ -362,6 +362,28 @@ public final class OpenApiContractCases {
                         "Database connection checks report schema overrides as findings, not a 409 conflict", errors);
             }
         }
+        for (String suffix : List.of("/postgres/inspect", "/postgres/provision")) {
+            var operation = operation(document, DATABASE_SETUP + suffix, "post", errors);
+            for (String status : List.of("200", "400", "401", "403", "413", "415", "503")) {
+                check(operation.path("responses").has(status), "PostgreSQL setup response missing: " + suffix + " " + status, errors);
+            }
+            check(operation.path("requestBody").path("required").asBoolean(false), "PostgreSQL setup JSON body is required", errors);
+            var request = resolve(document, operation.path("requestBody").path("content").path("application/json").path("schema"));
+            for (String field : List.of("target", "maintenanceDatabase", "adminUsername", "adminPassword")) {
+                check(contains(request.path("required"), field), "PostgreSQL setup required field missing: " + field, errors);
+            }
+            check(request.path("properties").path("adminPassword").path("writeOnly").asBoolean(false), "Administrator password must be write-only", errors);
+            for (String field : List.of("expectedRole", "expectedDatabase")) {
+                check(request.path("properties").has(field), "PostgreSQL confirmation must bind reviewed action: " + field, errors);
+            }
+            var target = resolve(document, request.path("properties").path("target"));
+            check(target.path("properties").path("password").path("writeOnly").asBoolean(false), "Application password must be write-only", errors);
+            var response = resolve(document, operation.path("responses").path("200").path("content").path("application/json").path("schema"));
+            for (String field : List.of("outcome", "role", "database", "finding")) {
+                check(response.path("properties").has(field), "PostgreSQL setup result field missing: " + field, errors);
+            }
+            check(!response.path("properties").has("adminPassword") && !response.path("properties").has("target"), "PostgreSQL result must never echo credential-bearing input", errors);
+        }
     }
 
     private static JsonNode operation(JsonNode doc, String path, String method, List<String> errors) {
@@ -417,7 +439,7 @@ public final class OpenApiContractCases {
             return new BackupJobController(null, null);
         }
         @Bean DatabaseSetupController databaseSetupController() {
-            return new DatabaseSetupController(null);
+            return new DatabaseSetupController(null, null);
         }
         @Bean ArchitectureEditorController editorController() {
             return new ArchitectureEditorController(null, null, null);

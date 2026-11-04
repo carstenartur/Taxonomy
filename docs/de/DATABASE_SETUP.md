@@ -47,36 +47,34 @@ solange diese Datenbank besteht. Ein Zurücksetzen oder Neuerstellen der Daten
 entfernt auch die gespeicherte Entscheidung. Administratoren können den
 Assistenten unter **Einstellungen > Datenbank einrichten** erneut öffnen.
 
-1. Wählen Sie **PostgreSQL**, **SQL Server** oder **Oracle** und geben Sie den
-   erreichbaren Datenbankhost, Port, Datenbanknamen (Oracle: Dienstname),
-   Benutzernamen und das Passwort ein. Datenbankserver und Konto müssen bereits
-   vorhanden sein.
-2. Lassen Sie **TLS mit Zertifikatsprüfung** aktiviert. Für PostgreSQL geben Sie
-   bei Bedarf den absoluten Pfad zu einer vertrauenswürdigen CA-Datei an, die
-   bereits im **Taxonomy-Server/Pod** eingebunden ist, beispielsweise
-   `/etc/taxonomy-db-ca/ca.crt`. Dies ist ein Serverpfad, kein Datei-Upload und kein
-   Pfad auf dem Rechner Ihres Browsers. SQL Server und Oracle verwenden das
-   bereits eingerichtete Zertifikatsvertrauen der Anwendungs-JVM; der Assistent
-   installiert keine Zertifikate und erstellt keinen Truststore.
-3. Prüfen Sie die Verbindung. Der Test öffnet eine separate, zeitlich begrenzte
-   JDBC-Verbindung mit Read-only-Hinweis und führt weder DDL noch Schreibzugriffe
-   auf Anwendungsdaten aus. Ein Erfolg bestätigt nur Erreichbarkeit und
-   Datenbankanmeldung. Schemakompatibilität, Schreib-/Migrationsrechte, Upgrade
-   und Wiederherstellung bleiben ungeprüft. SQL Server und Oracle bleiben auch
-   nach einem erfolgreichen Test Evaluierungsprofile.
-4. Kopieren Sie die Konfiguration oder laden Sie `taxonomy-database.properties`
-   und `taxonomy-database-values.yaml` herunter. Passwort-Properties fehlen
-   vollständig; Kommentare erläutern die Bereitstellung über das vorhandene
-   Deployment-Secret oder geschützte Spring-Konfiguration. Das Testpasswort wird
-   nicht als Einstellung gespeichert. Das gewählte Datenbankprofil ersetzt das
-   alte; andere aktive beziehungsweise Standardprofile bleiben erhalten.
-   `production` bleibt erhalten, wenn es vorhanden ist, wird aber nicht automatisch
-   ergänzt. Die Helm-Ausgabe enthält zusätzlich `kubernetes`. Prüfen Sie die
-   Profilliste für den vorgesehenen Betrieb und Anmeldemodus.
+1. Wählen Sie **PostgreSQL**, **SQL Server** oder **Oracle**. Wählen Sie **Vorhandene Datenbank verbinden** oder bei PostgreSQL **PostgreSQL-Datenbank und Benutzer anlegen**. Der PostgreSQL-Server und ein erreichbarer Service müssen bereits vorhanden sein; das automatische Anlegen unterstützt PostgreSQL 15 oder neuer.
+2. Geben Sie den **vom Taxonomy-Pod erreichbaren Host**, Port, Anwendungsdatenbank und Anwendungsbenutzer ein. Stellen Sie TLS passend zum Server ein. Geprüftes TLS benötigt Serverunterstützung, ein zum Hostnamen passendes Zertifikat und eine vertrauenswürdige CA im Taxonomy-Pod. Der optionale CA-Pfad bezeichnet eine eingebundene Serverdatei, etwa `/etc/taxonomy-db-ca/ca.crt`. Die TLS-Auswahl schaltet TLS in PostgreSQL nicht ein. Bei ausdrücklich gewählter unverschlüsselter Verbindung zeigt der Assistent einen Hinweis; ein automatisches Zurückfallen von TLS findet nicht statt.
+3. Bei einer **vorhandenen Datenbank** wählen Sie **Verbindung testen**. Das Hauptergebnis zeigt Erfolg, einen diagnostizierten Fehler oder eine unbekannte Fehlerursache. Ein Erfolg bestätigt die Anmeldung über eine separate Verbindung mit den eingegebenen Einstellungen; Schemamigration und Inbetriebnahme folgen separat. Sie können Eingaben ändern und erneut testen. Hinweise zum Prüfumfang sind aufklappbar.
+4. Zum **Anlegen** geben Sie einen getrennten Serveradministratorzugang und ein Anwendungspasswort ein. Wählen Sie **Server und geplante Einrichtung prüfen**, kontrollieren Sie Namen und Aktionen und bestätigen Sie anschließend **Datenbank und Benutzer jetzt anlegen**. Die Vorprüfung legt nichts an. Ein erfolgreicher Abschluss prüft eine Anwendungsverbindung, das Datenbankeigentum und die nötigen Rechte am public-Schema.
+5. Wählen Sie **Deployment-Konfiguration prüfen**. Hinterlegen Sie das Anwendungspasswort im Rancher-Deployment-Secret, übernehmen Sie die angezeigten Verbindungs- und Profileinstellungen und starten Sie Taxonomy neu. Downloads enthalten keines der Passwörter. Der Assistent bereitet die Konfiguration vor; aktiv wird die neue Datenbank durch Ihr Deployment und die Migrationen beim Start.
 
-![Datenbankassistent — Verbindungseinstellungen für PostgreSQL](../images/database-setup-current-de.png)
+### Ausgangspunkt: offizielles PostgreSQL-Image
 
-*Anwendungsaufnahme des Verbindungsschritts mit Beispieldaten. Das Bild zeigt die Vorbereitung, keinen erfolgreichen Verbindungstest oder Datenumzug. [Quellstand und Bildnachweis](../images/ui-documentation-2026-10-25.json).*
+Bei einem frischen, leeren Datenverzeichnis legt das offizielle Image `postgres:18` mit ausschließlich **`POSTGRES_PASSWORD`** den Administrator **`postgres`** und die Datenbank **`postgres`** an. Verwenden Sie diese Angaben im Administratorabschnitt und wählen Sie im Anwendungsabschnitt einen eigenen Benutzer wie **`taxonomy_app`** mit der Datenbank **`taxonomy`**. Diese Anwendungsnamen sind Vorschläge, bis das ausdrücklich bestätigte Anlegen erfolgreich war. `POSTGRES_USER=taxonomy_app` erzeugt einen Superuser und entspricht nicht dem Anlegen eines eingeschränkten Anwendungsbenutzers. Initialisierungsvariablen erzeugen auf einem bestehenden Volume keine Konten erneut. Siehe [offizielle Image-Dokumentation](https://hub.docker.com/_/postgres).
+
+Der optionale Anlegeweg erstellt eine eingeschränkte LOGIN-Rolle und eine eigene Datenbank mit dieser Rolle als Eigentümer. Für einen neuen Benutzer wird ein PostgreSQL-Serveradministrator benötigt. Ein Nicht-Superuser kann einen geprüften, bestehenden eingeschränkten Anwendungsbenutzer verwenden, wenn er die nötigen Rechte zum Anlegen der Datenbank und zum Wechsel in die Eigentümerrolle besitzt. Administratorzugangsdaten werden niemals als Anwendungszugang übernommen. Das Anwendungspasswort wird mit [pgJDBC PasswordUtil](https://jdbc.postgresql.org/documentation/publicapi/org/postgresql/util/PasswordUtil.html) vor der Verwendung im Anlege-SQL in einen SCRAM-Verifier umgewandelt.
+
+Sind Ressourcen zwischen Prüfung und Bestätigung hinzugekommen oder weggefallen, ändert der Assistent nichts und verlangt eine erneute Prüfung und Bestätigung.
+
+Vorhandene Ressourcen werden nach Prüfung der Benutzerrechte und Rollenmitgliedschaften, des eingegebenen Anwendungszugangs und des Datenbankeigentums weiterverwendet. Der Assistent ändert keine vorhandenen Passwörter oder Eigentümer und löscht keine Ressourcen. Eine erfolgreiche Anmeldung folgt den Authentifizierungsregeln des Servers; bei administrativ eingestellter `trust`-Authentifizierung bestätigt sie nicht die Richtigkeit des eingegebenen Passworts.
+
+| Hauptergebnis | Bedeutung und nächster Schritt |
+|---|---|
+| Verbindung erfolgreich | Taxonomy konnte sich mit den eingegebenen Verbindungseinstellungen anmelden. Prüfen und übernehmen Sie die Deployment-Konfiguration. |
+| Verbindung fehlgeschlagen | Folgen Sie der Diagnose zu DNS, abgelehnter Verbindung, TLS, Anmeldung, fehlender Datenbank, Berechtigungen oder Zeitlimit und testen Sie erneut. |
+| Angaben geprüft — Plan kontrollieren | Es wurde noch nichts angelegt. Prüfen Sie pro Ressource das Anlegen oder Weiterverwenden und bestätigen Sie ausdrücklich. |
+| Datenbank bereit | Anwendungsverbindung, Eigentum und public-Schemarechte wurden geprüft. Übernehmen Sie den Anwendungszugang und starten Sie Taxonomy neu. |
+| Einrichtung teilweise abgeschlossen | Das Ergebnis nennt bereits angelegte Ressourcen. Prüfen Sie den aktuellen Zustand vor dem Fortfahren; es gibt keine automatische Bereinigung. |
+| Ergebnis der Einrichtung ist ungewiss | Antwort oder Datenbankvorgang wurden unterbrochen. Ressourcen können bereits vorhanden sein. Prüfen Sie den Zustand vor einem weiteren Anlegeversuch. |
+
+`CREATE DATABASE` kann mit dem Anlegen der Rolle keine gemeinsame Transaktion bilden. Teilweise oder ungewisse Ergebnisse sind deshalb relevante Zustände; der Assistent behauptet keinen vollständigen Rollback. Während des Anlegens sperrt er Eingaben und Navigation und wiederholt Schreibzugriffe nicht automatisch. Eine spätere Inspektion liest den Serverzustand neu und kann passende Ressourcen weiterverwenden. Siehe [CREATE DATABASE](https://www.postgresql.org/docs/18/sql-createdatabase.html).
+
+Beim Schließen und erneuten Öffnen innerhalb derselben Seite bleiben nicht geheime Eingaben und die TLS-Auswahl erhalten. Beide Passwörter werden gelöscht; das Administratorpasswort außerdem nach erfolgreicher Vorbereitung. Ein Neuladen der Seite beginnt mit einem frischen Formular. Der Konfigurationsexport behält andere aktive beziehungsweise Standardprofile bei, ersetzt das bisherige Datenbankprofil und ergänzt bei Helm `kubernetes`. Ein bereits aktives `production` bleibt erhalten; es wird nicht automatisch ergänzt.
 
 Meldet der Konfigurationsexport einen **Konflikt bei den Schema-Einstellungen**,
 prüfen Sie vorhandene Werte für `spring.jpa.properties.hibernate.hbm2ddl.auto`,
@@ -107,8 +105,8 @@ und [Oracle JDBC](https://docs.oracle.com/en/database/oracle/oracle-database/23/
 
 Ein einfacher Ausgangspunkt ist ein separates PostgreSQL-**StatefulSet** mit
 eigenem **PersistentVolumeClaim (PVC)** und **ClusterIP-Service** im selben
-Namespace wie Taxonomy. Das Taxonomy-Chart und der Browserassistent erstellen die
-Datenbank nicht. Die vorhandene [Anleitung für Datenbank-Pods](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/DATABASE_PODS.md)
+Namespace wie Taxonomy. Das Taxonomy-Chart und der Browserassistent erstellen keinen
+PostgreSQL-Workload; der optionale Assistent kann Datenbank und Benutzer auf einem vorhandenen Server anlegen. Die vorhandene [Anleitung für Datenbank-Pods](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/DATABASE_PODS.md)
 und das [PostgreSQL-Values-Beispiel](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/values-postgres-service.yaml)
 zeigen die Verbindung zu einer separat verwalteten Datenbank.
 
@@ -122,7 +120,7 @@ zeigen die Verbindung zu einer separat verwalteten Datenbank.
    auf Image und Konfiguration ab. Siehe [Rancher-Workloads](https://ranchermanager.docs.rancher.com/how-to-guides/new-user-guides/kubernetes-resources-setup/workloads-and-pods/deploy-workloads),
    [Kubernetes-StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)
    und die [offizielle Image-Anleitung](https://hub.docker.com/_/postgres).
-2. **Datenbank und Anwendungskonto erstellen.** Verwenden Sie die Datenbank
+2. **Datenbank und Anwendungskonto erstellen**, mit dem optionalen Assistenten oben oder über Ihre Datenbankadministration. Verwenden Sie die Datenbank
    `taxonomy` und ein eigenes eingeschränktes Konto, etwa `taxonomy_app`.
    Administrator-/Bootstrap-Zugangsdaten bleiben getrennt. `POSTGRES_USER` des
    offiziellen Images erstellt einen **Superuser**; der Anwendungsname in dieser

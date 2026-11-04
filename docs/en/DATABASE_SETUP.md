@@ -46,32 +46,32 @@ browser session. With in-memory HSQLDB it lasts only as long as that database;
 resetting or recreating the data also removes the saved choice. Administrators
 can reopen the assistant under **Settings > Database setup**.
 
-1. Select **PostgreSQL**, **SQL Server**, or **Oracle** and enter the reachable
-   database host, port, database name (Oracle: service name), username, and password.
-   The database server and account must already exist.
-2. Keep verified **TLS** enabled. For PostgreSQL, supply the absolute path to a
-   trusted CA certificate already mounted in the **Taxonomy server/Pod**, for
-   example `/etc/taxonomy-db-ca/ca.crt`, when your CA configuration requires it.
-   This is a server path, not a file upload or a path on your browser's computer.
-   SQL Server and Oracle use trust already configured in the application's JVM;
-   the assistant does not install certificates or create a truststore.
-3. Run the connection test. It opens a separate, time-bounded JDBC connection with
-   a read-only hint and performs no DDL or application-data writes. Success proves
-   reachability and database login only; schema compatibility, write/migration
-   permissions, upgrade, and restore remain untested. SQL Server and Oracle remain
-   evaluation paths even when this test succeeds.
-4. Copy the configuration or download `taxonomy-database.properties` and
-   `taxonomy-database-values.yaml`. Password properties are omitted entirely;
-   comments explain how to supply the password through the existing deployment
-   Secret or protected Spring configuration. The test password is not saved as a
-   preference. The selected database profile replaces the old database profile,
-   while other active/default profiles remain. `production` is preserved when
-   present and is not added automatically; the Helm output also includes
-   `kubernetes`. Review the profile list for the intended deployment and login mode.
+1. Select **PostgreSQL**, **SQL Server** or **Oracle**. Choose **Connect an existing database**, or for PostgreSQL choose **Create a PostgreSQL database and account**. The PostgreSQL server and a reachable Service must already exist; automatic creation supports PostgreSQL 15 or later.
+2. Enter the host reachable **from the Taxonomy Pod**, port, application database and application user. Configure TLS to match the server. Verified TLS requires server support, a matching certificate hostname and a trusted CA in the Taxonomy Pod. An optional CA path refers to a mounted server file, such as `/etc/taxonomy-db-ca/ca.crt`. Selecting TLS does not enable it on PostgreSQL. If you explicitly select an unencrypted connection, the wizard displays a transport warning and never silently falls back from TLS.
+3. For an **existing database**, select **Test connection**. The main result reports success, a diagnosed failure or an unknown failure. Success means that a separate connection logged in with the submitted settings; schema migration and deployment readiness remain separate. You can edit the inputs and test again. Scope details are expandable.
+4. For **creation**, enter a separate server administrator login and an application password. Select **Check server and proposed setup**, review the names and create/reuse actions, then explicitly select **Create database and account now**. The inspection step creates nothing. If resources appear or disappear between inspection and confirmation, the wizard makes no changes and requires a fresh inspection and confirmation. Completion verifies an application connection, database ownership and required public-schema permissions.
+5. Select **Review deployment configuration**. Put the application password in your Rancher deployment Secret, apply the displayed connection/profile settings and restart Taxonomy. Downloads omit both passwords. The wizard prepares the configuration; the new database becomes active through your deployment and startup migrations.
 
-![Database assistant — PostgreSQL connection settings](../images/database-setup-current-en.png)
+### Starting with the official PostgreSQL image
 
-*Application capture of the connection step with example data. It shows preparation, not a successful connection test or data migration. [Source revision and capture record](../images/ui-documentation-2026-10-25.json).*
+On a fresh empty data directory, the official `postgres:18` image initialized only with **`POSTGRES_PASSWORD`** creates the administrative user **`postgres`** and database **`postgres`**. Use those in the administrator section and choose a separate account such as **`taxonomy_app`** with database **`taxonomy`** in the application section. Those application names are suggestions until the explicit creation step succeeds. Setting `POSTGRES_USER=taxonomy_app` creates a superuser and is not the same as creating a restricted application account. Image initialization variables do not recreate accounts on an existing volume. See the [official image documentation](https://hub.docker.com/_/postgres).
+
+The optional creation path creates a restricted LOGIN role and a dedicated database owned by it. A new account requires a PostgreSQL server administrator; a non-superuser may reuse a verified existing restricted account when it has the required database-creation and owner-role capability. Administrator credentials never become the application credentials. The application password is converted to a SCRAM verifier before it is included in creation SQL, using [pgJDBC PasswordUtil](https://jdbc.postgresql.org/documentation/publicapi/org/postgresql/util/PasswordUtil.html).
+
+Existing resources are reused only after checking account privileges/memberships, supplied application access and database ownership. The wizard does not change an existing password or owner, or drop resources. A successful login reflects the server's authentication rules; if an administrator configured `trust` authentication, it does not establish that the supplied password is correct.
+
+| Main result | Meaning and next step |
+|---|---|
+| Connection successful | Taxonomy could log in with the submitted connection settings. Review and apply the deployment configuration. |
+| Connection failed | Follow the diagnosis for DNS, connection refusal, TLS, login, missing database, permissions or timeout, then test again. |
+| Setup checked — review the plan | No creation was requested. Review each resource marked create/reuse and confirm explicitly. |
+| Database ready | The application connection, ownership and public-schema permissions were verified. Apply the application credentials and restart Taxonomy. |
+| Setup partly completed | The result identifies which resources were created. Inspect the current state before continuing; there is no automatic cleanup. |
+| The setup outcome is unknown | The response or database operation was interrupted. Resources may already exist. Inspect before attempting another creation. |
+
+`CREATE DATABASE` cannot share a transaction with role creation, so partial or uncertain outcomes are meaningful states rather than an all-or-nothing rollback. The wizard disables editing and navigation during creation and never automatically retries writes. A later inspection rereads server state and can safely reuse compatible resources. See [CREATE DATABASE](https://www.postgresql.org/docs/18/sql-createdatabase.html).
+
+Closing and reopening the dialog in the same page session retains non-secret inputs and TLS choices. Both passwords are cleared; the administrator password is also cleared after successful preparation. Reloading the page starts a fresh form. Configuration export preserves other active/default profiles, replaces the old database profile and adds `kubernetes` in Helm output. It preserves `production` when already active and does not add it automatically.
 
 If configuration export reports a **schema-setting conflict**, review existing
 `spring.jpa.properties.hibernate.hbm2ddl.auto`,
@@ -101,7 +101,7 @@ and [Oracle JDBC](https://docs.oracle.com/en/database/oracle/oracle-database/23/
 A straightforward starting arrangement is a separate PostgreSQL **StatefulSet**
 with its own **PersistentVolumeClaim (PVC)** and a **ClusterIP Service** in the same
 namespace as Taxonomy. The Taxonomy chart and browser assistant do not create the
-database. The existing [database Pod guide](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/DATABASE_PODS.md)
+PostgreSQL workload; the optional assistant can create a database and account on an existing server. The existing [database Pod guide](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/DATABASE_PODS.md)
 and [PostgreSQL values example](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/values-postgres-service.yaml)
 show how Taxonomy connects to a separately managed database.
 
@@ -114,7 +114,7 @@ show how Taxonomy connects to a separately managed database.
    chosen image and configuration. See [Rancher workloads](https://ranchermanager.docs.rancher.com/how-to-guides/new-user-guides/kubernetes-resources-setup/workloads-and-pods/deploy-workloads),
    [Kubernetes StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/),
    and the [official image instructions](https://hub.docker.com/_/postgres).
-2. **Create the database and application account.** Use a database named
+2. **Create the database and application account**, either with the optional assistant above or through your database administration process. Use a database named
    `taxonomy` and a dedicated restricted account such as `taxonomy_app`. Keep
    administrator/bootstrap credentials separate. The official image's
    `POSTGRES_USER` creates a **superuser**; setting it to the application username
