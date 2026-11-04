@@ -2029,7 +2029,7 @@
         // ── Render D3 impact graph if available ──
         var graphContainer = document.getElementById('impactGraphView');
         if (graphContainer && elements.length >= MIN_NODES_FOR_GRAPH &&
-            typeof TaxonomyGraph !== 'undefined' && TaxonomyGraph.renderImpactForceGraph) {
+            typeof TaxonomyImpactMap !== 'undefined' && typeof TaxonomyImpactMap.render === 'function') {
 
             var graphNodes = elements.map(function (el) {
                 return {
@@ -2053,7 +2053,7 @@
                 };
             });
 
-            TaxonomyGraph.renderImpactForceGraph(graphContainer, graphNodes, graphEdges, {
+            TaxonomyImpactMap.render(graphContainer, graphNodes, graphEdges, {
                 anchorCodes: new Set(anchors.map(function (a) { return a.nodeCode; })),
                 hotspotCodes: hotspotCodes,
                 hotspotReasons: hotspotReasons,

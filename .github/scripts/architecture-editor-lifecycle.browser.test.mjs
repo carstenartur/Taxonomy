@@ -21,9 +21,10 @@ async function fixture(standaloneUrl=null){
     },html);
     await page.setContent(`${standaloneUrl?'':'<div id="architectureWorkspace"></div>'}<section id="architectureWorkingSource">${body}</section>`);
     await page.evaluate(()=>{
-        window.loaded=[];window.published=[];window.navigation=[];
+        window.loaded=[];window.published=[];window.navigation=[];window.focusCalls=[];window.diagramActivity=[];
         window.TaxonomyI18n={ready:()=>Promise.resolve(),t:key=>key};
-        window.ArchitectureEditorRenderer=()=>({render(){},select(){},presentFocus(){},fit(){},focus(){},zoom(){}});
+        window.ArchitectureEditorRenderer=()=>({render(){},select(){},presentFocus(){},fit(){},
+            focus(...args){focusCalls.push(args.map(value=>typeof value));},zoom(){},setActive(value){diagramActivity.push(value);}});
         window.TaxonomyPlanningEditor={create:()=>({render(){},setEnabled(){}})};
         window.ArchitectureFocusPanel=()=>({observe(){},review(){},setLocked(){},setContext(){},select(){}});
         window.AnalysisSnapshotAdoption=()=>({setLocked(){},update(){},getSource:()=>null});
@@ -81,6 +82,34 @@ test('a dirty editor refuses changing the exact source when discard is declined'
         await page.evaluate(()=>window.confirm=()=>false);
         assert.equal(await page.evaluate(()=>editor.canLeave({kind:'working',repositoryId:'repo',workspaceScopeKey:'private-b',branch:'draft/b'},{retain:false})),false);
         assert.equal(await page.locator('#editorTitle').inputValue(),'Keep my draft');
+    }finally{await page.close();}
+});
+
+test('editor Focus toolbar keeps the selected element and dirty form and sends no DOM event as an ID',async()=>{
+    const page=await fixture();try{
+        await page.evaluate(async()=>{
+            const original=ArchitectureEditorApi.load;
+            ArchitectureEditorApi.exportUrl=()=>'/exact-source-export';
+            ArchitectureEditorApi.load=async(...args)=>{
+                const view=await original(...args);
+                view.model.elements=[{id:'one',title:'First',type:'capability',extensions:{}}];
+                view.scene.nodes=[{id:'one',label:'First',x:10,y:10,width:230,height:86}];
+                view.searchIndex=[{id:'one',text:'one first'}];
+                return view;
+            };
+            window.editor=TaxonomyArchitectureEditor.mount(document.getElementById('architectureWorkingSource'));
+            await editor.activate({kind:'working',repositoryId:'repo',workspaceScopeKey:'private-a',branch:'draft/a'});
+            editor.select('one');window.focusCalls=[];window.discardPrompts=0;
+            window.confirm=()=>{discardPrompts++;return false;};
+        });
+        await page.locator('#editorTitle').fill('Keep this draft');
+        await page.locator('#editorFocus').click();
+        assert.deepEqual(await page.evaluate(()=>focusCalls),[[]]);
+        assert.equal(await page.evaluate(()=>editor.getSource().element),'one');
+        assert.equal(await page.locator('#editorTitle').inputValue(),'Keep this draft');
+        assert.equal(await page.evaluate(()=>discardPrompts),0);
+        await page.evaluate(async()=>{editor.suspend();await editor.activate(editor.getSource());});
+        assert.deepEqual(await page.evaluate(()=>diagramActivity),[true,false,true]);
     }finally{await page.close();}
 });
 

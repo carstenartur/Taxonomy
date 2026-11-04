@@ -27,14 +27,12 @@ const germanMessagesPath = new URL(
 const graphSource = readFileSync(graphSourcePath, 'utf8');
 const scoringSource = readFileSync(scoringSourcePath, 'utf8');
 
-function loadApi() {
-  const originalRenderer = function legacyRenderer() {};
-  const document = {
-    documentElement: {},
-  };
+function loadApi({ graphAvailable = true, document: providedDocument, configure } = {}) {
+  const originalGraphSelect = function selectGraphNode() {};
+  const document = providedDocument || { documentElement: {} };
   const window = {
     TaxonomyGraph: {
-      renderImpactForceGraph: originalRenderer,
+      selectNode: originalGraphSelect,
     },
     TaxonomyI18n: {
       t(key) {
@@ -42,6 +40,7 @@ function loadApi() {
       },
     },
   };
+  if (!graphAvailable) delete window.TaxonomyGraph;
   const context = vm.createContext({
     window,
     document,
@@ -56,6 +55,7 @@ function loadApi() {
     RegExp,
     Boolean,
     parseInt,
+    CustomEvent: class { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } },
     getComputedStyle() {
       return {
         getPropertyValue() {
@@ -65,8 +65,9 @@ function loadApi() {
     },
   });
   vm.runInContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/shared/architecture-diagram.js', import.meta.url), 'utf8'), context);
+  if (configure) configure(window);
   vm.runInContext(graphSource, context, { filename: 'taxonomy-impact-map.js' });
-  return { api: window.TaxonomyImpactMap, graph: window.TaxonomyGraph, originalRenderer };
+  return { api: window.TaxonomyImpactMap, graph: window.TaxonomyGraph, originalGraphSelect, common: window.TaxonomyArchitectureDiagram, window, document };
 }
 
 function propertyKeys(content) {
@@ -79,15 +80,16 @@ function propertyKeys(content) {
   );
 }
 
-test('installs a replacement renderer while preserving the legacy renderer', () => {
-  const { api, graph, originalRenderer } = loadApi();
+test('exports the analysis adapter directly without requiring or replacing Graph Explorer', () => {
+  const { api } = loadApi({ graphAvailable: false });
 
   assert.equal(typeof api.render, 'function');
   assert.equal(typeof api.normalizeNodes, 'function');
   assert.equal(typeof api.buildLayout, 'function');
   assert.equal(typeof api.calculateFitTransform, 'function');
-  assert.equal(graph.renderImpactForceGraphLegacy, originalRenderer);
-  assert.equal(graph.renderImpactForceGraph, api.render);
+  const { graph, originalGraphSelect } = loadApi();
+  assert.deepEqual(Object.keys(graph), ['selectNode']);
+  assert.equal(graph.selectNode, originalGraphSelect);
 });
 
 test('normalizes anchors, context nodes, hotspots and layer metadata', () => {
@@ -303,52 +305,18 @@ test('clears selection from non-interactive diagram background clicks', () => {
   assert.equal(api.shouldClearSelectionFromClick({ defaultPrevented: true, target: background }), false);
 });
 
-test('uses locale-independent matching and avoids per-edge graph scans', () => {
-  assert.doesNotMatch(graphSource, /toLocaleLowerCase/);
-  assert.doesNotMatch(graphSource, /state\.visible\.edges\.find/);
-  assert.match(graphSource, /\.toLowerCase\(\)/);
-  assert.match(graphSource, /mutedBySelection \|\| mutedBySearch/);
-});
-
-test('provides orientation, stable fit, detail and accessibility controls', () => {
-  for (const requiredContract of [
-    'impact-map-search',
-    'impact-map-kpis',
-    'impact-map-details',
-    'contextCheckbox',
-    "state.mode = 'focus'",
-    "setAttribute('aria-label'",
-    "setAttribute('aria-live'",
-    'openGraphExplorer',
-    'requestFullscreen',
-    'ResizeObserver',
-    'calculateFitTransform',
-    'scheduleFitWhenStable',
-    "root.dataset.fitState = value",
-    "if (event.sourceEvent) markUserControlled()",
-    'fitGeneration',
-    'fitFrame',
-    'renderAndCenterNode',
-    'selectedNodeId: null',
-    'minimumScale: 0.01',
-    "fullscreenButton.hidden = typeof root.requestFullscreen !== 'function'",
-  ]) {
-    assert.ok(graphSource.includes(requiredContract), `missing contract: ${requiredContract}`);
-  }
-  assert.match(
-    graphSource,
-    /function markUserControlled\(\) \{[^}]*svgSelection\.interrupt\(\);/,
-  );
-  assert.match(
-    graphSource,
-    /\.on\('zoom', function \(event\) \{\s*if \(event\.sourceEvent\) markUserControlled\(\);/,
-  );
-  assert.doesNotMatch(
-    graphSource,
-    /\.on\('start', function \(event\) \{[^}]*markUserControlled/,
-  );
-  assert.doesNotMatch(graphSource, /showReadableInitialView/);
-  assert.doesNotMatch(graphSource, /fullFitScale\s*>=\s*0\.62/);
+test('delegates interaction policies to the shared engine without a second SVG controller', () => {
+  const {api, common} = loadApi();
+  assert.equal(api.shouldMuteEdge, common.shouldMuteEdge);
+  assert.equal(api.shouldMuteNode, common.shouldMuteNode);
+  assert.equal(api.shouldClearSelectionFromClick, common.shouldClearSelectionFromClick);
+  assert.equal(api.calculateFitTransform, common.calculateFitTransform);
+  assert.doesNotMatch(graphSource, /(?:window\.)?d3\.(?:select|zoom)\s*\(/);
+  assert.doesNotMatch(graphSource, /ResizeObserver|requestAnimationFrame|cancelAnimationFrame/);
+  assert.doesNotMatch(graphSource, /function (?:renderNodes|renderEdges|renderLayers|renderMarkers|updateInteractionStyles|matchingNodeIds|fitView|applyTransform|centerOnNode|updateViewBox)\s*\(/);
+  assert.doesNotMatch(graphSource, /TaxonomyArchitectureDiagram\.connect|diagramApi\.connect/);
+  assert.doesNotMatch(graphSource, /currentView\.state\.\w+\s*=(?!=)/);
+  assert.doesNotMatch(graphSource, /renderImpactForceGraph|renderImpactForceGraphLegacy/);
 });
 
 test('passes relationship derivation reasons into the impact-map detail model', () => {
@@ -363,12 +331,12 @@ test('registers the stylesheet and renderer in the main page', () => {
   assert.match(index, /taxonomy-impact-map\.css/);
   assert.match(index, /taxonomy-impact-map\.js/);
   assert.ok(
-    index.indexOf('taxonomy-impact-map.js') > index.indexOf('taxonomy-graph.js'),
-    'replacement renderer must load after the legacy graph API'
+    index.indexOf('taxonomy-impact-map.js') > index.indexOf('architecture-diagram.js'),
+    'analysis adapter must load after its shared diagram engine'
   );
   assert.ok(
     index.indexOf('taxonomy-impact-map.js') < index.indexOf('taxonomy-scoring.js'),
-    'replacement renderer must load before scoring renders results'
+    'analysis adapter must load before scoring renders results'
   );
 });
 
@@ -381,33 +349,249 @@ test('keeps English and German impact-map message keys aligned', () => {
   assert.ok(english.has('impactmap.aria.relationship'));
 });
 
-test('focused element exposes Unfocus and restores the complete filtered graph without losing selection', () => {
+test('maps immutable evidence and geometry into the common presentation contract', () => {
   const {api} = loadApi();
-  const nodes = ['A', 'B', 'C'].map(id => ({id, title:id, sheet:'BP', sheetLabel:'Processes', layerOrder:1, relevance:1, anchor:true}));
-  const state = {allNodes:nodes, allEdges:[{id:'AB',source:'A',target:'B',type:'SUPPORTS'}],
-    nodeById:new Map(nodes.map(node=>[node.id,node])), selectedNodeId:'A', selectedEdgeId:null,
-    showContext:true, mode:'overview', searchQuery:''};
-  const original = JSON.stringify([state.allNodes,state.allEdges]);
-  const actions = [];
-  const element = () => ({children:[],classList:{remove(){}},appendChild(child){this.children.push(child);},
-    replaceChildren(){this.children=[];},addEventListener(){}});
-  const context = vm.createContext({state, details:element(), window:{}, t:key=>key,
-    createElement:element, appendDetailPair(){}, selectRelatedNode(){},
-    detailsButton:(label,click)=>{const action={label,click};actions.push(action);return action;},
-    renderDiagram(){state.visible=api.visibleModel(state);}});
-  const start = graphSource.indexOf('        function renderNodeDetails(');
-  const end = graphSource.indexOf('        function renderEdgeDetails(',start);
-  vm.runInContext(graphSource.slice(start,end),context);
-  function render() {actions.length=0;state.visible=api.visibleModel(state);context.renderNodeDetails(nodes[0]);}
-  render();actions.find(action=>action.label==='impactmap.focus.element').click();
-  assert.deepEqual(Array.from(state.visible.nodes,node=>node.id),['A','B']);
-  render();
-  const unfocus=actions.find(action=>action.label==='impactmap.unfocus');
-  assert.ok(unfocus,'The focused element must offer a direct Unfocus action');
-  unfocus.click();
-  assert.equal(state.mode,'overview');
-  assert.equal(state.selectedNodeId,'A');
-  assert.deepEqual(Array.from(state.visible.nodes,node=>node.id),['A','B','C']);
-  assert.equal(JSON.stringify([state.allNodes,state.allEdges]),original);
-  render();assert.ok(actions.find(action=>action.label==='impactmap.focus.element'));
+  const nodes = api.normalizeNodes([
+    {nodeCode: 'A', title: 'Capability evidence', taxonomySheet: 'CP', relevance: 0.9, hopDistance: 0, includedBecause: 'Direct source evidence'},
+    {nodeCode: 'B', title: 'Context service', taxonomySheet: 'CR', relevance: 0.52, hopDistance: 1},
+  ], {
+    anchorCodes: ['A'], hotspotCodes: ['B'], hotspotReasons: {B: 'Shared dependency'},
+    layerConfig: {CP: {order: 1, label: 'Capabilities'}, CR: {order: 3, label: 'Core Services'}},
+  });
+  const edges = api.normalizeEdges([
+    {sourceCode: 'A', targetCode: 'B', relationType: 'SUPPORTS', propagatedRelevance: 0.52, derivationReason: 'Required by evidence'},
+  ], new Map(nodes.map(node => [node.id, node])));
+  const original = JSON.stringify({nodes, edges});
+  const scene = api.layoutScene({nodes, edges});
+  assert.equal(scene.nodes[0].searchText, 'A Capability evidence Capabilities');
+  assert.equal(scene.nodes[0].score, '★ 90%');
+  assert.equal(scene.nodes[0].tooltip, 'A — Capability evidence\nCapabilities\n90%\nDirect source evidence');
+  assert.equal(scene.nodes[1].score, '52%');
+  assert.match(scene.nodes[1].tooltip, /Hotspot: Shared dependency/);
+  assert.equal(scene.nodes[1].hotspot, true);
+  assert.equal(scene.nodes[0].width, 230);
+  assert.equal(scene.nodes[0].height, 86);
+  assert.equal(scene.nodes[0].x, 38);
+  assert.equal(scene.nodes[1].x, 336);
+  assert.equal(scene.edges[0].path, 'M268,105 C310,105 294,105 336,105');
+  assert.equal(scene.edges[0].sourceId, 'A');
+  assert.equal(scene.edges[0].targetId, 'B');
+  assert.equal(scene.edges[0].tooltip, 'A → B\nSUPPORTS\nRequired by evidence');
+  assert.equal(scene.edges[0].className, 'impact-map-edge-group');
+  assert.equal(scene.edges[0].pathClass, 'impact-map-edge');
+  assert.equal(scene.layers[0].headerHeight, 36);
+  assert.equal(scene.layers[0].labelOffsetY, 30);
+  assert.equal(scene.layers[0].count, 1);
+  assert.equal(scene.bounds.width, 604);
+  assert.equal(JSON.stringify({nodes, edges}), original);
+});
+
+// The controller is an explicit command boundary here. Its actual selection,
+// filtering, viewport and DOM behavior is covered by architecture-diagram tests
+// and native browser acceptance; this fixture verifies the source UI uses it.
+class UiElement {
+  constructor(tagName) {
+    this.tagName = tagName;
+    this.children = [];
+    this.attributes = {};
+    this.dataset = {};
+    this.listeners = new Map();
+    this.className = '';
+    this.value = '';
+    this._text = '';
+  }
+  get textContent() { return this._text + this.children.map(child => child.textContent).join(''); }
+  set textContent(value) { this._text = String(value); this.children = []; }
+  get classList() {
+    const element = this;
+    return {
+      contains(name) { return element.className.split(/\s+/).includes(name); },
+      remove(name) { element.className = element.className.split(/\s+/).filter(value => value !== name).join(' '); },
+    };
+  }
+  setAttribute(name, value) {
+    this.attributes[name] = String(value);
+    if (name === 'class') this.className = String(value);
+  }
+  getAttribute(name) { return name === 'class' ? this.className : this.attributes[name] ?? null; }
+  appendChild(child) { this.children.push(child); return child; }
+  replaceChildren() { this.children = []; this._text = ''; }
+  descendants() { return this.children.flatMap(child => [child, ...child.descendants()]); }
+  querySelector(selector) {
+    return this.descendants().find(child => selector.startsWith('.')
+      ? child.classList.contains(selector.slice(1)) : child.tagName === selector) || null;
+  }
+  addEventListener(type, handler) {
+    if (!this.listeners.has(type)) this.listeners.set(type, new Set());
+    this.listeners.get(type).add(handler);
+  }
+  removeEventListener(type, handler) { this.listeners.get(type)?.delete(handler); }
+  fire(type, fields = {}) {
+    for (const handler of this.listeners.get(type) || []) handler({type, target: this, ...fields});
+  }
+  focus() { this.focused = true; }
+}
+
+function mountUi() {
+  const document = new UiElement('document');
+  document.documentElement = new UiElement('html');
+  document.events = [];
+  document.createElement = tag => {
+    const element = new UiElement(tag);
+    element.requestFullscreen = () => { document.fullscreenElement = element; document.fire('fullscreenchange'); };
+    return element;
+  };
+  document.createElementNS = (_, tag) => new UiElement(tag);
+  document.exitFullscreen = () => { document.fullscreenElement = null; document.fire('fullscreenchange'); };
+  document.dispatchEvent = event => { document.events.push(event); document.fire(event.type, event); };
+  const container = new UiElement('div'), controllers = [], graphSelections = [], graphOpens = [];
+  const loaded = loadApi({document, configure(window) {
+    window.d3 = {}; // Any adapter-owned D3 call would fail this boundary test.
+    window.TaxonomyGraph.selectNode = id => graphSelections.push(id);
+    window.TaxonomyGraph.openGraphExplorer = id => graphOpens.push(id);
+    window.TaxonomyArchitectureDiagram.create = (svg, options) => {
+      const calls = [];
+      let view, scene;
+      const controller = {
+        svg, options, calls,
+        render(value) {
+          scene = value;
+          this.emit({selectedNodeId: null, selectedEdgeId: null, mode: 'overview', showContext: true, searchQuery: ''});
+        },
+        emit(state, model = scene, matches = []) {
+          const layout = options.layout(model, state);
+          view = {state: Object.freeze({...state}), model: {...layout,
+            nodeIds: new Set(layout.nodes.map(node => node.id)), omitted: model.omitted || 0}, matches};
+          options.onChange(view);
+          return view;
+        },
+        getState: () => view.state,
+        getModel: () => view.model,
+        getScene: () => scene,
+        matchingNodeIds: () => view.matches,
+      };
+      for (const command of ['select', 'focus', 'unfocus', 'fit', 'zoom', 'setSearch', 'setContext', 'destroy']) {
+        controller[command] = (...args) => calls.push([command, ...args]);
+      }
+      controllers.push(controller);
+      return controller;
+    };
+  }});
+  const nodes = ['A', 'B', 'C'].map(id => ({nodeCode: id, title: `Evidence ${id}`, taxonomySheet: 'CP', relevance: 0.9,
+    includedBecause: `Evidence for ${id}`}));
+  const edges = [{sourceCode: 'A', targetCode: 'B', relationType: 'SUPPORTS', derivationReason: 'Retained reason'}];
+  const result = loaded.api.render(container, nodes, edges, {anchorCodes: ['A', 'B', 'C']});
+  function button(label) {
+    return container.descendants().find(element => element.tagName === 'button'
+      && (element.getAttribute('aria-label') === label || element.textContent === label));
+  }
+  return {...loaded, container, controllers, controller: result.diagram, graphSelections, graphOpens, nodes, edges, button};
+}
+
+test('mounts one engine and delegates UI navigation, fitting, search and context commands', () => {
+  const h = mountUi(), diagram = h.controller;
+  assert.equal(h.controllers.length, 1);
+  assert.equal(h.container.__taxonomyImpactMapDiagram, diagram);
+  assert.equal(diagram.svg.children.length, 0, 'the adapter must not render another SVG scene');
+  assert.equal(diagram.svg.listeners.size, 0, 'diagram activation belongs to the engine');
+  assert.equal(diagram.options.limits.modelNodes, 80);
+  assert.equal(diagram.options.presentation.edgeLabelLimit, 14);
+  assert.equal(diagram.options.behavior.focus, 'neighbors');
+  assert.equal(h.button('Fullscreen').hidden, false);
+  assert.equal(h.button('Focus').disabled, true);
+  assert.equal(h.container.querySelector('.impact-map-details').getAttribute('aria-live'), 'polite');
+  assert.equal(h.container.querySelector('.impact-map-status').getAttribute('role'), 'status');
+  assert.deepEqual(diagram.calls, [['fit']]);
+  diagram.calls.length = 0;
+
+  const search = h.container.querySelector('.impact-map-search');
+  search.value = 'unshown';
+  search.fire('input');
+  assert.deepEqual(diagram.calls.pop(), ['setSearch', 'unshown']);
+  const original = diagram.getScene();
+  const state = {...diagram.getState(), searchQuery: 'unshown'};
+  diagram.emit(state, {nodes: original.nodes.slice(0, 2), edges: original.edges}, ['C']);
+  search.fire('keydown', {key: 'Enter'});
+  assert.deepEqual(JSON.parse(JSON.stringify(diagram.calls.pop())), ['select', 'C', null, {center: true, reveal: true}]);
+  assert.match(h.container.querySelector('.impact-map-status').textContent, /was hidden/);
+  search.fire('keydown', {key: 'Escape'});
+  assert.deepEqual(diagram.calls.pop(), ['setSearch', '']);
+  h.button('Clear search').fire('click');
+  assert.deepEqual(diagram.calls.pop(), ['setSearch', '']);
+  assert.equal(search.focused, true);
+
+  const context = h.container.querySelector('.impact-map-toggle').querySelector('input');
+  context.checked = false;
+  context.fire('change');
+  assert.deepEqual(diagram.calls.pop(), ['setContext', false]);
+  assert.equal(state.showContext, true, 'UI commands do not mutate a second controller state');
+  h.button('Zoom in').fire('click');
+  h.button('Zoom out').fire('click');
+  h.button('Fit').fire('click');
+  h.button('Overview').fire('click');
+  assert.deepEqual(diagram.calls.splice(0), [['zoom', 1.25], ['zoom', 0.8], ['fit'], ['unfocus']]);
+  h.button('Fullscreen').fire('click');
+  assert.equal(h.document.fullscreenElement, h.container.querySelector('.impact-map-workbench'));
+  assert.deepEqual(diagram.calls.pop(), ['fit']);
+  h.button('Exit fullscreen').fire('click');
+  assert.equal(h.document.fullscreenElement, null);
+
+  diagram.options.onFitState('pending');
+  assert.equal(h.container.querySelector('.impact-map-workbench').dataset.fitState, 'pending');
+  diagram.options.onFitState('complete', 0.375);
+  assert.equal(h.container.querySelector('.impact-map-workbench').dataset.fitScale, '0.375000');
+  diagram.options.onFitState('user-controlled');
+  assert.equal(h.container.querySelector('.impact-map-workbench').dataset.fitState, 'user-controlled');
+});
+
+test('focused element offers Unfocus through the engine and retains evidence and selection', () => {
+  const h = mountUi(), diagram = h.controller, source = diagram.getScene();
+  const original = JSON.stringify(source);
+  const selected = {...diagram.getState(), selectedNodeId: 'A'};
+  diagram.emit(selected);
+  assert.match(h.container.querySelector('.impact-map-details').textContent, /Evidence for A/);
+  assert.deepEqual(h.graphSelections, ['A']);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.document.events.at(-1).detail)), {kind: 'analysis', elementId: 'A'});
+  h.button('Open in Graph Explorer').fire('click');
+  assert.deepEqual(h.graphOpens, ['A']);
+  h.button('Focus this element').fire('click');
+  assert.deepEqual(diagram.calls.pop(), ['focus', 'A']);
+  assert.equal(diagram.getState().mode, 'overview', 'only the engine changes focus state');
+
+  diagram.emit({...selected, mode: 'focus'}, {nodes: source.nodes.slice(0, 2), edges: source.edges});
+  h.container.querySelector('.impact-map-detail-actions').descendants()
+    .find(element => element.tagName === 'button' && element.textContent === 'Unfocus').fire('click');
+  assert.deepEqual(diagram.calls.pop(), ['unfocus']);
+  diagram.emit(selected);
+  assert.equal(diagram.getState().selectedNodeId, 'A');
+  assert.deepEqual(Array.from(diagram.getModel().nodes, node => node.id), ['A', 'B', 'C']);
+  assert.ok(h.button('Focus this element'));
+  assert.equal(h.graphSelections.length, 1, 'focus and view changes must not republish unchanged selection');
+  assert.equal(JSON.stringify(source), original);
+
+  h.container.querySelector('.impact-map-related-item').fire('click');
+  assert.deepEqual(JSON.parse(JSON.stringify(diagram.calls.pop())), ['select', 'B', null, {center: true, reveal: true}]);
+  diagram.emit({...selected, selectedNodeId: null, selectedEdgeId: source.edges[0].id});
+  assert.match(h.container.querySelector('.impact-map-details').textContent, /Retained reason/);
+  h.button('Select source').fire('click');
+  h.button('Select target').fire('click');
+  assert.deepEqual(JSON.parse(JSON.stringify(diagram.calls.slice(-2))), [
+    ['select', 'A', null, {center: true, reveal: true}], ['select', 'B', null, {center: true, reveal: true}],
+  ]);
+});
+
+test('remount disposes the prior engine and fullscreen listener exactly once', () => {
+  const h = mountUi(), first = h.controller;
+  assert.equal(h.document.listeners.get('fullscreenchange').size, 1);
+  const next = h.api.render(h.container, h.nodes, h.edges, {anchorCodes: ['A']}).diagram;
+  assert.equal(h.controllers.length, 2);
+  assert.equal(first.calls.filter(([command]) => command === 'destroy').length, 1);
+  assert.equal(h.document.listeners.get('fullscreenchange').size, 1);
+  assert.equal(h.container.children.length, 1);
+  assert.equal(h.container.__taxonomyImpactMapDiagram, next);
+  h.container.__taxonomyImpactMapCleanup();
+  assert.equal(next.calls.filter(([command]) => command === 'destroy').length, 1);
+  assert.equal(h.document.listeners.get('fullscreenchange').size, 0);
+  assert.equal(h.container.__taxonomyImpactMapDiagram, undefined);
+  assert.equal(h.container.__taxonomyImpactMapCleanup, undefined);
 });

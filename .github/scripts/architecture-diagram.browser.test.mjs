@@ -33,7 +33,7 @@ async function fixture(touch = false) {
     return page;
 }
 async function mountAnalysis(page) {
-    await page.evaluate(() => { window.diagramSelections=[];document.addEventListener('taxonomy:architecture-selection',event=>diagramSelections.push(event.detail));window.TaxonomyGraph = { renderImpactForceGraph() {}, selectNode(id) { window.selectedAnalysis = id; } }; });
+    await page.evaluate(() => { window.diagramSelections=[];document.addEventListener('taxonomy:architecture-selection',event=>diagramSelections.push(event.detail));window.TaxonomyGraph = { selectNode(id) { window.selectedAnalysis = id; } }; });
     await page.addScriptTag({ path: path.join(resources, 'static/js/shared/taxonomy-impact-map.js') });
     await page.evaluate(() => {
         window.mapState = TaxonomyImpactMap.render(document.getElementById('map'), [
@@ -44,6 +44,188 @@ async function mountAnalysis(page) {
     });
     await page.waitForFunction(() => document.querySelector('.impact-map-workbench').dataset.fitState === 'complete');
 }
+async function appendFocusPanel(page, prefix) {
+    const template = await readFile(path.join(resources, 'templates/fragments/architecture-source-lens.html'), 'utf8');
+    await page.evaluate(({ template, prefix }) => {
+        // Resolve only this fragment's parameterized IDs; retain its actual controls.
+        const markup = template.replace(/th:id="\$\{idPrefix(?: \+ '([^']+)')?\}"/g,
+            (_match, suffix) => `id="${prefix}${suffix || ''}"`);
+        const parsed = new DOMParser().parseFromString(markup, 'text/html');
+        document.body.append(parsed.querySelector('section'));
+    }, { template, prefix });
+    await page.addScriptTag({ path: path.join(resources, 'static/js/architecture-focus.js') });
+}
+async function attachSourceLens(page, source, enabled) {
+    await appendFocusPanel(page, 'nativeSourceLens');
+    for (const file of ['api/architecture-source-focus-api.js', 'shared/architecture-source-lens.js']) {
+        await page.addScriptTag({ path: path.join(resources, 'static/js', file) });
+    }
+    await page.evaluate(async kind => {
+        window.TaxonomyI18n ||= { t: key => key, getLocale: () => 'en' };
+        window.nativeLensRequests = []; window.nativeLensSelections = []; window.nativeLensSaves = 0;
+        window.nativeLensOpenCalls = [];
+        // Keep the real source-pinning/request adapter; replace only its HTTP transport.
+        window.TaxonomyApiClient = { request: async (url, options, policy) => {
+            const body = JSON.parse(options.body);
+            nativeLensRequests.push({ url, method: options.method, body,
+                headers: Object.fromEntries(new Headers(options.headers)), retries: policy.retries,
+                pinnedWorkspaceId: policy.pinnedWorkspaceId });
+            return { json: async () => ({ source: body.source, sourceId: body.sourceId,
+                sourceHash: 'a'.repeat(64), method: 'LOCAL_TEXT_UNASSESSED', outcome: 'NO_CANDIDATES',
+                modelCalls: 0, candidateCount: 0, suggestions: [] }) };
+        } };
+        const analysisSource = { kind: 'analysis', repositoryId: 'repository-A',
+            workspaceScopeKey: 'private-A', workspaceId: 'private-A', branch: 'review/A' };
+        const analysisEvidence = { includedElements: [
+            { nodeCode: 'A', title: 'Capability evidence' }, { nodeCode: 'B', title: 'Context service' },
+            { nodeCode: 'C', title: 'Other evidence' }
+        ], includedRelationships: [{ sourceCode: 'A', targetCode: 'B', relationType: 'SUPPORTS' }] };
+        window.TaxonomyAnalysisSession = {
+            state: () => ({ ready: true, conflict: false, restoring: false, workspaceId: 'private-A', version: 4 }),
+            saveNow: async () => { nativeLensSaves++; return true; }
+        };
+        const workspace = {
+            isActive: () => true,
+            getSource: () => kind === 'analysis' ? analysisSource : snapshotAdapter.getSource(),
+            getData: () => kind === 'analysis' ? analysisEvidence : snapshotAdapter.getData(),
+            getDiagram: () => kind === 'analysis' ? mapState.diagram : snapshotAdapter.getDiagram(),
+            select: id => workspace.getDiagram().select(id),
+            rememberSelection: id => { if (kind === 'analysis') analysisSource.element = id; },
+            open: (...args) => { nativeLensOpenCalls.push(args); throw new Error('Double-click cannot enter an editor'); }
+        };
+        window.nativeSourceLens = TaxonomyArchitectureSourceLens.create({
+            root: document.getElementById('nativeSourceLens'), workspace, idPrefix: 'nativeSourceLens'
+        });
+        // This is the production workspace selection bridge, including the source fence.
+        document.addEventListener('taxonomy:architecture-selection', event => {
+            if (!workspace.isActive() || event.detail?.kind !== workspace.getSource().kind) return;
+            workspace.rememberSelection(event.detail.elementId);
+            nativeLensSelections.push(event.detail.elementId);
+            nativeSourceLens.select(event.detail.elementId);
+        });
+        if (await nativeSourceLens.activate(workspace.getSource()) !== true) {
+            throw new Error(document.getElementById('nativeSourceLensError').textContent);
+        }
+    }, source);
+    assert.equal(await page.locator('#nativeSourceLensUseAi').isChecked(), false);
+    if (enabled) await page.locator('#nativeSourceLensEnabled').check();
+    assert.equal(await page.locator('#nativeSourceLensEnabled').isChecked(), enabled);
+}
+async function recordNativeDoubleClick(page) {
+    await page.evaluate(() => {
+        window.nativeDoubleClicks = [];
+        window.nativeDoubleClickTarget = document.querySelector('[data-node-id="A"]');
+        document.addEventListener('dblclick', event => {
+            const node = event.target.closest('[data-node-id]');
+            if (node) nativeDoubleClicks.push({ id: node.dataset.nodeId, retained: node === nativeDoubleClickTarget });
+        }, true);
+    });
+}
+for (const source of ['analysis', 'snapshot']) for (const enabled of [false, true]) {
+    test(`${source}: native double-click focuses through the actual source lens (${enabled ? 'enabled' : 'disabled'})`, async () => {
+        const page = source === 'analysis' ? await fixture() : await snapshotFixture();
+        const errors = []; page.on('pageerror', error => errors.push(error.message));
+        try {
+            if (source === 'analysis') await mountAnalysis(page);
+            else {
+                await page.evaluate(() => snapshotAdapter.activate({ ...sourceA, requirementId: '7', requirementVersionId: '11' }));
+                await page.waitForFunction(() => document.getElementById('architectureWorkbench').dataset.fitState === 'complete');
+            }
+            await attachSourceLens(page, source, enabled);
+            await recordNativeDoubleClick(page);
+            await page.locator('[data-node-id="A"]').dblclick();
+            const actual = await page.evaluate(kind => {
+                const diagram = kind === 'analysis' ? mapState.diagram : snapshotAdapter.getDiagram();
+                return { mode: diagram.getState().mode, selected: diagram.getState().selectedNodeId,
+                    nodes: diagram.getModel().nodes.map(node => node.id).sort() };
+            }, source);
+            assert.deepEqual(actual, { mode: 'focus', selected: 'A', nodes: ['A', 'B'] });
+            assert.deepEqual(await page.evaluate(() => nativeDoubleClicks), [{ id: 'A', retained: true }],
+                'Panel selection/presentation must preserve the original SVG target until the native gesture completes');
+            assert.ok(await page.evaluate(() => nativeLensSelections.includes('A')),
+                'Real selection events must traverse SourceLens.select and ArchitectureFocusPanel.render');
+            assert.equal(await page.locator('#nativeSourceLensEnabled').isChecked(), enabled);
+            assert.equal(await page.locator('#nativeSourceLensInspect').isEnabled(), enabled);
+            const requests = await page.evaluate(() => {
+                nativeSourceLens.suspend();
+                return { calls: nativeLensRequests, editor: nativeLensOpenCalls, saves: nativeLensSaves };
+            });
+            if (!enabled) assert.deepEqual(requests.calls, []);
+            if (source === 'analysis') assert.ok(requests.saves >= 1, 'The lens pins an acknowledged analysis draft');
+            for (const request of requests.calls) {
+                assert.equal(new URL(request.url, 'http://fixture.test').pathname, '/api/architecture/focus/suggestions');
+                assert.equal(request.method, 'POST'); assert.equal(request.body.useAi, false);
+                assert.equal(request.body.source.kind, source === 'analysis' ? 'ANALYSIS_DRAFT' : 'ANALYSIS_SNAPSHOT');
+                assert.equal(request.body.source.repositoryId, 'repository-A');
+                assert.equal(request.body.source.workspaceScopeKey, 'private-A');
+                assert.equal(request.body.source.branch, 'review/A');
+                if (source === 'analysis') assert.equal(request.body.source.version, 4);
+                else {
+                    assert.equal(request.body.source.projectId, 42); assert.equal(request.body.source.requirementId, 7);
+                    assert.equal(request.body.source.requirementVersionId, 11); assert.equal(request.body.source.snapshotId, 'snapshot-A');
+                }
+                assert.equal(request.headers['if-match'], undefined);
+                assert.equal(request.headers['x-taxonomy-workspace-id'], 'private-A');
+                assert.equal(request.retries, 0); assert.equal(request.pinnedWorkspaceId, 'private-A');
+            }
+            assert.deepEqual(requests.editor, []);
+            assert.equal(await page.locator('#nativeSourceLens [data-focus-action="accept"], #nativeSourceLens [data-focus-action="undo"]').count(), 0);
+            assert.deepEqual(errors, []);
+        } finally { await page.close(); }
+    });
+}
+for (const enabled of [false, true]) test(`working: native double-click survives actual focus-panel selection (${enabled ? 'enabled' : 'disabled'})`, async () => {
+    const page = await fixture();
+    try {
+        await appendFocusPanel(page, 'editorLens');
+        await page.addScriptTag({ path: path.join(resources, 'static/js/architecture-editor-renderer.js') });
+        await page.evaluate(() => {
+            document.getElementById('map').hidden = true;
+            const svg = document.getElementById('editorGraph'); svg.style.width = '1000px'; svg.style.height = '420px';
+            document.getElementById('editorLens').hidden = false;
+            const context = { repositoryId: 'repository-A', workspaceScopeKey: 'private-A', branch: 'draft/A', actor: 'alice',
+                writeMode: 'WORKSPACE_REVISION', revision: 7, commit: null };
+            window.workingLensRequests = []; window.workingSelections = []; window.workingSelected = null;
+            window.renderer = ArchitectureEditorRenderer(svg, id => {
+                if (id === workingSelected) return true;
+                workingSelected = id; workingSelections.push(id);
+                renderer.select(id); workingFocusPanel.select(id);
+                return true;
+            }, () => { throw new Error('Double-click cannot issue a relation command'); }, () => {},
+            ids => workingFocusPanel.observe(ids), id => workingFocusPanel.review(id));
+            window.workingFocusPanel = ArchitectureFocusPanel({ root: document.getElementById('editorLens'), idPrefix: 'editorLens',
+                t: key => key, language: () => 'en', present: renderer.presentFocus,
+                request: async body => {
+                    workingLensRequests.push(body);
+                    return { context: body.context, sourceId: body.sourceId, outcome: 'NO_CANDIDATES',
+                        method: 'LOCAL_TEXT_UNASSESSED', modelCalls: 0, suggestions: [] };
+                },
+                accept: () => { throw new Error('Double-click cannot accept a hypothesis'); },
+                undo: () => { throw new Error('Double-click cannot undo a command'); }, canUndo: () => false,
+                locate: id => renderer.select(id)
+            });
+            renderer.render({ width: 1000, height: 420, nodes: [
+                { id: 'A', label: 'Working capability', x: 105, y: 107, width: 230, height: 86 },
+                { id: 'B', label: 'Working service', x: 405, y: 107, width: 230, height: 86 },
+                { id: 'C', label: 'Working evidence', x: 705, y: 107, width: 230, height: 86 }
+            ], edges: [{ id: 'AB', sourceId: 'A', targetId: 'B', relationType: 'SUPPORTS', sourceX: 335, sourceY: 150, targetX: 405, targetY: 150 }] }, null);
+            workingFocusPanel.setContext(context, true); workingFocusPanel.select(null);
+        });
+        // Keep investigation local; enabling the working lens otherwise opts into AI by default.
+        await page.locator('#editorLensUseAi').uncheck();
+        if (enabled) await page.locator('#editorLensEnabled').check();
+        await recordNativeDoubleClick(page);
+        await page.locator('[data-node-id="A"]').dblclick();
+        assert.deepEqual(await page.evaluate(() => ({ selected: renderer.getState().selectedNodeId, mode: renderer.getState().mode,
+            events: nativeDoubleClicks, selections: workingSelections })),
+            { selected: 'A', mode: 'focus', events: [{ id: 'A', retained: true }], selections: ['A'] });
+        assert.equal(await page.locator('#editorLensEnabled').isChecked(), enabled);
+        assert.equal(await page.locator('#editorLensInspect').isEnabled(), enabled);
+        assert.equal(await page.evaluate(() => workingLensRequests.every(request => request.useAi === false)), true);
+        await page.evaluate(() => { workingFocusPanel.setContext(null, false); renderer.destroy(); });
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
 for (const touch of [false, true]) test(`analysis shared drawing preserves selection, focus/unfocus and viewport (${touch ? 'touch' : 'keyboard'})`, async () => {
     const page = await fixture(touch);
     try {
@@ -199,7 +381,7 @@ test('snapshot return normalizes loaded IDs and workspace aliases without refetc
         await page.evaluate(() => snapshotAdapter.activate(sourceA));
         await page.locator('#architectureSearch').fill('Capability');
         await page.locator('#showArchitectureContext').uncheck();
-        await page.evaluate(() => { snapshotAdapter.select('A'); snapshotAdapter.getDiagram().focus('A'); snapshotAdapter.getDiagram().restoreViewport({x:23,y:41,k:0.8}); window.loadedA=snapshotAdapter.getSource(); snapshotAdapter.suspend(); });
+        await page.evaluate(() => { snapshotAdapter.select('A'); snapshotAdapter.getDiagram().restoreViewport({x:28,y:-94,k:0.7}); snapshotAdapter.getDiagram().focus('A'); snapshotAdapter.getDiagram().restoreViewport({x:23,y:41,k:0.8}); window.loadedA=snapshotAdapter.getSource(); snapshotAdapter.suspend(); });
         await page.evaluate(() => snapshotAdapter.activate(loadedA));
         assert.equal(await page.evaluate(() => snapshotRequests.length), 1, 'same immutable source must reuse the loaded diagram');
         await page.evaluate(async () => { snapshotAdapter.suspend(); await snapshotAdapter.activate({...sourceA,snapshotId:'snapshot-B'}); snapshotAdapter.suspend(); await snapshotAdapter.activate(loadedA); });
@@ -209,6 +391,9 @@ test('snapshot return normalizes loaded IDs and workspace aliases without refetc
         assert.equal(await page.locator('[data-node-id="A"]').getAttribute('aria-pressed'),'true');
         assert.equal(await page.locator('#architectureFocus').getAttribute('aria-pressed'),'true');
         assert.deepEqual(await page.evaluate(() => snapshotAdapter.getDiagram().captureViewport()),{x:23,y:41,k:0.8});
+        await page.locator('#architectureOverview').click();
+        assert.deepEqual(await page.evaluate(() => snapshotAdapter.getDiagram().captureViewport()),{x:28,y:-94,k:0.7},
+            'returning from another snapshot must retain the overview camera saved before focus');
     } finally { await page.close(); }
 });
 test('suspended snapshot disables exports and ignores a late response after the next source loads', async () => {

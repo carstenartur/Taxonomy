@@ -229,8 +229,9 @@
             analysis:{
                 activate:async function () {
                     await restoreAnalysisContext();
+                    analysisDiagram()?.setActive?.(workspace.isActive() && workspace.getSource().kind === 'analysis');
                 },
-                suspend:function () { analysisGeneration++;lens?.suspend(); },
+                suspend:function () { analysisGeneration++;analysisDiagram()?.setActive?.(false);lens?.suspend(); },
                 getSource:function () { return analysisScope; },
                 getData:function () { return window.TaxonomyState?.currentArchView; },
                 getDiagram:analysisDiagram,
@@ -326,7 +327,11 @@
         workspace.rememberSelection(event.detail.elementId);lens?.select(event.detail.elementId);
     });
     if(typeof MutationObserver!=='undefined' && el('architectureViewContent')) {
-        new MutationObserver(function(){if(workspace.isActive() && workspace.getSource().kind==='analysis')lens?.refresh();})
+        new MutationObserver(function(){
+            var analysisActive=workspace.isActive() && workspace.getSource().kind==='analysis';
+            analysisDiagram()?.setActive?.(analysisActive);
+            if(analysisActive)lens?.refresh();
+        })
             .observe(el('architectureViewContent'),{childList:true});
     }
     window.addEventListener('beforeunload',function (event) {

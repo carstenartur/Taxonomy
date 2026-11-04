@@ -34,12 +34,15 @@ class ArchitectureEditorBoundaryTest {
     @Test
     void rendererAndSessionCannotPerformTransportOrPersistCanvasState() throws Exception {
         Path js = Path.of("src/main/resources/static/js");
-        for (String file : java.util.List.of("architecture-editor.js", "architecture-editor-renderer.js", "architecture-focus.js")) {
+        for (String file : java.util.List.of("architecture-editor.js", "architecture-editor-renderer.js",
+                "shared/architecture-diagram.js", "architecture-focus.js")) {
             String source = Files.readString(js.resolve(file));
             assertThat(source).doesNotContain("fetch(", "XMLHttpRequest", "localStorage", "sessionStorage", "sendJson(");
         }
-        String renderer = Files.readString(js.resolve("architecture-editor-renderer.js"));
-        assertThat(renderer).doesNotContain("ArchitectureEditorApi", "TaxonomyApiClient", "JSON.stringify", "forceSimulation");
+        for (String file : java.util.List.of("architecture-editor-renderer.js", "shared/architecture-diagram.js")) {
+            assertThat(Files.readString(js.resolve(file)))
+                    .doesNotContain("ArchitectureEditorApi", "TaxonomyApiClient", "JSON.stringify", "forceSimulation");
+        }
         String featureClient = Files.readString(js.resolve("api/architecture-editor-api.js"));
         assertThat(featureClient).doesNotContain("fetch(", "XMLHttpRequest");
         assertThat(featureClient).contains("TaxonomyApiClient", "If-Match", "retries: 0");

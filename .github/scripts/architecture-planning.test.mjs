@@ -138,7 +138,7 @@ async function editorFixture(conflictAt) {
     document.body={querySelector:selector=>document.getElementById(selector.slice(1)),querySelectorAll:()=>[]};
     const window = {confirm:() => true, addEventListener:() => {}, ArchitectureEditorApi:api,
         TaxonomyI18n:{t:key => key, ready:() => Promise.resolve()},
-        ArchitectureEditorRenderer:() => ({render(){},select(){},focus(){},fit(){},presentFocus(){}})};
+        ArchitectureEditorRenderer:() => ({render(){},select(){},focus(){},fit(){},presentFocus(){},setActive(){}})};
     const sandbox = vm.createContext({window,document,URL,URLSearchParams,AbortController,setTimeout,clearTimeout,
         CustomEvent:class {constructor(type,options){this.type=type;this.detail=options?.detail;}},
         crypto:{randomUUID:() => `00000000-0000-4000-8000-${String(++sequence).padStart(12,'0')}`},
