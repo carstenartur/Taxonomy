@@ -364,7 +364,7 @@ const gitStatusSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/workspace/taxonomy-git-status.js', import.meta.url), 'utf8');
 function gitStatusHarness(fetcher) {
   const events = [], documentListeners = new Map();
-  const bar = { innerHTML: '', classList: { remove() {} } };
+  const bar = { innerHTML: '', classList: { remove() {} }, querySelector() { return null; } };
   const document = {
     addEventListener(name, listener) { documentListeners.set(name, listener); },
     getElementById: () => bar,
