@@ -2,7 +2,7 @@
 .taxonomy-app-chrome { flex: 0 0 auto; min-width: 0; font: 1rem/1.5 system-ui, sans-serif; }
 .taxonomy-app-chrome *, .taxonomy-entity *, .taxonomy-entity-details * { box-sizing: border-box; }
 .taxonomy-app-chrome [hidden], .taxonomy-entity [hidden] { display: none !important; }
-.taxonomy-app-navigation { padding: .45rem 1.25rem; color: #fff; background: #17243a; }
+.taxonomy-app-navigation { position: relative; padding: .45rem 1.25rem; color: #fff; background: #17243a; }
 .taxonomy-app-mainrow { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem 1.25rem; min-width: 0; }
 .taxonomy-app-brand { color: #fff; font-size: 1.05rem; font-weight: 750; text-decoration: none; padding: .5rem 0; }
 .taxonomy-app-primary { display: flex; flex-wrap: wrap; gap: .25rem; min-width: 0; }
@@ -95,6 +95,11 @@
 .taxonomy-app-local .application-utilities { margin-inline-start: auto; }
 .taxonomy-app-primary .application-work-navigation { min-width: 0; }
 .taxonomy-app-primary .mobile-main-navigation { color: #fff; }
+/* Anchor wide utility panels to the header, even when their launcher wraps. */
+@media (min-width: 576px) {
+    #applicationNavigation .application-menu { position: static; }
+    #applicationNavigation .application-menu-content { top: 100%; inset-inline-end: .5rem; }
+}
 @media (max-width: 42rem) {
     .taxonomy-app-primary { flex-wrap: nowrap; align-items: end; }
     .taxonomy-app-primary .application-work-navigation { flex: 1 1 auto; }

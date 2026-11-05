@@ -145,6 +145,17 @@ for(const locale of ['de','en']){
             assert.equal(await page.locator('#applicationNavigation [data-app-route="architecture"]').count(),1);
         }finally{await finish(page);}
     });
+    for(const width of [700,900,1100,1280])test(`${locale}: ${width}px settings panel stays inside the viewport`,async()=>{
+        const page=await fixture(locale,width);try{
+            await page.locator('#applicationSettings > summary').click();
+            const panel=page.locator('#applicationSettings .application-menu-content');
+            assert.equal(await panel.isVisible(),true);
+            const box=await panel.boundingBox();
+            assert.ok(box&&box.x>=0&&box.x+box.width<=width,
+                `Settings must remain fully reachable after header wrapping: ${JSON.stringify(box)}`);
+            assert.equal(await page.locator('#langSelector').isVisible(),true);
+        }finally{await finish(page);}
+    });
     test(`${locale}: compact desktop header keeps Help and About together`,async()=>{
         const page=await fixture(locale);try{
             const help=page.locator('[data-page="help"]').first(),about=page.locator('#aboutBtn');
