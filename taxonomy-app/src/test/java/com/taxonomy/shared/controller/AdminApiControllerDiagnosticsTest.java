@@ -1,6 +1,7 @@
 package com.taxonomy.shared.controller;
 
 import com.taxonomy.analysis.service.LlmProvider;
+import com.taxonomy.shared.service.AiStatusSource;
 import com.taxonomy.analysis.service.LlmProviderConfig;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.catalog.service.TaxonomyService;
@@ -27,6 +28,7 @@ class AdminApiControllerDiagnosticsTest {
     @Mock private LlmService llmService;
     @Mock private LlmProviderConfig llmProviderConfig;
     @Mock private PromptTemplateService promptTemplateService;
+    @Mock private AiStatusSource aiStatusSource;
     @Mock private TaxonomyService taxonomyService;
     @Mock private LogRingBufferService logRingBufferService;
     @Mock private HealthSummaryService healthSummaryService;
@@ -36,7 +38,7 @@ class AdminApiControllerDiagnosticsTest {
 
     @BeforeEach
     void setUp() {
-        controller = new AdminApiController(llmService, llmProviderConfig, promptTemplateService);
+        controller = new AdminApiController(llmService, llmProviderConfig, promptTemplateService, aiStatusSource);
         when(request.isUserInRole("ADMIN")).thenReturn(true);
     }
 

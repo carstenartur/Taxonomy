@@ -25,6 +25,7 @@
         checkAiStatus();
         // Poll AI status every 30 seconds to keep the indicator current
         setInterval(checkAiStatus, 30000);
+        document.getElementById('providerSelect')?.addEventListener('change', checkAiStatus);
         document.getElementById('analyzeBtn').addEventListener('click', function () {
             // Check if Manual Scoring is selected
             var providerSelect = document.getElementById('providerSelect');
@@ -398,6 +399,7 @@
     function populateProviderDropdown(aiStatus) {
         var select = document.getElementById('providerSelect');
         if (!select || !aiStatus.availableProviders) return;
+        var selectedProvider = select.value;
 
         // Keep the first static option (Server Default)
         while (select.options.length > 1) select.remove(1);
@@ -415,18 +417,52 @@
         manualOpt.value = 'MANUAL';
         manualOpt.textContent = '✏️ ' + t('browse.manual.scoring');
         select.appendChild(manualOpt);
+        if (Array.from(select.options).some(function (option) { return option.value === selectedProvider; })) {
+            select.value = selectedProvider;
+        }
     }
 
+    let aiStatusRequestId = 0;
     function checkAiStatus() {
-        fetch('/api/ai-status')
-            .then(r => r.json())
+        const requestId = ++aiStatusRequestId;
+        const selectedProvider = document.getElementById('providerSelect')?.value || '';
+        const url = '/api/ai-status' + (selectedProvider === 'CUSTOM_OPENAI' ? '?provider=CUSTOM_OPENAI' : '');
+        fetch(url)
+            .then(r => { if (!r.ok) throw new Error('AI status request failed'); return r.json(); })
             .then(status => {
+                if (requestId !== aiStatusRequestId || (document.getElementById('providerSelect')?.value || '') !== selectedProvider) return;
                 const btn = document.getElementById('analyzeBtn');
                 const infoEl = document.getElementById('aiProviderInfo');
                 const badge = document.getElementById('aiStatusBadge');
+                const connectionWarning = document.getElementById('aiConnectionWarning');
 
                 // Populate provider dropdown
                 populateProviderDropdown(status);
+                if ((document.getElementById('providerSelect')?.value || '') !== selectedProvider) {
+                    checkAiStatus();
+                    return;
+                }
+
+                if (['UNREACHABLE', 'AUTHENTICATION_FAILED', 'UNKNOWN'].includes(status.connectionStatus)) {
+                    const key = status.connectionStatus === 'UNREACHABLE' ? 'unreachable'
+                        : status.connectionStatus === 'AUTHENTICATION_FAILED' ? 'authentication' : 'unknown';
+                    btn.disabled = false;
+                    infoEl.classList.add('d-none');
+                    const aiWarn = document.getElementById('aiUnavailableWarning');
+                    if (aiWarn) aiWarn.classList.add('d-none');
+                    if (connectionWarning) {
+                        connectionWarning.textContent = t('browse.ai.connection.' + key);
+                        connectionWarning.hidden = false;
+                    }
+                    if (badge) {
+                        badge.textContent = t('browse.ai.badge.connection.' + key);
+                        badge.title = t('browse.ai.connection.' + key);
+                        badge.className = key === 'unknown' ? 'badge bg-warning text-dark ms-auto me-2 fs-6'
+                            : 'badge bg-danger ms-auto me-2 fs-6';
+                    }
+                    return;
+                }
+                if (connectionWarning) connectionWarning.hidden = true;
 
                 if (status.available) {
                     btn.disabled = false;
@@ -439,7 +475,11 @@
                         infoEl.classList.add('d-none');
                     }
                     if (badge) {
-                        if (status.limited) {
+                        if (status.connectionStatus === 'REACHABLE') {
+                            badge.textContent = t('browse.ai.badge.connection.reachable');
+                            badge.title = t('browse.ai.connection.reachable');
+                            badge.className = 'badge bg-success ms-auto me-2 fs-6';
+                        } else if (status.limited) {
                             badge.textContent = t('browse.ai.badge.limited', status.provider);
                             badge.title = t('browse.ai.badge.limited.title', status.provider);
                             badge.className = 'badge bg-warning text-dark ms-auto me-2 fs-6';
@@ -468,11 +508,17 @@
                 }
             })
             .catch(() => {
+                if (requestId !== aiStatusRequestId || (document.getElementById('providerSelect')?.value || '') !== selectedProvider) return;
                 // If the status check fails, reset to a neutral unknown state.
                 const btn = document.getElementById('analyzeBtn');
                 if (btn) btn.disabled = false;
                 const aiWarn = document.getElementById('aiUnavailableWarning');
                 if (aiWarn) aiWarn.classList.add('d-none');
+                const connectionWarning = document.getElementById('aiConnectionWarning');
+                if (connectionWarning) {
+                    connectionWarning.textContent = t('browse.ai.badge.unknown.title');
+                    connectionWarning.hidden = false;
+                }
                 const badge = document.getElementById('aiStatusBadge');
                 if (badge) {
                     badge.textContent = t('browse.ai.badge.unknown');

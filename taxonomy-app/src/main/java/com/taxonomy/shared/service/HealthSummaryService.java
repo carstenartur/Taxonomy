@@ -6,6 +6,7 @@ import com.taxonomy.catalog.service.LocalEmbeddingService;
 import org.jspecify.annotations.Nullable;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AiAvailabilityLevel;
+import com.taxonomy.dto.AiStatusResponse;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -45,11 +46,13 @@ public class HealthSummaryService {
 
         // AI / LLM status
         var ai = new LinkedHashMap<String, Object>();
-        AiAvailabilityLevel level = llmService == null ? AiAvailabilityLevel.UNAVAILABLE : llmService.getAvailabilityLevel();
-        ai.put("available", level != AiAvailabilityLevel.UNAVAILABLE);
+        AiStatusResponse status = llmService == null ? null : llmService.snapshot();
+        AiAvailabilityLevel level = status == null ? AiAvailabilityLevel.UNAVAILABLE : status.getLevel();
+        boolean aiAvailable = level == AiAvailabilityLevel.FULL || level == AiAvailabilityLevel.LIMITED;
+        ai.put("available", aiAvailable);
         ai.put("level", level.name());
-        ai.put("provider", level != AiAvailabilityLevel.UNAVAILABLE
-                ? llmService.getActiveProviderName() : null);
+        ai.put("provider", status == null ? null : status.getProvider());
+        ai.put("connectionStatus", status == null ? "NOT_CHECKED" : status.getConnectionStatus());
         ai.put("installed", llmService != null);
         summary.put("ai", ai);
 
@@ -71,7 +74,7 @@ public class HealthSummaryService {
 
         // Overall status
         boolean allOk = stateService.isReady()
-                && (llmService == null || level != AiAvailabilityLevel.UNAVAILABLE);
+                && (llmService == null || aiAvailable);
         summary.put("overall", allOk ? "UP" : "DEGRADED");
 
         return summary;

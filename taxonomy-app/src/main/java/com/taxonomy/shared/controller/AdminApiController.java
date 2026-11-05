@@ -5,8 +5,8 @@ import com.taxonomy.extension.api.llm.ProviderId;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmProviderConfig;
 import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.shared.service.AiStatusSource;
 import com.taxonomy.catalog.service.TaxonomyService;
-import com.taxonomy.dto.AiAvailabilityLevel;
 import com.taxonomy.dto.AiStatusResponse;
 import com.taxonomy.shared.service.HealthSummaryService;
 import com.taxonomy.shared.service.LogRingBufferService;
@@ -43,23 +43,24 @@ public class AdminApiController {
     private final LlmService llmService;
     private final LlmProviderConfig llmProviderConfig;
     private final PromptTemplateService promptTemplateService;
+    private final AiStatusSource aiStatusSource;
 
     public AdminApiController(LlmService llmService, LlmProviderConfig llmProviderConfig,
-                              PromptTemplateService promptTemplateService) {
+                              PromptTemplateService promptTemplateService,
+                              AiStatusSource aiStatusSource) {
         this.llmService = llmService;
         this.llmProviderConfig = llmProviderConfig;
         this.promptTemplateService = promptTemplateService;
+        this.aiStatusSource = aiStatusSource;
     }
 
     @Operation(summary = "Check AI availability",
             description = "Returns whether an LLM provider is available and which one is active",
             tags = {"Administration"})
     @GetMapping("/ai-status")
-    public ResponseEntity<AiStatusResponse> aiStatus() {
-        AiAvailabilityLevel level = llmService.getAvailabilityLevel();
-        String provider = level != AiAvailabilityLevel.UNAVAILABLE
-                ? llmService.getActiveProviderName() : null;
-        return ResponseEntity.ok(new AiStatusResponse(level, provider, llmService.getAvailableProviders()));
+    public ResponseEntity<AiStatusResponse> aiStatus(@RequestParam(value = "provider", required = false) String provider) {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(aiStatusSource.snapshot(provider));
     }
 
     @Operation(summary = "Get LLM diagnostics",
