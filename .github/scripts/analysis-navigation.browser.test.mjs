@@ -135,9 +135,12 @@ test('mobile primary navigation closes after selection while arrow navigation re
         const menu=page.locator('#applicationNavigationMenu'),toggle=page.locator('#applicationNavigationMenu > summary');
         await toggle.click();
         const analysis=page.locator('#mainNavTabs [data-page="analyze"]');
-        await analysis.focus();await page.keyboard.press('ArrowRight');
+        assert.equal(await page.locator('#mainNavTabs').getAttribute('aria-orientation'),'vertical');
+        await analysis.focus();await page.keyboard.press('ArrowDown');
         assert.notEqual(await menu.getAttribute('open'),null);
         assert.equal(await page.locator('#mainNavTabs [data-page="architecture"]').evaluate(e=>e===document.activeElement),true);
+        await page.keyboard.press('ArrowUp');
+        assert.equal(await analysis.evaluate(e=>e===document.activeElement),true);
         await page.locator('#mainNavTabs [data-page="graph"]').click();
         assert.equal(await page.locator('#tab-graph').isVisible(),true);
         await page.waitForFunction(()=>!document.getElementById('applicationNavigationMenu').open);
@@ -174,15 +177,34 @@ test('the operational status shortcut opens its mobile menu and focuses the stat
 test('resizing retains a single navigation and keeps every destination reachable',async()=>{
     const page=await fixture('de',1100);try{
         const menu=page.locator('#applicationNavigationMenu'),toggle=page.locator('#applicationNavigationMenu > summary');
-        assert.equal(await page.locator('#mainNavTabs').isVisible(),true);
+        const tabs=page.locator('#mainNavTabs'),analysis=tabs.locator('[data-page="analyze"]');
+        assert.equal(await tabs.isVisible(),true);
+        assert.equal(await tabs.getAttribute('aria-orientation'),'horizontal');
+        await analysis.focus();
         await page.setViewportSize({width:390,height:768});
         await page.waitForFunction(()=>!document.getElementById('applicationNavigationMenu').open);
-        assert.equal(await page.locator('#mainNavTabs').isVisible(),false);
-        await toggle.click();assert.equal(await page.locator('#mainNavTabs').isVisible(),true);
+        assert.equal(await tabs.isVisible(),false);
+        assert.equal(await toggle.evaluate(element=>document.activeElement===element),true);
+        assert.equal(await tabs.getAttribute('aria-orientation'),'vertical');
+        await toggle.click();assert.equal(await tabs.isVisible(),true);
+        await toggle.focus();
         await page.setViewportSize({width:1100,height:768});
         await page.waitForFunction(()=>document.getElementById('applicationNavigationMenu').open);
         assert.equal(await toggle.isVisible(),false);
-        assert.equal(await page.locator('#mainNavTabs').isVisible(),true);
+        assert.equal(await tabs.isVisible(),true);
+        assert.equal(await tabs.getAttribute('aria-orientation'),'horizontal');
+        assert.equal(await analysis.evaluate(element=>document.activeElement===element),true);
+    }finally{await finish(page);}
+});
+test('leaving the compact menu closes it without taking focus back',async()=>{
+    const page=await fixture('de',390);try{
+        const menu=page.locator('#applicationNavigationMenu');
+        await page.locator('#applicationNavigationMenu > summary').click();
+        await page.locator('#fileMenuButton').focus();
+        const language=page.locator('.taxonomy-app-languages [hreflang="en"]');
+        await language.focus();
+        assert.equal(await menu.getAttribute('open'),null);
+        assert.equal(await language.evaluate(element=>document.activeElement===element),true);
     }finally{await finish(page);}
 });
 test('mobile navigation remains operable without JavaScript',async()=>{

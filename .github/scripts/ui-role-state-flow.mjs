@@ -765,7 +765,7 @@ export async function runRoleStateFlow({
     await openSharedNavigation(page);
     await page.locator('#mainNavTabs [data-page="analyze"]').focus();
     for (const [index, destination] of taskHierarchy.authorizedPages.entries()) {
-      if (index) await page.keyboard.press('ArrowRight');
+      if (index) await page.keyboard.press('ArrowDown');
       await page.waitForFunction(destination => document.querySelector(
         `#mainNavTabs [data-page="${destination}"]`)?.getAttribute('aria-selected') === 'true', destination);
       const link = page.locator(`#mainNavTabs [data-page="${destination}"]`);

@@ -249,12 +249,27 @@
             var top = Math.max(0, Math.min(window.innerHeight - 44, bottom));
             content.style.setProperty('--app-menu-top', top + 'px');
         }
-        function updateMode() { menu.open = !compact.matches; positionMenu(); }
+        function updateMode() {
+            var focused = document.activeElement;
+            if (compact.matches && content?.contains(focused)) summary.focus();
+            menu.open = !compact.matches;
+            if (!compact.matches && focused === summary && content) {
+                var destination = content.querySelector('[role="tab"][aria-selected="true"], [aria-current="page"]')
+                    || content.querySelector('[data-app-route], button, a');
+                destination?.focus();
+            }
+            positionMenu();
+        }
         updateMode();
         if (compact.addEventListener) compact.addEventListener('change', updateMode);
         else if (compact.addListener) compact.addListener(updateMode);
         window.addEventListener('resize', positionMenu);
         document.addEventListener('scroll', positionMenu, true);
+        document.addEventListener('focusin', function (event) {
+            if (compact.matches && menu.open && !menu.contains(event.target) && !content.contains(event.target)) {
+                menu.open = false;
+            }
+        });
         document.addEventListener('click', function (event) {
             if (!compact.matches || !menu.open) return;
             var route = event.target.closest?.('[data-app-route], [data-page]');

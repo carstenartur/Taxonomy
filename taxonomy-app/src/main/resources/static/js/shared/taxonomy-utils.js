@@ -126,6 +126,8 @@ window.TaxonomyUtils = (function () {
         var tabList = document.getElementById('mainNavTabs');
         if (!tabList) return;
         tabList.setAttribute('role', 'tablist');
+        tabList.setAttribute('aria-orientation', window.matchMedia
+            && window.matchMedia('(max-width: 991.98px)').matches ? 'vertical' : 'horizontal');
         tabList.setAttribute('aria-label', currentLanguage() === 'de'
             ? 'Hauptbereiche' : 'Main sections');
 
@@ -154,7 +156,10 @@ window.TaxonomyUtils = (function () {
         if (!tabList || tabList.dataset.keyboardReady) return;
         tabList.dataset.keyboardReady = 'true';
         tabList.addEventListener('keydown', function (event) {
-            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            var vertical = tabList.getAttribute('aria-orientation') === 'vertical';
+            var forward = event.key === 'ArrowRight' || (vertical && event.key === 'ArrowDown');
+            var backward = event.key === 'ArrowLeft' || (vertical && event.key === 'ArrowUp');
+            if (!forward && !backward && !['Home', 'End'].includes(event.key)) return;
             var tabs = Array.from(tabList.querySelectorAll('.nav-link[data-page]'))
                 .filter(function (tab) { return tab.offsetParent !== null; });
             var current = tabs.indexOf(document.activeElement);
@@ -163,7 +168,7 @@ window.TaxonomyUtils = (function () {
             var next;
             if (event.key === 'Home') next = 0;
             else if (event.key === 'End') next = tabs.length - 1;
-            else if (event.key === 'ArrowRight') next = (current + 1) % tabs.length;
+            else if (forward) next = (current + 1) % tabs.length;
             else next = (current - 1 + tabs.length) % tabs.length;
             tabs[next].focus();
             tabs[next].click();
@@ -176,6 +181,9 @@ window.TaxonomyUtils = (function () {
             attributeFilter: ['class']
         });
         document.addEventListener('taxonomy:page-activated', syncMainNavigation);
+        var compactNavigation = window.matchMedia && window.matchMedia('(max-width: 991.98px)');
+        if (compactNavigation?.addEventListener) compactNavigation.addEventListener('change', syncMainNavigation);
+        else if (compactNavigation?.addListener) compactNavigation.addListener(syncMainNavigation);
     }
 
     function focusCurrentTask() {

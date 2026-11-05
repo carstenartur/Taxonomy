@@ -99,7 +99,7 @@ class TaxonomyResponsiveNavigationContractTest {
                 .contains("Shared primary navigation is not discoverable before any automatic scroll")
                 .contains("shared navigation retains every destination and keyboard access after task interactions")
                 .contains("['projects', 'analysis', 'architecture', 'graph', 'versions', 'dsl-editor']")
-                .contains("await page.keyboard.press('ArrowRight')")
+                .contains("await page.keyboard.press('ArrowDown')")
                 .contains("bounds.height >= 44")
                 .contains("document.activeElement === element")
                 .doesNotContain("single-row scrollable main navigation");
