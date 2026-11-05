@@ -95,17 +95,31 @@
 .taxonomy-app-local .application-utilities { margin-inline-start: auto; }
 .taxonomy-app-primary .application-work-navigation { min-width: 0; }
 .taxonomy-app-primary .mobile-main-navigation { color: #fff; }
-/* On tablet-sized analysis workspaces, language is already in Settings. Keep
+/* On narrower analysis workspaces, language is already in Settings. Keep
    contextual help available as a labeled 44px control without another row. */
-@media (min-width: 62rem) and (max-width: 84rem) {
+@media (min-width: 62rem) and (max-width: 88rem) {
     .taxonomy-app-navigation:has(#applicationSettings #langSelector) { padding-inline: .75rem; }
     .taxonomy-app-navigation:has(#applicationSettings #langSelector) .taxonomy-app-mainrow { column-gap: .5rem; }
     .taxonomy-app-navigation:has(#applicationSettings #langSelector) .taxonomy-app-primary { flex: 0 1 auto; }
+    .taxonomy-app-navigation:has(#applicationSettings #langSelector) .taxonomy-app-primary a { padding-inline: .35rem; }
+    .taxonomy-app-navigation:has(#applicationSettings #langSelector) .taxonomy-app-primary #mainNavTabs { gap: 0; }
+    .taxonomy-app-navigation:has(#applicationSettings #langSelector) .taxonomy-app-local { flex: 1 1 auto; }
+    .taxonomy-app-navigation:has(#applicationSettings #langSelector) .application-shell { width: 100%; }
     .taxonomy-app-navigation:has(#applicationSettings #langSelector) .taxonomy-app-languages { display: none; }
     .taxonomy-app-navigation:has(#applicationSettings #langSelector) .taxonomy-app-utilities .context-help { min-width: 44px; }
     .taxonomy-app-navigation:has(#applicationSettings #langSelector) .taxonomy-app-utilities .context-help-label {
         position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
     }
+}
+@media (min-width: 62rem) and (max-width: 70rem) {
+    #applicationNavigation:has(#applicationSettings #langSelector) { padding-inline: .5rem; }
+    #applicationNavigation:has(#applicationSettings #langSelector) .taxonomy-app-mainrow { column-gap: .25rem; }
+    #applicationNavigation:has(#applicationSettings #langSelector) .application-shell { gap: .25rem; }
+    #applicationNavigation:has(#applicationSettings #langSelector) .taxonomy-app-primary a { padding-inline: .15rem; font-size: .875rem; }
+    #applicationNavigation:has(#applicationSettings #langSelector) .application-file-menus,
+    #applicationNavigation:has(#applicationSettings #langSelector) .application-utilities,
+    #applicationNavigation:has(#applicationSettings #langSelector) .application-support { gap: .2rem; }
+    .taxonomy-app-navigation:has(#applicationSettings #langSelector) .taxonomy-app-route-icon { display: none; }
 }
 /* Anchor wide utility panels to the header, even when their launcher wraps. */
 @media (min-width: 576px) {

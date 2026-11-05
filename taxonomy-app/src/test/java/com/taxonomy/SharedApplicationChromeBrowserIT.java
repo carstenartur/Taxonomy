@@ -78,6 +78,34 @@ class SharedApplicationChromeBrowserIT {
         open(view, locale, width, List.of("portfolio", "architecture"));
     }
 
+    static Stream<Object[]> compactAnalysisWidths() {
+        return Stream.of(new Object[]{"de", 992}, new Object[]{"de", 1024},
+                new Object[]{"de", 1366}, new Object[]{"en", 1024}, new Object[]{"en", 1366});
+    }
+
+    @ParameterizedTest(name = "analysis navigation with operational status in {0} at {1}px")
+    @MethodSource("compactAnalysisWidths")
+    void analysisNavigationWithStatusFitsOnOneRow(String locale, int width) {
+        open(new View("index", "/", "analysis", "fileMenuButton"), locale, width);
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#operationalContextDetails > summary")));
+        var geometry = (Map<?, ?>) page.driver().executeScript("""
+                const nav=document.getElementById('applicationNavigation');
+                const selectors=['.taxonomy-app-brand','#mainNavTabs [data-page="architecture"]',
+                    '#projectMenuButton','#applicationSettings > summary','#operationalContextDetails > summary',
+                    '#main-tab-help','#aboutBtn','.taxonomy-app-utilities .context-help'];
+                const boxes=selectors.map(selector=>{
+                    const r=nav.querySelector(selector).getBoundingClientRect();
+                    return {selector,left:r.left,right:r.right,top:r.top,height:r.height};
+                });
+                const center=box=>box.top+box.height/2;
+                return {height:nav.getBoundingClientRect().height,width:innerWidth,boxes,
+                    valid:nav.getBoundingClientRect().height<=64 && boxes.every(box=>box.height>0
+                        && box.left>=0 && box.right<=innerWidth+1 && Math.abs(center(box)-center(boxes[0]))<=2)};
+                """);
+        assertThat(geometry.get("valid")).as("All navigation and status actions remain in one row: %s", geometry).isEqualTo(true);
+        assertThat(page.driver().findElement(By.cssSelector("#applicationNavigation .context-help")).getAccessibleName()).isNotBlank();
+    }
+
     private static void open(View view, String locale, int width, List<String> features) {
         page.clearRoutes();
         page.clearRequests();

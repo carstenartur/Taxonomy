@@ -133,8 +133,10 @@ for(const locale of ['de','en']){
     });
     for(const width of [1440,1920])test(`${locale}: ${width}px primary navigation and application actions share one desktop row`,async()=>{
         const page=await fixture(locale,width);try{
+            await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-onboarding.js')});
             const selectors=['.taxonomy-app-brand','#mainNavTabs [data-page="architecture"]',
-                '#projectMenuButton','#applicationSettings > summary','#main-tab-help','#aboutBtn'];
+                '#projectMenuButton','#applicationSettings > summary','#operationalContextDetails > summary','#main-tab-help','#aboutBtn',
+                '#applicationNavigation .taxonomy-app-utilities .context-help'];
             const boxes=await Promise.all(selectors.map(selector=>page.locator(selector).boundingBox()));
             assert.ok(boxes.every(Boolean),'All existing navigation and application actions stay available');
             const center=box=>box.y+box.height/2;
@@ -145,10 +147,12 @@ for(const locale of ['de','en']){
             assert.equal(await page.locator('#applicationNavigation [data-app-route="architecture"]').count(),1);
         }finally{await finish(page);}
     });
-    for(const width of [1024,1100,1280])test(`${locale}: ${width}px navigation stays on one row with reachable language and view help`,async()=>{
+    for(const width of [992,1024,1100,1280,1366,1408,1409,1439])test(`${locale}: ${width}px navigation stays on one row with reachable language and view help`,async()=>{
         const page=await fixture(locale,width);try{
+            await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-onboarding.js')});
+            assert.equal(await page.locator('#operationalStatusMenuSlot #operationalContextDetails').count(),1);
             const selectors=['.taxonomy-app-brand','#mainNavTabs [data-page="architecture"]',
-                '#projectMenuButton','#applicationSettings > summary','#main-tab-help','#aboutBtn',
+                '#projectMenuButton','#applicationSettings > summary','#operationalContextDetails > summary','#main-tab-help','#aboutBtn',
                 '#applicationNavigation .taxonomy-app-utilities .context-help'];
             const boxes=await Promise.all(selectors.map(selector=>page.locator(selector).boundingBox()));
             assert.ok(boxes.every(Boolean),'Navigation and context help must remain visible');
@@ -156,6 +160,11 @@ for(const locale of ['de','en']){
             for(let i=1;i<boxes.length;i++)assert.ok(Math.abs(center(boxes[i])-center(boxes[0]))<=2,
                 `${selectors[i]} is not aligned with the main navigation: ${JSON.stringify(boxes)}`);
             assert.ok((await page.locator('#applicationNavigation').boundingBox()).height<=64);
+            for(const link of await page.locator('#applicationNavigation .taxonomy-app-primary a').all()){
+                const box=await link.boundingBox();
+                assert.ok(box&&box.width>=44&&box.height>=44,'Primary links remain usable touch targets: '+JSON.stringify(box));
+            }
+            assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'The compact row must not widen the page');
             const help=page.locator('#applicationNavigation .taxonomy-app-utilities .context-help');
             assert.ok(await help.getAttribute('href'),'Contextual help keeps its exact link');
             assert.equal(await help.getAttribute('target'),'_blank');
