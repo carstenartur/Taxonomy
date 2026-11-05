@@ -29,7 +29,8 @@ class Element {
     focus() {}
 }
 
-function harness({ mayWrite = true, failProfiles = false, empty = false } = {}) {
+function harness({ mayWrite = true, failProfiles = false, empty = false, incomplete = false, zeroRevision = false,
+    availableCapabilities = [], publicationAvailable = false } = {}) {
     const elements = new Map();
     for (const match of main.matchAll(/<([a-z][a-z0-9]*)\b([^>]*\bid="([^"]+)"[^>]*)>/g)) {
         elements.set(match[3], new Element(match[1], match[2]));
@@ -55,12 +56,16 @@ function harness({ mayWrite = true, failProfiles = false, empty = false } = {}) 
             reads.push(path);
             if (path === '/profiles') {
                 if (failProfiles) throw new Error('Profiles unavailable');
-                return [{ id: 'test', version: '1', capabilities: [], title: 'TEST ONLY' }];
+                return [{ id: 'test', version: '1', capabilities: availableCapabilities, title: 'TEST ONLY' }];
             }
             if (path === '') return empty ? [] : [{ id: 'conn', connectorId: 'test', profileVersion: '1', displayName: 'TEST ONLY' }];
             if (path === '/conn') return {
-                connection: { connectorId: 'test', profileVersion: '1', displayName: 'TEST ONLY' },
-                history: [], current: {}, oslcCatalogPath: '/oslc', publicationAvailability: { available: false, modes: [] }
+                connection: { connectorId: 'test', profileVersion: '1', displayName: 'TEST ONLY',
+                    authority: incomplete ? null : 'BIDIRECTIONAL',
+                    externalScope: incomplete ? null : { systemType: 'Archi', repository: 'roadmap' } },
+                history: [{ id: 'old-op', status: 'COMPLETED', createdAt: 'earlier' }],
+                current: incomplete ? null : { branch: 'draft', semanticRevision: zeroRevision ? 0 : 4 }, oslcCatalogPath: '/oslc',
+                publicationAvailability: { available: publicationAvailable, modes: publicationAvailable ? ['PUSH'] : [] }
             };
             if (path === '/conn/operations/op') return { id: 'op', direction: 'PUSH', status: 'RECOVERY_REQUIRED' };
             if (path === '/conn/operations/op/events') return [];
@@ -78,8 +83,10 @@ function harness({ mayWrite = true, failProfiles = false, empty = false } = {}) 
             }
             if (selector.startsWith('#integrationCreate input')) {
                 return ['connectionName', 'connectionProfile', 'connectionAuthority', 'connectionProject',
-                    'externalSystem', 'externalRepository', 'externalConfiguration', 'connectionRemote',
-                    'integrationFile', 'integrationComplete', 'integrationRemoteUri', 'integrationRemoteVersion'].map(el);
+                    'externalSystem', 'externalRepository', 'externalConfiguration', 'connectionRemote'].map(el);
+            }
+            if (selector.startsWith('#integrationImport input')) {
+                return ['integrationFile', 'integrationComplete', 'integrationRemoteUri', 'integrationRemoteVersion'].map(el);
             }
             return [];
         }
@@ -106,6 +113,38 @@ test('server HTML keeps all action buttons disabled before any JavaScript is dow
     assert.ok(buttons.length >= guarded.length);
     for (const [, attributes] of buttons) assert.match(attributes, /\sdisabled(?:\s|=|$)/, attributes);
     assert.match(main, /<select\b[^>]*id="integrationConnection"[^>]*\sdisabled(?:\s|>|=)/);
+});
+
+test('connection details start collapsed and show a readable scoped summary when loaded', async () => {
+    const ui = harness();
+    for (const id of ['integrationContextDetails', 'integrationProvenanceDetails']) {
+        const tag = main.match(new RegExp('<details\\b[^>]*id="' + id + '"[^>]*>'))?.[0];
+        assert.ok(tag, 'technical data is in a disclosure: ' + id);
+        assert.doesNotMatch(tag, /\sopen(?:\s|=|>)/, 'technical data starts collapsed');
+        assert.equal(ui.el(id).hidden, true, 'no empty technical disclosure before data loads');
+    }
+    assert.equal(ui.el('integrationContextSummary').hidden, true);
+    ui.translations.resolve(); ui.details.resolve(ui.summary); await flush();
+    assert.equal(ui.el('integrationContextSummary').hidden, false);
+    assert.equal(ui.el('integrationSystemSummary').textContent, 'Archi');
+    assert.equal(ui.el('integrationRepositorySummary').textContent, 'roadmap');
+    assert.equal(ui.el('integrationBranchSummary').textContent, 'draft');
+    assert.equal(ui.el('integrationRevisionSummary').textContent, '4');
+    assert.equal(ui.el('integrationAuthoritySummary').textContent, 'integration.mode.BIDIRECTIONAL');
+    assert.equal(ui.el('integrationContextDetails').hidden, false);
+    assert.match(ui.el('integrationContext').textContent, /"repository": "roadmap"/);
+    assert.equal(ui.el('integrationProvenanceDetails').hidden, false);
+    assert.match(ui.el('integrationProvenance').textContent, /integration.requestFingerprint/);
+});
+
+test('a zero revision remains visible and incomplete context is clearly unknown', async () => {
+    const zero = harness({ zeroRevision: true });
+    zero.translations.resolve(); zero.details.resolve(zero.summary); await flush();
+    assert.equal(zero.el('integrationRevisionSummary').textContent, '0');
+    const missing = harness({ incomplete: true });
+    missing.translations.resolve(); missing.details.resolve(missing.summary); await flush();
+    for (const id of ['integrationSystemSummary', 'integrationRepositorySummary', 'integrationBranchSummary',
+        'integrationRevisionSummary', 'integrationAuthoritySummary']) assert.equal(missing.el(id).textContent, '—');
 });
 
 test('delayed translations and premature events cannot unlock controls or bypass startup', async () => {
@@ -166,6 +205,7 @@ test('read-only observer sees loaded publication counts but cannot resume or pub
     locked(ui);
     assert.equal(ui.el('integrationPublicationOutcomes').hidden, false);
     assert.match(ui.el('integrationPublicationCounts').textContent, /integration\.unknown: 1/);
+    assert.equal(ui.el('integrationPublicationCheck').disabled, false, 'Read-only users can still inspect availability');
     assert.deepEqual(ui.writes, []);
 });
 
@@ -177,4 +217,36 @@ test('successful empty connection inventory enables connection creation without 
     assert.equal(ui.el('integrationConnection').disabled, false);
     assert.equal(ui.el('integrationRefresh').disabled, false);
     assert.equal(ui.el('integrationError').hidden, true);
+    assert.equal(ui.el('integrationPublicationReason').textContent, 'integration.publicationNoConnection');
 });
+
+for (const next of ['', 'missing']) {
+    test(`changing to ${next || 'no connection'} never shows or enables the previous connection after a failed or empty selection`, async () => {
+        const ui = harness({ availableCapabilities: ['FILE_EXPORT', 'FILE_IMPORT'], publicationAvailable: true });
+        ui.translations.resolve(); ui.details.resolve(ui.summary); await flush();
+        assert.notEqual(ui.el('integrationContext').textContent, '');
+        assert.equal(ui.el('integrationHistory').children.length, 1);
+        assert.equal(ui.el('integrationExport').disabled, false);
+        assert.equal(ui.el('integrationPush').disabled, false);
+        assert.equal(ui.el('integrationFile').disabled, false);
+        assert.equal(ui.el('integrationPublicationCheck').disabled, false);
+        ui.el('integrationConnection').value = next;
+        ui.el('integrationConnection').listeners.change();
+        await flush();
+        assert.equal(ui.el('integrationContext').textContent, '');
+        assert.equal(ui.el('integrationContextSummary').hidden, true);
+        assert.equal(ui.el('integrationContextDetails').hidden, true);
+        assert.equal(ui.el('integrationProvenanceDetails').hidden, true);
+        for (const id of ['integrationSystemSummary', 'integrationRepositorySummary', 'integrationBranchSummary',
+            'integrationRevisionSummary', 'integrationAuthoritySummary']) assert.equal(ui.el(id).textContent, '');
+        assert.equal(ui.el('integrationHistory').children.length, 0);
+        assert.equal(ui.el('integrationStatus').textContent, '');
+        assert.equal(ui.el('integrationOslcCatalog').hidden, true);
+        assert.equal(ui.el('integrationExport').disabled, true);
+        assert.equal(ui.el('integrationPush').disabled, true);
+        assert.equal(ui.el('integrationFile').disabled, true);
+        assert.equal(ui.el('integrationPublicationCheck').disabled, true);
+        assert.equal(ui.el('integrationPublicationReason').textContent, 'integration.publicationNoConnection');
+        if (next) assert.match(ui.el('integrationError').textContent, /Unexpected read/);
+    });
+}

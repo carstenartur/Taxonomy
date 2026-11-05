@@ -78,6 +78,18 @@ class ContextualHelpTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"en", "de"})
+    void integrationsUseSharedNavigationAndKeepTheirEditorAndHelpLinks(String language) {
+        String html = render("integrations", "header", language);
+        assertTrue(html.contains("id=\"applicationNavigation\""));
+        assertEquals(html.indexOf("id=\"applicationNavigation\""), html.lastIndexOf("id=\"applicationNavigation\""));
+        assertTrue(html.contains("id=\"applicationProjectsLink\""));
+        assertTrue(html.contains("data-app-route=\"architecture\""));
+        assertTrue(html.contains("/taxonomy/architecture/editor?lang=" + language + "\""));
+        assertTrue(html.contains("#help/ARCHITECTURE_EDITOR/tool-integrations\""));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"en", "de"})
     void workspacePanesAndAllTaxonomyModesHaveRealSectionTargets(String language) {
         String header = render("index", "header", language);
         assertTrue(header.contains("/taxonomy/?lang=" + language + "#help/USER_GUIDE/guide-section-4\""),

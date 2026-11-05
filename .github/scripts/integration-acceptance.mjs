@@ -64,6 +64,25 @@ export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, 
   await page.goto(url.toString());
   const initial = await profiles;
   const measurements = { role, expectedFailures, reflow: [], sourceFixture: 'archi-sample.xml' };
+  const skip = page.locator('a.skip');
+  await skip.focus();
+  assert.equal(await skip.evaluate(link => {
+    const bounds = link.getBoundingClientRect();
+    return document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2) === link;
+  }), true, 'The focused skip link remains visible above the shared navigation');
+  assert.equal(await page.locator('#applicationNavigation').count(), 1, 'Use the same navigation as the other workspaces');
+  assert.equal(await page.locator('#applicationProjectsLink').count(), 1, 'Expose one Projects destination');
+  const integrationLocation = new URL(page.url());
+  for (const selector of ['#integrationEditorLink', '#applicationProjectsLink']) {
+    const target = new URL(await page.locator(selector).getAttribute('href'), integrationLocation);
+    for (const key of ['repositoryId', 'workspaceId', 'branch']) {
+      if (integrationLocation.searchParams.has(key)) {
+        assert.equal(target.searchParams.get(key), integrationLocation.searchParams.get(key), `${selector} changed ${key}`);
+      }
+    }
+    assert.equal(target.searchParams.get('lang'), 'en');
+  }
+  assert.ok(new URL(await page.locator('#integrationEditorLink').getAttribute('href'), integrationLocation).pathname.endsWith('/architecture/editor'));
   if (role === 'USER') {
     assert.equal(await page.locator('#integrationApply').isDisabled(), true);
     if (initial.status() === 403) {
@@ -95,6 +114,27 @@ export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, 
     assert.equal(createdConnection.profileVersion, expectedProfile.version);
     const connection = createdConnection.id;
     await page.waitForFunction(id => document.getElementById('integrationConnection').value === id && !document.getElementById('integrationRefresh').disabled, connection);
+    await page.locator('#integrationConnection').selectOption('');
+    await page.waitForFunction(() => document.getElementById('integrationContext').textContent === ''
+      && document.getElementById('integrationHistory').children.length === 0
+      && document.getElementById('integrationExport').disabled
+      && document.getElementById('integrationFile').disabled);
+    assert.equal(await page.locator('#integrationContextSummary').isHidden(), true);
+    assert.equal(await page.locator('#integrationContextDetails').isHidden(), true);
+    assert.equal(await page.locator('#integrationOslcCatalog').isHidden(), true);
+    assert.match(await page.locator('#integrationPublicationReason').innerText(), /Select and load a connection/);
+    const reloadedConnection = page.waitForResponse(r => new URL(r.url()).pathname.endsWith(`/api/integrations/${connection}`) && r.request().method() === 'GET');
+    await page.locator('#integrationConnection').selectOption(connection);
+    assert.equal((await reloadedConnection).status(), 200);
+    await page.waitForFunction(() => !document.getElementById('integrationFile').disabled);
+    assert.equal(await page.locator('#integrationContextSummary').isVisible(), true);
+    assert.equal(await page.locator('#integrationSystemSummary').innerText(), 'Archi reference fixture');
+    assert.equal(await page.locator('#integrationRepositorySummary').innerText(), 'archi-model-browser');
+    assert.equal(await page.locator('#integrationAuthoritySummary').innerText(), 'Reviewed exchange in both directions');
+    assert.equal(await page.locator('#integrationContext').isVisible(), false, 'Technical connection details start collapsed');
+    await page.locator('#integrationContextDetails summary').click();
+    assert.match(await page.locator('#integrationContext').innerText(), /"systemType": "Archi reference fixture"/);
+    await page.locator('#integrationContextDetails summary').click();
     const content = await readFile('taxonomy-export/src/test/resources/interoperability/archi-sample.xml');
     await page.locator('#integrationFile').setInputFiles({ name: 'archi-sample.xml', mimeType: 'application/xml', buffer: content });
     await page.locator('#integrationComplete').check();
@@ -107,6 +147,10 @@ export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, 
     }
     const operation = await preview(); assert.equal(operation.status, 'PREVIEWED');
     assert.equal(operation.context.authority, 'BIDIRECTIONAL');
+    assert.equal(await page.locator('#integrationProvenance').isVisible(), false, 'Technical operation details start collapsed');
+    await page.locator('#integrationProvenanceDetails summary').click();
+    assert.match(await page.locator('#integrationProvenance').innerText(), /"authority": "BIDIRECTIONAL"/);
+    await page.locator('#integrationProvenanceDetails summary').click();
     await page.locator('#integrationAccept').focus(); await page.keyboard.press('Enter');
     await page.locator('#integrationRationale').fill('Reviewed Archi exchange in the real browser');
     const apply = page.waitForResponse(r => new URL(r.url()).pathname.endsWith(`/${connection}/apply`));

@@ -6,16 +6,18 @@
     <title th:text="#{integration.title}">Tool integrations</title>
     <link rel="stylesheet" th:href="@{/css/integrations.css}" href="/css/integrations.css"/>
     <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
+    <th:block th:replace="~{fragments/application-chrome :: styles}"></th:block>
     <th:block th:replace="~{fragments/customer-stylesheet :: link}"></th:block>
 </head>
 <body th:attr="data-may-write=${mayWrite}">
 <a href="#integrationReview" class="skip" data-i18n="integration.skip">Skip to review</a>
-<header><a th:href="@{/}" href="/">Taxonomy</a><h1 data-i18n="integration.title">Tool integrations</h1>
-    <a th:href="@{/projects}" href="/projects" data-i18n="integration.projects">Projects</a>
-    <a th:href="@{/architecture/editor}" href="/architecture/editor" data-i18n="integration.editor">Architecture editor</a>
-    <a th:replace="~{fragments/context-help :: button('ARCHITECTURE_EDITOR', 'tool-integrations')}"></a>
+<header th:replace="~{fragments/application-chrome :: navigation('architecture', ~{:: localActions}, 'ARCHITECTURE_EDITOR', 'tool-integrations')}">
+    <th:block th:fragment="localActions">
+        <a id="integrationEditorLink" th:href="@{/architecture/editor(lang=${#locale.language})}" href="/architecture/editor" data-i18n="integration.editor">Architecture editor</a>
+    </th:block>
 </header>
 <main>
+    <h1 data-i18n="integration.title">Tool integrations</h1>
     <p data-i18n="integration.intro">Review external changes against an exact private workspace. Preview preserves evidence; only an accepted import changes the model and creates an explicit version.</p>
     <p id="integrationStatus" role="status" aria-live="polite"></p><p id="integrationError" role="alert" hidden></p>
     <section aria-labelledby="connectionTitle"><h2 id="connectionTitle" data-i18n="integration.connections">Connections</h2>
@@ -37,7 +39,17 @@
                 <button type="submit" data-i18n="integration.create" disabled>Create connection</button>
             </form>
         </details>
-        <pre id="integrationContext"></pre>
+        <dl id="integrationContextSummary" class="integration-context-summary" hidden>
+            <div><dt data-i18n="integration.context.system">External tool</dt><dd id="integrationSystemSummary"></dd></div>
+            <div><dt data-i18n="integration.context.repository">External project</dt><dd id="integrationRepositorySummary"></dd></div>
+            <div><dt data-i18n="integration.context.branch">Branch</dt><dd id="integrationBranchSummary"></dd></div>
+            <div><dt data-i18n="integration.context.revision">Workspace revision</dt><dd id="integrationRevisionSummary"></dd></div>
+            <div><dt data-i18n="integration.authority">Authority</dt><dd id="integrationAuthoritySummary"></dd></div>
+        </dl>
+        <details id="integrationContextDetails" hidden>
+            <summary data-i18n="integration.context.connectionDetails">Technical connection details</summary>
+            <pre id="integrationContext" tabindex="0"></pre>
+        </details>
         <p data-i18n="integration.versionNotice">Choose an explicit profile version. Existing connections retain their version; version 2 requires a new connection. UML features remain reviewable exchange evidence.</p>
         <p id="integrationSparxNotice" hidden data-i18n="integration.sparxNotice">Experimental Sparx semantic exchange. Real EA/PCS compatibility is not yet verified. Diagram layout is excluded. Review the loss report and import into a backed-up EA package with diagram import disabled.</p>
         <p id="integrationPcsNotice" hidden data-i18n="integration.pcsNotice">Experimental PCS read/pull: version 1 reads package and element properties; version 2 also reads connectors, tags, attributes, operations and parameters within aggregate limits. Apply reads all data again; missing objects never authorize deletion. Real EA/PCS compatibility is unverified.</p>
@@ -64,7 +76,11 @@
         <p data-i18n="integration.delivery">A downloaded file is an export artifact. It does not confirm that another tool accepted it.</p>
     </section>
     <section id="integrationReview" aria-labelledby="reviewTitle" tabindex="-1"><h2 id="reviewTitle" data-i18n="integration.review">Review changes</h2>
-        <p id="integrationProvider"></p><a id="integrationPredecessor" hidden></a><p id="integrationOperation"></p><pre id="integrationProvenance"></pre>
+        <p id="integrationProvider"></p><a id="integrationPredecessor" hidden></a><p id="integrationOperation"></p>
+        <details id="integrationProvenanceDetails" hidden>
+            <summary data-i18n="integration.context.operationDetails">Technical operation details</summary>
+            <pre id="integrationProvenance" tabindex="0"></pre>
+        </details>
         <label for="integrationFilter" data-i18n="integration.filter">Filter by identity, title, kind or conflict</label><input id="integrationFilter" type="search"/>
         <div class="toolbar"><button id="integrationAccept" type="button" data-i18n="integration.acceptVisible" disabled>Accept visible nonconflicting changes</button><button id="integrationReject" type="button" data-i18n="integration.rejectVisible" disabled>Reject visible changes</button></div>
         <div class="table-scroll" tabindex="0" role="region" aria-labelledby="reviewTitle"><table><thead><tr><th data-i18n="integration.object">Object</th><th data-i18n="integration.change">Change</th><th data-i18n="integration.values">Current → proposed</th><th data-i18n="integration.decision">Decision</th></tr></thead><tbody id="integrationChanges"></tbody></table></div>
@@ -78,6 +94,9 @@
     </section>
     <section aria-labelledby="historyTitle"><h2 id="historyTitle" data-i18n="integration.history">Integration operations</h2><p data-i18n="integration.historyHint">Reload an operation to inspect its frozen context, decisions and recovery state. Editor operations and Git versions are available in the architecture editor.</p><ul id="integrationHistory"></ul></section>
 </main>
-<script th:src="@{/js/taxonomy-i18n.js}" src="/js/taxonomy-i18n.js"></script><script th:src="@{/js/api/taxonomy-api-client.js}" src="/js/api/taxonomy-api-client.js"></script>
+<script th:src="@{/js/taxonomy-i18n.js}" src="/js/taxonomy-i18n.js"></script>
+<script th:src="@{/js/shared/architecture-workflow.js}" src="/js/shared/architecture-workflow.js"></script>
+<script th:src="@{/js/api/taxonomy-api-client.js}" src="/js/api/taxonomy-api-client.js"></script>
+<script th:replace="~{fragments/application-chrome :: navigationScript}"></script>
 <script th:src="@{/js/api/integration-api.js}" src="/js/api/integration-api.js"></script><script th:src="@{/js/integrations.js}" src="/js/integrations.js"></script>
 </body></html>

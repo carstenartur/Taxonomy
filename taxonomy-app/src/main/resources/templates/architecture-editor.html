@@ -17,7 +17,7 @@
 <a class="editor-skip" href="#editorForm" data-i18n="editor.skip">Skip to properties</a>
 <header th:replace="~{fragments/application-chrome :: navigation('architecture', ~{:: localActions}, 'ARCHITECTURE_EDITOR', '')}">
     <th:block th:fragment="localActions"><h1 data-i18n="editor.title">Architecture editor</h1>
-        <a th:href="@{/integrations}" href="/integrations" data-i18n="integration.title">Tool integrations</a></th:block>
+        <a th:href="@{/integrations(lang=${#locale.language})}" href="/integrations" data-i18n="integration.title">Tool integrations</a></th:block>
 </header>
 <section th:replace="~{fragments/architecture-workflow :: context}"></section>
 <section th:fragment="surface" class="architecture-editor-surface">
