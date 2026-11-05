@@ -239,7 +239,8 @@
           "com.taxonomy.SharedApplicationChromeBrowserIT",
           "com.taxonomy.SharedAdminNavigationBrowserIT",
           "com.taxonomy.ArchitectureWorkspaceBrowserIT",
-          "com.taxonomy.PortfolioMatrixReviewIT"
+          "com.taxonomy.PortfolioMatrixReviewIT",
+          "com.taxonomy.DocumentTemplateNavigationBrowserIT"
         ]
       },
       "scenario": {

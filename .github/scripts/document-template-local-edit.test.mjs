@@ -17,6 +17,7 @@ const labels = Object.fromEntries(['failed', 'invalid', 'tooLarge', 'busy', 'sav
 
 function boot(fetch, overrides = {}) {
     const nodes = new Map();
+    const windowEvents = {};
     function node(id) {
         if (!nodes.has(id)) nodes.set(id, {
             dataset: {}, listeners: {}, hidden: true, disabled: true, textContent: '',
@@ -40,19 +41,43 @@ function boot(fetch, overrides = {}) {
     const context = { URL, Headers, console,
         document: { getElementById: node, querySelector: selector => ({ content:
             selector.includes('_csrf_header') ? 'X-CSRF-TOKEN' : 'browser-csrf' }) },
-        window: { fetch, location: { origin: 'https://example.test',
+        window: { fetch, addEventListener: (name, callback) => { windowEvents[name] = callback; }, location: { origin: 'https://example.test',
             href: 'https://example.test/taxonomy/admin/document-templates/' + id + '/local-edit?revision=' + revision } }
     };
     vm.createContext(context);
     vm.runInContext(apiSource, context);
     vm.runInContext(source, context);
     return { node, file, workspace,
+        departure: () => {
+            const event = { blocked: false, preventDefault() { this.blocked = true; } };
+            windowEvents.beforeunload?.(event);
+            return event.blocked;
+        },
         submit: () => form.listeners.submit?.({ preventDefault() {} }) };
 }
 const response = (status = 201, payload = { templateId: id, headCommit: next }) => ({
     ok: status >= 200 && status < 300, status,
     headers: new Headers({ 'Content-Type': 'application/json' }),
     json: async () => payload
+});
+
+test('a selected or uploading template stays protected until the server confirms it', async () => {
+    let finish;
+    const app = boot(() => new Promise(resolve => { finish = resolve; }));
+    assert.equal(app.departure(), true);
+    const pending = app.submit();
+    assert.equal(app.departure(), true);
+    finish(response());
+    await pending;
+    assert.equal(app.departure(), false);
+});
+
+test('a failed upload retains the departure warning until the selected file is cleared', async () => {
+    const app = boot(async () => response(422, {detail:'rejected'}));
+    await app.submit();
+    assert.equal(app.departure(), true);
+    app.file.files = [];
+    assert.equal(app.departure(), false);
 });
 
 test('upload uses browser credentials, CSRF and exact original revision behind a context path', async () => {

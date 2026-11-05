@@ -9,18 +9,17 @@
     <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+    <th:block th:replace="~{fragments/application-chrome :: styles}"></th:block>
     <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
     <th:block th:replace="~{fragments/customer-stylesheet :: link}"></th:block>
 </head>
 <body class="bg-body-tertiary">
 <a class="skip-link" href="#documentTemplateLocalEdit" th:text="#{document.templates.skip}">Skip to template</a>
-<nav class="navbar navbar-dark bg-dark" th:attr="aria-label=#{document.templates.nav.aria}">
-    <div class="container gap-2">
-        <a class="navbar-brand" th:href="@{/}">Taxonomy</a>
-        <a class="btn btn-outline-light" th:href="@{/admin/document-templates}"
+<nav th:replace="~{fragments/application-chrome :: navigation('admin', ~{:: localActions}, 'DOCUMENT_TEMPLATES', 'template-editing')}">
+    <th:block th:fragment="localActions"><div>
+        <a id="documentTemplateLocalBack" class="btn btn-outline-light" th:href="@{/admin/document-templates}"
            th:text="#{document.templates.local.back}">Back to templates</a>
-        <a th:replace="~{fragments/context-help :: button('DOCUMENT_TEMPLATES', 'template-editing')}"></a>
-    </div>
+    </div></th:block>
 </nav>
 <main id="documentTemplateLocalEdit" class="container py-4"
       th:attr="data-template-id=${template.templateId},data-revision=${template.headCommit},data-max-bytes=${maxArchiveBytes},data-upload-url=@{/api/admin/document-templates/{id}(id=${template.templateId},displayName=${template.displayName})}">
@@ -88,6 +87,8 @@
     <div id="localTemplateLabels" hidden
          th:attr="data-failed=#{document.templates.local.failed},data-invalid=#{document.templates.local.invalid},data-too-large=#{document.templates.local.too-large},data-busy=#{document.templates.local.busy},data-saved=#{document.templates.local.saved},data-conflict=#{document.templates.local.conflict},data-authentication=#{document.templates.local.authentication},data-uncertain=#{document.templates.local.uncertain}"></div>
 </main>
+<script th:src="@{/js/taxonomy-i18n.js}"></script>
+<script th:src="@{/js/shared/application-chrome.js}"></script>
 <script th:src="@{/js/api/document-templates-api.js}"></script>
 <script th:src="@{/js/document-templates/document-template-local-edit.js}"></script>
 </body>

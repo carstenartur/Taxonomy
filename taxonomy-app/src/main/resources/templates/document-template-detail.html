@@ -7,20 +7,17 @@
     <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+    <th:block th:replace="~{fragments/application-chrome :: styles}"></th:block>
     <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
     <th:block th:replace="~{fragments/customer-stylesheet :: link}"></th:block>
 </head>
 <body class="bg-body-tertiary">
 <a class="skip-link" href="#templateDetail" th:text="#{skip.link}">Skip to main content</a>
-<nav class="navbar navbar-dark bg-dark sticky-top" aria-label="Template detail navigation">
-    <div class="container-fluid gap-2">
-        <a class="navbar-brand fw-semibold" th:href="@{/}">🌐 Taxonomy</a>
-        <span class="navbar-text text-white fw-semibold me-auto"
-              th:text="${template.displayName}">Template</span>
-        <a class="btn btn-sm btn-outline-light" th:href="@{/admin/document-templates}"
+<nav th:replace="~{fragments/application-chrome :: navigation('admin', ~{:: localActions}, 'DOCUMENT_TEMPLATES', 'template-versions')}">
+    <th:block th:fragment="localActions"><div>
+        <a id="documentTemplateDetailBack" class="btn btn-sm btn-outline-light" th:href="@{/admin/document-templates}"
            th:text="#{document.template.detail.back}">Back to templates</a>
-        <a th:replace="~{fragments/context-help :: button('DOCUMENT_TEMPLATES', 'template-versions')}"></a>
-    </div>
+    </div></th:block>
 </nav>
 <main id="templateDetail" class="container-fluid py-3 px-lg-4">
     <div th:if="${successMessage}" class="alert alert-success" role="status"
@@ -171,5 +168,7 @@
         </div>
     </section>
 </main>
+<script th:src="@{/js/taxonomy-i18n.js}"></script>
+<script th:src="@{/js/shared/application-chrome.js}"></script>
 </body>
 </html>
