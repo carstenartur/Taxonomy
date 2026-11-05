@@ -10,8 +10,13 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockServletContext;
+import org.springframework.validation.BindingResult;
+import org.springframework.web.context.support.StaticWebApplicationContext;
+import org.springframework.web.servlet.support.RequestContext;
 import org.thymeleaf.context.WebContext;
 import org.thymeleaf.spring6.SpringTemplateEngine;
+import org.thymeleaf.spring6.context.webmvc.SpringWebMvcThymeleafRequestContext;
+import org.thymeleaf.spring6.naming.SpringContextVariableNames;
 import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
 import org.thymeleaf.web.servlet.JakartaServletWebApplication;
 import tools.jackson.databind.json.JsonMapper;
@@ -143,12 +148,26 @@ final class PortfolioClientTestPage implements AutoCloseable {
         request.setScheme("http");
         request.setServerName("localhost");
         request.setServerPort(server.getAddress().getPort());
+        var response = new MockHttpServletResponse();
         var application = JakartaServletWebApplication.buildApplication(servletContext);
-        var exchange = application.buildExchange(request, new MockHttpServletResponse());
+        var exchange = application.buildExchange(request, response);
         var context = new WebContext(exchange, Locale.forLanguageTag(locale));
         context.setVariable("_csrf", null);
         model.forEach(context::setVariable);
-        String html = templates.process(templateName.replaceFirst("\\.html$", ""), context);
+        StaticWebApplicationContext bindingContext = null;
+        if (model.keySet().stream().anyMatch(key -> key.startsWith(BindingResult.MODEL_KEY_PREFIX))) {
+            // Real th:field rendering needs the request context usually supplied by Spring MVC.
+            bindingContext = new StaticWebApplicationContext();
+            bindingContext.setServletContext(servletContext);
+            bindingContext.refresh();
+            request.setAttribute(RequestContext.WEB_APPLICATION_CONTEXT_ATTRIBUTE, bindingContext);
+            var springRequest = new RequestContext(request, response, servletContext, model);
+            context.setVariable(SpringContextVariableNames.THYMELEAF_REQUEST_CONTEXT,
+                    new SpringWebMvcThymeleafRequestContext(springRequest, request));
+        }
+        String html;
+        try { html = templates.process(templateName.replaceFirst("\\.html$", ""), context); }
+        finally { if (bindingContext != null) bindingContext.close(); }
         if (!bootstrapJavascript.isEmpty()) {
             // Trusted, test-authored setup runs before the unchanged feature scripts.
             html = html.replace("</head>", "<script>" + bootstrapJavascript + "</script></head>");

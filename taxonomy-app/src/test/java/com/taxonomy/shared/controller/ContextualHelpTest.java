@@ -61,6 +61,23 @@ class ContextualHelpTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"en", "de"})
+    void administrativeViewsUseTheSharedNavigationAndKeepTheirContext(String language) {
+        for (var view : Map.of(
+                "backup-jobs", "OPERATIONS_GUIDE/portable-exports",
+                "browser-sessions", "SECURITY/browser-sessions",
+                "fragments/user-management-layout", "SECURITY/user-management").entrySet()) {
+            String html = render(view.getKey(), "nav", language);
+            assertTrue(html.contains("id=\"applicationNavigation\""), view.getKey());
+            assertEquals(html.indexOf("id=\"applicationNavigation\""), html.lastIndexOf("id=\"applicationNavigation\""), view.getKey());
+            assertTrue(html.contains("data-app-route=\"architecture\""), view.getKey());
+            assertTrue(html.contains("data-app-locale=\"" + language + "\""), view.getKey());
+            assertTrue(html.contains("#help/" + view.getValue() + "\""), view.getKey());
+            assertTarget(view.getValue(), language);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"en", "de"})
     void workspacePanesAndAllTaxonomyModesHaveRealSectionTargets(String language) {
         String header = render("index", "header", language);
         assertTrue(header.contains("/taxonomy/?lang=" + language + "#help/USER_GUIDE/guide-section-4\""),
