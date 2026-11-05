@@ -10,6 +10,14 @@ window.AnalysisSnapshotAdoption = function (options) {
         return JSON.stringify(['repositoryId','workspaceScopeKey','branch','projectId','requirementId','requirementVersionId','snapshotId']
             .map(function (key) { return value?.[key] == null ? null : String(value[key]); }));
     }
+    function viewTitle(item) {
+        var title = item.title || item.id, prefix = 'archview.policy.title.';
+        if (typeof title !== 'string' || !title.startsWith(prefix)) return title;
+        var translated = t(title);
+        if (translated && translated !== title) return translated;
+        return title.substring(prefix.length).replace(/([a-z])([A-Z])/g, '$1 $2')
+            .replace(/^./, function (letter) { return letter.toUpperCase(); }) || item.id;
+    }
     function render() {
         el('snapshotAdoption').hidden = !source && !(view?.model.views || []).some(function (item) { return item.extensions?.['x-analysis-snapshot-id']; });
         el('adoptionPreview').disabled = !source || !view?.mayEdit || locked || busy;
@@ -85,7 +93,7 @@ window.AnalysisSnapshotAdoption = function (options) {
             source = nextSource ? Object.assign({},nextSource) : null;
             var selector = el('adoptionView'); selector.replaceChildren();
             var full = document.createElement('option'); full.value = ''; full.textContent = t('adoption.fullModel'); selector.append(full);
-            view.model.views.forEach(function (item) { var option = document.createElement('option'); option.value = item.id; option.textContent = item.title || item.id; selector.append(option); });
+            view.model.views.forEach(function (item) { var option = document.createElement('option'); option.value = item.id; option.textContent = viewTitle(item); selector.append(option); });
             selector.value = selectedId || '';
             var provenance = selected?.extensions || {};
             el('adoptionProvenance').textContent = Object.keys(provenance).filter(function (key) { return key.startsWith('x-analysis-') && key !== 'x-analysis-relation-members'; })

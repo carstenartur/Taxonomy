@@ -214,6 +214,9 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
   const attempts=await page.evaluate(()=>{const state=window.__snapshotRetry;window.ArchitectureEditorApi.adoptSnapshot=state.original;delete window.__snapshotRetry;return state.attempts;});
   assert.deepEqual(attempts[0],attempts[1]);
   assert.equal(new URL(page.url()).searchParams.get('viewId'),adopted.viewId);
+  const adoptedViewTitle = (await page.locator('#adoptionView option:checked').textContent()).trim();
+  assert.ok(adoptedViewTitle, 'The adopted view has a readable title');
+  assert.doesNotMatch(adoptedViewTitle,/^archview\.policy\.title\./, 'Message keys must not be shown as view names');
   assert.equal(await page.locator('#editorHistory li').count(),1);
   await page.locator('#snapshotAdoption details > summary').click();
   assert.match(await page.locator('#adoptionProvenance').innerText(),new RegExp(snapshot));
