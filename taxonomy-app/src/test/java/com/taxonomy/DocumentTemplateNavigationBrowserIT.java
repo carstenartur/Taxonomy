@@ -7,13 +7,18 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.openqa.selenium.By;
+import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chromium.HasCdp;
+import org.openqa.selenium.logging.LogType;
 import org.openqa.selenium.remote.Augmenter;
 import org.openqa.selenium.remote.LocalFileDetector;
+import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.nio.file.Path;
 import java.nio.file.Files;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -68,8 +73,10 @@ class DocumentTemplateNavigationBrowserIT {
                 Map.entry("fromRevision", FROM), Map.entry("toRevision", TO), Map.entry("partPath", "word/document.xml"),
                 Map.entry("partChange", "MODIFIED"), Map.entry("comparisonMode", "BINARY"));
         page.route("GET", "/taxonomy/api/admin/document-templates", request -> PortfolioClientTestPage.json(200, List.of()));
+        double previousDocument = ((Number) page.driver().executeScript("return performance.timeOrigin")).doubleValue();
+        page.clearRequests();
         page.openAt(view.template(), "/taxonomy", "/taxonomy" + view.path(), language, "", model);
-        assertThat(page.driver().executeScript("return Boolean(window.TaxonomyAppChrome)")).isEqualTo(true);
+        awaitNavigation(previousDocument, "/taxonomy" + view.path(), language);
 
         assertThat(page.driver().findElements(By.id("applicationNavigation"))).hasSize(1);
         assertThat(page.driver().findElement(By.id("applicationNavigation")).getDomAttribute("aria-label"))
@@ -101,6 +108,33 @@ class DocumentTemplateNavigationBrowserIT {
             assertThat(departureBlocked()).isTrue();
             page.driver().executeScript("document.getElementById('localTemplateFile').value=''");
             assertThat(departureBlocked()).isFalse();
+        }
+    }
+
+    private static void awaitNavigation(double previousDocument, String path, String language) {
+        try {
+            new WebDriverWait(page.driver(), Duration.ofSeconds(10)).until(browser ->
+                    Boolean.TRUE.equals(((JavascriptExecutor) browser).executeScript("""
+                            return performance.timeOrigin !== arguments[0]
+                                && location.pathname === arguments[1]
+                                && new URL(location.href).searchParams.get('lang') === arguments[2]
+                                && document.readyState === 'complete' && Boolean(window.TaxonomyAppChrome);
+                            """, previousDocument, path, language)));
+        } catch (TimeoutException failure) {
+            Object document = page.driver().executeScript("""
+                    return { url: location.href, readyState: document.readyState, timeOrigin: performance.timeOrigin,
+                        chrome: Boolean(window.TaxonomyAppChrome), i18n: Boolean(window.TaxonomyI18n),
+                        script: document.querySelector('script[src*="application-chrome.js"]')?.src || null,
+                        resources: performance.getEntriesByType('resource')
+                            .filter(entry => entry.name.includes('application-chrome.js'))
+                            .map(entry => ({name: entry.name, status: entry.responseStatus, duration: entry.duration})) };
+                    """);
+            var requests = page.requests().stream().map(request -> request.method() + " " + request.path()).toList();
+            Object logs;
+            try { logs = page.driver().manage().logs().get(LogType.BROWSER).getAll(); }
+            catch (RuntimeException unavailable) { logs = "Browser logs unavailable: " + unavailable.getMessage(); }
+            throw new AssertionError("Shared navigation did not initialize in the requested new document: "
+                    + document + "; requests=" + requests + "; browser logs=" + logs, failure);
         }
     }
 
