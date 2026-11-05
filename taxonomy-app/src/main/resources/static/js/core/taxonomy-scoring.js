@@ -33,9 +33,6 @@
         'UA':                     { order: 4, cls: 'layer-app',  icon: '▣', label: 'User Applications' }
     };
 
-    // Minimum number of elements required to render the D3 force graph (otherwise show swimlane)
-    var MIN_NODES_FOR_GRAPH = 3;
-
     // ── Utility ───────────────────────────────────────────────────────────────
     var escapeHtml = TaxonomyUtils.escapeHtml;
 
@@ -1703,6 +1700,11 @@
         const placeholder = document.getElementById('architecturePlaceholder');
         if (!panel || !content) return;
 
+        // Replacing the container bypasses the adapter's normal in-place cleanup.
+        // Dispose its observer and document listeners before detaching the old graph.
+        const oldGraph = document.getElementById('impactGraphView');
+        if (typeof oldGraph?.__taxonomyImpactMapCleanup === 'function') oldGraph.__taxonomyImpactMapCleanup();
+
         if (!view) {
             panel.style.display = 'none';
             if (placeholder) { placeholder.style.display = ''; }
@@ -2026,9 +2028,11 @@
         panel.style.display = '';
         if (placeholder) { placeholder.style.display = 'none'; }
 
-        // ── Render D3 impact graph if available ──
+        // The shared diagram also supports small results; the old force graph
+        // needed three nodes but that restriction no longer applies.
         var graphContainer = document.getElementById('impactGraphView');
-        if (graphContainer && elements.length >= MIN_NODES_FOR_GRAPH &&
+        var graphReady = false;
+        if (graphContainer && elements.length > 0 &&
             typeof TaxonomyImpactMap !== 'undefined' && typeof TaxonomyImpactMap.render === 'function') {
 
             var graphNodes = elements.map(function (el) {
@@ -2053,22 +2057,28 @@
                 };
             });
 
-            TaxonomyImpactMap.render(graphContainer, graphNodes, graphEdges, {
+            graphReady = Boolean(TaxonomyImpactMap.render(graphContainer, graphNodes, graphEdges, {
                 anchorCodes: new Set(anchors.map(function (a) { return a.nodeCode; })),
                 hotspotCodes: hotspotCodes,
                 hotspotReasons: hotspotReasons,
                 layerConfig: LAYER_CONFIG,
                 policyTitle: view.viewTitle ? t(view.viewTitle) : ''
-            });
-        } else if (graphContainer && elements.length < MIN_NODES_FOR_GRAPH) {
-            // Too few nodes for a meaningful graph — show swimlane view instead
+            }));
+        }
+        if (graphContainer && elements.length > 0 && !graphReady) {
+            // Keep the legacy list available when the shared diagram cannot be loaded.
             graphContainer.style.display = 'none';
             var swimView = document.getElementById('impactSwimView');
             if (swimView) swimView.style.display = '';
-            // Update toggle button states
+            var notice = document.createElement('p');
+            notice.className = 'small text-muted';
+            notice.setAttribute('role', 'status');
+            notice.textContent = t('scoring.ui.network.unavailable');
+            graphContainer.before(notice);
             content.querySelectorAll('.impact-view-btn').forEach(function (btn) {
                 btn.classList.toggle('btn-primary', btn.dataset.mode === 'swimlane');
                 btn.classList.toggle('btn-outline-secondary', btn.dataset.mode !== 'swimlane');
+                if (btn.dataset.mode === 'graph') btn.disabled = true;
             });
         }
 

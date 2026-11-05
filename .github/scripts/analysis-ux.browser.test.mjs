@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
+import { execFileSync } from 'node:child_process';
+import os from 'node:os';
 const resources = process.env.TAXONOMY_TEST_RESOURCE_ROOT || path.resolve('taxonomy-app/src/main/resources');
 let browser;
 before(async () => {
@@ -33,6 +35,89 @@ async function fixture(locale = 'de', width = 1100) {
     await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-state.js')});
     return page;
 }
+
+async function architectureFixture(withGraph = true, withoutD3 = false) {
+    const page = await fixture();
+    await page.evaluate(() => {
+        document.body.insertAdjacentHTML('beforeend', '<div id="architectureViewPanel"><div id="architectureViewContent"></div></div><div id="architecturePlaceholder"></div>');
+    });
+    if (withGraph) {
+        const source = process.env.TAXONOMY_TEST_D3_SCRIPT
+            ? await readFile(process.env.TAXONOMY_TEST_D3_SCRIPT, 'utf8')
+            : execFileSync('unzip', ['-p', path.join(process.env.MAVEN_REPO_LOCAL || path.join(os.homedir(), '.m2/repository'),
+                'org/webjars/npm/d3/7.9.0/d3-7.9.0.jar'), 'META-INF/resources/webjars/d3/7.9.0/dist/d3.min.js'], {encoding:'utf8'});
+        if (!withoutD3) await page.addScriptTag({content:source});
+        for (const css of ['taxonomy-impact-map.css', 'shared/architecture-diagram.css'])
+            await page.addStyleTag({path:path.join(resources,'static/css',css)});
+        for (const script of ['shared/architecture-diagram.js', 'shared/taxonomy-impact-map.js'])
+            await page.addScriptTag({path:path.join(resources,'static/js',script)});
+    }
+    await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-scoring.js')});
+    return page;
+}
+
+for (const count of [1, 2]) {
+    test(`small architecture with ${count} element(s) starts in the common interactive graph`, async () => {
+        const page = await architectureFixture();
+        try {
+            await page.evaluate(count => {
+                const includedElements = Array.from({length:count}, (_,i) => ({nodeCode:'BP-'+i,
+                    title:'Element '+i,taxonomySheet:'BP',relevance:0.8,anchor:true,selectedForImpact:true}));
+                const includedRelationships = count === 2 ? [{sourceCode:'BP-0',targetCode:'BP-1',
+                    relationType:'SUPPORTS',propagatedRelevance:0.8,relationCategory:'impact'}] : [];
+                TaxonomyScoring.renderArchitectureView({includedElements,includedRelationships,anchors:includedElements});
+            }, count);
+            await page.waitForFunction(() => document.querySelector('.impact-map-workbench')?.dataset.fitState === 'complete', null, {timeout:3000});
+            assert.equal(await page.locator('#impactGraphView').isVisible(), true);
+            assert.equal(await page.locator('#impactSwimView').isVisible(), false);
+            assert.equal(await page.locator('#impactGraphView .impact-map-node').count(), count);
+            await page.locator('#impactGraphView [data-node-id="BP-0"]').click();
+            assert.match(await page.locator('.impact-map-details').textContent(), /Element 0/);
+            await page.locator('.impact-view-btn[data-mode="swimlane"]').click();
+            assert.equal(await page.locator('#impactSwimView').isVisible(), true);
+            await page.locator('.impact-view-btn[data-mode="graph"]').click();
+            assert.equal(await page.locator('#impactGraphView').isVisible(), true);
+        } finally { await finish(page); }
+    });
+}
+
+for (const unavailable of ['adapter', 'd3']) test(`fallback when the graph ${unavailable} is unavailable keeps the layer view usable`, async () => {
+    const page = await architectureFixture(unavailable !== 'adapter', unavailable === 'd3');
+    try {
+        await page.evaluate(() => TaxonomyScoring.renderArchitectureView({includedElements:[
+            {nodeCode:'BP-0',title:'Element',taxonomySheet:'BP',relevance:0.8,anchor:true}
+        ],includedRelationships:[],anchors:[]}));
+        assert.equal(await page.locator('#impactSwimView').isVisible(), true);
+        assert.equal(await page.locator('#impactGraphView').isVisible(), false);
+        assert.equal(await page.locator('.impact-view-btn[data-mode="graph"]').isDisabled(), true);
+    } finally { await finish(page); }
+});
+
+test('replacing or clearing an architecture disposes the old graph lifecycle', async () => {
+    const page = await architectureFixture();
+    try {
+        await page.evaluate(() => {
+            const add = document.addEventListener.bind(document), remove = document.removeEventListener.bind(document);
+            window.graphListenerCount = 0;
+            document.addEventListener = (type, ...args) => {
+                if (type === 'fullscreenchange') graphListenerCount++;
+                return add(type, ...args);
+            };
+            document.removeEventListener = (type, ...args) => {
+                if (type === 'fullscreenchange') graphListenerCount--;
+                return remove(type, ...args);
+            };
+            window.testArchitecture = {includedElements:[{nodeCode:'BP-0',title:'Element',
+                taxonomySheet:'BP',relevance:0.8,anchor:true}],includedRelationships:[],anchors:[]};
+            TaxonomyScoring.renderArchitectureView(testArchitecture);
+        });
+        assert.equal(await page.evaluate(() => graphListenerCount), 1);
+        await page.evaluate(() => TaxonomyScoring.renderArchitectureView(testArchitecture));
+        assert.equal(await page.evaluate(() => graphListenerCount), 1);
+        await page.evaluate(() => TaxonomyScoring.renderArchitectureView(null));
+        assert.equal(await page.evaluate(() => graphListenerCount), 0);
+    } finally { await finish(page); }
+});
 async function mountRecovery(page) {
     await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-recovery-viewport.js')});
     await page.evaluate(() => {
