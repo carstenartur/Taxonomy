@@ -176,12 +176,21 @@ for(const locale of ['de','en']){
             assert.deepEqual(await page.evaluate(()=>localeChanges),[locale==='de'?'en':'de']);
         }finally{await finish(page);}
     });
-    test(`${locale}: compact navigation keeps direct language links when no settings selector exists`,async()=>{
-        const page=await fixture(locale,1024);try{
-            await page.locator('#applicationSettings').evaluate(node=>node.remove());
+    for(const [view,width] of [['reports',992],['reports',1121],['reports',1441],['versioning',1024],['versioning',1121],['versioning',1441],['versioning',1632],['versioning',1633]])test(`${locale}: ${width}px ${view} navigation keeps direct language links when no settings selector exists`,async()=>{
+        const page=await fixture(locale,width);try{
+            // Standalone portfolio pages have source-specific actions but no settings selector.
+            await page.locator('.taxonomy-app-local').evaluate((node,view)=>{node.innerHTML=view==='reports'
+                ? '<div><a id="portfolioBack" class="btn btn-sm btn-outline-light" href="/projects">Zurück zum Projekt</a><a id="versioningLink" class="btn btn-sm btn-outline-light" href="/versions">Versionierung</a></div>'
+                : '<span id="versioningPageTitle">Versionierung und Zusammenarbeit</span><a id="portfolioBack" href="/projects">Portfolio</a><a id="versioningLink" href="/reports">Berichte</a>';},view);
             assert.equal(await page.locator('.taxonomy-app-languages a[hreflang="de"]').isVisible(),true);
             assert.equal(await page.locator('.taxonomy-app-languages a[hreflang="en"]').isVisible(),true);
             assert.equal(await page.locator('#applicationNavigation .context-help').isVisible(),true);
+            const boxes=await Promise.all(['.taxonomy-app-brand','#mainNavTabs [data-page="architecture"]','#portfolioBack','#versioningLink',
+                '.taxonomy-app-languages [hreflang="de"]','.taxonomy-app-languages [hreflang="en"]','.context-help'].map(selector=>page.locator('#applicationNavigation '+selector).boundingBox()));
+            const center=box=>box.y+box.height/2;
+            assert.ok(boxes.every(box=>box&&Math.abs(center(box)-center(boxes[0]))<=2),'Portfolio actions, language and help must share the navigation row: '+JSON.stringify(boxes));
+            assert.ok((await page.locator('#applicationNavigation').boundingBox()).height<=64);
+            if(view==='versioning')assert.ok(await page.locator('#versioningPageTitle').textContent(),'The title remains available to assistive technology');
         }finally{await finish(page);}
     });
     for(const width of [700,900,1100,1280])test(`${locale}: ${width}px settings panel stays inside the viewport`,async()=>{
