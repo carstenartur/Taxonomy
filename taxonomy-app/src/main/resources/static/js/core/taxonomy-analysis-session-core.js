@@ -298,11 +298,18 @@
                 || NativeEventSource.__taxonomyWorkspaceRouting === true) return;
 
         function RoutedEventSource(url, configuration) {
-            var resolved = requestUrl(url);
-            var target = url;
-            if (runtime.workspaceId && resolved
-                    && resolved.origin === window.location.origin
-                    && resolved.pathname.indexOf('/api/') === 0) {
+            var i18n = window.TaxonomyI18n;
+            var target = i18n && typeof i18n.resolveUrl === 'function' ? i18n.resolveUrl(url) : url;
+            var resolved;
+            try { resolved = new URL(target, window.location.href); }
+            catch (error) { return new NativeEventSource(target, configuration); }
+            var basePath = i18n && typeof i18n.getBasePath === 'function' ? String(i18n.getBasePath() || '') : '';
+            var apiPath = basePath && resolved.pathname.indexOf(basePath + '/') === 0
+                ? resolved.pathname.substring(basePath.length) : resolved.pathname;
+            // An explicit workspace (including empty central scope) owns this
+            // stream; only unpinned URLs follow the current analysis tab.
+            if (runtime.workspaceId && resolved.origin === window.location.origin
+                    && apiPath.indexOf('/api/') === 0 && !resolved.searchParams.has('workspaceId')) {
                 resolved.searchParams.set('workspaceId', runtime.workspaceId);
                 target = resolved.href;
             }

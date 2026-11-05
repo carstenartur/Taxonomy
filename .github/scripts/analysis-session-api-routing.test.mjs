@@ -10,6 +10,10 @@ const source = await readFile(
   ),
   'utf8'
 );
+const coreSource = await readFile(
+  new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-core.js', import.meta.url),
+  'utf8'
+);
 
 const calls = [];
 const client = {};
@@ -39,9 +43,8 @@ function resolveApplicationUrl(value) {
   return '/taxonomy' + value;
 }
 
-const runtime = { workspaceId: 'workspace A/1' };
 const window = {
-  __TaxonomyAnalysisSessionContext: { runtime },
+  TaxonomyState: {},
   TaxonomyApiClient: client,
   TaxonomyI18n: {
     getBasePath: () => '/taxonomy',
@@ -54,6 +57,10 @@ const window = {
   }
 };
 
+vm.runInNewContext(coreSource, { window, URL, Array, Object, RegExp },
+  { filename: 'taxonomy-analysis-session-core.js' });
+const runtime = window.__TaxonomyAnalysisSessionContext.runtime;
+runtime.workspaceId = 'workspace A/1';
 vm.runInNewContext(source, {
   window,
   URL,

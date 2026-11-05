@@ -118,3 +118,38 @@ test('two pages can open and observe the same running draft without writes or co
     assert.equal(draft.payload.businessText, 'First edit');
   } finally { await context.close(); }
 });
+
+test('native event streams use the requested workspace and nested application path', async () => {
+  const context=await browser.newContext(),requests=[];
+  await context.route('http://taxonomy.test/**',async route=>{
+    const url=new URL(route.request().url());
+    if(url.pathname==='/taxonomy/')return route.fulfill({contentType:'text/html',body:'<!doctype html><html><body></body></html>'});
+    if(url.pathname==='/taxonomy/api/events'){
+      requests.push(url);
+      return route.fulfill({status:200,headers:{'content-type':'text/event-stream','cache-control':'no-cache'},body:'data: ready\n\n'});
+    }
+    return route.fulfill({status:404,body:''});
+  });
+  try {
+    const page=await context.newPage();await page.goto('http://taxonomy.test/taxonomy/');
+    await page.evaluate(()=>{
+      window.TaxonomyState={};
+      window.TaxonomyI18n={getBasePath:()=>'/taxonomy',resolveUrl:value=>typeof value==='string'&&value.startsWith('/')&&!value.startsWith('/taxonomy/')?'/taxonomy'+value:value};
+    });
+    for(const file of ['taxonomy-analysis-session-core.js','taxonomy-analysis-session-api-routing.js'])
+      await page.addScriptTag({path:path.join(resources,'static/js/core',file)});
+    const messages=await page.evaluate(async()=>{
+      const session=window.__TaxonomyAnalysisSessionContext;session.runtime.workspaceId='analysis-A';
+      session.installWorkspaceEventSourceRouting();
+      return Promise.all(['/api/events?case=implicit','/api/events?case=private&workspaceId=working-B',
+        '/api/events?case=shared&workspaceId='].map(url=>new Promise((resolve,reject)=>{
+        const source=new EventSource(url);const timeout=setTimeout(()=>{source.close();reject(new Error('Event stream timed out'));},5000);
+        source.onmessage=event=>{clearTimeout(timeout);source.close();resolve(event.data);};
+        source.onerror=()=>{clearTimeout(timeout);source.close();reject(new Error('Event stream failed'));};
+      })));
+    });
+    assert.deepEqual(messages,['ready','ready','ready']);
+    const pins=Object.fromEntries(requests.map(url=>[url.searchParams.get('case'),url.searchParams.get('workspaceId')]));
+    assert.deepEqual(pins,{implicit:'analysis-A',private:'working-B',shared:''});
+  } finally {await context.close();}
+});
