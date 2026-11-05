@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { openSharedNavigation } from './ui-role-fixtures.mjs';
 
 const mediaType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.template';
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -250,7 +251,9 @@ export async function verifyRestore({ context, page, expect, baseUrl, templateId
         pageHeight, allRows, visibleRows, contextToggleWithKeyboard: true,
         immutableDownloadsVerified: true, keyboardNavigation: true, horizontalOverflow: false });
       const back = sameOrigin(await page.locator('#partComparisonBack').getAttribute('href'), '');
+      await openSharedNavigation(page);
       await page.locator('#partComparisonBack').focus();
+      await expect(page.locator('#partComparisonBack')).toBeFocused();
       await Promise.all([page.waitForURL(back.href), page.keyboard.press('Enter')]);
       await expect(page.locator('#fromRevision')).toHaveValue(pair.from);
       await expect(page.locator('#toRevision')).toHaveValue(pair.to);
