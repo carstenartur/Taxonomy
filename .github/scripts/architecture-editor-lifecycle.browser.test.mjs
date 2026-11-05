@@ -85,6 +85,97 @@ test('a dirty editor refuses changing the exact source when discard is declined'
     }finally{await page.close();}
 });
 
+test('quick undo previews the latest personal operation and protects an unaccepted draft',async()=>{
+    const page=await fixture();try{
+        await page.evaluate(async()=>{
+            const original=ArchitectureEditorApi.load;
+            crypto.randomUUID=()=> '123e4567-e89b-42d3-a456-426614174000';
+            window.quickPreviews=[];window.quickCommands=[];
+            ArchitectureEditorApi.load=async(...args)=>{
+                const view=await original(...args);
+                view.document.history=[{operationId:'operation-7',kind:'CREATE_ELEMENT',actor:'alice',revision:7,occurredAt:'now',rationale:'Create capability'}];
+                view.document.historyTargets={undo:view.document.history[0],redo:null};
+                return view;
+            };
+            ArchitectureEditorApi.preview=async command=>{
+                quickPreviews.push(command);
+                return {context:command.context,change:{changes:[{id:'one',before:'before',after:'after'}]}};
+            };
+            ArchitectureEditorApi.execute=async command=>{quickCommands.push(command);};
+            window.editor=TaxonomyArchitectureEditor.mount(document.getElementById('architectureWorkingSource'));
+            await editor.activate({kind:'working',repositoryId:'repo',workspaceScopeKey:'private-a',branch:'draft/a'});
+            window.confirm=()=>false;
+        });
+        assert.equal(await page.locator('#editorQuickUndo').isEnabled(),true);
+        assert.equal(await page.locator('#editorQuickRedo').isDisabled(),true);
+        await page.locator('#editorTitle').fill('Unaccepted draft');
+        await page.locator('#editorQuickUndo').click();
+        assert.equal(await page.evaluate(()=>quickPreviews.length),0);
+        assert.equal(await page.locator('#editorTitle').inputValue(),'Unaccepted draft');
+        await page.evaluate(()=>window.confirm=()=>true);
+        await page.locator('#editorQuickUndo').click();
+        await page.locator('#editorPreviewDialog[open]').waitFor();
+        const previews=await page.evaluate(()=>quickPreviews);
+        assert.equal(previews.length,1);
+        assert.equal(previews[0].kind,'UNDO');
+        assert.equal(previews[0].targetOperationId,'operation-7');
+        assert.ok(previews[0].metadata.rationale);
+        assert.equal(await page.evaluate(()=>quickCommands.length),0,'Preview must not change the architecture');
+        await page.locator('#editorCancel').click();
+        assert.equal(await page.locator('#editorTitle').inputValue(),'Unaccepted draft');
+    }finally{await page.close();}
+});
+
+for(const removed of [false,true])test(`quick undo conflict and canceled re-preview retain a package draft (${removed?'deleted':'retained'} package)`,async()=>{
+    const page=await fixture();try{
+        await page.evaluate(async removed=>{
+            const original=ArchitectureEditorApi.load;
+            crypto.randomUUID=()=> '123e4567-e89b-42d3-a456-426614174000';
+            window.packageReads=0;window.packagePreviews=[];window.packageCommands=[];
+            ArchitectureEditorApi.load=async(...args)=>{
+                const view=await original(...args);
+                view.document.context.revision=++packageReads===1?7:8;
+                view.document.history=[{operationId:'operation-7',kind:'CREATE_ELEMENT',actor:'alice',revision:7,occurredAt:'now',rationale:'Create capability'}];
+                view.document.historyTargets={undo:view.document.history[0],redo:null};
+                view.model.packages=packageReads===1 || !removed?[
+                    {id:'package-a',title:'Original package',description:'Original description',parentId:'parent-a',position:1},
+                    {id:'parent-a',title:'Original parent',description:'',parentId:null,position:0}
+                ]:[];
+                return view;
+            };
+            ArchitectureEditorApi.preview=async command=>{
+                packagePreviews.push(command);
+                if(packagePreviews.length===1)throw Object.assign(new Error('Revision changed'),{status:412});
+                return {context:command.context,change:{changes:[{id:'one',before:'before',after:'after'}]}};
+            };
+            ArchitectureEditorApi.execute=async command=>{packageCommands.push(command);};
+            window.editor=TaxonomyArchitectureEditor.mount(document.getElementById('architectureWorkingSource'));
+            await editor.activate({kind:'working',repositoryId:'repo',workspaceScopeKey:'private-a',branch:'draft/a'});
+            window.confirm=()=>true;
+        },removed);
+        await page.locator('#editorPackage').selectOption('package-a');
+        await page.locator('#editorPackageTitle').fill('Unaccepted package name');
+        await page.locator('#editorPackageDescription').fill('Unaccepted package description');
+        await page.locator('#editorPackageParent').selectOption('parent-a');
+        await page.locator('#editorPackagePosition').fill('4');
+        await page.locator('#editorQuickUndo').click();
+        await page.locator('#editorReapply:visible').waitFor();
+        await page.locator('#editorReapply').click();
+        await page.waitForFunction(()=>packagePreviews.length===2 && !document.getElementById('editorAccept').disabled);
+        await page.locator('#editorCancel').click();
+        assert.deepEqual(await page.evaluate(()=>Object.fromEntries(['editorPackage','editorPackageTitle','editorPackageDescription','editorPackageParent','editorPackagePosition']
+            .map(id=>[id,document.getElementById(id).value]))),{
+            editorPackage:'package-a',editorPackageTitle:'Unaccepted package name',
+            editorPackageDescription:'Unaccepted package description',editorPackageParent:'parent-a',editorPackagePosition:'4'});
+        if(removed){
+            assert.equal(await page.locator('#editorPackage option:checked').textContent(),'editor.packageUnavailable');
+            assert.equal(await page.locator('#editorPackageParent option:checked').textContent(),'editor.packageUnavailable');
+        }
+        assert.equal(await page.evaluate(()=>editor.hasDraft()),true,'The retained package fields must still be treated as an unaccepted draft');
+        assert.equal(await page.evaluate(()=>packageCommands.length),0,'Cancel must not accept the preview');
+    }finally{await page.close();}
+});
+
 test('editor Focus toolbar keeps the selected element and dirty form and sends no DOM event as an ID',async()=>{
     const page=await fixture();try{
         await page.evaluate(async()=>{

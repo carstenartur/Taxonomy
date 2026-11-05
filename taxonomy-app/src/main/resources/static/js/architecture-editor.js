@@ -100,6 +100,14 @@
         el('editorResumeCheckpoint').disabled = busy;
         el('editorRecoverVersion').disabled = busy;
         el('editorNew').disabled = !writable;
+        var quick = view?.document.historyTargets || {undo:null, redo:null};
+        ['undo', 'redo'].forEach(function (action) {
+            var key = action === 'undo' ? 'Undo' : 'Redo';
+            var control = el('editorQuick' + key), target = quick[action];
+            control.disabled = !writable || !target;
+            control.title = target ? t('editor.quickTarget', target.revision, target.rationale) : t('editor.quickUnavailable');
+            el('editorQuick' + key + 'Target').textContent = control.title;
+        });
         el('editorPackageFields').disabled = !writable;
         el('editorFields').disabled = !writable;
         el('editorRelationFields').disabled = !writable || !selectedElement();
@@ -149,7 +157,7 @@
         el('editorContext').textContent = c.repositoryId + ' / ' + c.workspaceScopeKey + ' / ' + c.branch + ' · ' + contextLabel + ' · ' + c.actor;
     }
     function render(preserveDraft) {
-        renderPackages();
+        renderPackages(preserveDraft);
         planningPanel.render(view, preserveDraft);
         var c = context();
         publishContext();
@@ -268,8 +276,9 @@
         el('editorEvidence').textContent = JSON.stringify({ taxonomy: item && item.taxonomy, extensions: item && item.extensions,
             evidence: evidence, relations: relationEvidence }, null, 2);
     }
-    function renderPackages() {
-        var packages = view.model.packages || [], chosen = el('editorPackage').value;
+    function renderPackages(preserveDraft) {
+        var packages = view.model.packages || [], chosen = el('editorPackage').value,
+            parent = el('editorPackageParent').value;
         el('editorPackage').replaceChildren(); option(el('editorPackage'), '', t('editor.packageNew'));
         el('editorPackageParent').replaceChildren(); option(el('editorPackageParent'), '', t('editor.packageRoot'));
         el('editorPackages').replaceChildren();
@@ -280,8 +289,18 @@
             row.textContent = pkg.title + ' · ' + pkg.id + ' → ' + (pkg.parentId || t('editor.packageRoot')) + ' [' + pkg.position + ']';
             el('editorPackages').append(row);
         });
-        el('editorPackage').value = packages.some(function (p) { return p.id === chosen; }) ? chosen : '';
-        fillPackage();
+        if (preserveDraft) {
+            // Keep stale identities visible: a concurrent deletion must not turn an update into a new package.
+            if (chosen && !packages.some(function (p) { return p.id === chosen; }))
+                option(el('editorPackage'), chosen, t('editor.packageUnavailable', chosen));
+            if (parent && !packages.some(function (p) { return p.id === parent; }))
+                option(el('editorPackageParent'), parent, t('editor.packageUnavailable', parent));
+            el('editorPackage').value = chosen;
+            el('editorPackageParent').value = parent;
+        } else {
+            el('editorPackage').value = packages.some(function (p) { return p.id === chosen; }) ? chosen : '';
+            fillPackage();
+        }
     }
     function fillPackage() {
         var pkg = (view.model.packages || []).find(function (p) { return p.id === el('editorPackage').value; });
@@ -374,11 +393,11 @@
     }
     function acceptFocus(item) { return executeFocus(item, false); }
     function undoFocus(item) { return executeFocus(item, true); }
-    async function stage(intent, rationaleInput) {
+    async function stage(intent, rationaleInput, generatedRationale) {
         if (busy || !view || !view.mayEdit) return;
         rationaleInput = rationaleInput || el('editorRationale');
-        if (!rationaleInput.reportValidity()) return;
-        var audit = metadata(); audit.rationale = rationaleInput.value;
+        if (!generatedRationale && !rationaleInput.reportValidity()) return;
+        var audit = metadata(); audit.rationale = generatedRationale || rationaleInput.value;
         pending = Object.assign({}, intent, { context: context(), metadata: audit });
         await previewPending();
     }
@@ -445,6 +464,15 @@
     el('editorMove').onclick = function () { stage({ kind: 'MOVE_ELEMENT', id: selected, parentId: el('editorParent').value.trim() || null }); };
     el('editorDiscard').onclick = function () { pending = null; renderForm(); };
     el('editorNew').onclick = function () { selectElement(null); el('editorTitle').focus(); };
+    function quickInverse(action) {
+        if (busy || loading || !view || !view.mayEdit) return;
+        var target = view.document.historyTargets?.[action];
+        if (!target || (hasDraft() && !window.confirm(t('editor.quickDiscardDraft')))) return;
+        stage({kind: action === 'undo' ? 'UNDO' : 'REDO', targetOperationId: target.operationId}, null,
+            t(action === 'undo' ? 'editor.quickUndoReason' : 'editor.quickRedoReason', target.revision));
+    }
+    el('editorQuickUndo').onclick = function () { quickInverse('undo'); };
+    el('editorQuickRedo').onclick = function () { quickInverse('redo'); };
     el('editorSearch').oninput = function () { if (view) { page = 0; renderTree(); } };
     el('editorPrevious').onclick = function () { page--; renderTree(); el('editorSearch').focus(); };
     el('editorNext').onclick = function () { page++; renderTree(); el('editorSearch').focus(); };
@@ -460,7 +488,11 @@
         try { if (await load(context(), view.document.source === 'GIT_CHECKPOINT' ? context().commit : context().revision, true)) renderer.fit(); }
         finally { busy = false; permissions(); }
     };
-    el('editorRefresh').onclick = function () { if (!busy) { pending = null; load(view ? context() : scopeFromUrl(), null).then(function (ok) { if (ok) renderer.focus(); }); } };
+    el('editorRefresh').onclick = function () {
+        if (busy || loading || (hasDraft() && !window.confirm(t('editor.refreshDiscardDraft')))) return;
+        pending = null;
+        load(view ? context() : scopeFromUrl(), null).then(function (ok) { if (ok) renderer.focus(); });
+    };
     el('editorCancel').onclick = function () { if (!busy) { pending = null; dialog.close(); } };
     dialog.addEventListener('cancel', function (event) { if (busy) event.preventDefault(); else pending = null; });
     el('editorAccept').onclick = async function () {

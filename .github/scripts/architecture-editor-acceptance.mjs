@@ -618,6 +618,18 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     assert.equal(await page.locator('#editorVersions li').count(), beforeVersions + 2);
     assert.equal(await page.locator('#editorHistory li').count(), beforeOperations + 1);
     assert.ok((await page.locator('#editorDsl').inputValue()).includes(`After checkpoint ${suffix}`));
+    // The visible toolbar uses the same durable preview/accept operations as the history.
+    const beforeQuickUndo = await page.locator('#editorDsl').inputValue();
+    const undoPreview = await preview(() => page.locator('#editorQuickUndo').click());
+    assert.equal(undoPreview.kind, 'UNDO');
+    assert.equal(undoPreview.targetOperationId, afterCheckpoint.operationId);
+    await commit();
+    assert.notEqual(await page.locator('#editorDsl').inputValue(), beforeQuickUndo);
+    const redoPreview = await preview(() => page.locator('#editorQuickRedo').click());
+    assert.equal(redoPreview.kind, 'REDO');
+    await commit();
+    assert.equal(await page.locator('#editorDsl').inputValue(), beforeQuickUndo);
+    measurements.quickUndoAndRedoAfterReload = true;
     measurements.separateOperationAndVersionHistory = true;
     await reflow();
     measurements.deepLinkRestored = true;

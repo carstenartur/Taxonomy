@@ -84,7 +84,7 @@ test('malformed namespace is visible and cannot be overwritten through the profi
 
 // Run the production planning, focus and editor modules together: do not replace the panel's stage callback.
 // Only browser rendering and the remote API boundary are fixtures, not retry logic.
-async function editorFixture(conflictAt) {
+async function editorFixture(conflictAt, history = [], serverUndo = history[0] || null) {
     const html = fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/templates/architecture-editor.html'), 'utf8');
     const ids = Object.fromEntries([...html.matchAll(/<([a-z0-9]+)\b[^>]*\bid="([^"]+)"/gi)]
         .map(([, tag, id]) => [id, new Element(tag)]));
@@ -95,7 +95,8 @@ async function editorFixture(conflictAt) {
     }
     const context = { repositoryId:'test-repository', workspaceScopeKey:'test-workspace', branch:'main',
         commit:null, revision:1, actor:'test-user', writeMode:'PRIVATE_WORKSPACE' };
-    const view = { mayEdit:true, document:{context, dsl:'', projectionState:'READY', history:[], versions:[], source:'WORKSPACE_REVISION'},
+    const view = { mayEdit:true, document:{context, dsl:'', projectionState:'READY', history,
+        historyTargets:{undo:serverUndo,redo:null}, versions:[], source:'WORKSPACE_REVISION'},
         schema:{elementTypes:[], relationTypes:[], relationStatuses:[], planningProfiles:[{id:'go-live', version:'1',
             fields:[{key:'precision',required:true,choices:['YEAR','DATE']}, {key:'value',required:true,choices:[]}]}]},
         model:{views:[], requirements:[{id:'R',title:'Original'}], elements:[], relations:[], evidence:[], packages:[]},
@@ -134,8 +135,9 @@ async function editorFixture(conflictAt) {
         if(id==='architectureWorkspace')return null; // Standalone fixture deliberately has no application shell.
         assert.ok(ids[id], `Production template is missing ${id}`);
         return ids[id];
-    }, createElement:tag => new Element(tag), querySelectorAll:() => [], documentElement:{lang:'en'}, activeElement:null};
-    document.body={querySelector:selector=>document.getElementById(selector.slice(1)),querySelectorAll:()=>[]};
+    }, createElement:tag => new Element(tag), createTextNode:text => ({textContent:text}), querySelectorAll:() => [], documentElement:{lang:'en'}, activeElement:null};
+    document.body={querySelector:selector=>document.getElementById(selector.slice(1)),
+        querySelectorAll:selector=>selector.startsWith('#editorForm input') ? [ids.editorTitle,ids.editorRationale] : []};
     const window = {confirm:() => true, addEventListener:() => {}, ArchitectureEditorApi:api,
         TaxonomyI18n:{t:key => key, ready:() => Promise.resolve()},
         ArchitectureEditorRenderer:() => ({render(){},select(){},focus(){},fit(){},presentFocus(){},setActive(){}})};
@@ -153,11 +155,63 @@ async function editorFixture(conflictAt) {
     assert.equal(ids.editorPlanningActions.disabled, false);
     ids.editorPlanningEntry.value = 'launch';
     ids.editorPlanningEntry.events.change();
-    return {ids, previews, executions, loads};
+    return {ids, previews, executions, loads, window};
 }
 
 // All fixture promises resolve immediately; drain the real handlers without timed sleeps.
 async function settleUi() { await new Promise(resolve => setImmediate(resolve)); }
+
+test('quick undo uses the existing server preview and waits for explicit acceptance', async () => {
+    const visible = {operationId:'visible-operation',actor:'test-user',kind:'UNDO',
+        revision:2,occurredAt:'now',rationale:'Already undone'};
+    const selectedByServer = {operationId:'operation-1',actor:'test-user',kind:'UpdateElement',
+        revision:1,occurredAt:'now',rationale:'Update system'};
+    const f = await editorFixture(null, [visible], selectedByServer);
+    assert.equal(f.ids.editorQuickUndo.disabled, false);
+    assert.equal(f.ids.editorQuickRedo.disabled, true);
+    f.ids.editorQuickUndo.onclick();
+    await settleUi();
+    assert.equal(f.previews.length, 1);
+    assert.equal(f.previews[0].kind, 'UNDO');
+    assert.equal(f.previews[0].targetOperationId, 'operation-1');
+    assert.equal(f.previews[0].metadata.rationale, 'editor.quickUndoReason');
+    assert.equal(f.executions.length, 0);
+    await f.ids.editorAccept.onclick();
+    assert.deepEqual(f.executions[0], f.previews[0]);
+});
+
+test('quick undo protects an unaccepted draft before opening its preview', async () => {
+    const f = await editorFixture(null, [{operationId:'operation-1',actor:'test-user',kind:'UpdateElement',
+        revision:1,occurredAt:'now',rationale:'Update system'}]);
+    f.ids.editorTitle.value = 'Unaccepted draft';
+    f.window.confirm = () => false;
+    f.ids.editorQuickUndo.onclick();
+    await settleUi();
+    assert.equal(f.previews.length, 0);
+    assert.equal(f.ids.editorTitle.value, 'Unaccepted draft');
+    f.window.confirm = () => true;
+    f.ids.editorQuickUndo.onclick();
+    await settleUi();
+    assert.equal(f.previews.length, 1);
+    f.ids.editorCancel.onclick();
+    assert.equal(f.ids.editorTitle.value, 'Unaccepted draft');
+    assert.equal(f.executions.length, 0);
+});
+
+test('refresh asks before discarding an unaccepted draft', async () => {
+    const f = await editorFixture(null);
+    f.ids.editorTitle.value = 'Unaccepted draft';
+    f.window.confirm = () => false;
+    f.ids.editorRefresh.onclick();
+    await settleUi();
+    assert.equal(f.loads.length, 1);
+    assert.equal(f.ids.editorTitle.value, 'Unaccepted draft');
+    f.window.confirm = () => true;
+    f.ids.editorRefresh.onclick();
+    await settleUi();
+    assert.equal(f.loads.length, 2);
+    assert.equal(f.ids.editorTitle.value, '');
+});
 
 for (const conflictAt of ['preview','execute']) {
     for (const generalReason of ['', 'Unrelated architecture edit']) {

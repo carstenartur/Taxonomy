@@ -21,6 +21,12 @@ into this workspace with their source and version coordinates.
 5. **Preview deletion** lists any blocking dependencies. Remove or reassign them explicitly before deleting the element or relation. No cascade is hidden behind the action.
 6. **Preview undo** or **Preview redo** in history requests a new audited inverse command. Later dependent changes can block it. History survives reloads; native text undo affects only draft input. Git baseline revert is a separate versioning operation.
 
+Above the graph, **Undo latest change …** and **Redo latest undo …** preview the
+latest applicable personal operation from the full history.
+The preview still requires acceptance. If an unaccepted draft exists, the editor
+asks before it may be discarded. The server can reject an undo when later changes
+depend on it; the toolbar does not silently select an older operation.
+
 Every accepted edit is stored durably with its inverse data, actor and reason. It advances the workspace revision and **does not create a Git commit**. Undo/redo and all accepted changes survive browser reload and application restart.
 
 **Editor history** lists individual personal operations. **Version history** lists Git checkpoints separately. Choose **Create checkpoint/version** with a reason to save the complete current workspace as a stable Git version. Equal content does not create another commit. Later edits stay durably in the workspace until the next checkpoint. Publish, merge, branch/baseline and restore commands checkpoint pending edits at their version boundary.
