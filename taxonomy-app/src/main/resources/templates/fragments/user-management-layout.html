@@ -7,23 +7,24 @@
     <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+    <th:block th:replace="~{fragments/application-chrome :: styles}"></th:block>
     <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
     <th:block th:replace="~{fragments/customer-stylesheet :: link}"></th:block>
 </head>
 <body>
-<header th:fragment="navigation">
+<th:block th:fragment="navigation">
     <a class="skip-link" href="#userManagementMain" th:text="#{users.skip}">Skip to user management</a>
-    <nav class="navbar navbar-dark bg-dark" th:attr="aria-label=#{users.navigation}">
-        <div class="container d-flex flex-wrap gap-2">
-            <a class="navbar-brand" th:href="@{/(lang=${#locale.language})}">Taxonomy</a>
-            <a class="btn btn-outline-light" th:href="@{/admin/users(lang=${#locale.language})}"
+    <nav th:replace="~{fragments/application-chrome :: navigation('admin', ~{:: localActions}, 'SECURITY', 'user-management')}">
+        <th:block th:fragment="localActions"><div>
+            <a id="userManagementHome" class="btn btn-outline-light" th:href="@{/admin/users(lang=${#locale.language})}"
                th:text="#{users.title}">User management</a>
             <a class="btn btn-outline-light" th:href="@{/(lang=${#locale.language})}"
                th:text="#{users.back}">Back to application</a>
-            <a th:replace="~{fragments/context-help :: button('SECURITY', 'user-management')}"></a>
-        </div>
+        </div></th:block>
     </nav>
-</header>
+    <script th:src="@{/js/taxonomy-i18n.js}"></script>
+    <script th:src="@{/js/shared/application-chrome.js}"></script>
+</th:block>
 <div th:fragment="feedback">
     <div th:if="${errorKey}" class="alert alert-danger" role="alert"
          th:text="${#messages.msg(errorKey)}"></div>

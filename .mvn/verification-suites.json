@@ -237,6 +237,7 @@
           "com.taxonomy.ArchitectureStandSelectionBrowserIT",
           "com.taxonomy.RequirementLifecycleBrowserIT",
           "com.taxonomy.SharedApplicationChromeBrowserIT",
+          "com.taxonomy.SharedAdminNavigationBrowserIT",
           "com.taxonomy.ArchitectureWorkspaceBrowserIT",
           "com.taxonomy.PortfolioMatrixReviewIT"
         ]
