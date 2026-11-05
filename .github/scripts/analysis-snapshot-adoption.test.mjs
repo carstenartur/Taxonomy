@@ -21,6 +21,23 @@ function boot() {
 const target={repositoryId:'source-repo',workspaceScopeKey:'target-copy',branch:'draft',revision:4,actor:'alice',writeMode:'PRIVATE_WORKSPACE'};
 function view(context=target,mayEdit=true){return {document:{context,source:'WORKSPACE_REVISION'},mayEdit,model:{views:[]}};}
 
+for (const [locale, label] of [['de', 'Architektur-Wirkungsansicht'], ['en', 'Architecture Impact View']]) {
+    test(`saved analysis view names are localized in ${locale} without changing custom titles`, () => {
+        const {context,node}=boot();
+        const translations={'archview.policy.title.defaultImpact':label};
+        const panel=context.AnalysisSnapshotAdoption({t:key=>translations[key] || key,api:{},metadata:()=>({commandId:'one'})});
+        const model=view();model.model.views=[
+            {id:'one',title:'archview.policy.title.defaultImpact'},
+            {id:'two',title:'A team-defined title'},
+            {id:'three',title:'archview.policy.title.futureView'},
+            {id:'four',title:''}
+        ];
+        panel.update(model);
+        const labels=node('adoptionView').children.map(option=>option.textContent);
+        assert.deepEqual(labels,['adoption.fullModel',label,'A team-defined title','Future View','four']);
+    });
+}
+
 test('opening adoption panel never previews or accepts automatically',()=>{
     const {context,node}=boot();let calls=0;
     const panel=context.AnalysisSnapshotAdoption({t:key=>key,api:{previewAdoption(){calls++;},adoptSnapshot(){calls++;}},metadata:()=>({commandId:'one'})});
