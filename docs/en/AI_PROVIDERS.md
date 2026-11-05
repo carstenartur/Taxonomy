@@ -137,6 +137,7 @@ Example:
 {
   "available": true,
   "provider": "Custom OpenAI-compatible",
+  "connectionStatus": "REACHABLE",
   "availableProviders": ["LOCAL_ONNX", "CUSTOM_OPENAI"]
 }
 ```
@@ -173,7 +174,7 @@ The navigation bar shows the current AI state:
 | 🔴 **AI: Unavailable** | Unavailable | The selected provider lacks mandatory configuration and no usable local fallback is loaded. |
 | ⚠️ **AI: Unknown** | Error | The status request failed or the application is still starting. |
 
-For `CUSTOM_OPENAI`, verify both `CUSTOM_LLM_URL` and `CUSTOM_LLM_MODEL`. A missing `CUSTOM_LLM_API_KEY` is valid for an unauthenticated trusted server.
+For the active `CUSTOM_OPENAI` provider, Taxonomy makes a bounded `GET` request to the configured server's `/models` endpoint and caches the result briefly. A green **Server reachable** badge means the server responded; it does not prove that the selected model can generate an answer. Connection errors and rejected credentials are red. If the optional models endpoint is unsupported, the badge is yellow and an analysis can still be attempted. The check never generates a completion. Verify both `CUSTOM_LLM_URL` and `CUSTOM_LLM_MODEL`; a missing `CUSTOM_LLM_API_KEY` is valid for an unauthenticated trusted server.
 
 ---
 

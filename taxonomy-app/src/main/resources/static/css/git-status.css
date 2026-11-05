@@ -475,6 +475,10 @@ body.dark-mode .restore-preview {
     color: #664d03 !important;
 }
 
+#healthAiBadge.text-danger { color: #b02a37 !important; }
+[data-bs-theme="dark"] #healthAiBadge.text-danger { color: #ea868f !important; }
+@media (forced-colors: active) { #healthAiBadge.text-danger { color: CanvasText !important; } }
+
 [data-bs-theme="dark"] #healthOverallBadge.text-warning,
 [data-bs-theme="dark"] #healthAiBadge.text-warning,
 [data-bs-theme="dark"] #healthEmbeddingBadge.text-warning,

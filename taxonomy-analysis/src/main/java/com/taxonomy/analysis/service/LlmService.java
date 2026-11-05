@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AiAvailabilityLevel;
+import com.taxonomy.dto.AiStatusResponse;
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.analysis.service.PromptTemplateService;
@@ -102,6 +103,9 @@ public class LlmService {
 
     @Autowired(required = false)
     private AnalysisRuntimeSettings analysisRuntimeSettings;
+
+    @Autowired(required = false)
+    private CustomOpenAiConnectivity customOpenAiConnectivity;
 
     /** Resolve once before admitting an operation or a standalone follow-up. */
     public AnalysisReasonLength resolveAnalysisReasonLength(AnalysisReasonLength requested) {
@@ -256,6 +260,39 @@ public class LlmService {
     /** Delegates to {@link LlmProviderConfig#getAvailableProviders}. */
     public List<String> getAvailableProviders() {
         return providerConfig.getAvailableProviders();
+    }
+
+    /** Status for the active provider; custom compatible servers are checked without generation. */
+    public AiStatusResponse getAiStatus() {
+        return getAiStatus(null);
+    }
+
+    /** An explicitly selected custom provider can differ from the server default. */
+    public AiStatusResponse getAiStatus(String requestedProvider) {
+        var level = getAvailabilityLevel();
+        String provider = level != AiAvailabilityLevel.UNAVAILABLE ? getActiveProviderName() : null;
+        List<String> availableProviders = getAvailableProviders();
+        boolean customSelected = "CUSTOM_OPENAI".equals(requestedProvider) && !isMockMode();
+        if (customSelected) {
+            provider = "Custom OpenAI-compatible";
+            level = availableProviders.contains("CUSTOM_OPENAI")
+                    ? AiAvailabilityLevel.FULL : AiAvailabilityLevel.UNAVAILABLE;
+        }
+        String connectionStatus = "NOT_CHECKED";
+        if (level == AiAvailabilityLevel.FULL && !isMockMode()
+                && (customSelected || LlmProvider.CUSTOM_OPENAI.id().equals(getActiveProviderId()))) {
+            String key = providerConfig.hasConfiguredApiKey(LlmProvider.CUSTOM_OPENAI)
+                    ? providerConfig.getApiKey(LlmProvider.CUSTOM_OPENAI) : null;
+            var result = customOpenAiConnectivity == null ? CustomOpenAiConnectivity.Result.UNKNOWN
+                    : customOpenAiConnectivity.check(providerConfig.getOpenAiCompatibleUrl(LlmProvider.CUSTOM_OPENAI), key);
+            connectionStatus = result.name();
+            level = switch (result) {
+                case REACHABLE -> AiAvailabilityLevel.FULL;
+                case UNREACHABLE, AUTHENTICATION_FAILED -> AiAvailabilityLevel.UNAVAILABLE;
+                case UNKNOWN -> AiAvailabilityLevel.UNKNOWN;
+            };
+        }
+        return new AiStatusResponse(level, provider, availableProviders, connectionStatus);
     }
 
     // ── Mock-mode helpers ─────────────────────────────────────────────────────

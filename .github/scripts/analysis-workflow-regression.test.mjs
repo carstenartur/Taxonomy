@@ -237,6 +237,140 @@ test('manual scores explicitly replace an earlier failed AI authority', () => {
 
 const browseSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js', import.meta.url), 'utf8');
+
+async function customAiBadge(status) {
+  const elements = Object.fromEntries(['analyzeBtn', 'aiProviderInfo', 'aiStatusBadge',
+    'aiUnavailableWarning', 'aiConnectionWarning'].map(id => [id, {
+      classList: mutableClassList(), className: '', textContent: '', title: '', hidden: true
+    }]));
+  const document = { addEventListener() {}, getElementById: id => elements[id] || null };
+  const window = { TaxonomyState: {}, addEventListener() {} };
+  const module = browseSource.replace('window.TaxonomyBrowse = {',
+    'window.TaxonomyBrowse = { checkAiStatusForTest: checkAiStatus,');
+  vm.runInNewContext(module, { window, document, TaxonomyI18n: { t: key => key },
+    TaxonomyUtils: { escapeHtml: value => value },
+    fetch: async () => ({ ok: true, json: async () => status }) });
+  window.TaxonomyBrowse.checkAiStatusForTest();
+  await new Promise(resolve => setImmediate(resolve));
+  return elements;
+}
+
+test('an unreachable custom provider is red and keeps analysis retry available', async () => {
+  const elements = await customAiBadge({ available: true, level: 'FULL',
+    provider: 'Custom OpenAI-compatible', connectionStatus: 'UNREACHABLE' });
+  assert.match(elements.aiStatusBadge.className, /bg-danger/);
+  assert.equal(elements.aiStatusBadge.title, 'browse.ai.connection.unreachable');
+  assert.equal(elements.aiConnectionWarning.hidden, false);
+  assert.equal(elements.analyzeBtn.disabled, false);
+});
+
+test('an unsupported connectivity check is yellow, and a reachable server is not described as a tested model', async () => {
+  const unknown = await customAiBadge({ available: true, level: 'FULL', connectionStatus: 'UNKNOWN' });
+  assert.match(unknown.aiStatusBadge.className, /bg-warning/);
+  assert.equal(unknown.aiConnectionWarning.hidden, false);
+  const reachable = await customAiBadge({ available: true, level: 'FULL', connectionStatus: 'REACHABLE' });
+  assert.match(reachable.aiStatusBadge.className, /bg-success/);
+  assert.equal(reachable.aiStatusBadge.title, 'browse.ai.connection.reachable');
+  assert.equal(reachable.aiConnectionWarning.hidden, true);
+});
+
+test('polling checks and retains an explicitly selected custom provider', async () => {
+  const select = {
+    value: 'CUSTOM_OPENAI', options: [{ value: '' }, { value: 'CUSTOM_OPENAI' }],
+    remove(index) { this.options.splice(index, 1); this.value = ''; },
+    appendChild(option) { this.options.push(option); }
+  };
+  const elements = Object.fromEntries(['analyzeBtn', 'aiProviderInfo', 'aiStatusBadge',
+    'aiUnavailableWarning', 'aiConnectionWarning'].map(id => [id, {
+      classList: mutableClassList(), className: '', textContent: '', title: '', hidden: true
+    }]));
+  elements.providerSelect = select;
+  const document = { addEventListener() {}, getElementById: id => elements[id] || null,
+    createElement: () => ({}) };
+  const window = { TaxonomyState: {}, addEventListener() {} };
+  let requestedUrl;
+  const module = browseSource.replace('window.TaxonomyBrowse = {',
+    'window.TaxonomyBrowse = { checkAiStatusForTest: checkAiStatus,');
+  vm.runInNewContext(module, { window, document, TaxonomyI18n: { t: key => key },
+    TaxonomyUtils: { escapeHtml: value => value }, fetch: async url => {
+      requestedUrl = url;
+      return { ok: true, json: async () => ({ available: false, connectionStatus: 'UNREACHABLE',
+        availableProviders: ['OPENAI', 'CUSTOM_OPENAI'] }) };
+    } });
+  window.TaxonomyBrowse.checkAiStatusForTest();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requestedUrl, '/api/ai-status?provider=CUSTOM_OPENAI');
+  assert.equal(select.value, 'CUSTOM_OPENAI');
+  assert.match(elements.aiStatusBadge.className, /bg-danger/);
+});
+
+test('an older default-provider response cannot turn a selected unreachable custom provider green', async () => {
+  const select = {
+    value: '', options: [{ value: '' }, { value: 'CUSTOM_OPENAI' }],
+    remove(index) { this.options.splice(index, 1); this.value = ''; },
+    appendChild(option) { this.options.push(option); }
+  };
+  const elements = Object.fromEntries(['analyzeBtn', 'aiProviderInfo', 'aiStatusBadge',
+    'aiUnavailableWarning', 'aiConnectionWarning'].map(id => [id, {
+      classList: mutableClassList(), className: '', textContent: '', title: '', hidden: true
+    }]));
+  elements.providerSelect = select;
+  const document = { addEventListener() {}, getElementById: id => elements[id] || null,
+    createElement: () => ({}) };
+  const window = { TaxonomyState: {}, addEventListener() {} };
+  let finishOlder;
+  const older = new Promise(resolve => { finishOlder = resolve; });
+  const module = browseSource.replace('window.TaxonomyBrowse = {',
+    'window.TaxonomyBrowse = { checkAiStatusForTest: checkAiStatus,');
+  vm.runInNewContext(module, { window, document, TaxonomyI18n: { t: key => key },
+    TaxonomyUtils: { escapeHtml: value => value }, fetch: async url => url.includes('CUSTOM_OPENAI')
+      ? { ok: true, json: async () => ({ available: false, connectionStatus: 'UNREACHABLE',
+          availableProviders: ['OPENAI', 'CUSTOM_OPENAI'] }) }
+      : older });
+  window.TaxonomyBrowse.checkAiStatusForTest();
+  select.value = 'CUSTOM_OPENAI';
+  window.TaxonomyBrowse.checkAiStatusForTest();
+  await new Promise(resolve => setImmediate(resolve));
+  finishOlder({ ok: true, json: async () => ({ available: true, connectionStatus: 'NOT_CHECKED',
+    availableProviders: ['OPENAI', 'CUSTOM_OPENAI'] }) });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(select.value, 'CUSTOM_OPENAI');
+  assert.match(elements.aiStatusBadge.className, /bg-danger/);
+  assert.equal(elements.aiStatusBadge.title, 'browse.ai.connection.unreachable');
+});
+
+const analysisPageTemplate = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/templates/index.html', import.meta.url), 'utf8');
+
+async function adminAiHealthBadge(ai) {
+  const code = analysisPageTemplate.split('// Health Dashboard')[1].split('// Log Viewer')[0];
+  const elements = Object.fromEntries(['healthDashboard', 'healthRefreshBtn', 'healthOverallBadge',
+    'healthAiBadge', 'healthEmbeddingBadge', 'healthMemoryBadge'].map(id => [id, {
+      addEventListener(event, listener) { this[event] = listener; }, textContent: '', className: ''
+    }]));
+  const document = { getElementById: id => elements[id] };
+  vm.runInNewContext(code, { document, getAdminHeaders: () => ({}),
+    TaxonomyI18n: { ready: async () => {}, t: key => key },
+    fetch: async () => ({ json: async () => ({ overall: 'UP', ai, embedding: {}, memory: {} }) }) });
+  elements.healthRefreshBtn.click();
+  await new Promise(resolve => setImmediate(resolve));
+  return elements.healthAiBadge;
+}
+
+test('administration reports server reachability and connection failures precisely', async () => {
+  const reachable = await adminAiHealthBadge({ available: true, connectionStatus: 'REACHABLE' });
+  assert.equal(reachable.textContent, 'index.ui.healthServerReachable');
+  assert.match(reachable.className, /text-success/);
+  const unreachable = await adminAiHealthBadge({ available: false, connectionStatus: 'UNREACHABLE' });
+  assert.equal(unreachable.textContent, 'index.ui.healthServerUnreachable');
+  assert.match(unreachable.className, /text-danger/);
+  const rejected = await adminAiHealthBadge({ available: false, connectionStatus: 'AUTHENTICATION_FAILED' });
+  assert.equal(rejected.textContent, 'index.ui.healthAuthenticationFailed');
+  assert.match(rejected.className, /text-danger/);
+  const unknown = await adminAiHealthBadge({ available: false, level: 'UNKNOWN', connectionStatus: 'UNKNOWN' });
+  assert.equal(unknown.textContent, 'index.ui.healthUnknown');
+  assert.match(unknown.className, /text-warning/);
+});
 const sessionCoreSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-core.js', import.meta.url), 'utf8');
 const sessionUiSource = await readFile(new URL(
@@ -553,11 +687,14 @@ test('confirmed New Analysis resolves a pending draft choice after its authorita
         : { version: 8, payload: { businessText: 'Remote saved requirement' } };
     } });
   const context = h.window.__TaxonomyAnalysisSessionContext;
+  let focusedInput = 0;
+  h.elements.businessText.focus = () => { focusedInput++; };
   h.window.confirm = () => false;
   h.edit('New local requirement');
   await context.loadDraft();
 
   assert.equal(await context.startNewAnalysis(), false);
+  assert.equal(focusedInput, 0);
   assert.equal(context.runtime.draftDecisionPending, true);
   assert.deepEqual(calls.map(call => call.method), ['GET']);
   h.window.confirm = () => true;
@@ -566,6 +703,7 @@ test('confirmed New Analysis resolves a pending draft choice after its authorita
   assert.equal(context.runtime.draftDecisionPending, false);
   assert.equal(context.runtime.version, 9);
   assert.equal(h.elements.businessText.value, '');
+  assert.equal(focusedInput, 1);
   assert.equal(h.state.currentScores, null);
   assert.equal(h.elements.statusArea.dataset.analysisSessionMessage, 'new-analysis');
   assert.equal(h.elements.statusArea.querySelector('[data-analysis-session-action="keep-local"]'), null);

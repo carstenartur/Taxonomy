@@ -256,6 +256,7 @@
                             Set one of the supported API keys, such as <code>GEMINI_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>DEEPSEEK_API_KEY</code>, <code>DASHSCOPE_API_KEY</code>, <code>LLAMA_API_KEY</code>, or <code>MISTRAL_API_KEY</code>,
                             or use <code>LLM_PROVIDER=LOCAL_ONNX</code> for offline analysis.
                         </div>
+                        <div id="aiConnectionWarning" class="alert alert-warning mt-2" role="status" hidden></div>
                         <div class="form-check form-check-inline ms-2 mt-2">
                             <input class="form-check-input" type="checkbox" id="interactiveMode">
                             <label class="form-check-label" for="interactiveMode" th:title="#{analyze.interactive.title}" title="In Interactive Mode, the taxonomy is expanded level-by-level. Click the 🔍 icon on any node to drill deeper. This saves API quota by only analyzing branches you explore.">
@@ -1337,8 +1338,17 @@
                                 overall.className = 'fs-5 ' + (data.overall === 'UP' ? 'text-success' : 'text-warning');
 
                                 var ai = document.getElementById('healthAiBadge');
-                                ai.textContent = data.ai && data.ai.available ? TaxonomyI18n.t('index.ui.healthAvailable') : TaxonomyI18n.t('index.ui.healthUnavailable');
-                                ai.className = 'fs-5 ' + (data.ai && data.ai.available ? 'text-success' : 'text-warning');
+                                var connection = data.ai && data.ai.connectionStatus;
+                                var connectionLabel = { REACHABLE: 'index.ui.healthServerReachable',
+                                    UNREACHABLE: 'index.ui.healthServerUnreachable',
+                                    AUTHENTICATION_FAILED: 'index.ui.healthAuthenticationFailed',
+                                    UNKNOWN: 'index.ui.healthUnknown' }[connection];
+                                ai.textContent = TaxonomyI18n.t(connectionLabel || (data.ai && data.ai.level === 'UNKNOWN'
+                                    ? 'index.ui.healthUnknown' : data.ai && data.ai.available
+                                        ? 'index.ui.healthAvailable' : 'index.ui.healthUnavailable'));
+                                ai.className = 'fs-5 ' + (connection === 'UNREACHABLE' || connection === 'AUTHENTICATION_FAILED'
+                                    ? 'text-danger' : data.ai && data.ai.available ? 'text-success' : 'text-warning');
+                                ai.title = connection === 'REACHABLE' ? TaxonomyI18n.t('browse.ai.connection.reachable') : '';
 
                                 var emb = document.getElementById('healthEmbeddingBadge');
                                 emb.textContent = data.embedding && data.embedding.enabled ? TaxonomyI18n.t('index.ui.healthActive') : TaxonomyI18n.t('index.ui.healthInactive');

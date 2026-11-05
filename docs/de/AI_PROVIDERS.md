@@ -141,6 +141,7 @@ Beispiel:
 {
   "available": true,
   "provider": "Custom OpenAI-compatible",
+  "connectionStatus": "REACHABLE",
   "availableProviders": ["LOCAL_ONNX", "CUSTOM_OPENAI"]
 }
 ```
@@ -177,7 +178,7 @@ Die Navigationsleiste zeigt den aktuellen KI-Zustand:
 | 🔴 **AI: Unavailable** | Nicht verfügbar | Dem gewählten Provider fehlt eine Pflichtkonfiguration und es ist kein nutzbarer lokaler Fallback geladen. |
 | ⚠️ **AI: Unknown** | Fehler | Die Statusabfrage ist fehlgeschlagen oder die Anwendung startet noch. |
 
-Bei `CUSTOM_OPENAI` müssen `CUSTOM_LLM_URL` und `CUSTOM_LLM_MODEL` geprüft werden. Ein fehlender `CUSTOM_LLM_API_KEY` ist bei einem vertrauenswürdigen, nicht authentifizierten Server zulässig.
+Für den aktiven Anbieter `CUSTOM_OPENAI` prüft Taxonomy den `/models`-Endpunkt des konfigurierten Servers mit einer zeitlich begrenzten `GET`-Anfrage und speichert das Ergebnis kurz zwischen. Grün **Server erreichbar** bedeutet, dass der Server geantwortet hat; es belegt noch nicht, dass das ausgewählte Modell eine Antwort erzeugen kann. Verbindungsfehler und abgelehnte Zugangsdaten werden rot angezeigt. Unterstützt der Server den optionalen Models-Endpunkt nicht, bleibt die Anzeige gelb; eine Analyse kann trotzdem versucht werden. Die Prüfung erzeugt keine Modellantwort. Prüfen Sie `CUSTOM_LLM_URL` und `CUSTOM_LLM_MODEL`. Ein fehlender `CUSTOM_LLM_API_KEY` ist bei einem vertrauenswürdigen, nicht authentifizierten Server zulässig.
 
 ---
 

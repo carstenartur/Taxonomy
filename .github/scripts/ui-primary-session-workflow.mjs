@@ -455,10 +455,6 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
   });
   await page.locator('#fileNewAnalysisAction').click();
   await confirmationHandled;
-  if (await page.locator('#applicationNavigationMenu').getAttribute('open') !== null) {
-    await page.locator('#applicationNavigationMenu > summary').click();
-  }
-  await waitForSharedNavigationToClose(page);
   assert(/new analysis|discard|neue analyse|verworfen/i.test(confirmationMessage),
     `Reset confirmation was not explicit: ${confirmationMessage}`);
 
@@ -470,11 +466,13 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
       && !state?.currentScores
       && !state?.currentArchView
       && !window._taxonomyCurrentScores
+      && document.activeElement === input
       && document.querySelector('#taskStageDescribe[data-state="current"]')
       && document.getElementById('copilotPanel')?.getClientRects().length === 0
       && cancel?.getClientRects().length === 0
       && document.getElementById('statusArea')?.dataset.analysisSessionMessage === 'new-analysis';
   }, null, { timeout: 30_000 });
+  await waitForSharedNavigationToClose(page);
 
   const serverDraft = await page.evaluate(async () => {
     const state = window.TaxonomyAnalysisSession.state();

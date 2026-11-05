@@ -6,6 +6,7 @@ import com.taxonomy.catalog.service.LocalEmbeddingService;
 
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AiAvailabilityLevel;
+import com.taxonomy.dto.AiStatusResponse;
 import com.taxonomy.catalog.service.AppInitializationStateService.State;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -74,7 +76,7 @@ class HealthSummaryServiceTest {
     @Test
     void aiUnavailable_returnsDegradedWithNullProvider() {
         stubStartupReady();
-        when(llmService.getAvailabilityLevel()).thenReturn(AiAvailabilityLevel.UNAVAILABLE);
+        when(llmService.snapshot()).thenReturn(status(AiAvailabilityLevel.UNAVAILABLE, null));
         when(embeddingService.isEnabled()).thenReturn(true);
         when(embeddingService.isAvailable()).thenReturn(true);
 
@@ -90,6 +92,34 @@ class HealthSummaryServiceTest {
     }
 
     @Test
+    void unverifiedAiConnectionIsNotReportedHealthy() {
+        stubStartupReady();
+        when(llmService.snapshot()).thenReturn(status(AiAvailabilityLevel.UNKNOWN, "Custom OpenAI-compatible"));
+        when(embeddingService.isEnabled()).thenReturn(false);
+        when(embeddingService.isAvailable()).thenReturn(false);
+
+        Map<String, Object> summary = healthSummaryService.getSummary();
+        @SuppressWarnings("unchecked")
+        var ai = (Map<String, Object>) summary.get("ai");
+        assertThat(ai.get("available")).isEqualTo(false);
+        assertThat(ai.get("level")).isEqualTo("UNKNOWN");
+        assertThat(summary.get("overall")).isEqualTo("DEGRADED");
+    }
+
+    @Test
+    void reportsConnectionStatusFromTheSameSnapshotAsAvailability() {
+        stubStartupReady();
+        when(llmService.snapshot()).thenReturn(new AiStatusResponse(AiAvailabilityLevel.UNAVAILABLE,
+                "Custom OpenAI-compatible", List.of("CUSTOM_OPENAI"), "AUTHENTICATION_FAILED"));
+
+        @SuppressWarnings("unchecked")
+        var ai = (Map<String, Object>) healthSummaryService.getSummary().get("ai");
+        assertThat(ai.get("connectionStatus")).isEqualTo("AUTHENTICATION_FAILED");
+        assertThat(ai.get("available")).isEqualTo(false);
+        assertThat(ai.get("provider")).isEqualTo("Custom OpenAI-compatible");
+    }
+
+    @Test
     void notInitializedAndStateNotReady_returnsDegraded() {
         when(taxonomyService.isInitialized()).thenReturn(false);
         when(taxonomyService.getInitStatus()).thenReturn("Loading…");
@@ -97,8 +127,7 @@ class HealthSummaryServiceTest {
         when(stateService.getMessage()).thenReturn("Loading taxonomy data");
         when(stateService.isReady()).thenReturn(false);
 
-        when(llmService.getAvailabilityLevel()).thenReturn(AiAvailabilityLevel.FULL);
-        when(llmService.getActiveProviderName()).thenReturn("Gemini");
+        when(llmService.snapshot()).thenReturn(status(AiAvailabilityLevel.FULL, "Gemini"));
         when(embeddingService.isEnabled()).thenReturn(true);
         when(embeddingService.isAvailable()).thenReturn(true);
 
@@ -116,8 +145,7 @@ class HealthSummaryServiceTest {
     @Test
     void embeddingDisabled_showsDisabledInEmbeddingSection() {
         stubStartupReady();
-        when(llmService.getAvailabilityLevel()).thenReturn(AiAvailabilityLevel.FULL);
-        when(llmService.getActiveProviderName()).thenReturn("Gemini");
+        when(llmService.snapshot()).thenReturn(status(AiAvailabilityLevel.FULL, "Gemini"));
         when(embeddingService.isEnabled()).thenReturn(false);
         when(embeddingService.isAvailable()).thenReturn(false);
 
@@ -160,8 +188,7 @@ class HealthSummaryServiceTest {
     @Test
     void aiLimited_returnsOverallUp() {
         stubStartupReady();
-        when(llmService.getAvailabilityLevel()).thenReturn(AiAvailabilityLevel.LIMITED);
-        when(llmService.getActiveProviderName()).thenReturn("LocalOnnx");
+        when(llmService.snapshot()).thenReturn(status(AiAvailabilityLevel.LIMITED, "LocalOnnx"));
         when(embeddingService.isEnabled()).thenReturn(true);
         when(embeddingService.isAvailable()).thenReturn(true);
 
@@ -178,6 +205,10 @@ class HealthSummaryServiceTest {
 
     // --- helpers ---
 
+    private static AiStatusResponse status(AiAvailabilityLevel level, String provider) {
+        return new AiStatusResponse(level, provider, List.of());
+    }
+
     private void stubStartupReady() {
         when(taxonomyService.isInitialized()).thenReturn(true);
         when(taxonomyService.getInitStatus()).thenReturn("Ready");
@@ -188,8 +219,7 @@ class HealthSummaryServiceTest {
 
     private void stubHealthy() {
         stubStartupReady();
-        when(llmService.getAvailabilityLevel()).thenReturn(AiAvailabilityLevel.FULL);
-        when(llmService.getActiveProviderName()).thenReturn("Gemini");
+        when(llmService.snapshot()).thenReturn(status(AiAvailabilityLevel.FULL, "Gemini"));
         when(embeddingService.isEnabled()).thenReturn(true);
         when(embeddingService.isAvailable()).thenReturn(true);
     }
