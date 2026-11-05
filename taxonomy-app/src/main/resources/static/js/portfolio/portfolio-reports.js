@@ -10,8 +10,8 @@
     const state = { project: null, requirements: [], previewUrl: null, previewGeneration: 0,
         previewController: null, previewSelection: null, previewLoaded: false };
     const labels = {
-        en: { title: 'Portfolio reports', portfolio: 'Back to project', versioning: 'Versioning', heading: 'Project and requirement reports', options: 'Report scope', scope: 'Scope', project: 'Entire project', requirement: 'Single requirement', requirementLabel: 'Requirement', matrix: 'CSV matrix', preview: 'Preview HTML report', previewHeading: 'Report preview', empty: 'Generate a preview to inspect the exact report baseline before export.', rendering: 'Rendering report…', baseline: 'Preview generated from the current project and snapshot baseline.', failed: 'The report could not be generated.' },
-        de: { title: 'Portfolio-Berichte', portfolio: 'Zurück zum Projekt', versioning: 'Versionierung', heading: 'Projekt- und Anforderungsberichte', options: 'Berichtsumfang', scope: 'Umfang', project: 'Gesamtes Projekt', requirement: 'Einzelne Anforderung', requirementLabel: 'Anforderung', matrix: 'CSV-Matrix', preview: 'HTML-Bericht prüfen', previewHeading: 'Berichtsvorschau', empty: 'Erzeugen Sie eine Vorschau, um die exakte Berichtsbaseline vor dem Export zu prüfen.', rendering: 'Bericht wird erzeugt…', baseline: 'Die Vorschau wurde aus dem aktuellen Projekt- und Snapshotstand erzeugt.', failed: 'Der Bericht konnte nicht erzeugt werden.' }
+        en: { title: 'Portfolio reports', versioning: 'Versioning', heading: 'Project and requirement reports', options: 'Report scope', scope: 'Scope', project: 'Entire project', requirement: 'Single requirement', requirementLabel: 'Requirement', matrix: 'CSV matrix', preview: 'Preview HTML report', previewHeading: 'Report preview', empty: 'Generate a preview to inspect the exact report baseline before export.', rendering: 'Rendering report…', baseline: 'Preview generated from the current project and snapshot baseline.', failed: 'The report could not be generated.' },
+        de: { title: 'Portfolio-Berichte', versioning: 'Versionierung', heading: 'Projekt- und Anforderungsberichte', options: 'Berichtsumfang', scope: 'Umfang', project: 'Gesamtes Projekt', requirement: 'Einzelne Anforderung', requirementLabel: 'Anforderung', matrix: 'CSV-Matrix', preview: 'HTML-Bericht prüfen', previewHeading: 'Berichtsvorschau', empty: 'Erzeugen Sie eine Vorschau, um die exakte Berichtsbaseline vor dem Export zu prüfen.', rendering: 'Bericht wird erzeugt…', baseline: 'Die Vorschau wurde aus dem aktuellen Projekt- und Snapshotstand erzeugt.', failed: 'Der Bericht konnte nicht erzeugt werden.' }
     };
     Object.assign(labels.en, {print: 'Print report', stale: 'The report selection changed. Generate a new preview before printing.',
         empty: 'Generate a preview for the selected report scope.',
@@ -40,9 +40,6 @@
         document.title = `${l('title')} — Taxonomy`;
         document.querySelector('.skip-link').textContent = locale === 'de' ? 'Zu den Berichten springen' : 'Skip to reports';
         document.getElementById('reportsHeading').textContent = l('heading');
-        document.getElementById('portfolioBack').textContent = l('portfolio');
-        document.getElementById('portfolioBack').href = window.TaxonomyArchitectureWorkflow?.portfolioUrl(projectId)
-            || applicationUrl(`/projects?projectId=${projectId}&lang=${locale}`);
         document.getElementById('versioningLink').textContent = l('versioning');
         document.getElementById('versioningLink').href = applicationUrl(`/projects/${projectId}/versioning?lang=${locale}`);
         document.getElementById('reportOptionsHeading').textContent = l('options');

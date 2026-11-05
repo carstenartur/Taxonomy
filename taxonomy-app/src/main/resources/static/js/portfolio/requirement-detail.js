@@ -28,7 +28,7 @@
 
     const text = {
         en: {
-            loading: 'Loading…', portfolio: 'Portfolio', matrices: 'Matrices',
+            loading: 'Loading…', matrices: 'Matrices',
             detail: 'Requirement detail', analyze: 'Analyze current version',
             newVersion: 'New version', open: 'Open decisions', textSource: 'Text & source',
             versions: 'Versions', analyses: 'Analyses', architecture: 'Taxonomy & architecture',
@@ -82,7 +82,7 @@
             broadComparison: 'This large changed block is shown as a complete replacement. Every line is retained for review.'
         },
         de: {
-            loading: 'Wird geladen…', portfolio: 'Portfolio', matrices: 'Matrizen',
+            loading: 'Wird geladen…', matrices: 'Matrizen',
             detail: 'Anforderungsdetails', analyze: 'Aktuelle Version analysieren',
             newVersion: 'Neue Version', open: 'Offene Entscheidungen', textSource: 'Text & Quelle',
             versions: 'Versionen', analyses: 'Analysen', architecture: 'Taxonomie & Architektur',
@@ -149,6 +149,7 @@
 
     async function initialize() {
         await window.TaxonomyI18n.ready();
+        window.TaxonomyAppChrome?.updateContext({project: {id: projectId}});
         translateSurface();
         wireEvents();
         await loadAll();
@@ -167,7 +168,6 @@
         document.querySelector('.skip-link').textContent = locale === 'de'
             ? 'Zu den Anforderungsdetails springen' : 'Skip to requirement detail';
         document.getElementById('pageTitle').textContent = t('detail');
-        document.getElementById('portfolioBack').textContent = t('portfolio');
         document.getElementById('matrixLink').textContent = t('matrices');
         document.getElementById('reanalyzeRequirement').textContent = t('analyze');
         document.getElementById('newVersionButton').textContent = t('newVersion');
@@ -252,7 +252,6 @@
         window.TaxonomyAppChrome?.updateContext({project:{id:state.project.id,key:state.project.projectKey,title:state.project.title},
             requirement:{id:requirement.id,key:requirement.requirementKey,title:requirement.title,
                 version:requirement.currentVersion?.versionNumber,versionId:requirement.currentVersionId || requirement.currentVersion?.id}});
-        document.getElementById('portfolioBack').href = applicationUrl(`/projects?lang=${locale}`);
         document.getElementById('matrixLink').href = applicationUrl(`/projects/${projectId}/matrices?lang=${locale}`);
         document.getElementById('requirementKey').textContent = requirement.requirementKey;
         document.getElementById('requirementStatus').textContent = humanize(requirement.status);

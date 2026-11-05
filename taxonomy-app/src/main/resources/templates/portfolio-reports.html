@@ -16,7 +16,7 @@
 <body class="bg-body-tertiary">
 <a class="skip-link" href="#reportsMain">Skip to reports</a><div id="reportsLive" class="visually-hidden" role="status" aria-live="polite"></div>
 <header th:replace="~{fragments/application-chrome :: navigation('projects', ~{:: localActions}, 'PROJECT_REQUIREMENT_PORTFOLIO', 'portfolio-reports')}">
-    <th:block th:fragment="localActions"><div><a class="btn btn-sm btn-outline-light" id="portfolioBack" th:href="@{/projects}" href="/projects">Back to project</a><a class="btn btn-sm btn-outline-light" id="versioningLink" href="#">Versioning</a></div></th:block>
+    <th:block th:fragment="localActions"><div><a class="btn btn-sm btn-outline-light" id="versioningLink" href="#">Versioning</a></div></th:block>
 </header>
 <main id="reportsMain" class="container-fluid py-3 px-lg-4">
     <div id="reportsError" class="alert alert-danger d-none" role="alert" tabindex="-1"></div>

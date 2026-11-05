@@ -94,6 +94,43 @@ test('background analysis updates cannot replace the active working architecture
     assert.equal(context.TaxonomyAppChrome.getContext().editable,false);
 });
 
+test('the shared Projects destination retains the project and workspace even before page data loads', async () => {
+    for (const prefix of ['', '/taxonomy', '/teams/blue/taxonomy']) {
+        for (const suffix of ['import','matrices','reports','versioning','requirements/7']) {
+            const href=`https://example.test${prefix}/projects/42/${suffix}?projectId=11&workspaceId=private-a&workspaceScopeKey=private-a&repositoryId=repo-a&branch=draft%2Fa&lang=de`;
+            const link={dataset:{appRoute:'projects'},attributes:{},
+                getAttribute(name){return this.attributes[name]??null;},
+                setAttribute(name,value){this.attributes[name]=value;}};
+            const document={getElementById:()=>null,querySelectorAll:selector=>selector==='[data-app-route]'?[link]:[],
+                addEventListener(){},dispatchEvent(){}};
+            const context=vm.createContext({document,URL,URLSearchParams,location:new URL(href),
+                CustomEvent:class {constructor(type,options){this.type=type;this.detail=options.detail;}}});
+            context.window=context;context.addEventListener=()=>{};
+            context.TaxonomyI18n={t:key=>key,getLocale:()=> 'de',resolveUrl:path=>prefix+path};
+            vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/application-chrome.js',import.meta.url),'utf8'),context);
+            const target=new URL(link.getAttribute('href'),href);
+            assert.equal(target.pathname,`${prefix}/projects`);
+            assert.equal(target.searchParams.get('projectId'),'42',`${prefix} ${suffix}`);
+            assert.equal(target.searchParams.get('workspaceId'),'private-a');
+            assert.equal(target.searchParams.get('workspaceScopeKey'),'private-a');
+            assert.equal(target.searchParams.get('repositoryId'),'repo-a');
+            assert.equal(target.searchParams.get('branch'),'draft/a');
+            assert.equal(target.searchParams.get('lang'),'de');
+            context.TaxonomyAppChrome.updateContext({project:{id:99}});
+            assert.equal(new URL(link.getAttribute('href'),href).searchParams.get('projectId'),'99');
+        }
+    }
+});
+
+test('project subpages expose one shared Projects link rather than duplicate portfolio returns', async () => {
+    const templates=['portfolio-import','portfolio-matrices','portfolio-reports','portfolio-versioning','requirement-detail'];
+    for (const template of templates) {
+        const html=await readFile(new URL(`../../taxonomy-app/src/main/resources/templates/${template}.html`,import.meta.url),'utf8');
+        assert.doesNotMatch(html,/id="portfolioBack"/,template);
+        assert.match(html,/fragments\/application-chrome :: navigation\('projects'/,template);
+    }
+});
+
 test('an explicit source replaces retained checkpoint, view and adoption pins',async()=>{
     const api=await boot(),seen=[];
     const workspace=api.create({initial:{kind:'working'},adapters:{working:{activate:async source=>seen.push(source),suspend(){}}}});

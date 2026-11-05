@@ -345,12 +345,13 @@ for(const locale of ['de','en']){
         const page=await fixture(locale,width);try{
             // Standalone portfolio pages have source-specific actions but no settings selector.
             await page.locator('.taxonomy-app-local').evaluate((node,view)=>{node.innerHTML=view==='reports'
-                ? '<div><a id="portfolioBack" class="btn btn-sm btn-outline-light" href="/projects">Zurück zum Projekt</a><a id="versioningLink" class="btn btn-sm btn-outline-light" href="/versions">Versionierung</a></div>'
-                : '<span id="versioningPageTitle">Versionierung und Zusammenarbeit</span><a id="portfolioBack" href="/projects">Portfolio</a><a id="versioningLink" href="/reports">Berichte</a>';},view);
+                ? '<div><a id="versioningLink" class="btn btn-sm btn-outline-light" href="/versions">Versionierung</a></div>'
+                : '<span id="versioningPageTitle">Versionierung und Zusammenarbeit</span><a id="versioningLink" href="/reports">Berichte</a>';},view);
             assert.equal(await page.locator('.taxonomy-app-languages a[hreflang="de"]').isVisible(),true);
             assert.equal(await page.locator('.taxonomy-app-languages a[hreflang="en"]').isVisible(),true);
             assert.equal(await page.locator('#applicationNavigation .context-help').isVisible(),true);
-            const boxes=await Promise.all(['.taxonomy-app-brand','#mainNavTabs [data-page="architecture"]','#portfolioBack','#versioningLink',
+            assert.equal(await page.locator('#applicationNavigation [data-app-route="projects"]').count(),1);
+            const boxes=await Promise.all(['.taxonomy-app-brand','#mainNavTabs [data-page="architecture"]','#applicationProjectsLink','#versioningLink',
                 '.taxonomy-app-languages [hreflang="de"]','.taxonomy-app-languages [hreflang="en"]','.context-help'].map(selector=>page.locator('#applicationNavigation '+selector).boundingBox()));
             const center=box=>box.y+box.height/2;
             assert.ok(boxes.every(box=>box&&Math.abs(center(box)-center(boxes[0]))<=2),'Portfolio actions, language and help must share the navigation row: '+JSON.stringify(boxes));

@@ -96,7 +96,7 @@ test('Find Similar exposes the same local clear control while pending', () => {
 
 async function reportsFixture() {
     const d = dom(), requests = [], prints = [], contexts = [];
-    for (const id of ['reportsHeading', 'portfolioBack', 'versioningLink',
+    for (const id of ['reportsHeading', 'versioningLink',
         'reportOptionsHeading', 'reportScope', 'reportRequirement', 'matrixType', 'previewReport',
         'printReport', 'reportPreviewFrame', 'emptyPreview', 'reportsBusy', 'reportsProject',
         'previewBaseline', 'reportsLive', 'reportsError']) d.element(id.startsWith('reportS') || ['reportRequirement', 'matrixType'].includes(id) ? 'select' : 'div', id);
@@ -124,12 +124,11 @@ async function reportsFixture() {
 }
 const reportResponse = () => ({blob: async () => ({size: 10})});
 
-test('report navigation returns to the current project and publishes its context', async () => {
+test('report navigation publishes its project for the shared navigation and retains versioning', async () => {
     const f = await reportsFixture();
-    assert.equal(f.document.getElementById('portfolioBack').href, '/projects?projectId=1&lang=de');
-    assert.equal(f.document.getElementById('portfolioBack').textContent, 'Zurück zum Projekt');
     assert.equal(f.contexts.at(-1).project.id, 1);
     assert.equal(f.contexts.at(-1).project.key, 'P');
+    assert.equal(f.document.getElementById('versioningLink').href, '/projects/1/versioning?lang=de');
 });
 
 test('German report scope uses German matrix option labels', async () => {

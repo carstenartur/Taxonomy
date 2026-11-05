@@ -29,7 +29,7 @@
 
     const labels = {
         en: {
-            title: 'Import requirements', portfolio: 'Back to project', heading: 'Guided document import',
+            title: 'Import requirements', heading: 'Guided document import',
             document: 'Document', review: 'Review candidates', summary: 'Confirm import', choose: 'Choose PDF or DOCX',
             parse: 'Parse document', restore: 'Restore saved review', ai: 'Add AI candidates', manual: 'Add manually',
             filter: 'Filter candidates', decision: 'Decision', all: 'All', newRequirement: 'New requirement',
@@ -53,7 +53,7 @@
             draftExists: 'A saved review draft exists for this project.'
         },
         de: {
-            title: 'Anforderungen importieren', portfolio: 'Zurück zum Projekt', heading: 'Geführter Dokumentimport',
+            title: 'Anforderungen importieren', heading: 'Geführter Dokumentimport',
             document: 'Dokument', review: 'Kandidaten prüfen', summary: 'Import bestätigen', choose: 'PDF oder DOCX auswählen',
             parse: 'Dokument auslesen', restore: 'Gespeicherte Prüfung wiederherstellen', ai: 'KI-Kandidaten ergänzen', manual: 'Manuell ergänzen',
             filter: 'Kandidaten filtern', decision: 'Entscheidung', all: 'Alle', newRequirement: 'Neue Anforderung',
@@ -98,7 +98,6 @@
             ]);
             document.getElementById('importProject').textContent = `${state.project.projectKey} — ${state.project.title}`;
             window.TaxonomyAppChrome?.updateContext({project: {id: projectId, key: state.project.projectKey, title: state.project.title}});
-            document.getElementById('portfolioBack').href = portfolioUrl();
             const savedDraft = readDraft();
             if (savedDraft) {
                 const restore = document.getElementById('restoreDraft');
@@ -115,8 +114,6 @@
         document.documentElement.lang = locale;
         document.title = `${l('title')} — Taxonomy`;
         document.querySelector('.skip-link').textContent = locale === 'de' ? 'Zum Anforderungsimport springen' : 'Skip to requirement import';
-        document.getElementById('portfolioBack').textContent = l('portfolio');
-        document.getElementById('portfolioBack').href = portfolioUrl();
         document.getElementById('importHeading').textContent = l('heading');
         document.getElementById('stepUpload').textContent = `1. ${l('document')}`;
         document.getElementById('stepReview').textContent = `2. ${l('review')}`;

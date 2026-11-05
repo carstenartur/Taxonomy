@@ -18,7 +18,7 @@
 <a class="skip-link" href="#matrixMain">Skip to matrices</a>
 <div id="matrixLive" class="visually-hidden" role="status" aria-live="polite"></div>
 <header th:replace="~{fragments/application-chrome :: navigation('projects', ~{:: localActions}, 'PROJECT_REQUIREMENT_PORTFOLIO', 'portfolio-matrices')}">
-    <th:block th:fragment="localActions"><div><a class="btn btn-sm btn-outline-light" id="portfolioBack" th:href="@{/projects}" href="/projects">Back to project</a></div></th:block>
+    <th:block th:fragment="localActions"></th:block>
 </header>
 <main id="matrixMain" class="container-fluid py-3 px-lg-4">
     <div id="matrixError" class="alert alert-danger d-none" role="alert" tabindex="-1"></div>

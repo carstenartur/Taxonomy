@@ -184,6 +184,11 @@
         target.search = window.location.search;
         var scope = window.TaxonomyArchitectureWorkflow?.getScope?.() || {};
         Object.keys(scope).forEach(function (key) { if (present(scope[key]) || scope[key] === '') target.searchParams.set(key, scope[key]); });
+        // Project subpages identify their project in the path, even before their data loads.
+        var projectsPath = new URL(window.TaxonomyI18n.resolveUrl(routes.projects), window.location.href).pathname.replace(/\/+$/, '') + '/';
+        var currentPath = window.location.pathname;
+        var projectInPath = currentPath.startsWith(projectsPath) ? currentPath.slice(projectsPath.length).split('/')[0] : '';
+        if (/^\d+$/.test(projectInPath)) target.searchParams.set('projectId', projectInPath);
         if (Object.prototype.hasOwnProperty.call(state, 'project')) {
             if (state.project?.id) target.searchParams.set('projectId', state.project.id); else target.searchParams.delete('projectId');
         }

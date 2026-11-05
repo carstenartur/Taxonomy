@@ -27,7 +27,7 @@ const elements = new Map([
     ['sourceMetadata', {textContent: ''}],
     ['sourceText', {textContent: ''}],
     ['newVersionModal', {classList: {contains: () => false}}],
-    ...['portfolioBack', 'matrixLink', 'requirementKey', 'requirementStatus',
+    ...['matrixLink', 'requirementKey', 'requirementStatus',
         'requirementReview', 'requirementHeading', 'requirementMeta'].map(id => [id, {}])
 ]);
 const pending = [], contextUpdates = [];

@@ -753,7 +753,7 @@ final class PortfolioContextBrowserChecks {
     }
 
     private void verifyVersioningRefresh() throws IOException {
-        click("portfolioBack"); pageReady("selectedProjectKey", "QA-CONTEXT-A", "portfolioBusy");
+        click("applicationProjectsLink"); pageReady("selectedProjectKey", "QA-CONTEXT-A", "portfolioBusy");
         click("projectToolsToggle"); click("projectVersioningLink");
         url("/projects/" + PROJECT_A + "/versioning?lang=de");
         pageReady("versioningProject", "QA-CONTEXT-A", "versioningBusy");
