@@ -97,7 +97,7 @@
 .taxonomy-app-primary .mobile-main-navigation { color: #fff; }
 /* On narrower analysis workspaces, language is already in Settings. Keep
    contextual help available as a labeled 44px control without another row. */
-@media (min-width: 62rem) and (max-width: 88rem) {
+@media (min-width: 62rem) and (max-width: 102rem) {
     .taxonomy-app-navigation:has(#applicationSettings #langSelector) { padding-inline: .75rem; }
     .taxonomy-app-navigation:has(#applicationSettings #langSelector) .taxonomy-app-mainrow { column-gap: .5rem; }
     .taxonomy-app-navigation:has(#applicationSettings #langSelector) .taxonomy-app-primary { flex: 0 1 auto; }

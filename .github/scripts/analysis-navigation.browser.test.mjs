@@ -147,7 +147,7 @@ for(const locale of ['de','en']){
             assert.equal(await page.locator('#applicationNavigation [data-app-route="architecture"]').count(),1);
         }finally{await finish(page);}
     });
-    for(const width of [992,1024,1100,1280,1366,1408,1409,1439])test(`${locale}: ${width}px navigation stays on one row with reachable language and view help`,async()=>{
+    for(const width of [992,1024,1100,1280,1366,1408,1409,1439,1500,1632,1633])test(`${locale}: ${width}px navigation stays on one row with reachable language and view help`,async()=>{
         const page=await fixture(locale,width);try{
             await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-onboarding.js')});
             assert.equal(await page.locator('#operationalStatusMenuSlot #operationalContextDetails').count(),1);
