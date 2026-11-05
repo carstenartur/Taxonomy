@@ -32,6 +32,7 @@
             </ul>
         </div>
             </div>
+            <div class="taxonomy-app-local"><th:block th:replace="${localActions}"></th:block></div>
             <div class="taxonomy-app-utilities">
                 <div class="taxonomy-app-languages" role="group" th:aria-label="#{lang.selector.label}" aria-label="Language">
                     <a href="?lang=en" hreflang="en" data-app-locale="en" th:aria-label="#{language.english}">EN</a>
@@ -40,7 +41,6 @@
                 <a th:replace="~{fragments/context-help :: button(${helpDocument}, ${helpSection})}"></a>
             </div>
         </div>
-        <div class="taxonomy-app-local"><th:block th:replace="${localActions}"></th:block></div>
     </nav>
     <details id="applicationContextDisclosure" class="taxonomy-app-context-disclosure" open>
     <summary id="applicationContextSummary">

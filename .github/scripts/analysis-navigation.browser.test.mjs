@@ -131,6 +131,31 @@ for(const locale of ['de','en']){
             assert.equal(await page.locator('#businessText').inputValue(),'Retained requirement draft');
         }finally{await finish(page);}
     });
+    for(const width of [1440,1920])test(`${locale}: ${width}px primary navigation and application actions share one desktop row`,async()=>{
+        const page=await fixture(locale,width);try{
+            const selectors=['.taxonomy-app-brand','#mainNavTabs [data-page="architecture"]',
+                '#projectMenuButton','#applicationSettings > summary','#main-tab-help','#aboutBtn'];
+            const boxes=await Promise.all(selectors.map(selector=>page.locator(selector).boundingBox()));
+            assert.ok(boxes.every(Boolean),'All existing navigation and application actions stay available');
+            const center=box=>box.y+box.height/2;
+            for(let i=1;i<boxes.length;i++)assert.ok(Math.abs(center(boxes[i])-center(boxes[0]))<=2,
+                `${selectors[i]} is not aligned with the main navigation: ${JSON.stringify(boxes)}`);
+            const nav=await page.locator('#applicationNavigation').boundingBox();
+            assert.ok(nav.height<=64,'The desktop navigation must not reserve a second row: '+JSON.stringify(nav));
+            assert.equal(await page.locator('#applicationNavigation [data-app-route="architecture"]').count(),1);
+        }finally{await finish(page);}
+    });
+    for(const width of [700,900,1100,1280])test(`${locale}: ${width}px settings panel stays inside the viewport`,async()=>{
+        const page=await fixture(locale,width);try{
+            await page.locator('#applicationSettings > summary').click();
+            const panel=page.locator('#applicationSettings .application-menu-content');
+            assert.equal(await panel.isVisible(),true);
+            const box=await panel.boundingBox();
+            assert.ok(box&&box.x>=0&&box.x+box.width<=width,
+                `Settings must remain fully reachable after header wrapping: ${JSON.stringify(box)}`);
+            assert.equal(await page.locator('#langSelector').isVisible(),true);
+        }finally{await finish(page);}
+    });
     test(`${locale}: compact desktop header keeps Help and About together`,async()=>{
         const page=await fixture(locale);try{
             const help=page.locator('[data-page="help"]').first(),about=page.locator('#aboutBtn');

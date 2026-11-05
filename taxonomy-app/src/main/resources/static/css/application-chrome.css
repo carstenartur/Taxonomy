@@ -2,7 +2,7 @@
 .taxonomy-app-chrome { flex: 0 0 auto; min-width: 0; font: 1rem/1.5 system-ui, sans-serif; }
 .taxonomy-app-chrome *, .taxonomy-entity *, .taxonomy-entity-details * { box-sizing: border-box; }
 .taxonomy-app-chrome [hidden], .taxonomy-entity [hidden] { display: none !important; }
-.taxonomy-app-navigation { padding: .45rem 1.25rem; color: #fff; background: #17243a; }
+.taxonomy-app-navigation { position: relative; padding: .45rem 1.25rem; color: #fff; background: #17243a; }
 .taxonomy-app-mainrow { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem 1.25rem; min-width: 0; }
 .taxonomy-app-brand { color: #fff; font-size: 1.05rem; font-weight: 750; text-decoration: none; padding: .5rem 0; }
 .taxonomy-app-primary { display: flex; flex-wrap: wrap; gap: .25rem; min-width: 0; }
@@ -16,7 +16,8 @@
 .taxonomy-app-languages a[aria-current="true"] { border-color: #b8c7dc; }
 .taxonomy-app-navigation .context-help, .taxonomy-app-local > div > a, .taxonomy-app-local > a { color: #fff; }
 .taxonomy-app-navigation a:focus-visible, .taxonomy-app-navigation button:focus-visible, .taxonomy-app-navigation summary:focus-visible { outline: 3px solid #ffcf71; outline-offset: 3px; }
-.taxonomy-app-local { border-top: 1px solid #ffffff35; padding-top: .45rem; margin-top: .35rem; }
+.taxonomy-app-local { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.taxonomy-app-local .application-shell { width: auto; padding-inline: 0; }
 .taxonomy-app-local > div { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; min-width: 0; }
 .taxonomy-app-local-title { margin: 0 auto 0 0; font-size: 1rem; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .taxonomy-app-local .workbench-toolbar { padding: 0; min-height: 44px; }
@@ -64,7 +65,9 @@
 @media (max-width: 42rem) {
     .taxonomy-app-navigation { padding: .4rem .65rem; }
     .taxonomy-app-mainrow { gap: .3rem .25rem; }
-    .taxonomy-app-primary { order: 3; width: 100%; }
+    .taxonomy-app-primary { order: 2; width: 100%; }
+    .taxonomy-app-local { order: 3; flex: 1 1 100%; }
+    .taxonomy-app-utilities { order: 1; }
     .taxonomy-app-primary a { flex: 1 1 0; padding-inline: .4rem; font-size: .9rem; }
     .taxonomy-app-utilities, .taxonomy-app-languages { gap: 0; }
     .taxonomy-app-navigation .context-help { font-size: .75rem; padding-inline: .4rem; }
@@ -92,6 +95,11 @@
 .taxonomy-app-local .application-utilities { margin-inline-start: auto; }
 .taxonomy-app-primary .application-work-navigation { min-width: 0; }
 .taxonomy-app-primary .mobile-main-navigation { color: #fff; }
+/* Anchor wide utility panels to the header, even when their launcher wraps. */
+@media (min-width: 576px) {
+    #applicationNavigation .application-menu { position: static; }
+    #applicationNavigation .application-menu-content { top: 100%; inset-inline-end: .5rem; }
+}
 @media (max-width: 42rem) {
     .taxonomy-app-primary { flex-wrap: nowrap; align-items: end; }
     .taxonomy-app-primary .application-work-navigation { flex: 1 1 auto; }
