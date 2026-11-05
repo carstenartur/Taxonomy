@@ -766,7 +766,8 @@ export async function runRoleStateFlow({
     await projects.focus();
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
     const bounds = await projects.boundingBox();
-    assert(bounds && bounds.height >= 44 && bounds.x >= 0
+    // Firefox can report a CSS 44px target as 43.999996185302734px.
+    assert(bounds && bounds.height >= 44 - 1e-4 && bounds.x >= 0
       && bounds.x + bounds.width <= taskHierarchy.viewportWidth + 1
       && await projects.evaluate(element => document.activeElement === element),
       `The Projects destination must remain a visible keyboard and touch target: ${JSON.stringify({bounds,

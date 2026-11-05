@@ -15,6 +15,7 @@ import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
 import { chromium } from '@playwright/test';
+import { navigateArchitectureSubtab, navigateToPage } from './ui-role-fixtures.mjs';
 
 const execFileAsync = promisify(execFile);
 const baseUrl = (process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080')
@@ -360,7 +361,7 @@ async function evaluateHospitalRequirement(target) {
   await target.waitForTimeout(1_000);
   await target.screenshot({ path: files.analysis, fullPage: true });
 
-  await target.locator('a[data-page="architecture"]').click();
+  await navigateArchitectureSubtab(target, 'overview');
   await target.locator('#architectureViewPanel').waitFor({
     state: 'visible',
     timeout: 60_000
@@ -370,7 +371,7 @@ async function evaluateHospitalRequirement(target) {
   await target.waitForTimeout(1_200);
   await target.locator('#impactGraphView').screenshot({ path: files.graph });
 
-  await target.locator('a[data-page="analyze"]').click();
+  await navigateToPage(target, 'analyze');
   await target.locator('#exportDecisionReportDocx').waitFor({
     state: 'visible',
     timeout: 30_000

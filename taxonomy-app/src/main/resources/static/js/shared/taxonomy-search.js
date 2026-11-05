@@ -363,7 +363,7 @@
             resultState.query,
             resultState.mode === 'similar'
                 ? orientationText('similar')
-                : resultState.mode);
+                : t('search.mode.' + resultState.mode));
         var path = resultState.currentPath
             ? orientationText('path', resultState.currentPath)
             : orientationText('pathNone');

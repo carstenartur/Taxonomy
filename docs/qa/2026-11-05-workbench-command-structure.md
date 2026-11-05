@@ -148,3 +148,25 @@ and state-recovery checks pass all 76 cases. Full 1,936-case JavaScript verifica
 passed before the final selection-start event/listener addition; its focused
 lifecycle and adjacent checks passed after that addition. Native WebKit cancellation
 is checked by CI.
+
+## Integrated CI follow-up
+
+The live application walkthrough confirms that a real full-text hit selects the
+same code in Graph Explorer, retains architecture/source state and displays German
+input guidance without page errors. Visual inspection found a raw mode token in
+the active-search summary; it now uses the selector's existing localized mode
+name. Both language cases failed before that change and pass afterwards.
+
+The document download scenario now uses the existing shared navigation helpers;
+its old `a[data-page="analyze"]` locator became ambiguous after File/Open requirement
+and the permanent Requirement destination were separated. The complete real-server
+scenario now passes through analysis, diagram, report model, configuration and a
+434,749-byte template-backed Word download. Document rendering remains covered by CI.
+
+The next-result native test waits for completion of the current `next` action and
+its actual focused result, rather than accepting the prior selection's completion
+flag. Its graph-selection and focus assertions remain intact. Firefox's 44px
+Projects target measured 43.999996185302734px in the failed CI capture; the geometry
+comparison now tolerates 0.0001px floating-point precision. The CSS target remains
+44px. All **218 native browser cases** pass together after these corrections;
+syntax checks for both changed E2E scripts and `git diff --check` also pass.

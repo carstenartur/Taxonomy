@@ -329,6 +329,9 @@ for (const locale of ['de', 'en']) test(`${locale}: search explains accepted inp
         await page.locator('#searchInput').fill(query);
         await page.locator('#searchInput').press('Enter');
         await page.locator('.search-result-item').first().waitFor();
+        assert.match(await page.locator('.search-result-orientation').innerText(),
+            locale === 'de' ? /Modus: Semantisch/ : /Mode: Semantic/,
+            'Active-search information uses the same localized mode name as the selector');
         assert.equal(await page.evaluate(() => new URL(searchRequests[0], 'https://taxonomy.test').searchParams.get('q')), query);
         assert.match(await page.evaluate(() => searchRequests[0]), /^\/api\/search\/semantic\?/);
         await page.evaluate(async () => {
@@ -371,8 +374,12 @@ test('search result activation and next-result navigation select the graph witho
         const context = await page.evaluate(() => ({href: location.href, view: TaxonomyState.currentView,
             query: document.getElementById('searchInput').value}));
         await page.locator('[data-search-result-nav="next"]').click();
-        await page.waitForFunction(() => TaxonomySearch.resultDiagnostics().currentIndex === 1
-            && TaxonomySearch.resultDiagnostics().navigationFocusConfirmed);
+        await page.waitForFunction(() => {
+            const state = TaxonomySearch.resultDiagnostics();
+            return state.currentIndex === 1 && state.navigationAction === 'next'
+                && state.navigationFocusConfirmed
+                && document.activeElement === document.querySelector('.search-result-item[data-result-index="1"]');
+        });
         assert.equal(await page.locator('#graphNodeInput').inputValue(), 'BP-1001',
             'Graph selection must follow the hit even when focus stays in the result list');
         assert.equal(await page.locator('.search-result-item[data-result-index="1"]').evaluate(node => node === document.activeElement), true);
