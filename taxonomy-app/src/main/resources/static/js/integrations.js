@@ -30,7 +30,8 @@
     function controls() {
         if (initializing) return;
         document.querySelectorAll('button, #integrationConnection').forEach(function (node) { node.disabled = busy; });
-        document.querySelectorAll('#integrationCreate input, #integrationCreate select, #integrationCreate button, #integrationImport input, #integrationImport button, #integrationRemote input, #integrationRemote button').forEach(function (node) { node.disabled = busy || !mayWrite; });
+        document.querySelectorAll('#integrationCreate input, #integrationCreate select, #integrationCreate button').forEach(function (node) { node.disabled = busy || !mayWrite; });
+        document.querySelectorAll('#integrationImport input, #integrationImport button, #integrationRemote input, #integrationRemote button').forEach(function (node) { node.disabled = busy || !mayWrite || !overview; });
         var editable = mayWrite && operation && (publication ? !pendingReview() && publication.allowedActions.includes('REVIEW') : operation.status === 'PREVIEWED');
         document.querySelectorAll('#integrationChanges select').forEach(function (node) { node.disabled = busy || !editable; });
         el('integrationAccept').textContent = t(publication ? 'mergeVisible' : 'acceptVisible');
@@ -48,9 +49,11 @@
         el('integrationReconcile').hidden = !publication;
         el('integrationReconcile').disabled = busy || !mayWrite || !publication || !publication.allowedActions.includes('RECONCILE');
         var availability = overview && overview.publicationAvailability, modes = availability && availability.available ? availability.modes : [];
+        el('integrationPublicationCheck').disabled = busy || !overview;
         el('integrationPush').disabled = busy || !mayWrite || !modes.includes('PUSH');
         el('integrationSynchronize').disabled = busy || !mayWrite || !modes.includes('SYNCHRONIZE');
-        el('integrationPublicationReason').textContent = availability && availability.available ? t('publicationReady') : t('reason.' + (availability && availability.reasonCode || 'PUBLICATION_GUARANTEES_UNVERIFIED'));
+        el('integrationPublicationReason').textContent = !overview ? t('publicationNoConnection')
+            : availability && availability.available ? t('publicationReady') : t('reason.' + (availability && availability.reasonCode || 'PUBLICATION_GUARANTEES_UNVERIFIED'));
         var profile = selectedProfile(), capabilities = profile ? profile.capabilities : [];
         el('integrationRemote').hidden = !capabilities.includes('READ_LINK');
         el('integrationImport').hidden = overview && !capabilities.includes('FILE_IMPORT');
@@ -236,6 +239,7 @@
         }
         el('integrationOperation').textContent = value.operationId + ' · ' + t('publicationMode.' + value.mode) + ' · ' + t('phase.' + value.phase);
         el('integrationProvenance').textContent = t('requestFingerprint') + ': ' + (value.requestFingerprint || '—') + '\n' + t('observationCheckpoint') + ': ' + (value.observationCheckpointId || '—') + '\n' + t('commonCheckpoint') + ': ' + (value.commonCheckpointId || '—') + '\n' + t('localCheckpoint') + ': ' + (value.localCheckpoint ? value.localCheckpoint.commitId || t('pending') : '—');
+        el('integrationProvenanceDetails').hidden = false;
         el('integrationPublicationOutcomes').hidden = false;
         el('integrationPublicationCounts').textContent = (overview ? overview.connection.displayName + ' · ' : '') + t('acknowledged') + ': ' + value.acknowledgedCount + ' · ' + t('unknown') + ': ' + value.unknownCount + ' · ' + t('remaining') + ': ' + value.remainingCount + ' · ' + t('itemState.REJECTED_STALE') + ': ' + value.items.filter(function (i) { return i.state === 'REJECTED_STALE'; }).length + ' · ' + t('itemState.READY') + ': ' + value.items.filter(function (i) { return i.state === 'READY'; }).length + ' · ' + t('itemState.RETRYABLE_NO_EFFECT') + ': ' + value.items.filter(function (i) { return i.state === 'RETRYABLE_NO_EFFECT'; }).length + (value.failureCode ? ' · ' + value.failureCode : '');
         el('integrationPublicationItems').replaceChildren(); value.items.forEach(function (item) { var li = document.createElement('li'); li.textContent = item.resourceId + ' · ' + t('mutation.' + item.mutation) + ' · ' + t('itemState.' + item.state) + (item.failureCode ? ' · ' + item.failureCode : ''); el('integrationPublicationItems').append(li); });
@@ -275,6 +279,7 @@
         el('integrationRationale').value = value.review ? value.review.rationale : '';
         el('integrationOperation').textContent = value.id + ' · ' + t('status.' + value.status) + (value.failureCode ? ' · ' + value.failureCode : '');
         el('integrationProvenance').textContent = JSON.stringify(value.context, null, 2);
+        el('integrationProvenanceDetails').hidden = false;
         el('integrationLosses').replaceChildren(); value.document.losses.forEach(function (loss) {
             var item = document.createElement('li'); item.textContent = (loss.artifactId || '') + ' · ' + loss.disposition + ' · ' + loss.code + ': ' + loss.detail; el('integrationLosses').append(item);
         });
@@ -295,12 +300,29 @@
         if (!connection()) { overview = null; controls(); return; }
         var version = ++generation; var scopeQuery = el('integrationPublicationRoot').value.trim() && el('integrationPublicationSelector').value.trim() ? '?rootResource=' + encodeURIComponent(el('integrationPublicationRoot').value.trim()) + '&selectorFingerprint=' + encodeURIComponent(el('integrationPublicationSelector').value.trim()) : ''; var value = await api.read(prefix() + scopeQuery); if (version !== generation) return;
         overview = value; el('integrationContext').textContent = JSON.stringify({ current: value.current, authority: value.connection.authority, external: value.connection.externalScope, observationCheckpoint: value.checkpoint, commonCheckpointId: value.connection.commonCheckpointId }, null, 2);
+        var external = value.connection.externalScope || {}, current = value.current || {};
+        el('integrationSystemSummary').textContent = external.systemType || '—';
+        el('integrationRepositorySummary').textContent = external.repository || '—';
+        el('integrationBranchSummary').textContent = current.branch || '—';
+        el('integrationRevisionSummary').textContent = current.semanticRevision == null ? '—' : String(current.semanticRevision);
+        el('integrationAuthoritySummary').textContent = value.connection.authority ? t('mode.' + value.connection.authority) : '—';
+        el('integrationContextSummary').hidden = false; el('integrationContextDetails').hidden = false;
         el('integrationOslcCatalog').href = window.TaxonomyI18n.resolveUrl(value.oslcCatalogPath); el('integrationOslcCatalog').hidden = false;
         el('integrationHistory').replaceChildren(); value.history.forEach(function (entry) {
             var item = document.createElement('li'), button = document.createElement('button'); button.type = 'button';
             button.textContent = entry.createdAt + ' · ' + t('status.' + entry.status) + ' · ' + entry.id; button.addEventListener('click', function () { run(function () { return loadOperation(entry.id); }); }); item.append(button); el('integrationHistory').append(item);
         });
         el('integrationStatus').textContent = t('ready'); controls();
+    }
+    function clearConnectionContext() {
+        ++generation;
+        overview = null;
+        el('integrationContext').textContent = '';
+        ['integrationSystemSummary', 'integrationRepositorySummary', 'integrationBranchSummary', 'integrationRevisionSummary', 'integrationAuthoritySummary'].forEach(function (id) { el(id).textContent = ''; });
+        el('integrationContextSummary').hidden = true; el('integrationContextDetails').hidden = true; el('integrationContextDetails').open = false;
+        el('integrationHistory').replaceChildren();
+        el('integrationStatus').textContent = '';
+        el('integrationOslcCatalog').hidden = true;
     }
     async function connections(selected) {
         var values = await api.read(''); el('integrationConnection').replaceChildren(); option(el('integrationConnection'), '', t('choose'));
@@ -309,8 +331,10 @@
         await refresh();
     }
     el('integrationConnection').addEventListener('change', function () {
+        clearConnectionContext();
         operation = null; publication = null; resolutions = {}; pendingPublication = null; operationGeneration++; decisions = {}; mappings = {}; pendingUpload = null; pendingExport = null; pendingRemote = null;
         el('integrationPublicationOutcomes').hidden = true; el('integrationPredecessor').hidden = true; el('integrationProvider').textContent = '';
+        el('integrationProvenanceDetails').hidden = true; el('integrationProvenanceDetails').open = false;
         ['integrationOperation', 'integrationProvenance', 'integrationEvents', 'integrationLosses', 'integrationDiscovery'].forEach(function (id) { el(id).replaceChildren(); });
         el('integrationRationale').value = ''; link(null); run(refresh); renderChanges();
     });

@@ -184,3 +184,7 @@ never relax the architecture relation type matrix.
 ## Tool integrations
 
 Open **Tool integrations** from the architecture editor. Select a connection and its format profile, then review the proposed changes against the selected private workspace. The preview preserves the external evidence without changing the model. Accept an import only after reviewing its changes; acceptance changes the model and creates an explicit version. Connection authority determines which exchange operations are available.
+
+The connection summary shows the tool, external project, branch, workspace revision and authority. Expand the connection or operation details when technical information is needed.
+
+The shared application navigation remains available on this page. Repository, workspace and branch are retained when moving between the architecture editor and tool integrations; **Projects** returns to the project overview.

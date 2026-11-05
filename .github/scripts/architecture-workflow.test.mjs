@@ -155,6 +155,26 @@ test('scoping preserves mounted path, fragment and existing query', () => {
     assert.equal(result.searchParams.get('workspaceId'), 'private-one');
 });
 
+for (const prefix of ['', '/taxonomy', '/teams/blue/taxonomy']) {
+    for (const workspace of ['private-one', '']) {
+        test(`integration handoff preserves the selected architecture under ${prefix || '/'} and ${workspace || 'shared'} scope`, () => {
+            const {api} = boot('?repositoryId=repo-a&workspaceId=' + workspace + '&branch=draft', prefix);
+            const target = url(api.scopeUrl(prefix + '/integrations?lang=de'));
+            assert.equal(target.pathname, prefix + '/integrations');
+            assert.equal(target.searchParams.get('repositoryId'), 'repo-a');
+            assert.equal(target.searchParams.get('workspaceId'), workspace);
+            assert.equal(target.searchParams.get('workspaceScopeKey'), workspace || '__shared__');
+            assert.equal(target.searchParams.get('branch'), 'draft');
+            assert.equal(target.searchParams.get('lang'), 'de');
+        });
+    }
+}
+test('an explicit integration destination never gets a different workspace', () => {
+    const {api} = boot('?repositoryId=repo-a&workspaceId=current&branch=draft');
+    const target = '/integrations?repositoryId=repo-b&workspaceId=other&branch=other';
+    assert.equal(api.scopeUrl(target), target);
+});
+
 test('portfolio handoff selects the requested project instead of the last unrelated project', () => {
     const projects = [{id: 5}, {id: 12}];
     assert.equal(boot('?projectId=12').api.preferredProject(projects, null, 5).id, 12);

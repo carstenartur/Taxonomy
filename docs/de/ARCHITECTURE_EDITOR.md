@@ -202,3 +202,7 @@ Architekturbeziehungen bleiben unverändert.
 ## Werkzeugintegrationen
 
 Öffnen Sie **Werkzeugintegrationen** im Architektureditor. Wählen Sie eine Verbindung mit ihrem Formatprofil und prüfen Sie die vorgeschlagenen Änderungen im ausgewählten privaten Arbeitsbereich. Die Vorschau erhält die externe Evidenz, ohne das Modell zu verändern. Übernehmen Sie einen Import erst nach der Prüfung; die Übernahme ändert das Modell und erzeugt eine explizite Version. Die Autorität der Verbindung bestimmt die verfügbaren Austauschoperationen.
+
+Die Verbindungsübersicht zeigt Werkzeug, externes Projekt, Branch, Arbeitsstand und Datenhoheit. Technische Angaben zur Verbindung und zum Vorgang lassen sich bei Bedarf aufklappen.
+
+Die gemeinsame Anwendungsnavigation bleibt auch auf dieser Seite verfügbar. Beim Wechsel zwischen Architektureditor und Werkzeugintegrationen bleiben Repository, Arbeitsbereich und Branch erhalten; über **Projekte** gelangen Sie zurück zur Projektübersicht.

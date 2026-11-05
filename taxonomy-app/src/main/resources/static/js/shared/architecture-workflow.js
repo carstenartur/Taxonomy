@@ -28,7 +28,7 @@
         return target.pathname;
     }
     function eligible(path) {
-        return path === '/' || /^\/(?:api\/)?projects(?:\/|$)/.test(path)
+        return path === '/' || path === '/integrations' || /^\/(?:api\/)?projects(?:\/|$)/.test(path)
             || /^\/architecture\/(?:workbench|editor)$/.test(path)
             || /^\/api\/architecture\/(?:lifecycle|editor)(?:\/|$)/.test(path);
     }

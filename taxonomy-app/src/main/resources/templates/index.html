@@ -805,7 +805,7 @@
                         <section th:replace="~{architecture-workbench :: surface}"></section>
                     </section>
                     <section id="architectureWorkingSource" class="architecture-editor-surface" hidden>
-                        <div class="architecture-source-actions"><a th:href="@{/integrations}" href="/integrations" th:text="#{integration.title}">Tool integrations</a></div>
+                        <div class="architecture-source-actions"><a th:href="@{/integrations(lang=${#locale.language})}" href="/integrations" th:text="#{integration.title}">Tool integrations</a></div>
                         <section th:replace="~{architecture-editor :: surface}"></section>
                     </section>
                     <section th:replace="~{fragments/architecture-source-lens :: panel('architectureSourceLens')}"></section>
