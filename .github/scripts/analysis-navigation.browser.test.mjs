@@ -182,14 +182,16 @@ test('resizing retains a single navigation and keeps every destination reachable
         assert.equal(await tabs.getAttribute('aria-orientation'),'horizontal');
         await analysis.focus();
         await page.setViewportSize({width:390,height:768});
-        await page.waitForFunction(()=>!document.getElementById('applicationNavigationMenu').open);
+        await page.waitForFunction(()=>!document.getElementById('applicationNavigationMenu').open
+            && document.getElementById('mainNavTabs').getAttribute('aria-orientation')==='vertical');
         assert.equal(await tabs.isVisible(),false);
         assert.equal(await toggle.evaluate(element=>document.activeElement===element),true);
         assert.equal(await tabs.getAttribute('aria-orientation'),'vertical');
         await toggle.click();assert.equal(await tabs.isVisible(),true);
         await toggle.focus();
         await page.setViewportSize({width:1100,height:768});
-        await page.waitForFunction(()=>document.getElementById('applicationNavigationMenu').open);
+        await page.waitForFunction(()=>document.getElementById('applicationNavigationMenu').open
+            && document.getElementById('mainNavTabs').getAttribute('aria-orientation')==='horizontal');
         assert.equal(await toggle.isVisible(),false);
         assert.equal(await tabs.isVisible(),true);
         assert.equal(await tabs.getAttribute('aria-orientation'),'horizontal');
