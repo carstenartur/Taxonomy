@@ -8,9 +8,10 @@ const statisticsSource = readFileSync(new URL('../../taxonomy-app/src/main/resou
 const clientSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/taxonomy-api-client.js', import.meta.url), 'utf8');
 const apiSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/analysis-session-api.js', import.meta.url), 'utf8');
 const routingSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-api-routing.js', import.meta.url), 'utf8');
+const coreSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-core.js', import.meta.url), 'utf8');
 const id = 'cb2a3d71-e849-4a50-9855-1f9cb8f81402';
 function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
-    const scope = { workspaceId, generation: 1, analysisGeneration: 1, invalidating: false };
+    let scope;
     const timers = new Map(), calls = [], snapshots = [], unavailable = [], streams = [], results = [];
     let serial = 0;
     const authFailures = [];
@@ -64,8 +65,7 @@ function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
         },
         setTimeout: schedule, clearTimeout: unschedule,
         location: { href: 'https://taxonomy.example/', origin: 'https://taxonomy.example' },
-        TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {},
-        __TaxonomyAnalysisSessionContext: { runtime: scope },
+        TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {}, TaxonomyState: {},
         fetch: async (url, options) => {
             calls.push({ url, options: { ...options, headers: Object.fromEntries(options.headers) } });
             return fetcher(url, options);
@@ -73,6 +73,9 @@ function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
     };
     const sandbox = vm.createContext({ window, document, AbortController, console,
         URL, Request, Headers, Response, CustomEvent, queueMicrotask, setTimeout: schedule, clearTimeout: unschedule });
+    vm.runInContext(coreSource, sandbox);
+    scope = window.__TaxonomyAnalysisSessionContext.runtime;
+    Object.assign(scope, { workspaceId, generation: 1, analysisGeneration: 1, invalidating: false });
     vm.runInContext(clientSource, sandbox);
     vm.runInContext(apiSource, sandbox);
     vm.runInContext(routingSource, sandbox);

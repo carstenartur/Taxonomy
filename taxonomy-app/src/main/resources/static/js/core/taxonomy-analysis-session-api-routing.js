@@ -1,4 +1,4 @@
-/* taxonomy-analysis-session-api-routing.js – tab-stable API and SSE context */
+/* taxonomy-analysis-session-api-routing.js – tab-stable named API clients */
 (function () {
     'use strict';
     var C = window.__TaxonomyAnalysisSessionContext;
@@ -12,12 +12,6 @@
         var i18n = window.TaxonomyI18n;
         return i18n && typeof i18n.getBasePath === 'function'
             ? String(i18n.getBasePath() || '') : '';
-    }
-
-    function resolveApplicationUrl(input) {
-        var i18n = window.TaxonomyI18n;
-        return i18n && typeof i18n.resolveUrl === 'function'
-            ? i18n.resolveUrl(input) : input;
     }
 
     function applicationApiPath(resolved) {
@@ -92,42 +86,6 @@
         });
     }
 
-    function installWorkspaceEventSourceRouting() {
-        var NativeEventSource = window.EventSource;
-        if (typeof NativeEventSource !== 'function'
-                || NativeEventSource.__taxonomyWorkspaceRouting === true) return;
-
-        function RoutedEventSource(url, configuration) {
-            var target = resolveApplicationUrl(url);
-            var resolved;
-            try {
-                resolved = new URL(target, window.location.href);
-            } catch (error) {
-                return new NativeEventSource(target, configuration);
-            }
-            if (runtime.workspaceId && isSameApplicationApi(resolved)) {
-                resolved.searchParams.set(WORKSPACE_QUERY_PARAMETER, runtime.workspaceId);
-                target = resolved.href;
-            }
-            return new NativeEventSource(target, configuration);
-        }
-
-        RoutedEventSource.prototype = NativeEventSource.prototype;
-        ['CONNECTING', 'OPEN', 'CLOSED'].forEach(function (constant) {
-            if (constant in NativeEventSource) {
-                RoutedEventSource[constant] = NativeEventSource[constant];
-            }
-        });
-        Object.defineProperty(RoutedEventSource, '__taxonomyWorkspaceRouting', {
-            configurable: false,
-            enumerable: false,
-            value: true,
-            writable: false
-        });
-        window.EventSource = RoutedEventSource;
-    }
-
     installNamedClientRouting();
     C.workspaceScopedApiUrl = workspaceScopedUrl;
-    C.installWorkspaceEventSourceRouting = installWorkspaceEventSourceRouting;
 }());
