@@ -381,8 +381,8 @@ class OnnxSeleniumIT {
     private void navigateToAnalyzeTab() {
         WebElement analyzeTab = driver.findElement(
                 By.cssSelector("#applicationRequirementLink"));
-        if (!analyzeTab.getAttribute("class").contains("active")) {
-            analyzeTab.click();
+        if (!"page".equals(analyzeTab.getDomAttribute("aria-current"))) {
+            clickWhenUnobscured(By.id("applicationRequirementLink"));
             new WebDriverWait(driver, Duration.ofSeconds(10))
                     .until(ExpectedConditions.presenceOfElementLocated(By.id("searchPanel")));
         }

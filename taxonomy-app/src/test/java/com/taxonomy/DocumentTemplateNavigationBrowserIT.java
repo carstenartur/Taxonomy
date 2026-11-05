@@ -79,6 +79,8 @@ class DocumentTemplateNavigationBrowserIT {
         awaitNavigation(previousDocument, "/taxonomy" + view.path(), language);
 
         assertThat(page.driver().findElements(By.id("applicationNavigation"))).hasSize(1);
+        assertThat(page.driver().executeScript("return Boolean(window.TaxonomyApiClient && window.TaxonomyAppCommands);"))
+                .as("Every template view initializes the shared API and menu controls").isEqualTo(true);
         assertThat(page.driver().findElement(By.id("applicationNavigation")).getDomAttribute("aria-label"))
                 .isEqualTo(language.equals("de") ? "Anwendungsnavigation" : "Application navigation");
         assertThat(page.driver().findElements(By.cssSelector("#applicationWorkspaces [data-app-route='architecture']"))).hasSize(1);

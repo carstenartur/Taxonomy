@@ -43,8 +43,8 @@
                 <details id="applicationView" class="application-menu">
                     <summary th:text="#{app.menu.view}">View</summary>
                     <div class="application-menu-content">
-                        <a data-app-route="versions" data-page="versions" th:href="@{/#versions}" href="/#versions" th:text="#{app.command.history}">Version history</a>
-                        <a data-app-route="dsl-editor" data-page="dsl-editor" th:href="@{/#dsl-editor}" href="/#dsl-editor" th:text="#{app.command.source}">Model source (DSL)</a>
+                        <a id="applicationHistoryLink" data-app-route="versions" data-page="versions" th:href="@{/#versions}" href="/#versions" th:text="#{app.command.history}">Version history</a>
+                        <a id="applicationSourceLink" data-app-route="dsl-editor" data-page="dsl-editor" th:href="@{/#dsl-editor}" href="/#dsl-editor" th:text="#{app.command.source}">Model source (DSL)</a>
                         <hr/>
                         <button type="button" data-app-command="zoom-in" data-app-target="editorZoomIn" disabled th:text="#{editor.zoomIn}">Zoom in</button>
                         <button type="button" data-app-command="zoom-out" data-app-target="editorZoomOut" disabled th:text="#{editor.zoomOut}">Zoom out</button>
@@ -61,7 +61,7 @@
                 <details id="applicationTools" class="application-menu">
                     <summary th:text="#{app.menu.tools}">Tools</summary>
                     <div class="application-menu-content">
-                        <a data-app-route="graph" data-page="graph" data-taxonomy-feature="architecture" th:href="@{/#graph}" href="/#graph" th:text="#{app.command.graphExplorer}">Graph Explorer</a>
+                        <a id="applicationGraphLink" data-app-route="graph" data-page="graph" data-taxonomy-feature="architecture" th:href="@{/#graph}" href="/#graph" th:text="#{app.command.graphExplorer}">Graph Explorer</a>
                         <a data-app-route="integrations" th:href="@{/integrations}" href="/integrations" th:text="#{integration.title}">Tool integrations</a>
                         <hr/>
                         <span class="application-menu-group" th:text="#{app.command.personalSettings}">Personal settings</span>
@@ -127,7 +127,6 @@
 <th:block th:fragment="scripts">
     <th:block th:fragment="navigationScript">
         <script th:src="@{/js/api/taxonomy-api-client.js}" src="/js/api/taxonomy-api-client.js"></script>
-        <script th:src="@{/js/security/taxonomy-role-surface.js}" src="/js/security/taxonomy-role-surface.js"></script>
         <script th:src="@{/js/shared/application-commands.js}" src="/js/shared/application-commands.js"></script>
         <script th:src="@{/js/shared/application-chrome.js}" src="/js/shared/application-chrome.js"></script>
     </th:block>

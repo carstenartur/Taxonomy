@@ -5,7 +5,7 @@
 .taxonomy-app-navigation { position: relative; padding: .35rem .75rem; color: var(--taxonomy-navigation-foreground, #f8fafc); background: var(--taxonomy-navigation-background, #17243a); }
 .taxonomy-app-mainrow, #applicationMenuGroups { display: flex; align-items: center; gap: .25rem; min-width: 0; }
 .taxonomy-app-mainrow { gap: .75rem; }
-.taxonomy-app-brand { flex: 0 0 auto; color: inherit; font-size: 1.05rem; font-weight: 750; text-decoration: none; padding: .5rem 0; }
+.taxonomy-app-navigation .taxonomy-app-brand { flex: 0 0 auto; color: inherit; font-size: 1.05rem; font-weight: 750; text-decoration: none; padding: .5rem 0; }
 .taxonomy-app-navigation details { position: relative; margin: 0; padding: 0; border: 0; color: inherit; background: transparent; }
 .taxonomy-app-navigation details > summary { display: inline-flex; align-items: center; justify-content: center; gap: .35rem; min-width: 44px; min-height: 44px; padding: .5rem .6rem; margin: 0; border: 1px solid transparent; border-radius: .35rem; color: inherit; background: transparent; font: 600 .9375rem/1.4 system-ui, sans-serif; white-space: nowrap; cursor: pointer; list-style: none; }
 .taxonomy-app-navigation details > summary::-webkit-details-marker { display: none; }
@@ -112,7 +112,7 @@
 @media print { .taxonomy-app-chrome { display: none; } }
 @media (forced-colors: active) {
     .taxonomy-app-navigation, .taxonomy-app-workspaces, .taxonomy-app-page-actions, .taxonomy-system-status, .taxonomy-app-context, .taxonomy-app-context-disclosure > summary, .taxonomy-entity-status, .taxonomy-entity-key, .taxonomy-entity-version { color: CanvasText; background: Canvas; border-color: CanvasText; }
-    .taxonomy-app-brand, .taxonomy-app-workspaces a { color: LinkText; }
+    .taxonomy-app-navigation .taxonomy-app-brand, .taxonomy-app-workspaces a { color: LinkText; }
     .taxonomy-app-workspaces a[aria-current="page"] { color: HighlightText; background: Highlight; }
     .application-menu-content { color: CanvasText; background: Canvas; border-color: CanvasText; }
     .taxonomy-system-status.has-actionable-status > summary::before { color: CanvasText; }

@@ -66,7 +66,6 @@ class PortfolioTestArchitectureContractTest {
                 .as("projects.html must load portfolio scripts as plain, ordered static assets")
                 .containsSubsequence(
                         "/js/shared/taxonomy-utils.js",
-                        "/js/api/taxonomy-api-client.js",
                         "/js/api/portfolio-api.js",
                         "/js/portfolio/taxonomy-portfolio-async.js",
                         "/js/portfolio/portfolio-analysis-job-synchronizer.js",

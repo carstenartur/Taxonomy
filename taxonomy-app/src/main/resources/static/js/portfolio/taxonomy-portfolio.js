@@ -507,6 +507,9 @@
         state.selectedSnapshotId = null;
         window.TaxonomyAppChrome?.updateContext(hadSelection ? {project:null,requirement:null,source:null} : {project:null,requirement:null});
         window.localStorage.setItem('taxonomy.portfolio.projectId', String(projectId));
+        document.dispatchEvent(new CustomEvent('taxonomy:portfolio-project-selecting', {
+            detail: { projectId: projectId }
+        }));
         renderProjectList();
         await refreshSelectedProject(false);
         document.getElementById('noProjectSelected').classList.add('d-none');

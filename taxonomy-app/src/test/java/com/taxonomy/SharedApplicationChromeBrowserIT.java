@@ -232,6 +232,14 @@ class SharedApplicationChromeBrowserIT {
         var navigation = page.driver().findElements(By.id("applicationNavigation"));
         assertThat(navigation).as("Every existing view has the same application navigation").hasSize(1);
         assertThat(navigation.getFirst().getAccessibleName()).isNotBlank();
+        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript(
+                "return !!window.TaxonomyRoleSurface")));
+        page.driver().executeAsyncScript("TaxonomyRoleSurface.ready.then(arguments[arguments.length-1]);");
+        assertThat(page.driver().executeScript("""
+                return [...document.scripts].filter(script => script.src
+                    && new URL(script.src).pathname.endsWith('/js/security/taxonomy-role-surface.js')).length;
+                """)).as("Shared account authority must load once, including dynamically owned UI surfaces").isEqualTo(1L);
+
         if (width == 390) {
             var menu = page.driver().findElement(By.id("applicationNavigationMenu"));
             var launcher = menu.findElement(By.tagName("summary"));
@@ -310,6 +318,8 @@ class SharedApplicationChromeBrowserIT {
                     """)).as("The complete failed-read message wraps visibly inside its alert, without clipping the URL").isEqualTo(true);
         }
         if (view.template().equals("index")) {
+            assertThat(page.driver().findElements(By.cssSelector("#docImportUploadBtn #docImportSpinner")))
+                    .as("Translation preserves the native document-import progress indicator").hasSize(1);
             assertThat(page.driver().findElements(By.id("applicationProjectsLink"))).hasSize(1);
             assertThat(page.driver().findElements(By.id("projectMenuButton"))).isEmpty();
             assertThat(page.driver().findElements(By.cssSelector("#analysisNextSteps #projectNewAction"))).hasSize(1);

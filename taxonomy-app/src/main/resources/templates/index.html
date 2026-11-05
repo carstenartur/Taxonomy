@@ -110,14 +110,15 @@
                         <div class="row g-2 mx-0 mb-2">
                             <div class="col d-flex gap-1">
                                 <input type="text" id="searchInput" class="form-control form-control-sm"
-                                       th:placeholder="#{search.placeholder}" placeholder="Search taxonomy nodes…" th:attr="aria-label=#{ui.aria.search_query}" aria-label="Search query"/>
+                                       th:placeholder="#{search.input.fulltext.placeholder}" placeholder="e.g. time recording or BP-1000"
+                                       th:attr="aria-label=#{ui.aria.search_query}" aria-label="Search query" aria-describedby="searchInputHelp"/>
                                 <button id="searchClearBtn" class="btn btn-sm btn-outline-secondary" type="button" hidden
                                         th:title="#{search.clear}" th:aria-label="#{search.clear}" aria-label="Clear search">×</button>
                             </div>
                         </div>
                         <div class="row g-2 mx-0 mb-2">
                             <div class="col-6">
-                                <select id="searchModeSelect" class="form-select form-select-sm" th:attr="aria-label=#{ui.aria.search_mode}" aria-label="Search mode">
+                                <select id="searchModeSelect" class="form-select form-select-sm" th:attr="aria-label=#{ui.aria.search_mode}" aria-label="Search mode" aria-describedby="searchInputHelp">
                                     <option value="fulltext" th:text="#{search.mode.fulltext}">Full-text</option>
                                     <option value="semantic" th:text="#{search.mode.semantic}">Semantic</option>
                                     <option value="hybrid" th:text="#{search.mode.hybrid}">Hybrid</option>
@@ -135,6 +136,8 @@
                                 <button id="searchBtn" class="btn btn-sm btn-primary w-100" th:text="#{browse.search.btn}">&#128269; Search</button>
                             </div>
                         </div>
+                        <p id="searchInputHelp" class="small text-body-secondary mb-2" role="status"
+                           th:text="#{search.input.fulltext.help}">Enter keywords or a node code / prefix, e.g. time recording or BP-1000. Searches names, descriptions and identifiers.</p>
                         <div id="searchResultsArea" style="display:none; max-height:300px; overflow-y:auto;"></div>
                     </div>
                 </details>
@@ -156,7 +159,7 @@
             <!-- ============================================================
                  TAB: ANALYZE
                  ============================================================ -->
-            <div id="tab-analyze" class="tab-pane-content">
+            <div id="tab-analyze" role="region" aria-labelledby="applicationRequirementLink" class="tab-pane-content">
                 <!-- ViewContext: shows Git provenance for analysis data -->
                 <div id="analyzeViewContext" class="view-context-bar d-none"></div>
 
@@ -382,9 +385,9 @@
                                 </select>
                             </div>
                         </div>
-                        <button id="docImportUploadBtn" class="btn btn-sm btn-outline-primary" th:text="#{docimport.btn.upload}">
+                        <button id="docImportUploadBtn" class="btn btn-sm btn-outline-primary">
                             <span id="docImportSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
-                            &#128196; Upload &amp; Extract
+                            <span th:text="#{docimport.btn.upload}">&#128196; Upload &amp; Extract</span>
                         </button>
                         <div id="docImportStatus" class="mt-2 small"></div>
                     </div>
@@ -466,7 +469,7 @@
             <!-- ============================================================
                  TAB: ARCHITECTURE
                  ============================================================ -->
-            <div id="tab-architecture" class="tab-pane-content d-none">
+            <div id="tab-architecture" role="region" aria-labelledby="applicationArchitectureLink" class="tab-pane-content d-none">
                 <section id="architectureWorkspace" aria-labelledby="architectureWorkspaceTitle">
                     <div class="architecture-source-toolbar">
                         <h2 id="architectureWorkspaceTitle" th:text="#{nav.architecture}">Architecture</h2>
@@ -754,7 +757,7 @@
             <!-- ============================================================
                  TAB: GRAPH
                  ============================================================ -->
-            <div id="tab-graph" class="tab-pane-content d-none">
+            <div id="tab-graph" role="region" aria-labelledby="applicationGraphLink" class="tab-pane-content d-none">
                 <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-8')}"></a></div>
 
                 <!-- ViewContext: shows Git provenance for graph data -->
@@ -827,7 +830,7 @@
             <!-- ============================================================
                  TAB: VERSIONS
                  ============================================================ -->
-            <div id="tab-versions" class="tab-pane-content d-none">
+            <div id="tab-versions" role="region" aria-labelledby="applicationHistoryLink" class="tab-pane-content d-none">
                 <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-19')}"></a></div>
 
                 <!-- Context Navigation History -->
@@ -1023,7 +1026,7 @@
             <!-- ============================================================
                  TAB: DSL EDITOR
                  ============================================================ -->
-            <div id="tab-dsl-editor" class="tab-pane-content d-none">
+            <div id="tab-dsl-editor" role="region" aria-labelledby="applicationSourceLink" class="tab-pane-content d-none">
                 <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-18')}"></a></div>
 
                 <!-- ViewContext: shows Git provenance for DSL data -->
@@ -1126,7 +1129,7 @@
             <!-- ============================================================
                  TAB: ADMIN
                  ============================================================ -->
-            <div id="tab-admin" class="tab-pane-content d-none">
+            <div id="tab-admin" role="region" aria-labelledby="adminNavTab" class="tab-pane-content d-none">
                 <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-21')}"></a></div>
 
                 <!-- Health Overview Dashboard -->
@@ -1373,7 +1376,7 @@
             <!-- ============================================================
                  TAB: PREFERENCES
                  ============================================================ -->
-            <div id="tab-preferences" class="tab-pane-content d-none">
+            <div id="tab-preferences" role="region" aria-labelledby="preferencesNavTab" class="tab-pane-content d-none">
                 <div class="view-help"><a th:replace="~{fragments/context-help :: button('PREFERENCES', '')}"></a></div>
 
                 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -1551,7 +1554,7 @@
             <!-- ============================================================
                  TAB: HELP
                  ============================================================ -->
-            <div id="tab-help" class="tab-pane-content d-none">
+            <div id="tab-help" role="region" aria-labelledby="main-tab-help" class="tab-pane-content d-none">
                 <div class="help-layout">
                     <!-- Sidebar: search + TOC -->
                     <div class="help-sidebar">
@@ -1878,11 +1881,6 @@
             if (link.dataset.page === pageName) link.setAttribute('aria-current', 'page');
             else link.removeAttribute('aria-current');
         });
-        PAGES.forEach(function (page) {
-            var pane = document.getElementById('tab-' + page);
-            if (pane) pane.setAttribute('role', 'region');
-        });
-
         // Show / hide tab pane content
         PAGES.forEach(function (page) {
             var pane = document.getElementById('tab-' + page);

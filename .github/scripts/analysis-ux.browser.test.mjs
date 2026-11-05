@@ -249,6 +249,220 @@ test('node Graph action reveals the Graph page and an initial result through the
         assert.equal(await page.locator('#graphNodeInput').inputValue(), 'BP-1000');
     } finally { await finish(page); }
 });
+
+async function searchFixture(locale = 'de', withArchitecture = false, delayedTranslations = false) {
+    const page = withArchitecture ? await architectureFixture() : await fixture(locale);
+    const template = await readFile(path.join(resources, 'templates/index.html'), 'utf8');
+    const messages = {};
+    for (const name of ['messages.properties', 'messages_search.properties',
+        ...(locale === 'de' ? ['messages_de.properties', 'messages_search_de.properties'] : [])]) {
+        for (const line of (await readFile(path.join(resources, 'i18n', name), 'utf8')).split('\n')) {
+            const entry = line.match(/^([^#!\s][^=]*)=(.*)$/);
+            if (entry) messages[entry[1]] = entry[2].replace(/\\u([\da-f]{4})/gi,
+                (_, code) => String.fromCharCode(parseInt(code, 16)));
+        }
+    }
+    await page.evaluate(({template, messages, locale, delayedTranslations}) => {
+        document.documentElement.lang = locale;
+        window.searchMessagesReady = !delayedTranslations;
+        window.TaxonomyI18n.t = (key, ...args) => (searchMessagesReady && messages[key] || key)
+            .replace(/\{(\d+)\}/g, (_, index) => String(args[index] ?? ''));
+        const source = new DOMParser().parseFromString(template, 'text/html');
+        const left = document.createElement('div'); left.id = 'leftPanel';
+        left.append(source.getElementById('searchPanel'), document.getElementById('taxonomyTree'));
+        document.body.append(left, source.getElementById('tab-graph'));
+        document.getElementById('tab-graph').classList.remove('d-none');
+        document.getElementById('searchPanel').open = true;
+        window.searchRequests = [];
+        window.graphQueries = [];
+        window.embeddingStatus = {available: true, graphReady: true};
+        window.searchNodes = [{code: 'BP-1000', nameEn: 'Time capture'},
+            {code: 'BP-1001', nameEn: 'Safety reporting'}, {code: 'BP-1002', nameEn: 'Outside architecture'}];
+        window.fetch = async url => {
+            if (url === '/api/embedding/status') return {ok: true, json: async () => embeddingStatus};
+            searchRequests.push(url);
+            return {ok: true, json: async () => searchNodes};
+        };
+        function query(kind, code, hops) {
+            graphQueries.push({kind, code, hops});
+            return Promise.resolve({originNodeCode: code, direction: kind.toUpperCase(), maxHops: hops,
+                neighbors: [], traversedRelationships: [], notes: []});
+        }
+        window.AnalysisApi = {graphUpstream: (code, hops) => query('upstream', code, hops),
+            graphDownstream: (code, hops) => query('downstream', code, hops)};
+    }, {template, messages, locale, delayedTranslations});
+    if (!withArchitecture) await page.addScriptTag({path: path.join(resources, 'static/js/core/taxonomy-scoring.js')});
+    for (const script of ['shared/taxonomy-graph.js',
+        'shared/taxonomy-search.js', 'shared/architecture-workspace.js']) {
+        await page.addScriptTag({path: path.join(resources, 'static/js', script)});
+    }
+    await page.evaluate(() => document.dispatchEvent(new Event('DOMContentLoaded')));
+    await page.addScriptTag({path: path.join(resources, 'static/js/core/taxonomy-browse.js')});
+    await page.evaluate(() => {
+        TaxonomyState.currentView = 'list';
+        TaxonomyState.taxonomyData = searchNodes.map(node => ({...node, name: node.nameEn, children: []}));
+        TaxonomyBrowse.renderView(TaxonomyState.taxonomyData, {});
+    });
+    return page;
+}
+
+for (const locale of ['de', 'en']) test(`${locale}: search explains accepted input for each mode and submits natural language unchanged`, async () => {
+    const page = await searchFixture(locale);
+    try {
+        const help = page.locator('#searchInputHelp');
+        assert.equal(await help.count(), 1, 'Mode guidance is visible beside the search controls');
+        assert.equal(await help.isVisible(), true);
+        assert.match(await page.locator('#searchInput').getAttribute('aria-describedby'), /\bsearchInputHelp\b/);
+        const prompts = locale === 'de'
+            ? {fulltext: /Stichwörter.*Knoten.?Code/i, semantic: /natürlicher Sprache.*keine.*Syntax/i,
+                hybrid: /natürlicher Sprache.*Volltext/i, graph: /natürlicher Sprache.*Relation/i}
+            : {fulltext: /keywords.*node code/i, semantic: /natural language.*no.*syntax/i,
+                hybrid: /natural language.*full.text/i, graph: /natural language.*relation/i};
+        for (const mode of ['fulltext', 'semantic', 'hybrid', 'graph']) {
+            await page.locator('#searchModeSelect').selectOption(mode);
+            assert.match(await help.textContent(), prompts[mode]);
+            assert.doesNotMatch(await page.locator('#searchInput').getAttribute('placeholder'), /^search\./,
+                'The example must be translated rather than exposing an i18n key');
+        }
+        await page.locator('#searchModeSelect').selectOption('semantic');
+        const query = locale === 'de' ? 'Wie erfassen wir Arbeitszeiten sicher?' : 'How can we record working time securely?';
+        await page.locator('#searchInput').fill(query);
+        await page.locator('#searchInput').press('Enter');
+        await page.locator('.search-result-item').first().waitFor();
+        assert.equal(await page.evaluate(() => new URL(searchRequests[0], 'https://taxonomy.test').searchParams.get('q')), query);
+        assert.match(await page.evaluate(() => searchRequests[0]), /^\/api\/search\/semantic\?/);
+        await page.evaluate(async () => {
+            embeddingStatus = {available: false, graphReady: false};
+            TaxonomySearch.checkEmbeddingStatus();
+        });
+        await page.waitForFunction(() => document.getElementById('searchModeSelect').value === 'fulltext');
+        assert.match(await help.textContent(), prompts.fulltext, 'Readiness fallback explains the mode actually selected');
+        assert.equal(await page.locator('#searchInput').inputValue(), query);
+    } finally { await finish(page); }
+});
+
+test('search guidance uses translations that arrive after the search controls initialize', async () => {
+    const page = await searchFixture('de', false, true);
+    try {
+        await page.locator('#searchModeSelect').selectOption('semantic');
+        await page.evaluate(() => {
+            searchMessagesReady = true;
+            document.dispatchEvent(new CustomEvent('taxonomy-i18n-loaded', {detail: {locale: 'de'}}));
+        });
+        assert.match(await page.locator('#searchInputHelp').textContent(), /natürlicher Sprache.*keine.*Syntax/i);
+        assert.match(await page.locator('#searchInput').getAttribute('placeholder'), /Wie erfassen wir/);
+    } finally { await finish(page); }
+});
+
+test('search result activation and next-result navigation select the graph without a focus or context detour', async () => {
+    const page = await searchFixture();
+    try {
+        await page.locator('#graphMaxHops').selectOption('3');
+        await page.locator('#graphNodeInput').fill('BP-1002');
+        await page.locator('#graphDownstreamBtn').click();
+        await page.locator('#searchInput').fill('safety');
+        await page.locator('#searchBtn').click();
+        const result = page.locator('.search-result-item').first();
+        await result.focus();
+        await result.press('Enter');
+        await page.waitForFunction(() => TaxonomySearch.resultDiagnostics().navigationFocusConfirmed);
+        assert.equal(await page.locator('#graphNodeInput').inputValue(), 'BP-1000');
+        assert.equal(await page.locator('.tax-node[data-code="BP-1000"]').evaluate(node => node === document.activeElement), true);
+        const context = await page.evaluate(() => ({href: location.href, view: TaxonomyState.currentView,
+            query: document.getElementById('searchInput').value}));
+        await page.locator('[data-search-result-nav="next"]').click();
+        await page.waitForFunction(() => TaxonomySearch.resultDiagnostics().currentIndex === 1
+            && TaxonomySearch.resultDiagnostics().navigationFocusConfirmed);
+        assert.equal(await page.locator('#graphNodeInput').inputValue(), 'BP-1001',
+            'Graph selection must follow the hit even when focus stays in the result list');
+        assert.equal(await page.locator('.search-result-item[data-result-index="1"]').evaluate(node => node === document.activeElement), true);
+        assert.deepEqual(await page.evaluate(() => graphQueries), [
+            {kind: 'downstream', code: 'BP-1002', hops: 3},
+            {kind: 'downstream', code: 'BP-1000', hops: 3},
+            {kind: 'downstream', code: 'BP-1001', hops: 3}
+        ]);
+        assert.deepEqual(await page.evaluate(() => ({href: location.href, view: TaxonomyState.currentView,
+            query: document.getElementById('searchInput').value})), context);
+    } finally { await finish(page); }
+});
+
+for (const mode of ['overview', 'focus', 'hidden-context']) test(`search retains the ${mode} analysis diagram while selecting an included hit in Graph Explorer`, async () => {
+    const page = await searchFixture('de', true);
+    try {
+        await page.evaluate(async mode => {
+            TaxonomyState.currentArchView = {includedElements: searchNodes.slice(0, 2).map((node, index) => ({
+                nodeCode: node.code, title: node.nameEn, taxonomySheet: 'BP', relevance: 0.8,
+                anchor: index === 0 || mode !== 'hidden-context', hopDistance: index
+            })), includedRelationships: [], anchors: []};
+            TaxonomyScoring.renderArchitectureView(TaxonomyState.currentArchView);
+            const diagram = document.getElementById('impactGraphView').__taxonomyImpactMapDiagram;
+            window.searchWorkspace = TaxonomyArchitectureWorkspaceController.create({initial: {
+                kind: 'analysis', branch: 'review/a', element: 'BP-1000', revision: 17},
+                adapters: {analysis: {activate: async () => {}, getData: () => TaxonomyState.currentArchView,
+                    getDiagram: () => diagram, select: id => diagram.select(id)}}});
+            await searchWorkspace.open('analysis');
+            window.TaxonomyArchitectureWorkspace = searchWorkspace;
+            diagram.select('BP-1000');
+            diagram.setSearch('Time');
+        }, mode);
+        await page.waitForFunction(() => document.querySelector('.impact-map-workbench')?.dataset.fitState === 'complete');
+        await page.evaluate(mode => {
+            const diagram = TaxonomyArchitectureWorkspace.getDiagram();
+            if (mode === 'focus') diagram.focus('BP-1000');
+            if (mode === 'hidden-context') diagram.setContext(false);
+        }, mode);
+        await page.waitForFunction(() => document.querySelector('.impact-map-workbench')?.dataset.fitState === 'complete');
+        if (mode !== 'overview') {
+            assert.equal(await page.evaluate(() => TaxonomyArchitectureWorkspace.getDiagram().getModel().nodeIds.has('BP-1001')), false,
+                'The included search hit is absent from the focused or filtered diagram');
+        }
+        async function architectureState() {
+            return page.evaluate(() => ({
+                session: TaxonomyArchitectureWorkspace.getDiagram().captureSession(),
+                source: TaxonomyArchitectureWorkspace.getSource(),
+                data: JSON.stringify(TaxonomyState.currentArchView),
+                href: location.href
+            }));
+        }
+        const before = await architectureState();
+        await page.locator('#searchInput').fill('safety');
+        await page.locator('#searchBtn').click();
+        await page.locator('.search-result-item[data-result-index="1"]').click();
+        await page.waitForFunction(() => TaxonomySearch.resultDiagnostics().currentIndex === 1
+            && TaxonomySearch.resultDiagnostics().navigationFocusConfirmed);
+        assert.equal(await page.locator('#graphNodeInput').inputValue(), 'BP-1001');
+        assert.deepEqual(await architectureState(), before,
+            'Search must preserve architecture selection, focus, filters, viewport and source for an included hit');
+        await page.locator('.search-result-item[data-result-index="2"]').click();
+        await page.waitForFunction(() => TaxonomySearch.resultDiagnostics().currentIndex === 2
+            && TaxonomySearch.resultDiagnostics().navigationFocusConfirmed);
+        assert.equal(await page.locator('#graphNodeInput').inputValue(), 'BP-1002');
+        assert.deepEqual(await architectureState(), before,
+            'An absent catalogue hit must also preserve the architecture');
+    } finally { await finish(page); }
+});
+
+for (const kind of ['working', 'snapshot']) test(`search retains the ${kind} source selection while preparing Graph Explorer`, async () => {
+    const page = await searchFixture();
+    try {
+        await page.evaluate(async kind => {
+            window.retainedArchitecture = {includedElements: [{nodeCode: 'BP-1000'}], draft: 'unsaved form'};
+            window.TaxonomyArchitectureWorkspace = TaxonomyArchitectureWorkspaceController.create({
+                initial: {kind, element: 'BP-1002', branch: 'review/a', revision: 17, snapshotId: 'snapshot-a'},
+                adapters: {[kind]: {activate: async () => {}, getData: () => retainedArchitecture}}
+            });
+            await TaxonomyArchitectureWorkspace.open(kind);
+        }, kind);
+        const before = await page.evaluate(() => ({source: TaxonomyArchitectureWorkspace.getSource(),
+            data: JSON.stringify(retainedArchitecture), href: location.href}));
+        await page.locator('#searchInput').fill('time');
+        await page.locator('#searchBtn').click();
+        await page.locator('.search-result-item').first().click();
+        assert.equal(await page.locator('#graphNodeInput').inputValue(), 'BP-1000');
+        assert.deepEqual(await page.evaluate(() => ({source: TaxonomyArchitectureWorkspace.getSource(),
+            data: JSON.stringify(retainedArchitecture), href: location.href})), before);
+    } finally { await finish(page); }
+});
 for (const width of [1100, 680, 390]) {
     test(`reason mouse target is stationary at ${width}px`, async () => {
         const page=await fixture('de',width);

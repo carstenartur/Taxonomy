@@ -1109,7 +1109,7 @@ See the [export contracts and verification evidence](https://github.com/carstena
 <a id="guide-section-11"></a>
 ## 11. Search
 
-The **Search Taxonomy** panel (right column, collapsible) provides four search modes to find taxonomy nodes. Open it by clicking the **🔍 Search Taxonomy** summary.
+The **Search Taxonomy** panel in the taxonomy catalogue (collapsible, above the tree) provides four search modes to find taxonomy nodes. Open it by clicking the **🔍 Search Taxonomy** summary.
 
 ### Search Modes
 
@@ -1122,11 +1122,15 @@ The **Search Taxonomy** panel (right column, collapsible) provides four search m
 
 ### Using the Search Panel
 
-1. Type your query into the **search input** field.
-2. Select a **search mode** from the dropdown.
+The input example and visible help change with the selected mode. **Full-text** accepts keywords or a full or partial node code, such as `BP-1000`. **Semantic** accepts natural language, such as “How can we record working time securely?”; no special query syntax is required. **Hybrid** accepts keywords or natural language and combines both kinds of matches. **Graph** accepts a natural-language topic and requires a supported, ready selected branch, as described below.
+
+1. Select a **search mode** from the dropdown and read its input guidance.
+2. Type your query into the **search input** field.
 3. Choose the **max results** count (10, 20, or 50).
 4. Click **🔍 Search** or press Enter.
 5. Results appear as a clickable list. Click any result to highlight the node in the taxonomy tree.
+
+Activating a result by mouse or keyboard also selects its node in **Graph Explorer**, retaining the current query mode and hop limit. **Previous** and **Next** use the same linked selection. The architecture diagram retains its selection, focus mode, filters and viewport. Your current work area, architecture source and editor drafts are preserved.
 
 Search-mode illustrations (the Graph capture is historical):
 

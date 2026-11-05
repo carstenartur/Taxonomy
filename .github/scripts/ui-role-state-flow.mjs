@@ -269,8 +269,7 @@ export async function runRoleStateFlow({
     const progressRect = progress?.getBoundingClientRect();
     const primaryRect = primary?.getBoundingClientRect();
     const navigation = document.querySelector('#applicationWorkspaces');
-    const menuToggle = document.querySelector('#applicationNavigationMenu > summary');
-    const navigationRect = (menuToggle?.offsetParent ? menuToggle : navigation)?.getBoundingClientRect();
+    const navigationRect = navigation?.getBoundingClientRect();
     const authorizedPages = [...new Set(Array.from(document.querySelectorAll(
       '#applicationWorkspaces [data-page], #applicationView [data-page], #applicationTools [data-page="graph"]'))
       .map(link => link.dataset.page))].sort();
@@ -317,7 +316,7 @@ export async function runRoleStateFlow({
     'Primary Analyze action is not visible, enabled and focusable');
   if (taskSurface.viewportWidth < 992) {
     assert(taskSurface.navigationVisible && taskSurface.navigationInsideViewport,
-      'Shared primary navigation is not discoverable before any automatic scroll');
+      `Work-area navigation is not discoverable before any automatic scroll: ${JSON.stringify(taskSurface)}`);
     assert(taskSurface.taskReachable,
       'Neither task progression nor the primary action is initially reachable');
     assert(JSON.stringify(taskSurface.primaryRoutes)
@@ -765,11 +764,13 @@ export async function runRoleStateFlow({
     assert(await page.locator('#tab-analyze').isVisible(), 'Requirement link is not keyboard operable');
     const projects = page.locator('#applicationProjectsLink');
     await projects.focus();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
     const bounds = await projects.boundingBox();
     assert(bounds && bounds.height >= 44 && bounds.x >= 0
       && bounds.x + bounds.width <= taskHierarchy.viewportWidth + 1
       && await projects.evaluate(element => document.activeElement === element),
-      'The Projects destination must remain a visible keyboard and touch target');
+      `The Projects destination must remain a visible keyboard and touch target: ${JSON.stringify({bounds,
+        viewportWidth:taskHierarchy.viewportWidth,focused:await projects.evaluate(element => document.activeElement === element)})}`);
     passed('shared navigation retains every destination and keyboard access after task interactions');
   } else {
     assert(taskHierarchy.leftPrecedesRightInDom && taskHierarchy.taskOrder === 'reference-first',

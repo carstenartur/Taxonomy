@@ -22,7 +22,7 @@ async function fixture({mode='requirement',locale='en',width=1200}={}){
     page.errors=[];page.on('pageerror',error=>page.errors.push(error.message));
     await page.route('http://chrome.test/**',route=>route.fulfill({body:'',contentType:'text/html'}));await page.goto('http://chrome.test/');
     const panes=['analyze','architecture','graph','versions','dsl-editor','help','admin','preferences'];
-    const content=mode==='index'?`<div id="architectureWorkspace"></div><div id="leftPanel"></div><div id="rightPanel">${panes.map(p=>`<section id="tab-${p}">${p}</section>`).join('')}</div>`
+    const content=mode==='index'?`<div id="architectureWorkspace"></div><div id="leftPanel"></div><div id="rightPanel">${panes.map(p=>`${index.match(new RegExp(`<div id="tab-${p}"[^>]*>`))[0]}${p}</div>`).join('')}</div>`
         :mode==='projects'?'<input id="projectFilter">':mode==='editor'?'<main id="architectureEditor"></main>':mode==='snapshot'?'<main id="architectureWorkbench"></main>':'<main id="requirementDetails"></main>';
     const standalone={editor:'architecture-editor',integrations:'integrations',snapshot:'architecture-workbench'}[mode];
     let navigation=header;
@@ -52,6 +52,9 @@ async function fixture({mode='requirement',locale='en',width=1200}={}){
 }
 for(const mode of ['editor','integrations'])for(const width of [390,1440])test(`${mode}: real standalone actions retain the shared foreground and touch target at ${width}px`,async()=>{
     const page=await fixture({mode,width});try{
+        assert.equal(await page.locator('.taxonomy-app-brand').evaluate(node=>getComputedStyle(node).color),
+            await page.locator('#applicationNavigation').evaluate(node=>getComputedStyle(node).color),
+            'Page-specific link colors must not override the shared header foreground');
         const links=page.locator('#applicationPageActions a');
         assert.ok(await links.count()>0);
         for(const link of await links.all()){
@@ -61,6 +64,18 @@ for(const mode of ['editor','integrations'])for(const width of [390,1440])test(`
             assert.ok(style.height>=44,`Standalone actions retain a touch target: ${JSON.stringify(style)}`);
         }
         assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    }finally{await page.close();}
+});
+test('each active work area remains a named landmark',async()=>{
+    const page=await fixture({mode:'index'});try{
+        for(const destination of ['analyze','architecture','graph','versions','dsl-editor','help','admin','preferences']){
+            await page.evaluate(name=>window.navigateToPage(name),destination);
+            const pane=page.locator('#tab-'+destination);
+            assert.equal(await pane.getAttribute('role'),'region');
+            await assert.doesNotReject(()=>pane.ariaSnapshot().then(snapshot=>assert.match(snapshot,/region \"[^\"]+\"/)),
+                `${destination} must expose the localized name of its navigation destination`);
+        }
+        assert.deepEqual(page.errors,[]);
     }finally{await page.close();}
 });
 test('snapshot Export uses the common menu launcher style with its existing export form',async()=>{

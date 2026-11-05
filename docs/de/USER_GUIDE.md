@@ -1135,7 +1135,7 @@ Weitere Einzelheiten zu Quellen, Formatgrenzen und Screenshot-Herkunft stehen in
 <a id="guide-section-11"></a>
 ## 11. Suche
 
-Das Panel **Search Taxonomy** (rechte Spalte, einklappbar) bietet vier Suchmodi zum Auffinden von Taxonomie-Knoten. Öffnen Sie es durch Klicken auf die Zusammenfassung **🔍 Search Taxonomy**.
+Das Panel **Search Taxonomy** im Taxonomie-Katalog (einklappbar, über dem Baum) bietet vier Suchmodi zum Auffinden von Taxonomie-Knoten. Öffnen Sie es durch Klicken auf die Zusammenfassung **🔍 Search Taxonomy**.
 
 ### Suchmodi
 
@@ -1148,11 +1148,15 @@ Das Panel **Search Taxonomy** (rechte Spalte, einklappbar) bietet vier Suchmodi 
 
 ### Verwendung des Suchpanels
 
-1. Geben Sie Ihre Abfrage in das **Sucheingabefeld** ein.
-2. Wählen Sie einen **Suchmodus** aus dem Dropdown-Menü.
+Eingabebeispiel und sichtbare Hilfe passen sich dem gewählten Modus an. **Full-text** akzeptiert Stichwörter oder vollständige beziehungsweise angefangene Knoten-Codes, etwa `BP-1000`. **Semantic** akzeptiert natürliche Sprache, etwa „Wie erfassen wir Arbeitszeiten sicher?“; eine besondere Suchsyntax ist nicht erforderlich. **Hybrid** akzeptiert Stichwörter oder natürliche Sprache und kombiniert beide Trefferarten. **Graph** akzeptiert ein natürlichsprachliches Thema und benötigt einen unterstützten, bereiten ausgewählten Branch, wie unten beschrieben.
+
+1. Wählen Sie einen **Suchmodus** aus dem Dropdown-Menü und lesen Sie seine Eingabehilfe.
+2. Geben Sie Ihre Abfrage in das **Sucheingabefeld** ein.
 3. Wählen Sie die **maximale Ergebnisanzahl** (10, 20 oder 50).
 4. Klicken Sie auf **🔍 Search** oder drücken Sie die Eingabetaste.
 5. Die Ergebnisse erscheinen als anklickbare Liste. Klicken Sie auf ein Ergebnis, um den Knoten im Taxonomie-Baum hervorzuheben.
+
+Wenn Sie ein Ergebnis per Maus oder Tastatur aktivieren, wird sein Knoten auch im **Graph Explorer** ausgewählt; der aktuelle Abfragemodus und die Hop-Grenze bleiben erhalten. **Vorheriges** und **Nächstes** verwenden dieselbe verknüpfte Auswahl. Auswahl, Fokusmodus, Filter und Ausschnitt des Architekturdiagramms bleiben erhalten. Ihr aktueller Arbeitsbereich, die Architekturquelle und Editorentwürfe bleiben erhalten.
 
 Darstellungen der Suchmodi (die Graph-Aufnahme ist historisch):
 

@@ -88,7 +88,7 @@
          th:attr="data-failed=#{document.templates.local.failed},data-invalid=#{document.templates.local.invalid},data-too-large=#{document.templates.local.too-large},data-busy=#{document.templates.local.busy},data-saved=#{document.templates.local.saved},data-conflict=#{document.templates.local.conflict},data-authentication=#{document.templates.local.authentication},data-uncertain=#{document.templates.local.uncertain}"></div>
 </main>
 <script th:src="@{/js/taxonomy-i18n.js}"></script>
-<script th:src="@{/js/shared/application-chrome.js}"></script>
+<th:block th:replace="~{fragments/application-chrome :: navigationScript}"></th:block>
 <script th:src="@{/js/api/document-templates-api.js}"></script>
 <script th:src="@{/js/document-templates/document-template-local-edit.js}"></script>
 </body>

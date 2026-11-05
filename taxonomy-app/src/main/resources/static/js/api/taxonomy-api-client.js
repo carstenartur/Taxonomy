@@ -434,20 +434,6 @@ window.TaxonomyApiClient = (function () {
 (function loadAuthenticatedUiSurfaces() {
     'use strict';
 
-    function ensureDocumentImportSpinner() {
-        var button = document.getElementById('docImportUploadBtn');
-        if (!button || document.getElementById('docImportSpinner')) return;
-        // Thymeleaf's legacy th:text on the button replaces its nested spinner.
-        // Restore the control synchronously before taxonomy-document-import.js
-        // captures its element references and installs the click handler.
-        var spinner = document.createElement('span');
-        spinner.id = 'docImportSpinner';
-        spinner.className = 'spinner-border spinner-border-sm d-none me-1';
-        spinner.setAttribute('role', 'status');
-        spinner.setAttribute('aria-hidden', 'true');
-        button.prepend(spinner);
-    }
-
     function resolveSurfaceUrl(source) {
         if (window.TaxonomyI18n && typeof window.TaxonomyI18n.resolveUrl === 'function') {
             return window.TaxonomyI18n.resolveUrl(source);
@@ -477,7 +463,6 @@ window.TaxonomyApiClient = (function () {
         document.head.appendChild(script);
     }
 
-    ensureDocumentImportSpinner();
     loadSurface('TaxonomyRoleSurface', 'data-taxonomy-role-surface',
         '/js/security/taxonomy-role-surface.js');
     loadSurface('TaxonomyUiSemantics', 'data-taxonomy-ui-semantics',
