@@ -205,7 +205,11 @@ class PortfolioClientRoutingIT {
         }
         assertThat(text(contract.error())).as("The initializer completes without a hidden page error").isEmpty();
         assertThat(requests("GET", prefix + "/api/projects/42")).hasSize(1);
-        String portfolioReturn = contract.template().equals("portfolio-import")
+        if (List.of("portfolio-import", "portfolio-matrices", "portfolio-reports").contains(contract.template())) {
+            assertThat(requests("GET", prefix + "/api/architecture/lifecycle"))
+                    .as("Project navigation does not start an unrelated architecture lifecycle read").isEmpty();
+        }
+        String portfolioReturn = List.of("portfolio-import", "portfolio-matrices", "portfolio-reports").contains(contract.template())
                 ? "/projects?projectId=42&lang=de" : "/projects?lang=de";
         assertThat(href("portfolioBack")).isEqualTo(prefix + portfolioReturn);
         if (contract.template().equals("requirement-detail")) {

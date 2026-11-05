@@ -171,6 +171,9 @@
         if (node('projectFilter')) {
             disclosure.dataset.compactContext = 'projects';
             disclosure.open = false;
+        } else if (node('importMain') || node('matrixMain') || node('reportsMain')) {
+            disclosure.dataset.compactContext = 'project';
+            disclosure.open = false;
         } else if (node('architectureWorkspace') && node('tab-analyze')) {
             disclosure.dataset.compactContext = 'analysis';
             disclosure.open = false;
