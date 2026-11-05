@@ -7,8 +7,10 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.openqa.selenium.By;
+import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chromium.HasCdp;
 import org.openqa.selenium.remote.Augmenter;
+import org.openqa.selenium.remote.LocalFileDetector;
 
 import java.nio.file.Path;
 import java.nio.file.Files;
@@ -41,6 +43,8 @@ class DocumentTemplateNavigationBrowserIT {
 
     @BeforeAll static void openBrowser(@TempDir Path downloads) throws Exception {
         page = new PortfolioClientTestPage(downloads);
+        // Container Chrome cannot see a path on the test host; Selenium uploads it first.
+        if (!(page.driver() instanceof ChromeDriver)) page.driver().setFileDetector(new LocalFileDetector());
         templateFile = Files.writeString(downloads.resolve("selected-template.dotx"), "fixture");
     }
 
