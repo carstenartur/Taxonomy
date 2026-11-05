@@ -157,7 +157,7 @@
         el('editorContext').textContent = c.repositoryId + ' / ' + c.workspaceScopeKey + ' / ' + c.branch + ' · ' + contextLabel + ' · ' + c.actor;
     }
     function render(preserveDraft) {
-        renderPackages();
+        renderPackages(preserveDraft);
         planningPanel.render(view, preserveDraft);
         var c = context();
         publishContext();
@@ -276,8 +276,9 @@
         el('editorEvidence').textContent = JSON.stringify({ taxonomy: item && item.taxonomy, extensions: item && item.extensions,
             evidence: evidence, relations: relationEvidence }, null, 2);
     }
-    function renderPackages() {
-        var packages = view.model.packages || [], chosen = el('editorPackage').value;
+    function renderPackages(preserveDraft) {
+        var packages = view.model.packages || [], chosen = el('editorPackage').value,
+            parent = el('editorPackageParent').value;
         el('editorPackage').replaceChildren(); option(el('editorPackage'), '', t('editor.packageNew'));
         el('editorPackageParent').replaceChildren(); option(el('editorPackageParent'), '', t('editor.packageRoot'));
         el('editorPackages').replaceChildren();
@@ -288,8 +289,18 @@
             row.textContent = pkg.title + ' · ' + pkg.id + ' → ' + (pkg.parentId || t('editor.packageRoot')) + ' [' + pkg.position + ']';
             el('editorPackages').append(row);
         });
-        el('editorPackage').value = packages.some(function (p) { return p.id === chosen; }) ? chosen : '';
-        fillPackage();
+        if (preserveDraft) {
+            // Keep stale identities visible: a concurrent deletion must not turn an update into a new package.
+            if (chosen && !packages.some(function (p) { return p.id === chosen; }))
+                option(el('editorPackage'), chosen, t('editor.packageUnavailable', chosen));
+            if (parent && !packages.some(function (p) { return p.id === parent; }))
+                option(el('editorPackageParent'), parent, t('editor.packageUnavailable', parent));
+            el('editorPackage').value = chosen;
+            el('editorPackageParent').value = parent;
+        } else {
+            el('editorPackage').value = packages.some(function (p) { return p.id === chosen; }) ? chosen : '';
+            fillPackage();
+        }
     }
     function fillPackage() {
         var pkg = (view.model.packages || []).find(function (p) { return p.id === el('editorPackage').value; });
