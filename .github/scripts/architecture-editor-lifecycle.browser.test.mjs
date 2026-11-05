@@ -21,10 +21,16 @@ async function fixture(standaloneUrl=null){
     },html);
     await page.setContent(`${standaloneUrl?'':'<div id="architectureWorkspace"></div>'}<section id="architectureWorkingSource">${body}</section>`);
     await page.evaluate(()=>{
-        window.loaded=[];window.published=[];window.navigation=[];window.focusCalls=[];window.diagramActivity=[];window.rendered=[];
+        window.loaded=[];window.published=[];window.navigation=[];window.focusCalls=[];window.unfocusCalls=0;window.diagramActivity=[];window.rendered=[];
         window.TaxonomyI18n={ready:()=>Promise.resolve(),t:key=>key};
-        window.ArchitectureEditorRenderer=()=>({render(...args){rendered.push(args);},select(){},presentFocus(){},fit(){},
-            focus(...args){focusCalls.push(args.map(value=>typeof value));},zoom(){},setActive(value){diagramActivity.push(value);}});
+        window.ArchitectureEditorRenderer=(_element,_select,_relation,_summary,_region,_suggestion,onChange)=>{
+            let state={selectedNodeId:null,mode:'overview'};
+            const changed=()=>onChange?.({...state});
+            return {render(...args){rendered.push(args);state.selectedNodeId=args[1]||null;changed();},
+                select(id){state.selectedNodeId=id;changed();},presentFocus(){},fit(){},
+                focus(...args){focusCalls.push(args.map(value=>typeof value));if(state.selectedNodeId){state.mode='focus';changed();}},
+                unfocus(){unfocusCalls++;state.mode='overview';changed();},zoom(){},setActive(value){diagramActivity.push(value);}};
+        };
         window.TaxonomyPlanningEditor={create:()=>({render(){},setEnabled(){}})};
         window.ArchitectureFocusPanel=()=>({observe(){},review(){},setLocked(){},setContext(){},select(){}});
         window.AnalysisSnapshotAdoption=()=>({setLocked(){},update(){},getSource:()=>null});
@@ -206,8 +212,13 @@ test('editor Focus toolbar keeps the selected element and dirty form and sends n
             window.confirm=()=>{discardPrompts++;return false;};
         });
         await page.locator('#editorTitle').fill('Keep this draft');
+        assert.equal(await page.locator('#editorUnfocus').isDisabled(),true);
         await page.locator('#editorFocus').click();
         assert.deepEqual(await page.evaluate(()=>focusCalls),[[]]);
+        assert.equal(await page.locator('#editorUnfocus').isEnabled(),true);
+        await page.locator('#editorUnfocus').click();
+        assert.equal(await page.evaluate(()=>unfocusCalls),1);
+        assert.equal(await page.locator('#editorUnfocus').isDisabled(),true);
         assert.equal(await page.evaluate(()=>editor.getSource().element),'one');
         assert.equal(await page.locator('#editorTitle').inputValue(),'Keep this draft');
         assert.equal(await page.evaluate(()=>discardPrompts),0);

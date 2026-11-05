@@ -1,9 +1,9 @@
 /* Working-model scene adapter. Geometry and metadata remain owned by the server. */
-window.ArchitectureEditorRenderer = function (element, onSelect, onRelation, onSummary, onRegion, onSuggestion) {
+window.ArchitectureEditorRenderer = function (element, onSelect, onRelation, onSummary, onRegion, onSuggestion, onStateChange) {
     var diagram = window.TaxonomyArchitectureDiagram;
     var controller = diagram.create(element, {
         onSelect: onSelect, onRelation: onRelation, onSummary: onSummary,
-        onRegion: onRegion, onSuggestion: onSuggestion
+        onRegion: onRegion, onSuggestion: onSuggestion, onStateChange: onStateChange
     });
     var render = controller.render;
     controller.render = function (scene, selected, typeRoots) {

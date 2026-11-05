@@ -67,7 +67,8 @@
                 <button id="editorZoomIn" type="button" data-i18n="editor.zoomIn">Zoom in</button>
                 <button id="editorZoomOut" type="button" data-i18n="editor.zoomOut">Zoom out</button>
                 <button id="editorFit" type="button" data-i18n="editor.fit">Fit model</button>
-                <button id="editorFocus" type="button" data-i18n="editor.focus">Focus selection</button>
+                <button id="editorFocus" type="button" aria-controls="editorGraph" data-i18n="editor.focus" disabled>Focus selection</button>
+                <button id="editorUnfocus" type="button" aria-controls="editorGraph" data-i18n="editor.unfocus" disabled>Unfocus</button>
             </div>
             <p id="editorGraphSummary"></p>
             <svg id="editorGraph" viewBox="0 0 1000 420" role="group" tabindex="0" aria-labelledby="editorGraphTitle" aria-describedby="editorGraphHelp"></svg>
