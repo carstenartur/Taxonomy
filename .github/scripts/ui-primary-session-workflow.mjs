@@ -455,7 +455,9 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
   });
   await page.locator('#fileNewAnalysisAction').click();
   await confirmationHandled;
-  await page.locator('#applicationNavigationMenu > summary').click();
+  if (await page.locator('#applicationNavigationMenu').getAttribute('open') !== null) {
+    await page.locator('#applicationNavigationMenu > summary').click();
+  }
   await waitForSharedNavigationToClose(page);
   assert(/new analysis|discard|neue analyse|verworfen/i.test(confirmationMessage),
     `Reset confirmation was not explicit: ${confirmationMessage}`);
