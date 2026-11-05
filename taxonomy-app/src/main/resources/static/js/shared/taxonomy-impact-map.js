@@ -13,56 +13,6 @@
     var CONTENT_TOP = 62;
     var instanceSequence = 0;
 
-    var NODE_COLOR_TOKENS = {
-        'Capabilities': '--taxonomy-layer-cap-surface',
-        'CP': '--taxonomy-layer-cap-surface',
-        'Business Processes': '--taxonomy-layer-proc-surface',
-        'Business Roles': '--taxonomy-layer-proc-surface',
-        'BP': '--taxonomy-layer-proc-surface',
-        'BR': '--taxonomy-layer-proc-surface',
-        'Services': '--taxonomy-layer-svc-surface',
-        'COI Services': '--taxonomy-layer-svc-surface',
-        'Core Services': '--taxonomy-layer-svc-surface',
-        'CI': '--taxonomy-layer-svc-surface',
-        'CR': '--taxonomy-layer-svc-surface',
-        'Applications': '--taxonomy-layer-app-surface',
-        'User Applications': '--taxonomy-layer-app-surface',
-        'UA': '--taxonomy-layer-app-surface',
-        'Information Products': '--taxonomy-layer-info-surface',
-        'IP': '--taxonomy-layer-info-surface',
-        'Communications Services': '--taxonomy-layer-comm-surface',
-        'CO': '--taxonomy-layer-comm-surface',
-        'Systems': '--taxonomy-layer-system-surface',
-        'Components': '--taxonomy-layer-component-surface'
-    };
-
-    var FALLBACK_NODE_COLORS = {
-        'CP': '#cfe2ff',
-        'BP': '#d1e7dd',
-        'BR': '#d1e7dd',
-        'CI': '#e2d9f3',
-        'CR': '#e2d9f3',
-        'UA': '#fff3cd',
-        'IP': '#cff4fc',
-        'CO': '#f8d7da',
-        'default': '#e9ecef'
-    };
-
-    var RELATION_COLORS = {
-        'SUPPORTS': '#27834a',
-        'REALIZES': '#326fbd',
-        'USES': '#b66b00',
-        'REQUIRES': '#c0392b',
-        'DEPENDS_ON': '#7d3c98',
-        'FULFILLS': '#218c53',
-        'CONSUMES': '#b95f12',
-        'ASSIGNED_TO': '#148f77',
-        'PRODUCES': '#2874a6',
-        'COMMUNICATES_WITH': '#76448a',
-        'CONTAINS': '#65727e',
-        'RELATED_TO': '#6c757d'
-    };
-
     function t(key) {
         var args = Array.prototype.slice.call(arguments, 1);
         if (window.TaxonomyI18n && window.TaxonomyI18n.t) {
@@ -142,28 +92,11 @@
         return element;
     }
 
-    function cssValue(token, fallback) {
-        var value = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
-        return value || fallback;
-    }
-
     function prefixForSheet(sheet) {
         if (!sheet) return '';
         if (/^[A-Z]{2}$/.test(sheet)) return sheet;
         var match = String(sheet).match(/^([A-Z]{2})(?:\b|[-_])/);
         return match ? match[1] : '';
-    }
-
-    function nodeColor(sheet) {
-        var token = NODE_COLOR_TOKENS[sheet];
-        var prefix = prefixForSheet(sheet);
-        if (!token && prefix) token = NODE_COLOR_TOKENS[prefix];
-        var fallback = FALLBACK_NODE_COLORS[prefix] || FALLBACK_NODE_COLORS.default;
-        return token ? cssValue(token, fallback) : fallback;
-    }
-
-    function relationColor(type) {
-        return RELATION_COLORS[type] || cssValue('--bs-secondary-color', '#6c757d');
     }
 
     function normalizeNodes(nodes, options) {
@@ -236,7 +169,8 @@
             { modelNodes: MAX_VISIBLE_NODES, rankNodes: rankNodes });
     }
 
-    function buildLayout(model) {
+    function buildLayout(model, palette) {
+        palette = palette || diagramApi.taxonomyPalette();
         var groups = new Map();
         model.nodes.forEach(function (node) {
             var key = node.sheet;
@@ -245,7 +179,7 @@
                     sheet: key,
                     label: node.sheetLabel,
                     order: node.layerOrder,
-                    color: nodeColor(key),
+                    color: palette.layer(key),
                     nodes: []
                 });
             }
@@ -295,7 +229,7 @@
     }
 
     function layoutScene(model) {
-        var layout = buildLayout(model);
+        var palette = diagramApi.taxonomyPalette(), layout = buildLayout(model, palette);
         var lanes = diagramApi.relationshipLanes(model.edges);
         return {
             bounds: { x: 0, y: 0, width: layout.width, height: layout.height },
@@ -311,7 +245,7 @@
             }),
             nodes: model.nodes.map(function (node) {
                 var position = layout.positions.get(node.id);
-                var color = nodeColor(node.sheet), textColor = diagramApi.readableTextColor(color);
+                var color = palette.layer(node.sheet), textColor = diagramApi.readableTextColor(color);
                 return Object.assign({}, node, {
                     x: position.x, y: position.y, width: CARD_WIDTH, height: CARD_HEIGHT, prefix: 'impact-map',
                     className: 'impact-map-node' + (node.anchor ? ' is-anchor' : '') + (node.hotspot ? ' is-hotspot' : ''),
@@ -330,7 +264,7 @@
                 return Object.assign({}, edge, {
                     sourceId: edge.source, targetId: edge.target, prefix: 'impact-map',
                     className: 'impact-map-edge-group', pathClass: 'impact-map-edge',
-                    path: diagramApi.edgePath(source, target, lanes.get(edge.id) || 0), color: relationColor(edge.type),
+                    path: diagramApi.edgePath(source, target, lanes.get(edge.id) || 0), color: palette.relation(edge.type),
                     ariaLabel: t('impactmap.aria.relationship', edge.type, edge.source, edge.target),
                     tooltip: edge.source + ' → ' + edge.target + '\n' + edge.type + (edge.includedBecause ? '\n' + edge.includedBecause : ''),
                     label: edge.type, labelX: (source.x + source.width / 2 + target.x + target.width / 2) / 2,

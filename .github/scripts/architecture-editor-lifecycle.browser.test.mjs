@@ -21,9 +21,9 @@ async function fixture(standaloneUrl=null){
     },html);
     await page.setContent(`${standaloneUrl?'':'<div id="architectureWorkspace"></div>'}<section id="architectureWorkingSource">${body}</section>`);
     await page.evaluate(()=>{
-        window.loaded=[];window.published=[];window.navigation=[];window.focusCalls=[];window.diagramActivity=[];
+        window.loaded=[];window.published=[];window.navigation=[];window.focusCalls=[];window.diagramActivity=[];window.rendered=[];
         window.TaxonomyI18n={ready:()=>Promise.resolve(),t:key=>key};
-        window.ArchitectureEditorRenderer=()=>({render(){},select(){},presentFocus(){},fit(){},
+        window.ArchitectureEditorRenderer=()=>({render(...args){rendered.push(args);},select(){},presentFocus(){},fit(){},
             focus(...args){focusCalls.push(args.map(value=>typeof value));},zoom(){},setActive(value){diagramActivity.push(value);}});
         window.TaxonomyPlanningEditor={create:()=>({render(){},setEnabled(){}})};
         window.ArchitectureFocusPanel=()=>({observe(){},review(){},setLocked(){},setContext(){},select(){}});
@@ -40,6 +40,18 @@ async function fixture(standaloneUrl=null){
     await page.addScriptTag({path:path.join(resources,'static/js/architecture-editor.js')});
     return page;
 }
+test('the working editor supplies its authoritative taxonomy type mapping to the shared renderer',async()=>{
+    const page=await fixture();try{
+        const actual=await page.evaluate(async()=>{
+            const load=ArchitectureEditorApi.load;
+            ArchitectureEditorApi.load=async(...args)=>{const result=await load(...args);result.schema.typeRoots={Capability:'CP',System:'SY'};return result;};
+            window.editor=TaxonomyArchitectureEditor.mount(document.getElementById('architectureWorkingSource'));
+            await editor.activate({kind:'working',repositoryId:'repo',workspaceScopeKey:'private-a',branch:'draft/a'});
+            return rendered.at(-1)[2];
+        });
+        assert.deepEqual(actual,{Capability:'CP',System:'SY'});
+    }finally{await page.close();}
+});
 for(const workspace of ['private-a',''])test(`standalone editor keeps source pins and rejects URL object keys (${workspace||'shared'})`,async()=>{
     const pins={repositoryId:'repo',workspaceId:workspace,workspaceScopeKey:workspace||'__shared__',branch:'draft/a',
         projectId:'42',requirementId:'7',requirementVersionId:'9',snapshotId:'snapshot-A',revision:'17',

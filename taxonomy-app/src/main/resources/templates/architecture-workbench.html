@@ -16,6 +16,7 @@
     <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
     <th:block th:replace="~{fragments/application-chrome :: styles}"></th:block>
     <link rel="stylesheet" th:href="@{/css/shared/architecture-diagram.css}" href="/css/shared/architecture-diagram.css"/>
+    <th:block th:replace="~{fragments/customer-stylesheet :: link}"></th:block>
 </head>
 <body class="architecture-snapshot-page architecture-snapshot-surface" th:attr="data-project-id=${projectId},
                data-snapshot-id=${snapshotId},

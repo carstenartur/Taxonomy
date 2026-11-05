@@ -27,6 +27,7 @@ Several preferences (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `taxonomy.
 | `TAXONOMY_INIT_RELOAD_EXISTING` | `taxonomy.init.reload-existing` | `false` | Destructively reloads the configured catalogue even when persisted nodes already exist. Use only after a restorable backup. |
 | `TAXONOMY_LAZY_INIT` | `spring.main.lazy-initialization` | `true` | Defers most Spring beans. `TaxonomyService` remains eager so catalogue readiness is authoritative. |
 | `TAXONOMY_THYMELEAF_CACHE` | `spring.thymeleaf.cache` | `true` | Caches compiled templates; normally disable only during local UI development. |
+| `TAXONOMY_UI_CUSTOM_STYLESHEET` | `taxonomy.ui.custom-stylesheet` | empty | Path to an operator-supplied CSS file; see [styling](CUSTOM_STYLES.md). |
 | `TAXONOMY_SPRINGDOC_ENABLED` | SpringDoc API and UI switches | base `true`; production/Kubernetes `false` | Creates or suppresses `/v3/api-docs` and Swagger UI. This is independent of the authorization switch below. |
 | `TAXONOMY_FORWARD_HEADERS_STRATEGY` | `server.forward-headers-strategy` in Kubernetes profile | `framework` | Controls interpretation of trusted ingress `Forwarded`/`X-Forwarded-*` headers. |
 | `TAXONOMY_SHUTDOWN_TIMEOUT` | `spring.lifecycle.timeout-per-shutdown-phase` in Kubernetes profile | `30s` | Maximum graceful shutdown phase duration. |

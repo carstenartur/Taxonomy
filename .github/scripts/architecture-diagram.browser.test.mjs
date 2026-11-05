@@ -720,3 +720,106 @@ test('snapshot search, keyboard and programmatic selections publish the active s
         assert.equal(await page.evaluate(()=>diagramSelections.length),count,'suspended source must not change the visible lens selection');
     } finally {await page.close();}
 });
+
+test('analysis and saved snapshot use the same customized taxonomy layer colors', async () => {
+    const page=await snapshotFixture();
+    try {
+        await page.evaluate(()=>{
+            document.documentElement.style.setProperty('--taxonomy-layer-cap-surface','#173b68');
+            document.documentElement.style.setProperty('--taxonomy-layer-svc-surface','#f9d77a');
+            document.documentElement.style.setProperty('--taxonomy-layer-proc-surface','#597fa1');
+            document.documentElement.style.setProperty('--taxonomy-relation-supports','#78234a');
+            const map=document.createElement('div');map.id='map';map.style.cssText='width:100%;height:700px';document.body.append(map);
+            const original=window.snapshotData;
+            window.snapshotData=source=>{const data=original(source);data.scene.nodes[2].type='Business Processes';return data;};
+        });
+        await mountAnalysis(page);
+        await page.evaluate(()=>snapshotAdapter.activate(sourceA));
+        const fills=await page.evaluate(()=>Object.fromEntries(['A','B','C'].map(id=>[id,{
+            analysis:document.querySelector(`#map [data-node-id="${id}"] rect`).getAttribute('fill'),
+            snapshot:document.querySelector(`#architectureCanvas [data-node-id="${id}"] rect`).getAttribute('fill')
+        }])));
+        assert.deepEqual(fills,{A:{analysis:'#173b68',snapshot:'#173b68'},B:{analysis:'#f9d77a',snapshot:'#f9d77a'},
+            C:{analysis:'#597fa1',snapshot:'#597fa1'}});
+        assert.equal(await page.locator('#map [data-node-id="A"] .impact-map-node-title').getAttribute('fill'),'#ffffff');
+        assert.equal(await page.locator('#architectureCanvas [data-node-id="A"] .architecture-node-title').first().getAttribute('fill'),'#ffffff');
+        assert.equal(await page.locator('#map [data-node-id="B"] .impact-map-node-title').getAttribute('fill'),'#17212b');
+        assert.equal(await page.locator('#architectureCanvas [data-node-id="B"] .architecture-node-title').first().getAttribute('fill'),'#17212b');
+        assert.equal(await page.locator('#map [data-node-id="C"] .impact-map-node-title').getAttribute('fill'),'#000000');
+        assert.equal(await page.locator('#architectureCanvas [data-node-id="C"] .architecture-node-title').first().getAttribute('fill'),'#000000');
+        assert.equal(await page.locator('#map .impact-map-edge').getAttribute('stroke'),'#78234a');
+        assert.equal(await page.locator('#architectureCanvas .architecture-edge-path').getAttribute('stroke'),'#78234a');
+    } finally {await page.close();}
+});
+
+test('analysis and saved snapshot share the bundled taxonomy colors', async () => {
+    const page=await snapshotFixture();
+    try {
+        await page.addStyleTag({path:path.join(resources,'static/css/taxonomy.css')});
+        await page.evaluate(()=>{
+            const map=document.createElement('div');map.id='map';map.style.cssText='width:100%;height:700px';document.body.append(map);
+        });
+        await mountAnalysis(page);
+        await page.evaluate(()=>snapshotAdapter.activate(sourceA));
+        const colors=await page.evaluate(()=>({
+            configured:getComputedStyle(document.documentElement).getPropertyValue('--taxonomy-layer-cap-surface').trim(),
+            analysis:document.querySelector('#map [data-node-id="A"] rect').getAttribute('fill'),
+            snapshot:document.querySelector('#architectureCanvas [data-node-id="A"] rect').getAttribute('fill')
+        }));
+        assert.equal(colors.configured,'#1d5f91');
+        assert.equal(colors.analysis,colors.configured);
+        assert.equal(colors.snapshot,colors.configured);
+    } finally {await page.close();}
+});
+
+test('working architecture uses the shared customer palette and remains legible in forced colors', async () => {
+    const page=await fixture();
+    try {
+        await page.addScriptTag({path:path.join(resources,'static/js/architecture-editor-renderer.js')});
+        await page.evaluate(()=>{
+            document.getElementById('map').hidden=true;
+            const surface=document.createElement('section');surface.className='architecture-editor-surface';
+            document.body.append(surface);surface.append(document.getElementById('editorGraph'));
+            document.documentElement.style.setProperty('--taxonomy-layer-cap-surface','#173b68');
+            document.documentElement.style.setProperty('--taxonomy-layer-svc-surface','#f9d77a');
+            document.documentElement.style.setProperty('--taxonomy-layer-system-surface','#597fa1');
+            document.documentElement.style.setProperty('--taxonomy-layer-component-surface','#855877');
+            document.documentElement.style.setProperty('--taxonomy-relation-supports','#78234a');
+            window.inputScene={width:1000,height:420,nodes:[
+                {id:'A',label:'Capability',type:'Capability',x:20,y:50,width:200,height:70},
+                {id:'B',label:'Service',type:'CoreService',x:260,y:50,width:200,height:70},
+                {id:'C',label:'System',type:'System',x:500,y:50,width:200,height:70},
+                {id:'D',label:'Component',type:'Component',x:740,y:50,width:200,height:70}
+            ],edges:[{id:'AB',sourceId:'A',targetId:'B',relationType:'SUPPORTS',sourceX:220,sourceY:85,targetX:260,targetY:85}]};
+            window.selectedWorking=[];
+            window.renderer=ArchitectureEditorRenderer(document.getElementById('editorGraph'),id=>{selectedWorking.push(id);return true;});
+            renderer.render(inputScene,null,{Capability:'CP',CoreService:'CR',System:'SY',Component:'CM'});
+        });
+        const colors=await page.evaluate(()=>Object.fromEntries(['A','B','C','D'].map(id=>{
+            const node=document.querySelector(`#editorGraph [data-node-id="${id}"]`);
+            return [id,{fill:getComputedStyle(node.querySelector('rect')).fill,text:getComputedStyle(node.querySelector('text')).fill}];
+        })));
+        assert.deepEqual(colors,{A:{fill:'rgb(23, 59, 104)',text:'rgb(255, 255, 255)'},B:{fill:'rgb(249, 215, 122)',text:'rgb(23, 33, 43)'},
+            C:{fill:'rgb(89, 127, 161)',text:'rgb(0, 0, 0)'},D:{fill:'rgb(133, 88, 119)',text:'rgb(255, 255, 255)'}});
+        // The renderer may replace SVG paths in an animation frame; inspect the
+        // currently attached path atomically instead of a stale element handle.
+        await page.waitForFunction(()=>{
+            const edge=document.querySelector('#editorGraph .editor-edge');
+            return edge && getComputedStyle(edge).stroke==='rgb(120, 35, 74)';
+        });
+        assert.equal(await page.evaluate(()=>Object.hasOwn(inputScene.nodes[0],'color')),false,'Presentation must not mutate the canonical scene');
+        await page.locator('#editorGraph [data-node-id="A"]').click();
+        assert.deepEqual(await page.evaluate(()=>selectedWorking),['A']);
+        assert.equal(await page.locator('#editorGraph [data-node-id="A"]').getAttribute('aria-pressed'),'true');
+        await page.emulateMedia({forcedColors:'active'});
+        const forced=await page.evaluate(()=>{
+            const probe=document.createElement('span');document.body.append(probe);
+            probe.style.color='Canvas';const canvas=getComputedStyle(probe).color;
+            probe.style.color='CanvasText';const ink=getComputedStyle(probe).color;probe.remove();
+            const node=document.querySelector('#editorGraph [data-node-id="A"]');
+            return {canvas,ink,fill:getComputedStyle(node.querySelector('rect')).fill,text:getComputedStyle(node.querySelector('text')).fill};
+        });
+        assert.equal(forced.fill,forced.canvas);assert.equal(forced.text,forced.ink);
+        assert.deepEqual(page.errors,[]);
+    } finally {await page.close();}
+});

@@ -2,11 +2,11 @@
 .taxonomy-app-chrome { flex: 0 0 auto; min-width: 0; font: 1rem/1.5 system-ui, sans-serif; }
 .taxonomy-app-chrome *, .taxonomy-entity *, .taxonomy-entity-details * { box-sizing: border-box; }
 .taxonomy-app-chrome [hidden], .taxonomy-entity [hidden] { display: none !important; }
-.taxonomy-app-navigation { position: relative; padding: .45rem 1.25rem; color: #fff; background: #17243a; }
+.taxonomy-app-navigation { position: relative; padding: .45rem 1.25rem; color: var(--taxonomy-navigation-foreground, #fff); background: var(--taxonomy-navigation-background, #17243a); }
 .taxonomy-app-mainrow { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem 1.25rem; min-width: 0; }
-.taxonomy-app-brand { color: #fff; font-size: 1.05rem; font-weight: 750; text-decoration: none; padding: .5rem 0; }
+.taxonomy-app-brand { color: var(--taxonomy-navigation-foreground, #fff); font-size: 1.05rem; font-weight: 750; text-decoration: none; padding: .5rem 0; }
 .taxonomy-app-primary { display: flex; flex-wrap: wrap; gap: .25rem; min-width: 0; }
-.taxonomy-app-primary a, .taxonomy-app-languages a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: .45rem .75rem; border: 1px solid transparent; border-radius: .35rem; color: #f8fafc; font-size: .95rem; font-weight: 600; line-height: 1.35; text-decoration: none; }
+.taxonomy-app-primary a, .taxonomy-app-languages a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: .45rem .75rem; border: 1px solid transparent; border-radius: .35rem; color: var(--taxonomy-navigation-foreground, #f8fafc); font-size: .95rem; font-weight: 600; line-height: 1.35; text-decoration: none; }
 .taxonomy-app-primary a[aria-current="page"] { color: #17243a; background: #fff; border-color: #fff; }
 .taxonomy-app-primary a:hover, .taxonomy-app-languages a:hover { text-decoration: underline; background: #31425c; color: #fff; }
 .taxonomy-app-primary a[aria-current="page"]:hover { color: #17243a; background: #eaf0fa; }
@@ -14,7 +14,7 @@
 .taxonomy-app-utilities { margin-inline-start: auto; gap: .5rem; }
 .taxonomy-app-languages a { padding-inline: .4rem; font-size: .8rem; }
 .taxonomy-app-languages a[aria-current="true"] { border-color: #b8c7dc; }
-.taxonomy-app-navigation .context-help, .taxonomy-app-local > div > a, .taxonomy-app-local > a { color: #fff; }
+.taxonomy-app-navigation .context-help, .taxonomy-app-local > div > a, .taxonomy-app-local > a { color: var(--taxonomy-navigation-foreground, #fff); }
 .taxonomy-app-navigation a:focus-visible, .taxonomy-app-navigation button:focus-visible, .taxonomy-app-navigation summary:focus-visible { outline: 3px solid #ffcf71; outline-offset: 3px; }
 .taxonomy-app-local { flex: 0 1 auto; min-width: 0; max-width: 100%; }
 .taxonomy-app-local .application-shell { width: auto; padding-inline: 0; }

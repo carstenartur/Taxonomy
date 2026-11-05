@@ -381,6 +381,36 @@ for (const locale of ['de','en']) test(`${locale}: Help loads once through the c
     }finally{await finish(page);}
 });
 
+for (const locale of ['de','en']) test(`${locale}: bundled Markdown links open the localized help document even when the table of contents arrives late`,async()=>{
+    const page=await fixture(locale);try{
+        await page.evaluate(()=>{
+            document.getElementById('tab-help').innerHTML='<ul id="helpTocList"></ul><h2 id="helpDocTitle"></h2><div id="helpDocBody"></div><button id="helpBackToTop">Top</button>';
+            window.helpRequests=[];
+            window.fetch=url=>{
+                helpRequests.push(String(url));
+                if (String(url).includes('/help?')) return new Promise(resolve=>{window.finishToc=()=>resolve({ok:true,json:async()=>[
+                    {filename:'USER_GUIDE',icon:'',title:'Guide',audience:'Users'},
+                    {filename:'CUSTOM_STYLES',icon:'',title:'Styles',audience:'Operators'}]});});
+                return Promise.resolve({ok:true,text:async()=>String(url).includes('/CUSTOM_STYLES?')
+                    ? '<h2 id="rancher">Rancher</h2>'
+                    : '<a id="stylesLink" href="CUSTOM_STYLES.md#rancher">Styles</a><a id="unknownLink" href="OTHER.md">Other</a><a id="externalLink" href="https://example.org/">External</a>'});
+            };
+        });
+        await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-help.js')});
+        await page.locator('[data-page="help"]').first().click();
+        await page.locator('#stylesLink').waitFor();
+        await page.evaluate(()=>finishToc());
+        await page.waitForFunction(()=>document.getElementById('stylesLink').getAttribute('href')==='#help/CUSTOM_STYLES/rancher');
+        assert.equal(await page.locator('#stylesLink').getAttribute('target'),null);
+        assert.equal(await page.locator('#unknownLink').getAttribute('href'),'OTHER.md');
+        assert.equal(await page.locator('#externalLink').getAttribute('target'),'_blank');
+        await page.locator('#stylesLink').click();
+        await page.locator('#helpDocBody #rancher').waitFor();
+        assert.equal(await page.evaluate(()=>location.hash),'#help/CUSTOM_STYLES/rancher');
+        assert.ok((await page.evaluate(()=>helpRequests)).includes(`/taxonomy/help/CUSTOM_STYLES?lang=${locale}`));
+    }finally{await finish(page);}
+});
+
 async function finish(page) {
     await page.close();
     assert.deepEqual(page.uiErrors, [], 'Unexpected browser script errors');

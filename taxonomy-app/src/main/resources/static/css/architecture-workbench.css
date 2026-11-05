@@ -1,10 +1,10 @@
 .architecture-snapshot-surface {
     color-scheme: light;
-    --workbench-border: #d7dde7;
-    --workbench-panel: #ffffff;
+    --workbench-border: var(--taxonomy-panel-border, #d7dde7);
+    --workbench-panel: var(--taxonomy-panel-background, #ffffff);
     --workbench-muted: #64748b;
     --workbench-focus: #0d6efd;
-    --workbench-canvas: #f3f5f7;
+    --workbench-canvas: var(--taxonomy-canvas-background, #f3f5f7);
 }
 
 .architecture-snapshot-surface, .architecture-snapshot-surface {
@@ -17,8 +17,8 @@
     display: flex;
     flex-direction: column;
     height: 100dvh;
-    background: #eef2f7;
-    color: #0f172a;
+    background: var(--taxonomy-surface-background, #eef2f7);
+    color: var(--taxonomy-surface-foreground, #0f172a);
 }
 
 .architecture-snapshot-surface .workbench-toolbar {

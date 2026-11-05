@@ -169,6 +169,19 @@ class HelpControllerTest {
     }
 
     @Test
+    void customerStylesAreDiscoverableAndReadableInBothLanguages() throws Exception {
+        for (var entry : java.util.Map.of(Locale.ENGLISH, "Customer Interface Styling",
+                Locale.GERMAN, "Kundenspezifische Oberflächengestaltung").entrySet()) {
+            mockMvc.perform(get("/help").param("lang", entry.getKey().getLanguage()).accept(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[?(@.filename == 'CUSTOM_STYLES')].title").value(entry.getValue()));
+            mockMvc.perform(get("/help/CUSTOM_STYLES").param("lang", entry.getKey().getLanguage()).accept(MediaType.TEXT_HTML))
+                    .andExpect(status().isOk())
+                    .andExpect(content().string(containsString("TAXONOMY_UI_CUSTOM_STYLESHEET")));
+        }
+    }
+
+    @Test
     void tocContainsExpectedFields() throws Exception {
         mockMvc.perform(get("/help").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())

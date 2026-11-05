@@ -116,6 +116,29 @@ function engineHarness() {
     edge(id) { return svg.querySelector(`[data-edge-id="${id}"]`); }
   };
 }
+test('shared palette resolves layer aliases and safely falls back for unknown data', () => {
+  const palette = engineHarness().api.taxonomyPalette();
+  assert.equal(palette.layer('BP-123'), palette.layer('Business Processes'));
+  assert.equal(palette.layer('CR'), palette.layer('Core Services'));
+  assert.equal(palette.layer('SY'), palette.layer('Systems'));
+  assert.equal(palette.layer('CM'), palette.layer('Components'));
+  assert.equal(palette.layer('__proto__'), '#4b5563');
+  assert.equal(palette.layer('unknown'), '#4b5563');
+  assert.equal(palette.relation('unknown'), '#6c757d');
+});
+test('automatic diagram text retains readable contrast for opaque gray backgrounds', () => {
+  const { api } = engineHarness();
+  const luminance = color => {
+    const values = [1, 3, 5].map(offset => parseInt(color.slice(offset, offset + 2), 16) / 255)
+      .map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * values[0] + 0.7152 * values[1] + 0.0722 * values[2];
+  };
+  for (let value = 0; value <= 255; value += 5) {
+    const part = value.toString(16).padStart(2, '0'), background = '#' + part.repeat(3);
+    const foreground = api.readableTextColor(background), a = luminance(background), b = luminance(foreground);
+    assert.ok((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) >= 4.5, `${background}: ${foreground}`);
+  }
+});
 const scene = {
   width: 950, height: 370,
   nodes: [

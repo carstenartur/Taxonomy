@@ -2,6 +2,8 @@
 
 Clustered analysis with external Artemis: [deployment, TLS/Secrets, worker scaling, HA and administration](#external-artemis-analysis-operations).
 
+Interface customization: [Supply customer styles in Rancher](CUSTOM_STYLES.md).
+
 This document provides operational procedures for running the Taxonomy Architecture Analyzer in production environments.
 
 ---
