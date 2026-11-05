@@ -581,6 +581,45 @@ for(const locale of ['de','en']){
     });
 }
 
+for(const currentView of ['list','tree']) test(`a completed architecture analysis preserves the selected ${currentView} view`,async()=>{
+    const page=await reportFixture();try{
+        const result=await page.evaluate(async selected=>{
+            const checkbox=document.createElement('input');checkbox.id='includeArchitectureView';checkbox.type='checkbox';checkbox.checked=true;document.body.append(checkbox);
+            Object.assign(TaxonomyState,{currentView:selected,taxonomyData:[{code:'BP-1',name:'Time capture',children:[]}]});
+            window.switchedViews=[];
+            window.TaxonomyBrowse={clearStatus(){},showStatus(){},renderView(){},switchView(view){switchedViews.push(view);TaxonomyState.currentView=view;}};
+            window.TaxonomyAnalysisSession={state:()=>({ready:true,workspaceId:'test-workspace'})};
+            window.TaxonomyAnalysisProgress={start:()=>({acceptsResult:()=>true,finish(){}})};
+            window.fetch=async()=>({ok:true,json:async()=>({status:'SUCCESS',scores:{'BP-1':70},rawScores:{'BP-1':70},
+                reasons:{},warnings:[],architectureView:{includedElements:[],includedRelationships:[],anchors:[]}})});
+            await TaxonomyScoring.runAnalysis();
+            return {current:TaxonomyState.currentView,switched:switchedViews,hasArchitecture:!!TaxonomyState.currentArchView};
+        },currentView);
+        assert.equal(result.current,currentView);
+        assert.deepEqual(result.switched,[]);
+        assert.equal(result.hasArchitecture,true);
+        assert.equal(await page.locator('#viewSummary').isVisible(),true);
+        assert.equal(await page.locator('#architectureViewPanel').isVisible(),true);
+    }finally{await finish(page);}
+});
+test('an explicitly selected summary renders the newly accepted architecture on recovery',async()=>{
+    const page=await reportFixture();try{
+        const rendered=await page.evaluate(async()=>{
+            const checkbox=document.createElement('input');checkbox.id='includeArchitectureView';checkbox.type='checkbox';checkbox.checked=true;document.body.append(checkbox);
+            Object.assign(TaxonomyState,{currentView:'summary',taxonomyData:[{code:'BP-1',name:'Time capture',children:[]}],
+                currentArchView:{includedElements:[{nodeCode:'OLD'}],includedRelationships:[],anchors:[]}});
+            window.renderedViews=[];
+            window.TaxonomyBrowse={clearStatus(){},showStatus(){},renderView(){renderedViews.push(TaxonomyState.currentArchView);},switchView(view){TaxonomyState.currentView=view;}};
+            window.TaxonomyAnalysisSession={state:()=>({ready:true,workspaceId:'test-workspace'})};
+            window.TaxonomyAnalysisProgress={start:()=>({acceptsResult:()=>true,finish(){}})};
+            window.fetch=async()=>({ok:true,json:async()=>({status:'SUCCESS',scores:{'BP-1':70},rawScores:{'BP-1':70},
+                reasons:{},warnings:[],architectureView:{includedElements:[],includedRelationships:[],anchors:[],viewTitle:'new-result'}})});
+            await TaxonomyScoring.runAnalysis({continuation:{continuationAction:'CONTINUE'},recoveryManaged:true});
+            return {current:TaxonomyState.currentView,last:renderedViews.at(-1)?.viewTitle};
+        });
+        assert.deepEqual(rendered,{current:'summary',last:'new-result'});
+    }finally{await finish(page);}
+});
 test('full analysis result pipeline retains relations with the architecture option off',async()=>{
     const page=await reportFixture();try{
         await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-browse.js')});
