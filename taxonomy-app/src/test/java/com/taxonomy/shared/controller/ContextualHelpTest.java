@@ -42,7 +42,7 @@ class ContextualHelpTest {
             Map.entry("fragments/user-management-layout", "SECURITY/user-management"));
     // Selection happens in the source view before Thymeleaf resolves a shared header's th:replace.
     private static final Set<String> HEADER_VIEWS = Set.of(
-            "projects", "requirement-detail", "portfolio-versioning",
+            "projects", "requirement-detail", "portfolio-versioning", "portfolio-import", "portfolio-matrices", "portfolio-reports",
             "architecture-editor", "architecture-workbench", "integrations");
 
     @ParameterizedTest

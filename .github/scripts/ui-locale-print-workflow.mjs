@@ -215,8 +215,7 @@ export async function runLocalePrintWorkflow({ page, baseUrl, evidence, outputDi
         { selector: 'a[href="#changePasswordForm"]', text: 'Zum Passwortformular springen' }
       ] },
       { url: '/projects/73101/import?lang=de', checks: [
-        { selector: 'nav.navbar', attribute: 'aria-label', text: 'Navigation zum Anforderungsimport' },
-        { selector: 'nav .btn-group[role="group"]', attribute: 'aria-label', text: 'Sprache' },
+        ...sharedNavigationChecks,
         { selector: 'ol[aria-label]', attribute: 'aria-label', text: 'Importfortschritt' },
         { selector: 'label[for="documentFile"]', text: 'Dokumentdatei' },
         { selector: '#sourceType option[value="REGULATION"]', text: 'Verwaltungsvorschrift' },

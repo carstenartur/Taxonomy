@@ -95,8 +95,8 @@ test('Find Similar exposes the same local clear control while pending', () => {
 });
 
 async function reportsFixture() {
-    const d = dom(), requests = [], prints = [];
-    for (const id of ['reportsPageTitle', 'reportsHeading', 'portfolioBack', 'versioningLink',
+    const d = dom(), requests = [], prints = [], contexts = [];
+    for (const id of ['reportsHeading', 'portfolioBack', 'versioningLink',
         'reportOptionsHeading', 'reportScope', 'reportRequirement', 'matrixType', 'previewReport',
         'printReport', 'reportPreviewFrame', 'emptyPreview', 'reportsBusy', 'reportsProject',
         'previewBaseline', 'reportsLive', 'reportsError']) d.element(id.startsWith('reportS') || ['reportRequirement', 'matrixType'].includes(id) ? 'select' : 'div', id);
@@ -111,7 +111,7 @@ async function reportsFixture() {
     for (const selector of ['.skip-link', 'label[for="reportScope"]', 'label[for="reportRequirement"]', 'label[for="matrixType"]', '#reportsBusy span']) selectors.set(selector, d.element());
     selectors.set('#reportPreviewFrame', frame);
     d.document.querySelector = selector => selectors.get(selector) || null;
-    const window = {addEventListener() {}, TaxonomyPortfolioApi: {
+    const window = {addEventListener() {}, TaxonomyAppChrome: {updateContext: context => contexts.push(context)}, TaxonomyPortfolioApi: {
         getProject: async () => ({projectKey: 'P', title: 'Project'}),
         listRequirements: async () => [{id: 1, requirementKey: 'A', title: 'Alpha'}, {id: 2, requirementKey: 'B', title: 'Beta'}],
         fetchReport(...args) {const gate = deferred(); requests.push({args, ...gate}); return gate.promise;},
@@ -120,9 +120,17 @@ async function reportsFixture() {
     vm.runInNewContext(source('portfolio/portfolio-reports.js'), {window, document: d.document,
         location: {pathname: '/projects/1/reports', search: '?lang=de'}, URLSearchParams, URL: d.urls, AbortController});
     await d.document.fire('DOMContentLoaded');
-    return {...d, requests, prints, frame};
+    return {...d, requests, prints, frame, contexts};
 }
 const reportResponse = () => ({blob: async () => ({size: 10})});
+
+test('report navigation returns to the current project and publishes its context', async () => {
+    const f = await reportsFixture();
+    assert.equal(f.document.getElementById('portfolioBack').href, '/projects?projectId=1&lang=de');
+    assert.equal(f.document.getElementById('portfolioBack').textContent, 'Zurück zum Projekt');
+    assert.equal(f.contexts.at(-1).project.id, 1);
+    assert.equal(f.contexts.at(-1).project.key, 'P');
+});
 
 test('German report scope uses German matrix option labels', async () => {
     const f = await reportsFixture();

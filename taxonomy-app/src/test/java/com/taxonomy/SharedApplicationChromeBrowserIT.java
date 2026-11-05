@@ -54,6 +54,9 @@ class SharedApplicationChromeBrowserIT {
                 new View("requirement-detail", "/projects/42/requirements/7", "projects", "newVersionButton"),
                 new View("architecture-workbench", "/architecture/workbench", "architecture", "printArchitectureView"),
                 new View("architecture-editor", "/architecture/editor", "architecture", "editorRefresh"),
+                new View("portfolio-import", "/projects/42/import", "projects", "documentFile"),
+                new View("portfolio-matrices", "/projects/42/matrices", "projects", "matrixSearch"),
+                new View("portfolio-reports", "/projects/42/reports", "projects", "previewReport"),
                 new View("portfolio-versioning", "/projects/42/versioning", "projects", "commitMessage"))
                 .flatMap(view -> Stream.of(new Object[]{view, "en", 1440}, new Object[]{view, "de", 390}));
     }
