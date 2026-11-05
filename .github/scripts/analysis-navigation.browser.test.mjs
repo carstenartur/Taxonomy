@@ -145,6 +145,36 @@ for(const locale of ['de','en']){
             assert.equal(await page.locator('#applicationNavigation [data-app-route="architecture"]').count(),1);
         }finally{await finish(page);}
     });
+    for(const width of [1024,1100,1280])test(`${locale}: ${width}px navigation stays on one row with reachable language and view help`,async()=>{
+        const page=await fixture(locale,width);try{
+            const selectors=['.taxonomy-app-brand','#mainNavTabs [data-page="architecture"]',
+                '#projectMenuButton','#applicationSettings > summary','#main-tab-help','#aboutBtn',
+                '#applicationNavigation .taxonomy-app-utilities .context-help'];
+            const boxes=await Promise.all(selectors.map(selector=>page.locator(selector).boundingBox()));
+            assert.ok(boxes.every(Boolean),'Navigation and context help must remain visible');
+            const center=box=>box.y+box.height/2;
+            for(let i=1;i<boxes.length;i++)assert.ok(Math.abs(center(boxes[i])-center(boxes[0]))<=2,
+                `${selectors[i]} is not aligned with the main navigation: ${JSON.stringify(boxes)}`);
+            assert.ok((await page.locator('#applicationNavigation').boundingBox()).height<=64);
+            const help=page.locator('#applicationNavigation .taxonomy-app-utilities .context-help');
+            assert.ok(await help.getAttribute('href'),'Contextual help keeps its exact link');
+            assert.equal(await help.getAttribute('target'),'_blank');
+            assert.ok((await help.innerText()).includes(locale==='de'?'Hilfe':'Help'),'Help text stays available to assistive technology');
+            assert.equal(await page.getByRole('link',{name:locale==='de'?/Hilfe zu dieser Sicht/:/Help for this view/}).count(),1);
+            await page.evaluate(()=>{window.localeChanges=[];TaxonomyI18n.setLocale=value=>localeChanges.push(value);});
+            await page.locator('#applicationSettings > summary').click();
+            await page.locator('#langSelector').selectOption(locale==='de'?'en':'de');
+            assert.deepEqual(await page.evaluate(()=>localeChanges),[locale==='de'?'en':'de']);
+        }finally{await finish(page);}
+    });
+    test(`${locale}: compact navigation keeps direct language links when no settings selector exists`,async()=>{
+        const page=await fixture(locale,1024);try{
+            await page.locator('#applicationSettings').evaluate(node=>node.remove());
+            assert.equal(await page.locator('.taxonomy-app-languages a[hreflang="de"]').isVisible(),true);
+            assert.equal(await page.locator('.taxonomy-app-languages a[hreflang="en"]').isVisible(),true);
+            assert.equal(await page.locator('#applicationNavigation .context-help').isVisible(),true);
+        }finally{await finish(page);}
+    });
     for(const width of [700,900,1100,1280])test(`${locale}: ${width}px settings panel stays inside the viewport`,async()=>{
         const page=await fixture(locale,width);try{
             await page.locator('#applicationSettings > summary').click();
