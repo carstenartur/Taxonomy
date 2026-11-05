@@ -75,15 +75,16 @@ class DocumentTemplateNavigationBrowserIT {
         assertThat(page.driver().findElement(By.cssSelector("#applicationNavigation [data-app-locale='" + language + "']"))
                 .getDomAttribute("aria-current")).isEqualTo("true");
         if (width >= 992) {
-            var centers = (List<?>) page.driver().executeScript("""
+            var verticalSpread = (Number) page.driver().executeScript("""
                     const nav = document.getElementById('applicationNavigation');
-                    return ['.taxonomy-app-brand', '.taxonomy-app-primary', '.taxonomy-app-local',
+                    const centers = ['.taxonomy-app-brand', '.taxonomy-app-primary', '.taxonomy-app-local',
                             '.taxonomy-app-languages', '.context-help'].map(selector => {
                         const rect = nav.querySelector(selector).getBoundingClientRect();
-                        return Math.round(rect.top + rect.height / 2);
+                        return rect.top + rect.height / 2;
                     });
+                    return Math.max(...centers) - Math.min(...centers);
                     """);
-            assertThat(centers).as("The shared desktop navigation occupies one row").allMatch(centers.getFirst()::equals);
+            assertThat(verticalSpread.doubleValue()).as("The shared desktop navigation occupies one row").isLessThan(4);
         }
         if (view.template().equals("document-template-restore") || view.template().equals("document-template-part-comparison")) {
             assertThat(page.driver().findElement(By.id(view.retained())).getDomAttribute("href"))

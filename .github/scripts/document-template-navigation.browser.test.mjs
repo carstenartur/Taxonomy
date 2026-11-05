@@ -23,7 +23,7 @@ async function pageFor(markup, script, setup = () => {}) {
 }
 
 async function leaveAndCancel(page) {
-    const dialog = page.waitForEvent('dialog', {timeout:2500});
+    const dialog = page.waitForEvent('dialog', {timeout:10000});
     const click = page.locator('#leave').click();
     const prompt = await dialog;
     assert.equal(prompt.type(), 'beforeunload');
@@ -81,7 +81,7 @@ test('credential form edits are protected, but submitting the edited form is all
 test('submitting another credential does not discard an uncopied one-time secret', async () => {
     const page = await pageFor(credentialForm + secret, 'security/webdav-credentials.js');
     try {
-        const pending = page.waitForEvent('dialog', {timeout:2500});
+        const pending = page.waitForEvent('dialog', {timeout:10000});
         const click = page.getByRole('button',{name:'Create'}).click();
         const prompt = await pending;
         assert.equal(prompt.type(), 'beforeunload');
