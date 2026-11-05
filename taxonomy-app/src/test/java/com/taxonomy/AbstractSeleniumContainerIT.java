@@ -186,6 +186,7 @@ abstract class AbstractSeleniumContainerIT {
 
     private void openMainTab(String pageId) {
         waitForRoleSurfaceReady();
+        if ("help".equals(pageId)) driver.findElement(By.cssSelector("#applicationHelp > summary")).click();
         By tabSelector = "help".equals(pageId)
                 ? By.id("main-tab-help")
                 : By.cssSelector("#mainNavTabs .nav-link[data-page='" + pageId + "']");
@@ -349,12 +350,8 @@ abstract class AbstractSeleniumContainerIT {
                 By.cssSelector("#mainNavTabs .nav-link[data-page='analyze']"));
         String englishText = analyzeTab.getText().trim();
 
-        // Switch to German via lang selector
-        openApplicationSettings();
-        org.openqa.selenium.support.ui.Select langSelect =
-                new org.openqa.selenium.support.ui.Select(
-                        driver.findElement(By.id("langSelector")));
-        langSelect.selectByValue("de");
+        // Use the shared language control.
+        driver.findElement(By.cssSelector("[data-app-locale='de']")).click();
 
         // Wait for page reload with German locale and stable role navigation.
         new WebDriverWait(driver, Duration.ofSeconds(30))
@@ -404,14 +401,10 @@ abstract class AbstractSeleniumContainerIT {
         // Navigate back to home/browse page first (test 18 may have left us on the Help page)
         driver.get(ContainerTestUtils.APP_ORIGIN + "/");
         new WebDriverWait(driver, Duration.ofSeconds(30))
-                .until(ExpectedConditions.presenceOfElementLocated(By.id("langSelector")));
+                .until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("[data-app-locale='en']")));
 
-        // Switch back to English to not affect any further tests
-        openApplicationSettings();
-        org.openqa.selenium.support.ui.Select langSelect =
-                new org.openqa.selenium.support.ui.Select(
-                        driver.findElement(By.id("langSelector")));
-        langSelect.selectByValue("en");
+        // Use the shared language control.
+        driver.findElement(By.cssSelector("[data-app-locale='en']")).click();
 
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(

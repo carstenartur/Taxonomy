@@ -121,8 +121,8 @@ class SharedApplicationChromeBrowserIT {
     }
 
     static Stream<Object[]> compactAnalysisWidths() {
-        return Stream.of(new Object[]{"de", 992}, new Object[]{"de", 1024},
-                new Object[]{"de", 1366}, new Object[]{"en", 1024}, new Object[]{"en", 1366});
+        return Stream.of(new Object[]{"de", 1200}, new Object[]{"de", 1280},
+                new Object[]{"de", 1366}, new Object[]{"en", 1200}, new Object[]{"en", 1366});
     }
 
     @ParameterizedTest(name = "analysis navigation with operational status in {0} at {1}px")
@@ -134,7 +134,7 @@ class SharedApplicationChromeBrowserIT {
                 const nav=document.getElementById('applicationNavigation');
                 const selectors=['.taxonomy-app-brand','#mainNavTabs [data-page="architecture"]',
                     '#applicationProjectsLink','#applicationSettings > summary','#operationalContextDetails > summary',
-                    '#main-tab-help','#aboutBtn','.taxonomy-app-utilities .context-help'];
+                    '#applicationHelp > summary'];
                 const boxes=selectors.map(selector=>{
                     const r=nav.querySelector(selector).getBoundingClientRect();
                     return {selector,left:r.left,right:r.right,top:r.top,height:r.height};
@@ -145,10 +145,10 @@ class SharedApplicationChromeBrowserIT {
                         && box.left>=0 && box.right<=innerWidth+1 && Math.abs(center(box)-center(boxes[0]))<=2)};
                 """);
         assertThat(geometry.get("valid")).as("All navigation and status actions remain in one row: %s", geometry).isEqualTo(true);
-        assertThat(page.driver().findElement(By.cssSelector("#applicationNavigation .context-help")).getAccessibleName()).isNotBlank();
+        assertThat(page.driver().findElement(By.cssSelector("#applicationHelp > summary")).getAccessibleName()).isNotBlank();
     }
 
-    @ParameterizedTest @ValueSource(ints = {700, 900})
+    @ParameterizedTest @ValueSource(ints = {700, 900, 992, 1024})
     void tabletNavigationUsesTheSameCompactMenu(int width) {
         open(new View("index", "/", "analysis", "fileMenuButton"), "de", width);
         var menu = page.driver().findElement(By.id("applicationNavigationMenu"));
@@ -317,7 +317,7 @@ class SharedApplicationChromeBrowserIT {
             assertThat(page.driver().findElements(By.cssSelector("#analysisNextSteps #projectNewAction"))).hasSize(1);
             assertThat(page.driver().findElements(By.cssSelector("#analysisNextSteps #projectAddRequirementAction"))).hasSize(1);
             assertThat(page.driver().findElements(By.id("mainNavTabs"))).hasSize(1);
-            assertThat(page.driver().findElement(By.cssSelector("#applicationNavigation .context-help")).getDomAttribute("href"))
+            assertThat(page.driver().findElement(By.cssSelector("#applicationHelp .context-help")).getDomAttribute("href"))
                     .as("Analysis help reuses the existing documented section")
                     .endsWith("#help/USER_GUIDE/guide-section-4");
         }
@@ -362,7 +362,7 @@ class SharedApplicationChromeBrowserIT {
         try {
             open(new View("index", "/", "analysis", "fileMenuButton"), "en", 1366);
             assertThat(page.driver().executeScript("return matchMedia('(forced-colors: active)').matches;")).isEqualTo(true);
-            for (String id : List.of("fileMenuButton", "applicationProjectsLink", "main-tab-help", "aboutBtn")) {
+            for (String id : List.of("fileMenuButton", "applicationProjectsLink", "applicationHelp")) {
                 var button = page.driver().findElement(By.id(id));
                 assertThat(button.isDisplayed()).as("%s remains visible in forced colors", id).isTrue();
                 Number ratio = (Number) page.driver().executeScript("""
@@ -626,10 +626,9 @@ class SharedApplicationChromeBrowserIT {
         for (int[] size : List.of(new int[]{1024, 844}, new int[]{390, 844}, new int[]{320, 844}, new int[]{320, 450})) {
             int width = size[0], height = size[1];
             viewport(width, height);
-            if (width <= 672) {
-                var menu = page.driver().findElement(By.id("applicationNavigationMenu"));
-                if ("false".equals(menu.getDomProperty("open"))) menu.findElement(By.tagName("summary")).click();
-            }
+            var navigationMenu = page.driver().findElement(By.id("applicationNavigationMenu"));
+            var navigationToggle = navigationMenu.findElement(By.tagName("summary"));
+            if (navigationToggle.isDisplayed() && "false".equals(navigationMenu.getDomProperty("open"))) navigationToggle.click();
             var disclosure = page.driver().findElement(By.id("architectureExportOptions"));
             var summary = disclosure.findElement(By.tagName("summary"));
             summary.sendKeys(Keys.ENTER);
@@ -671,7 +670,7 @@ class SharedApplicationChromeBrowserIT {
             new Actions(page.driver()).sendKeys(Keys.ESCAPE).perform();
             assertThat(disclosure.getDomProperty("open")).isEqualTo("false");
             assertThat(page.driver().switchTo().activeElement()).isEqualTo(summary);
-            if (width <= 672) {
+            if (navigationToggle.isDisplayed()) {
                 new Actions(page.driver()).sendKeys(Keys.ESCAPE).perform();
                 assertThat(page.driver().findElement(By.id("applicationNavigationMenu")).getDomProperty("open")).isEqualTo("false");
             }

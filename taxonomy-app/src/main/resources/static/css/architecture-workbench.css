@@ -28,11 +28,6 @@
     gap: 0.5rem 1rem;
 }
 
-.architecture-snapshot-surface .workbench-toolbar .navbar-brand {
-    min-width: 0;
-    margin-right: 0;
-    white-space: normal;
-}
 
 .architecture-snapshot-surface .workbench-export-options {
     position: relative;
@@ -547,9 +542,6 @@
         position: static;
     }
 
-    .architecture-snapshot-surface .workbench-toolbar .navbar-brand {
-        font-size: 1rem;
-    }
 
     .architecture-snapshot-surface .architecture-kpis {
         justify-content: flex-start;

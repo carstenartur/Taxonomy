@@ -342,16 +342,17 @@ The right panel (narrower column) contains all interactive tools:
 
 ### Navigation Bar
 
-On narrow screens, open **Menu** to reach the same work areas and actions. Select an area to close the menu, or press Escape to close it without switching. Language and contextual help remain in the header.
+On narrow screens, open **Menu** to reach the same work areas and actions. Select an area to close the menu, or press Escape to close it without switching. The shared language links and Help menu remain in the header. Below 1,200 CSS pixels the work areas move into Menu instead of squeezing their labels.
 
 The navigation bar at the top of the page contains:
 
 - **Application title / logo**
-- **Settings (⚙)** — language and theme controls, administrator tools, and the analysis-status launcher.
+- **Settings** — theme controls, administrator tools, and the analysis-status launcher.
 - **Status** — operational status details.
 - **File menu** — start a new analysis, cancel a running analysis, or save the current working draft immediately
 - **Projects** opens the project overview. On the analysis page, **Next steps** offers creating a project and saving the current text as a requirement.
-- **Help** and **About** — adjacent at the right side of the navigation bar.
+- **EN / DE** — change the interface language from the shared header.
+- **Help** — one menu containing help for the current view, the user manual, and **About** on the analysis/workspace page. File, Settings, Status and Help use the same controls; Escape closes the current menu and returns focus to its launcher.
 
 ### Dark Mode
 

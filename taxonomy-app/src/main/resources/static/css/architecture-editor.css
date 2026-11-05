@@ -1,8 +1,6 @@
 .architecture-editor-surface { color-scheme: light dark; font-family: system-ui, sans-serif; background: var(--taxonomy-surface-background, #f5f7fa); color: var(--taxonomy-surface-foreground, #17243a); }
 .architecture-editor-surface * { box-sizing: border-box; }
 .architecture-editor-surface { margin: 0; }
-.architecture-editor-surface .editor-header { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center; padding: 1rem 2rem; background: #17243a; color: white; }
-.architecture-editor-surface .editor-header a { color: white; }
 .architecture-editor-surface h1 { font-size: 1.4rem; margin: 0; flex: 1; }
 .architecture-editor-surface h2 { font-size: 1.15rem; margin-top: 1.5rem; }
 .architecture-editor-surface h3 { font-size: 1rem; }
@@ -50,7 +48,7 @@
 .architecture-editor-surface .editor-skip, .architecture-editor-surface .editor-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .architecture-editor-surface .editor-skip:focus { clip-path: none; width: auto; height: auto; padding: 1rem; background: white; z-index: 2; }
 .architecture-editor-surface [hidden] { display: none !important; }
-@media (max-width: 62rem) { .architecture-editor-surface .editor-columns, .architecture-editor-surface .editor-diff { grid-template-columns: 1fr; } .architecture-editor-surface main { padding: .7rem; } .architecture-editor-surface .editor-header { padding: 1rem; } }
+@media (max-width: 62rem) { .architecture-editor-surface .editor-columns, .architecture-editor-surface .editor-diff { grid-template-columns: 1fr; } .architecture-editor-surface main { padding: .7rem; } }
 @media (prefers-reduced-motion: reduce) { .architecture-editor-surface * { scroll-behavior: auto !important; } }
 @media (forced-colors: active) {
     .architecture-editor-surface #editorGraph .editor-node rect { fill: Canvas; stroke: CanvasText; }

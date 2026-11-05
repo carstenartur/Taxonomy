@@ -1,28 +1,47 @@
-/* Shared application chrome. No Bootstrap dependency: the editor uses the same components. */
+/* Common header owns its layout, controls and native menus on every page. */
 .taxonomy-app-chrome { flex: 0 0 auto; min-width: 0; font: 1rem/1.5 system-ui, sans-serif; }
 .taxonomy-app-chrome *, .taxonomy-entity *, .taxonomy-entity-details * { box-sizing: border-box; }
 .taxonomy-app-chrome [hidden], .taxonomy-entity [hidden] { display: none !important; }
-.taxonomy-app-navigation { position: relative; padding: .45rem 1.25rem; color: var(--taxonomy-navigation-foreground, #fff); background: var(--taxonomy-navigation-background, #17243a); }
-.taxonomy-app-mainrow { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem 1.25rem; min-width: 0; }
-.taxonomy-app-brand { color: var(--taxonomy-navigation-foreground, #fff); font-size: 1.05rem; font-weight: 750; text-decoration: none; padding: .5rem 0; }
-.taxonomy-app-primary { display: flex; flex-wrap: wrap; gap: .25rem; min-width: 0; }
-.taxonomy-app-primary a, .taxonomy-app-languages a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: .45rem .75rem; border: 1px solid transparent; border-radius: .35rem; color: var(--taxonomy-navigation-foreground, #f8fafc); font-size: .95rem; font-weight: 600; line-height: 1.35; text-decoration: none; }
-.taxonomy-app-primary a[aria-current="page"] { color: #17243a; background: #fff; border-color: #fff; }
-.taxonomy-app-primary a:hover, .taxonomy-app-languages a:hover { text-decoration: underline; background: #31425c; color: #fff; }
-.taxonomy-app-primary a[aria-current="page"]:hover { color: #17243a; background: #eaf0fa; }
-.taxonomy-app-utilities, .taxonomy-app-languages { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; }
-.taxonomy-app-utilities { margin-inline-start: auto; gap: .5rem; }
-.taxonomy-app-languages a { padding-inline: .4rem; font-size: .8rem; }
-.taxonomy-app-languages a[aria-current="true"] { border-color: #b8c7dc; }
-.taxonomy-app-navigation .context-help, .taxonomy-app-local > div > a, .taxonomy-app-local > a { color: var(--taxonomy-navigation-foreground, #fff); }
-.taxonomy-app-navigation a:focus-visible, .taxonomy-app-navigation button:focus-visible, .taxonomy-app-navigation summary:focus-visible { outline: 3px solid #ffcf71; outline-offset: 3px; }
+.taxonomy-app-navigation { position: relative; padding: .4rem .75rem; color: var(--taxonomy-navigation-foreground, #f8fafc); background: var(--taxonomy-navigation-background, #17243a); }
+.taxonomy-app-mainrow { display: flex; flex-wrap: nowrap; align-items: center; gap: .65rem; min-width: 0; }
+.taxonomy-app-brand { flex: 0 0 auto; color: inherit; font-size: 1.05rem; font-weight: 750; text-decoration: none; padding: .5rem 0; }
+.taxonomy-app-primary, .taxonomy-app-local > div, .taxonomy-app-utilities, .taxonomy-app-languages { display: flex; align-items: center; gap: .15rem; min-width: 0; }
+.taxonomy-app-primary { flex: 1 1 auto; }
+.taxonomy-app-primary #mainNavTabs { display: flex; flex-wrap: nowrap; gap: .15rem; padding: 0; margin: 0; list-style: none; border: 0; }
+.taxonomy-app-primary a, .taxonomy-app-local > a, .taxonomy-app-local > div > a, .taxonomy-app-navigation :is(.application-menu, .workbench-export-options, .taxonomy-app-menu) > summary {
+    display: inline-flex; align-items: center; justify-content: center; gap: .35rem;
+    min-width: 44px; min-height: 44px; padding: .5rem .6rem; margin: 0;
+    border: 1px solid transparent; border-radius: .35rem; color: inherit; background: transparent;
+    font: 600 .9375rem/1.4 system-ui, sans-serif; text-decoration: none; white-space: nowrap; transition: background-color .15s;
+}
+.taxonomy-app-primary a:hover, .taxonomy-app-local > a:hover, .taxonomy-app-local > div > a:hover, .taxonomy-app-languages a:hover, .taxonomy-app-navigation :is(.application-menu, .workbench-export-options, .taxonomy-app-menu) > summary:hover,
+.taxonomy-app-navigation :is(.application-menu, .workbench-export-options, .taxonomy-app-menu)[open] > summary { color: inherit; background: color-mix(in srgb, currentColor 14%, transparent); }
+.taxonomy-app-primary a[aria-current="page"], .taxonomy-app-primary a.active { color: var(--taxonomy-navigation-active-foreground, #17243a); background: var(--taxonomy-navigation-active-background, #fff); }
+.taxonomy-app-navigation a:focus-visible, .taxonomy-app-navigation button:focus-visible, .taxonomy-app-navigation summary:focus-visible { outline: 3px solid #ffcf71; outline-offset: 2px; }
 .taxonomy-app-local { flex: 0 1 auto; min-width: 0; max-width: 100%; }
-.taxonomy-app-local .application-shell { width: auto; padding-inline: 0; }
-.taxonomy-app-local > div { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; min-width: 0; }
+.taxonomy-app-local .application-shell { width: auto; padding: 0; flex-wrap: nowrap; }
 .taxonomy-app-local-title { margin: 0 auto 0 0; font-size: 1rem; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
-.taxonomy-app-local .workbench-toolbar { padding: 0; min-height: 44px; }
-.taxonomy-app-local .editor-header { background: transparent; padding: 0; gap: .5rem 1rem; }
-.taxonomy-app-local .editor-header h1 { font-size: 1rem; }
+.taxonomy-app-local > h1 { margin: 0; font-size: 1rem; }
+.taxonomy-app-utilities { flex: 0 0 auto; margin-inline-start: auto; gap: .4rem; }
+.taxonomy-app-languages a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: .5rem .3rem; border: 1px solid transparent; border-radius: .35rem; color: inherit; font-size: .8rem; font-weight: 600; text-decoration: none; }
+.taxonomy-app-languages a[aria-current="true"] { border-color: currentColor; }
+.taxonomy-app-navigation :is(.application-menu, .workbench-export-options, .taxonomy-app-menu) { position: relative; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; }
+.taxonomy-app-navigation :is(.application-menu, .workbench-export-options, .taxonomy-app-menu) > summary { cursor: pointer; list-style: none; }
+.taxonomy-app-navigation :is(.application-menu, .workbench-export-options, .taxonomy-app-menu) > summary::-webkit-details-marker { display: none; }
+.taxonomy-app-navigation :is(.application-menu, .workbench-export-options, .taxonomy-app-menu) > summary::after { content: ''; width: .4em; height: .4em; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-.15em) rotate(45deg); }
+.taxonomy-app-navigation :is(.application-menu, .workbench-export-options, .taxonomy-app-menu)[open] > summary::after { transform: translateY(.1em) rotate(225deg); }
+.taxonomy-app-navigation .application-menu-content { position: absolute; z-index: 1060; top: calc(100% + .4rem); inset-inline-end: 0; width: min(25rem, calc(100vw - 1rem)); max-height: calc(100dvh - 5rem); overflow: auto; padding: .4rem; background: var(--bs-body-bg, #fff); color: var(--bs-body-color, #17243a); border: 1px solid var(--bs-border-color, #b8c7dc); border-radius: .35rem; box-shadow: 0 .25rem .75rem #0003; }
+#applicationFile .application-menu-content { inset-inline-start: 0; inset-inline-end: auto; }
+.taxonomy-app-navigation .application-menu-content > :is(a, button) { display: flex; align-items: center; gap: .4rem; width: 100%; min-height: 44px; padding: .5rem .75rem; border: 0; border-radius: .25rem; background: transparent; color: inherit; font: inherit; text-align: start; text-decoration: none; }
+.taxonomy-app-navigation .application-menu-content > :is(a, button):not(:disabled):hover { background: var(--bs-tertiary-bg, #eef3fa); }
+.taxonomy-app-navigation .application-menu-content > button:not(:disabled) { cursor: pointer; }
+.taxonomy-app-navigation .application-menu-content > button:disabled { color: var(--bs-secondary-color, #6c757d); }
+.taxonomy-app-navigation .application-menu-content > hr { margin: .35rem 0; }
+.taxonomy-app-navigation .application-menu-content > .d-flex { padding: .25rem .75rem; }
+.taxonomy-app-navigation .application-menu-content :focus-visible { outline-color: var(--bs-primary, #0d6efd); outline-offset: -3px; }
+.taxonomy-app-navigation .has-actionable-status > summary::before { content: '!'; color: #ffc107; font-weight: 750; }
+.taxonomy-app-chrome .taxonomy-app-menu { display: none; margin: 0; }
+.taxonomy-app-menu-content { display: contents; }
 .taxonomy-app-context { display: flex; flex-wrap: wrap; align-items: flex-start; gap: .5rem 1rem; padding: .55rem 1.25rem; border-bottom: 1px solid #c8d1dd; background: #f5f7fb; color: #17243a; }
 .taxonomy-app-context-group { flex: 2 1 34rem; min-width: 0; }
 .taxonomy-app-context-title { margin: 0 0 .25rem; font-size: .8rem; font-weight: 750; color: #46566b; }
@@ -62,15 +81,30 @@
 @media (max-width: 640px) {
     .taxonomy-app-context-disclosure > summary { padding: .5rem .65rem; }
 }
+
+/* Collapse before labels need squeezing; the same destinations remain available. */
+@media (max-width: 1199.98px) {
+    .taxonomy-app-navigation { padding-inline: .65rem; }
+    .taxonomy-app-mainrow { gap: .3rem; }
+    .taxonomy-app-navigation .taxonomy-app-menu { display: block; order: 1; }
+    .taxonomy-app-menu-content { display: none; }
+    .taxonomy-app-menu[open] + .taxonomy-app-menu-content { display: block; position: fixed; z-index: 1055; inset-inline: .5rem; top: var(--app-menu-top, 4rem); max-height: calc(100dvh - var(--app-menu-top, 4rem) - .5rem); overflow-y: auto; padding: .5rem; border: 1px solid #b8c7dc; border-radius: .35rem; background: var(--taxonomy-navigation-background, #17243a); box-shadow: 0 .25rem .75rem #0003; }
+    .taxonomy-app-navigation .taxonomy-app-primary { display: block; width: 100%; }
+    .taxonomy-app-primary #mainNavTabs { flex-direction: column; }
+    .taxonomy-app-primary a, .taxonomy-app-local > a, .taxonomy-app-local > div > a { display: flex; width: 100%; min-height: 45px; justify-content: flex-start; }
+    .taxonomy-app-local > div, .taxonomy-app-local .application-shell { flex-direction: column; align-items: stretch; width: 100%; }
+    .taxonomy-app-local .application-menu > summary { width: 100%; justify-content: flex-start; }
+    .taxonomy-app-local .application-menu > summary::after { margin-inline-start: auto; }
+    .taxonomy-app-local .application-menu-content { position: static; width: 100%; max-height: none; margin-block: .25rem; }
+    .taxonomy-app-utilities { order: 2; }
+    .taxonomy-app-utilities .application-menu { position: static; }
+    .taxonomy-app-utilities .application-menu-content { position: fixed; top: var(--app-menu-top, 4rem); inset-inline: .5rem; width: auto; }
+}
 @media (max-width: 42rem) {
-    .taxonomy-app-navigation { padding: .4rem .65rem; }
-    .taxonomy-app-mainrow { gap: .3rem .25rem; }
-    .taxonomy-app-primary { order: 2; width: 100%; }
-    .taxonomy-app-local { order: 3; flex: 1 1 100%; }
-    .taxonomy-app-utilities { order: 1; }
-    .taxonomy-app-primary a { flex: 1 1 0; padding-inline: .4rem; font-size: .9rem; }
-    .taxonomy-app-utilities, .taxonomy-app-languages { gap: 0; }
-    .taxonomy-app-navigation .context-help { font-size: .75rem; padding-inline: .4rem; }
+    .taxonomy-app-mainrow { gap: .15rem; }
+    .taxonomy-app-utilities { gap: 0; }
+    .taxonomy-app-languages a { min-width: 34px; padding-inline: .25rem; }
+    .taxonomy-app-navigation #applicationHelp > summary, .taxonomy-app-navigation .taxonomy-app-menu > summary { padding-inline: .35rem; }
     .taxonomy-app-context { padding: .55rem .65rem; gap: .35rem; }
     .taxonomy-app-context-group { flex-basis: 100%; }
     .taxonomy-app-source { padding-inline-start: .6rem; }
@@ -82,97 +116,9 @@
 @media print { .taxonomy-app-chrome { display: none; } }
 @media (forced-colors: active) {
     .taxonomy-app-navigation, .taxonomy-app-context, .taxonomy-app-context-disclosure > summary, .taxonomy-entity-status, .taxonomy-entity-key, .taxonomy-entity-version { color: CanvasText; background: Canvas; border-color: CanvasText; }
-    .taxonomy-app-navigation .btn-outline-light { color: ButtonText !important; background-color: ButtonFace !important; border-color: ButtonText !important; }
-    .taxonomy-app-primary a, .taxonomy-app-languages a, .taxonomy-app-brand, .taxonomy-app-navigation .context-help { color: LinkText; }
-    .taxonomy-app-primary a[aria-current="page"] { color: HighlightText; background: Highlight; }
-}
-
-/* Keep the compact menu independent of page-specific header styles. */
-.taxonomy-app-chrome .taxonomy-app-menu { display: none; margin: 0; }
-.taxonomy-app-menu-content { display: contents; }
-.taxonomy-app-navigation .taxonomy-app-brand { color: var(--taxonomy-navigation-foreground, #fff); }
-/* One primary section row; index supplies in-page tab behavior, other pages retain real links. */
-.taxonomy-app-primary { align-items: center; flex: 1 1 auto; }
-.taxonomy-app-primary #mainNavTabs { display: flex; flex-wrap: wrap; list-style: none; padding: 0; margin: 0; border: 0; gap: .15rem; }
-.taxonomy-app-primary #mainNavTabs .nav-link { border-radius: .35rem; border: 1px solid transparent; }
-.taxonomy-app-navigation .taxonomy-app-primary #mainNavTabs .nav-link:not(.active):not(.disabled) { color: var(--taxonomy-navigation-foreground, #f8fafc); }
-.taxonomy-app-primary #mainNavTabs .nav-link.active { color: #17243a; background: #fff; }
-.taxonomy-app-local .application-utilities { margin-inline-start: auto; }
-.taxonomy-app-primary .application-work-navigation { min-width: 0; }
-/* Compact the shared row; analysis also offers language in Settings. */
-@media (min-width: 62rem) and (max-width: 102rem) {
-    .taxonomy-app-navigation { padding-inline: .75rem; }
-    .taxonomy-app-navigation .taxonomy-app-mainrow { column-gap: .5rem; }
-    .taxonomy-app-navigation .taxonomy-app-primary { flex: 0 1 auto; }
-    .taxonomy-app-navigation .taxonomy-app-primary a { padding-inline: .35rem; }
-    .taxonomy-app-navigation .taxonomy-app-primary #mainNavTabs { gap: 0; }
-    .taxonomy-app-navigation .taxonomy-app-local { flex: 1 1 auto; }
-    .taxonomy-app-navigation .application-shell { width: 100%; }
-    .taxonomy-app-navigation:has(#applicationSettings #langSelector) .taxonomy-app-languages { display: none; }
-    .taxonomy-app-navigation .taxonomy-app-utilities .context-help { min-width: 44px; }
-    .taxonomy-app-navigation:has(#applicationSettings #langSelector) .taxonomy-app-utilities .context-help-label {
-        position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
-    }
-    /* The versioning page repeats this title as its main heading. */
-    #applicationNavigation #versioningPageTitle {
-        position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
-    }
-}
-@media (min-width: 62rem) and (max-width: 90rem) {
-    .taxonomy-app-navigation:not(:has(#applicationSettings #langSelector)) .taxonomy-app-utilities .context-help-label {
-        position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
-    }
-}
-@media (min-width: 62rem) and (max-width: 70rem) {
-    #applicationNavigation { padding-inline: .5rem; }
-    #applicationNavigation .taxonomy-app-mainrow { column-gap: .25rem; }
-    #applicationNavigation:has(.application-shell) .taxonomy-app-local { flex: 1 1 0; }
-    #applicationNavigation .application-shell { gap: .25rem; }
-    #applicationNavigation .taxonomy-app-primary a { padding-inline: .15rem; font-size: .875rem; }
-    #applicationNavigation .application-file-menus,
-    #applicationNavigation .application-utilities,
-    #applicationNavigation .application-support { gap: .2rem; }
-    .taxonomy-app-navigation .taxonomy-app-route-icon { display: none; }
-}
-/* Anchor wide utility panels to the header, even when their launcher wraps. */
-@media (min-width: 576px) {
-    #applicationNavigation .application-menu { position: static; }
-    #applicationNavigation .application-menu-content { top: 100%; inset-inline-end: .5rem; }
-}
-@media (max-width: 991.98px) {
-    .taxonomy-app-mainrow { flex-wrap: nowrap; }
-    .taxonomy-app-navigation .taxonomy-app-menu { display: block; order: 1; }
-    .taxonomy-app-menu > summary { display: flex; align-items: center; justify-content: center;
-        min-width: 44px; min-height: 44px; padding: .4rem .55rem; border: 1px solid currentColor;
-        border-radius: .35rem; cursor: pointer; list-style: none; }
-    .taxonomy-app-menu > summary::-webkit-details-marker { display: none; }
-    .taxonomy-app-menu-content { display: none; }
-    .taxonomy-app-menu[open] + .taxonomy-app-menu-content { display: block; position: fixed;
-        z-index: 1055; inset-inline: .5rem; top: var(--app-menu-top, 4rem);
-        max-height: calc(100dvh - var(--app-menu-top, 4rem) - .5rem);
-        overflow-y: auto; padding: .5rem; border: 1px solid #b8c7dc; border-radius: .35rem;
-        background: var(--taxonomy-navigation-background, #17243a); box-shadow: 0 .25rem .75rem #0003; }
-    .taxonomy-app-navigation .taxonomy-app-primary { display: block; width: 100%; }
-    .taxonomy-app-primary > a, #applicationNavigation #mainNavTabs .nav-link {
-        display: flex; width: 100%; min-height: 45px; justify-content: flex-start; font-weight: 600; }
-    .taxonomy-app-route-icon { display: none; }
-    #applicationNavigation #mainNavTabs { flex-direction: column; flex-wrap: nowrap; overflow: visible; }
-    .taxonomy-app-navigation .taxonomy-app-local { width: 100%; }
-    .taxonomy-app-local > h1 { margin: .5rem 0 .25rem; font-size: 1rem; }
-    #applicationNavigation .taxonomy-app-local :is(a.application-utility-link,
-        .application-file-menus button, .application-support button,
-        .application-menu > summary, .workbench-export-options > summary),
-    #applicationNavigation .taxonomy-app-local > a { min-width: 44px; min-height: 44px; }
-    .taxonomy-app-local > a { display: inline-flex; align-items: center; }
-    #applicationNavigation .application-shell { flex-wrap: wrap; }
-    #applicationNavigation .application-file-menus .dropdown-menu { position: static !important; transform: none !important; }
-    #applicationNavigation .application-menu-content { position: fixed; top: 3.5rem; inset-inline: .5rem; width: auto; }
-    .taxonomy-app-utilities { order: 2; }
-    .taxonomy-app-navigation .taxonomy-app-utilities .context-help-label {
-        position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
-    }
-}
-@media (forced-colors: active) {
-    .taxonomy-app-navigation .taxonomy-app-brand { color: LinkText; }
-    .taxonomy-app-navigation .taxonomy-app-primary #mainNavTabs .nav-link:not(.active):not(.disabled) { color: LinkText; }
+    .taxonomy-app-brand, .taxonomy-app-primary a, .taxonomy-app-local > a, .taxonomy-app-local > div > a, .taxonomy-app-languages a { color: LinkText; }
+    .taxonomy-app-primary a[aria-current="page"], .taxonomy-app-primary a.active { color: HighlightText; background: Highlight; }
+    .taxonomy-app-navigation .application-menu-content { color: CanvasText; background: Canvas; border-color: CanvasText; }
+    .taxonomy-app-navigation .has-actionable-status > summary::before { color: LinkText; }
+    .taxonomy-app-navigation :is(a, button, summary):focus-visible { outline-color: Highlight; }
 }

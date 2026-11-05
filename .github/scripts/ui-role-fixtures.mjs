@@ -171,6 +171,15 @@ export async function waitForSharedNavigationToClose(page) {
 
 export async function navigateToPage(page, pageId) {
   await openSharedNavigation(page);
+  if (pageId === 'help') {
+    const help = page.locator('#applicationHelp');
+    if (await help.getAttribute('open') === null) await page.locator('#applicationHelp > summary').click();
+    await page.locator('#main-tab-help').click();
+    await waitForSharedNavigationToClose(page);
+    await page.locator('#tab-help').waitFor({ state: 'visible', timeout: 20_000 });
+    return;
+  }
+
   const settingsDestination = {
     admin: 'adminNavTab',
     preferences: 'preferencesNavTab'

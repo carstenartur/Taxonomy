@@ -40,64 +40,35 @@
     <th:block th:fragment="localActions">
     <div class="container-fluid application-shell">
         
-        <div class="application-file-menus">
-            <div class="dropdown">
-                <button id="fileMenuButton" class="btn btn-sm btn-outline-light dropdown-toggle"
-                        type="button" data-bs-toggle="dropdown" aria-expanded="false"
-                        th:text="#{navbar.file.menu}">File</button>
-                <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="fileMenuButton">
-                    <li>
-                        <button id="fileNewAnalysisAction" class="dropdown-item" type="button"
-                                th:text="#{navbar.file.new_analysis}">New analysis</button>
-                    </li>
-                    <li>
-                        <button id="fileCancelAnalysisAction" class="dropdown-item" type="button"
-                                disabled aria-disabled="true"
-                                th:text="#{navbar.file.cancel_analysis}">Cancel running analysis</button>
-                    </li>
-                    <li><hr class="dropdown-divider"/></li>
-                    <li>
-                        <button id="fileSaveDraftAction" class="dropdown-item" type="button"
-                                th:text="#{navbar.file.save_draft}">Save draft now</button>
-                    </li>
-                    <li th:if="${portableBackupAvailable}"><a class="dropdown-item" th:href="@{/backup-jobs(lang=${#locale.language})}" th:text="#{backup.export.title}">Create a portable export</a></li>
-                </ul>
+        <details id="applicationFile" class="application-menu">
+            <summary id="fileMenuButton" th:text="#{navbar.file.menu}">File</summary>
+            <div class="application-menu-content">
+                <button id="fileNewAnalysisAction" type="button" th:text="#{navbar.file.new_analysis}">New analysis</button>
+                <button id="fileCancelAnalysisAction" type="button" disabled aria-disabled="true"
+                        th:text="#{navbar.file.cancel_analysis}">Cancel running analysis</button>
+                <hr/>
+                <button id="fileSaveDraftAction" type="button" th:text="#{navbar.file.save_draft}">Save draft now</button>
+                <a th:if="${portableBackupAvailable}" th:href="@{/backup-jobs(lang=${#locale.language})}"
+                   th:text="#{backup.export.title}">Create a portable export</a>
             </div>
-        </div>
-        <div class="application-utilities">
-            <details id="applicationSettings" class="application-menu">
-                <summary th:aria-label="#{navbar.settings.menu}" th:title="#{navbar.settings.menu}">
-                    <span aria-hidden="true">⚙</span><span class="visually-hidden" th:text="#{navbar.settings.menu}">Settings</span>
-                </summary>
-                <div class="application-menu-content">
-                    <label for="langSelector" th:text="#{lang.selector.label}">Language</label>
-                    <select id="langSelector" class="form-select form-select-sm"
-                onchange="TaxonomyI18n.setLocale(this.value)"
-                th:title="#{lang.selector.label}" th:attr="aria-label=#{ui.aria.language}" aria-label="Language">
-            <option value="en" th:selected="${#locale.language == 'en'}">🇬🇧 English</option>
-            <option value="de" th:selected="${#locale.language == 'de'}">🇩🇪 Deutsch</option>
-        </select>
-                    <div class="d-flex align-items-center gap-2"><button id="darkModeToggle" class="btn btn-sm btn-outline-secondary" th:title="#{navbar.darkmode}" th:attr="aria-label=#{ui.aria.toggle_theme}" aria-label="Toggle theme">&#127769;</button><span th:text="#{navbar.darkmode}">Theme</span></div>
-                    <a class="application-utility-link" id="userManagementMenuAction" data-page="admin" href="#admin"
-                       data-required-roles="ADMIN" hidden th:text="#{users.title}">User management</a>
-                    <a class="application-utility-link admin-only" id="adminNavTab" data-page="admin" href="#admin"
-                       data-required-roles="ADMIN" hidden th:text="#{navbar.administration}">Administration</a>
-                    <a class="application-utility-link admin-only" id="preferencesNavTab" data-page="preferences" href="#preferences"
-                       data-required-roles="ADMIN" hidden th:text="#{navbar.server.settings}">Server settings</a>
-                    <button type="button" class="btn btn-link text-start p-0 application-utility-link"
-                            id="databaseSetupMenuAction" data-required-roles="ADMIN" hidden
-                            th:text="#{database.setup.menu}">Database setup</button>
-                    <span id="analysisStatusMenuSlot"></span>
-                </div>
-            </details>
-            <span id="operationalStatusMenuSlot"></span>
-            <div class="application-support">
-                <a id="main-tab-help" class="btn btn-sm btn-outline-light application-utility-link" data-page="help" href="#help"
-                   th:text="#{nav.help}">Help</a>
-                <button id="aboutBtn" type="button" class="btn btn-sm btn-outline-light" th:text="#{navbar.about.label}"
-                        th:aria-label="#{ui.aria.about}">About</button>
+        </details>
+        <details id="applicationSettings" class="application-menu">
+            <summary th:text="#{navbar.settings.menu}">Settings</summary>
+            <div class="application-menu-content">
+                <div class="d-flex align-items-center gap-2"><button id="darkModeToggle" class="btn btn-sm btn-outline-secondary" th:title="#{navbar.darkmode}" th:attr="aria-label=#{ui.aria.toggle_theme}" aria-label="Toggle theme">&#127769;</button><span th:text="#{navbar.darkmode}">Theme</span></div>
+                <a class="application-utility-link" id="userManagementMenuAction" data-page="admin" href="#admin"
+                   data-required-roles="ADMIN" hidden th:text="#{users.title}">User management</a>
+                <a class="application-utility-link admin-only" id="adminNavTab" data-page="admin" href="#admin"
+                   data-required-roles="ADMIN" hidden th:text="#{navbar.administration}">Administration</a>
+                <a class="application-utility-link admin-only" id="preferencesNavTab" data-page="preferences" href="#preferences"
+                   data-required-roles="ADMIN" hidden th:text="#{navbar.server.settings}">Server settings</a>
+                <button type="button" class="application-utility-link"
+                        id="databaseSetupMenuAction" data-required-roles="ADMIN" hidden
+                        th:text="#{database.setup.menu}">Database setup</button>
+                <span id="analysisStatusMenuSlot"></span>
             </div>
-        </div>
+        </details>
+        <span id="operationalStatusMenuSlot"></span>
     </div>
 </th:block>
 </header>
@@ -2065,21 +2036,6 @@
                 e.preventDefault();
                 activatePage(page);
             }
-        }
-    });
-
-    document.addEventListener('click', function (event) {
-        document.querySelectorAll('#applicationNavigation details.application-menu[open]').forEach(function (menu) {
-            if (!menu.contains(event.target) || event.target.closest('a[href]')) menu.open = false;
-        });
-    });
-    document.addEventListener('keydown', function (event) {
-        if (event.key !== 'Escape') return;
-        var menu = event.target.closest('#applicationNavigation details.application-menu[open]');
-        if (menu) {
-            event.preventDefault();
-            menu.open = false;
-            menu.querySelector('summary').focus();
         }
     });
 

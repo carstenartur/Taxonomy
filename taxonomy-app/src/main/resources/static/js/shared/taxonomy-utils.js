@@ -127,7 +127,7 @@ window.TaxonomyUtils = (function () {
         if (!tabList) return;
         tabList.setAttribute('role', 'tablist');
         tabList.setAttribute('aria-orientation', window.matchMedia
-            && window.matchMedia('(max-width: 991.98px)').matches ? 'vertical' : 'horizontal');
+            && window.matchMedia('(max-width: 1199.98px)').matches ? 'vertical' : 'horizontal');
         tabList.setAttribute('aria-label', currentLanguage() === 'de'
             ? 'Hauptbereiche' : 'Main sections');
 
@@ -181,7 +181,7 @@ window.TaxonomyUtils = (function () {
             attributeFilter: ['class']
         });
         document.addEventListener('taxonomy:page-activated', syncMainNavigation);
-        var compactNavigation = window.matchMedia && window.matchMedia('(max-width: 991.98px)');
+        var compactNavigation = window.matchMedia && window.matchMedia('(max-width: 1199.98px)');
         if (compactNavigation?.addEventListener) compactNavigation.addEventListener('change', syncMainNavigation);
         else if (compactNavigation?.addListener) compactNavigation.addListener(syncMainNavigation);
     }

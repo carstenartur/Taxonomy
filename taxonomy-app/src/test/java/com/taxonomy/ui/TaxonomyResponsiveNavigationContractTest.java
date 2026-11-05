@@ -3,64 +3,14 @@ package com.taxonomy.ui;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Locks the discoverable responsive navigation and pre-scroll task budget contract. */
 class TaxonomyResponsiveNavigationContractTest {
-
-    @Test
-    void narrowViewportsKeepTheSharedNavigationAndReachableTask() throws Exception {
-        String utils = resource("/static/js/shared/taxonomy-utils.js");
-        String css = resource("/static/css/taxonomy-ergonomics.css");
-        String chrome = resource("/static/css/application-chrome.css");
-        String chromeTemplate = resource("/templates/fragments/application-chrome.html");
-        String chromeScript = resource("/static/js/shared/application-chrome.js");
-        String template = resource("/templates/index.html");
-
-        assertThat(template)
-                .contains("taxonomy:page-activated")
-                .contains("detail: { page: pageName }");
-
-        assertThat(utils)
-                .contains("function focusCurrentTask()")
-                .contains("target.scrollIntoView({ block: 'center', inline: 'nearest' })")
-                .contains("document.addEventListener('taxonomy:page-activated', syncMainNavigation)")
-                .doesNotContain("mobileMainNavigationSelect", "syncResponsiveMainNavigation");
-        assertThat(chromeTemplate).contains("id=\"applicationNavigationMenu\"",
-                "aria-controls=\"applicationNavigationMenuContent\"");
-        assertThat(chromeScript).contains("function installResponsiveMenu()", "summary.focus()");
-        assertThat(ruleBody(chrome, "\\.taxonomy-app-primary #mainNavTabs"))
-                .containsPattern("display:\\s*flex\\s*;")
-                .containsPattern("flex-wrap:\\s*wrap\\s*;");
-        assertThat(ruleBody(chrome, "\\.taxonomy-app-primary a, \\.taxonomy-app-languages a"))
-                .as("every actual primary link retains its keyboard and touch target")
-                .containsPattern("min-width:\\s*44px\\s*;")
-                .containsPattern("min-height:\\s*44px\\s*;");
-        String compact = chrome.substring(chrome.lastIndexOf("@media (max-width: 991.98px)"));
-        assertThat(ruleBody(compact, "\\.taxonomy-app-menu\\[open\\] \\+ \\.taxonomy-app-menu-content"))
-                .as("the compact menu reveals the same links and actions")
-                .containsPattern("display:\\s*block\\s*;")
-                .containsPattern("overflow-y:\\s*auto\\s*;");
-
-        String zoom = ruleBody(css, "@media\\s*\\(max-width:\\s*640px\\)");
-        assertThat(ruleBody(zoom, "\\.navbar-brand"))
-                .containsPattern("width:\\s*100%\\s*;")
-                .containsPattern("white-space:\\s*normal\\s*;");
-        assertThat(ruleBody(zoom, "\\.navbar-version"))
-                .as("the version and separator do not consume another line of task space")
-                .containsPattern("display:\\s*none\\s*;");
-        assertThat(css)
-                .contains(".navbar .btn-outline-light")
-                .contains("color: ButtonText !important")
-                .contains("background-color: ButtonFace !important")
-                .contains("border-color: ButtonText !important");
-    }
 
     @Test
     void browserVerificationMeasuresBeforeScrollAndExercisesSharedNavigation() throws Exception {
@@ -164,20 +114,6 @@ class TaxonomyResponsiveNavigationContractTest {
                 .doesNotContain("ContainerTestUtils.APP_ORIGIN");
     }
 
-    /** Scope declarations to their actual selector/media block, including nested rules. */
-    private static String ruleBody(String source, String selectorPattern) {
-        var rule = Pattern.compile(selectorPattern + "\\s*\\{").matcher(source);
-        assertThat(rule.find()).as("CSS rule %s", selectorPattern).isTrue();
-        int start = rule.end();
-        int depth = 1;
-        for (int index = start; index < source.length(); index++) {
-            char current = source.charAt(index);
-            if (current == '{') depth++;
-            if (current == '}' && --depth == 0) return source.substring(start, index);
-        }
-        throw new AssertionError("Unclosed CSS rule: " + selectorPattern);
-    }
-
     private static int occurrences(String source, String value) {
         int count = 0;
         int index = 0;
@@ -194,13 +130,6 @@ class TaxonomyResponsiveNavigationContractTest {
         assertThat(start).as("start marker %s", startMarker).isGreaterThanOrEqualTo(0);
         assertThat(end).as("end marker %s", endMarker).isGreaterThan(start);
         return source.substring(start, end);
-    }
-
-    private static String resource(String path) throws IOException {
-        try (InputStream input = TaxonomyResponsiveNavigationContractTest.class.getResourceAsStream(path)) {
-            assertThat(input).as("classpath resource %s", path).isNotNull();
-            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
-        }
     }
 
     private static String repositoryFile(String relative) throws IOException {

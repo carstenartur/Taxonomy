@@ -4,7 +4,7 @@
     var state = {};
     var sourceContexts = {};
     var groupKeys = ['architecture', 'project', 'requirement', 'source'];
-    var routes = {projects: '/projects', analysis: '/', architecture: '/', graph: '/', versions: '/', 'dsl-editor': '/'};
+    var routes = {projects: '/projects', analysis: '/', architecture: '/', graph: '/', versions: '/', 'dsl-editor': '/', help: '/'};
     function node(value) { return typeof value === 'string' ? document.getElementById(value) : value; }
     function t(key) { return window.TaxonomyI18n.t.apply(null, arguments); }
     function present(value) { return value !== null && value !== undefined && value !== ''; }
@@ -242,11 +242,32 @@
         document.dispatchEvent(new CustomEvent('taxonomy:entity-context-changed', {detail: getContext()}));
         return getContext();
     }
+    function installCommandMenus() {
+        var navigation = node('applicationNavigation');
+        if (!navigation) return;
+        document.addEventListener('click', function (event) {
+            var action = event.target.closest?.('a[href], button:not(:disabled)');
+            navigation.querySelectorAll('details.application-menu[open]').forEach(function (menu) {
+                if (!menu.contains(event.target) || (action && menu.contains(action))) {
+                    menu.open = false;
+                    if (menu.contains(document.activeElement)) menu.querySelector('summary').focus();
+                }
+            });
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.defaultPrevented || event.key !== 'Escape') return;
+            var menu = event.target.closest?.('#applicationNavigation details.application-menu[open]');
+            if (!menu) return;
+            event.preventDefault();
+            menu.open = false;
+            menu.querySelector('summary').focus();
+        });
+    }
     function installResponsiveMenu() {
         var menu = node('applicationNavigationMenu');
         if (!menu || !window.matchMedia) return;
         var content = node('applicationNavigationMenuContent');
-        var compact = window.matchMedia('(max-width: 991.98px)');
+        var compact = window.matchMedia('(max-width: 1199.98px)');
         var summary = menu.querySelector('summary');
         function positionMenu() {
             if (!compact.matches || !content) return;
@@ -289,10 +310,6 @@
         document.addEventListener('keydown', function (event) {
             if (event.defaultPrevented || !compact.matches || !menu.open || event.key !== 'Escape'
                     || (!menu.contains(event.target) && !content.contains(event.target))) return;
-            var nearest = event.target.closest?.('details');
-            if (nearest && nearest !== menu && nearest.open) {
-                event.preventDefault(); nearest.open = false; nearest.querySelector('summary')?.focus(); return;
-            }
             event.preventDefault(); menu.open = false; summary.focus();
         });
     }
@@ -319,6 +336,7 @@
     window.TaxonomyAppChrome = Object.freeze({updateContext: updateContext, getContext: getContext, activateContext:activateContext,
         refreshNavigation: refreshNavigation, renderEntity: renderEntity, renderDetails: renderDetails,
         setStatus: setStatus, statusLabel: statusLabel});
+    installCommandMenus();
     installResponsiveMenu();
     initializeContextDisclosure();
     refreshNavigation();

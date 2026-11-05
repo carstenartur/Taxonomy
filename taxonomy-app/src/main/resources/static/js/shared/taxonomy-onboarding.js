@@ -327,17 +327,16 @@
     }
 
     function createOperationalContext() {
-        var navigation = document.getElementById('mainNavTabs');
-        if (!navigation || document.getElementById('operationalContextDetails')) {
+        var slot = document.getElementById('operationalStatusMenuSlot');
+        if (!slot || document.getElementById('operationalContextDetails')) {
             return;
         }
 
         var details = document.createElement('details');
         details.id = 'operationalContextDetails';
-        details.className = 'operational-context-details application-menu';
+        details.className = 'application-menu';
         var summary = document.createElement('summary');
-        var title = document.createElement('strong');
-        title.className = 'operational-context-title';
+        var title = document.createElement('span');
         title.textContent = t('navbar.status');
         var hint = document.createElement('span');
         hint.className = 'operational-context-hint visually-hidden';
@@ -347,12 +346,7 @@
         body.className = 'operational-context-content application-menu-content';
         details.append(summary, body);
 
-        var slot = document.getElementById('operationalStatusMenuSlot');
-        if (slot) slot.appendChild(details);
-        else {
-            var navigationShell = navigation.closest('.bg-dark');
-            navigationShell.parentElement.insertBefore(details, navigationShell.nextSibling);
-        }
+        slot.appendChild(details);
 
         [
             document.getElementById('aiStatusBadge'),
@@ -364,10 +358,6 @@
             body.appendChild(surface);
         });
 
-        var languageSelector = document.getElementById('langSelector');
-        if (languageSelector) {
-            languageSelector.classList.add('ms-auto');
-        }
         monitorOperationalState(details, body);
     }
 

@@ -8,36 +8,6 @@
     display: block;
 }
 
-/* Keep operational detail available without occupying the default task area. */
-.operational-context-details {
-    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
-    background: var(--bs-tertiary-bg, #f8f9fa);
-}
-.operational-context-details > summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    min-height: 2.5rem;
-    padding: 0.4rem 1rem;
-    cursor: pointer;
-    font-size: 0.9rem;
-    font-weight: 600;
-    list-style: none;
-}
-.operational-context-details > summary::-webkit-details-marker {
-    display: none;
-}
-.operational-context-details > summary::before {
-    content: "▸";
-    flex: 0 0 auto;
-}
-.operational-context-details[open] > summary::before {
-    content: "▾";
-}
-.operational-context-title {
-    flex: 1 1 auto;
-}
 .operational-context-content {
     display: flex;
     align-items: center;
@@ -182,14 +152,9 @@
 }
 
 /* Keep dense toolbars usable at high zoom and on narrow viewports. */
-#mainNavTabs,
 .card-header,
-.navbar .container-fluid,
 .d-flex {
     min-width: 0;
-}
-#mainNavTabs {
-    flex-wrap: wrap;
 }
 
 /* Bootstrap normally opens modals through an inline display declaration. The
@@ -229,12 +194,10 @@
 }
 
 /* Focus must remain clearly visible on all custom navigation surfaces. */
-#mainNavTabs [role="tab"]:focus-visible,
 .tax-node-actions button:focus-visible,
 .taxonomy-accessible-dialog button:focus-visible,
 .taxonomy-accessible-dialog input:focus-visible,
 .table-responsive:focus-visible,
-.operational-context-details > summary:focus-visible,
 .analysis-secondary-tools > summary:focus-visible,
 .score-legend-details > summary:focus-visible {
     outline: 3px solid #0d6efd;
@@ -362,9 +325,6 @@
     }
     .tax-node-actions .btn,
     .tax-toggle,
-    #mainNavTabs .nav-link,
-    .navbar button,
-    .navbar select,
     .analysis-next-action button {
         min-height: 44px;
         min-width: 44px;
@@ -408,25 +368,6 @@
         max-height: min(65vh, 42rem) !important;
         overscroll-behavior: contain;
     }
-    /* Keep every destination directly available without spending several rows
-       of the initial viewport on wrapped navigation tabs. */
-    #mainNavTabs {
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        overflow-y: hidden;
-        overscroll-behavior-inline: contain;
-        scroll-snap-type: inline proximity;
-        scrollbar-width: thin;
-        -webkit-overflow-scrolling: touch;
-    }
-    #mainNavTabs .nav-item {
-        flex: 0 0 auto;
-        scroll-snap-align: start;
-    }
-    #mainNavTabs .nav-link {
-        width: auto;
-        white-space: nowrap;
-    }
     .analysis-task-stages {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -438,32 +379,6 @@
     .analysis-task-progress {
         padding: 0.65rem;
         margin-bottom: .5rem !important;
-    }
-    .navbar-brand {
-        width: 100%;
-        white-space: normal;
-        font-size: 1rem;
-        line-height: 1.25;
-    }
-    /* These badges are moved to the compact operational-context disclosure.
-       Hide only a legacy badge that still remains inside the navbar. */
-    .navbar #aiStatusBadge,
-    .navbar #embeddingStatusBadge,
-    .navbar #workspaceUserBadge {
-        display: none !important;
-    }
-    /* Hide the version and its separator together; an orphan separator can
-       wrap onto a second brand line when the platform provides emoji glyphs. */
-    .navbar-version {
-        display: none;
-    }
-    #mainNavTabs .nav-item {
-        flex: 0 0 auto;
-    }
-    #mainNavTabs .nav-link {
-        width: auto;
-        min-width: max-content;
-        text-align: center;
     }
     #businessText {
         min-height: 12rem;
@@ -491,12 +406,6 @@
     .analysis-next-action #taskNextAction {
         width: 100%;
     }
-    .operational-context-details > summary {
-        padding-inline: 0.75rem;
-    }
-    .operational-context-hint {
-        display: none;
-    }
     .operational-context-content {
         padding-inline: 0.75rem;
     }
@@ -510,14 +419,6 @@
 }
 
 @media (forced-colors: active) {
-    /* Bootstrap's light outline buttons otherwise remain light-on-light in
-       Windows high-contrast mode. Use system colors so File, Project and the
-       compact navbar controls retain a visible foreground and boundary. */
-    .navbar .btn-outline-light {
-        color: ButtonText !important;
-        background-color: ButtonFace !important;
-        border-color: ButtonText !important;
-    }
     .analysis-task-stages li[data-state="current"],
     .analysis-task-stages li[data-state="complete"],
     .analysis-task-stages li[data-state="error"] {
@@ -703,41 +604,3 @@ button.summary-layer-element[aria-pressed="true"] { outline: 2px solid currentCo
 .tax-container > .tax-children { margin-left: 0; padding-left: 0; border-left: 0; }
 .tax-container-empty { margin: .5rem .25rem; }
 .tax-container.tax-evaluating > .tax-container-heading { animation: tax-pulse 1.5s ease-in-out infinite; }
-
-/* One compact application shell; utility menus never reserve a permanent row. */
-#applicationNavigation .application-shell { display: flex; align-items: center; gap: .5rem; flex-wrap: nowrap; }
-#applicationNavigation .navbar-brand { width: auto; flex: 0 0 auto; margin: 0 .25rem 0 0; font-size: 1rem; white-space: nowrap; }
-.application-file-menus, .application-utilities, .application-support { display: flex; align-items: center; gap: .35rem; }
-.application-file-menus, .application-utilities, .application-support { flex: 0 0 auto; }
-.application-work-navigation { flex: 1 1 auto; min-width: 0; }
-#applicationNavigation #mainNavTabs { display: flex; flex-wrap: wrap; border-bottom: 0; }
-#applicationNavigation #mainNavTabs .nav-link { font-size: .875rem; padding: .4rem .45rem; white-space: nowrap; }
-.application-utilities { margin-inline-start: auto; }
-#applicationNavigation .application-menu { position: relative; background: transparent; border: 0; color: #fff; }
-#applicationNavigation .application-menu > summary { display: flex; align-items: center; gap: .25rem; list-style: none; cursor: pointer; min-height: 34px; padding: .25rem .5rem; border: 1px solid currentColor; border-radius: .25rem; font-size: .875rem; }
-#applicationNavigation .application-menu > summary::-webkit-details-marker { display: none; }
-#applicationNavigation .operational-context-hint { display: none; }
-#applicationNavigation .application-menu-content { position: absolute; z-index: 1060; top: calc(100% + .35rem); inset-inline-end: 0; width: min(25rem, calc(100vw - 1rem)); max-height: calc(100dvh - 6rem); overflow: auto; padding: .75rem; background: var(--bs-body-bg, #fff); color: var(--bs-body-color, #212529); border: 1px solid var(--bs-border-color, #bbb); border-radius: .35rem; box-shadow: 0 .25rem .75rem #0003; }
-#applicationSettings .application-menu-content { display: grid; gap: .6rem; }
-#applicationSettings [hidden] { display: none !important; }
-#applicationNavigation .has-actionable-status > summary { color: #ffc107; }
-#applicationNavigation .has-actionable-status > summary::after { content: '!'; font-weight: bold; }
-#applicationNavigation summary:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
-#applicationNavigation .mobile-main-navigation { padding: 0; }
-#applicationNavigation .mobile-main-navigation { grid-template-columns: minmax(0, 1fr); }
-#applicationNavigation .mobile-main-navigation-select { min-height: 44px; font-size: .875rem; padding-block: .25rem; }
-@media (max-width: 575.98px) {
-    /* Keep the single primary row reachable by swipe and keyboard without
-       pushing the analysis action below the first mobile viewport. */
-    /* Snap alignment can move a newly focused link outside this narrower row. */
-    #applicationNavigation #mainNavTabs { flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: none; }
-    #applicationNavigation .application-shell { flex-wrap: wrap; gap: .4rem; }
-    #applicationNavigation .application-utilities { order: 1; }
-    #applicationNavigation .application-file-menus { order: 2; }
-    #applicationNavigation .application-work-navigation { order: 3; flex: 1 1 8rem; }
-    #applicationNavigation .application-menu-content { position: fixed; top: 3rem; inset-inline: .5rem; width: auto; max-height: calc(100dvh - 4rem); }
-}
-@media (forced-colors: active) {
-    #applicationNavigation .has-actionable-status > summary { color: LinkText; }
-    #applicationNavigation .application-menu-content { border: 1px solid CanvasText; }
-}

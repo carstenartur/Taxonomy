@@ -87,11 +87,11 @@ class DocumentTemplateNavigationBrowserIT {
                 .contains("/taxonomy/?lang=" + language + "#help/" + view.help());
         assertThat(page.driver().findElement(By.cssSelector("#applicationNavigation [data-app-locale='" + language + "']"))
                 .getDomAttribute("aria-current")).isEqualTo("true");
-        if (width >= 992) {
+        if (width >= 1200) {
             var verticalSpread = (Number) page.driver().executeScript("""
                     const nav = document.getElementById('applicationNavigation');
                     const centers = ['.taxonomy-app-brand', '.taxonomy-app-primary', '.taxonomy-app-local',
-                            '.taxonomy-app-languages', '.context-help'].map(selector => {
+                            '.taxonomy-app-languages', '#applicationHelp > summary'].map(selector => {
                         const rect = nav.querySelector(selector).getBoundingClientRect();
                         return rect.top + rect.height / 2;
                     });

@@ -48,6 +48,7 @@ function passed(name) { checks.push(name); }
 async function navigateTo(pageName) {
   await openSharedNavigation(page);
   if (pageName === 'help') {
+    await page.locator('#applicationHelp > summary').click();
     await page.locator('#main-tab-help').click();
     await waitForSharedNavigationToClose(page);
     await page.locator('#tab-help').waitFor({ state: 'visible' });

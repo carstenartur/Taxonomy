@@ -353,16 +353,17 @@ Das rechte Panel (schmalere Spalte) enthält alle interaktiven Werkzeuge:
 
 ### Navigationsleiste
 
-Auf schmalen Bildschirmen öffnen Sie **Menü**, um dieselben Arbeitsbereiche und Aktionen zu erreichen. Nach der Auswahl eines Bereichs schließt sich das Menü; mit Escape können Sie es ohne Wechsel schließen. Sprache und kontextbezogene Hilfe bleiben in der Kopfzeile.
+Auf schmalen Bildschirmen öffnen Sie **Menü**, um dieselben Arbeitsbereiche und Aktionen zu erreichen. Nach der Auswahl eines Bereichs schließt sich das Menü; mit Escape können Sie es ohne Wechsel schließen. Die gemeinsamen Sprachlinks und das Hilfemenü bleiben in der Kopfzeile. Unter 1.200 CSS-Pixeln wechseln die Arbeitsbereiche in das Menü, statt ihre Beschriftungen zusammenzudrücken.
 
 Die Navigationsleiste am oberen Rand der Seite enthält:
 
 - **Anwendungstitel / Logo**
 - **Datei-Menü** — eine neue Analyse beginnen, eine laufende Analyse abbrechen oder den aktuellen Arbeitsentwurf sofort speichern
 - **Projekte** öffnet die Projektübersicht. Auf der Analyseseite stehen unter **Nächste Schritte** das Anlegen eines Projekts und das Speichern des aktuellen Texts als Anforderung bereit.
-- **Einstellungen (⚙)** — Sprache, Design, Admin-Werkzeuge und den Analyse-Status öffnen.
+- **Einstellungen** — Design, Admin-Werkzeuge und den Analyse-Status öffnen.
 - **Status** — Details zum Betriebsstatus.
-- **Hilfe** und **Über** — rechts in der Navigationsleiste direkt nebeneinander.
+- **EN / DE** — die Oberflächensprache in der gemeinsamen Kopfzeile wechseln.
+- **Hilfe** — ein Menü für Hilfe zur aktuellen Sicht, das Handbuch und auf der Analyse-/Workspace-Seite **Über**. Datei, Einstellungen, Status und Hilfe verwenden dieselben Bedienelemente; Escape schließt das aktuelle Menü und setzt den Fokus auf seinen Auslöser zurück.
 
 ### Dunkelmodus
 
