@@ -111,17 +111,15 @@ for (const [pageId, navigationId] of [
   ['admin', 'adminNavTab'],
   ['preferences', 'preferencesNavTab']
 ]) {
-  test(`${pageId} navigates through Settings, not the primary responsive selector`, async () => {
+  test(`${pageId} navigates through Settings`, async () => {
     let selectedPage = null;
     let destinationVisible = false;
     let settingsOpened = false;
-    const responsive = {
-      async isVisible() { return true; },
-      async selectOption(value) { selectedPage = value; }
-    };
     const page = {
       locator(selector) {
-        if (selector === '#mobileMainNavigationSelect') return responsive;
+        if (selector === '#applicationNavigationMenu > summary') {
+          return { async isVisible() { return false; } };
+        }
         if (selector === '#applicationSettings') {
           return { async getAttribute(name) {
             assert.equal(name, 'open');

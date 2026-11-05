@@ -63,32 +63,6 @@
                     <li th:if="${portableBackupAvailable}"><a class="dropdown-item" th:href="@{/backup-jobs(lang=${#locale.language})}" th:text="#{backup.export.title}">Create a portable export</a></li>
                 </ul>
             </div>
-            <div class="dropdown">
-                <button id="projectMenuButton" class="btn btn-sm btn-outline-light dropdown-toggle"
-                        type="button" data-bs-toggle="dropdown" aria-expanded="false"
-                        th:text="#{navbar.project.menu}">Project</button>
-                <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="projectMenuButton">
-                    <li>
-                        <button id="projectNewAction" data-taxonomy-feature="portfolio" class="dropdown-item" type="button"
-                                data-analysis-session-action="new-project"
-                                th:text="#{navbar.project.new}">New project</button>
-                    </li>
-                    <li>
-                        <button id="projectAddRequirementAction" class="dropdown-item" type="button"
-                                data-analysis-session-action="add-requirement"
-                                th:text="#{navbar.project.save_requirement}">Save as requirement</button>
-                    </li>
-                    <li>
-                        <a id="projectReformulationAction" data-taxonomy-feature="portfolio" class="dropdown-item"
-                           href="#analysisNextSteps" th:text="#{analysis.guide.reformulate}">Reformulate requirement…</a>
-                    </li>
-                    <li><hr class="dropdown-divider"/></li>
-                    <li>
-                        <a id="projectOpenAction" data-taxonomy-feature="portfolio" class="dropdown-item" th:href="@{/projects}"
-                           href="/projects" th:text="#{navbar.project.open}">Open projects</a>
-                    </li>
-                </ul>
-            </div>
         </div>
         <div class="application-utilities">
             <details id="applicationSettings" class="application-menu">
@@ -345,6 +319,12 @@
                                     th:text="#{analysis.guide.analyze}" hidden>Analyze current wording</button>
                             <a id="analysisReformulationAction" href="#analysisNextSteps" class="btn btn-sm btn-outline-primary"
                                data-taxonomy-feature="portfolio" th:text="#{analysis.guide.reformulate}">Reformulate requirement…</a>
+                            <button id="projectAddRequirementAction" data-taxonomy-feature="portfolio" type="button"
+                                    class="btn btn-sm btn-outline-primary" data-analysis-session-action="add-requirement"
+                                    th:text="#{navbar.project.save_requirement}">Save as requirement</button>
+                            <button id="projectNewAction" data-taxonomy-feature="portfolio" type="button"
+                                    class="btn btn-sm btn-outline-primary" data-analysis-session-action="new-project"
+                                    th:text="#{navbar.project.new}">New project</button>
                             <a id="analysisLensAction" href="#architecture" class="btn btn-sm btn-outline-primary"
                                data-taxonomy-feature="architecture"
                                th:text="#{analysis.guide.lens}">Architecture focus lens</a>

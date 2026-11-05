@@ -21,14 +21,13 @@ class TaxonomyMainNavigationKeyboardContractTest {
         }
         String handler = between(source,
                 "function installMainNavigationKeyboardSupport() {",
-                "// ── Discoverable responsive primary navigation");
+                "function focusCurrentTask() {");
 
         int click = handler.indexOf("tabs[next].click();");
         int ariaSync = handler.indexOf("syncMainNavigation();", click);
-        int responsiveSync = handler.indexOf("syncResponsiveMainNavigation();", click);
         assertThat(click).isGreaterThanOrEqualTo(0);
         assertThat(ariaSync).isGreaterThan(click);
-        assertThat(responsiveSync).isGreaterThan(ariaSync);
+        assertThat(handler).contains("document.addEventListener('taxonomy:page-activated', syncMainNavigation)");
     }
 
     private static String between(String source, String start, String end) {

@@ -155,7 +155,22 @@ export async function csrfJson(page, endpoint, {
   }, { endpoint, method, body });
 }
 
+export async function openSharedNavigation(page) {
+  const toggle = page.locator('#applicationNavigationMenu > summary');
+  if (await toggle.isVisible().catch(() => false)) {
+    const menu = page.locator('#applicationNavigationMenu');
+    if (await menu.getAttribute('open') === null) await toggle.click();
+  }
+}
+
+export async function waitForSharedNavigationToClose(page) {
+  if (await page.locator('#applicationNavigationMenu > summary').isVisible().catch(() => false)) {
+    await page.locator('#applicationNavigationMenu:not([open])').waitFor({ state: 'attached' });
+  }
+}
+
 export async function navigateToPage(page, pageId) {
+  await openSharedNavigation(page);
   const settingsDestination = {
     admin: 'adminNavTab',
     preferences: 'preferencesNavTab'
@@ -168,36 +183,14 @@ export async function navigateToPage(page, pageId) {
     const control = page.locator(`#applicationSettings #${settingsDestination}`);
     await control.waitFor({ state: 'visible', timeout: 20_000 });
     await control.click();
+    await waitForSharedNavigationToClose(page);
     await page.locator(`#tab-${pageId}`).waitFor({ state: 'visible', timeout: 20_000 });
     return;
   }
 
-  const responsive = page.locator('#mobileMainNavigationSelect');
-  if (await responsive.isVisible().catch(() => false)) {
-    const options = responsive.locator('option');
-    // A locale reload reaches DOMContentLoaded before the asynchronous role
-    // context has repopulated administrator-only responsive destinations.
-    try {
-      await responsive.locator(`option[value="${pageId}"]`)
-        .waitFor({ state: 'attached', timeout: 20_000 });
-    } catch (cause) {
-      const values = await options.evaluateAll(elements =>
-        elements.map(option => option.value));
-      throw new Error(
-        `Responsive navigation does not expose ${pageId}: ${values.join(', ')}`,
-        { cause }
-      );
-    }
-    const values = await options.evaluateAll(elements =>
-      elements.map(option => option.value));
-    if (!values.includes(pageId)) {
-      throw new Error(`Responsive navigation does not expose ${pageId}: ${values.join(', ')}`);
-    }
-    await responsive.selectOption(pageId);
-  } else {
-    const control = page.locator(`#mainNavTabs [data-page="${pageId}"]`);
-    await control.click();
-  }
+  const control = page.locator(`#mainNavTabs [data-page="${pageId}"]`);
+  await control.click();
+  await waitForSharedNavigationToClose(page);
   await page.locator(`#tab-${pageId}`).waitFor({ state: 'visible', timeout: 20_000 });
 }
 

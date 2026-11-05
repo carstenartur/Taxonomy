@@ -87,14 +87,18 @@
     .taxonomy-app-primary a[aria-current="page"] { color: HighlightText; background: Highlight; }
 }
 
+/* Keep the compact menu independent of page-specific header styles. */
+.taxonomy-app-chrome .taxonomy-app-menu { display: none; margin: 0; }
+.taxonomy-app-menu-content { display: contents; }
+.taxonomy-app-navigation .taxonomy-app-brand { color: var(--taxonomy-navigation-foreground, #fff); }
 /* One primary section row; index supplies in-page tab behavior, other pages retain real links. */
 .taxonomy-app-primary { align-items: center; flex: 1 1 auto; }
 .taxonomy-app-primary #mainNavTabs { display: flex; flex-wrap: wrap; list-style: none; padding: 0; margin: 0; border: 0; gap: .15rem; }
 .taxonomy-app-primary #mainNavTabs .nav-link { border-radius: .35rem; border: 1px solid transparent; }
+.taxonomy-app-navigation .taxonomy-app-primary #mainNavTabs .nav-link:not(.active):not(.disabled) { color: var(--taxonomy-navigation-foreground, #f8fafc); }
 .taxonomy-app-primary #mainNavTabs .nav-link.active { color: #17243a; background: #fff; }
 .taxonomy-app-local .application-utilities { margin-inline-start: auto; }
 .taxonomy-app-primary .application-work-navigation { min-width: 0; }
-.taxonomy-app-primary .mobile-main-navigation { color: #fff; }
 /* Compact the shared row; analysis also offers language in Settings. */
 @media (min-width: 62rem) and (max-width: 102rem) {
     .taxonomy-app-navigation { padding-inline: .75rem; }
@@ -122,6 +126,7 @@
 @media (min-width: 62rem) and (max-width: 70rem) {
     #applicationNavigation { padding-inline: .5rem; }
     #applicationNavigation .taxonomy-app-mainrow { column-gap: .25rem; }
+    #applicationNavigation:has(.application-shell) .taxonomy-app-local { flex: 1 1 0; }
     #applicationNavigation .application-shell { gap: .25rem; }
     #applicationNavigation .taxonomy-app-primary a { padding-inline: .15rem; font-size: .875rem; }
     #applicationNavigation .application-file-menus,
@@ -134,8 +139,40 @@
     #applicationNavigation .application-menu { position: static; }
     #applicationNavigation .application-menu-content { top: 100%; inset-inline-end: .5rem; }
 }
-@media (max-width: 42rem) {
-    .taxonomy-app-primary { flex-wrap: nowrap; align-items: end; }
-    .taxonomy-app-primary .application-work-navigation { flex: 1 1 auto; }
-    .taxonomy-app-primary > a { flex: 0 0 auto; }
+@media (max-width: 991.98px) {
+    .taxonomy-app-mainrow { flex-wrap: nowrap; }
+    .taxonomy-app-navigation .taxonomy-app-menu { display: block; order: 1; }
+    .taxonomy-app-menu > summary { display: flex; align-items: center; justify-content: center;
+        min-width: 44px; min-height: 44px; padding: .4rem .55rem; border: 1px solid currentColor;
+        border-radius: .35rem; cursor: pointer; list-style: none; }
+    .taxonomy-app-menu > summary::-webkit-details-marker { display: none; }
+    .taxonomy-app-menu-content { display: none; }
+    .taxonomy-app-menu[open] + .taxonomy-app-menu-content { display: block; position: fixed;
+        z-index: 1055; inset-inline: .5rem; top: var(--app-menu-top, 4rem);
+        max-height: calc(100dvh - var(--app-menu-top, 4rem) - .5rem);
+        overflow-y: auto; padding: .5rem; border: 1px solid #b8c7dc; border-radius: .35rem;
+        background: var(--taxonomy-navigation-background, #17243a); box-shadow: 0 .25rem .75rem #0003; }
+    .taxonomy-app-navigation .taxonomy-app-primary { display: block; width: 100%; }
+    .taxonomy-app-primary > a, #applicationNavigation #mainNavTabs .nav-link {
+        display: flex; width: 100%; min-height: 45px; justify-content: flex-start; font-weight: 600; }
+    .taxonomy-app-route-icon { display: none; }
+    #applicationNavigation #mainNavTabs { flex-direction: column; flex-wrap: nowrap; overflow: visible; }
+    .taxonomy-app-navigation .taxonomy-app-local { width: 100%; }
+    .taxonomy-app-local > h1 { margin: .5rem 0 .25rem; font-size: 1rem; }
+    #applicationNavigation .taxonomy-app-local :is(a.application-utility-link,
+        .application-file-menus button, .application-support button,
+        .application-menu > summary, .workbench-export-options > summary),
+    #applicationNavigation .taxonomy-app-local > a { min-width: 44px; min-height: 44px; }
+    .taxonomy-app-local > a { display: inline-flex; align-items: center; }
+    #applicationNavigation .application-shell { flex-wrap: wrap; }
+    #applicationNavigation .application-file-menus .dropdown-menu { position: static !important; transform: none !important; }
+    #applicationNavigation .application-menu-content { position: fixed; top: 3.5rem; inset-inline: .5rem; width: auto; }
+    .taxonomy-app-utilities { order: 2; }
+    .taxonomy-app-navigation .taxonomy-app-utilities .context-help-label {
+        position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+    }
+}
+@media (forced-colors: active) {
+    .taxonomy-app-navigation .taxonomy-app-brand { color: LinkText; }
+    .taxonomy-app-navigation .taxonomy-app-primary #mainNavTabs .nav-link:not(.active):not(.disabled) { color: LinkText; }
 }

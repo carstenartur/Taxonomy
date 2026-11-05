@@ -342,13 +342,15 @@ The right panel (narrower column) contains all interactive tools:
 
 ### Navigation Bar
 
+On narrow screens, open **Menu** to reach the same work areas and actions. Select an area to close the menu, or press Escape to close it without switching. Language and contextual help remain in the header.
+
 The navigation bar at the top of the page contains:
 
 - **Application title / logo**
 - **Settings (⚙)** — language and theme controls, administrator tools, and the analysis-status launcher.
 - **Status** — operational status details.
 - **File menu** — start a new analysis, cancel a running analysis, or save the current working draft immediately
-- **Project menu** — create a project, save the current text as a requirement, or open the project overview
+- **Projects** opens the project overview. On the analysis page, **Next steps** offers creating a project and saving the current text as a requirement.
 - **Help** and **About** — adjacent at the right side of the navigation bar.
 
 ### Dark Mode
@@ -2255,7 +2257,7 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 <a id="guide-section-27"></a>
 ## Saved reformulation offers and decision questions
 
-The analysis page shows **Next steps**, **Reformulate requirement…** and **Architecture focus lens**. The Project menu also exposes reformulation, and the Architecture View has a lens link. Partial results offer **Clarify open assessments**; edited text offers **Analyze current wording**. A finished run remains subject to evidence review and explicit acceptance.
+The analysis page shows **Next steps**, **Reformulate requirement…** and **Architecture focus lens**. The Architecture View also has a lens link. Partial results offer **Clarify open assessments**; edited text offers **Analyze current wording**. A finished run remains subject to evidence review and explicit acceptance.
 
 Reformulation opens the saved project requirement and preserves an explicitly selected snapshot. For an ad hoc analysis, the action first opens **Add as requirement**; select or create a matching snapshot in that requirement afterward. Saving the text does not attach the ad hoc analysis to the new requirement. Unsaved analysis-page edits are not copied into an existing saved requirement. The lens opens the editor in the selected workspace; enable the existing investigation workflow there. Navigation saves the current analysis draft and stops if saving fails.
 

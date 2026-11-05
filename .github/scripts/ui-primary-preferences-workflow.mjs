@@ -339,7 +339,6 @@ async function assertPendingReloadPreservesEdits(page, assert) {
     };
     await page.route(projectPattern, failProjects);
     try {
-      await page.locator('#projectMenuButton').click();
       await page.locator('#projectAddRequirementAction').click();
       await page.locator('[data-analysis-session-feedback].alert-danger').waitFor({ state: 'visible' });
       assert(await keepLocal.isVisible(),

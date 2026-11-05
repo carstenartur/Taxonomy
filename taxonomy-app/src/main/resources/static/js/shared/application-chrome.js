@@ -237,6 +237,60 @@
         document.dispatchEvent(new CustomEvent('taxonomy:entity-context-changed', {detail: getContext()}));
         return getContext();
     }
+    function installResponsiveMenu() {
+        var menu = node('applicationNavigationMenu');
+        if (!menu || !window.matchMedia) return;
+        var content = node('applicationNavigationMenuContent');
+        var compact = window.matchMedia('(max-width: 991.98px)');
+        var summary = menu.querySelector('summary');
+        function positionMenu() {
+            if (!compact.matches || !content) return;
+            var bottom = node('applicationNavigation').getBoundingClientRect().bottom;
+            var top = Math.max(0, Math.min(window.innerHeight - 44, bottom));
+            content.style.setProperty('--app-menu-top', top + 'px');
+        }
+        function updateMode() {
+            var focused = document.activeElement;
+            if (compact.matches && content?.contains(focused)) summary.focus();
+            menu.open = !compact.matches;
+            if (!compact.matches && focused === summary && content) {
+                var destination = content.querySelector('[role="tab"][aria-selected="true"], [aria-current="page"]')
+                    || content.querySelector('[data-app-route], button, a');
+                destination?.focus();
+            }
+            positionMenu();
+        }
+        updateMode();
+        if (compact.addEventListener) compact.addEventListener('change', updateMode);
+        else if (compact.addListener) compact.addListener(updateMode);
+        window.addEventListener('resize', positionMenu);
+        document.addEventListener('scroll', positionMenu, true);
+        document.addEventListener('focusin', function (event) {
+            if (compact.matches && menu.open && !menu.contains(event.target) && !content.contains(event.target)) {
+                menu.open = false;
+            }
+        });
+        document.addEventListener('click', function (event) {
+            if (!compact.matches || !menu.open) return;
+            var route = event.target.closest?.('[data-app-route], [data-page]');
+            if (route && content.contains(route) && event.isTrusted && event.button === 0
+                    && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+                window.setTimeout(function () {
+                    menu.open = false;
+                    if (content.contains(document.activeElement)) summary.focus();
+                }, 0);
+            } else if (!menu.contains(event.target) && !content.contains(event.target)) menu.open = false;
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.defaultPrevented || !compact.matches || !menu.open || event.key !== 'Escape'
+                    || (!menu.contains(event.target) && !content.contains(event.target))) return;
+            var nearest = event.target.closest?.('details');
+            if (nearest && nearest !== menu && nearest.open) {
+                event.preventDefault(); nearest.open = false; nearest.querySelector('summary')?.focus(); return;
+            }
+            event.preventDefault(); menu.open = false; summary.focus();
+        });
+    }
     document.addEventListener('click', function (event) {
         var link = event.target.closest?.('[data-app-locale]');
         refreshNavigation();
@@ -260,6 +314,7 @@
     window.TaxonomyAppChrome = Object.freeze({updateContext: updateContext, getContext: getContext, activateContext:activateContext,
         refreshNavigation: refreshNavigation, renderEntity: renderEntity, renderDetails: renderDetails,
         setStatus: setStatus, statusLabel: statusLabel});
+    installResponsiveMenu();
     initializeContextDisclosure();
     refreshNavigation();
 }());

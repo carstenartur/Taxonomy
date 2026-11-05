@@ -54,7 +54,7 @@
         setText(el('analysisNextStepText'), t(key));
         var saved = requirementUrl();
         setText(el('analysisReformulationHint'), t(saved ? 'saved' : 'unsaved'));
-        ['analysisReformulationAction', 'projectReformulationAction'].forEach(function (id) {
+        ['analysisReformulationAction'].forEach(function (id) {
             var control = el(id); if (!control) return;
             control.href = saved || '#analysisNextSteps';
             control.setAttribute('aria-disabled', String(busy || c.running || c.stale || c.unpersisted || !c.ready || !c.text.trim()));
@@ -89,7 +89,7 @@
             el('analysisGuideError').hidden = false;
         } finally { busy = false; render(); }
     }
-    ['analysisReformulationAction', 'projectReformulationAction'].forEach(function (id) {
+    ['analysisReformulationAction'].forEach(function (id) {
         el(id)?.addEventListener('click', function (event) {
             render();
             if (this.getAttribute('aria-disabled') === 'true') { event.preventDefault(); return; }

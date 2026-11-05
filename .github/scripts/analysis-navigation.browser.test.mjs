@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {chromium} from 'playwright';
+import {navigateToPage,openSharedNavigation} from './ui-role-fixtures.mjs';
 const resources=process.env.TAXONOMY_TEST_RESOURCE_ROOT||path.resolve('taxonomy-app/src/main/resources');
 let browser,template,chromeTemplate,helpTemplate,bootstrapCss;
 before(async()=>{
@@ -46,8 +47,10 @@ async function fixture(locale='de',width=1366,entry=null){
         }
     }
     const pages=['analyze','architecture','graph','versions','dsl-editor','help','admin','preferences'];
+    const nextSteps=template.match(/<section id="analysisNextSteps"[\s\S]*?<\/section>/)?.[0];
+    assert.ok(nextSteps,'Use the actual next-steps controls from the analysis page');
     await page.setContent(`<html lang="${locale}"><head><link data-taxonomy-ergonomics></head><body>${headerMarkup(locale)}
-        <main id="mainContent" class="container-fluid px-3"><div class="row"><div id="leftPanel"></div><div id="rightPanel">${pages.map(p=>`<section id="tab-${p}" class="${p==='analyze'?'':'d-none'}"><h1>${p}</h1>${p==='analyze'?'<div class="card"><div class="card-body"><textarea id="businessText"></textarea><button id="analyzeBtn">Analyze</button><div id="statusArea"></div></div></div>':''}</section>`).join('')}</div></div></main></body></html>`);
+        <main id="mainContent" class="container-fluid px-3"><div class="row"><div id="leftPanel"></div><div id="rightPanel">${pages.map(p=>`<section id="tab-${p}" class="${p==='analyze'?'':'d-none'}"><h1>${p}</h1>${p==='analyze'?'<div class="card"><div class="card-body"><textarea id="businessText"></textarea><button id="analyzeBtn">Analyze</button><div id="statusArea"></div></div></div>'+nextSteps:''}</section>`).join('')}</div></div></main></body></html>`);
     await page.evaluate(dict=>{
         const store=new Map([['taxonomy_onboarded','true']]);
         Object.defineProperty(window,'localStorage',{value:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)}});
@@ -67,6 +70,156 @@ async function fixture(locale='de',width=1366,entry=null){
     assert.ok(nav);await page.addScriptTag({content:nav[1]});
     return page;
 }
+for(const locale of ['de','en'])for(const width of [320,390,700,900])test(`${locale}: a compact ${width}px menu keeps every primary and local action reachable`,async()=>{
+    const page=await fixture(locale,width);try{
+        const menu=page.locator('#applicationNavigationMenu'), toggle=page.locator('#applicationNavigationMenu > summary');
+        assert.equal(await menu.getAttribute('open'),null);
+        const header=await page.locator('#applicationNavigation').boundingBox(), button=await toggle.boundingBox();
+        assert.ok(header&&header.height<=64,JSON.stringify(header));
+        assert.ok(button&&button.width>=44&&button.height>=44,JSON.stringify(button));
+        assert.equal(await page.locator('.taxonomy-app-primary:visible').count(),0);
+        await toggle.click();
+        assert.notEqual(await menu.getAttribute('open'),null);
+        for(const route of ['projects','analysis','architecture','graph','versions','dsl-editor']){
+            const link=page.locator(`[data-app-route="${route}"]`),box=await link.boundingBox();
+            assert.ok(box&&box.width>=44&&box.height>=44,`${route}: ${JSON.stringify(box)}`);
+        }
+        assert.equal(await page.locator('#fileMenuButton').isVisible(),true);
+        assert.equal(await page.locator('#applicationSettings > summary').isVisible(),true);
+        for(const selector of ['#fileMenuButton','#applicationProjectsLink','#applicationSettings > summary','#main-tab-help','#aboutBtn']){
+            const box=await page.locator(selector).boundingBox();
+            assert.ok(box&&box.height>=44&&box.width>=44,`${selector} must remain a 44px touch target: ${JSON.stringify(box)}`);
+        }
+        await toggle.focus();await page.keyboard.press('Escape');
+        assert.equal(await menu.getAttribute('open'),null);
+        assert.equal(await toggle.evaluate(element=>document.activeElement===element),true);
+        assert.deepEqual(page.uiErrors,[]);
+    }finally{await finish(page);}
+});
+test('mobile menu exposes its label, expanded state, and controlled region to assistive technology',async()=>{
+    const page=await fixture('de',390);try{
+        const session=await page.context().newCDPSession(page);
+        const documentNode=await session.send('DOM.getDocument');
+        const {nodeId}=await session.send('DOM.querySelector',{
+            nodeId:documentNode.root.nodeId,selector:'#applicationNavigationMenu > summary'});
+        async function accessibleState(){
+            const {nodes}=await session.send('Accessibility.getPartialAXTree',{nodeId,fetchRelatives:false});
+            const entry=nodes[0],properties=Object.fromEntries(entry.properties.map(property=>[property.name,property.value.value]));
+            return {ignored:entry.ignored,name:entry.name.value,...properties};
+        }
+        const closed=await accessibleState();
+        assert.equal(closed.ignored,false);assert.equal(closed.name,'Menü');
+        assert.equal(closed.expanded,false);
+        assert.equal(await page.locator('#applicationNavigationMenu > summary').getAttribute('aria-controls'),'applicationNavigationMenuContent');
+        await page.locator('#applicationNavigationMenu > summary').click();
+        const opened=await accessibleState();
+        assert.equal(opened.expanded,true);assert.equal(opened.controls,'applicationNavigationMenuContent');
+        await session.detach();
+    }finally{await finish(page);}
+});
+test('mobile navigation uses the configured foreground and background together',async()=>{
+    const page=await fixture('de',390);try{
+        await page.evaluate(()=>{
+            document.documentElement.style.setProperty('--taxonomy-navigation-foreground','#19304a');
+            document.documentElement.style.setProperty('--taxonomy-navigation-background','#f4f7fb');
+        });
+        await page.locator('#applicationNavigationMenu > summary').click();
+        assert.equal(await page.locator('#applicationNavigationMenuContent').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(244, 247, 251)');
+        for(const selector of ['.taxonomy-app-brand','#mainNavTabs [data-page="graph"]']){
+            assert.equal(await page.locator(selector).evaluate(e=>getComputedStyle(e).color),'rgb(25, 48, 74)');
+        }
+    }finally{await finish(page);}
+});
+test('mobile primary navigation closes after selection while arrow navigation retains focus',async()=>{
+    const page=await fixture('de',390);try{
+        const menu=page.locator('#applicationNavigationMenu'),toggle=page.locator('#applicationNavigationMenu > summary');
+        await toggle.click();
+        const analysis=page.locator('#mainNavTabs [data-page="analyze"]');
+        assert.equal(await page.locator('#mainNavTabs').getAttribute('aria-orientation'),'vertical');
+        await analysis.focus();await page.keyboard.press('ArrowDown');
+        assert.notEqual(await menu.getAttribute('open'),null);
+        assert.equal(await page.locator('#mainNavTabs [data-page="architecture"]').evaluate(e=>e===document.activeElement),true);
+        await page.keyboard.press('ArrowUp');
+        assert.equal(await analysis.evaluate(e=>e===document.activeElement),true);
+        await page.locator('#mainNavTabs [data-page="graph"]').click();
+        assert.equal(await page.locator('#tab-graph').isVisible(),true);
+        await page.waitForFunction(()=>!document.getElementById('applicationNavigationMenu').open);
+        assert.equal(await menu.getAttribute('open'),null);
+    }finally{await finish(page);}
+});
+test('mobile Settings and the outer menu close in keyboard order',async()=>{
+    const page=await fixture('de',390);try{
+        const menu=page.locator('#applicationNavigationMenu'),toggle=page.locator('#applicationNavigationMenu > summary');
+        const settings=page.locator('#applicationSettings'),settingsToggle=page.locator('#applicationSettings > summary');
+        await toggle.click();await settingsToggle.click();await settingsToggle.focus();
+        await page.keyboard.press('Escape');
+        assert.equal(await settings.getAttribute('open'),null);
+        assert.notEqual(await menu.getAttribute('open'),null);
+        assert.equal(await settingsToggle.evaluate(element=>document.activeElement===element),true);
+        await page.keyboard.press('Escape');
+        assert.equal(await menu.getAttribute('open'),null);
+        assert.equal(await toggle.evaluate(element=>document.activeElement===element),true);
+    }finally{await finish(page);}
+});
+test('the operational status shortcut opens its mobile menu and focuses the status control',async()=>{
+    const page=await fixture('de',390);try{
+        await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-onboarding.js')});
+        await page.locator('#operationalContextDetails > summary').waitFor({state:'attached'});
+        await page.keyboard.press('Alt+Shift+O');
+        const menu=page.locator('#applicationNavigationMenu'),status=page.locator('#operationalContextDetails');
+        assert.notEqual(await menu.getAttribute('open'),null);
+        assert.notEqual(await status.getAttribute('open'),null);
+        assert.equal(await status.locator('summary').evaluate(element=>document.activeElement===element),true);
+        await page.keyboard.press('Alt+Shift+O');
+        assert.equal(await status.getAttribute('open'),null);
+    }finally{await finish(page);}
+});
+test('resizing retains a single navigation and keeps every destination reachable',async()=>{
+    const page=await fixture('de',1100);try{
+        const menu=page.locator('#applicationNavigationMenu'),toggle=page.locator('#applicationNavigationMenu > summary');
+        const tabs=page.locator('#mainNavTabs'),analysis=tabs.locator('[data-page="analyze"]');
+        assert.equal(await tabs.isVisible(),true);
+        assert.equal(await tabs.getAttribute('aria-orientation'),'horizontal');
+        await analysis.focus();
+        await page.setViewportSize({width:390,height:768});
+        await page.waitForFunction(()=>!document.getElementById('applicationNavigationMenu').open);
+        assert.equal(await tabs.isVisible(),false);
+        assert.equal(await toggle.evaluate(element=>document.activeElement===element),true);
+        assert.equal(await tabs.getAttribute('aria-orientation'),'vertical');
+        await toggle.click();assert.equal(await tabs.isVisible(),true);
+        await toggle.focus();
+        await page.setViewportSize({width:1100,height:768});
+        await page.waitForFunction(()=>document.getElementById('applicationNavigationMenu').open);
+        assert.equal(await toggle.isVisible(),false);
+        assert.equal(await tabs.isVisible(),true);
+        assert.equal(await tabs.getAttribute('aria-orientation'),'horizontal');
+        assert.equal(await analysis.evaluate(element=>document.activeElement===element),true);
+    }finally{await finish(page);}
+});
+test('leaving the compact menu closes it without taking focus back',async()=>{
+    const page=await fixture('de',390);try{
+        const menu=page.locator('#applicationNavigationMenu');
+        await page.locator('#applicationNavigationMenu > summary').click();
+        await page.locator('#fileMenuButton').focus();
+        const language=page.locator('.taxonomy-app-languages [hreflang="en"]');
+        await language.focus();
+        assert.equal(await menu.getAttribute('open'),null);
+        assert.equal(await language.evaluate(element=>document.activeElement===element),true);
+    }finally{await finish(page);}
+});
+test('mobile navigation remains operable without JavaScript',async()=>{
+    const page=await browser.newPage({viewport:{width:390,height:768},javaScriptEnabled:false});try{
+        let cssText=bootstrapCss;
+        for(const css of ['taxonomy.css','taxonomy-ergonomics.css','context-help.css','application-chrome.css'])
+            cssText+='\n'+await readFile(path.join(resources,'static/css',css),'utf8');
+        await page.setContent('<!doctype html><html><head><style>'+cssText+'</style></head><body>'+headerMarkup('de')+'</body></html>');
+        const menu=page.locator('#applicationNavigationMenu'),toggle=page.locator('#applicationNavigationMenu > summary');
+        assert.notEqual(await menu.getAttribute('open'),null);
+        assert.equal(await page.locator('#mainNavTabs').isVisible(),true);
+        await toggle.click();assert.equal(await page.locator('#mainNavTabs').isVisible(),false);
+        await toggle.click();assert.equal(await page.locator('#mainNavTabs').isVisible(),true);
+    }finally{await page.close();}
+});
 async function firstVisitWelcome(page,databasePrompt=false){
     await page.evaluate(prompt=>{
         localStorage.removeItem('taxonomy_onboarded');
@@ -120,6 +273,18 @@ for(const entry of ['/taxonomy/','/taxonomy/?architectureSource=snapshot#analyze
     }finally{await finish(page);}
 });
 for(const locale of ['de','en']){
+    test(`${locale}: projects have one navigation entry and analysis actions stay with the requirement`,async()=>{
+        const page=await fixture(locale);try{
+            assert.equal(await page.locator('#applicationNavigation [data-app-route="projects"]').count(),1);
+            assert.equal(await page.locator('#projectMenuButton').count(),0,'Do not add a second project menu');
+            for(const id of ['projectNewAction','projectAddRequirementAction']){
+                const action=page.locator(`#analysisNextSteps #${id}`);
+                assert.equal(await action.isVisible(),true,`${id} remains directly usable with the requirement`);
+                assert.equal(await action.getAttribute('type'),'button');
+            }
+            assert.equal(await page.locator('#analysisNextSteps #analysisReformulationAction').isVisible(),true);
+        }finally{await finish(page);}
+    });
     test(`${locale}: Architecture has one destination and switching sections retains the analysis draft`,async()=>{
         const page=await fixture(locale);try{
             await page.locator('#businessText').fill('Retained requirement draft');
@@ -135,7 +300,7 @@ for(const locale of ['de','en']){
         const page=await fixture(locale,width);try{
             await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-onboarding.js')});
             const selectors=['.taxonomy-app-brand','#mainNavTabs [data-page="architecture"]',
-                '#projectMenuButton','#applicationSettings > summary','#operationalContextDetails > summary','#main-tab-help','#aboutBtn',
+                '#applicationProjectsLink','#applicationSettings > summary','#operationalContextDetails > summary','#main-tab-help','#aboutBtn',
                 '#applicationNavigation .taxonomy-app-utilities .context-help'];
             const boxes=await Promise.all(selectors.map(selector=>page.locator(selector).boundingBox()));
             assert.ok(boxes.every(Boolean),'All existing navigation and application actions stay available');
@@ -152,7 +317,7 @@ for(const locale of ['de','en']){
             await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-onboarding.js')});
             assert.equal(await page.locator('#operationalStatusMenuSlot #operationalContextDetails').count(),1);
             const selectors=['.taxonomy-app-brand','#mainNavTabs [data-page="architecture"]',
-                '#projectMenuButton','#applicationSettings > summary','#operationalContextDetails > summary','#main-tab-help','#aboutBtn',
+                '#applicationProjectsLink','#applicationSettings > summary','#operationalContextDetails > summary','#main-tab-help','#aboutBtn',
                 '#applicationNavigation .taxonomy-app-utilities .context-help'];
             const boxes=await Promise.all(selectors.map(selector=>page.locator(selector).boundingBox()));
             assert.ok(boxes.every(Boolean),'Navigation and context help must remain visible');
@@ -195,6 +360,7 @@ for(const locale of ['de','en']){
     });
     for(const width of [700,900,1100,1280])test(`${locale}: ${width}px settings panel stays inside the viewport`,async()=>{
         const page=await fixture(locale,width);try{
+            await openSharedNavigation(page);
             await page.locator('#applicationSettings > summary').click();
             const panel=page.locator('#applicationSettings .application-menu-content');
             assert.equal(await panel.isVisible(),true);
@@ -229,12 +395,15 @@ for(const locale of ['de','en']){
     for(const width of [390,320])test(`${locale}: ${width}px header retains adjacent support and all work destinations`,async()=>{
         const page=await fixture(locale,width);try{
             const help=page.locator('[data-page="help"]').first(),about=page.locator('#aboutBtn');
+            const toggle=page.locator('#applicationNavigationMenu > summary');
+            await toggle.click();
             assert.equal(await help.isVisible(),true);assert.equal(await about.isVisible(),true);
             const h=await help.boundingBox(),a=await about.boundingBox();assert.ok(Math.abs(h.y-a.y)<=2);
             const sizes=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));
             assert.ok(sizes.scroll<=sizes.width,JSON.stringify(sizes));
             assert.equal(await page.locator('#mobileMainNavigationSelect:visible').count(),0,'One visible primary navigation');
             for(const destination of ['analyze','architecture','graph','versions','dsl-editor']){
+                if(await page.locator('#applicationNavigationMenu').getAttribute('open')===null) await toggle.click();
                 const link=page.locator('#mainNavTabs [data-page="'+destination+'"]');
                 const box=await link.boundingBox();
                 assert.ok(box&&box.height>=44,`Primary destination retains its 44px touch target: ${destination} ${JSON.stringify(box)}`);
@@ -256,7 +425,9 @@ for(const locale of ['de','en']){
                 });
                 await link.click();
                 assert.equal(await page.locator('#tab-'+destination).isVisible(),true);
+                await page.waitForFunction(()=>!document.getElementById('applicationNavigationMenu').open);
             }
+            await toggle.click();
             await page.locator('#mainNavTabs [data-page="analyze"]').focus();await page.keyboard.press('End');
             assert.equal(await page.locator('#tab-dsl-editor').isVisible(),true);
             await help.click();assert.equal(await page.locator('#tab-help').isVisible(),true);
@@ -267,6 +438,17 @@ async function roles(page){
     await page.addScriptTag({path:path.join(resources,'static/js/security/taxonomy-role-surface.js')});
     await page.evaluate(()=>TaxonomyRoleSurface.ready);await page.evaluate(()=>Promise.resolve());
 }
+test('mobile administrator can switch Settings and primary destinations without an obscuring menu',async()=>{
+    const page=await fixture('de',390);try{
+        await roles(page);
+        for(const destination of ['admin','preferences','analyze','architecture']){
+            await navigateToPage(page,destination);
+            assert.equal(await page.locator('#tab-'+destination).isVisible(),true);
+            assert.equal(await page.locator('#applicationNavigationMenu').getAttribute('open'),null);
+        }
+        assert.deepEqual(page.uiErrors,[]);
+    }finally{await finish(page);}
+});
 test('administrator sees a usable account-management entry even when local creation is disabled',async()=>{
     const page=await fixture();try{
         await roles(page);

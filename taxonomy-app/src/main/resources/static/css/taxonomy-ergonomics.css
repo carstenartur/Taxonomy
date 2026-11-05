@@ -673,42 +673,6 @@ dialog.onboarding-overlay .onboarding-card {
     }
 }
 
-/* The common links remain the primary navigation at every viewport width.
-   Older utilities may still create this selector; it must not duplicate them. */
-.mobile-main-navigation {
-    display: none;
-}
-
-@media (max-width: 991.98px) {
-    .mobile-main-navigation {
-        display: none;
-        grid-template-columns: minmax(0, 1fr) auto;
-        align-items: end;
-        gap: 0.5rem;
-        padding: 0.65rem 0;
-        color: #fff;
-    }
-    .mobile-main-navigation-label {
-        grid-column: 1 / -1;
-        margin: 0;
-        font-size: 0.875rem;
-        font-weight: 600;
-    }
-    .mobile-main-navigation-select,
-    .mobile-current-task-button {
-        min-height: 44px;
-    }
-    .mobile-main-navigation-select {
-        min-width: 0;
-    }
-    .mobile-current-task-button {
-        white-space: nowrap;
-    }
-}
-
-/* Keep the section selector and task jump in one row on phones as well.
-   Both retain their 44px target while yielding height to the active task. */
-
 /* A view switch must never move the view selector. Tools have an independent row. */
 .taxonomy-view-header { display: flex; flex-direction: column; align-items: stretch; gap: .5rem; }
 .taxonomy-view-controls { min-width: 0; }
@@ -760,7 +724,6 @@ button.summary-layer-element[aria-pressed="true"] { outline: 2px solid currentCo
 #applicationNavigation .has-actionable-status > summary::after { content: '!'; font-weight: bold; }
 #applicationNavigation summary:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 #applicationNavigation .mobile-main-navigation { padding: 0; }
-#applicationNavigation .mobile-main-navigation-label, #applicationNavigation #mobileCurrentTaskBtn { display: none; }
 #applicationNavigation .mobile-main-navigation { grid-template-columns: minmax(0, 1fr); }
 #applicationNavigation .mobile-main-navigation-select { min-height: 44px; font-size: .875rem; padding-block: .25rem; }
 @media (max-width: 575.98px) {

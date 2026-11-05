@@ -19,6 +19,8 @@ class TaxonomyResponsiveNavigationContractTest {
         String utils = resource("/static/js/shared/taxonomy-utils.js");
         String css = resource("/static/css/taxonomy-ergonomics.css");
         String chrome = resource("/static/css/application-chrome.css");
+        String chromeTemplate = resource("/templates/fragments/application-chrome.html");
+        String chromeScript = resource("/static/js/shared/application-chrome.js");
         String template = resource("/templates/index.html");
 
         assertThat(template)
@@ -26,26 +28,13 @@ class TaxonomyResponsiveNavigationContractTest {
                 .contains("detail: { page: pageName }");
 
         assertThat(utils)
-                .contains("function installResponsiveMainNavigation()")
-                .contains("mobileMainNavigationSelect")
-                .contains("mobileCurrentTaskBtn")
-                .contains("function authorizedMainNavigationLinks()")
-                .contains("window.navigateToPage(page)")
                 .contains("function focusCurrentTask()")
                 .contains("target.scrollIntoView({ block: 'center', inline: 'nearest' })")
-                .contains("new MutationObserver(syncResponsiveMainNavigation)");
-
-        String navigation = between(css,
-                "/* The common links remain the primary navigation at every viewport width.",
-                "/* A view switch must never move the view selector.");
-        assertThat(ruleBody(navigation, "\\.mobile-main-navigation"))
-                .as("the compact navigation does not duplicate desktop navigation")
-                .containsPattern("display:\\s*none\\s*;");
-        String narrow = ruleBody(navigation, "@media\\s*\\(max-width:\\s*991\\.98px\\)");
-        assertThat(ruleBody(narrow, "\\.mobile-main-navigation"))
-                .as("the legacy selector must not duplicate the shared primary links on narrow screens")
-                .containsPattern("display:\\s*none\\s*;");
-        assertThat(narrow).doesNotContainPattern("#mainNavTabs\\s*\\{[^}]*display:\\s*none");
+                .contains("document.addEventListener('taxonomy:page-activated', syncMainNavigation)")
+                .doesNotContain("mobileMainNavigationSelect", "syncResponsiveMainNavigation");
+        assertThat(chromeTemplate).contains("id=\"applicationNavigationMenu\"",
+                "aria-controls=\"applicationNavigationMenuContent\"");
+        assertThat(chromeScript).contains("function installResponsiveMenu()", "summary.focus()");
         assertThat(ruleBody(chrome, "\\.taxonomy-app-primary #mainNavTabs"))
                 .containsPattern("display:\\s*flex\\s*;")
                 .containsPattern("flex-wrap:\\s*wrap\\s*;");
@@ -53,12 +42,11 @@ class TaxonomyResponsiveNavigationContractTest {
                 .as("every actual primary link retains its keyboard and touch target")
                 .containsPattern("min-width:\\s*44px\\s*;")
                 .containsPattern("min-height:\\s*44px\\s*;");
-        String shell = css.substring(css.indexOf("/* One compact application shell;"));
-        String compact = ruleBody(shell, "@media\\s*\\(max-width:\\s*575\\.98px\\)");
-        assertThat(ruleBody(compact, "#applicationNavigation #mainNavTabs"))
-                .as("the compact primary row preserves the task budget and reveals overflow through native scrolling")
-                .containsPattern("flex-wrap:\\s*nowrap\\s*;")
-                .containsPattern("overflow-x:\\s*auto\\s*;");
+        String compact = chrome.substring(chrome.lastIndexOf("@media (max-width: 991.98px)"));
+        assertThat(ruleBody(compact, "\\.taxonomy-app-menu\\[open\\] \\+ \\.taxonomy-app-menu-content"))
+                .as("the compact menu reveals the same links and actions")
+                .containsPattern("display:\\s*block\\s*;")
+                .containsPattern("overflow-y:\\s*auto\\s*;");
 
         String zoom = ruleBody(css, "@media\\s*\\(max-width:\\s*640px\\)");
         assertThat(ruleBody(zoom, "\\.navbar-brand"))
@@ -88,8 +76,8 @@ class TaxonomyResponsiveNavigationContractTest {
                 "  await navigateToPage(page, 'analyze');");
 
         assertThat(mainNavigationHelper)
-                .contains("const responsive = page.locator('#mobileMainNavigationSelect')")
-                .contains("await responsive.selectOption(pageId)")
+                .contains("await openSharedNavigation(page)")
+                .contains("await waitForSharedNavigationToClose(page)")
                 .doesNotContain("scrollIntoViewIfNeeded");
 
         assertThat(roleNavigation)
@@ -111,7 +99,7 @@ class TaxonomyResponsiveNavigationContractTest {
                 .contains("Shared primary navigation is not discoverable before any automatic scroll")
                 .contains("shared navigation retains every destination and keyboard access after task interactions")
                 .contains("['projects', 'analysis', 'architecture', 'graph', 'versions', 'dsl-editor']")
-                .contains("await page.keyboard.press('ArrowRight')")
+                .contains("await page.keyboard.press('ArrowDown')")
                 .contains("bounds.height >= 44")
                 .contains("document.activeElement === element")
                 .doesNotContain("single-row scrollable main navigation");
@@ -121,7 +109,7 @@ class TaxonomyResponsiveNavigationContractTest {
                 .contains("admin: 'adminNavTab'")
                 .contains("preferences: 'preferencesNavTab'")
                 .contains("const control = page.locator(`#applicationSettings #${settingsDestination}`)")
-                .contains("Responsive navigation does not expose");
+                .contains("#applicationNavigationMenu > summary");
     }
 
     @Test

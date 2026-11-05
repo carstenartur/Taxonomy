@@ -133,7 +133,7 @@ class SharedApplicationChromeBrowserIT {
         var geometry = (Map<?, ?>) page.driver().executeScript("""
                 const nav=document.getElementById('applicationNavigation');
                 const selectors=['.taxonomy-app-brand','#mainNavTabs [data-page="architecture"]',
-                    '#projectMenuButton','#applicationSettings > summary','#operationalContextDetails > summary',
+                    '#applicationProjectsLink','#applicationSettings > summary','#operationalContextDetails > summary',
                     '#main-tab-help','#aboutBtn','.taxonomy-app-utilities .context-help'];
                 const boxes=selectors.map(selector=>{
                     const r=nav.querySelector(selector).getBoundingClientRect();
@@ -146,6 +146,16 @@ class SharedApplicationChromeBrowserIT {
                 """);
         assertThat(geometry.get("valid")).as("All navigation and status actions remain in one row: %s", geometry).isEqualTo(true);
         assertThat(page.driver().findElement(By.cssSelector("#applicationNavigation .context-help")).getAccessibleName()).isNotBlank();
+    }
+
+    @ParameterizedTest @ValueSource(ints = {700, 900})
+    void tabletNavigationUsesTheSameCompactMenu(int width) {
+        open(new View("index", "/", "analysis", "fileMenuButton"), "de", width);
+        var menu = page.driver().findElement(By.id("applicationNavigationMenu"));
+        assertThat(menu.getDomProperty("open")).isEqualTo("false");
+        assertThat(page.driver().findElement(By.id("applicationNavigation")).getRect().getHeight()).isLessThanOrEqualTo(64);
+        menu.findElement(By.tagName("summary")).click();
+        assertThat(page.driver().findElement(By.cssSelector("#mainNavTabs [data-page='architecture']")).isDisplayed()).isTrue();
     }
 
     private static void open(View view, String locale, int width, List<String> features) {
@@ -224,6 +234,15 @@ class SharedApplicationChromeBrowserIT {
         var navigation = page.driver().findElements(By.id("applicationNavigation"));
         assertThat(navigation).as("Every existing view has the same application navigation").hasSize(1);
         assertThat(navigation.getFirst().getAccessibleName()).isNotBlank();
+        if (width == 390) {
+            var menu = page.driver().findElement(By.id("applicationNavigationMenu"));
+            var launcher = menu.findElement(By.tagName("summary"));
+            assertThat(menu.getDomProperty("open")).isEqualTo("false");
+            assertThat(navigation.getFirst().getRect().getHeight()).isLessThanOrEqualTo(64);
+            assertThat(launcher.getAccessibleName()).isNotBlank();
+            launcher.click();
+            assertThat(menu.getDomProperty("open")).isEqualTo("true");
+        }
         var links = page.driver().findElements(By.cssSelector(".taxonomy-app-primary [data-app-route]"));
         assertThat(links).extracting(link -> link.getDomAttribute("data-app-route"))
                 .containsExactly("projects", "analysis", "architecture", "graph", "versions", "dsl-editor");
@@ -247,7 +266,7 @@ class SharedApplicationChromeBrowserIT {
                 (async()=>{
                     const nav=document.getElementById('applicationNavigation');
                     for (const link of nav.querySelectorAll('.taxonomy-app-primary a')) {
-                        // The shared mobile row may scroll, but browser focus must reveal every destination.
+                        // Keyboard focus must reveal every destination even inside a scrolling header.
                         link.focus();
                         const deadline=performance.now()+1500;
                         let bounds;
@@ -255,10 +274,13 @@ class SharedApplicationChromeBrowserIT {
                             await new Promise(resolve=>requestAnimationFrame(resolve));
                             bounds=link.getBoundingClientRect();
                         } while ((bounds.left<0 || bounds.right>innerWidth+1) && performance.now()<deadline);
+                        const hit=document.elementFromPoint(bounds.left+bounds.width/2,bounds.top+bounds.height/2);
                         if (document.activeElement!==link || bounds.width<44 || bounds.height<44
-                                || bounds.left<0 || bounds.right>innerWidth+1) return {valid:false,
+                                || bounds.left<0 || bounds.right>innerWidth+1 || bounds.top<0 || bounds.bottom>innerHeight
+                                || !(hit===link || link.contains(hit))) return {valid:false,
                             route:link.dataset.appRoute,focused:document.activeElement===link,
-                            left:bounds.left,right:bounds.right,width:bounds.width,height:bounds.height,viewport:innerWidth};
+                            left:bounds.left,right:bounds.right,top:bounds.top,bottom:bounds.bottom,
+                            width:bounds.width,height:bounds.height,viewport:innerWidth,hit:hit?.id || hit?.className};
                     }
                     const right=nav.getBoundingClientRect().right,scrollWidth=document.documentElement.scrollWidth;
                     const overflow=scrollWidth>innerWidth+1 ? [...document.body.querySelectorAll('*')]
@@ -290,7 +312,10 @@ class SharedApplicationChromeBrowserIT {
                     """)).as("The complete failed-read message wraps visibly inside its alert, without clipping the URL").isEqualTo(true);
         }
         if (view.template().equals("index")) {
-            assertThat(page.driver().findElement(By.id("projectMenuButton")).isDisplayed()).isTrue();
+            assertThat(page.driver().findElements(By.id("applicationProjectsLink"))).hasSize(1);
+            assertThat(page.driver().findElements(By.id("projectMenuButton"))).isEmpty();
+            assertThat(page.driver().findElements(By.cssSelector("#analysisNextSteps #projectNewAction"))).hasSize(1);
+            assertThat(page.driver().findElements(By.cssSelector("#analysisNextSteps #projectAddRequirementAction"))).hasSize(1);
             assertThat(page.driver().findElements(By.id("mainNavTabs"))).hasSize(1);
             assertThat(page.driver().findElement(By.cssSelector("#applicationNavigation .context-help")).getDomAttribute("href"))
                     .as("Analysis help reuses the existing documented section")
@@ -337,7 +362,7 @@ class SharedApplicationChromeBrowserIT {
         try {
             open(new View("index", "/", "analysis", "fileMenuButton"), "en", 1366);
             assertThat(page.driver().executeScript("return matchMedia('(forced-colors: active)').matches;")).isEqualTo(true);
-            for (String id : List.of("fileMenuButton", "projectMenuButton", "main-tab-help", "aboutBtn")) {
+            for (String id : List.of("fileMenuButton", "applicationProjectsLink", "main-tab-help", "aboutBtn")) {
                 var button = page.driver().findElement(By.id(id));
                 assertThat(button.isDisplayed()).as("%s remains visible in forced colors", id).isTrue();
                 Number ratio = (Number) page.driver().executeScript("""
@@ -601,6 +626,10 @@ class SharedApplicationChromeBrowserIT {
         for (int[] size : List.of(new int[]{1024, 844}, new int[]{390, 844}, new int[]{320, 844}, new int[]{320, 450})) {
             int width = size[0], height = size[1];
             viewport(width, height);
+            if (width <= 672) {
+                var menu = page.driver().findElement(By.id("applicationNavigationMenu"));
+                if ("false".equals(menu.getDomProperty("open"))) menu.findElement(By.tagName("summary")).click();
+            }
             var disclosure = page.driver().findElement(By.id("architectureExportOptions"));
             var summary = disclosure.findElement(By.tagName("summary"));
             summary.sendKeys(Keys.ENTER);
@@ -642,6 +671,10 @@ class SharedApplicationChromeBrowserIT {
             new Actions(page.driver()).sendKeys(Keys.ESCAPE).perform();
             assertThat(disclosure.getDomProperty("open")).isEqualTo("false");
             assertThat(page.driver().switchTo().activeElement()).isEqualTo(summary);
+            if (width <= 672) {
+                new Actions(page.driver()).sendKeys(Keys.ESCAPE).perform();
+                assertThat(page.driver().findElement(By.id("applicationNavigationMenu")).getDomProperty("open")).isEqualTo("false");
+            }
         }
     }
 
@@ -696,9 +729,9 @@ class SharedApplicationChromeBrowserIT {
 
     @Test void primaryNavigationHonorsTheExistingOptionalFeatureAvailability() {
         open(new View("index", "/", "analysis", "fileMenuButton"), "en", 1440, List.of());
-        wait.until(driver -> "true".equals(page.driver().findElement(By.id("projectOpenAction")).getDomProperty("hidden")));
+        wait.until(driver -> "true".equals(page.driver().findElement(By.id("projectNewAction")).getDomProperty("hidden")));
         assertThat(page.driver().findElement(By.cssSelector("[data-app-route='projects']")).isDisplayed())
-                .as("The shared project destination follows the same availability as the existing Project menu")
+                .as("The shared project destination follows portfolio availability")
                 .isFalse();
         assertThat(page.driver().findElement(By.cssSelector("[data-app-route='architecture']")).isDisplayed()).isFalse();
         assertThat(page.driver().findElement(By.cssSelector("[data-app-route='analysis']")).isDisplayed()).isTrue();
