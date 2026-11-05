@@ -85,6 +85,47 @@ test('a dirty editor refuses changing the exact source when discard is declined'
     }finally{await page.close();}
 });
 
+test('quick undo previews the latest personal operation and protects an unaccepted draft',async()=>{
+    const page=await fixture();try{
+        await page.evaluate(async()=>{
+            const original=ArchitectureEditorApi.load;
+            crypto.randomUUID=()=> '123e4567-e89b-42d3-a456-426614174000';
+            window.quickPreviews=[];window.quickCommands=[];
+            ArchitectureEditorApi.load=async(...args)=>{
+                const view=await original(...args);
+                view.document.history=[{operationId:'operation-7',kind:'CREATE_ELEMENT',actor:'alice',revision:7,occurredAt:'now',rationale:'Create capability'}];
+                view.document.historyTargets={undo:view.document.history[0],redo:null};
+                return view;
+            };
+            ArchitectureEditorApi.preview=async command=>{
+                quickPreviews.push(command);
+                return {context:command.context,change:{changes:[{id:'one',before:'before',after:'after'}]}};
+            };
+            ArchitectureEditorApi.execute=async command=>{quickCommands.push(command);};
+            window.editor=TaxonomyArchitectureEditor.mount(document.getElementById('architectureWorkingSource'));
+            await editor.activate({kind:'working',repositoryId:'repo',workspaceScopeKey:'private-a',branch:'draft/a'});
+            window.confirm=()=>false;
+        });
+        assert.equal(await page.locator('#editorQuickUndo').isEnabled(),true);
+        assert.equal(await page.locator('#editorQuickRedo').isDisabled(),true);
+        await page.locator('#editorTitle').fill('Unaccepted draft');
+        await page.locator('#editorQuickUndo').click();
+        assert.equal(await page.evaluate(()=>quickPreviews.length),0);
+        assert.equal(await page.locator('#editorTitle').inputValue(),'Unaccepted draft');
+        await page.evaluate(()=>window.confirm=()=>true);
+        await page.locator('#editorQuickUndo').click();
+        await page.locator('#editorPreviewDialog[open]').waitFor();
+        const previews=await page.evaluate(()=>quickPreviews);
+        assert.equal(previews.length,1);
+        assert.equal(previews[0].kind,'UNDO');
+        assert.equal(previews[0].targetOperationId,'operation-7');
+        assert.ok(previews[0].metadata.rationale);
+        assert.equal(await page.evaluate(()=>quickCommands.length),0,'Preview must not change the architecture');
+        await page.locator('#editorCancel').click();
+        assert.equal(await page.locator('#editorTitle').inputValue(),'Unaccepted draft');
+    }finally{await page.close();}
+});
+
 test('editor Focus toolbar keeps the selected element and dirty form and sends no DOM event as an ID',async()=>{
     const page=await fixture();try{
         await page.evaluate(async()=>{

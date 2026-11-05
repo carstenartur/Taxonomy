@@ -75,8 +75,16 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
     public record HistoryEntry(String operationId, String commandId, String kind, String targetOperationId,
                                String actor, String occurredAt, String rationale, List<String> changedIds,
                                long previousRevision, long revision) {}
+    public record HistoryTargets(HistoryEntry undo, HistoryEntry redo) {}
     public record Document(Context context, String dsl, String projectionState, List<HistoryEntry> history,
-                           List<DslCommit> versions, long checkpointRevision, String pendingCheckpointId, String source) {}
+                           List<DslCommit> versions, long checkpointRevision, String pendingCheckpointId, String source,
+                           HistoryTargets historyTargets) {
+        public Document(Context context, String dsl, String projectionState, List<HistoryEntry> history,
+                        List<DslCommit> versions, long checkpointRevision, String pendingCheckpointId, String source) {
+            this(context, dsl, projectionState, history, versions, checkpointRevision, pendingCheckpointId, source,
+                    new HistoryTargets(null, null));
+        }
+    }
 
     public enum Resolution { LOCAL, INCOMING }
     public record ReconciliationRequest(Context context, Metadata metadata, Map<String, Resolution> resolutions,
@@ -131,7 +139,8 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         return new Document(Context.of(context, state.checkpointCommit(), selected), dsl, status,
                 snapshot.operations().stream().filter(e -> e.revision() <= selected && e.actor().equals(context.username()))
                         .limit(50).map(ArchitectureEditorService::history).toList(), versions,
-                state.checkpointRevision(), state.pendingCheckpoint(), "WORKSPACE_REVISION");
+                state.checkpointRevision(), state.pendingCheckpoint(), "WORKSPACE_REVISION",
+                selected == state.revision() ? historyTargets(snapshot.operations(), context.username()) : new HistoryTargets(null, null));
     }
 
     @Override
@@ -697,6 +706,22 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
     private static HistoryEntry history(OperationSummary entry) {
         return new HistoryEntry(entry.commandId(), entry.commandId(), entry.kind(), entry.targetOperationId(),
                 entry.actor(), entry.occurredAt(), entry.rationale(), entry.affectedIds(), entry.previousRevision(), entry.revision());
+    }
+
+    /** Select from the complete ordered journal, not the truncated UI history. Preview still checks conflicts. */
+    static HistoryTargets historyTargets(List<OperationSummary> operations, String actor) {
+        Set<String> inverted = new HashSet<>();
+        HistoryEntry undo = null, redo = null;
+        for (OperationSummary entry : operations) {
+            if (entry.targetOperationId() != null) inverted.add(entry.targetOperationId());
+            if (!Objects.equals(entry.actor(), actor) || entry.kind().startsWith("VERSION_")
+                    || inverted.contains(entry.commandId())) continue;
+            if ("UNDO".equals(entry.kind())) {
+                if (redo == null) redo = history(entry);
+            } else if (undo == null) undo = history(entry);
+            if (undo != null && redo != null) break;
+        }
+        return new HistoryTargets(undo, redo);
     }
     private static void expect(State state, long expected) {
         if (state.revision() != expected) throw new RevisionConflict(expected, state.revision());

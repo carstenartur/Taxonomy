@@ -26,6 +26,20 @@ class ArchitectureEditorServiceTest {
     }
     @AfterEach void close() { fixture.close(); }
 
+    @Test void editorReadReturnsServerSelectedPersonalUndoAndRedoTargets() throws Exception {
+        var change = execute(update("Changed"));
+        var changed = service.read(alice, null);
+        assertThat(changed.historyTargets().undo().operationId()).isEqualTo(change.operationId());
+        assertThat(changed.historyTargets().redo()).isNull();
+        var undo = execute(new UndoArchitectureCommand(UUID.fromString(change.operationId())));
+        var undone = service.read(alice, null);
+        assertThat(undone.historyTargets().undo()).isNull();
+        assertThat(undone.historyTargets().redo().operationId()).isEqualTo(undo.operationId());
+        var redo = execute(new RedoArchitectureCommand(UUID.fromString(undo.operationId())));
+        assertThat(service.read(alice, null).historyTargets().undo().operationId()).isEqualTo(redo.operationId());
+        assertThat(service.read(alice, null, 1L).historyTargets().undo()).isNull();
+    }
+
     @Test void frozenSnapshotAdoptionUsesTheJournalAndSupportsReplayRestartCheckpointUndoRedo() throws Exception {
         var adoption = new AdoptAnalysisSnapshot("analysis-test", "Frozen snapshot", "Old text", "a".repeat(64),
                 List.of(new SnapshotElement("arch-existing", "System", "Recorded name", "Recorded description"),

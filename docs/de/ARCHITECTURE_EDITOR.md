@@ -22,6 +22,14 @@ mit ihren Quellen- und Versionsangaben in diesen Bereich.
 5. **Löschung vorschauen** zeigt blockierende Abhängigkeiten. Diese zuerst ausdrücklich entfernen oder neu zuordnen. Es gibt keine verdeckte Kaskadenlöschung.
 6. **Rückgängig vorschauen** bzw. **Wiederholen vorschauen** fordert einen neuen protokollierten Gegenbefehl an. Spätere abhängige Änderungen können ihn blockieren. Die Historie übersteht das Neuladen. Text rückgängig machen betrifft nur die Formulareingabe; Git-Revert einer Baseline bleibt ein separater Versionsvorgang.
 
+Direkt über dem Graph führen **Letzte Änderung zurücknehmen …** und **Letzte
+Rücknahme wiederholen …** zur Vorschau der jeweils letzten passenden eigenen
+Operation aus der vollständigen Historie. Die Vorschau muss weiterhin
+angenommen werden. Ein vorhandener unangenommener Entwurf wird vor einer möglichen
+Verwerfung ausdrücklich angezeigt. Die Serverprüfung kann eine Rücknahme wegen
+späterer abhängiger Änderungen ablehnen; eine ältere Operation wird dabei nicht
+stillschweigend ausgewählt.
+
 Jede angenommene Änderung wird mit rekonstruierbaren Invers-Daten, Benutzer und Begründung dauerhaft gespeichert. Sie erhöht die Workspace-Revision und **erzeugt keinen Git-Commit**. Undo/Redo und angenommene Änderungen überstehen Browser-Neuladen und Anwendungsneustart.
 
 Die **Editor-Historie** zeigt einzelne persönliche Operationen, die **Versionshistorie** zeigt Git-Checkpoints separat. **Checkpoint/Version erstellen** speichert mit Begründung den vollständigen Workspace als stabile Git-Version. Bei unverändertem Inhalt entsteht kein weiterer Commit. Nachfolgende Änderungen bleiben dauerhaft im Workspace bis zum nächsten Checkpoint. Publish, Merge, Branch-/Baseline-Erstellung und Restore sichern ausstehende Änderungen an ihrer Versionsgrenze.

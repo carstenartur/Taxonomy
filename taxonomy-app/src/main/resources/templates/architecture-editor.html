@@ -30,6 +30,10 @@
         <button id="editorResumeCheckpoint" type="button" hidden data-i18n="editor.resumeCheckpoint">Resume checkpoint</button>
         <button id="editorRecoverVersion" type="button" hidden data-i18n="editor.recoverVersion">Recover completed version</button>
         <button id="editorNew" type="button" disabled data-i18n="editor.new">New element</button>
+        <button id="editorQuickUndo" type="button" disabled aria-describedby="editorQuickUndoTarget" data-i18n="editor.quickUndo">Undo latest change…</button>
+        <span id="editorQuickUndoTarget" class="editor-sr"></span>
+        <button id="editorQuickRedo" type="button" disabled aria-describedby="editorQuickRedoTarget" data-i18n="editor.quickRedo">Redo latest undo…</button>
+        <span id="editorQuickRedoTarget" class="editor-sr"></span>
         <button id="editorWorkspace" type="button" hidden data-i18n="editor.workspace">Create private workspace</button>
         <button id="editorRebuild" type="button" hidden data-i18n="editor.rebuild">Rebuild projection</button>
         <a id="editorSvg" hidden data-i18n="editor.svg">Download SVG</a>
