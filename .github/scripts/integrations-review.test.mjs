@@ -19,7 +19,7 @@ class Element {
     focus() {}
 }
 
-async function page(profileId, { profilesMissing = false, publication = false, availabilityMissing = false, failPreview = false, predecessor = null } = {}) {
+async function page(profileId, { profilesMissing = false, publication = false, availabilityMissing = false, failPreview = false, predecessor = null, change = null } = {}) {
     const elements = new Map();
     const el = id => {
         if (!elements.has(id)) elements.set(id, new Element());
@@ -33,7 +33,7 @@ async function page(profileId, { profilesMissing = false, publication = false, a
     const operation = {
         id: 'op', status: 'PREVIEWED', direction: publication ? 'PUSH' : 'INBOUND', context: { profile: profileId, authority: 'IMPORT_COPY' },
         document: { losses: [], metadata: {} },
-        changes: [{ id: 'change', externalId: 'RELATION:r', kind: 'ADD', conflicts: [],
+        changes: [change || { id: 'change', externalId: 'RELATION:r', kind: 'ADD', conflicts: [],
             after: { kind: 'RELATION', title: 'Dependency', attributes: {}, extensions: {} } }]
     };
     const overview = { connection: { connectorId: profileId, authority: 'IMPORT_COPY' }, current: {}, history: [{ id: 'op', status: 'PREVIEWED', createdAt: 'first' }, { id: 'other', status: 'PREVIEWED', createdAt: 'second' }], oslcCatalogPath: '/oslc' };
@@ -74,6 +74,40 @@ async function page(profileId, { profilesMissing = false, publication = false, a
 }
 
 function descendants(node) { return node.children.flatMap(child => [child, ...descendants(child)]); }
+
+test('review rows lead with the object name and retain its exact external identity', async () => {
+    for (const publication of [false, true]) {
+        const { el } = await page('archimate-3.2', { publication });
+        const cell = el('integrationChanges').children[0].children[0];
+        assert.equal(cell.children[0]?.textContent, 'Dependency');
+        assert.equal(cell.children[1].tag, 'details');
+        assert.equal(cell.children[1].children[1].textContent, 'RELATION:r');
+        const decision = descendants(el('integrationChanges').children[0]).find(node => node.tag === 'select');
+        assert.ok(decision['aria-label'].includes('Dependency'));
+        assert.ok(decision['aria-label'].includes('RELATION:r'));
+    }
+});
+
+test('an unnamed object keeps its external identity visible', async () => {
+    const { el } = await page('archimate-3.2', { change: {
+        id: 'unnamed', externalId: 'ELEMENT:123', kind: 'ADD', conflicts: [],
+        after: { kind: 'ELEMENT', title: '', attributes: {}, extensions: {} }
+    } });
+    const cell = el('integrationChanges').children[0].children[0];
+    assert.equal(cell.children[0].textContent, 'ELEMENT:123');
+    assert.equal(cell.children.length, 1);
+});
+
+test('review search finds the previous name of a deletion candidate', async () => {
+    const { el } = await page('archimate-3.2', { change: {
+        id: 'delete', externalId: 'ELEMENT:123', kind: 'REMOVE_CANDIDATE', conflicts: [],
+        before: { kind: 'ELEMENT', title: 'Previous capability', attributes: {}, extensions: {} }, after: null
+    } });
+    el('integrationFilter').value = 'previous capability';
+    el('integrationFilter').listeners.input();
+    assert.equal(el('integrationChanges').children.length, 1);
+    assert.equal(el('integrationChanges').children[0].children[0].children[0].textContent, 'Previous capability');
+});
 
 test('Sparx reviewers can select only serializable relation mappings', async () => {
     for (const profile of ['sparx-xmi-2.1', 'sparx-oslc-am-2.0']) {

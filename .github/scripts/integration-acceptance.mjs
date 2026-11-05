@@ -187,6 +187,18 @@ export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, 
     const exportPreview = await readRenderedExportPreview(page, await exportResponse, connection, unchanged.id, expectedProfile);
     const unsupported = new Set(exportPreview.document.losses.filter(loss => loss.disposition === 'UNSUPPORTED').map(loss => loss.artifactId));
     await page.waitForFunction(() => !document.getElementById('integrationApply').disabled);
+    const named = exportPreview.changes.slice(0, 40).find(change => change.after?.title && change.after.title !== change.externalId);
+    assert.ok(named, 'The large export fixture supplies a named object');
+    const namedRow = page.locator('#integrationChanges tr').filter({ has: page.locator('td', { hasText: named.externalId }) });
+    const object = namedRow.locator('td').first();
+    assert.equal(await object.locator('span').first().textContent(), named.after.title);
+    assert.equal(await object.locator('details').evaluate(details => details.open), false);
+    assert.ok(!(await object.innerText()).includes(named.externalId), 'Technical identity starts collapsed');
+    await object.locator('summary').click();
+    assert.equal(await object.locator('code').textContent(), named.externalId);
+    await object.locator('summary').click();
+    assert.ok(await namedRow.locator('td').nth(1).evaluate(cell => cell.getBoundingClientRect().width) >= 140,
+      'The change label has sufficient space at the real viewport');
     for (let index = 0; index < Math.ceil(exportPreview.changes.length / 40); index++) {
       await page.locator('#integrationAccept').click();
       for (const change of exportPreview.changes.slice(index * 40, (index + 1) * 40)) if (change.after && unsupported.has(change.after.id)) {
