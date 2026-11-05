@@ -430,6 +430,7 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
 
   page.off('request', recordRequest);
   await page.evaluate(() => window.scrollTo(0, 0));
+  await openSharedNavigation(page);
   await page.locator('#fileMenuButton').click();
   await page.locator('#fileNewAnalysisAction').waitFor({ state: 'visible' });
   await saveRequiredViewportState('session-reset-command-mobile', 'body');
@@ -454,6 +455,8 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
   });
   await page.locator('#fileNewAnalysisAction').click();
   await confirmationHandled;
+  await page.locator('#applicationNavigationMenu > summary').click();
+  await waitForSharedNavigationToClose(page);
   assert(/new analysis|discard|neue analyse|verworfen/i.test(confirmationMessage),
     `Reset confirmation was not explicit: ${confirmationMessage}`);
 
