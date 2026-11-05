@@ -296,6 +296,7 @@ window.TaxonomyArchitectureDiagram.create = function (svg, options) {
         }).map(function (node) { return node.id; });
     }
     function notify() {
+        if (options.onStateChange && !destroyed) options.onStateChange(snapshot());
         if (options.onChange && !destroyed) options.onChange({ state: snapshot(), model: copyModel(), matches: matchingNodeIds() });
     }
     function measuredSize() {

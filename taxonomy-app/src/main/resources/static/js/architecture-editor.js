@@ -26,7 +26,10 @@
     };
     var renderer = window.ArchitectureEditorRenderer(el('editorGraph'), selectElement, selectRelation, function (visible, total) {
         el('editorGraphSummary').textContent = t('editor.visible', visible, total);
-    }, function (ids) { focusPanel.observe(ids); }, function (id) { focusPanel.review(id); });
+    }, function (ids) { focusPanel.observe(ids); }, function (id) { focusPanel.review(id); }, function (state) {
+        el('editorFocus').disabled = !state.selectedNodeId;
+        el('editorUnfocus').disabled = state.mode !== 'focus';
+    });
     var planningPanel = window.TaxonomyPlanningEditor.create({ t: t, stage: stage });
     var focusPanel = window.ArchitectureFocusPanel({ t: t, request: api.suggest, present: renderer.presentFocus,
         language: function () { return document.documentElement.lang === 'de' ? 'de' : 'en'; },
@@ -480,6 +483,7 @@
     el('editorZoomOut').onclick = function () { renderer.zoom(1 / 1.4); };
     el('editorFit').onclick = function () { renderer.fit(); };
     el('editorFocus').onclick = function () { renderer.focus(); };
+    el('editorUnfocus').onclick = function () { renderer.unfocus(); };
     el('editorArrange').onclick = async function () {
         if (busy || !view) return;
         layout = el('editorLayout').value;

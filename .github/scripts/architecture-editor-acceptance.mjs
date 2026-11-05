@@ -455,6 +455,26 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     assert.equal(arranged.schema.layoutStrategy, 'reduce-crossings');
     assert.equal(arranged.schema.layoutRevision, arranged.document.context.revision);
     await page.waitForFunction(() => !document.getElementById('editorLensEnabled').disabled);
+    if (await page.locator('#editorUnfocus').isEnabled()) await page.locator('#editorUnfocus').click();
+    const titleBeforeFocus = await page.locator('#editorTitle').inputValue();
+    await page.locator('#editorTitle').fill(`${titleBeforeFocus} (unaccepted draft)`);
+    const viewportBeforeFocus = await page.locator('#editorGraph').evaluate(svg => {
+      const {x, y, k} = window.d3.zoomTransform(svg); return {x, y, k};
+    });
+    await page.locator('#editorFocus').click();
+    assert.equal(await page.locator('#editorUnfocus').isEnabled(), true);
+    await page.locator('#editorUnfocus').click();
+    assert.equal(await page.locator('#editorUnfocus').isDisabled(), true);
+    assert.deepEqual(await page.locator('#editorGraph').evaluate(svg => {
+      const {x, y, k} = window.d3.zoomTransform(svg); return {x, y, k};
+    }), viewportBeforeFocus, 'Unfocus restores the previous viewport');
+    assert.equal(await page.locator('#editorSelection').textContent(), system);
+    assert.equal(await page.locator('#editorTitle').inputValue(), `${titleBeforeFocus} (unaccepted draft)`);
+    await page.locator('#editorTitle').fill(titleBeforeFocus);
+    await page.locator('#editorFocus').click();
+    await page.locator('#editorGraph').focus();
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#editorUnfocus').isDisabled(), true, 'Escape updates the visible control');
     await page.locator('#editorFocus').click();
     await page.locator('#editorLensUseAi').uncheck();
     await page.locator('#editorLensEnabled').check();
