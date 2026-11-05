@@ -32,6 +32,36 @@ class BuildCacheWorkflowContractTest {
             }
         }
     }
+    @Test void dependencyCacheHasOneWriterOnlyAfterSuccessfulFullSeed() throws Exception {
+        Path root = root();
+        assertThat(root.resolve(".mvn/dependency-cache-epoch")).exists();
+        int setups = 0;
+        try (var files = Files.list(root.resolve(".github/workflows"))) {
+            for (Path file : files.filter(p -> p.toString().endsWith(".yml")).toList()) {
+                for (String step : Files.readString(file).split("(?m)^      - ")) {
+                    if (!step.contains("actions/setup-java@") || !step.matches("(?s).*cache: ['\"]?maven.*")) continue;
+                    setups++;
+                    assertThat(step).as("cache epoch in %s", file.getFileName()).contains(".mvn/dependency-cache-epoch");
+                    assertThat(step).as("restore-only setup in %s", file.getFileName()).contains("cache-read-only: true");
+                }
+            }
+        }
+        assertThat(setups).as("Maven dependency cache consumers").isGreaterThan(1);
+        String ci = Files.readString(root.resolve(".github/workflows/ci-cd.yml"));
+        String scope = ci.substring(ci.indexOf("\n  change-scope:"), ci.indexOf("\n  application:"));
+        assertThat(scope).contains("id: maven-seed", "continue-on-error: true", "timeout --foreground 12m", "steps.scope.outputs.scope == 'full'",
+                "org.apache.maven.plugins:maven-dependency-plugin:3.11.0:go-offline",
+                "org.apache.maven.plugins:maven-dependency-plugin:3.11.0:resolve-plugins",
+                "steps.maven-seed.outcome == 'success'", "actions/cache/save@",
+                "path: ${{ steps.maven-seed.outputs.repository }}", "key: ${{ steps.java-cache.outputs.cache-primary-key }}");
+        assertThat(scope.indexOf("Classify the complete source change")).isLessThan(scope.indexOf("id: maven-seed"));
+        assertThat(scope.indexOf("id: maven-seed")).isLessThan(scope.indexOf("Save warmed Maven dependency cache"));
+        assertThat(scope).contains("id: maven-wrapper-env", "id: maven-wrapper-cache", "lookup-only: true",
+                "setup-java-${{ runner.os }}-${{ steps.maven-wrapper-env.outputs.arch }}-maven-wrapper-${{ hashFiles('**/.mvn/wrapper/maven-wrapper.properties') }}",
+                "steps.maven-wrapper-cache.outputs.cache-hit != 'true'",
+                "path: ${{ steps.maven-wrapper-env.outputs.path }}", "key: ${{ steps.maven-wrapper-cache.outputs.cache-primary-key }}");
+        assertThat(scope.indexOf("Compile Maven-owned scope planner")).isLessThan(scope.indexOf("Save Maven wrapper distribution"));
+    }
     @Test void browserFreeContractsDoNotRestoreBrowserBinariesAndAppWritesAreDailyMainOnly() throws Exception {
         String ci = Files.readString(root().resolve(".github/workflows/ci-cd.yml"));
         String contracts = ci.substring(ci.indexOf("\n  ui-contracts:"), ci.indexOf("\n  ui-shards:"));

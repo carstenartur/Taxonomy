@@ -23,6 +23,7 @@ jobs:
           java-version: '25'
           distribution: temurin
           cache: maven
+          cache-read-only: true
           cache-dependency-path: |
             **/pom.xml
             .github/ui-verification-pom.xml
@@ -30,6 +31,7 @@ jobs:
             **/pom-*.xml
             **/.mvn/wrapper/maven-wrapper.properties
             **/.mvn/extensions.xml
+            .mvn/dependency-cache-epoch
       - name: Package the application (canonical CI remains the acceptance gate)
         run: ./mvnw -B -ntp -DskipTests package
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
