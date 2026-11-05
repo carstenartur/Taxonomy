@@ -72,6 +72,8 @@ class DocumentTemplateNavigationBrowserIT {
         assertThat(page.driver().executeScript("return Boolean(window.TaxonomyAppChrome)")).isEqualTo(true);
 
         assertThat(page.driver().findElements(By.id("applicationNavigation"))).hasSize(1);
+        assertThat(page.driver().findElement(By.id("applicationNavigation")).getDomAttribute("aria-label"))
+                .isEqualTo(language.equals("de") ? "Anwendungsnavigation" : "Application navigation");
         assertThat(page.driver().findElements(By.cssSelector("#applicationNavigation [data-app-route='architecture']"))).hasSize(1);
         assertThat(page.driver().findElements(By.id(view.retained()))).hasSize(1);
         assertThat(page.driver().findElement(By.cssSelector("#applicationNavigation .context-help")).getDomAttribute("href"))

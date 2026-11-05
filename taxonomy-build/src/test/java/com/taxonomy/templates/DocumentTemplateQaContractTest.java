@@ -48,6 +48,7 @@ class DocumentTemplateQaContractTest {
     void assistiveNavigationLabelsAreLocalizedInBothLanguages()
             throws Exception {
         String page = resource("/templates/document-templates.html");
+        String navigation = resource("/templates/fragments/application-chrome.html");
         String english = resource(
                 "/i18n/messages_document_templates.properties");
         String german = resource(
@@ -55,17 +56,20 @@ class DocumentTemplateQaContractTest {
 
         assertThat(page)
                 .contains("document.templates.skip")
-                .contains("document.templates.nav.aria")
+                .contains("fragments/application-chrome :: navigation")
                 .contains("document.templates.history.close.aria")
                 .doesNotContain("aria-label=\"Close\"")
                 .doesNotContain("aria-label=\"Document template navigation\"");
+        assertThat(navigation).contains("th:aria-label=\"#{app.navigation.label}\"");
+        assertThat(resource("/i18n/messages.properties"))
+                .contains("app.navigation.label=");
+        assertThat(resource("/i18n/messages_de.properties"))
+                .contains("app.navigation.label=");
         assertThat(english)
                 .contains("document.templates.skip=")
-                .contains("document.templates.nav.aria=")
                 .contains("document.templates.history.close.aria=");
         assertThat(german)
                 .contains("document.templates.skip=")
-                .contains("document.templates.nav.aria=")
                 .contains("document.templates.history.close.aria=");
     }
 
