@@ -133,8 +133,10 @@ for(const locale of ['de','en']){
     });
     for(const width of [1440,1920])test(`${locale}: ${width}px primary navigation and application actions share one desktop row`,async()=>{
         const page=await fixture(locale,width);try{
+            await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-onboarding.js')});
             const selectors=['.taxonomy-app-brand','#mainNavTabs [data-page="architecture"]',
-                '#projectMenuButton','#applicationSettings > summary','#main-tab-help','#aboutBtn'];
+                '#projectMenuButton','#applicationSettings > summary','#operationalContextDetails > summary','#main-tab-help','#aboutBtn',
+                '#applicationNavigation .taxonomy-app-utilities .context-help'];
             const boxes=await Promise.all(selectors.map(selector=>page.locator(selector).boundingBox()));
             assert.ok(boxes.every(Boolean),'All existing navigation and application actions stay available');
             const center=box=>box.y+box.height/2;
@@ -143,6 +145,52 @@ for(const locale of ['de','en']){
             const nav=await page.locator('#applicationNavigation').boundingBox();
             assert.ok(nav.height<=64,'The desktop navigation must not reserve a second row: '+JSON.stringify(nav));
             assert.equal(await page.locator('#applicationNavigation [data-app-route="architecture"]').count(),1);
+        }finally{await finish(page);}
+    });
+    for(const width of [992,1024,1100,1280,1366,1408,1409,1439,1500,1632,1633])test(`${locale}: ${width}px navigation stays on one row with reachable language and view help`,async()=>{
+        const page=await fixture(locale,width);try{
+            await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-onboarding.js')});
+            assert.equal(await page.locator('#operationalStatusMenuSlot #operationalContextDetails').count(),1);
+            const selectors=['.taxonomy-app-brand','#mainNavTabs [data-page="architecture"]',
+                '#projectMenuButton','#applicationSettings > summary','#operationalContextDetails > summary','#main-tab-help','#aboutBtn',
+                '#applicationNavigation .taxonomy-app-utilities .context-help'];
+            const boxes=await Promise.all(selectors.map(selector=>page.locator(selector).boundingBox()));
+            assert.ok(boxes.every(Boolean),'Navigation and context help must remain visible');
+            const center=box=>box.y+box.height/2;
+            for(let i=1;i<boxes.length;i++)assert.ok(Math.abs(center(boxes[i])-center(boxes[0]))<=2,
+                `${selectors[i]} is not aligned with the main navigation: ${JSON.stringify(boxes)}`);
+            assert.ok((await page.locator('#applicationNavigation').boundingBox()).height<=64);
+            for(const link of await page.locator('#applicationNavigation .taxonomy-app-primary a').all()){
+                const box=await link.boundingBox();
+                assert.ok(box&&box.width>=44&&box.height>=44,'Primary links remain usable touch targets: '+JSON.stringify(box));
+            }
+            assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'The compact row must not widen the page');
+            const help=page.locator('#applicationNavigation .taxonomy-app-utilities .context-help');
+            assert.ok(await help.getAttribute('href'),'Contextual help keeps its exact link');
+            assert.equal(await help.getAttribute('target'),'_blank');
+            assert.ok((await help.innerText()).includes(locale==='de'?'Hilfe':'Help'),'Help text stays available to assistive technology');
+            assert.equal(await page.getByRole('link',{name:locale==='de'?/Hilfe zu dieser Sicht/:/Help for this view/}).count(),1);
+            await page.evaluate(()=>{window.localeChanges=[];TaxonomyI18n.setLocale=value=>localeChanges.push(value);});
+            await page.locator('#applicationSettings > summary').click();
+            await page.locator('#langSelector').selectOption(locale==='de'?'en':'de');
+            assert.deepEqual(await page.evaluate(()=>localeChanges),[locale==='de'?'en':'de']);
+        }finally{await finish(page);}
+    });
+    for(const [view,width] of [['reports',992],['reports',1121],['reports',1441],['versioning',1024],['versioning',1121],['versioning',1441],['versioning',1632],['versioning',1633]])test(`${locale}: ${width}px ${view} navigation keeps direct language links when no settings selector exists`,async()=>{
+        const page=await fixture(locale,width);try{
+            // Standalone portfolio pages have source-specific actions but no settings selector.
+            await page.locator('.taxonomy-app-local').evaluate((node,view)=>{node.innerHTML=view==='reports'
+                ? '<div><a id="portfolioBack" class="btn btn-sm btn-outline-light" href="/projects">Zurück zum Projekt</a><a id="versioningLink" class="btn btn-sm btn-outline-light" href="/versions">Versionierung</a></div>'
+                : '<span id="versioningPageTitle">Versionierung und Zusammenarbeit</span><a id="portfolioBack" href="/projects">Portfolio</a><a id="versioningLink" href="/reports">Berichte</a>';},view);
+            assert.equal(await page.locator('.taxonomy-app-languages a[hreflang="de"]').isVisible(),true);
+            assert.equal(await page.locator('.taxonomy-app-languages a[hreflang="en"]').isVisible(),true);
+            assert.equal(await page.locator('#applicationNavigation .context-help').isVisible(),true);
+            const boxes=await Promise.all(['.taxonomy-app-brand','#mainNavTabs [data-page="architecture"]','#portfolioBack','#versioningLink',
+                '.taxonomy-app-languages [hreflang="de"]','.taxonomy-app-languages [hreflang="en"]','.context-help'].map(selector=>page.locator('#applicationNavigation '+selector).boundingBox()));
+            const center=box=>box.y+box.height/2;
+            assert.ok(boxes.every(box=>box&&Math.abs(center(box)-center(boxes[0]))<=2),'Portfolio actions, language and help must share the navigation row: '+JSON.stringify(boxes));
+            assert.ok((await page.locator('#applicationNavigation').boundingBox()).height<=64);
+            if(view==='versioning')assert.ok(await page.locator('#versioningPageTitle').textContent(),'The title remains available to assistive technology');
         }finally{await finish(page);}
     });
     for(const width of [700,900,1100,1280])test(`${locale}: ${width}px settings panel stays inside the viewport`,async()=>{

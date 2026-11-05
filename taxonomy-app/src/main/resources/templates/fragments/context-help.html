@@ -6,9 +6,9 @@
 <body>
 <a th:fragment="button(document, section)" class="context-help"
    th:href="@{/(lang=${#locale.language})} + '#help/' + ${document} + (${#strings.isEmpty(section)} ? '' : '/' + ${section})"
-   target="_blank" rel="noopener noreferrer" th:title="#{help.context.newTab}">
+   target="_blank" rel="noopener noreferrer" th:title="#{help.context.label} + ' — ' + #{help.context.newTab}">
     <span aria-hidden="true">?</span>
-    <span th:text="#{help.context.label}">Help for this view</span>
+    <span class="context-help-label" th:text="#{help.context.label}">Help for this view</span>
     <span aria-hidden="true">↗</span>
     <span class="context-help-new-tab" th:text="#{help.context.newTab}">Opens in a new tab</span>
 </a>
