@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { observeHttpFailures } from './ui-http-failure-evidence.mjs';
 import { signInWithKeyboard, verifyAnonymousLocalLogin } from './ui-local-login.mjs';
+import { openSharedNavigation, waitForSharedNavigationToClose } from './ui-role-fixtures.mjs';
 
 const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
 const username = process.env.TAXONOMY_UI_USERNAME || 'admin';
@@ -45,8 +46,10 @@ let architectureLens = null;
 function passed(name) { checks.push(name); }
 
 async function navigateTo(pageName) {
+  await openSharedNavigation(page);
   if (pageName === 'help') {
     await page.locator('#main-tab-help').click();
+    await waitForSharedNavigationToClose(page);
     await page.locator('#tab-help').waitFor({ state: 'visible' });
     return;
   }
@@ -63,16 +66,13 @@ async function navigateTo(pageName) {
     const control = page.locator(`#applicationSettings #${settingsDestination}`);
     await control.waitFor({ state: 'visible', timeout: 20_000 });
     await control.click();
+    await waitForSharedNavigationToClose(page);
     await page.locator(`#tab-${pageName}`).waitFor({ state: 'visible' });
     return;
   }
 
-  const responsiveSelect = page.locator('#mobileMainNavigationSelect');
-  if (await responsiveSelect.isVisible().catch(() => false)) {
-    await responsiveSelect.selectOption(pageName);
-  } else {
-    await page.locator(`#mainNavTabs [data-page="${pageName}"]`).click();
-  }
+  await page.locator(`#mainNavTabs [data-page="${pageName}"]`).click();
+  await waitForSharedNavigationToClose(page);
   await page.locator(`#tab-${pageName}`).waitFor({ state: 'visible' });
 }
 
@@ -112,23 +112,8 @@ async function auditApplication() {
     'The application must expose the six retained primary destinations exactly once');
   assert(await page.locator('[data-app-route="architecture"]').count() === 1,
     'Architecture has more than one primary application destination');
-  const responsiveSelect = page.locator('#mobileMainNavigationSelect');
-  if (await responsiveSelect.isVisible().catch(() => false)) {
-    await responsiveSelect.focus();
-    await page.keyboard.press('ArrowDown');
-    await page.keyboard.press('Enter');
-    await page.waitForFunction(() => {
-      const select = document.querySelector('#mobileMainNavigationSelect');
-      const pane = document.querySelector('#tab-architecture');
-      return select?.value === 'architecture'
-        && pane && !pane.classList.contains('d-none');
-    });
-    assert(await responsiveSelect.inputValue() === 'architecture',
-      'Keyboard navigation did not select Architecture in the responsive control');
-    await responsiveSelect.selectOption('analyze');
-    await page.locator('#tab-analyze').waitFor({ state: 'visible' });
-    passed('responsive keyboard section navigation');
-  } else {
+  {
+    await openSharedNavigation(page);
     const analyzeTab = page.locator('#mainNavTabs [data-page="analyze"]');
     await analyzeTab.focus();
     await page.keyboard.press('ArrowRight');

@@ -868,7 +868,7 @@ test('linked graph selection retains enriched failure mode and its hop depth', a
 function guidanceFixture(search = '') {
     const f=dom(), calls=[];
     for(const id of ['analysisNextSteps','analysisNextStepText','businessText','analysisReformulationHint',
-        'analysisReformulationAction','projectReformulationAction','analysisLensAction','architectureLensAction',
+        'analysisReformulationAction','analysisLensAction','architectureLensAction',
         'analysisClarifyAction','analysisReanalyzeAction','analysisGuideError','statusArea','relationSearchReportPanel',
         'architectureNextStepsAction','analysisNextStepsHeading','analyzeBtn']) f.element('div',id);
     f.document.getElementById('businessText').value='Arbeitsschutz';
@@ -899,7 +899,7 @@ test('partial analysis guides clarification and explicit project promotion with 
 
 test('saved requirement navigation waits for successful draft saving and preserves exact source selection', async()=>{
     const f=guidanceFixture('?projectId=7&requirementId=9&snapshot=snapshot-4&branch=review');
-    const button=f.document.getElementById('projectReformulationAction');
+    const button=f.document.getElementById('analysisReformulationAction');
     assert.equal(button.href,'/taxonomy/projects/7/requirements/9?branch=review&snapshot=snapshot-4#reformulationOffers');
     f.window.TaxonomyAnalysisSession.saveNow=async()=>false;
     await button.fire('click');await tick();

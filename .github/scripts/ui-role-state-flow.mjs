@@ -1,7 +1,9 @@
 import {
   csrfJson,
   navigateArchitectureSubtab,
-  navigateToPage
+  navigateToPage,
+  openSharedNavigation,
+  waitForSharedNavigationToClose
 } from './ui-role-fixtures.mjs';
 
 function assert(condition, message) {
@@ -225,18 +227,22 @@ export async function runRoleStateFlow({
   const settingsLauncher = page.locator('#applicationSettings > summary');
   const adminLink = page.locator('#adminNavTab');
   const preferencesLink = page.locator('#preferencesNavTab');
+  await openSharedNavigation(page);
   if (role === 'ADMIN') {
     if (await settingsMenu.getAttribute('open') === null) await settingsLauncher.click();
     await adminLink.waitFor({ state: 'visible', timeout: 20_000 });
     assert(await adminLink.isVisible(),
       'ADMIN cannot discover Administration in Settings after role authorization');
     await adminLink.click();
+    await waitForSharedNavigationToClose(page);
     await page.locator('#tab-admin').waitFor({ state: 'visible', timeout: 20_000 });
+    await openSharedNavigation(page);
     if (await settingsMenu.getAttribute('open') === null) await settingsLauncher.click();
     await preferencesLink.waitFor({ state: 'visible', timeout: 20_000 });
     assert(await preferencesLink.isVisible(),
       'ADMIN cannot discover Preferences in Settings after role authorization');
     await preferencesLink.click();
+    await waitForSharedNavigationToClose(page);
     await page.locator('#tab-preferences').waitFor({ state: 'visible', timeout: 20_000 });
     passed('admin Settings navigation');
   } else {
@@ -263,7 +269,8 @@ export async function runRoleStateFlow({
     const progressRect = progress?.getBoundingClientRect();
     const primaryRect = primary?.getBoundingClientRect();
     const navigation = document.querySelector('.taxonomy-app-primary');
-    const navigationRect = navigation?.getBoundingClientRect();
+    const menuToggle = document.querySelector('#applicationNavigationMenu > summary');
+    const navigationRect = (menuToggle?.offsetParent ? menuToggle : navigation)?.getBoundingClientRect();
     const authorizedPages = Array.from(
       document.querySelectorAll('#mainNavTabs .nav-link[data-page]'))
       .filter(link => {
@@ -755,6 +762,7 @@ export async function runRoleStateFlow({
     assert(await page.locator('.mobile-main-navigation:visible, #mobileMainNavigationSelect:visible').count() === 0,
       'The application exposes a second visible primary navigation');
     await navigateToPage(page, 'analyze');
+    await openSharedNavigation(page);
     await page.locator('#mainNavTabs [data-page="analyze"]').focus();
     for (const [index, destination] of taskHierarchy.authorizedPages.entries()) {
       if (index) await page.keyboard.press('ArrowRight');

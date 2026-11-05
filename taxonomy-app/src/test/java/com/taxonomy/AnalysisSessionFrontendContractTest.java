@@ -122,7 +122,7 @@ class AnalysisSessionFrontendContractTest {
     }
 
     @Test
-    void fileAndProjectMenusExposeNewSaveCancelAndPromotionCommands()
+    void fileMenuAndAnalysisActionsExposeNewSaveCancelAndPromotionCommands()
             throws IOException {
         String template = resource("/templates/index.html");
         String session = sessionSources();
@@ -132,11 +132,10 @@ class AnalysisSessionFrontendContractTest {
                 .contains("id=\"fileNewAnalysisAction\"")
                 .contains("id=\"fileCancelAnalysisAction\"")
                 .contains("id=\"fileSaveDraftAction\"")
-                .contains("id=\"projectMenuButton\"")
                 .contains("id=\"projectNewAction\"")
                 .contains("id=\"projectAddRequirementAction\"")
-                .contains("id=\"projectOpenAction\"")
-                .contains("id=\"cancelAnalysisBtn\"");
+                .contains("id=\"cancelAnalysisBtn\"")
+                .doesNotContain("id=\"projectMenuButton\"", "id=\"projectOpenAction\"");
         assertThat(session)
                 .contains("cancelCurrentAnalysis")
                 .contains("user-cancelled")

@@ -9,8 +9,12 @@
     <nav id="applicationNavigation" class="taxonomy-app-navigation" th:aria-label="#{app.navigation.label}" aria-label="Application navigation">
         <div class="taxonomy-app-mainrow">
             <a class="taxonomy-app-brand" th:href="@{/}" href="/">Taxonomy</a>
+            <details id="applicationNavigationMenu" class="taxonomy-app-menu" open>
+                <summary aria-controls="applicationNavigationMenuContent" th:text="#{app.navigation.menu}">Menu</summary>
+            </details>
+            <div id="applicationNavigationMenuContent" class="taxonomy-app-menu-content">
             <div class="taxonomy-app-primary">
-                <a data-app-route="projects" data-taxonomy-feature="portfolio" th:href="@{/projects}" href="/projects"
+                <a id="applicationProjectsLink" data-app-route="projects" data-taxonomy-feature="portfolio" th:href="@{/projects}" href="/projects"
                    th:attr="aria-current=${active == 'projects' ? 'page' : null}" th:text="#{app.navigation.projects}">Projects</a>
         <div class="application-work-navigation">
             <ul class="nav nav-tabs nav-tabs-page mb-0" id="mainNavTabs" aria-label="Main sections">
@@ -33,6 +37,7 @@
         </div>
             </div>
             <div class="taxonomy-app-local"><th:block th:replace="${localActions}"></th:block></div>
+            </div>
             <div class="taxonomy-app-utilities">
                 <div class="taxonomy-app-languages" role="group" th:aria-label="#{lang.selector.label}" aria-label="Language">
                     <a href="?lang=en" hreflang="en" data-app-locale="en" th:aria-label="#{language.english}">EN</a>

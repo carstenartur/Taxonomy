@@ -353,11 +353,13 @@ Das rechte Panel (schmalere Spalte) enthält alle interaktiven Werkzeuge:
 
 ### Navigationsleiste
 
+Auf schmalen Bildschirmen öffnen Sie **Menü**, um dieselben Arbeitsbereiche und Aktionen zu erreichen. Nach der Auswahl eines Bereichs schließt sich das Menü; mit Escape können Sie es ohne Wechsel schließen. Sprache und kontextbezogene Hilfe bleiben in der Kopfzeile.
+
 Die Navigationsleiste am oberen Rand der Seite enthält:
 
 - **Anwendungstitel / Logo**
 - **Datei-Menü** — eine neue Analyse beginnen, eine laufende Analyse abbrechen oder den aktuellen Arbeitsentwurf sofort speichern
-- **Projekt-Menü** — ein Projekt anlegen, den aktuellen Text als Anforderung speichern oder die Projektübersicht öffnen
+- **Projekte** öffnet die Projektübersicht. Auf der Analyseseite stehen unter **Nächste Schritte** das Anlegen eines Projekts und das Speichern des aktuellen Texts als Anforderung bereit.
 - **Einstellungen (⚙)** — Sprache, Design, Admin-Werkzeuge und den Analyse-Status öffnen.
 - **Status** — Details zum Betriebsstatus.
 - **Hilfe** und **Über** — rechts in der Navigationsleiste direkt nebeneinander.
@@ -2279,7 +2281,7 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 <a id="guide-section-27"></a>
 ## Gespeicherte Neuformulierungsangebote und Entscheidungsfragen
 
-Die Analyseseite zeigt **Nächste Schritte**, **Anforderung neu formulieren…** und **Architektur-Lupe**. Die Neuformulierung ist auch im Projektmenü erreichbar, die Lupe zusätzlich in der Architekturansicht. Bei Teilergebnissen erscheint **Offene Bewertungen klären**, bei geändertem Text **Aktuelle Formulierung analysieren**. Auch nach Laufende bleiben die Nachweise zu prüfen und Änderungen ausdrücklich zu übernehmen.
+Die Analyseseite zeigt **Nächste Schritte**, **Anforderung neu formulieren…** und **Architektur-Lupe**. Die Lupe ist zusätzlich in der Architekturansicht erreichbar. Bei Teilergebnissen erscheint **Offene Bewertungen klären**, bei geändertem Text **Aktuelle Formulierung analysieren**. Auch nach Laufende bleiben die Nachweise zu prüfen und Änderungen ausdrücklich zu übernehmen.
 
 Die Neuformulierung öffnet die gespeicherte Projektanforderung und erhält einen ausdrücklich gewählten Snapshot. Bei einer Ad-hoc-Analyse öffnet sie zunächst **Als Anforderung hinzufügen**; wählen oder erzeugen Sie danach in dieser Anforderung einen passenden Snapshot. Das Speichern des Textes ordnet die Ad-hoc-Analyse nicht automatisch zu. Ungespeicherte Änderungen auf der Analyseseite werden nicht in eine bestehende Anforderung kopiert. Die Lupe öffnet den Editor im gewählten Arbeitsbereich; aktivieren Sie dort die vorhandene Untersuchungsfunktion. Vor der Navigation wird der Analyseentwurf gespeichert. Scheitert das Speichern, bleiben Sie auf der Seite.
 

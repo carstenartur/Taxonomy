@@ -687,6 +687,11 @@
                 event.preventDefault();
                 var details = document.getElementById('operationalContextDetails');
                 if (details) {
+                    var navigationMenu = document.getElementById('applicationNavigationMenu');
+                    var navigationToggle = navigationMenu?.querySelector('summary');
+                    if (navigationToggle && navigationToggle.offsetParent !== null && !navigationMenu.open) {
+                        navigationMenu.open = true;
+                    }
                     details.open = !details.open;
                     details.querySelector('summary')?.focus();
                 }

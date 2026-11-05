@@ -62,21 +62,32 @@ for(const mode of ['index','projects'])test(`${mode}: the existing compact conte
         assert.deepEqual(page.errors,[]);
     }finally{await page.close();}
 });
-for(const locale of ['de','en'])for(const width of [390,1100])test(`${locale}: ${width}px common navigation exposes Projects and five keyboard/touch destinations`,async()=>{
+for(const locale of ['de','en'])for(const width of [390,700,1100])test(`${locale}: ${width}px common navigation exposes Projects and five keyboard/touch destinations`,async()=>{
     const page=await fixture({mode:'index',locale,width});try{
         const links=page.locator('#mainNavTabs a[data-page]');
         assert.equal(await links.count(),5);
         assert.equal(await page.locator('#applicationNavigation [data-app-route="projects"]').count(),1);
+        const toggle=page.locator('#applicationNavigationMenu > summary');
+        if(width<992){
+            assert.equal(await page.locator('#mainNavTabs').isVisible(),false);
+            assert.ok((await page.locator('#applicationNavigation').boundingBox()).height<=64,
+                'Keep the analysis action visible below a compact mobile header');
+            await toggle.click();
+        }
         assert.equal(await page.locator('#mainNavTabs').isVisible(),true);
-        if(width===390)assert.ok((await page.locator('#mainNavTabs').boundingBox()).height<=50,'Keep the primary navigation to one scrollable row so the analysis action remains in the initial viewport');
         assert.equal(await page.locator('.mobile-main-navigation:visible, #mobileMainNavigationSelect:visible').count(),0,'No second visible or keyboard-accessible primary menu');
         for(const destination of ['analyze','architecture','graph','versions','dsl-editor']){
             const link=page.locator(`#mainNavTabs [data-page="${destination}"]`);
             assert.equal(await link.isVisible(),true);
             const box=await link.boundingBox();assert.ok(box.height>=44,'44px touch target: '+destination);
             await link.tap();assert.equal(await page.locator('#tab-'+destination).isVisible(),true);
+            if(width<992){await page.waitForFunction(()=>!document.getElementById('applicationNavigationMenu').open);await toggle.click();}
             await link.focus();await page.keyboard.press('Enter');assert.equal(await page.locator('#tab-'+destination).isVisible(),true);
-            assert.equal(await link.evaluate(node=>document.activeElement===node),true);
+            if(width<992){
+                await page.waitForFunction(()=>!document.getElementById('applicationNavigationMenu').open);
+                assert.equal(await toggle.evaluate(node=>document.activeElement===node),true);
+                await toggle.click();
+            } else assert.equal(await link.evaluate(node=>document.activeElement===node),true);
         }
         const dimensions=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));
         assert.ok(dimensions.scroll<=dimensions.width,'Navigation must not force horizontal page overflow: '+JSON.stringify(dimensions));

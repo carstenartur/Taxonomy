@@ -168,7 +168,6 @@ window.TaxonomyUtils = (function () {
             tabs[next].focus();
             tabs[next].click();
             syncMainNavigation();
-            syncResponsiveMainNavigation();
         });
 
         new MutationObserver(syncMainNavigation).observe(tabList, {
@@ -176,47 +175,7 @@ window.TaxonomyUtils = (function () {
             attributes: true,
             attributeFilter: ['class']
         });
-    }
-
-    // ── Discoverable responsive primary navigation ───────────────────────
-    function authorizedMainNavigationLinks() {
-        var tabList = document.getElementById('mainNavTabs');
-        if (!tabList) return [];
-        return Array.from(tabList.querySelectorAll('.nav-link[data-page]')).filter(function (link) {
-            var item = link.closest('.nav-item');
-            return item && getComputedStyle(item).display !== 'none';
-        });
-    }
-
-    function navigationLabel(link) {
-        return (link.textContent || link.getAttribute('data-page') || '')
-            .replace(/\s+/g, ' ').trim();
-    }
-
-    function syncResponsiveMainNavigation() {
-        var select = document.getElementById('mobileMainNavigationSelect');
-        if (!select) return;
-        var links = authorizedMainNavigationLinks();
-        var active = links.find(function (link) { return link.classList.contains('active'); });
-        var selectedPage = active ? active.getAttribute('data-page') : '';
-        var existing = Array.from(select.options).filter(function (option) { return option.value; }).map(function (option) { return option.value; });
-        var desired = links.map(function (link) { return link.getAttribute('data-page'); });
-        if (existing.join('|') !== desired.join('|')) {
-            select.replaceChildren();
-            var placeholder = document.createElement('option');
-            placeholder.value = '';
-            placeholder.disabled = true;
-            placeholder.textContent = currentLanguage() === 'de' ? 'Arbeitsbereich auswählen' : 'Choose workspace view';
-            select.appendChild(placeholder);
-            links.forEach(function (link) {
-                var option = document.createElement('option');
-                option.value = link.getAttribute('data-page');
-                option.textContent = navigationLabel(link);
-                select.appendChild(option);
-            });
-        }
-        select.value = desired.includes(selectedPage) ? selectedPage : '';
-        select.disabled = desired.length === 0;
+        document.addEventListener('taxonomy:page-activated', syncMainNavigation);
     }
 
     function focusCurrentTask() {
@@ -232,64 +191,6 @@ window.TaxonomyUtils = (function () {
             if (!target) return;
             target.scrollIntoView({ block: 'center', inline: 'nearest' });
             target.focus({ preventScroll: true });
-        });
-    }
-
-    function installResponsiveMainNavigation() {
-        var tabList = document.getElementById('mainNavTabs');
-        if (!tabList || document.getElementById('mobileMainNavigation')) return;
-
-        var wrapper = document.createElement('nav');
-        wrapper.id = 'mobileMainNavigation';
-        wrapper.className = 'mobile-main-navigation';
-        wrapper.setAttribute('aria-label', currentLanguage() === 'de'
-            ? 'Bereichsauswahl' : 'Section navigation');
-
-        var label = document.createElement('label');
-        label.htmlFor = 'mobileMainNavigationSelect';
-        label.className = 'mobile-main-navigation-label';
-        label.textContent = currentLanguage() === 'de' ? 'Bereich' : 'Section';
-
-        var select = document.createElement('select');
-        select.id = 'mobileMainNavigationSelect';
-        select.className = 'form-select mobile-main-navigation-select';
-        select.setAttribute('aria-label', currentLanguage() === 'de'
-            ? 'Hauptbereich auswählen' : 'Choose main section');
-        select.addEventListener('change', function () {
-            var page = select.value;
-            if (typeof window.navigateToPage === 'function') {
-                window.navigateToPage(page);
-            } else {
-                document.querySelector('#mainNavTabs [data-page="' + CSS.escape(page) + '"]')?.click();
-            }
-            syncResponsiveMainNavigation();
-        });
-
-        var taskButton = document.createElement('button');
-        taskButton.id = 'mobileCurrentTaskBtn';
-        taskButton.type = 'button';
-        taskButton.className = 'btn btn-primary mobile-current-task-button';
-        taskButton.textContent = currentLanguage() === 'de' ? 'Aktuelle Aufgabe' : 'Current task';
-        taskButton.addEventListener('click', focusCurrentTask);
-
-        wrapper.append(label, select, taskButton);
-        tabList.parentElement.insertBefore(wrapper, tabList);
-        syncResponsiveMainNavigation();
-
-        new MutationObserver(syncResponsiveMainNavigation).observe(tabList, {
-            subtree: true,
-            childList: true,
-            attributes: true,
-            attributeFilter: ['class', 'style', 'aria-selected']
-        });
-        new MutationObserver(syncResponsiveMainNavigation).observe(document.body, {
-            attributes: true,
-            attributeFilter: ['class']
-        });
-        window.addEventListener('hashchange', syncResponsiveMainNavigation);
-        document.addEventListener('taxonomy:page-activated', function () {
-            syncMainNavigation();
-            syncResponsiveMainNavigation();
         });
     }
 
@@ -560,7 +461,6 @@ window.TaxonomyUtils = (function () {
         loadErgonomicsStyles();
         syncMainNavigation();
         installMainNavigationKeyboardSupport();
-        installResponsiveMainNavigation();
         installResponsiveTaskOrder();
         installTreeAccessibilityObserver();
         installManualScoreDialog();
@@ -584,7 +484,6 @@ window.TaxonomyUtils = (function () {
         requestScore: requestScore,
         syncTreeItemAccessibility: syncTreeItemAccessibility,
         refreshNodeCodeSuggestions: refreshNodeCodeSuggestions,
-        syncResponsiveMainNavigation: syncResponsiveMainNavigation,
         focusCurrentTask: focusCurrentTask
     };
 })();
