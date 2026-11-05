@@ -17,6 +17,12 @@
     let busy = false;
     let saved = false;
 
+    window.addEventListener('beforeunload', function (event) {
+        if (!busy && (saved || !fileInput.files || fileInput.files.length === 0)) return;
+        event.preventDefault();
+        event.returnValue = '';
+    });
+
     function notify(text, failure) {
         message.textContent = text;
         message.className = failure ? 'alert alert-danger' : 'alert alert-info';

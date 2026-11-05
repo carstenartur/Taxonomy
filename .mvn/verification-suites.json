@@ -238,7 +238,8 @@
           "com.taxonomy.RequirementLifecycleBrowserIT",
           "com.taxonomy.SharedApplicationChromeBrowserIT",
           "com.taxonomy.ArchitectureWorkspaceBrowserIT",
-          "com.taxonomy.PortfolioMatrixReviewIT"
+          "com.taxonomy.PortfolioMatrixReviewIT",
+          "com.taxonomy.DocumentTemplateNavigationBrowserIT"
         ]
       },
       "scenario": {

@@ -8,18 +8,17 @@
     <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-template-diff.css}"/>
+    <th:block th:replace="~{fragments/application-chrome :: styles}"></th:block>
     <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
 </head>
 <body class="bg-body-tertiary">
 <a class="skip-link" href="#partComparison" th:text="#{skip.link}">Skip to main content</a>
-<nav class="navbar navbar-dark bg-dark" th:aria-label="#{document.template.diff.navigation}">
-    <div class="container-fluid gap-2">
-        <a class="navbar-brand fw-semibold" th:href="@{/}">Taxonomy</a>
+<nav th:replace="~{fragments/application-chrome :: navigation('admin', ~{:: localActions}, 'DOCUMENT_TEMPLATES', 'template-versions')}">
+    <th:block th:fragment="localActions"><div>
         <a id="partComparisonBack" class="btn btn-outline-light"
            th:href="@{/admin/document-templates/{id}(id=${templateId},from=${fromRevision},to=${toRevision})}"
            th:text="#{document.template.restore.cancel}">Back to comparison</a>
-        <a th:replace="~{fragments/context-help :: button('DOCUMENT_TEMPLATES', 'template-versions')}"></a>
-    </div>
+    </div></th:block>
 </nav>
 <main id="partComparison" class="container-fluid py-3 px-lg-4" tabindex="-1">
     <section class="card shadow-sm mb-3" aria-labelledby="partComparisonHeading">
@@ -91,5 +90,7 @@
         </div>
     </section>
 </main>
+<script th:src="@{/js/taxonomy-i18n.js}"></script>
+<script th:src="@{/js/shared/application-chrome.js}"></script>
 </body>
 </html>

@@ -66,6 +66,19 @@
     const historyModalElement = document.getElementById('documentTemplateHistoryModal');
     const templatesById = new Map();
 
+    function uploadDraft() {
+        const file = document.getElementById('documentTemplateFile');
+        return JSON.stringify([document.getElementById('documentTemplateId').value,
+            document.getElementById('documentTemplateDisplayName').value,
+            Boolean(file.files && file.files.length)]);
+    }
+    const initialUpload = uploadDraft();
+    window.addEventListener('beforeunload', function (event) {
+        if (uploadForm.getAttribute('aria-busy') !== 'true' && uploadDraft() === initialUpload) return;
+        event.preventDefault();
+        event.returnValue = '';
+    });
+
     function format(pattern, value) { return String(pattern).replace('{0}', String(value)); }
     function announce(message) {
         if (!liveRegion) return;
