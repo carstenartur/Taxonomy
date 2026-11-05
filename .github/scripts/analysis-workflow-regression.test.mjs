@@ -687,11 +687,14 @@ test('confirmed New Analysis resolves a pending draft choice after its authorita
         : { version: 8, payload: { businessText: 'Remote saved requirement' } };
     } });
   const context = h.window.__TaxonomyAnalysisSessionContext;
+  let focusedInput = 0;
+  h.elements.businessText.focus = () => { focusedInput++; };
   h.window.confirm = () => false;
   h.edit('New local requirement');
   await context.loadDraft();
 
   assert.equal(await context.startNewAnalysis(), false);
+  assert.equal(focusedInput, 0);
   assert.equal(context.runtime.draftDecisionPending, true);
   assert.deepEqual(calls.map(call => call.method), ['GET']);
   h.window.confirm = () => true;
@@ -700,6 +703,7 @@ test('confirmed New Analysis resolves a pending draft choice after its authorita
   assert.equal(context.runtime.draftDecisionPending, false);
   assert.equal(context.runtime.version, 9);
   assert.equal(h.elements.businessText.value, '');
+  assert.equal(focusedInput, 1);
   assert.equal(h.state.currentScores, null);
   assert.equal(h.elements.statusArea.dataset.analysisSessionMessage, 'new-analysis');
   assert.equal(h.elements.statusArea.querySelector('[data-analysis-session-action="keep-local"]'), null);
