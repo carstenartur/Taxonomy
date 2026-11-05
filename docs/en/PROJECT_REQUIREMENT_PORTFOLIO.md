@@ -30,7 +30,9 @@ original project. A similarly worded requirement is not automatically the same o
 
 The shared navigation connects analysis, projects, requirement detail, the saved
 architecture workbench, the architecture editor and versioning. The context keeps
-the architecture, project, requirement and selected model stand together. The
+the architecture, project, requirement and selected model stand together.
+From imports, matrices, reports, versioning and requirement details, **Projects**
+returns to the selected project in the current workspace. The
 project overview and analysis initially show a collapsed summary on all screen sizes.
 Architecture title, current selection, selected stand and read-only or problem indicators
 remain visible. Open that line to access context details and lifecycle actions. Readable names

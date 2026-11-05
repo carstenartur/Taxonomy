@@ -62,6 +62,25 @@ for(const mode of ['index','projects'])test(`${mode}: the existing compact conte
         assert.deepEqual(page.errors,[]);
     }finally{await page.close();}
 });
+test('the shared Projects link retains the mounted project and workspace before and after loading',async()=>{
+    const page=await fixture({mode:'requirement',locale:'de'});try{
+        await page.evaluate(()=>{
+            history.replaceState(null,'','/taxonomy/projects/42/requirements/7?projectId=11&workspaceId=private-a&lang=de');
+            TaxonomyI18n.resolveUrl=path=>'/taxonomy'+path;
+            TaxonomyAppChrome.refreshNavigation();
+        });
+        const link=page.locator('#applicationProjectsLink');
+        for (const loaded of [false,true]) {
+            if(loaded)await page.evaluate(()=>TaxonomyAppChrome.updateContext({project:{id:42,key:'P-42'}}));
+            const target=new URL(await link.getAttribute('href'),'http://chrome.test');
+            assert.equal(target.pathname,'/taxonomy/projects');
+            assert.equal(target.searchParams.get('projectId'),'42');
+            assert.equal(target.searchParams.get('workspaceId'),'private-a');
+            assert.equal(target.searchParams.get('lang'),'de');
+        }
+        assert.deepEqual(page.errors,[]);
+    }finally{await page.close();}
+});
 for(const locale of ['de','en'])for(const width of [390,700,1100])test(`${locale}: ${width}px common navigation exposes Projects and five keyboard/touch destinations`,async()=>{
     const page=await fixture({mode:'index',locale,width});try{
         const links=page.locator('#mainNavTabs a[data-page]');

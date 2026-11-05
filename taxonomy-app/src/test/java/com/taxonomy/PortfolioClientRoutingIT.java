@@ -209,9 +209,8 @@ class PortfolioClientRoutingIT {
             assertThat(requests("GET", prefix + "/api/architecture/lifecycle"))
                     .as("Project navigation does not start an unrelated architecture lifecycle read").isEmpty();
         }
-        String portfolioReturn = List.of("portfolio-import", "portfolio-matrices", "portfolio-reports").contains(contract.template())
-                ? "/projects?projectId=42&lang=de" : "/projects?lang=de";
-        assertThat(href("portfolioBack")).isEqualTo(prefix + portfolioReturn);
+        assertProjectReturn(prefix, null);
+        assertThat(driver.findElements(By.id("portfolioBack"))).isEmpty();
         if (contract.template().equals("requirement-detail")) {
             assertThat(href("matrixLink")).isEqualTo(prefix + "/projects/42/matrices?lang=de");
         }
@@ -356,7 +355,7 @@ class PortfolioClientRoutingIT {
         String workspaceQuery = workspaceId == null ? null : "workspaceId=" + workspaceId + workspaceScopeAssertion(workspaceId);
         String portfolioReturn = prefix + "/projects?projectId=42&lang=de"
                 + (workspaceQuery == null ? "" : "&" + workspaceQuery);
-        assertThat(href("portfolioBack")).isEqualTo(portfolioReturn);
+        assertProjectReturn(prefix, workspaceId);
         assertThat(requests("GET", prefix + "/api/projects/42")).singleElement()
                 .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
         click(By.id("confirmImport"));
@@ -1160,6 +1159,17 @@ class PortfolioClientRoutingIT {
     private static WebElement element(String id) { return driver.findElement(By.id(id)); }
     private static String text(String id) { return element(id).getDomProperty("textContent"); }
     private static String href(String id) { return element(id).getDomAttribute("href"); }
+    private static void assertProjectReturn(String prefix, String workspaceId) {
+        var target = org.springframework.web.util.UriComponentsBuilder.fromUriString(href("applicationProjectsLink")).build();
+        assertThat(target.getPath()).isEqualTo(prefix + "/projects");
+        assertThat(target.getQueryParams().getFirst("projectId")).isEqualTo("42");
+        assertThat(target.getQueryParams().getFirst("lang")).isEqualTo("de");
+        if (workspaceId != null) {
+            assertThat(target.getQueryParams().getFirst("workspaceId")).isEqualTo(workspaceId);
+            assertThat(target.getQueryParams().getFirst("workspaceScopeKey"))
+                    .isEqualTo(workspaceId.isEmpty() ? "__shared__" : workspaceId);
+        }
+    }
     private static boolean hidden(String id) { return List.of(element(id).getDomAttribute("class").split("\\s+")).contains("d-none"); }
 
     private static Map<String, Object> project(int id) {

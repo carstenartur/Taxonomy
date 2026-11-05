@@ -23,7 +23,7 @@
 
     const labels = {
         en: {
-            title: 'Versioning & collaboration', portfolio: 'Portfolio', reports: 'Reports',
+            title: 'Versioning & collaboration', reports: 'Reports',
             preview: 'Current portfolio change preview', refresh: 'Refresh',
             dsl: 'Technical TaxDSL preview', commit: 'Commit portfolio state',
             target: 'Target branch', message: 'Commit message',
@@ -42,7 +42,7 @@
             sourceTargetDiffer: 'Source and target branch must differ'
         },
         de: {
-            title: 'Versionierung & Zusammenarbeit', portfolio: 'Portfolio', reports: 'Berichte',
+            title: 'Versionierung & Zusammenarbeit', reports: 'Berichte',
             preview: 'Vorschau der aktuellen Portfolioänderungen', refresh: 'Aktualisieren',
             dsl: 'Technische TaxDSL-Vorschau', commit: 'Portfoliozustand committen',
             target: 'Zielbranch', message: 'Commitnachricht',
@@ -69,6 +69,7 @@
     }
 
     async function initialize() {
+        window.TaxonomyAppChrome?.updateContext({project: {id: projectId}});
         translate();
         wire();
         await load();
@@ -81,8 +82,6 @@
             ? 'Zur Versionierung springen' : 'Skip to versioning';
         document.getElementById('versioningPageTitle').textContent = text('title');
         document.getElementById('versioningHeading').textContent = text('title');
-        document.getElementById('portfolioBack').textContent = text('portfolio');
-        document.getElementById('portfolioBack').href = applicationUrl(`/projects?lang=${locale}`);
         document.getElementById('reportsLink').textContent = text('reports');
         document.getElementById('reportsLink').href = applicationUrl(`/projects/${projectId}/reports?lang=${locale}`);
         document.getElementById('previewHeading').textContent = text('preview');
