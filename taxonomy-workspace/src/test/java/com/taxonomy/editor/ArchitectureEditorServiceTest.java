@@ -40,6 +40,18 @@ class ArchitectureEditorServiceTest {
         assertThat(service.read(alice, null, 1L).historyTargets().undo()).isNull();
     }
 
+    @Test void anotherActorsLaterChangeBlocksRatherThanSkipsThePersonalTarget() throws Exception {
+        var aliceChange = execute(update("Alice"));
+        var bob = RepositoryContext.workspace("repo-a", "workspace-a1", "draft", "bob");
+        var bobChange = service.execute(bob, new Command(service.read(bob, null).context(), metadata(), update("Bob")));
+        var aliceView = service.read(alice, null);
+        var bobView = service.read(bob, null);
+        assertThat(aliceView.historyTargets().undo().operationId()).isEqualTo(aliceChange.operationId());
+        assertThat(bobView.historyTargets().undo().operationId()).isEqualTo(bobChange.operationId());
+        var inverse = new UndoArchitectureCommand(UUID.fromString(aliceChange.operationId()));
+        assertCode(() -> service.preview(alice, new Command(aliceView.context(), metadata(), inverse)), "UNDO_CONFLICT");
+    }
+
     @Test void frozenSnapshotAdoptionUsesTheJournalAndSupportsReplayRestartCheckpointUndoRedo() throws Exception {
         var adoption = new AdoptAnalysisSnapshot("analysis-test", "Frozen snapshot", "Old text", "a".repeat(64),
                 List.of(new SnapshotElement("arch-existing", "System", "Recorded name", "Recorded description"),
@@ -264,6 +276,8 @@ class ArchitectureEditorServiceTest {
         RepositoryContext bob = RepositoryContext.workspace("repo-a", "workspace-a1", "draft", "bob");
         var read = service.read(bob, null);
         assertThat(read.history()).isEmpty();
+        assertThat(read.historyTargets().undo()).isNull();
+        assertThat(read.historyTargets().redo()).isNull();
         assertCode(() -> service.preview(bob, new Command(read.context(), metadata(), new UndoArchitectureCommand(UUID.fromString(accepted.operationId())))), "NOT_FOUND");
         RepositoryContext other = RepositoryContext.workspace("repo-a", "workspace-a2", "draft", "alice");
         assertThat(service.read(other, null).history()).isEmpty();
