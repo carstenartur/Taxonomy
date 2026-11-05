@@ -73,21 +73,44 @@
     }
     function filtered() {
         var query = el('integrationFilter').value.toLocaleLowerCase();
-        return publication ? (publication.preview ? publication.preview.changes : []).filter(function (c) { return [c.externalId, c.local && c.local.title, c.remote && c.remote.title, c.conflicts.join(' ')].join(' ').toLocaleLowerCase().includes(query); }) : operation ? operation.changes.filter(function (c) { return [c.externalId, c.kind, c.after && c.after.title, c.conflicts.join(' ')].join(' ').toLocaleLowerCase().includes(query); }) : [];
+        var changes = publication ? (publication.preview ? publication.preview.changes : []) : operation ? operation.changes : [];
+        return changes.filter(function (change) {
+            var versions = publication ? [change.local, change.remote, change.baseLocal, change.baseRemote, change.merged]
+                : [change.before, change.after];
+            return [change.externalId, change.kind, change.conflicts.join(' ')].concat(versions.map(function (value) {
+                return value && value.title;
+            })).join(' ').toLocaleLowerCase().includes(query);
+        });
     }
     function visible() { return filtered().slice(page * 40, (page + 1) * 40); }
+    function objectCell(externalId, versions) {
+        var cell = document.createElement('td'), label = document.createElement('span');
+        var title = versions.map(function (value) { return value && value.title; })
+            .find(function (value) { return typeof value === 'string' && value.trim(); });
+        label.textContent = title || externalId; cell.append(label);
+        if (title && title !== externalId) {
+            var details = document.createElement('details'), summary = document.createElement('summary'), identity = document.createElement('code');
+            details.className = 'integration-identity'; summary.textContent = t('identity'); identity.textContent = externalId;
+            details.append(summary, identity); cell.append(details);
+        }
+        return cell;
+    }
+    function decisionLabel(cell, externalId) {
+        var name = cell.children[0].textContent;
+        return t('decision') + ' ' + name + (name === externalId ? '' : ' (' + externalId + ')');
+    }
     function renderChanges() {
         el('integrationChanges').replaceChildren();
         if (publication) { renderPublicationChanges(); return; }
         visible().forEach(function (change) {
             var row = document.createElement('tr'); row.dataset.changeId = change.id; if (change.kind === 'CONFLICT') row.className = 'conflict';
-            var id = document.createElement('td'); id.textContent = change.externalId;
+            var id = objectCell(change.externalId, [change.after, change.before]);
             var kind = document.createElement('td'); kind.textContent = t('change.' + change.kind) + (change.conflicts.length ? ': ' + change.conflicts.join(', ') : '');
             var value = document.createElement('td'), detail = document.createElement('details'), summary = document.createElement('summary'), text = document.createElement('pre');
             summary.textContent = ((change.before && change.before.title) || '—') + ' → ' + ((change.after && change.after.title) || '—');
             text.tabIndex = 0; text.setAttribute('aria-label', t('values') + ' ' + change.externalId);
             text.textContent = JSON.stringify({ fields: change.fields, before: change.before, after: change.after }, null, 2); detail.append(summary, text); value.append(detail);
-            var decision = document.createElement('td'), select = document.createElement('select'); select.setAttribute('aria-label', t('decision') + ' ' + change.externalId);
+            var decision = document.createElement('td'), select = document.createElement('select'); select.setAttribute('aria-label', decisionLabel(id, change.externalId));
             option(select, '', t('choose')); ['ACCEPT', 'REJECT', 'TAKE_EXTERNAL', 'KEEP_INTERNAL'].forEach(function (key) { option(select, key, t('decision.' + key)); });
             select.value = decisions[change.id] || ''; select.disabled = !mayWrite || operation.status !== 'PREVIEWED';
             select.addEventListener('change', function () { if (select.value) decisions[change.id] = select.value; else delete decisions[change.id]; });
@@ -162,7 +185,7 @@
     function renderPublicationChanges() {
         visible().forEach(function (change) {
             var row = document.createElement('tr'); row.dataset.changeId = change.id; if (change.conflicts.length) row.className = 'conflict';
-            var identity = document.createElement('td'); identity.textContent = change.externalId;
+            var identity = objectCell(change.externalId, [change.merged, change.remote, change.local, change.baseRemote, change.baseLocal]);
             var direction = document.createElement('td');
             direction.textContent = t('publicationMode.' + publication.mode) + ' · ' + t('localFields') + ': ' + change.localFields.join(', ') + ' · ' + t('remoteFields') + ': ' + change.remoteFields.join(', ');
             if (change.conflicts.length) direction.textContent += ' · ' + t('conflicts') + ': ' + change.conflicts.join(', ');
@@ -175,7 +198,7 @@
                 value.textContent = change[field] ? JSON.stringify(change[field], null, 2) : t('absent'); value.tabIndex = 0;
                 value.setAttribute('aria-label', t('value.' + field) + ' ' + change.externalId); details.append(summary, value); values.append(details);
             });
-            var decision = document.createElement('td'), select = document.createElement('select'); select.setAttribute('aria-label', t('decision') + ' ' + change.externalId);
+            var decision = document.createElement('td'), select = document.createElement('select'); select.setAttribute('aria-label', decisionLabel(identity, change.externalId));
             option(select, '', t('choose')); ['MERGE', 'KEEP_LOCAL', 'TAKE_REMOTE', 'SKIP'].forEach(function (key) {
                 if (key !== 'TAKE_REMOTE' || publication.mode === 'SYNCHRONIZE') option(select, key, t('resolution.' + key));
             });

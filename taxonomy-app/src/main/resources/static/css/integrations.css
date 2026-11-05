@@ -10,6 +10,14 @@ button { margin: .3rem .3rem .3rem 0; overflow-wrap: anywhere; white-space: norm
 li, p, summary, a { overflow-wrap: anywhere; }
 table { width: 100%; border-collapse: collapse; } td, th { padding: .7rem; border-bottom: 1px solid #cad3df; text-align: left; vertical-align: top; }
 td { max-width: 28rem; overflow-wrap: anywhere; } td pre { max-height: 14rem; overflow: auto; } .table-scroll { overflow-x: auto; }
+.table-scroll table { min-width: 56rem; table-layout: fixed; }
+.table-scroll th:first-child { width: 24%; }
+.table-scroll th:nth-child(2) { width: 10rem; }
+.table-scroll th:nth-child(4) { width: 12rem; }
+.table-scroll td:nth-child(2) { overflow-wrap: break-word; }
+.integration-identity { margin-top: .2rem; font-size: .85rem; }
+.integration-identity summary { padding: .2rem 0; }
+.integration-identity code { overflow-wrap: anywhere; }
 .toolbar { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin: 1rem 0; }
 #integrationError { border-left: .3rem solid #b42318; padding: 1rem; background: #fff2f0; color: #821a14; white-space: pre-wrap; }
 .conflict { background: #fff1dd; } :focus-visible { outline: 3px solid #1167bb; outline-offset: 3px; }
