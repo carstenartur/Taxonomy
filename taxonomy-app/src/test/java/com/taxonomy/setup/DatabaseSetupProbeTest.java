@@ -234,7 +234,9 @@ class DatabaseSetupProbeTest {
     @Test void interruptedCallerRetainsProbePermitUntilJdbcActuallyExits() throws Exception {
         var entered = new CountDownLatch(2);
         var release = new CountDownLatch(1);
+        var jdbcWorkers = new ConcurrentLinkedQueue<Thread>();
         Driver blocking = driver((url, properties) -> {
+            jdbcWorkers.add(Thread.currentThread());
             entered.countDown();
             boolean finished = false;
             while (!finished) {
@@ -265,8 +267,15 @@ class DatabaseSetupProbeTest {
         } finally {
             release.countDown();
             one.interrupt(); two.interrupt();
-            one.join(3000); two.join(3000);
-            DriverManager.deregisterDriver(blocking);
+            try {
+                one.join(3000); two.join(3000);
+                // The interrupted callers return before drivers that ignore cancellation exit.
+                // Wait for the real workers so their permits cannot leak into the next test.
+                for (Thread worker : jdbcWorkers) {
+                    worker.join(5000);
+                    assertFalse(worker.isAlive(), "JDBC worker must finish before the next test");
+                }
+            } finally { DriverManager.deregisterDriver(blocking); }
         }
     }
 
