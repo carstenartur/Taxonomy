@@ -493,6 +493,7 @@
         S.lastAnalysisStatus = result.status || 'UNKNOWN';
         S.storedBusinessText = text;
         S.lastAnalyzedText = text;
+        if (result.architectureView) S.currentArchView = result.architectureView;
         B().renderView(S.taxonomyData, S.currentScores);
 
         console.log('[Taxonomy] Analysis result:', result);
@@ -581,11 +582,8 @@
 
         // Store architecture view and show summary button
         if (result.architectureView) {
-            S.currentArchView = result.architectureView;
             var summaryBtn = document.getElementById('viewSummary');
             if (summaryBtn) summaryBtn.style.display = '';
-            // Keep the user's diagram selection and viewport during recovery.
-            if (!options.recoveryManaged) B().switchView('summary');
             // Add quick action to navigate to Architecture tab
             var statusArea = document.getElementById('statusArea');
             if (statusArea && window.navigateToPage) {
