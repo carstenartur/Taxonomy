@@ -23,7 +23,7 @@ Taxonomy consumes public types from `io.github.carstenartur.jgit.storage.hiberna
 The root POM is the source of truth for both the released dependency and its repository:
 
 ```xml
-<jgit-storage-hibernate.version>0.11.8</jgit-storage-hibernate.version>
+<jgit-storage-hibernate.version>0.12.0</jgit-storage-hibernate.version>
 ```
 
 ```xml
@@ -104,6 +104,7 @@ The pinned artifact exposes these public locations:
 | PostgreSQL pre-library adoption | `CoreSchemaMigrations.POSTGRESQL_LEGACY_ADOPTION_LOCATION` | `classpath:db/migration/jgit-storage-hibernate/core/adoption/postgresql` |
 | Microsoft SQL Server Core | `CoreSchemaMigrations.SQL_SERVER_LOCATION` | `classpath:db/migration/jgit-storage-hibernate/core/sqlserver` |
 | Microsoft SQL Server pre-library adoption | `CoreSchemaMigrations.SQL_SERVER_LEGACY_ADOPTION_LOCATION` | `classpath:db/migration/jgit-storage-hibernate/core/adoption/sqlserver` |
+| Oracle Core, fresh schema | `CoreSchemaMigrations.ORACLE_LOCATION` | `classpath:db/migration/jgit-storage-hibernate/core/oracle` |
 
 The normal HSQLDB, PostgreSQL and SQL Server streams packaged in the pinned artifact contain migrations `0.1.4`, `0.1.5`, `0.1.14`, `0.1.14.1`, `0.1.14.2`, `0.1.17`, `0.1.18`, `0.9.1` and `0.9.2`. The HSQLDB and PostgreSQL adoption streams contain V1 and V2 for the pre-library Taxonomy schema. The SQL Server adoption stream contains its own V1 and V2 for the pre-library/Sandbox schema. `CoreSchemaMigrations.LEGACY_ADOPTION_VERSION` is `2`.
 
@@ -128,14 +129,14 @@ classes remain conditional on `spring.flyway.enabled=true`; only
 
 ## Database paths actually supported by Taxonomy
 
-`JgitStorageSchemaMigrationConfig.DatabaseFamily` currently selects only HSQLDB and PostgreSQL. SQL Server's upstream migration assets are present in the pinned release, but the Taxonomy SQL Server profile does not yet activate them. Oracle has no public Core/adoption migration location in the pinned library.
+`JgitStorageSchemaMigrationConfig.DatabaseFamily` currently selects only HSQLDB and PostgreSQL. SQL Server migration resources and a fresh-schema Oracle Core stream are present in the pinned upstream release, but the corresponding Taxonomy profiles do not activate them. The Oracle profile selects the library's `JgitOracleDialect` for its application-managed Hibernate factory; this does not enable or certify schema migration.
 
 | Database | Upstream pinned-release migration assets | Taxonomy-managed Core migration/adoption | Current evidence and limitation |
 |---|---|---:|---|
 | HSQLDB | Core plus Taxonomy adoption V1/V2 | yes | Default/local path and direct Maven/JUnit migration tests |
 | PostgreSQL | Core plus Taxonomy adoption V1/V2 | yes | Testcontainers migration, persistence and database-matrix coverage |
 | Microsoft SQL Server | Core plus SQL Server adoption V1/V2 | no | `application-mssql.properties` keeps Flyway disabled; application/dialect checks do not certify the complete Core migration, adoption, restart and persistence path |
-| Oracle | no Core or adoption location | no | `application-oracle.properties` keeps Flyway disabled; application/dialect checks do not establish persistent Core migration support |
+| Oracle | fresh Core stream; no Taxonomy legacy-adoption stream | no | `application-oracle.properties` keeps Flyway disabled; application/dialect checks do not establish persistent Core migration support |
 
 The library also exposes an H2 Core location, but Taxonomy has no H2 product profile. It is not an application-supported storage path.
 

@@ -116,6 +116,8 @@ class JgitStorageDocumentationContractTest {
                             CoreSchemaMigrations.SQL_SERVER_LOCATION,
                             "CoreSchemaMigrations.SQL_SERVER_LEGACY_ADOPTION_LOCATION",
                             CoreSchemaMigrations.SQL_SERVER_LEGACY_ADOPTION_LOCATION,
+                            "CoreSchemaMigrations.ORACLE_LOCATION",
+                            CoreSchemaMigrations.ORACLE_LOCATION,
                             "CoreSchemaMigrations.SCHEMA_HISTORY_TABLE",
                             CoreSchemaMigrations.SCHEMA_HISTORY_TABLE,
                             "CoreSchemaMigrations.LEGACY_ADOPTION_SCHEMA_HISTORY_TABLE",
@@ -130,6 +132,8 @@ class JgitStorageDocumentationContractTest {
         assertResources(CoreSchemaMigrations.HSQLDB_LOCATION, NORMAL_MIGRATIONS);
         assertResources(CoreSchemaMigrations.POSTGRESQL_LOCATION, NORMAL_MIGRATIONS);
         assertResources(CoreSchemaMigrations.SQL_SERVER_LOCATION, NORMAL_MIGRATIONS);
+        assertResources(CoreSchemaMigrations.ORACLE_LOCATION,
+                List.of("V0_12_0__create_core_schema.sql"));
 
         assertResources(
                 CoreSchemaMigrations.HSQLDB_LEGACY_ADOPTION_LOCATION,
@@ -172,8 +176,9 @@ class JgitStorageDocumentationContractTest {
 
         assertThat(oracle)
                 .contains(
-                        "exposes no Oracle Core or legacy-adoption",
-                        "spring.flyway.enabled=false");
+                        "packages a fresh Oracle Core migration",
+                        "spring.flyway.enabled=false",
+                        "spring.jpa.database-platform=io.github.carstenartur.jgit.storage.hibernate.config.JgitOracleDialect");
     }
 
     private static Set<String> allowedSemanticVersions(String dependencyVersion) {

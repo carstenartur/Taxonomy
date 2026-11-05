@@ -23,7 +23,7 @@ Taxonomy verwendet öffentliche Typen aus `io.github.carstenartur.jgit.storage.h
 Das Root-POM ist die maßgebliche Quelle für die veröffentlichte Abhängigkeit und ihr Repository:
 
 ```xml
-<jgit-storage-hibernate.version>0.11.8</jgit-storage-hibernate.version>
+<jgit-storage-hibernate.version>0.12.0</jgit-storage-hibernate.version>
 ```
 
 ```xml
@@ -104,6 +104,7 @@ Das festgelegte Artefakt stellt folgende öffentliche Pfade bereit:
 | Übernahme eines alten PostgreSQL-Schemas | `CoreSchemaMigrations.POSTGRESQL_LEGACY_ADOPTION_LOCATION` | `classpath:db/migration/jgit-storage-hibernate/core/adoption/postgresql` |
 | Microsoft SQL Server Core | `CoreSchemaMigrations.SQL_SERVER_LOCATION` | `classpath:db/migration/jgit-storage-hibernate/core/sqlserver` |
 | Übernahme eines alten SQL-Server-Schemas | `CoreSchemaMigrations.SQL_SERVER_LEGACY_ADOPTION_LOCATION` | `classpath:db/migration/jgit-storage-hibernate/core/adoption/sqlserver` |
+| Oracle Core, neues Schema | `CoreSchemaMigrations.ORACLE_LOCATION` | `classpath:db/migration/jgit-storage-hibernate/core/oracle` |
 
 Die im festgelegten Artefakt enthaltenen normalen HSQLDB-, PostgreSQL- und SQL-Server-Ströme enthalten die Migrationen `0.1.4`, `0.1.5`, `0.1.14`, `0.1.14.1`, `0.1.14.2`, `0.1.17`, `0.1.18`, `0.9.1` und `0.9.2`. Die HSQLDB- und PostgreSQL-Adoptionsströme enthalten V1 und V2 für das alte Taxonomy-Schema. Der SQL-Server-Adoptionsstrom enthält eigene V1 und V2 für das alte Sandbox-/Vor-Bibliotheks-Schema. `CoreSchemaMigrations.LEGACY_ADOPTION_VERSION` ist `2`.
 
@@ -130,14 +131,14 @@ Anwendungsschema. Beide Konfigurationsklassen bleiben an
 
 ## Tatsächlich von Taxonomy unterstützte Datenbankpfade
 
-`JgitStorageSchemaMigrationConfig.DatabaseFamily` wählt derzeit ausschließlich HSQLDB und PostgreSQL. Die SQL-Server-Migrationsressourcen sind im festgelegten Upstream-Release vorhanden, das Taxonomy-SQL-Server-Profil aktiviert sie aber noch nicht. Für Oracle stellt die festgelegte Bibliothek keinen öffentlichen Core-/Adoptionspfad bereit.
+`JgitStorageSchemaMigrationConfig.DatabaseFamily` wählt derzeit ausschließlich HSQLDB und PostgreSQL. Das festgelegte Upstream-Release enthält SQL-Server-Migrationsressourcen und einen Oracle-Core-Strom für neue Schemas; die entsprechenden Taxonomy-Profile aktivieren sie noch nicht. Das Oracle-Profil verwendet für die von der Anwendung verwaltete Hibernate-Factory den `JgitOracleDialect` der Bibliothek. Dadurch wird die Schemamigration nicht aktiviert oder zertifiziert.
 
 | Datenbank | Upstream-Migrationsressourcen im festgelegten Release | Von Taxonomy verwaltete Core-Migration/Übernahme | Aktuelle Evidenz und Grenze |
 |---|---|---:|---|
 | HSQLDB | Core plus Taxonomy-Adoption V1/V2 | ja | Standard-/Lokaler Pfad und direkte Maven-/JUnit-Migrationstests |
 | PostgreSQL | Core plus Taxonomy-Adoption V1/V2 | ja | Testcontainers-Abdeckung für Migration, Persistenz und Datenbankmatrix |
 | Microsoft SQL Server | Core plus SQL-Server-Adoption V1/V2 | nein | `application-mssql.properties` lässt Flyway deaktiviert; Anwendungs-/Dialekttests zertifizieren nicht den vollständigen Core-Migrations-, Adoptions-, Restart- und Persistenzpfad |
-| Oracle | kein Core- oder Adoptionspfad | nein | `application-oracle.properties` lässt Flyway deaktiviert; Anwendungs-/Dialekttests begründen keine Unterstützung persistenter Core-Migrationen |
+| Oracle | Core-Strom für neue Schemas; kein Taxonomy-Legacy-Adoptionspfad | nein | `application-oracle.properties` lässt Flyway deaktiviert; Anwendungs-/Dialekttests begründen keine Unterstützung persistenter Core-Migrationen |
 
 Die Bibliothek stellt außerdem einen H2-Core-Pfad bereit, Taxonomy besitzt jedoch kein H2-Produktprofil. Das ist kein unterstützter Anwendungspfad.
 
