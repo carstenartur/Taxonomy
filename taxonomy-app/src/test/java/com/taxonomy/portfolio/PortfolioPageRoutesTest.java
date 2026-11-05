@@ -3,6 +3,8 @@ package com.taxonomy.portfolio;
 import org.junit.jupiter.api.Tag;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -14,6 +16,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -59,5 +62,15 @@ class PortfolioPageRoutesTest {
                         "id=\"importMain\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
                         "/js/portfolio/portfolio-import.js")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/projects/12/import", "/projects/12/matrices", "/projects/12/reports",
+            "/projects/12/versioning", "/projects/12/requirements/34"})
+    void projectSubpagesRenderOneSharedProjectDestination(String path) throws Exception {
+        String html = mockMvc.perform(get(path)).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(html).containsOnlyOnce("id=\"applicationProjectsLink\"")
+                .doesNotContain("id=\"portfolioBack\"");
     }
 }
