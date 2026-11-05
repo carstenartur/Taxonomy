@@ -62,7 +62,7 @@ class SharedAdminNavigationBrowserIT {
         wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("return Boolean(window.TaxonomyAppChrome)")));
 
         assertThat(page.driver().findElements(By.id("applicationNavigation"))).hasSize(1);
-        assertThat(page.driver().findElements(By.cssSelector("#applicationNavigation [data-app-route='architecture']"))).hasSize(1);
+        assertThat(page.driver().findElements(By.cssSelector("#applicationWorkspaces [data-app-route='architecture']"))).hasSize(1);
         assertThat(page.driver().findElements(By.id(view.retained()))).hasSize(1);
         assertThat(page.driver().findElement(By.cssSelector("#applicationNavigation .context-help")).getDomAttribute("href"))
                 .contains("/taxonomy/?lang=" + language + "#help/" + view.help());
@@ -81,7 +81,7 @@ class SharedAdminNavigationBrowserIT {
                 Map.entry("minimumPasswordLength", 12), Map.entry("temporaryPasswords", false));
         page.clearRoutes();
         page.openAt("user-management-form", "/taxonomy", "/taxonomy/admin/users/1", "de", "", model);
-        assertThat(page.driver().findElements(By.cssSelector("#applicationNavigation [data-app-route='architecture']"))).hasSize(1);
+        assertThat(page.driver().findElements(By.cssSelector("#applicationWorkspaces [data-app-route='architecture']"))).hasSize(1);
         var displayName = page.driver().findElement(By.id("displayName"));
         assertThat(departureBlocked()).isFalse();
         displayName.clear();

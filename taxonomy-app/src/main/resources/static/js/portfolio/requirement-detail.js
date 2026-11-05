@@ -167,7 +167,6 @@
         document.title = t('detail') + ' — Taxonomy';
         document.querySelector('.skip-link').textContent = locale === 'de'
             ? 'Zu den Anforderungsdetails springen' : 'Skip to requirement detail';
-        document.getElementById('pageTitle').textContent = t('detail');
         document.getElementById('matrixLink').textContent = t('matrices');
         document.getElementById('reanalyzeRequirement').textContent = t('analyze');
         document.getElementById('newVersionButton').textContent = t('newVersion');

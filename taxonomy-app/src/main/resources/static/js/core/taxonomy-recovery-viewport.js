@@ -67,7 +67,7 @@
         reopen.id = 'analysisRecoveryReopen'; reopen.hidden = true;
         reopen.setAttribute('aria-haspopup', 'dialog');
         reopen.setAttribute('aria-controls', 'analysisRecoveryDialog');
-        (doc.getElementById('analysisStatusMenuSlot') || host).append(reopen);
+        (doc.getElementById('analysisStatusActions') || host).append(reopen);
 
         var dialog = element('dialog', '', 'analysis-recovery-dialog'); dialog.id = 'analysisRecoveryDialog';
         dialog.setAttribute('aria-labelledby', 'analysisRecoveryTitle');

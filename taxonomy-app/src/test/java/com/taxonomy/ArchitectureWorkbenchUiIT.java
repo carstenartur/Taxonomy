@@ -366,7 +366,7 @@ class ArchitectureWorkbenchUiIT {
                 .sendKeys("admin");
         driver.findElement(By.name("password")).sendKeys(ADMIN_PASSWORD);
         driver.findElement(By.cssSelector("form")).submit();
-        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("mainNavTabs")));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("applicationWorkspaces")));
         List<WebElement> dismiss = driver.findElements(By.id("onboardingDismiss"));
         if (!dismiss.isEmpty() && dismiss.getFirst().isDisplayed()) {
             dismiss.getFirst().click();

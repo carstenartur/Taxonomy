@@ -46,7 +46,7 @@ async function fixture({locale = 'en', width = 1000, height = 850, responses = [
     await page.route('http://database-setup.test/**', route => route.fulfill({body: '', contentType: 'text/html'}));
     await page.goto('http://database-setup.test/');
     await page.setContent(`<html lang="${locale}"><head></head><body>
-        <details id="applicationSettings"><summary>Settings</summary><button id="databaseSetupMenuAction">Database setup</button></details>
+        <details id="applicationTools"><summary>Settings</summary><button id="databaseSetupMenuAction">Database setup</button></details>
         <input id="businessText"><div id="databaseSetupNotice" hidden></div>${fragment}</body></html>`);
     const translations = {};
     for (const filename of ['messages_database_setup.properties', ...(locale === 'de' ? ['messages_database_setup_de.properties'] : [])]) {

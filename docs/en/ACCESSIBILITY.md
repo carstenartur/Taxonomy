@@ -17,7 +17,7 @@ The assessment covers the authenticated single-page application, including analy
 | Document language | Thymeleaf sets the page language from the active locale | Template contract and authenticated axe audit | Implemented |
 | Bypass blocks | A visible-on-focus skip link targets the main content region | Markup plus focus styling | Implemented |
 | Status messages | Polite and assertive ARIA live regions are available for dynamic feedback | UI helper and axe audit | Implemented |
-| Main navigation | Runtime `tablist` / `tab` / `tabpanel` semantics, `aria-selected`, roving tab index, Home/End and arrow-key navigation | `taxonomy-utils.js` and axe audit | Implemented |
+| Main navigation | Work-area links with `aria-current`; native command menus with arrows/Escape | `application-chrome.js` and native browser tests | Implemented |
 | Taxonomy tree | `tree`, `treeitem`, `group`, `aria-expanded`, roving focus, arrow/Home/End/Enter/Space navigation | Browser code and focused tests | Implemented |
 | Scores and reasons | Tree-item accessible names include code, title, score and reason; a mutation observer keeps dynamic scoring updates synchronized | `taxonomy-utils.js` | Implemented |
 | Focus indication | Custom focus-visible outlines for tree items, navigation, dialogs and node actions | CSS contract | Implemented |
@@ -27,7 +27,7 @@ The assessment covers the authenticated single-page application, including analy
 | Touch operation | Node actions are displayed on coarse pointers; important controls receive 44 px touch targets | Responsive ergonomics stylesheet | Implemented |
 | Responsive task order | At narrow/zoomed widths the primary analysis task is moved before the reference tree in the actual DOM; desktop order is restored when the two-column layout returns | Role/state assertions for geometry, DOM, reading and focus order | Implemented |
 | Explicit task hierarchy | Analysis exposes describe, analyze, review and continue stages plus one contextual next action | Real role/browser task flow and task-state assertions | Implemented |
-| Progressive disclosure | Healthy repository, workspace, model/provider and expert-tool detail is collapsed by default; actionable failures open operational detail | Browser assertions and automatic error-state evidence | Implemented |
+| Progressive disclosure | Healthy repository, workspace, model/provider and expert-tool detail is collapsed by default; warnings remain visible in System status; the user controls its detail disclosure | Browser assertions and automatic error-state evidence | Implemented |
 | Expert keyboard access | `Alt+Shift+A` focuses the analysis task and `Alt+Shift+O` toggles/focuses operational context | Role/state keyboard assertions | Implemented |
 | Localised dynamic UI | Task stages and disclosures use the same English/German message-source inventory as the server-rendered UI | i18n controller integration tests and browser startup contract | Implemented |
 | Zoom and reflow | Navigation remains a single horizontally reachable row; panels and actions reflow without essential horizontal loss | Responsive stylesheet and Maven-owned role/state matrix; manual device verification still required | Partial |

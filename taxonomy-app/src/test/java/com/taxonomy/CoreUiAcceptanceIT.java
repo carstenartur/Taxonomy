@@ -71,7 +71,7 @@ class CoreUiAcceptanceIT {
         driver.findElement(By.name("password")).sendKeys(ADMIN_PASSWORD);
         driver.findElement(By.cssSelector("form")).submit();
 
-        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("mainNavTabs")));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("applicationWorkspaces")));
         dismissOnboardingWhenShown();
         wait.until(d -> {
             WebElement tree = d.findElement(By.id("taxonomyTree"));
@@ -86,31 +86,29 @@ class CoreUiAcceptanceIT {
                 .contains("taxonomy-ergonomics.css");
 
         WebElement activeTab = driver.findElement(
-                By.cssSelector("#mainNavTabs .nav-link[data-page='analyze']"));
-        assertThat(activeTab.getAttribute("role")).isEqualTo("tab");
-        assertThat(activeTab.getAttribute("aria-selected")).isEqualTo("true");
+                By.cssSelector("#applicationRequirementLink"));
+        assertThat(activeTab.getAttribute("aria-current")).isEqualTo("page");
 
         activeTab.click();
-        activeTab.sendKeys(Keys.ARROW_RIGHT);
+
         By architectureTabSelector =
-                By.cssSelector("#mainNavTabs .nav-link[data-page='architecture']");
-        wait.until(ExpectedConditions.attributeToBe(
-                architectureTabSelector, "aria-selected", "true"));
+                By.cssSelector("#applicationArchitectureLink");
         WebElement architectureTab = driver.findElement(architectureTabSelector);
-        assertThat(architectureTab.getAttribute("tabindex")).isEqualTo("0");
+        architectureTab.sendKeys(Keys.ENTER);
+        wait.until(ExpectedConditions.attributeToBe(architectureTabSelector, "aria-current", "page"));
         assertThat(driver.findElement(By.id("tab-architecture")).isDisplayed()).isTrue();
 
         WebElement settings = driver.findElement(
-                By.cssSelector("#applicationSettings > summary"));
+                By.cssSelector("#applicationTools > summary"));
         settings.click();
         WebElement adminLink = wait.until(ExpectedConditions.visibilityOfElementLocated(
-                By.cssSelector("#applicationSettings #adminNavTab")));
+                By.cssSelector("#applicationTools #adminNavTab")));
         adminLink.click();
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("tab-admin")));
 
         settings.click();
         WebElement preferencesLink = wait.until(ExpectedConditions.visibilityOfElementLocated(
-                By.cssSelector("#applicationSettings #preferencesNavTab")));
+                By.cssSelector("#applicationTools #preferencesNavTab")));
         preferencesLink.click();
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("tab-preferences")));
     }

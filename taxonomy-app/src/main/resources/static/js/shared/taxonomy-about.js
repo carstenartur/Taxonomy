@@ -182,7 +182,7 @@ window.TaxonomyAbout = (function () {
             aboutModalEl.addEventListener('hidden.bs.modal', function () {
                 var menu = aboutBtn.closest('details');
                 var target = menu && !menu.open ? menu.querySelector('summary') : aboutBtn;
-                target.focus();
+                window.TaxonomyAppChrome.restoreFocus(target);
             });
         }
 

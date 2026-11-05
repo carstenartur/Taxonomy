@@ -5,7 +5,9 @@ import {readFileSync} from 'node:fs';
 const resources=new URL('../../taxonomy-app/src/main/resources/',import.meta.url);
 const capabilityScripts=['/js/api/taxonomy-api-client.js','/js/api/plugin-capabilities-api.js','/js/shared/plugin-capabilities.js'];
 function scriptsFor(page){
-    const html=readFileSync(new URL('templates/'+page+'.html',resources),'utf8');
+    const common=readFileSync(new URL('templates/fragments/application-chrome.html',resources),'utf8');
+    const html=readFileSync(new URL('templates/'+page+'.html',resources),'utf8')
+        .replace(/<th:block th:replace="~\{fragments\/application-chrome :: scripts\}"><\/th:block>/g,()=>common);
     return Array.from(html.matchAll(/th:src="@\{([^}]+)\}"/g),match=>match[1]);
 }
 const descriptor=(id='json',reportType=null)=>({id,reportType,displayName:'Format',fileExtension:'json',contentType:'application/json',binary:false,

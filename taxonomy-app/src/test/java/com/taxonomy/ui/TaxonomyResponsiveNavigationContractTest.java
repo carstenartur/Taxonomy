@@ -13,56 +13,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TaxonomyResponsiveNavigationContractTest {
 
     @Test
-    void browserVerificationMeasuresBeforeScrollAndExercisesSharedNavigation() throws Exception {
-        String fixtures = repositoryFile(".github/scripts/ui-role-fixtures.mjs");
-        String roleFlow = repositoryFile(".github/scripts/ui-role-state-flow.mjs");
-        String mainNavigationHelper = between(
-                fixtures,
-                "export async function navigateToPage(page, pageId) {",
-                "export async function navigateArchitectureSubtab(page, subtab) {");
-        String roleNavigation = between(
-                roleFlow,
-                "  const settingsMenu = page.locator('#applicationSettings');",
-                "  await navigateToPage(page, 'analyze');");
-
-        assertThat(mainNavigationHelper)
-                .contains("await openSharedNavigation(page)")
-                .contains("await waitForSharedNavigationToClose(page)")
-                .doesNotContain("scrollIntoViewIfNeeded");
-
-        assertThat(roleNavigation)
-                .contains("const adminLink = page.locator('#adminNavTab')")
-                .contains("const preferencesLink = page.locator('#preferencesNavTab')")
-                .contains("await adminLink.click()")
-                .contains("await preferencesLink.click()")
-                .contains("await adminLink.isVisible()")
-                .contains("await preferencesLink.isVisible()")
-                .contains("${role} must not see Administration or Preferences in Settings")
-                .doesNotContain("adminLockBtn");
-
-        assertThat(roleFlow)
-                .contains("await navigateToPage(page, 'analyze')")
-                .contains("navigationInsideViewport")
-                .contains("taskReachable")
-                .contains("taskSurface.progressTop <= taskSurface.viewportHeight")
-                .contains("Neither task progression nor the primary action is initially reachable")
-                .contains("Shared primary navigation is not discoverable before any automatic scroll")
-                .contains("shared navigation retains every destination and keyboard access after task interactions")
-                .contains("['projects', 'analysis', 'architecture', 'graph', 'versions', 'dsl-editor']")
-                .contains("await page.keyboard.press('ArrowDown')")
-                .contains("bounds.height >= 44")
-                .contains("document.activeElement === element")
-                .doesNotContain("single-row scrollable main navigation");
-
-        assertThat(fixtures)
-                .contains("page.locator('#applicationSettings > summary')")
-                .contains("admin: 'adminNavTab'")
-                .contains("preferences: 'preferencesNavTab'")
-                .contains("const control = page.locator(`#applicationSettings #${settingsDestination}`)")
-                .contains("#applicationNavigationMenu > summary");
-    }
-
-    @Test
     void browserAuthenticationStartsOnlyAfterApplicationReadiness() throws Exception {
         String containers = repositoryFile(
                 "taxonomy-app/src/test/java/com/taxonomy/ContainerTestUtils.java");

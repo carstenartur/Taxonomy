@@ -4,7 +4,7 @@
 
 Das **Arbeitsbereich- & Versionierungssystem** bietet eine benutzerfreundliche Oberfläche zur Verwaltung von Architekturvarianten, Versionshistorie und Team-Synchronisierung innerhalb des Taxonomy Architecture Analyzers.
 
-Alle Funktionen sind über den Reiter **Versionen** in der Hauptnavigation erreichbar. Das System basiert auf Git für eine robuste Versionskontrolle, bietet aber eine vereinfachte, nicht-technische Oberfläche, die für Architekten, Analysten und Fachexperten geeignet ist.
+Alle Funktionen sind über **Ansicht → Versionsverlauf** erreichbar. Das System basiert auf Git für eine robuste Versionskontrolle, bietet aber eine vereinfachte, nicht-technische Oberfläche, die für Architekten, Analysten und Fachexperten geeignet ist.
 
 ---
 

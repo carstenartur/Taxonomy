@@ -186,10 +186,19 @@ abstract class AbstractSeleniumContainerIT {
 
     private void openMainTab(String pageId) {
         waitForRoleSurfaceReady();
-        if ("help".equals(pageId)) driver.findElement(By.cssSelector("#applicationHelp > summary")).click();
-        By tabSelector = "help".equals(pageId)
-                ? By.id("main-tab-help")
-                : By.cssSelector("#mainNavTabs .nav-link[data-page='" + pageId + "']");
+        String category = switch (pageId) {
+            case "help" -> "Help";
+            case "graph", "admin", "preferences" -> "Tools";
+            case "versions", "dsl-editor" -> "View";
+            default -> null;
+        };
+        if (category != null) openApplicationMenu(category);
+        By tabSelector = switch (pageId) {
+            case "help" -> By.id("main-tab-help");
+            case "analyze" -> By.id("applicationRequirementLink");
+            case "architecture" -> By.id("applicationArchitectureLink");
+            default -> By.cssSelector("#applicationMenuGroups [data-page='" + pageId + "']");
+        };
         WebElement tab = new WebDriverWait(driver, Duration.ofSeconds(20))
                 .until(ExpectedConditions.visibilityOfElementLocated(tabSelector));
         ((JavascriptExecutor) driver).executeScript(
@@ -206,11 +215,12 @@ abstract class AbstractSeleniumContainerIT {
                 .until(ExpectedConditions.visibilityOfElementLocated(By.id("tab-" + pageId)));
     }
 
-    private void openApplicationSettings() {
-        WebElement settings = driver.findElement(By.id("applicationSettings"));
-        if (settings.getAttribute("open") == null) {
-            driver.findElement(By.cssSelector("#applicationSettings > summary")).click();
-        }
+    private void openApplicationMenu(String category) {
+        var toggle = driver.findElement(By.cssSelector("#applicationNavigationMenu > summary"));
+        var outer = driver.findElement(By.id("applicationNavigationMenu"));
+        if (toggle.isDisplayed() && outer.getDomAttribute("open") == null) toggle.click();
+        var menu = driver.findElement(By.id("application" + category));
+        if (menu.getDomAttribute("open") == null) menu.findElement(By.tagName("summary")).click();
     }
 
     private String baseUrl() {
@@ -347,9 +357,10 @@ abstract class AbstractSeleniumContainerIT {
 
         // Get English label for the Analyze tab
         WebElement analyzeTab = driver.findElement(
-                By.cssSelector("#mainNavTabs .nav-link[data-page='analyze']"));
+                By.id("applicationRequirementLink"));
         String englishText = analyzeTab.getText().trim();
 
+        openApplicationMenu("Tools");
         // Use the shared language control.
         driver.findElement(By.cssSelector("[data-app-locale='de']")).click();
 
@@ -361,7 +372,7 @@ abstract class AbstractSeleniumContainerIT {
 
         // Verify German label is different from English
         WebElement analyzeTabDe = driver.findElement(
-                By.cssSelector("#mainNavTabs .nav-link[data-page='analyze']"));
+                By.id("applicationRequirementLink"));
         String germanText = analyzeTabDe.getText().trim();
         assertThat(germanText).isNotEqualTo(englishText);
     }
@@ -403,6 +414,7 @@ abstract class AbstractSeleniumContainerIT {
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("[data-app-locale='en']")));
 
+        openApplicationMenu("Tools");
         // Use the shared language control.
         driver.findElement(By.cssSelector("[data-app-locale='en']")).click();
 
@@ -412,7 +424,7 @@ abstract class AbstractSeleniumContainerIT {
         waitForRoleSurfaceReady();
 
         WebElement analyzeTab = driver.findElement(
-                By.cssSelector("#mainNavTabs .nav-link[data-page='analyze']"));
-        assertThat(analyzeTab.getText().trim()).contains("Analyze");
+                By.id("applicationRequirementLink"));
+        assertThat(analyzeTab.getText().trim()).contains("Requirement");
     }
 }

@@ -358,20 +358,14 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
   await verifyReadingErgonomics({ page, evidence });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await openSharedNavigation(page);
-  const sharedNavigation = page.locator('#applicationNavigation #mainNavTabs');
+  const sharedNavigation = page.locator('#applicationWorkspaces');
   await sharedNavigation.waitFor({ state: 'visible', timeout: 10_000 });
-  const destinations = await sharedNavigation.locator('.nav-link[data-page]').evaluateAll(links =>
-    links.filter(link => getComputedStyle(link.closest('.nav-item')).display !== 'none')
-      .map(link => link.dataset.page));
-  assert(JSON.stringify(destinations)
-    === JSON.stringify(['analyze', 'architecture', 'graph', 'versions', 'dsl-editor']),
-  `Mobile shared navigation lost an authorized destination: ${JSON.stringify(destinations)}`);
-  assert(await page.locator('.mobile-main-navigation:visible').count() === 0,
-    'Mobile analysis must not expose a second primary navigation');
+  const destinations = await sharedNavigation.locator('[data-page]').evaluateAll(links =>
+    links.map(link => link.dataset.page));
+  assert(JSON.stringify(destinations) === JSON.stringify(['analyze', 'architecture']),
+    `Mobile work navigation lost a destination: ${JSON.stringify(destinations)}`);
   await navigateToPage(page, 'analyze');
-  await openSharedNavigation(page);
-  const analyzeTab = sharedNavigation.locator('[data-page="analyze"]');
+  const analyzeTab = page.locator('#applicationRequirementLink');
   await analyzeTab.focus();
   const analyzeTarget = await analyzeTab.evaluate(link => {
     const rect = link.getBoundingClientRect();
@@ -380,10 +374,9 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
   });
   assert(analyzeTarget.focused && analyzeTarget.width >= 44 && analyzeTarget.height >= 44
     && analyzeTarget.left >= 0 && analyzeTarget.right <= analyzeTarget.viewport + 1,
-  `Mobile Analyze navigation must retain a fully visible keyboard/touch target: ${JSON.stringify(analyzeTarget)}`);
-  await page.keyboard.press('Escape');
-  await waitForSharedNavigationToClose(page);
-  passed('mobile shared navigation retains all destinations and a visible keyboard/touch target');
+    `Mobile requirement navigation must retain its keyboard/touch target: ${JSON.stringify(analyzeTarget)}`);
+  await page.keyboard.press('Enter');
+  passed('mobile work navigation retains its visible keyboard/touch targets');
   await page.locator('#businessText').fill(changedRequirement);
   await page.locator('#businessText.stale-results').waitFor({ state: 'visible', timeout: 10_000 });
   await page.waitForFunction(() =>

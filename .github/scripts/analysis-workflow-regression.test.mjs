@@ -433,7 +433,7 @@ function createStatusHarness({ session = false, observers = false, draftResponse
     }
   }
   const elements = Object.fromEntries(['analyzeBtn', 'expandAll', 'collapseAll',
-    'businessText', 'statusArea', 'a11yStatus', 'a11yAlert'].map(id => [id, new Element()]));
+    'businessText', 'statusArea', 'a11yStatus', 'a11yAlert', 'fileNewAnalysisAction'].map(id => [id, new Element()]));
   const listeners = new Map();
   const document = {
     readyState: 'loading', documentElement: { lang: 'en' }, body: new Element(),
@@ -708,6 +708,22 @@ test('confirmed New Analysis resolves a pending draft choice after its authorita
   assert.equal(h.elements.statusArea.dataset.analysisSessionMessage, 'new-analysis');
   assert.equal(h.elements.statusArea.querySelector('[data-analysis-session-action="keep-local"]'), null);
   assert.deepEqual(calls.map(call => call.method), ['GET', 'POST']);
+});
+
+for (const allowed of [false, true]) test(`File New Analysis honors the architecture leave decision (${allowed})`, async () => {
+  const calls = [];
+  const h = createStatusHarness({session: true, observers: true,
+    draftResponse: async (url, options) => {
+      calls.push({url, method: options.method});
+      return {version: 9, payload: {businessText: '', draftState: 'EMPTY'}};
+    }});
+  h.edit('Retained requirement'); h.window.confirm = () => true;
+  h.window.navigateToPage = async page => { assert.equal(page, 'analyze'); return allowed; };
+  const context = h.window.__TaxonomyAnalysisSessionContext;
+  context.installLifecycleCommands();
+  await h.elements.fileNewAnalysisAction.listeners.get('click')[0]();
+  assert.equal(h.elements.businessText.value, allowed ? '' : 'Retained requirement');
+  assert.equal(calls.length, allowed ? 1 : 0, 'A rejected transition cannot reset the draft');
 });
 
 test('failed New Analysis retains the draft decision and displays its reset failure alongside it', async () => {

@@ -464,9 +464,11 @@ window.TaxonomyDatabaseSetup = (function () {
             invalidate();
             element('Password').value = '';
             element('AdminPassword').value = '';
-            if (returnFocus && returnFocus.isConnected) {
-                requestAnimationFrame(function () { if (!element('Dialog').open) returnFocus.focus({ preventScroll: true }); });
-            }
+            requestAnimationFrame(function () {
+                if (element('Dialog').open) return;
+                if (window.TaxonomyAppChrome) window.TaxonomyAppChrome.restoreFocus(returnFocus, { preventScroll: true });
+                else if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+            });
         });
         element('Next').addEventListener('click', function () { if (step === 0) setStep(1); else submit(false); });
         element('Back').addEventListener('click', function () { setStep(Math.max(0, step - 1)); });
@@ -487,6 +489,8 @@ window.TaxonomyDatabaseSetup = (function () {
     }
 
     function open() {
+        var origin = document.activeElement;
+        if (!element('Dialog')?.open) returnFocus = origin && origin !== document.body ? origin : document.getElementById('businessText');
         if (window.TaxonomyOnboarding) window.TaxonomyOnboarding.dismiss();
         return prepareWelcome().then(function () {
             if (!administrator || !state) {
@@ -498,9 +502,7 @@ window.TaxonomyDatabaseSetup = (function () {
             initialize();
             if (element('Dialog').open) return;
             element('Notice').hidden = true;
-            var menu = document.getElementById('applicationSettings');
-            returnFocus = menu && menu.contains(document.activeElement)
-                ? menu.querySelector('summary') : document.getElementById('businessText');
+            var menu = document.getElementById('applicationTools');
             if (menu) menu.open = false;
             invalidate();
             element('Password').value = '';

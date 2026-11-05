@@ -121,76 +121,11 @@ window.TaxonomyUtils = (function () {
         event.target.setAttribute('data-toast-visible', 'false');
     }, true);
 
-    // ── Main navigation semantics ─────────────────────────────────────────
-    function syncMainNavigation() {
-        var tabList = document.getElementById('mainNavTabs');
-        if (!tabList) return;
-        tabList.setAttribute('role', 'tablist');
-        tabList.setAttribute('aria-orientation', window.matchMedia
-            && window.matchMedia('(max-width: 1199.98px)').matches ? 'vertical' : 'horizontal');
-        tabList.setAttribute('aria-label', currentLanguage() === 'de'
-            ? 'Hauptbereiche' : 'Main sections');
-
-        var links = Array.from(tabList.querySelectorAll('.nav-link[data-page]'));
-        var hasActiveTab = links.some(function (link) { return link.classList.contains('active'); });
-        links.forEach(function (link, index) {
-            var page = link.getAttribute('data-page');
-            var active = link.classList.contains('active');
-            var wrapper = link.closest('li');
-            if (wrapper) wrapper.setAttribute('role', 'presentation');
-            if (!link.id) link.id = 'main-tab-' + page;
-            link.setAttribute('role', 'tab');
-            link.setAttribute('aria-selected', active ? 'true' : 'false');
-            link.setAttribute('aria-controls', 'tab-' + page);
-            link.setAttribute('tabindex', active || (!hasActiveTab && index === 0) ? '0' : '-1');
-            var pane = document.getElementById('tab-' + page);
-            if (pane) {
-                pane.setAttribute('role', 'tabpanel');
-                pane.setAttribute('aria-labelledby', link.id);
-            }
-        });
-    }
-
-    function installMainNavigationKeyboardSupport() {
-        var tabList = document.getElementById('mainNavTabs');
-        if (!tabList || tabList.dataset.keyboardReady) return;
-        tabList.dataset.keyboardReady = 'true';
-        tabList.addEventListener('keydown', function (event) {
-            var vertical = tabList.getAttribute('aria-orientation') === 'vertical';
-            var forward = event.key === 'ArrowRight' || (vertical && event.key === 'ArrowDown');
-            var backward = event.key === 'ArrowLeft' || (vertical && event.key === 'ArrowUp');
-            if (!forward && !backward && !['Home', 'End'].includes(event.key)) return;
-            var tabs = Array.from(tabList.querySelectorAll('.nav-link[data-page]'))
-                .filter(function (tab) { return tab.offsetParent !== null; });
-            var current = tabs.indexOf(document.activeElement);
-            if (!tabs.length || current < 0) return;
-            event.preventDefault();
-            var next;
-            if (event.key === 'Home') next = 0;
-            else if (event.key === 'End') next = tabs.length - 1;
-            else if (forward) next = (current + 1) % tabs.length;
-            else next = (current - 1 + tabs.length) % tabs.length;
-            tabs[next].focus();
-            tabs[next].click();
-            syncMainNavigation();
-        });
-
-        new MutationObserver(syncMainNavigation).observe(tabList, {
-            subtree: true,
-            attributes: true,
-            attributeFilter: ['class']
-        });
-        document.addEventListener('taxonomy:page-activated', syncMainNavigation);
-        var compactNavigation = window.matchMedia && window.matchMedia('(max-width: 1199.98px)');
-        if (compactNavigation?.addEventListener) compactNavigation.addEventListener('change', syncMainNavigation);
-        else if (compactNavigation?.addListener) compactNavigation.addListener(syncMainNavigation);
-    }
-
     function focusCurrentTask() {
         if (typeof window.navigateToPage === 'function') {
             window.navigateToPage('analyze');
         } else {
-            document.querySelector('#mainNavTabs [data-page="analyze"]')?.click();
+            document.getElementById('applicationRequirementLink')?.click();
         }
         requestAnimationFrame(function () {
             var nextAction = document.getElementById('taskNextAction');
@@ -467,8 +402,6 @@ window.TaxonomyUtils = (function () {
 
     function initializeAccessibilityAndErgonomics() {
         loadErgonomicsStyles();
-        syncMainNavigation();
-        installMainNavigationKeyboardSupport();
         installResponsiveTaskOrder();
         installTreeAccessibilityObserver();
         installManualScoreDialog();

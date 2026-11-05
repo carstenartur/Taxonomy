@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { navigateToPage, provisionRoleAccount } from './ui-role-fixtures.mjs';
+import { provisionRoleAccount } from './ui-role-fixtures.mjs';
 
 const ACCOUNT = Object.freeze({
   username: 'qa-user',
@@ -106,52 +106,3 @@ test('rejects invalid retry bounds before issuing a request', async () => {
 
   assert.equal(api.calls.length, 0);
 });
-
-for (const [pageId, navigationId] of [
-  ['admin', 'adminNavTab'],
-  ['preferences', 'preferencesNavTab']
-]) {
-  test(`${pageId} navigates through Settings`, async () => {
-    let selectedPage = null;
-    let destinationVisible = false;
-    let settingsOpened = false;
-    const page = {
-      locator(selector) {
-        if (selector === '#applicationNavigationMenu > summary') {
-          return { async isVisible() { return false; } };
-        }
-        if (selector === '#applicationSettings') {
-          return { async getAttribute(name) {
-            assert.equal(name, 'open');
-            return settingsOpened ? '' : null;
-          } };
-        }
-        if (selector === '#applicationSettings > summary') {
-          return { async click() { settingsOpened = true; } };
-        }
-        if (selector === `#applicationSettings #${navigationId}`) {
-          return {
-            async waitFor(options) {
-              assert.deepEqual(options, { state: 'visible', timeout: 20_000 });
-              assert.equal(settingsOpened, true);
-            },
-            async click() { selectedPage = pageId; settingsOpened = false; }
-          };
-        }
-        assert.equal(selector, `#tab-${pageId}`);
-        return {
-          async waitFor(options) {
-            assert.deepEqual(options, { state: 'visible', timeout: 20_000 });
-            destinationVisible = true;
-          }
-        };
-      }
-    };
-
-    await navigateToPage(page, pageId);
-
-    assert.equal(selectedPage, pageId);
-    assert.equal(destinationVisible, true);
-    assert.equal(settingsOpened, false);
-  });
-}

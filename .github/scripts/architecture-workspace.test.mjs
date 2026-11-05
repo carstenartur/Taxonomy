@@ -127,7 +127,7 @@ test('project subpages expose one shared Projects link rather than duplicate por
     for (const template of templates) {
         const html=await readFile(new URL(`../../taxonomy-app/src/main/resources/templates/${template}.html`,import.meta.url),'utf8');
         assert.doesNotMatch(html,/id="portfolioBack"/,template);
-        assert.match(html,/fragments\/application-chrome :: navigation\('projects'/,template);
+        assert.match(html,new RegExp("fragments/application-chrome :: navigation\\('"+(template==='requirement-detail'?'requirement':'projects')+"'"),template);
     }
 });
 

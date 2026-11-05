@@ -37,40 +37,7 @@
      role="alert" aria-live="assertive" aria-atomic="true"></div>
 
 <header th:replace="~{fragments/application-chrome :: navigation('analysis', ~{:: localActions}, 'USER_GUIDE', 'guide-section-4')}">
-    <th:block th:fragment="localActions">
-    <div class="container-fluid application-shell">
-        
-        <details id="applicationFile" class="application-menu">
-            <summary id="fileMenuButton" th:text="#{navbar.file.menu}">File</summary>
-            <div class="application-menu-content">
-                <button id="fileNewAnalysisAction" type="button" th:text="#{navbar.file.new_analysis}">New analysis</button>
-                <button id="fileCancelAnalysisAction" type="button" disabled aria-disabled="true"
-                        th:text="#{navbar.file.cancel_analysis}">Cancel running analysis</button>
-                <hr/>
-                <button id="fileSaveDraftAction" type="button" th:text="#{navbar.file.save_draft}">Save draft now</button>
-                <a th:if="${portableBackupAvailable}" th:href="@{/backup-jobs(lang=${#locale.language})}"
-                   th:text="#{backup.export.title}">Create a portable export</a>
-            </div>
-        </details>
-        <details id="applicationSettings" class="application-menu">
-            <summary th:text="#{navbar.settings.menu}">Settings</summary>
-            <div class="application-menu-content">
-                <div class="d-flex align-items-center gap-2"><button id="darkModeToggle" class="btn btn-sm btn-outline-secondary" th:title="#{navbar.darkmode}" th:attr="aria-label=#{ui.aria.toggle_theme}" aria-label="Toggle theme">&#127769;</button><span th:text="#{navbar.darkmode}">Theme</span></div>
-                <a class="application-utility-link" id="userManagementMenuAction" data-page="admin" href="#admin"
-                   data-required-roles="ADMIN" hidden th:text="#{users.title}">User management</a>
-                <a class="application-utility-link admin-only" id="adminNavTab" data-page="admin" href="#admin"
-                   data-required-roles="ADMIN" hidden th:text="#{navbar.administration}">Administration</a>
-                <a class="application-utility-link admin-only" id="preferencesNavTab" data-page="preferences" href="#preferences"
-                   data-required-roles="ADMIN" hidden th:text="#{navbar.server.settings}">Server settings</a>
-                <button type="button" class="application-utility-link"
-                        id="databaseSetupMenuAction" data-required-roles="ADMIN" hidden
-                        th:text="#{database.setup.menu}">Database setup</button>
-                <span id="analysisStatusMenuSlot"></span>
-            </div>
-        </details>
-        <span id="operationalStatusMenuSlot"></span>
-    </div>
-</th:block>
+    <th:block th:fragment="localActions"></th:block>
 </header>
 <div id="databaseSetupNotice" class="alert alert-warning m-3" role="status" hidden></div>
 <!-- Status widgets are moved into the single on-demand Status menu. -->
@@ -102,12 +69,12 @@
                     <div class="taxonomy-view-controls">
                         <!-- Stable first row; variable tools belong in the second row. -->
                         <div class="btn-group taxonomy-view-selector" id="diagramViewSelector" role="group" th:attr="aria-label=#{ui.aria.view_mode}" aria-label="View mode">
-                            <button id="viewList"     data-view="list"     class="btn btn-sm btn-primary"          th:title="#{view.list.title}" title="Indented list view" th:text="#{view.list.label}">&#128203; List</button>
-                            <button id="viewTabs"     data-view="tabs"     class="btn btn-sm btn-outline-secondary" th:title="#{view.tabs.title}" title="Tabbed list view" th:text="#{view.tabs.label}">&#128209; Tabs</button>
-                            <button id="viewSunburst" data-view="sunburst" class="btn btn-sm btn-outline-secondary" th:title="#{view.sunburst.title}" title="Zoomable sunburst chart" th:text="#{view.sunburst.label}">&#128262; Sunburst</button>
-                            <button id="viewTree"     data-view="tree"     class="btn btn-sm btn-outline-secondary" th:title="#{view.tree.title}" title="Bottom-up tree diagram" th:text="#{view.tree.label}">&#127795; Tree</button>
-                            <button id="viewDecision" data-view="decision" class="btn btn-sm btn-outline-secondary" th:title="#{view.decision.title}" title="Decision overview map" th:text="#{view.decision.label}">&#127942; Decision</button>
-                            <button id="viewSummary"  data-view="summary"  class="btn btn-sm btn-outline-secondary" th:title="#{view.summary.title}" title="Architecture summary after analysis" style="display:none;" th:text="#{view.summary.label}">&#128203; Summary</button>
+                            <button id="viewList" aria-pressed="true"     data-view="list"     class="btn btn-sm btn-primary"          th:title="#{view.list.title}" title="Indented list view" th:text="#{view.list.label}">&#128203; List</button>
+                            <button id="viewTabs" aria-pressed="false"     data-view="tabs"     class="btn btn-sm btn-outline-secondary" th:title="#{view.tabs.title}" title="Tabbed list view" th:text="#{view.tabs.label}">&#128209; Tabs</button>
+                            <button id="viewSunburst" aria-pressed="false" data-view="sunburst" class="btn btn-sm btn-outline-secondary" th:title="#{view.sunburst.title}" title="Zoomable sunburst chart" th:text="#{view.sunburst.label}">&#128262; Sunburst</button>
+                            <button id="viewTree" aria-pressed="false"     data-view="tree"     class="btn btn-sm btn-outline-secondary" th:title="#{view.tree.title}" title="Bottom-up tree diagram" th:text="#{view.tree.label}">&#127795; Tree</button>
+                            <button id="viewDecision" aria-pressed="false" data-view="decision" class="btn btn-sm btn-outline-secondary" th:title="#{view.decision.title}" title="Decision overview map" th:text="#{view.decision.label}">&#127942; Decision</button>
+                            <button id="viewSummary" aria-pressed="false"  data-view="summary"  class="btn btn-sm btn-outline-secondary" th:title="#{view.summary.title}" title="Architecture summary after analysis" style="display:none;" th:text="#{view.summary.label}">&#128203; Summary</button>
                         </div>
                         <div class="taxonomy-view-tools">
                         <div id="taxonomyBrowserHelp" class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'taxonomy-view-list')}"></a></div>
@@ -309,6 +276,7 @@
 
                 <!-- Status / error messages -->
                 <div id="analysisRecoveryHost"></div>
+                <div id="analysisStatusActions"></div>
                 <div id="statusArea"></div>
                 <section id="relationSearchReportPanel" hidden aria-label="Relation search report"
                          th:aria-label="#{relation.search.title}"></section>
@@ -1621,7 +1589,6 @@
 <script th:src="@{/webjars/svg2pdf.js/2.2.0/dist/svg2pdf.umd.min.js}" src="/webjars/svg2pdf.js/2.2.0/dist/svg2pdf.umd.min.js"></script>
 <script th:src="@{/js/shared/taxonomy-utils.js}"></script>
 <script th:src="@{/js/shared/architecture-workflow.js}" src="/js/shared/architecture-workflow.js"></script>
-<script th:src="@{/js/api/taxonomy-api-client.js}"></script>
 <th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/api/import-api.js}"></script>
 <script th:src="@{/js/api/analysis-api.js}"></script>
@@ -1886,38 +1853,34 @@
     function activatePage(pageName, permissionChecked) {
         if (!permissionChecked && pageName !== 'architecture' && window.TaxonomyArchitectureWorkspace?.isActive()) {
             return Promise.resolve(window.TaxonomyArchitectureWorkspace.canLeave()).then(function (allowed) {
-                if (allowed) activatePage(pageName, true);
-                else window.TaxonomyArchitectureWorkspace.restoreUrl();
+                if (allowed) return activatePage(pageName, true);
+                window.TaxonomyArchitectureWorkspace.restoreUrl();
+                return false;
             });
         }
         // Backward compatibility: map removed pages to architecture sub-tabs
         if (subTabMapping[pageName]) {
-            activatePage('architecture');
-            activateArchSubTab(subTabMapping[pageName]);
-            return;
+            return Promise.resolve(activatePage('architecture', permissionChecked)).then(function (allowed) {
+                if (allowed) activateArchSubTab(subTabMapping[pageName]);
+                return allowed;
+            });
         }
 
         if (PAGES.indexOf(pageName) === -1) { pageName = 'analyze'; }
 
-        // Update nav-tab active state
-        var navLinks = document.querySelectorAll('#mainNavTabs .nav-link, #applicationNavigation .application-utility-link[data-page]');
-        navLinks.forEach(function (link) {
-            var active = link.getAttribute('data-page') === pageName;
-            link.classList.toggle('active', active);
-            if (active) link.setAttribute('aria-current', 'page');
+        var workArea = pageName === 'analyze' ? 'analyze'
+            : ['architecture', 'graph', 'versions', 'dsl-editor'].includes(pageName) ? 'architecture' : null;
+        document.querySelectorAll('#applicationWorkspaces [data-page]').forEach(function (link) {
+            if (link.dataset.page === workArea) link.setAttribute('aria-current', 'page');
             else link.removeAttribute('aria-current');
-            if (!link.closest('#mainNavTabs')) {
-                link.setAttribute('aria-controls', 'tab-' + link.getAttribute('data-page'));
-            }
         });
-
-        ['help', 'admin', 'preferences'].forEach(function (page) {
+        document.querySelectorAll('#applicationMenuGroups [data-page]').forEach(function (link) {
+            if (link.dataset.page === pageName) link.setAttribute('aria-current', 'page');
+            else link.removeAttribute('aria-current');
+        });
+        PAGES.forEach(function (page) {
             var pane = document.getElementById('tab-' + page);
-            var link = document.querySelector('#applicationNavigation [data-page="' + page + '"]');
-            if (pane && link) {
-                pane.setAttribute('role', 'region');
-                pane.setAttribute('aria-labelledby', link.id);
-            }
+            if (pane) pane.setAttribute('role', 'region');
         });
 
         // Show / hide tab pane content
@@ -2002,12 +1965,11 @@
             }
         }
 
-        // One navigation lifecycle for desktop tabs, responsive selection and
-        // programmatic navigation. Feature modules must not depend on a
-        // particular control having been clicked.
+        // Menus, work navigation and programmatic navigation share this lifecycle.
         document.dispatchEvent(new CustomEvent('taxonomy:page-activated', {
             detail: { page: pageName }
         }));
+        return true;
     }
 
     // Architecture sub-tab click handlers
@@ -2018,24 +1980,13 @@
         });
     });
 
-    // Click handlers on nav links
-    document.querySelectorAll('#mainNavTabs .nav-link').forEach(function (link) {
-        link.addEventListener('click', function (e) {
-            if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-            e.preventDefault();
-            activatePage(this.getAttribute('data-page'));
-        });
-    });
-
-    // Also allow deep-linking via data-page attribute on any element
-    document.addEventListener('click', function (e) {
-        var el = e.target.closest('[data-page]');
-        if (el && el.closest('#mainNavTabs') === null && e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
-            var page = el.getAttribute('data-page');
-            if (PAGES.indexOf(page) !== -1 || subTabMapping[page]) {
-                e.preventDefault();
-                activatePage(page);
-            }
+    // A single route adapter serves menus, work navigation and contextual links.
+    document.addEventListener('click', function (event) {
+        var link = event.target.closest('[data-page]');
+        if (!link || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        var page = link.getAttribute('data-page');
+        if (PAGES.indexOf(page) !== -1 || subTabMapping[page]) {
+            event.preventDefault(); activatePage(page);
         }
     });
 

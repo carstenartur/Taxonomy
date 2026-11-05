@@ -19,7 +19,7 @@ after(async () => { await browser?.close(); });
 async function fixture(locale = 'de', width = 1100) {
     const page = await browser.newPage({viewport: {width, height: 768}});
     page.uiErrors=[]; page.on('pageerror',error=>page.uiErrors.push(error.message));
-    await page.setContent(`<html lang="${locale}"><body><nav><span id="analysisStatusMenuSlot"></span></nav>
+    await page.setContent(`<html lang="${locale}"><body><nav><span id="analysisStatusActions"></span></nav>
         <main id="tab-analyze"><textarea id="businessText">Zeiterfassung</textarea>
         <button id="analyzeBtn">Analyse</button><div id="analysisRecoveryHost"></div>
         <div id="statusArea"></div><div id="taxonomyTree"></div></main></body></html>`);

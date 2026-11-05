@@ -51,7 +51,7 @@ class SharedApplicationChromeBrowserIT {
         return Stream.of(
                 new View("index", "/", "analysis", "fileMenuButton"),
                 new View("projects", "/projects", "projects", "projectFilter"),
-                new View("requirement-detail", "/projects/42/requirements/7", "projects", "newVersionButton"),
+                new View("requirement-detail", "/projects/42/requirements/7", "analysis", "newVersionButton"),
                 new View("architecture-workbench", "/architecture/workbench", "architecture", "printArchitectureView"),
                 new View("architecture-editor", "/architecture/editor", "architecture", "editorRefresh"),
                 new View("portfolio-import", "/projects/42/import", "projects", "documentFile"),
@@ -132,9 +132,8 @@ class SharedApplicationChromeBrowserIT {
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#operationalContextDetails > summary")));
         var geometry = (Map<?, ?>) page.driver().executeScript("""
                 const nav=document.getElementById('applicationNavigation');
-                const selectors=['.taxonomy-app-brand','#mainNavTabs [data-page="architecture"]',
-                    '#applicationProjectsLink','#applicationSettings > summary','#operationalContextDetails > summary',
-                    '#applicationHelp > summary'];
+                const selectors=['.taxonomy-app-brand','#fileMenuButton','#applicationEdit > summary',
+                    '#applicationView > summary','#applicationTools > summary','#applicationHelp > summary'];
                 const boxes=selectors.map(selector=>{
                     const r=nav.querySelector(selector).getBoundingClientRect();
                     return {selector,left:r.left,right:r.right,top:r.top,height:r.height};
@@ -144,18 +143,17 @@ class SharedApplicationChromeBrowserIT {
                     valid:nav.getBoundingClientRect().height<=64 && boxes.every(box=>box.height>0
                         && box.left>=0 && box.right<=innerWidth+1 && Math.abs(center(box)-center(boxes[0]))<=2)};
                 """);
-        assertThat(geometry.get("valid")).as("All navigation and status actions remain in one row: %s", geometry).isEqualTo(true);
+        assertThat(geometry.get("valid")).as("Command categories share one row: %s", geometry).isEqualTo(true);
         assertThat(page.driver().findElement(By.cssSelector("#applicationHelp > summary")).getAccessibleName()).isNotBlank();
     }
 
     @ParameterizedTest @ValueSource(ints = {700, 900, 992, 1024})
-    void tabletNavigationUsesTheSameCompactMenu(int width) {
+    void workNavigationStaysVisibleWithResponsiveCommands(int width) {
         open(new View("index", "/", "analysis", "fileMenuButton"), "de", width);
         var menu = page.driver().findElement(By.id("applicationNavigationMenu"));
-        assertThat(menu.getDomProperty("open")).isEqualTo("false");
+        assertThat(menu.getDomProperty("open")).isEqualTo(width < 768 ? "false" : "true");
         assertThat(page.driver().findElement(By.id("applicationNavigation")).getRect().getHeight()).isLessThanOrEqualTo(64);
-        menu.findElement(By.tagName("summary")).click();
-        assertThat(page.driver().findElement(By.cssSelector("#mainNavTabs [data-page='architecture']")).isDisplayed()).isTrue();
+        assertThat(page.driver().findElement(By.id("applicationArchitectureLink")).isDisplayed()).isTrue();
     }
 
     private static void open(View view, String locale, int width, List<String> features) {
@@ -243,12 +241,12 @@ class SharedApplicationChromeBrowserIT {
             launcher.click();
             assertThat(menu.getDomProperty("open")).isEqualTo("true");
         }
-        var links = page.driver().findElements(By.cssSelector(".taxonomy-app-primary [data-app-route]"));
+        var links = page.driver().findElements(By.cssSelector("#applicationWorkspaces [data-app-route]"));
         assertThat(links).extracting(link -> link.getDomAttribute("data-app-route"))
-                .containsExactly("projects", "analysis", "architecture", "graph", "versions", "dsl-editor");
+                .containsExactly("projects", "analysis", "architecture");
         assertThat(page.driver().findElements(By.cssSelector("[data-app-route='architecture']")))
                 .as("Architecture has one primary destination in every application view").hasSize(1);
-        assertThat(page.driver().findElement(By.cssSelector("[data-app-route='" + view.active() + "']"))
+        assertThat(page.driver().findElement(By.cssSelector("#applicationWorkspaces [data-app-route='" + view.active() + "']"))
                 .getDomAttribute("aria-current")).isEqualTo("page");
         for (var link : links) {
             assertThat(link.isDisplayed()).isTrue();
@@ -264,8 +262,8 @@ class SharedApplicationChromeBrowserIT {
         var navigationGeometry = (Map<?, ?>) page.driver().executeAsyncScript("""
                 const done=arguments[arguments.length-1];
                 (async()=>{
-                    const nav=document.getElementById('applicationNavigation');
-                    for (const link of nav.querySelectorAll('.taxonomy-app-primary a')) {
+                    const nav=document.getElementById('applicationWorkspaces');
+                    for (const link of nav.querySelectorAll('a')) {
                         // Keyboard focus must reveal every destination even inside a scrolling header.
                         link.focus();
                         const deadline=performance.now()+1500;
@@ -316,7 +314,7 @@ class SharedApplicationChromeBrowserIT {
             assertThat(page.driver().findElements(By.id("projectMenuButton"))).isEmpty();
             assertThat(page.driver().findElements(By.cssSelector("#analysisNextSteps #projectNewAction"))).hasSize(1);
             assertThat(page.driver().findElements(By.cssSelector("#analysisNextSteps #projectAddRequirementAction"))).hasSize(1);
-            assertThat(page.driver().findElements(By.id("mainNavTabs"))).hasSize(1);
+            assertThat(page.driver().findElements(By.id("mainNavTabs"))).isEmpty();
             assertThat(page.driver().findElement(By.cssSelector("#applicationHelp .context-help")).getDomAttribute("href"))
                     .as("Analysis help reuses the existing documented section")
                     .endsWith("#help/USER_GUIDE/guide-section-4");
@@ -677,6 +675,30 @@ class SharedApplicationChromeBrowserIT {
         }
     }
 
+    @Test void snapshotMenuExportReusesTheLoadedExportControlAndCannotEditTheSnapshot() {
+        openLoadedWorkbench(1366);
+        page.route("GET", "/taxonomy/api/projects/42/architecture-workbench/qa-locale.svg", request ->
+                new PortfolioClientTestPage.Response(200, "image/svg+xml", "<svg xmlns=\"http://www.w3.org/2000/svg\"/>")
+                        .withHeader("Content-Disposition", "attachment; filename=\"menu-architecture.svg\""));
+        var owner = page.driver().findElement(By.id("downloadArchitectureSvg"));
+        assertThat(owner.isEnabled()).isTrue();
+        page.driver().executeScript("""
+                window.menuExportActivations=0;
+                document.getElementById('downloadArchitectureSvg').addEventListener('click',()=>menuExportActivations++);
+                """);
+        page.driver().findElement(By.id("fileMenuButton")).click();
+        var export = page.driver().findElement(By.cssSelector("[data-app-command='export-svg']"));
+        wait.until(driver -> export.isEnabled());
+        export.click();
+        assertThat(page.driver().executeScript("return menuExportActivations")).isEqualTo(1L);
+        assertThat(page.driver().findElement(By.id("applicationFile")).getDomProperty("open")).isEqualTo("false");
+        page.driver().findElement(By.cssSelector("#applicationEdit > summary")).click();
+        assertThat(page.driver().findElements(By.cssSelector("#applicationEdit button")))
+                .noneMatch(button -> button.isEnabled());
+        page.driver().executeScript("document.getElementById('downloadArchitectureSvg').disabled=true");
+        wait.until(driver -> !export.isEnabled());
+    }
+
     @Test void languageAndSourceReturnKeepTheCompleteSelection() {
         open(new View("architecture-editor", "/architecture/editor", "architecture", "editorRefresh"), "en", 390);
         var german = page.driver().findElements(By.cssSelector("#applicationNavigation a[hreflang='de']"));
@@ -685,6 +707,8 @@ class SharedApplicationChromeBrowserIT {
                 .contains("projectId=42", "repositoryId=architecture-a", "workspaceId=private-a",
                         "sourceSnapshotId=frozen-7", "sourceRequirementVersionId=9", "lang=de")
                 .endsWith("#retained-selection");
+        page.driver().findElement(By.cssSelector("#applicationNavigationMenu > summary")).click();
+        page.driver().findElement(By.cssSelector("#applicationTools > summary")).click();
         german.getFirst().click();
         wait.until(ExpectedConditions.urlContains("lang=de"));
         assertThat(page.driver().getCurrentUrl()).contains("sourceSnapshotId=frozen-7", "lang=de")
@@ -733,7 +757,7 @@ class SharedApplicationChromeBrowserIT {
                 .as("The shared project destination follows portfolio availability")
                 .isFalse();
         assertThat(page.driver().findElement(By.cssSelector("[data-app-route='architecture']")).isDisplayed()).isFalse();
-        assertThat(page.driver().findElement(By.cssSelector("[data-app-route='analysis']")).isDisplayed()).isTrue();
+        assertThat(page.driver().findElement(By.id("applicationRequirementLink")).isDisplayed()).isTrue();
         assertThat(page.driver().findElement(By.id("fileMenuButton")).isDisplayed()).isTrue();
     }
 

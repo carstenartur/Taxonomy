@@ -81,7 +81,7 @@ class DocumentTemplateNavigationBrowserIT {
         assertThat(page.driver().findElements(By.id("applicationNavigation"))).hasSize(1);
         assertThat(page.driver().findElement(By.id("applicationNavigation")).getDomAttribute("aria-label"))
                 .isEqualTo(language.equals("de") ? "Anwendungsnavigation" : "Application navigation");
-        assertThat(page.driver().findElements(By.cssSelector("#applicationNavigation [data-app-route='architecture']"))).hasSize(1);
+        assertThat(page.driver().findElements(By.cssSelector("#applicationWorkspaces [data-app-route='architecture']"))).hasSize(1);
         assertThat(page.driver().findElements(By.id(view.retained()))).hasSize(1);
         assertThat(page.driver().findElement(By.cssSelector("#applicationNavigation .context-help")).getDomAttribute("href"))
                 .contains("/taxonomy/?lang=" + language + "#help/" + view.help());
@@ -90,8 +90,8 @@ class DocumentTemplateNavigationBrowserIT {
         if (width >= 1200) {
             var verticalSpread = (Number) page.driver().executeScript("""
                     const nav = document.getElementById('applicationNavigation');
-                    const centers = ['.taxonomy-app-brand', '.taxonomy-app-primary', '.taxonomy-app-local',
-                            '.taxonomy-app-languages', '#applicationHelp > summary'].map(selector => {
+                    const centers = ['.taxonomy-app-brand', '#fileMenuButton', '#applicationView > summary',
+                            '#applicationTools > summary', '#applicationHelp > summary'].map(selector => {
                         const rect = nav.querySelector(selector).getBoundingClientRect();
                         return rect.top + rect.height / 2;
                     });

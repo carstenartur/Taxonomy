@@ -19,9 +19,8 @@
 <body class="bg-body-tertiary">
 <a class="skip-link" href="#requirementMain">Skip to requirement detail</a>
 <div id="requirementLive" class="visually-hidden" role="status" aria-live="polite"></div>
-<header th:replace="~{fragments/application-chrome :: navigation('projects', ~{:: localActions}, 'PROJECT_REQUIREMENT_PORTFOLIO', 'requirement-clarification-workflow')}">
-    <th:block th:fragment="localActions"><span id="pageTitle">Requirement detail</span>
-        <a id="matrixLink" href="#">Matrices</a></th:block>
+<header th:replace="~{fragments/application-chrome :: navigation('requirement', ~{:: localActions}, 'PROJECT_REQUIREMENT_PORTFOLIO', 'requirement-clarification-workflow')}">
+    <th:block th:fragment="localActions"></th:block>
 </header>
 
 <main id="requirementMain" class="container-fluid py-3 px-lg-4">
@@ -44,6 +43,7 @@
                     <a id="architectureWorkbenchLink" class="btn btn-outline-success" href="#" th:text="#{portfolio.requirement.openWorkbench}">
                         Open architecture workbench
                     </a>
+                    <a id="matrixLink" class="btn btn-outline-secondary" href="#">Matrices</a>
                     <button id="reanalyzeRequirement" type="button" class="btn btn-primary">Analyze current version</button>
                     <button id="newVersionButton" type="button" class="btn btn-outline-primary"
                             data-bs-toggle="modal" data-bs-target="#newVersionModal">New version</button>
@@ -165,7 +165,6 @@
 <script th:src="@{/js/taxonomy-i18n.js}"></script>
 <script th:src="@{/js/shared/architecture-workflow.js}" src="/js/shared/architecture-workflow.js"></script>
 <script th:src="@{/js/shared/content-language.js}" src="/js/shared/content-language.js"></script>
-<script th:src="@{/js/api/taxonomy-api-client.js}" src="/js/api/taxonomy-api-client.js"></script>
 <th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/shared/taxonomy-utils.js}"></script>
 <script th:src="@{/js/api/plugin-capabilities-api.js}" src="/js/api/plugin-capabilities-api.js"></script>

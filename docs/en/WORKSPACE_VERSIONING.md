@@ -4,7 +4,7 @@
 
 The **Workspace & Versioning** system provides a user-friendly interface for managing architecture variants, version history, and team synchronisation within the Taxonomy Architecture Analyzer.
 
-All workspace and versioning features are accessible from the **Versions** tab in the main navigation. The system is built on top of Git for robust version control, but presents a simplified, non-technical interface suitable for architects, analysts, and domain experts.
+All workspace and versioning features are accessible from **View → Version history**. The system is built on top of Git for robust version control, but presents a simplified, non-technical interface suitable for architects, analysts, and domain experts.
 
 ---
 

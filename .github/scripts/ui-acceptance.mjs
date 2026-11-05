@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { observeHttpFailures } from './ui-http-failure-evidence.mjs';
 import { signInWithKeyboard, verifyAnonymousLocalLogin } from './ui-local-login.mjs';
-import { openSharedNavigation, waitForSharedNavigationToClose } from './ui-role-fixtures.mjs';
+import { openSharedNavigation, navigateToPage } from './ui-role-fixtures.mjs';
 
 const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
 const username = process.env.TAXONOMY_UI_USERNAME || 'admin';
@@ -45,37 +45,7 @@ let architectureLens = null;
 
 function passed(name) { checks.push(name); }
 
-async function navigateTo(pageName) {
-  await openSharedNavigation(page);
-  if (pageName === 'help') {
-    await page.locator('#applicationHelp > summary').click();
-    await page.locator('#main-tab-help').click();
-    await waitForSharedNavigationToClose(page);
-    await page.locator('#tab-help').waitFor({ state: 'visible' });
-    return;
-  }
-
-  const settingsDestination = {
-    admin: 'adminNavTab',
-    preferences: 'preferencesNavTab'
-  }[pageName];
-  if (settingsDestination) {
-    const settings = page.locator('#applicationSettings');
-    if (await settings.getAttribute('open') === null) {
-      await page.locator('#applicationSettings > summary').click();
-    }
-    const control = page.locator(`#applicationSettings #${settingsDestination}`);
-    await control.waitFor({ state: 'visible', timeout: 20_000 });
-    await control.click();
-    await waitForSharedNavigationToClose(page);
-    await page.locator(`#tab-${pageName}`).waitFor({ state: 'visible' });
-    return;
-  }
-
-  await page.locator(`#mainNavTabs [data-page="${pageName}"]`).click();
-  await waitForSharedNavigationToClose(page);
-  await page.locator(`#tab-${pageName}`).waitFor({ state: 'visible' });
-}
+async function navigateTo(pageName) { await navigateToPage(page, pageName); }
 
 page.on('request', request => {
   const url = request.url();
@@ -105,25 +75,21 @@ async function auditApplication() {
     await page.keyboard.press('Enter');
   }
 
-  assert(await page.locator('#mainNavTabs').getAttribute('role') === 'tablist',
-    'Main navigation lacks tablist semantics');
-  assert(JSON.stringify(await page.locator('.taxonomy-app-primary [data-app-route]')
-    .evaluateAll(links => links.map(link => link.dataset.appRoute)))
-      === JSON.stringify(['projects', 'analysis', 'architecture', 'graph', 'versions', 'dsl-editor']),
-    'The application must expose the six retained primary destinations exactly once');
+  deepStrictEqual(await page.locator('#applicationWorkspaces [data-app-route]')
+    .evaluateAll(links => links.map(link => link.dataset.appRoute)), ['projects', 'analysis', 'architecture']);
   assert(await page.locator('[data-app-route="architecture"]').count() === 1,
-    'Architecture has more than one primary application destination');
+    'Architecture has more than one work destination');
   {
     await openSharedNavigation(page);
-    const analyzeTab = page.locator('#mainNavTabs [data-page="analyze"]');
-    await analyzeTab.focus();
-    await page.keyboard.press('ArrowRight');
-    await page.waitForFunction(() => document.querySelector(
-      '#mainNavTabs [data-page="architecture"]')?.getAttribute('aria-selected') === 'true');
-    assert(await page.locator('#mainNavTabs [data-page="architecture"]').getAttribute('aria-selected') === 'true',
-      'Arrow-key navigation did not activate Architecture');
-    await analyzeTab.click();
-    passed('keyboard tab navigation');
+    const file = page.locator('#fileMenuButton');
+    await file.focus(); await page.keyboard.press('ArrowRight');
+    assert(await page.locator('#applicationEdit > summary').evaluate(node => node === document.activeElement),
+      'Keyboard cannot move between command categories');
+    await navigateTo('architecture');
+    assert(await page.locator('#applicationArchitectureLink').getAttribute('aria-current') === 'page',
+      'Architecture navigation did not select its work area');
+    await navigateTo('analyze');
+    passed('command and work-area keyboard navigation');
   }
 
   const firstTreeItem = page.locator('#taxonomyTree [role="treeitem"]').first();

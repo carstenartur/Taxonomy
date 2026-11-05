@@ -17,7 +17,7 @@ Bewertet wird die authentifizierte Webanwendung mit Analyse, Taxonomiebaum, Arch
 | Dokumentensprache | Thymeleaf setzt die Sprache anhand der aktiven Locale | Template und authentifizierter axe-Test | Umgesetzt |
 | Sprunglink | Bei Fokus sichtbarer Link zum Hauptinhalt | Markup und Fokus-CSS | Umgesetzt |
 | Statusmeldungen | Höfliche und dringende ARIA-Live-Regionen | UI-Hilfsschicht und axe-Test | Umgesetzt |
-| Hauptnavigation | `tablist`-/`tab`-/`tabpanel`-Semantik, `aria-selected`, Roving Tabindex, Pfeil-/Pos1-/Ende-Tasten | `taxonomy-utils.js` und axe-Test | Umgesetzt |
+| Hauptnavigation | Arbeitsbereichslinks mit `aria-current`; native Befehlsmenüs mit Pfeiltasten/Escape | `application-chrome.js` und native Browsertests | Umgesetzt |
 | Taxonomiebaum | `tree`, `treeitem`, `group`, `aria-expanded`, Pfeil-/Pos1-/Ende-/Enter-/Leertasten-Bedienung | Browsercode und fokussierte Tests | Umgesetzt |
 | Scores und Begründungen | Zugänglicher Name enthält Code, Titel, Score und Begründung; MutationObserver synchronisiert dynamische Änderungen | `taxonomy-utils.js` | Umgesetzt |
 | Fokusdarstellung | Sichtbare `focus-visible`-Umrandungen für Baum, Navigation, Dialoge und Knotenaktionen | CSS-Vertrag | Umgesetzt |

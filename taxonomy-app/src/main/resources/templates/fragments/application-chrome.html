@@ -6,54 +6,97 @@
 </th:block>
 </head><body>
 <header th:fragment="navigation(active, localActions, helpDocument, helpSection)" class="taxonomy-app-chrome">
-    <nav id="applicationNavigation" class="taxonomy-app-navigation" th:aria-label="#{app.navigation.label}" aria-label="Application navigation">
+    <nav id="applicationNavigation" class="taxonomy-app-navigation" th:aria-label="#{app.navigation.label}" aria-label="Application commands">
         <div class="taxonomy-app-mainrow">
             <a class="taxonomy-app-brand" th:href="@{/}" href="/">Taxonomy</a>
             <details id="applicationNavigationMenu" class="taxonomy-app-menu" open>
-                <summary aria-controls="applicationNavigationMenuContent" th:text="#{app.navigation.menu}">Menu</summary>
+                <summary aria-controls="applicationMenuGroups" th:text="#{app.navigation.menu}">Menu</summary>
             </details>
-            <div id="applicationNavigationMenuContent" class="taxonomy-app-menu-content">
-            <div class="taxonomy-app-primary">
-                <a id="applicationProjectsLink" data-app-route="projects" data-taxonomy-feature="portfolio" th:href="@{/projects}" href="/projects"
-                   th:attr="aria-current=${active == 'projects' ? 'page' : null}" th:text="#{app.navigation.projects}">Projects</a>
-            <ul id="mainNavTabs" aria-label="Main sections">
-                <li>
-                <a class="nav-link" th:classappend="${active == 'analysis' ? 'active' : ''}" th:attr="aria-current=${active == 'analysis' ? 'page' : null}" data-page="analyze" data-app-route="analysis" th:href="@{/#analyze}" href="/#analyze" th:text="#{nav.analyze}">Analyze</a>
-            </li>
-                <li>
-                <a class="nav-link" th:classappend="${active == 'architecture' ? 'active' : ''}" th:attr="aria-current=${active == 'architecture' ? 'page' : null}" data-page="architecture" data-taxonomy-feature="architecture" data-app-route="architecture" th:href="@{/#architecture}" href="/#architecture" th:text="#{nav.architecture}">Architecture</a>
-            </li>
-                <li>
-                <a class="nav-link" th:classappend="${active == 'graph' ? 'active' : ''}" th:attr="aria-current=${active == 'graph' ? 'page' : null}" data-page="graph" data-taxonomy-feature="architecture" data-app-route="graph" th:href="@{/#graph}" href="/#graph" th:text="#{nav.graph}">Graph</a>
-            </li>
-                <li>
-                <a class="nav-link" th:classappend="${active == 'versions' ? 'active' : ''}" th:attr="aria-current=${active == 'versions' ? 'page' : null}" data-page="versions" data-app-route="versions" th:href="@{/#versions}" href="/#versions" th:text="#{nav.versions}">Versions</a>
-            </li>
-                <li>
-                <a class="nav-link" th:classappend="${active == 'dsl-editor' ? 'active' : ''}" th:attr="aria-current=${active == 'dsl-editor' ? 'page' : null}" data-page="dsl-editor" data-app-route="dsl-editor" th:href="@{/#dsl-editor}" href="/#dsl-editor" th:text="#{nav.dsl}">DSL</a>
-            </li>
-            </ul>
-            </div>
-            <div class="taxonomy-app-local"><th:block th:replace="${localActions}"></th:block></div>
-            </div>
-            <div class="taxonomy-app-utilities">
-                <div class="taxonomy-app-languages" role="group" th:aria-label="#{lang.selector.label}" aria-label="Language">
-                    <a href="?lang=en" hreflang="en" data-app-locale="en" th:aria-label="#{language.english}">EN</a>
-                    <a href="?lang=de" hreflang="de" data-app-locale="de" th:aria-label="#{language.german}">DE</a>
-                </div>
+            <div id="applicationMenuGroups" class="taxonomy-app-menu-content">
+                <details id="applicationFile" class="application-menu">
+                    <summary id="fileMenuButton" th:text="#{app.menu.file}">File</summary>
+                    <div class="application-menu-content">
+                        <a data-app-route="analysis" data-page="analyze" th:href="@{/#analyze}" href="/#analyze" th:text="#{app.command.openRequirement}">Open requirement</a>
+                        <th:block th:if="${active == 'analysis'}">
+                            <button id="fileNewAnalysisAction" type="button" th:text="#{navbar.file.new_analysis}">New analysis</button>
+                            <button id="fileCancelAnalysisAction" type="button" disabled aria-disabled="true" th:text="#{navbar.file.cancel_analysis}">Cancel running analysis</button>
+                            <button id="fileSaveDraftAction" type="button" th:text="#{app.command.saveRequirement}">Save requirement draft</button>
+                        </th:block>
+                        <hr/>
+                        <button type="button" data-app-command="checkpoint" data-app-target="editorCheckpoint" disabled th:text="#{app.command.checkpoint}">Create architecture version</button>
+                        <button type="button" data-app-command="print" data-app-target="printArchitectureView" disabled th:text="#{app.command.print}">Print architecture</button>
+                        <button type="button" data-app-command="export-svg" data-app-target="editorSvg,downloadArchitectureSvg" disabled th:text="#{app.command.svg}">Export architecture SVG</button>
+                        <button type="button" data-app-command="export-pdf" data-app-target="editorPdf,downloadArchitecturePdf" disabled th:text="#{app.command.pdf}">Export architecture PDF</button>
+                        <a th:if="${portableBackupAvailable}" th:href="@{/backup-jobs(lang=${#locale.language})}" th:text="#{backup.export.title}">Create a portable export</a>
+                    </div>
+                </details>
+                <details id="applicationEdit" class="application-menu">
+                    <summary th:text="#{app.menu.edit}">Edit</summary>
+                    <div class="application-menu-content">
+                        <button type="button" data-app-command="undo" data-app-target="editorQuickUndo" disabled th:text="#{app.command.undo}">Undo latest change…</button>
+                        <button type="button" data-app-command="redo" data-app-target="editorQuickRedo" disabled th:text="#{app.command.redo}">Redo latest undo…</button>
+                        <hr/>
+                        <button type="button" data-app-command="new-element" data-app-target="editorNew" disabled th:text="#{app.command.newElement}">New architecture element</button>
+                        <button type="button" data-app-command="delete-element" data-app-target="editorDelete" disabled th:text="#{app.command.deleteElement}">Preview deletion…</button>
+                    </div>
+                </details>
+                <details id="applicationView" class="application-menu">
+                    <summary th:text="#{app.menu.view}">View</summary>
+                    <div class="application-menu-content">
+                        <a data-app-route="versions" data-page="versions" th:href="@{/#versions}" href="/#versions" th:text="#{app.command.history}">Version history</a>
+                        <a data-app-route="dsl-editor" data-page="dsl-editor" th:href="@{/#dsl-editor}" href="/#dsl-editor" th:text="#{app.command.source}">Model source (DSL)</a>
+                        <hr/>
+                        <button type="button" data-app-command="zoom-in" data-app-target="editorZoomIn" disabled th:text="#{editor.zoomIn}">Zoom in</button>
+                        <button type="button" data-app-command="zoom-out" data-app-target="editorZoomOut" disabled th:text="#{editor.zoomOut}">Zoom out</button>
+                        <button type="button" data-app-command="fit" data-app-target="editorFit" disabled th:text="#{editor.fit}">Fit model</button>
+                        <hr/>
+                        <span class="application-menu-group" th:text="#{app.command.catalogueViews}">Taxonomy catalogue</span>
+                        <button type="button" data-app-command="view-list" data-app-target="viewList" disabled th:text="#{app.command.viewList}">List</button>
+                        <button type="button" data-app-command="view-tabs" data-app-target="viewTabs" disabled th:text="#{app.command.viewTabs}">Tabs</button>
+                        <button type="button" data-app-command="view-sunburst" data-app-target="viewSunburst" disabled th:text="#{app.command.viewSunburst}">Sunburst</button>
+                        <button type="button" data-app-command="view-tree" data-app-target="viewTree" disabled th:text="#{app.command.viewTree}">Tree</button>
+                        <button type="button" data-app-command="view-decision" data-app-target="viewDecision" disabled th:text="#{app.command.viewDecision}">Decision</button>
+                    </div>
+                </details>
+                <details id="applicationTools" class="application-menu">
+                    <summary th:text="#{app.menu.tools}">Tools</summary>
+                    <div class="application-menu-content">
+                        <a data-app-route="graph" data-page="graph" data-taxonomy-feature="architecture" th:href="@{/#graph}" href="/#graph" th:text="#{app.command.graphExplorer}">Graph Explorer</a>
+                        <a data-app-route="integrations" th:href="@{/integrations}" href="/integrations" th:text="#{integration.title}">Tool integrations</a>
+                        <hr/>
+                        <span class="application-menu-group" th:text="#{app.command.personalSettings}">Personal settings</span>
+                        <button id="darkModeToggle" type="button" aria-pressed="false" th:text="#{app.theme.dark}">Use dark appearance</button>
+                        <div class="taxonomy-app-languages" role="group" th:aria-label="#{lang.selector.label}" aria-label="Language">
+                            <a href="?lang=en" hreflang="en" data-app-locale="en" th:aria-label="#{language.english}" th:text="#{language.english}">English</a>
+                            <a href="?lang=de" hreflang="de" data-app-locale="de" th:aria-label="#{language.german}" th:text="#{language.german}">German</a>
+                        </div>
+                        <div class="application-menu-admin" data-required-roles="ADMIN" hidden>
+                            <hr/><span class="application-menu-group" th:text="#{navbar.administration}">Administration</span>
+                            <a class="application-utility-link" id="adminNavTab" data-page="admin" data-app-route="admin" th:href="@{/#admin}" href="/#admin" th:text="#{navbar.administration}">Administration</a>
+                            <a class="application-utility-link" id="userManagementMenuAction" data-page="admin" href="#admin" th:text="#{users.title}">User management</a>
+                            <a class="application-utility-link" id="preferencesNavTab" data-page="preferences" data-app-route="preferences" th:href="@{/#preferences}" href="/#preferences" th:text="#{navbar.server.settings}">Server settings</a>
+                            <button id="databaseSetupMenuAction" type="button" th:if="${active == 'analysis'}" th:text="#{database.setup.menu}">Database setup</button>
+                        </div>
+                    </div>
+                </details>
                 <details id="applicationHelp" class="application-menu">
                     <summary th:text="#{nav.help}">Help</summary>
                     <div class="application-menu-content">
                         <a th:replace="~{fragments/context-help :: button(${helpDocument}, ${helpSection})}"></a>
-                        <a id="main-tab-help" class="application-utility-link" data-page="help" data-app-route="help"
-                           th:href="@{/#help}" href="/#help" th:text="#{help.manual}">User manual</a>
-                        <button id="aboutBtn" type="button" th:if="${active == 'analysis'}"
-                                th:text="#{navbar.about.label}" th:aria-label="#{ui.aria.about}">About</button>
+                        <a id="main-tab-help" class="application-utility-link" data-page="help" data-app-route="help" th:href="@{/#help}" href="/#help" th:text="#{help.manual}">User manual</a>
+                        <button id="aboutBtn" type="button" th:if="${active == 'analysis'}" th:text="#{navbar.about.label}" th:aria-label="#{ui.aria.about}">About</button>
                     </div>
                 </details>
             </div>
         </div>
     </nav>
+    <nav id="applicationWorkspaces" class="taxonomy-app-workspaces" th:aria-label="#{app.workspaces.label}" aria-label="Work areas">
+        <a id="applicationProjectsLink" data-app-route="projects" data-taxonomy-feature="portfolio" th:href="@{/projects}" href="/projects" th:attr="aria-current=${active == 'projects' ? 'page' : null}" th:text="#{app.navigation.projects}">Projects</a>
+        <a id="applicationRequirementLink" data-app-route="analysis" data-page="analyze" th:href="@{/#analyze}" href="/#analyze" th:attr="aria-current=${active == 'analysis' || active == 'requirement' ? 'page' : null}" th:text="#{app.workspace.requirement}">Requirement</a>
+        <a id="applicationArchitectureLink" data-app-route="architecture" data-page="architecture" data-taxonomy-feature="architecture" th:href="@{/#architecture}" href="/#architecture" th:attr="aria-current=${active == 'architecture' ? 'page' : null}" th:text="#{nav.architecture}">Architecture</a>
+    </nav>
+    <div id="applicationPageActions" class="taxonomy-app-page-actions"><th:block th:replace="${localActions}"></th:block></div>
+    <div id="applicationSystemStatus" class="taxonomy-app-status"></div>
     <details id="applicationContextDisclosure" class="taxonomy-app-context-disclosure" open>
     <summary id="applicationContextSummary">
         <strong id="applicationContextSummaryTitle" th:text="#{app.context.label}">Selected context</strong>
@@ -82,7 +125,12 @@
     </details>
 </header>
 <th:block th:fragment="scripts">
-    <script th:fragment="navigationScript" th:src="@{/js/shared/application-chrome.js}" src="/js/shared/application-chrome.js"></script>
+    <th:block th:fragment="navigationScript">
+        <script th:src="@{/js/api/taxonomy-api-client.js}" src="/js/api/taxonomy-api-client.js"></script>
+        <script th:src="@{/js/security/taxonomy-role-surface.js}" src="/js/security/taxonomy-role-surface.js"></script>
+        <script th:src="@{/js/shared/application-commands.js}" src="/js/shared/application-commands.js"></script>
+        <script th:src="@{/js/shared/application-chrome.js}" src="/js/shared/application-chrome.js"></script>
+    </th:block>
     <script th:src="@{/js/api/architecture-lifecycle-api.js}" src="/js/api/architecture-lifecycle-api.js"></script>
     <script th:src="@{/js/shared/architecture-lifecycle.js}" src="/js/shared/architecture-lifecycle.js"></script>
     <script th:src="@{/js/shared/requirement-intake.js}" src="/js/shared/requirement-intake.js"></script>

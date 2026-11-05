@@ -69,10 +69,10 @@ class ArchiMateReturnUiIT {
                 try {
                     for (int attempt = 0; attempt < 3; attempt++) {
                         driver.get(session.origin() + "/?lang=en" + (attempt < 2 ? pin : "&workspaceId=&repositoryId=" + secondary.getRepositoryId() + "&branch=main"));
-                        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("mainNavTabs")));
+                        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("applicationWorkspaces")));
                         var dismiss = driver.findElements(By.id("onboardingDismiss"));
                         if (!dismiss.isEmpty() && dismiss.getFirst().isDisplayed()) click(driver, wait, "onboardingDismiss");
-                        click(driver, wait, By.cssSelector("#mainNavTabs [data-page='architecture']"));
+                        click(driver, wait, By.cssSelector("#applicationArchitectureLink"));
                         click(driver, wait, By.cssSelector("#architectureSubTabs [data-subtab='arch-export']"));
                         click(driver, wait, By.cssSelector("#archiReturnPanel summary"));
                         driver.findElement(By.id("archiReturnOriginal")).sendKeys(fixtures.resolve("workbench-original.xml").toString());
@@ -164,7 +164,7 @@ class ArchiMateReturnUiIT {
         } catch (Exception capture) { failure.addSuppressed(capture); }
         try {
             String geometry = (String) driver.executeScript("""
-                    const selectors=['#mainNavTabs [data-page="architecture"]',
+                    const selectors=['#applicationArchitectureLink',
                         '#architectureSubTabs [data-subtab="arch-export"]','#archiReturnPanel summary',
                         '#archiReturnPreview','#archiReturnAccept','#archiReturnApply'];
                     return JSON.stringify({url:location.href,readyState:document.readyState,innerWidth,innerHeight,

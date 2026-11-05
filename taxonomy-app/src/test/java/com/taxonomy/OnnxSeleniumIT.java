@@ -380,7 +380,7 @@ class OnnxSeleniumIT {
 
     private void navigateToAnalyzeTab() {
         WebElement analyzeTab = driver.findElement(
-                By.cssSelector("#mainNavTabs .nav-link[data-page='analyze']"));
+                By.cssSelector("#applicationRequirementLink"));
         if (!analyzeTab.getAttribute("class").contains("active")) {
             analyzeTab.click();
             new WebDriverWait(driver, Duration.ofSeconds(10))

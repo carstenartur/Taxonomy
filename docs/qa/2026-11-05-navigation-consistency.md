@@ -1,5 +1,9 @@
 # Consistent application navigation
 
+This records the first visual cleanup at `3252b8a`. The subsequent command/work-area
+restructuring and current captures are documented in
+[Workbench command structure](2026-11-05-workbench-command-structure.md).
+
 ## Problem and design
 
 The common header still combined Bootstrap tabs, a Bootstrap File dropdown,

@@ -1,4 +1,4 @@
-.architecture-editor-surface { color-scheme: light dark; font-family: system-ui, sans-serif; background: var(--taxonomy-surface-background, #f5f7fa); color: var(--taxonomy-surface-foreground, #17243a); }
+.architecture-editor-surface { color-scheme: inherit; font-family: system-ui, sans-serif; background: var(--taxonomy-surface-background, #f5f7fa); color: var(--taxonomy-surface-foreground, #17243a); }
 .architecture-editor-surface * { box-sizing: border-box; }
 .architecture-editor-surface { margin: 0; }
 .architecture-editor-surface h1 { font-size: 1.4rem; margin: 0; flex: 1; }
@@ -8,14 +8,14 @@
 .architecture-editor-surface .editor-context, .architecture-editor-surface pre, .architecture-editor-surface #editorSelection { overflow-wrap: anywhere; }
 .architecture-editor-surface .editor-context { font-family: ui-monospace, monospace; }
 .architecture-editor-surface .editor-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: .7rem 0; }
-.architecture-editor-surface button, .architecture-editor-surface .editor-toolbar a { border: 1px solid #8795a8; border-radius: .3rem; padding: .65rem .85rem; background: #fff; color: #17243a; cursor: pointer; font: inherit; min-height: 44px; }
+.architecture-editor-surface button, .architecture-editor-surface .editor-toolbar a { border: 1px solid #8795a8; border-radius: .3rem; padding: .65rem .85rem; background: var(--taxonomy-panel-background, #fff); color: var(--taxonomy-surface-foreground, #17243a); cursor: pointer; font: inherit; min-height: 44px; }
 .architecture-editor-surface button:disabled { cursor: default; opacity: .55; }
 .architecture-editor-surface a { color: #174cb3; }
 .architecture-editor-surface :focus-visible { outline: 3px solid #ac5100; outline-offset: 3px; }
 .architecture-editor-surface .editor-columns { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(20rem, 1fr); gap: 1.5rem; }
 .architecture-editor-surface .editor-columns > section { min-width: 0; padding: 1rem; border: 1px solid var(--taxonomy-panel-border, #c8d1dd); background: var(--taxonomy-panel-background, white); border-radius: .5rem; }
 .architecture-editor-surface label { display: block; font-weight: 600; margin: .7rem 0 .25rem; }
-.architecture-editor-surface input, .architecture-editor-surface select, .architecture-editor-surface textarea { display: block; width: 100%; font: inherit; padding: .55rem; border: 1px solid #8795a8; border-radius: .25rem; background: white; color: #17243a; }
+.architecture-editor-surface input, .architecture-editor-surface select, .architecture-editor-surface textarea { display: block; width: 100%; font: inherit; padding: .55rem; border: 1px solid #8795a8; border-radius: .25rem; background: var(--taxonomy-panel-background, white); color: var(--taxonomy-surface-foreground, #17243a); }
 .architecture-editor-surface textarea { resize: vertical; }
 .architecture-editor-surface fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .architecture-editor-surface #editorGraph { width: 100%; height: 27rem; border: 1px solid #aab5c4; touch-action: none; background: var(--taxonomy-canvas-background, #f8fafc); }

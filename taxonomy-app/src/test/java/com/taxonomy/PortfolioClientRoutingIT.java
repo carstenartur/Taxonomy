@@ -87,7 +87,8 @@ class PortfolioClientRoutingIT {
         click(By.id("businessText"));
         driver.findElement(By.id("businessText")).clear();
         driver.findElement(By.id("businessText")).sendKeys("Unsaved contextual-help requirement");
-        click(By.cssSelector("#mainNavTabs [data-page='graph']"));
+        click(By.cssSelector("#applicationTools > summary"));
+        click(By.cssSelector("#applicationTools [data-page='graph']"));
         String original = driver.getWindowHandle();
         var windows = driver.getWindowHandles();
         click(By.cssSelector("#tab-graph .context-help"));

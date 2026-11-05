@@ -175,7 +175,7 @@ class DatabaseSetupBrowserTest {
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("analysisTaskProgress")));
             wait.until(ExpectedConditions.elementToBeClickable(By.id("onboardingDismiss"))).click();
             assertThat(preferences.getBoolean("setup.database.dismissed", false)).isFalse();
-            driver.findElement(By.cssSelector("#applicationSettings > summary")).click();
+            driver.findElement(By.cssSelector("#applicationTools > summary")).click();
             wait.until(ExpectedConditions.elementToBeClickable(By.id("databaseSetupMenuAction"))).click();
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("databaseSetupNotice")));
             assertThat(driver.executeScript("""
@@ -208,7 +208,7 @@ class DatabaseSetupBrowserTest {
                 """, (driver, wait, origin) -> {
             // Hold the real status response until the explicit Settings action is waiting for it.
             wait.until(d -> Boolean.TRUE.equals(driver.executeScript("return window.databaseSetupStatusPending === true")));
-            driver.findElement(By.cssSelector("#applicationSettings > summary")).click();
+            driver.findElement(By.cssSelector("#applicationTools > summary")).click();
             wait.until(ExpectedConditions.elementToBeClickable(By.id("databaseSetupMenuAction"))).click();
             driver.executeScript("window.releaseDatabaseSetupStatus()");
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("databaseSetupDialog")));
@@ -234,7 +234,7 @@ class DatabaseSetupBrowserTest {
     }
 
     private static void openWizard(RemoteWebDriver driver, WebDriverWait wait) {
-        var settings = driver.findElement(By.id("applicationSettings"));
+        var settings = driver.findElement(By.id("applicationTools"));
         if (!"true".equals(settings.getDomProperty("open"))) {
             settings.findElement(By.tagName("summary")).click();
         }

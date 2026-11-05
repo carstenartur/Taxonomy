@@ -23,7 +23,7 @@
         </div></th:block>
     </nav>
     <script th:src="@{/js/taxonomy-i18n.js}"></script>
-    <script th:src="@{/js/shared/application-chrome.js}"></script>
+    <th:block th:replace="~{fragments/application-chrome :: navigationScript}"></th:block>
 </th:block>
 <div th:fragment="feedback">
     <div th:if="${errorKey}" class="alert alert-danger" role="alert"

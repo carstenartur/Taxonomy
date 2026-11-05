@@ -327,23 +327,23 @@
     }
 
     function createOperationalContext() {
-        var slot = document.getElementById('operationalStatusMenuSlot');
+        var slot = document.getElementById('applicationSystemStatus');
         if (!slot || document.getElementById('operationalContextDetails')) {
             return;
         }
 
         var details = document.createElement('details');
         details.id = 'operationalContextDetails';
-        details.className = 'application-menu';
+        details.className = 'taxonomy-system-status';
         var summary = document.createElement('summary');
         var title = document.createElement('span');
-        title.textContent = t('navbar.status');
+        title.textContent = t('app.status.system');
         var hint = document.createElement('span');
         hint.className = 'operational-context-hint visually-hidden';
         hint.textContent = t('analysis.task.operational.hint');
         summary.append(title, hint);
         var body = document.createElement('div');
-        body.className = 'operational-context-content application-menu-content';
+        body.className = 'operational-context-content';
         details.append(summary, body);
 
         slot.appendChild(details);
@@ -370,8 +370,13 @@
             var danger = Boolean(body.querySelector(
                 '.bg-danger, .text-danger, .alert-danger, .git-status-error, [data-state="error"]'));
             details.classList.toggle('has-actionable-status', actionable || danger);
-            // A status update must not override the user's open/close decision.
+            var badge = document.getElementById('aiStatusBadge');
             var summary = details.querySelector('summary');
+            var readiness = summary.querySelector('.taxonomy-status-readiness');
+            if (!readiness) { readiness = document.createElement('span'); readiness.className = 'taxonomy-status-readiness'; summary.appendChild(readiness); }
+            readiness.textContent = badge && !badge.classList.contains('d-none') ? badge.textContent : '';
+            summary.setAttribute('aria-label', [t('app.status.system'), readiness.textContent].filter(Boolean).join(': '));
+            // A status update must not override the user's open/close decision.
             summary.title = t(actionable || danger ? 'navbar.status.attention' : 'navbar.status');
         }
         new MutationObserver(refresh).observe(body, {
@@ -607,7 +612,7 @@
             if (typeof window.navigateToPage === 'function') {
                 window.navigateToPage('architecture');
             } else {
-                document.querySelector('#mainNavTabs [data-page="architecture"]')?.click();
+                document.getElementById('applicationArchitectureLink')?.click();
             }
         } else {
             document.getElementById('businessText')?.focus();
@@ -653,7 +658,7 @@
     }
 
     function installExpertShortcuts() {
-        var analyzeLink = document.querySelector('#mainNavTabs [data-page="analyze"]');
+        var analyzeLink = document.getElementById('applicationRequirementLink');
         var operationalSummary = document.querySelector('#operationalContextDetails > summary');
         if (analyzeLink) {
             analyzeLink.title = t('analysis.task.shortcut.analyze');
@@ -677,11 +682,6 @@
                 event.preventDefault();
                 var details = document.getElementById('operationalContextDetails');
                 if (details) {
-                    var navigationMenu = document.getElementById('applicationNavigationMenu');
-                    var navigationToggle = navigationMenu?.querySelector('summary');
-                    if (navigationToggle && navigationToggle.offsetParent !== null && !navigationMenu.open) {
-                        navigationMenu.open = true;
-                    }
                     details.open = !details.open;
                     details.querySelector('summary')?.focus();
                 }

@@ -225,6 +225,12 @@ final class PortfolioClientTestPage implements AutoCloseable {
                 send(exchange, json(200, translationCache.computeIfAbsent(locale, translations::getTranslations)));
                 return;
             }
+            if (request.method().equals("GET") && path.equals("/api/account/me")) {
+                send(exchange, json(200, Map.of("username", "fixture", "roles", List.of("USER"),
+                        "administrator", false, "architectureMutationAllowed", false,
+                        "localUserManagementAllowed", false)));
+                return;
+            }
             if (serveResource(exchange, path)) return;
             send(exchange, json(404, Map.of("error", "No fixture response for " + request.method() + " " + request.path())));
         } catch (Throwable failure) {

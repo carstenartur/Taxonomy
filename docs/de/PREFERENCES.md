@@ -85,7 +85,7 @@ Der Menüeintrag **Einstellungen (⚙) → Servereinstellungen** öffnet die gra
 
 ### Einstellungen öffnen
 
-1. Öffnen Sie **Einstellungen (⚙)** in der Hauptnavigationsleiste und wählen Sie **Servereinstellungen** (nur sichtbar, wenn als Admin angemeldet).
+1. Öffnen Sie **Werkzeuge → Servereinstellungen** (nur sichtbar, wenn als Admin angemeldet).
 2. Die Einstellungsseite öffnet sich und zeigt alle Einstellungen in vier Abschnitten.
 
 ### Einstellungen bearbeiten
