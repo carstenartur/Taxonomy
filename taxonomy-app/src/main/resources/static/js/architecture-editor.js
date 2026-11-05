@@ -184,7 +184,7 @@
         }
         el('editorDsl').value = view.document.dsl;
         renderTree(); renderRelations(); renderHistory(); renderVersions();
-        renderer.render(view.scene, selected);
+        renderer.render(view.scene, selected, view.schema.typeRoots);
         el('editorLayout').value = layout;
         focusPanel.setContext(c, view.mayEdit && state === 'READY' && view.document.source === 'WORKSPACE_REVISION');
         focusPanel.select(selected);

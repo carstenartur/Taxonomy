@@ -170,9 +170,16 @@
         return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : [233, 236, 239];
     }
     function rgba(color, alpha) { return 'rgba(' + parseColor(color).join(',') + ',' + alpha + ')'; }
-    function readableTextColor(color) {
+    function relativeLuminance(color) {
         var c = parseColor(color).map(function (value) { value /= 255; return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4); });
-        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] > 0.47 ? '#17212b' : '#ffffff';
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    }
+    function readableTextColor(color) {
+        var background = relativeLuminance(color), darkText = relativeLuminance('#17212b');
+        if (1.05 / (background + 0.05) >= 4.5) return '#ffffff';
+        if ((background + 0.05) / (darkText + 0.05) >= 4.5) return '#17212b';
+        // Midtones can fail with both brand-dark and white text; black preserves contrast.
+        return '#000000';
     }
     function shouldMuteNode(value) {
         return value.nodeId !== value.selectedNodeId && Boolean((value.selectedNodeId && !value.connected) || (value.hasSearch && !value.searchMatch));
@@ -184,11 +191,49 @@
         return Boolean(event && !event.defaultPrevented && (!event.target || typeof event.target.closest !== 'function'
             || !event.target.closest('[data-node-id], [data-edge-id], [data-suggestion-id]')));
     }
+    // Analysis and retained snapshots use the same semantic palette and customer CSS tokens.
+    var layerTypes = Object.freeze({
+        'Capabilities': 'cap', 'CP': 'cap',
+        'Business Processes': 'proc', 'Business Roles': 'proc', 'BP': 'proc', 'BR': 'proc',
+        'Services': 'svc', 'Core Services': 'svc', 'COI Services': 'svc', 'CI': 'svc', 'CR': 'svc',
+        'Applications': 'app', 'User Applications': 'app', 'UA': 'app',
+        'Information Products': 'info', 'IP': 'info',
+        'Communications Services': 'comm', 'CO': 'comm',
+        'Systems': 'system', 'SY': 'system', 'Components': 'component', 'CM': 'component'
+    });
+    var layerDefaults = Object.freeze({ cap: '#1d5f91', proc: '#146c43', svc: '#8a4b00', app: '#6f2c7f',
+        info: '#075985', comm: '#b02a37', system: '#4c3f91', component: '#6f2c7f', 'default': '#4b5563' });
+    var relationDefaults = Object.freeze({ SUPPORTS: '#27834a', REALIZES: '#326fbd', REALIZED_BY: '#326fbd',
+        USES: '#b66b00', REQUIRES: '#c0392b', DEPENDS_ON: '#7d3c98', FULFILLS: '#218c53',
+        CONSUMES: '#b95f12', ASSIGNED_TO: '#148f77', PRODUCES: '#2874a6', COMMUNICATES_WITH: '#76448a',
+        CONTAINS: '#65727e', RELATED_TO: '#6c757d' });
+    function taxonomyPalette() {
+        var styles = typeof getComputedStyle === 'function' && typeof document !== 'undefined' && document.documentElement
+            ? getComputedStyle(document.documentElement) : null;
+        var layerColors = Object.create(null), relationColors = Object.create(null);
+        function color(token, fallback) { return styles && styles.getPropertyValue(token).trim() || fallback; }
+        return {
+            layer: function (type) {
+                var key = String(type || '').trim(), prefix = key.match(/^([A-Z]{2})(?:\b|[-_])/);
+                var layer = Object.hasOwn(layerTypes, key) ? layerTypes[key]
+                    : (prefix && Object.hasOwn(layerTypes, prefix[1]) ? layerTypes[prefix[1]] : 'default');
+                return layerColors[layer] || (layerColors[layer] = color('--taxonomy-layer-' + layer + '-surface', layerDefaults[layer]));
+            },
+            relation: function (type) {
+                var key = String(type || '').toUpperCase();
+                if (!Object.hasOwn(relationDefaults, key)) key = 'default';
+                if (!relationColors[key]) relationColors[key] = key === 'default' ? color('--bs-secondary-color', '#6c757d')
+                    : color('--taxonomy-relation-' + key.toLowerCase().replace(/_/g, '-'), relationDefaults[key]);
+                return relationColors[key];
+            }
+        };
+    }
     window.TaxonomyArchitectureDiagram = { element: element, text: text, activate: activate, renderNode: renderNode, renderEdge: renderEdge,
         visibleModel: visibleModel, calculateFitTransform: calculateFitTransform, relationshipLanes: relationshipLanes,
         edgePath: edgePath, regionNodeIds: regionNodeIds, suggestionPath: suggestionPath,
         sourceId: source, targetId: target, isContext: isContext,
         wrapLabel: wrapLabel, parseColor: parseColor, rgba: rgba, readableTextColor: readableTextColor,
+        taxonomyPalette: taxonomyPalette,
         shouldMuteNode: shouldMuteNode, shouldMuteEdge: shouldMuteEdge, shouldClearSelectionFromClick: shouldClearSelectionFromClick };
 }());
 

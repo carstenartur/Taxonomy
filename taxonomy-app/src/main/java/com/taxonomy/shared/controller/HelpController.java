@@ -81,6 +81,7 @@ public class HelpController {
         new String[]{"COPILOT_AUTOPILOT",         "🚁", "help.toc.COPILOT_AUTOPILOT",             "help.audience.everyone"},
         new String[]{"MULTIUSER_ANALYSIS",         "👥", "help.toc.MULTIUSER_ANALYSIS",             "help.audience.admins"},
         new String[]{"CONFIGURATION_REFERENCE",   "⚙️", "help.toc.CONFIGURATION_REFERENCE",       "help.audience.admins"},
+        new String[]{"CUSTOM_STYLES",              "🎨", "help.toc.CUSTOM_STYLES",                  "help.audience.admins"},
         new String[]{"API_REFERENCE",             "🔌", "help.toc.API_REFERENCE",                 "help.audience.integrators"},
         new String[]{"CURL_EXAMPLES",             "💻", "help.toc.CURL_EXAMPLES",                 "help.audience.integrators"},
         new String[]{"ARCHITECTURE",              "🏗️", "help.toc.ARCHITECTURE",                  "help.audience.developers"},

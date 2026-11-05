@@ -107,6 +107,24 @@
         var doc = new DOMParser().parseFromString(htmlString, 'text/html');
         var body = doc.body;
         importSafeNodes(body, container);
+        if (container === docBody) rewriteDocumentLinks();
+    }
+
+    // The same Markdown is read on GitHub and inside Taxonomy. Keep its relative
+    // links on GitHub, but route registered help documents through this reader.
+    function rewriteDocumentLinks() {
+        if (!toc.length) return;
+        docBody.querySelectorAll('a[href]').forEach(function (link) {
+            var match = /^(?:\.\/)?([A-Za-z0-9_-]+)\.md(?:#([^#]*))?$/.exec(link.getAttribute('href'));
+            if (!match || !toc.some(function (entry) { return entry.filename === match[1]; })) return;
+            try {
+                var section = decodeURIComponent(match[2] || '');
+                if (/[\s/#<>]/.test(section)) return;
+                link.setAttribute('href', targetHash({doc: match[1], section: section}));
+                link.removeAttribute('target');
+                link.removeAttribute('rel');
+            } catch (_) { /* Preserve malformed authored links for normal handling. */ }
+        });
     }
 
     var ALLOWED_TAGS = new Set([
@@ -170,6 +188,7 @@
             .then(function (data) {
                 toc = data;
                 renderToc(data);
+                rewriteDocumentLinks();
             })
             .catch(function (e) {
                 tocRequest = null; // A subsequent help visit can retry.

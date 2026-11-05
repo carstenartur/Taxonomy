@@ -68,6 +68,45 @@ class SharedApplicationChromeBrowserIT {
 
     @AfterAll static void closeBrowser() { if (page != null) page.close(); }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"index", "projects"})
+    void configuredCustomerStylesheetAppliesOnBothMainWorkAreas(String template) {
+        page.clearRoutes();
+        page.clearRequests();
+        page.route("GET", "/taxonomy/css/customer-theme.css", request ->
+                new PortfolioClientTestPage.Response(200, "text/css; charset=utf-8",
+                        ":root { --taxonomy-navigation-background: rgb(14, 64, 124); "
+                                + "--taxonomy-surface-background: rgb(232, 239, 247); "
+                                + "--taxonomy-panel-background: rgb(246, 243, 238); "
+                                + "--taxonomy-canvas-background: rgb(238, 244, 248); } "
+                                + "body { border-top: 9px solid rgb(14, 64, 124) !important; }"));
+        page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of()));
+        page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", List.of("portfolio", "architecture"))));
+        String path = template.equals("index") ? "/taxonomy/" : "/taxonomy/projects";
+        page.openAt(template, "/taxonomy", path, "de", "localStorage.setItem('taxonomy_onboarded','true');",
+                Map.of("customerStylesheetEnabled", true));
+        wait.until(driver -> "9px".equals(page.driver().executeScript("return getComputedStyle(document.body).borderTopWidth")));
+        assertThat(page.driver().executeScript("return getComputedStyle(document.body).borderTopColor"))
+                .isEqualTo("rgb(14, 64, 124)");
+        assertThat(page.driver().executeScript("return getComputedStyle(document.querySelector('#applicationNavigation')).backgroundColor"))
+                .isEqualTo("rgb(14, 64, 124)");
+        if (template.equals("index")) {
+            for (String selector : List.of("#architectureWorkingSource", "#architectureSnapshotSource")) {
+                assertThat(page.driver().executeScript("return getComputedStyle(document.querySelector(arguments[0])).backgroundColor", selector))
+                        .isEqualTo("rgb(232, 239, 247)");
+            }
+            for (String selector : List.of("#architectureWorkingSource .editor-columns > section", "#architectureSnapshotSource .workbench-canvas-panel")) {
+                assertThat(page.driver().executeScript("return getComputedStyle(document.querySelector(arguments[0])).backgroundColor", selector))
+                        .isEqualTo("rgb(246, 243, 238)");
+            }
+            for (String selector : List.of("#editorGraph", "#architectureSnapshotSource .architecture-canvas-shell")) {
+                assertThat(page.driver().executeScript("return getComputedStyle(document.querySelector(arguments[0])).backgroundColor", selector))
+                        .isEqualTo("rgb(238, 244, 248)");
+            }
+        }
+        assertThat(page.requests().stream().filter(request -> request.path().equals("/taxonomy/css/customer-theme.css"))).hasSize(1);
+    }
+
     private static void viewport(int width, int height) {
         var cdp = (HasCdp) new Augmenter().augment(page.driver());
         cdp.executeCdpCommand("Emulation.setDeviceMetricsOverride", Map.of(

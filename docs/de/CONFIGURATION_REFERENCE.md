@@ -27,6 +27,7 @@ Git-gestützte Einstellungen (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `
 | `TAXONOMY_INIT_RELOAD_EXISTING` | `taxonomy.init.reload-existing` | `false` | Erzwingt einen destruktiven Katalogneuimport; nur nach Sicherung. |
 | `TAXONOMY_LAZY_INIT` | `spring.main.lazy-initialization` | `true` | Initialisiert die meisten Beans erst bei Bedarf. |
 | `TAXONOMY_THYMELEAF_CACHE` | `spring.thymeleaf.cache` | `true` | Template-Cache. |
+| `TAXONOMY_UI_CUSTOM_STYLESHEET` | `taxonomy.ui.custom-stylesheet` | leer | Pfad zu einer betreiberseitigen CSS-Datei; siehe [Gestaltung](CUSTOM_STYLES.md). |
 | `TAXONOMY_SPRINGDOC_ENABLED` | SpringDoc API/UI | Basis `true`; Produktion/Kubernetes `false` | Schaltet OpenAPI und Swagger UI technisch ein oder aus. |
 | `TAXONOMY_FORWARD_HEADERS_STRATEGY` | Kubernetes: `server.forward-headers-strategy` | `framework` | Verarbeitung vertrauenswürdiger Ingress-Header. |
 | `TAXONOMY_SHUTDOWN_TIMEOUT` | Kubernetes: Shutdown-Phase | `30s` | Graceful-Shutdown-Frist. |

@@ -2,49 +2,12 @@
 (function () {
     'use strict';
 
-    const layerColors = Object.freeze({
-        Capabilities: '#cfe2ff',
-        'Business Processes': '#d1e7dd',
-        'Business Roles': '#d1e7dd',
-        'Core Services': '#fff3cd',
-        'COI Services': '#fff3cd',
-        Services: '#fff3cd',
-        'User Applications': '#e9d8fd',
-        Applications: '#e9d8fd',
-        'Information Products': '#f8d7da',
-        'Communications Services': '#cff4fc'
-    });
-
-    const relationColors = Object.freeze({
-        SUPPORTS: '#27834a',
-        REALIZES: '#326fbd',
-        REALIZED_BY: '#326fbd',
-        USES: '#b66b00',
-        REQUIRES: '#c0392b',
-        DEPENDS_ON: '#7d3c98',
-        FULFILLS: '#218c53',
-        CONSUMES: '#b95f12',
-        ASSIGNED_TO: '#148f77',
-        PRODUCES: '#2874a6',
-        COMMUNICATES_WITH: '#76448a',
-        CONTAINS: '#65727e',
-        RELATED_TO: '#6c757d'
-    });
-
     // Display only. The frozen graph keeps its unrounded normalized relevance.
     function relevanceText(value) {
         if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) return '—';
         const percentage = value * 100;
         if (percentage > 0 && percentage < 0.000001) return '<0.000001';
         return String(Number(percentage.toFixed(6)));
-    }
-
-    function colorForLayer(type) {
-        return layerColors[type] || '#e9ecef';
-    }
-
-    function colorForRelation(type) {
-        return relationColors[type] || '#6c757d';
     }
 
     function computeHopDistances(scene) {
@@ -84,7 +47,7 @@
         return distances;
     }
 
-    function buildLayerGroups(nodes) {
+    function buildLayerGroups(nodes, palette) {
         const groups = new Map();
         nodes.forEach(function (node) {
             if (!groups.has(node.layer)) groups.set(node.layer, []);
@@ -110,7 +73,7 @@
                     nodes: layerNodes,
                     x: minimumX,
                     width: maximumX - minimumX,
-                    color: colorForLayer(layerNodes[0].type)
+                    color: palette.layer(layerNodes[0].type)
                 };
             });
     }
@@ -147,11 +110,12 @@
             throw new Error(t('workbench.ui.noScene'));
         }
         const common = window.TaxonomyArchitectureDiagram;
+        const palette = common.taxonomyPalette();
         const source = data.scene;
         const edges = Array.isArray(source.edges) ? source.edges : [];
         const hops = computeHopDistances({ nodes: source.nodes, edges: edges });
         const nodes = source.nodes.map(function (node) {
-            const color = colorForLayer(node.type);
+            const color = palette.layer(node.type);
             const textColor = common.readableTextColor(color);
             const metadata = (data.elements || {})[node.id] || {};
             return Object.assign({}, node, {
@@ -179,7 +143,7 @@
                     source: edge.sourceId,
                     target: edge.targetId,
                     prefix: 'architecture',
-                    color: colorForRelation(edge.relationType),
+                    color: palette.relation(edge.relationType),
                     ariaLabel: t('workbench.ui.edgeLabel', edge.relationType, edge.sourceId, edge.targetId),
                     tooltip: edge.sourceId + ' → ' + edge.targetId + '\n' + edge.relationType,
                     label: edge.relationType
@@ -190,7 +154,7 @@
 
     function layoutScene(model) {
         const common = window.TaxonomyArchitectureDiagram;
-        const groups = buildLayerGroups(model.nodes);
+        const groups = buildLayerGroups(model.nodes, common.taxonomyPalette());
         const bounds = calculateBounds(model.nodes, groups);
         const nodeById = new Map(model.nodes.map(function (node) { return [node.id, node]; }));
         const lanes = common.relationshipLanes(model.edges);

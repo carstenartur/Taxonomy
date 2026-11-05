@@ -2,6 +2,8 @@
 
 Ersteinrichtung: [Taxonomy mit Artemis in Kubernetes einrichten](ARTEMIS_SETUP.md) — persistenter Broker, TLS/Secrets, ein Coordinator und ein Worker.
 
+Oberfläche anpassen: [Kundenspezifische Styles in Rancher bereitstellen](CUSTOM_STYLES.md).
+
 Verteilte Analyse mit externem Artemis: [Bereitstellung, TLS/Secrets, Worker-Skalierung, HA und Administration](#betrieb-mit-externem-artemis-broker).
 
 Dieses Dokument beschreibt die betrieblichen Verfahren für den Betrieb des Taxonomy Architecture Analyzer in Produktionsumgebungen.
