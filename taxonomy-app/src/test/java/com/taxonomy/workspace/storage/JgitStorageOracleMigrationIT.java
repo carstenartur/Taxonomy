@@ -144,7 +144,7 @@ class JgitStorageOracleMigrationIT {
             }
             assertThat(indexes(connection, "GIT_PACKS", true)).contains(List.of("REPOSITORY_NAME", "PACK_NAME", "PACK_EXTENSION"));
             assertThat(indexes(connection, "GIT_PACKS", false)).contains(List.of("REPOSITORY_NAME", "COMMITTED"), List.of("REPOSITORY_NAME", "COMMITTED", "WRITE_LEASE_UNTIL"));
-            assertThat(indexes(connection, "GIT_REFLOG", false)).contains(List.of("REPOSITORY_NAME", "REF_NAME_KEY", "ID"), List.of("REPOSITORY_NAME", "DELIVERY_ID"));
+            assertThat(indexes(connection, "GIT_REFLOG", false)).contains(List.of("REPOSITORY_NAME", "REF_NAME_KEY", "ID DESC"), List.of("REPOSITORY_NAME", "DELIVERY_ID"));
         }
     }
 
@@ -156,6 +156,7 @@ class JgitStorageOracleMigrationIT {
             while (rows.next()) {
                 String name = rows.getString("INDEX_NAME"), column = rows.getString("COLUMN_NAME");
                 if (name != null && column != null && rows.getShort("TYPE") != DatabaseMetaData.tableIndexStatistic) {
+                    String direction = rows.getString("ASC_OR_DESC");
                     String physicalColumn = column, indexedExpression = null;
                     if (column.startsWith("SYS_NC")) {
                         try (var expression = connection.prepareStatement("SELECT column_expression FROM user_ind_expressions WHERE index_name = ? AND column_position = ?")) {
@@ -163,16 +164,18 @@ class JgitStorageOracleMigrationIT {
                             try (var value = expression.executeQuery()) {
                                 if (value.next()) {
                                     indexedExpression = value.getString(1);
-                                    if ("SYS_OP_DESCEND(\"ID\")".equals(indexedExpression)) column = "ID";
+                                    if (("SYS_OP_DESCEND(\"ID\")".equals(indexedExpression) || "\"ID\"".equals(indexedExpression))
+                                            && "D".equals(direction)) column = "ID";
                                     // Oracle represents a TIMESTAMP WITH TIME ZONE index by its UTC expression.
                                     if ("SYS_EXTRACT_UTC(\"WRITE_LEASE_UNTIL\")".equals(indexedExpression)) column = "WRITE_LEASE_UNTIL";
                                 }
                             }
                         }
                     }
+                    if ("D".equals(direction)) column += " DESC";
                     dictionary.append(name).append(" position=").append(rows.getInt("ORDINAL_POSITION"))
                             .append(" column=").append(physicalColumn).append(" expression=").append(indexedExpression)
-                            .append(" resolved=").append(column).append(System.lineSeparator());
+                            .append(" direction=").append(direction).append(" resolved=").append(column).append(System.lineSeparator());
                     result.computeIfAbsent(name, ignored -> new TreeMap<>()).put(rows.getInt("ORDINAL_POSITION"), column);
                 }
             }

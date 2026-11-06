@@ -7,6 +7,7 @@
     var workspacePin = params.has('workspaceId') ? params.get('workspaceId') : params.has('workspaceScopeKey') ? (params.get('workspaceScopeKey') === '__shared__' ? '' : params.get('workspaceScopeKey')) : null;
     var repositoryPin = params.has('repositoryId') ? params.get('repositoryId') : null;
     var branchPin = params.has('branch') ? params.get('branch') : null;
+    var initialSearch = window.location.search, initialStatusScope = true;
     var decoratedLinks = new WeakMap();
     function t(key) { return window.TaxonomyI18n.t(key); }
     function element(id) { return document.getElementById(id); }
@@ -45,18 +46,61 @@
     }
     function setScope(context) {
         if (!context) return;
+        var previous = [repositoryPin, branchPin, workspacePin];
         if (context.repositoryId !== undefined) repositoryPin = context.repositoryId;
         if (context.branch !== undefined) branchPin = context.branch;
         if (context.workspaceScopeKey !== undefined) workspacePin = context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey;
         else if (context.workspaceId !== undefined) workspacePin = context.workspaceId;
+        if (previous[0] !== repositoryPin || previous[1] !== branchPin || previous[2] !== workspacePin) initialStatusScope = false;
         decorateLinks();
     }
     function replaceScope(context) {
         context=context || {};
+        var previous = [repositoryPin, branchPin, workspacePin];
         repositoryPin=context.repositoryId ?? null;branchPin=context.branch ?? null;
         workspacePin=context.workspaceScopeKey !== undefined ? (context.workspaceScopeKey==='__shared__'?'':context.workspaceScopeKey)
             : context.workspaceId ?? null;
+        if (previous[0] !== repositoryPin || previous[1] !== branchPin || previous[2] !== workspacePin) initialStatusScope = false;
         decorateLinks();
+    }
+    function unambiguousStatusScope(query) {
+        if (['repositoryId','branch','workspaceId','workspaceScopeKey','architectureSource'].some(function (key) {
+            return query.getAll(key).length > 1;
+        })) return false;
+        if (['repositoryId','branch','workspaceScopeKey'].some(function (key) {
+            return query.has(key) && (!query.get(key) || query.get(key).trim() !== query.get(key));
+        })) return false;
+        var workspace = query.get('workspaceId'), scope = query.get('workspaceScopeKey');
+        return (workspace === null || workspace === '' || workspace.trim() === workspace)
+            && (workspace === null || scope === null || workspace === (scope === '__shared__' ? '' : scope));
+    }
+    function statusOptions(target, input, options) {
+        var request = typeof Request === 'function' && input instanceof Request;
+        var method = String(options?.method || (request ? input.method : 'GET')).toUpperCase();
+        if (method !== 'GET' || target.origin !== window.location.origin) return options;
+        if (typeof input === 'string' && window.TaxonomyI18n?.resolveUrl) {
+            target = new URL(window.TaxonomyI18n.resolveUrl(input),window.location.href);
+        }
+        var prefix = window.TaxonomyI18n?.getBasePath?.() || '';
+        if (prefix && !target.pathname.startsWith(prefix + '/')
+                || !['/api/git/state','/api/context/current'].includes(applicationPath(target))) return options;
+        var runtime = window.__TaxonomyAnalysisSessionContext?.runtime;
+        if (runtime?.workspaceId || runtime?.workspaceResolved) initialStatusScope = false;
+        if (window.location.search !== initialSearch) initialStatusScope = false;
+        var headers = new Headers(options?.headers !== undefined ? options.headers
+            : request ? input.headers : undefined);
+        if (headers.has('X-Taxonomy-Workspace-Id') || !unambiguousStatusScope(target.searchParams)) return options;
+        var workspace;
+        if (target.searchParams.has('workspaceId')) workspace = target.searchParams.get('workspaceId');
+        else if (runtime?.workspaceId) workspace = runtime.workspaceId;
+        else if (initialStatusScope && unambiguousStatusScope(params)
+                && !target.searchParams.has('workspaceScopeKey')
+                && (!target.searchParams.has('repositoryId') || repositoryPin === null
+                    || target.searchParams.get('repositoryId') === repositoryPin)
+                && workspacePin !== null) workspace = workspacePin;
+        if (workspace === undefined) return options;
+        headers.set('X-Taxonomy-Workspace-Id',workspace);
+        return Object.assign({},options,{headers:headers});
     }
     function scopeUrl(value) {
         if ((workspacePin === null && repositoryPin === null && branchPin === null) || typeof value !== 'string' || value.startsWith('#')) return value;
@@ -183,15 +227,17 @@
         root.hidden = false;
     }
 
-    // Only project APIs use this standalone pin. The editor passes its exact
-    // context explicitly, and account/system APIs must remain unscoped.
+    // Project APIs use the live source pins. The two global read-only status
+    // polls may start before analysis hydration; bind their initial exact page
+    // workspace without changing explicit requests or later session routing.
     var nativeFetch = window.fetch;
     if (nativeFetch) window.fetch = function (input, options) {
         var scoped = input;
-        if (typeof input === 'string') {
+        if (typeof input === 'string' || typeof Request === 'function' && input instanceof Request) {
             try {
-                var target = new URL(input, window.location.href);
-                if (/^\/api\/(?:projects|architecture\/(?:lifecycle|editor))(?:\/|$)/.test(applicationPath(target))) scoped = scopeUrl(input);
+                var target = new URL(typeof input === 'string' ? input : input.url, window.location.href);
+                if (typeof input === 'string' && /^\/api\/(?:projects|architecture\/(?:lifecycle|editor))(?:\/|$)/.test(applicationPath(target))) scoped = scopeUrl(input);
+                options = statusOptions(target,input,options);
             } catch (_) { /* Let the normal transport report malformed URLs. */ }
         }
         return nativeFetch.call(window, scoped, options);

@@ -70,7 +70,8 @@ class NativeInstallationOracleRecoveryIT {
             assertThat(originalFiles).containsKey("source-content/requirements.txt");
             assertThat(originalFiles.keySet()).anyMatch(name -> name.startsWith("lucene-index/"));
             assertWritersStopped(sourceUser);
-            var receipt = NativeInstallationSnapshot.capture(source, snapshot, version, () -> {});
+            var receipt = NativeInstallationSnapshot.captureFiles(source, snapshot, version, () -> {});
+            assertThat(NativeInstallationSnapshot.verifyFiles(snapshot, version, () -> {})).isEqualTo(receipt);
             assertThat(DATABASE.execInContainer("mkdir", "-p", pumpRoot).getExitCode()).isZero();
             sql("CREATE DIRECTORY " + directory + " AS '" + pumpRoot + "'");
             pump(false, sourceUser, targetUser, directory, pumpRoot, evidence);
@@ -98,7 +99,7 @@ class NativeInstallationOracleRecoveryIT {
             assertThatThrownBy(() -> DriverManager.getConnection(DATABASE.getJdbcUrl(), targetUser, sourcePassword))
                     .as("Schema remapping must not replace the target database password")
                     .isInstanceOf(SQLException.class);
-            NativeInstallationSnapshot.restore(snapshot, source, target, version, () -> {});
+            NativeInstallationSnapshot.restoreFiles(snapshot, source, target, version, () -> {});
             assertThat(files(target)).isEqualTo(originalFiles);
             application(targetUser, targetPassword, loginPassword, target, oracle, "undo", "target-undo", evidence);
             application(targetUser, targetPassword, loginPassword, target, oracle, "redo", "target-redo", evidence);
@@ -110,6 +111,7 @@ class NativeInstallationOracleRecoveryIT {
             report.put("serverVersion", query(sourceUser, sourcePassword, "SELECT version_full FROM product_component_version WHERE product LIKE 'Oracle Database%'") );
             report.put("recovery", "trusted same-version stopped-writer native schema export/import to a separate restricted user in the same PDB");
             report.put("manifestSha256", receipt.sha256()); report.put("fileCount", receipt.fileCount()); report.put("bytes", receipt.bytes());
+            report.put("filesystemSnapshotScope", "FILES_ONLY; Oracle database backup and recovery are verified separately through Data Pump");
             var dumpHash = DATABASE.execInContainer("sha256sum", pumpRoot + "/installation.dmp");
             assertThat(dumpHash.getExitCode()).isZero();
             String dumpSha256 = dumpHash.getStdout().strip().split("\\s+")[0];

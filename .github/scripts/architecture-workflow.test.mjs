@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 
 const source = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/architecture-workflow.js', import.meta.url), 'utf8').catch(() => '');
+const sessionCore = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-core.js', import.meta.url), 'utf8');
 const snapshot = {
     projectId: 12, requirementId: 34, snapshotId: 'snapshot-v2',
     projectKey: 'CLINIC', projectTitle: 'Clinic', requirementKey: 'REQ-7',
@@ -14,11 +15,14 @@ const snapshot = {
 function boot(search = '', prefix = '') {
     const requests = [];
     const elements = new Map();
-    const context = vm.createContext({URL, URLSearchParams, Request, console,
+    const context = vm.createContext({URL, URLSearchParams, Request, Headers, console,
         location: {href: 'https://example.test' + prefix + '/architecture/workbench' + search, search, origin: 'https://example.test'},
         document: {getElementById: id => elements.get(id) || null, querySelectorAll: () => [...elements.values()].filter(node => node.tagName === 'A'), addEventListener() {}},
         fetch: async (url, options) => {requests.push({url, options}); return {ok: true};},
-        TaxonomyI18n: {getLocale: () => 'de', getBasePath: () => prefix, resolveUrl: path => prefix + path, t: key => key}
+        TaxonomyI18n: {getLocale: () => 'de', getBasePath: () => prefix,
+            resolveUrl: value => prefix && typeof value === 'string' && value.startsWith('/')
+                && !value.startsWith('//') && value !== prefix && !value.startsWith(prefix + '/') ? prefix + value : value,
+            t: key => key}
     });
     context.window = context;
     vm.runInContext(source, context);
@@ -26,6 +30,168 @@ function boot(search = '', prefix = '') {
     return {api: context.TaxonomyArchitectureWorkflow, context, requests, elements};
 }
 function url(value) {return new URL(value, 'https://example.test');}
+
+for (const prefix of ['', '/taxonomy']) for (const query of [
+    '?workspaceId=initial&workspaceScopeKey=initial&repositoryId=repo&branch=draft',
+    '?workspaceScopeKey=initial', '?workspaceId=initial'
+]) test(`initial exact status reads retain their workspace before session hydration (${prefix || '/'} ${query})`, async () => {
+    const {context, requests} = boot(query, prefix);
+    for (const endpoint of ['/api/git/state?branch=draft', '/api/context/current']) await context.fetch(prefix + endpoint);
+    assert.deepEqual(requests.map(request => request.options.headers.get('X-Taxonomy-Workspace-Id')), ['initial','initial']);
+    assert.deepEqual(requests.map(request => request.url), [prefix + '/api/git/state?branch=draft', prefix + '/api/context/current']);
+});
+
+for (const query of ['', '?workspaceId=', '?workspaceId=&workspaceScopeKey=__shared__', '?workspaceScopeKey=__shared__'])
+    test(`initial central or unpinned status reads preserve the exact selection (${query || 'absent'})`, async () => {
+        const {context, requests} = boot(query);
+        await context.fetch('/api/context/current');
+        assert.equal(requests[0].options?.headers?.get('X-Taxonomy-Workspace-Id'), query ? '' : undefined);
+    });
+
+for (const query of ['?workspaceId=A&workspaceId=A', '?workspaceId=A&workspaceId=B',
+    '?workspaceId=A&workspaceScopeKey=B', '?workspaceId=&workspaceScopeKey=A',
+    '?workspaceScopeKey=A&workspaceScopeKey=A', '?workspaceId=A&repositoryId=one&repositoryId=two',
+    '?workspaceId=A&branch=one&branch=two', '?workspaceId=A&architectureSource=working&architectureSource=snapshot',
+    '?workspaceId=%20', '?workspaceId=A&workspaceScopeKey='])
+    test(`ambiguous initial status pins cannot fall back to an own/default workspace (${query})`, async () => {
+        const {context, requests} = boot(query);
+        await context.fetch('/api/context/current');
+        assert.equal(requests[0].options, undefined);
+    });
+
+for (const workspace of ['explicit', '', 'invalid workspace pin']) for (const shape of ['object','Headers','Request'])
+    test(`an explicit ${shape} status header is retained byte-for-byte (${JSON.stringify(workspace)})`, async () => {
+        const {context, requests} = boot('?workspaceId=initial');
+        const headers = shape === 'object' ? {'X-Taxonomy-Workspace-Id':workspace} : new Headers({'X-Taxonomy-Workspace-Id':workspace});
+        const input = shape === 'Request' ? new Request('https://example.test/api/context/current', {headers}) : '/api/context/current';
+        const options = shape === 'Request' ? undefined : {headers};
+        await context.fetch(input, options);
+        assert.equal(requests[0].url, input);
+        assert.equal(requests[0].options, options, 'An explicit caller header must bypass the bootstrap fallback');
+    });
+
+test('Request method and init Headers keep native fetch precedence at the status boundary', async () => {
+    const {context, requests} = boot('?workspaceId=initial');
+    const input = new Request('https://example.test/api/context/current', {method:'POST', headers:{'X-Taxonomy-Workspace-Id':'request','X-Inherited':'request'}});
+    const headers = new Headers({'X-Taxonomy-Workspace-Id':'option'});
+    await context.fetch(input, {method:'GET', headers});
+    assert.equal(requests[0].options.headers, headers);
+    await context.fetch(new Request(input, {method:'GET'}), {method:'POST'});
+    assert.deepEqual(requests[1].options, {method:'POST'});
+    await context.fetch(new Request('https://example.test/api/context/current', {headers:{'X-Inherited':'discarded'}}), {headers:{'X-Option':'retained'}});
+    assert.equal(requests[2].options.headers.get('X-Inherited'), null, 'Init headers replace Request headers');
+    assert.equal(requests[2].options.headers.get('X-Option'), 'retained');
+    assert.equal(requests[2].options.headers.get('X-Taxonomy-Workspace-Id'), 'initial');
+});
+
+for (const pin of ['?workspaceId=explicit', '?workspaceId='])
+    test(`the real core/workflow stack retains an official request workspace pin (${pin})`, async () => {
+        const {context, requests} = boot('?workspaceId=initial');
+        context.TaxonomyState = {};
+        vm.runInContext(sessionCore, context);
+        context.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'hydrated';
+        context.__TaxonomyAnalysisSessionContext.installWorkspaceFetchRouting();
+        await context.fetch('/api/context/current' + pin);
+        assert.equal(requests[0].options.headers.get('X-Taxonomy-Workspace-Id'), pin.includes('explicit') ? 'explicit' : '');
+    });
+
+test('transport captured before core and the later global wrapper keep the same hydrated status workspace', async () => {
+    const {context, requests} = boot('?workspaceId=initial');
+    context.TaxonomyState = {};
+    vm.runInContext(sessionCore, context);
+    context.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'hydrated';
+    const earlierTransport = context.fetch;
+    context.__TaxonomyAnalysisSessionContext.installWorkspaceFetchRouting();
+    await earlierTransport('/api/context/current?workspaceScopeKey=unsupported-status-query');
+    await context.fetch('/api/context/current?workspaceScopeKey=unsupported-status-query');
+    assert.deepEqual(requests.map(request => request.options.headers.get('X-Taxonomy-Workspace-Id')), ['hydrated','hydrated']);
+});
+
+test('a repository-only status query cannot manufacture a conflicting bootstrap workspace/repository pair', async () => {
+    const {context, requests} = boot('?workspaceId=initial&repositoryId=repo-A');
+    await context.fetch('/api/context/current?repositoryId=repo-B');
+    assert.equal(requests[0].options, undefined);
+    await context.fetch('/api/context/current?repositoryId=repo-A');
+    assert.equal(requests[1].options.headers.get('X-Taxonomy-Workspace-Id'), 'initial');
+    await context.fetch('/api/context/current?repositoryId=repo-B&workspaceId=explicit');
+    assert.equal(requests[2].options.headers.get('X-Taxonomy-Workspace-Id'), 'explicit');
+    context.__TaxonomyAnalysisSessionContext = {runtime:{workspaceId:'hydrated', workspaceResolved:true}};
+    await context.fetch('/api/context/current?repositoryId=repo-B');
+    assert.equal(requests[3].options.headers.get('X-Taxonomy-Workspace-Id'), 'hydrated', 'Existing hydrated routing remains authoritative');
+});
+
+for (const pin of ['?workspaceId=A&workspaceId=B', '?workspaceId=A&workspaceScopeKey=B', '?workspaceId=&workspaceScopeKey=A'])
+    test(`an ambiguous status request cannot be rewritten with hydrated/default pins (${pin})`, async () => {
+        const {context, requests} = boot('?workspaceId=initial');
+        context.__TaxonomyAnalysisSessionContext = {runtime:{workspaceId:'hydrated', workspaceResolved:true}};
+        await context.fetch('/api/context/current' + pin);
+        assert.equal(requests[0].options, undefined);
+    });
+
+test('late hydration permanently retires the initial page fallback through later workspace resolution', async () => {
+    const {context, requests} = boot('?workspaceId=initial');
+    await context.fetch('/api/context/current');
+    context.__TaxonomyAnalysisSessionContext = {runtime:{workspaceId:'hydrated', workspaceResolved:true}};
+    await context.fetch('/api/context/current');
+    context.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'new-context';
+    await context.fetch('/api/context/current');
+    context.__TaxonomyAnalysisSessionContext.runtime.workspaceId = null;
+    context.__TaxonomyAnalysisSessionContext.runtime.workspaceResolved = false;
+    await context.fetch('/api/context/current');
+    assert.deepEqual(requests.map(request => request.options?.headers?.get('X-Taxonomy-Workspace-Id')), ['initial','hydrated','new-context',undefined]);
+});
+
+for (const method of ['setScope','replaceScope']) test(`${method} retires a departed initial scope even if the stale URL remains`, async () => {
+    const {api, context, requests} = boot('?workspaceId=initial');
+    api[method]({workspaceId:'initial'});
+    await context.fetch('/api/context/current');
+    api[method]({workspaceId:'other'});
+    api[method]({workspaceId:'initial'});
+    await context.fetch('/api/context/current');
+    assert.deepEqual(requests.map(request => request.options?.headers?.get('X-Taxonomy-Workspace-Id')), ['initial',undefined]);
+});
+
+test('a replaced page URL cannot revive initial workspace routing', async () => {
+    const {context, requests} = boot('?workspaceId=initial');
+    context.location.search = '?workspaceId=other';
+    await context.fetch('/api/context/current');
+    context.location.search = '?workspaceId=initial';
+    await context.fetch('/api/context/current');
+    assert.equal(requests[0].options, undefined);
+    assert.equal(requests[1].options, undefined);
+});
+
+for (const [input, options] of [
+    ['/api/context/current', {method:'POST'}], ['/api/context/current', {method:'HEAD'}],
+    ['/api/git/state', {method:'DELETE'}], ['/api/context/current/child', undefined],
+    ['/api/git/state-history', undefined], ['/other/api/context/current', undefined],
+    ['https://other.example.test/api/context/current', undefined], ['/api/account/me', undefined],
+    ['/api/admin/database-setup', undefined], ['/api/workspace/sync-state', undefined]
+]) test(`bootstrap status binding leaves other routes/methods unchanged (${options?.method || 'GET'} ${input})`, async () => {
+    const {context, requests} = boot('?workspaceId=initial');
+    await context.fetch(input, options);
+    assert.equal(requests[0].url, input);
+    assert.equal(requests[0].options, options);
+});
+
+for (const form of ['absolute','protocol-relative','Request','normalized-outside']) test(`mounted status routing leaves an outside root API untouched (${form})`, async () => {
+    const {context, requests} = boot('?workspaceId=initial', '/taxonomy');
+    const input = form === 'Request' ? new Request('https://example.test/api/context/current')
+        : form === 'normalized-outside' ? '/api/../../api/context/current'
+        : (form === 'absolute' ? 'https:' : '') + '//example.test/api/context/current';
+    await context.fetch(input);
+    assert.equal(requests[0].url, input);
+    assert.equal(requests[0].options, undefined, 'Only root-relative strings are later rewritten by the existing i18n base-path wrapper');
+});
+
+for (const form of ['absolute','Request']) test(`mounted status routing binds the actual application API (${form})`, async () => {
+    const {context, requests} = boot('?workspaceId=initial', '/taxonomy');
+    const input = form === 'Request' ? new Request('https://example.test/taxonomy/api/context/current')
+        : 'https://example.test/taxonomy/api/context/current';
+    await context.fetch(input);
+    assert.equal(requests[0].url, input);
+    assert.equal(requests[0].options.headers.get('X-Taxonomy-Workspace-Id'), 'initial');
+});
 
 test('restoring an unpinned analysis clears all departed architecture scope pins',()=>{
     const {api}=boot('');

@@ -66,7 +66,14 @@ credential verifier, checks the same stable principal and resolves the persisted
 shared working copy. The opt-in must survive source restart and native restore.
 
 With application writers stopped, the test captures the complete configured
-filesystem root and invokes real Oracle `DBMS_DATAPUMP` schema export/import.
+filesystem root through the existing engine's explicit `captureFiles`,
+`verifyFiles` and `restoreFiles` API and invokes real Oracle `DBMS_DATAPUMP`
+schema export/import. The distinct `FILES_ONLY` manifest proves only the
+filesystem component. The ordinary database snapshot API and generic native
+CLI reject that format; HSQL properties and PostgreSQL custom-dump requirements
+remain unchanged. Oracle database authority comes from the separate Data Pump
+export/import, with its dump digest, filesystem manifest digest and application
+version recorded together only after the complete rehearsal passes.
 The import remaps into the separately provisioned target user and excludes user
 creation. Every source table row, including BLOB/NCLOB content, is hashed and
 compared with the imported target before application startup. Target database
