@@ -283,11 +283,22 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
 }
 
 /** Real authenticated UI commands, sharing the existing role/engine/reflow application fixture. */
-export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evidence, outputDir, httpFailures }) {
+export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evidence, outputDir, httpFailures,
+  onReloadStart, onReloadEnd, onReloadVerified }) {
   const failureStart = httpFailures.length;
   const expectedFailures = [];
   const accepted = [];
   let lastPreviewMetadata;
+  async function reloadEditor() {
+    await onReloadStart?.();
+    let succeeded = false;
+    try {
+      await page.reload();
+      await page.waitForFunction(() => document.getElementById('architectureEditor')?.getAttribute('aria-busy') === 'false');
+      succeeded = true;
+    } finally { await onReloadEnd?.(succeeded); }
+    await onReloadVerified?.();
+  }
   const base = baseUrl.replace(/\/$/, '');
   await page.evaluate(async () => {
     if (window.TaxonomyAnalysisSession) await window.TaxonomyAnalysisSession.saveNow();
@@ -428,8 +439,7 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     await preview(() => page.locator('#editorHistory li').first().getByRole('button').click());
     await commit();
     assert.equal(await page.locator('#editorTitle').inputValue(), `Architecture system ${suffix}`);
-    await page.reload();
-    await page.waitForFunction(() => document.getElementById('architectureEditor')?.getAttribute('aria-busy') === 'false');
+    await reloadEditor();
     await page.locator('#editorRationale').fill('Redo after browser reload');
     await preview(() => page.locator('#editorHistory li').first().getByRole('button').click());
     await commit();
@@ -636,8 +646,7 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     assert.equal(afterCheckpoint.context.commit, firstCheckpoint.commitId);
     const secondCheckpoint = await checkpoint();
     assert.notEqual(secondCheckpoint.commitId, firstCheckpoint.commitId);
-    await page.reload();
-    await page.waitForFunction(() => document.getElementById('architectureEditor')?.getAttribute('aria-busy') === 'false');
+    await reloadEditor();
     assert.equal(await page.locator('#editorVersions li').count(), beforeVersions + 2);
     assert.equal(await page.locator('#editorHistory li').count(), beforeOperations + 1);
     assert.ok((await page.locator('#editorDsl').inputValue()).includes(`After checkpoint ${suffix}`));

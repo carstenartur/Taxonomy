@@ -234,6 +234,174 @@ class IntegrationCanonicalProjectionTest {
                 .findFirst().orElseThrow().kind(), "A real independent local reorder must remain visible");
     }
 
+    @Test void removingOrMovingANativeSiblingDoesNotMoveSurvivorsAcrossRequirements() {
+        var selected = ExchangeItems.flatten(sourceWithInterleavedRequirements());
+        String imported = commands.applyAll("", domain.architectureCommands(connection, "", Map.of(), selected, List.of())).dsl();
+        String a = identity(selected.get("ELEMENT:element-a")), b = identity(selected.get("ELEMENT:element-b"));
+        String first = identity(selected.get("SPECIFICATION:package-a")), second = identity(selected.get("SPECIFICATION:package-b"));
+        for (ArchitectureCommand edit : List.of(
+                new SetArchitecturePackagePlacements(List.of(new PackagePlacement(PackageMemberKind.ELEMENT, b, first, 0),
+                        new PackagePlacement(PackageMemberKind.ELEMENT, a, null, -1)), Set.of(first)),
+                new SetArchitecturePackagePlacements(List.of(new PackagePlacement(PackageMemberKind.ELEMENT, b, first, 0),
+                        new PackagePlacement(PackageMemberKind.ELEMENT, a, second, 0)), Set.of(first, second)))) {
+            var current = domain.snapshot(context, connection, bindings(selected), document(commands.apply(imported, edit).dsl())).items();
+            assertEquals("3", current.get("PLACEMENT:member:b").extensions().get("position"), edit.toString());
+            for (String id : List.of("requirement:first", "requirement:second", "diagram:a", "diagram:a:copy", "diagram:b"))
+                assertEquals(ExchangeItems.fields(selected.get("PLACEMENT:" + id)), ExchangeItems.fields(current.get("PLACEMENT:" + id)));
+        }
+    }
+
+    @Test void sourceOrderChangesKeepUnmanagedLocalSiblingSlots() {
+        var selected = ExchangeItems.flatten(sourceWithInterleavedRequirements());
+        String imported = commands.applyAll("", domain.architectureCommands(connection, "", Map.of(), selected, List.of())).dsl();
+        String a = identity(selected.get("ELEMENT:element-a")), b = identity(selected.get("ELEMENT:element-b"));
+        String parent = identity(selected.get("SPECIFICATION:package-a"));
+        String created = commands.apply(imported, new CreateArchitectureElement("local-only", "Component", Map.of("title", "Local", "description", ""))).dsl();
+        var before = List.of(List.of("local-only", a, b), List.of(a, "local-only", b), List.of(a, b, "local-only"));
+        var reordered = List.of(List.of("local-only", b, a), List.of(b, "local-only", a), List.of(b, a, "local-only"));
+        for (int localSlot = 0; localSlot < before.size(); localSlot++) {
+            String local = placeElements(created, parent, before.get(localSlot));
+            for (String change : List.of("requirement-only", "both-members", "one-member")) {
+                var incoming = new TreeMap<>(selected);
+                if (change.equals("requirement-only")) {
+                    position(incoming, "member:a", 2); position(incoming, "requirement:second", 1);
+                } else if (change.equals("both-members")) {
+                    position(incoming, "member:a", 3); position(incoming, "member:b", 1);
+                } else {
+                    // A's source position stays 1, but its rank changes when B crosses the first requirement.
+                    position(incoming, "member:b", 0); position(incoming, "requirement:first", 3);
+                }
+                String applied = applySource(local, selected, incoming);
+                assertEquals(change.equals("requirement-only") ? before.get(localSlot) : reordered.get(localSlot),
+                        elementOrder(applied, parent), change + " with local slot " + localSlot);
+            }
+        }
+    }
+
+    @Test void sourceInsertionsFillMappedSlotsBeforeAppendingOverflow() {
+        var selected = ExchangeItems.flatten(sourceWithInterleavedRequirements());
+        String imported = commands.applyAll("", domain.architectureCommands(connection, "", Map.of(), selected, List.of())).dsl();
+        String a = identity(selected.get("ELEMENT:element-a")), b = identity(selected.get("ELEMENT:element-b"));
+        String parent = identity(selected.get("SPECIFICATION:package-a"));
+        String local = placeElements(commands.apply(imported,
+                new CreateArchitectureElement("local-only", "Component", Map.of("title", "Local", "description", ""))).dsl(),
+                parent, List.of(a, "local-only", b));
+        for (int sourcePosition : List.of(0, 2, 4)) {
+            var incoming = new TreeMap<>(selected);
+            String added = addSourceElement(incoming, "element-new", "member:new", "package:a", sourcePosition);
+            if (sourcePosition == 0) position(incoming, "requirement:first", 4);
+            if (sourcePosition == 2) position(incoming, "requirement:second", 4);
+            String applied = applySource(local, selected, incoming);
+            var expected = switch (sourcePosition) {
+                case 0 -> List.of(added, "local-only", a, b);
+                case 2 -> List.of(a, "local-only", added, b);
+                default -> List.of(a, "local-only", b, added);
+            };
+            assertEquals(expected, elementOrder(applied, parent), "insert at source position " + sourcePosition);
+            var after = domain.snapshot(context, connection, bindings(incoming), document(applied)).items();
+            for (String id : List.of("member:a", "member:b", "member:new", "requirement:first", "requirement:second"))
+                assertEquals(ExchangeItems.fields(incoming.get("PLACEMENT:" + id)), ExchangeItems.fields(after.get("PLACEMENT:" + id)));
+        }
+    }
+
+    @Test void sourceDeparturesCompactSurvivorsWithoutReorderingLocalSiblings() {
+        var selected = ExchangeItems.flatten(sourceWithInterleavedRequirements());
+        String imported = commands.applyAll("", domain.architectureCommands(connection, "", Map.of(), selected, List.of())).dsl();
+        String a = identity(selected.get("ELEMENT:element-a")), b = identity(selected.get("ELEMENT:element-b"));
+        String first = identity(selected.get("SPECIFICATION:package-a")), second = identity(selected.get("SPECIFICATION:package-b"));
+        String created = commands.applyAll(imported, List.of(
+                new CreateArchitectureElement("local-only", "Component", Map.of("title", "Local", "description", "")),
+                new CreateArchitectureElement("destination-local", "Component", Map.of("title", "Destination local", "description", "")))).dsl();
+        String local = placeElements(placeElements(created, first, List.of(a, "local-only", b)), second, List.of("destination-local"));
+        for (boolean move : List.of(false, true)) {
+            var incoming = new TreeMap<>(selected);
+            if (move) placement(incoming, "member:a", "package:b", 0);
+            else incoming.remove("PLACEMENT:member:a");
+            position(incoming, "requirement:second", 1); position(incoming, "member:b", 2);
+            String applied = applySource(local, selected, incoming);
+            assertEquals(List.of("local-only", b), elementOrder(applied, first), "departure move=" + move);
+            assertEquals(move ? List.of("destination-local", a) : List.of("destination-local"), elementOrder(applied, second));
+            var after = domain.snapshot(context, connection, bindings(incoming), document(applied)).items();
+            assertEquals("2", after.get("PLACEMENT:member:b").extensions().get("position"));
+            for (String id : List.of("diagram:a", "diagram:a:copy", "diagram:b"))
+                assertEquals(ExchangeItems.fields(selected.get("PLACEMENT:" + id)), ExchangeItems.fields(after.get("PLACEMENT:" + id)));
+        }
+    }
+
+    @Test void sourceParentArrivalsPreserveLocalSlotsInDestinationScope() {
+        var selected = new TreeMap<>(ExchangeItems.flatten(sourceWithInterleavedRequirements()));
+        placement(selected, "member:b", "package:b", 0);
+        String imported = commands.applyAll("", domain.architectureCommands(connection, "", Map.of(), selected, List.of())).dsl();
+        String a = identity(selected.get("ELEMENT:element-a")), b = identity(selected.get("ELEMENT:element-b"));
+        String first = identity(selected.get("SPECIFICATION:package-a")), second = identity(selected.get("SPECIFICATION:package-b"));
+        String created = commands.applyAll(imported, List.of(
+                new CreateArchitectureElement("local-head", "Component", Map.of("title", "Head", "description", "")),
+                new CreateArchitectureElement("local-tail", "Component", Map.of("title", "Tail", "description", "")))).dsl();
+        String local = placeElements(created, second, List.of("local-head", b, "local-tail"));
+        var incoming = new TreeMap<>(selected);
+        placement(incoming, "member:a", "package:b", 0); position(incoming, "member:b", 1);
+        position(incoming, "requirement:second", 1);
+        String applied = applySource(local, selected, incoming);
+        assertTrue(elementOrder(applied, first).isEmpty());
+        assertEquals(List.of("local-head", a, "local-tail", b), elementOrder(applied, second));
+    }
+
+    @Test void localNewMembershipCanBeSnapshottedAndReimported() {
+        var selected = new TreeMap<>(ExchangeItems.flatten(sourceWithInterleavedRequirements()));
+        selected.remove("PLACEMENT:member:a");
+        String imported = commands.applyAll("", domain.architectureCommands(connection, "", Map.of(), selected, List.of())).dsl();
+        String a = identity(selected.get("ELEMENT:element-a")), b = identity(selected.get("ELEMENT:element-b"));
+        String parent = identity(selected.get("SPECIFICATION:package-a"));
+        String local = placeElements(imported, parent, List.of(a, b));
+        var observed = domain.snapshot(context, connection, bindings(selected), document(local)).items();
+        Artifact membership = observed.values().stream().filter(v -> v.kind() == ArtifactKind.PLACEMENT
+                && "element-a".equals(v.extensions().get("artifact")) && "model".equals(v.extensions().get("container")))
+                .findFirst().orElseThrow();
+        assertEquals("package:a", membership.extensions().get("parent"));
+        assertEquals("3", membership.extensions().get("position"));
+        assertEquals("4", observed.get("PLACEMENT:member:b").extensions().get("position"));
+        String reapplied = commands.applyAll(local, domain.architectureCommands(connection, local, observed, observed, bindings(selected))).dsl();
+        assertEquals(List.of(a, b), elementOrder(reapplied, parent));
+        var repeated = domain.snapshot(context, connection, bindings(selected), document(reapplied)).items();
+        assertEquals(ExchangeItems.fields(membership), ExchangeItems.fields(repeated.get(ExchangeItems.key(membership))));
+        for (String id : List.of("requirement:first", "requirement:second"))
+            assertEquals(ExchangeItems.fields(selected.get("PLACEMENT:" + id)), ExchangeItems.fields(repeated.get("PLACEMENT:" + id)));
+    }
+
+    private String applySource(String dsl, Map<String, Artifact> baseline, Map<String, Artifact> incoming) {
+        var mappings = bindings(baseline);
+        var observed = domain.snapshot(context, connection, mappings, document(dsl)).items();
+        return commands.applyAll(dsl, domain.architectureCommands(connection, dsl, observed, incoming, mappings)).dsl();
+    }
+
+    private String placeElements(String dsl, String parent, List<String> members) {
+        List<PackagePlacement> placements = new ArrayList<>();
+        for (int i = 0; i < members.size(); i++) placements.add(new PackagePlacement(PackageMemberKind.ELEMENT, members.get(i), parent, i));
+        return commands.apply(dsl, new SetArchitecturePackagePlacements(placements, Set.of(parent))).dsl();
+    }
+
+    private List<String> elementOrder(String dsl, String parent) {
+        return commands.model(dsl).getElements().stream().filter(e -> parent.equals(e.getPackageId()))
+                .sorted(Comparator.comparingInt(com.taxonomy.dsl.model.ArchitectureElement::getPackagePosition))
+                .map(com.taxonomy.dsl.model.ArchitectureElement::getId).toList();
+    }
+
+    private String addSourceElement(Map<String, Artifact> items, String id, String placementId, String parent, int position) {
+        Artifact element = new Artifact(id, ArtifactKind.ELEMENT, "Component", id, "", Map.of(), Map.of("canonicalType", "Component"));
+        items.put(ExchangeItems.key(element), element);
+        Artifact placement = new Artifact(placementId, ArtifactKind.PLACEMENT, "placement", "", "", Map.of("placementKind", "package"),
+                Map.of("artifact", id, "container", "model", "parent", parent, "position", Integer.toString(position)));
+        items.put(ExchangeItems.key(placement), placement);
+        return identity(element);
+    }
+
+    private void placement(Map<String, Artifact> items, String id, String parent, int position) {
+        Artifact old = items.get("PLACEMENT:" + id);
+        var extensions = new TreeMap<>(old.extensions());
+        extensions.put("parent", parent); extensions.put("position", Integer.toString(position));
+        items.put("PLACEMENT:" + id, new Artifact(old.id(), old.kind(), old.type(), old.title(), old.text(), old.attributes(), extensions));
+    }
+
     private ExchangeDocument sourceWithInterleavedRequirements() {
         var original = source();
         var artifacts = new ArrayList<>(original.artifacts());
