@@ -34,6 +34,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -93,19 +94,7 @@ class OnnxSeleniumIT {
         driver = browserSession.driver();
         driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
 
-        driver.get(ContainerTestUtils.APP_ORIGIN + "/login");
-        new WebDriverWait(driver, Duration.ofSeconds(30))
-                .until(ExpectedConditions.presenceOfElementLocated(By.name("username")));
-        driver.findElement(By.name("username")).sendKeys("admin");
-        driver.findElement(By.name("password"))
-                .sendKeys(ContainerTestUtils.TEST_ADMIN_PASSWORD);
-        driver.findElement(By.cssSelector(
-                "button[type='submit'], input[type='submit']")).click();
-
-        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
-        new WebDriverWait(driver, Duration.ofSeconds(30))
-                .withMessage(this::browserBootstrapState)
-                .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+        loginAndWaitForWorkbench(driver, ContainerTestUtils.APP_ORIGIN, this::browserBootstrapState);
         new WebDriverWait(driver, Duration.ofSeconds(120))
                 .until(currentDriver -> {
                     String rendered = currentDriver.findElement(By.id("taxonomyTree"))
@@ -127,6 +116,24 @@ class OnnxSeleniumIT {
                     .until(ExpectedConditions.invisibilityOfElementLocated(
                             By.id("onboardingOverlay")));
         }
+    }
+
+    static void loginAndWaitForWorkbench(WebDriver driver, String origin,
+                                        Supplier<String> bootstrapState) {
+        driver.get(origin + "/login");
+        new WebDriverWait(driver, Duration.ofSeconds(30))
+                .until(ExpectedConditions.presenceOfElementLocated(By.name("username")));
+        driver.findElement(By.name("username")).sendKeys("admin");
+        driver.findElement(By.name("password"))
+                .sendKeys(ContainerTestUtils.TEST_ADMIN_PASSWORD);
+        driver.findElement(By.cssSelector(
+                "button[type='submit'], input[type='submit']")).click();
+
+        // Observe the protected page returned by the login submission. A second
+        // navigation can cancel the POST before the browser sends it.
+        new WebDriverWait(driver, Duration.ofSeconds(30))
+                .withMessage(bootstrapState)
+                .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
     }
 
     private String browserBootstrapState() {
