@@ -184,6 +184,75 @@ class IntegrationCanonicalProjectionTest {
         assertEquals("UNSUPPORTED_ELEMENT_TYPE", problem.code());
     }
 
+    @Test void interleavedRequirementsDoNotInventLocalOrderChangesOrReimportConflicts() {
+        var original = sourceWithInterleavedRequirements();
+        var selected = ExchangeItems.flatten(original);
+        String imported = commands.applyAll("", domain.architectureCommands(connection, "", Map.of(), selected, List.of())).dsl();
+        var mappings = bindings(selected);
+        var observed = domain.snapshot(context, connection, mappings, document(imported)).items();
+        assertEquals("1", observed.get("PLACEMENT:member:a").extensions().get("position"));
+        assertEquals("3", observed.get("PLACEMENT:member:b").extensions().get("position"));
+
+        // Only the source requirement crosses A. Native component order stays A,B.
+        var reordered = new TreeMap<>(selected);
+        position(reordered, "member:a", 2);
+        position(reordered, "requirement:second", 1);
+        var incoming = ExchangeItems.expand(original, reordered);
+        var delta = new IntegrationDiff(json).compare(incoming, AuthorityMode.BIDIRECTIONAL, mappings, observed);
+        var move = delta.stream().filter(c -> c.externalId().equals("PLACEMENT:member:a")).findFirst().orElseThrow();
+        assertEquals(ChangeKind.MOVE, move.kind());
+        assertTrue(move.conflicts().isEmpty());
+
+        String applied = commands.applyAll(imported, domain.architectureCommands(connection, imported, observed, reordered, mappings)).dsl();
+        var model = commands.model(applied);
+        assertEquals(0, model.getElements().stream().filter(e -> e.getTitle().equals("First")).findFirst().orElseThrow().getPackagePosition());
+        assertEquals(1, model.getElements().stream().filter(e -> e.getTitle().equals("Second")).findFirst().orElseThrow().getPackagePosition());
+        var after = domain.snapshot(context, connection, bindings(reordered), document(applied)).items();
+        assertEquals("2", after.get("PLACEMENT:member:a").extensions().get("position"));
+        assertEquals("3", after.get("PLACEMENT:member:b").extensions().get("position"));
+    }
+
+    @Test void realNativeReorderingUsesTheOriginalSourceSlotsAroundRequirements() {
+        var original = sourceWithInterleavedRequirements();
+        var selected = ExchangeItems.flatten(original);
+        String imported = commands.applyAll("", domain.architectureCommands(connection, "", Map.of(), selected, List.of())).dsl();
+        String parent = identity(selected.get("SPECIFICATION:package-a"));
+        String changed = commands.apply(imported, new SetArchitecturePackagePlacements(List.of(
+                new PackagePlacement(PackageMemberKind.ELEMENT, identity(selected.get("ELEMENT:element-b")), parent, 0),
+                new PackagePlacement(PackageMemberKind.ELEMENT, identity(selected.get("ELEMENT:element-a")), parent, 1)), Set.of(parent))).dsl();
+        var current = domain.snapshot(context, connection, bindings(selected), document(changed)).items();
+        assertEquals("3", current.get("PLACEMENT:member:a").extensions().get("position"));
+        assertEquals("1", current.get("PLACEMENT:member:b").extensions().get("position"));
+        for (String id : List.of("requirement:first", "requirement:second"))
+            assertEquals(ExchangeItems.fields(selected.get("PLACEMENT:" + id)), ExchangeItems.fields(current.get("PLACEMENT:" + id)));
+        var incoming = new TreeMap<>(selected);
+        position(incoming, "member:a", 2);
+        position(incoming, "requirement:second", 1);
+        var delta = new IntegrationDiff(json).compare(ExchangeItems.expand(original, incoming), AuthorityMode.BIDIRECTIONAL,
+                bindings(selected), current);
+        assertEquals(ChangeKind.CONFLICT, delta.stream().filter(c -> c.externalId().equals("PLACEMENT:member:a"))
+                .findFirst().orElseThrow().kind(), "A real independent local reorder must remain visible");
+    }
+
+    private ExchangeDocument sourceWithInterleavedRequirements() {
+        var original = source();
+        var artifacts = new ArrayList<>(original.artifacts());
+        artifacts.add(new Artifact("requirement-first", ArtifactKind.REQUIREMENT, "Requirement", "First requirement", "", Map.of(), Map.of()));
+        artifacts.add(new Artifact("requirement-second", ArtifactKind.REQUIREMENT, "Requirement", "Second requirement", "", Map.of(), Map.of()));
+        var placements = new ArrayList<>(original.placements().stream().map(p -> new Placement(p.id(), p.containerId(), p.parentId(), p.artifactId(),
+                p.id().equals("member:a") ? 1 : p.id().equals("member:b") ? 3 : p.position(), p.attributes())).toList());
+        placements.add(new Placement("requirement:first", "model", "package:a", "requirement-first", 0, Map.of("placementKind", "package")));
+        placements.add(new Placement("requirement:second", "model", "package:a", "requirement-second", 2, Map.of("placementKind", "package")));
+        return new ExchangeDocument(original.profile(), original.profileVersion(), original.externalVersion(), original.completeScope(), original.source(),
+                artifacts, original.relations(), placements, original.metadata(), original.losses());
+    }
+
+    private void position(Map<String, Artifact> items, String id, int position) {
+        Artifact old = items.get("PLACEMENT:" + id);
+        var extensions = new TreeMap<>(old.extensions()); extensions.put("position", Integer.toString(position));
+        items.put("PLACEMENT:" + id, new Artifact(old.id(), old.kind(), old.type(), old.title(), old.text(), old.attributes(), extensions));
+    }
+
     private ExchangeDocument source() {
         return new ExchangeDocument("example-model", "1", "source-revision", true, "",
                 List.of(new Artifact("package-a", ArtifactKind.SPECIFICATION, "Package", "Package A", "", Map.of(), Map.of()),

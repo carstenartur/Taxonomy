@@ -38,6 +38,7 @@ final class IntegrationPackageProjection {
         Set<String> viewContainers = viewContainers(current, mappings);
         selected.values().stream().filter(a -> a.kind() == ArtifactKind.VIEW).map(Artifact::id).forEach(viewContainers::add);
         selected.values().stream().filter(a -> isPackagePlacement(a, viewContainers)).forEach(a -> occurrences.put(a.id(), a));
+        Map<String, Integer> nativePositions = nativePositions(occurrences.values(), nativeIds.keySet());
         Map<String, PackagePlacement> deltas = new LinkedHashMap<>();
         for (Artifact a : occurrences.values()) {
             if (ExchangeItems.fields(a).equals(ExchangeItems.fields(current.get(ExchangeItems.key(a))))) continue;
@@ -53,7 +54,7 @@ final class IntegrationPackageProjection {
                 parent = nativeIds.get(occurrence.extensions().get("artifact"));
                 if (parent == null) throw new IntegrationProblem("SPARX_ENDPOINT_KIND_UNMAPPED", 422, "Package parent is not native");
             }
-            deltas.put(kind + ":" + nativeId, new PackagePlacement(kind, nativeId, parent, Integer.parseInt(a.extensions().get("position"))));
+            deltas.put(kind + ":" + nativeId, new PackagePlacement(kind, nativeId, parent, nativePositions.get(a.id())));
         }
         for (var entry : current.entrySet()) if (isPackagePlacement(entry.getValue(), viewContainers) && !selected.containsKey(entry.getKey())) {
             String external = entry.getValue().extensions().get("artifact");
@@ -120,6 +121,7 @@ final class IntegrationPackageProjection {
                 if (prior != null) items.remove(ExchangeItems.key(prior));
             }
         });
+        Map<String, Integer> sourcePositions = sourcePositions(members, occurrences.values(), external, placementIds, modelId);
         for (PackagePlacement member : members) {
             String id = external.get(member.memberId()); if (id == null) continue;
             Artifact prior = occurrences.get(id);
@@ -129,10 +131,65 @@ final class IntegrationPackageProjection {
             if (parent == null) continue;
             Map<String, String> extension = new TreeMap<>(prior == null ? Map.of() : prior.extensions());
             extension.put("artifact", id); extension.put("parent", parent); extension.put("container", container);
-            extension.put("position", Integer.toString(member.position()));
+            extension.put("position", Integer.toString(sourcePositions.get(member.memberId())));
             Artifact placement = new Artifact(placementIds.get(member.memberId()), ArtifactKind.PLACEMENT, "placement", "", "",
                     prior == null ? Map.of() : prior.attributes(), extension);
             items.put(ExchangeItems.key(placement), placement);
+        }
+    }
+
+    /** Requirement occurrences remain source evidence and do not occupy native package positions. */
+    private static Map<String, Integer> nativePositions(Collection<Artifact> occurrences, Set<String> nativeIds) {
+        Map<OccurrenceScope, List<Artifact>> scopes = new HashMap<>();
+        for (Artifact a : occurrences) if (nativeIds.contains(a.extensions().get("artifact")))
+            scopes.computeIfAbsent(OccurrenceScope.of(a), ignored -> new ArrayList<>()).add(a);
+        Map<String, Integer> positions = new HashMap<>();
+        scopes.values().forEach(siblings -> {
+            siblings.sort(Comparator.comparingInt(IntegrationPackageProjection::position).thenComparing(Artifact::id));
+            for (int i = 0; i < siblings.size(); i++) positions.put(siblings.get(i).id(), i);
+        });
+        return positions;
+    }
+
+    /** Expand native ordering into the original source slots without rewriting opaque membership evidence. */
+    private static Map<String, Integer> sourcePositions(List<PackagePlacement> members, Collection<Artifact> occurrences,
+            Map<String, String> external, Map<String, String> placementIds, String modelId) {
+        Set<String> nativeIds = new HashSet<>(external.values());
+        Map<String, Artifact> prior = new HashMap<>();
+        Map<OccurrenceScope, SortedSet<Integer>> slots = new HashMap<>();
+        Map<OccurrenceScope, Integer> next = new HashMap<>();
+        for (Artifact a : occurrences) {
+            prior.put(a.extensions().get("artifact"), a);
+            OccurrenceScope scope = OccurrenceScope.of(a);
+            next.merge(scope, position(a) + 1, Math::max);
+            if (nativeIds.contains(a.extensions().get("artifact")))
+                slots.computeIfAbsent(scope, ignored -> new TreeSet<>()).add(position(a));
+        }
+        Map<OccurrenceScope, List<PackagePlacement>> scopes = new HashMap<>();
+        for (PackagePlacement member : members) {
+            String id = external.get(member.memberId()); if (id == null) continue;
+            Artifact a = prior.get(id);
+            String container = a == null ? modelId : a.extensions().get("container");
+            String parent = member.parentPackageId().isEmpty() ? "" : placementIds.get(member.parentPackageId());
+            if (container != null && parent != null)
+                scopes.computeIfAbsent(new OccurrenceScope(container, parent), ignored -> new ArrayList<>()).add(member);
+        }
+        Map<String, Integer> positions = new HashMap<>();
+        scopes.forEach((scope, siblings) -> {
+            siblings.sort(Comparator.comparingInt(PackagePlacement::position).thenComparing(PackagePlacement::memberId));
+            Iterator<Integer> available = slots.getOrDefault(scope, Collections.emptySortedSet()).iterator();
+            int appended = next.getOrDefault(scope, 0);
+            for (PackagePlacement member : siblings)
+                positions.put(member.memberId(), available.hasNext() ? available.next() : appended++);
+        });
+        return positions;
+    }
+
+    private static int position(Artifact occurrence) { return Integer.parseInt(occurrence.extensions().get("position")); }
+
+    private record OccurrenceScope(String container, String parent) {
+        static OccurrenceScope of(Artifact a) {
+            return new OccurrenceScope(a.extensions().get("container"), Objects.requireNonNullElse(a.extensions().get("parent"), ""));
         }
     }
 
