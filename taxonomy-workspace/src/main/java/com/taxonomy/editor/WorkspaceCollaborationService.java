@@ -1,11 +1,14 @@
-package com.taxonomy.workspace.service;
+package com.taxonomy.editor;
 
 import com.taxonomy.editor.ArchitectureCommandPort.Context;
-import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.editor.persistence.EditorJournal.RevisionConflict;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceActorAccess;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,24 +47,28 @@ public class WorkspaceCollaborationService {
     @Transactional(rollbackFor = IOException.class)
     public Status setEnabled(RepositoryContext context, Context expected, boolean enabled) throws IOException {
         if (context.scope() != RepositoryScope.WORKSPACE) throw unavailable();
-        var workspace = workspaces.findByWorkspaceIdForUpdate(context.workspaceId()).orElseThrow(WorkspaceCollaborationService::unavailable);
-        requireScope(context, workspace);
-        if (!Objects.equals(context.username(), workspace.getUsername())) throw unavailable();
+        if (workspaces.countReadyOwnedWorkspace(context.workspaceId(), context.username(), context.repositoryId(),
+                context.branch(), WorkspaceProvisioningStatus.READY) != 1) throw unavailable();
         actorAccess.requireActive(context.username());
         if (repositories.getRepository(context.repositoryId()).getLifecycleState()
                 != com.taxonomy.workspace.model.RepositoryLifecycleState.ACTIVE) throw unavailable();
-        if (!Context.of(context, expected.commit(), expected.revision()).equals(expected)
-                || context.collaborative() != workspace.isCollaborative()) throw unavailable();
-        var current = editor.read(context, null);
-        if (current.context().revision() != expected.revision()) throw new RevisionConflict(expected.revision(), current.context().revision());
-        if (!Objects.equals(current.context().commit(), expected.commit()))
-            throw new com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem("VERSION_CHANGED", "context",
-                    "The architecture checkpoint changed; refresh before changing sharing", java.util.List.of());
-        if (!"READY".equals(current.projectionState())) throw new IllegalArgumentException("Refresh or recover the current working copy before changing sharing");
-        if (workspaces.updateCollaborationFlag(workspace.getWorkspaceId(), enabled) != 1) throw unavailable();
-        // Bulk writes bypass managed state; retain the acknowledged flag in this transaction too.
-        workspace.setCollaborative(enabled);
-        return new Status(enabled, true);
+        if (!Context.of(context, expected.commit(), expected.revision()).equals(expected)) throw unavailable();
+        return editor.collaborationBoundary(context, current -> {
+            // The journal lock is already held and joins this transaction through its commit/rollback.
+            var workspace = workspaces.findByWorkspaceIdForUpdate(context.workspaceId()).orElseThrow(WorkspaceCollaborationService::unavailable);
+            requireScope(context, workspace);
+            if (!Objects.equals(context.username(), workspace.getUsername())
+                    || context.collaborative() != workspace.isCollaborative()) throw unavailable();
+            if (current.context().revision() != expected.revision()) throw new RevisionConflict(expected.revision(), current.context().revision());
+            if (!Objects.equals(current.context().commit(), expected.commit()))
+                throw new com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem("VERSION_CHANGED", "context",
+                        "The architecture checkpoint changed; refresh before changing sharing", java.util.List.of());
+            if (!"READY".equals(current.projectionState())) throw new IllegalArgumentException("Refresh or recover the current working copy before changing sharing");
+            if (workspaces.updateCollaborationFlag(workspace.getWorkspaceId(), enabled) != 1) throw unavailable();
+            // Bulk writes bypass managed state; retain the acknowledged flag in this transaction too.
+            workspace.setCollaborative(enabled);
+            return new Status(enabled, true);
+        });
     }
 
     private static void requireScope(RepositoryContext context, UserWorkspace workspace) {

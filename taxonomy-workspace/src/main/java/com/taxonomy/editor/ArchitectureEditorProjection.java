@@ -45,12 +45,12 @@ public class ArchitectureEditorProjection {
     public record SearchEntry(String id, String text) {}
     public record View(ArchitectureEditorService.Document document, CanonicalArchitectureModel model,
                        DiagramScene scene, Schema schema, boolean mayEdit, List<SearchEntry> searchIndex,
-                       com.taxonomy.workspace.service.WorkspaceCollaborationService.Status collaboration) {
+                       WorkspaceCollaborationService.Status collaboration) {
         public View(ArchitectureEditorService.Document document, CanonicalArchitectureModel model,
                     DiagramScene scene, Schema schema, boolean mayEdit, List<SearchEntry> searchIndex) {
             this(document, model, scene, schema, mayEdit, searchIndex, null);
         }
-        public View withCollaboration(com.taxonomy.workspace.service.WorkspaceCollaborationService.Status status) {
+        public View withCollaboration(WorkspaceCollaborationService.Status status) {
             return new View(document, model, scene, schema, mayEdit, searchIndex, status);
         }
         public Map<String, List<com.taxonomy.dsl.planning.PlanningInformation.View>> getPlanningInformation() {

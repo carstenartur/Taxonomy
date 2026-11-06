@@ -32,6 +32,7 @@ class ModuleOwnedTestPlacementTest {
             "workspace/storage/DslWorkspaceReadAdapterTest.java",
             "workspace/storage/DslWorkspaceVersionAdapterTest.java",
             "workspace/storage/JgitStorageHibernateIntegrationTest.java",
+            "workspace/storage/JgitStorageOracleMigrationIT.java",
             "workspace/storage/JgitStoragePostgresMigrationIT.java",
             "versioning/controller/ContextNavigationControllerTest.java",
             "versioning/controller/GitStateControllerTest.java",

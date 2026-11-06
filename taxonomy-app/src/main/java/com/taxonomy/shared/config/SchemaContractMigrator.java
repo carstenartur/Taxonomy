@@ -214,7 +214,7 @@ final class SchemaContractMigrator {
             }
             List<String> source = List.of("hypothesis_id", "repository_id", "workspace_scope_key", "branch_name");
             List<String> target = List.of("id", "repository_id", "workspace_scope_key", "branch_name");
-            if (!hasExactBranchForeignKey(connection, evidence, table, source, target)) {
+            if (!hasExactForeignKey(connection, evidence, table, source, target)) {
                 execute(connection, "ALTER TABLE " + qualified(connection, evidence)
                         + " ADD CONSTRAINT fk_evidence_hypothesis_scope FOREIGN KEY (" + String.join(",", source)
                         + ") REFERENCES " + qualified(connection, table) + " (" + String.join(",", target) + ")");
@@ -370,50 +370,10 @@ final class SchemaContractMigrator {
             }
         }
     }
-    private boolean hasExactBranchForeignKey(Connection c, TableRef source, TableRef target,
+    private boolean hasExactForeignKey(Connection c, TableRef source, TableRef target,
             List<String> sourceColumns, List<String> targetColumns) throws SQLException {
-        Map<String, Map<Short, String>> keys = new LinkedHashMap<>();
-        if (c.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT).contains("oracle")) {
-            // Oracle JDBC imported-key metadata filters parent constraints to P,
-            // omitting this FK's UNIQUE parent key. Inspect its actual column pairs.
-            try (PreparedStatement query = c.prepareStatement("""
-                    SELECT f.constraint_name, fc.position, fc.column_name, pc.column_name
-                    FROM all_constraints f
-                    JOIN all_constraints p ON p.owner=f.r_owner AND p.constraint_name=f.r_constraint_name
-                    JOIN all_cons_columns fc ON fc.owner=f.owner AND fc.constraint_name=f.constraint_name
-                      AND fc.table_name=f.table_name
-                    JOIN all_cons_columns pc ON pc.owner=p.owner AND pc.constraint_name=p.constraint_name
-                      AND pc.table_name=p.table_name AND pc.position=fc.position
-                    WHERE f.constraint_type='R' AND f.status='ENABLED' AND p.constraint_type IN ('P','U')
-                      AND f.owner=? AND f.table_name=? AND p.owner=? AND p.table_name=?
-                    """)) {
-                query.setString(1, source.schema());
-                query.setString(2, source.name());
-                query.setString(3, target.schema());
-                query.setString(4, target.name());
-                try (ResultSet rs = query.executeQuery()) {
-                    while (rs.next()) keys.computeIfAbsent(rs.getString(1), unused -> new TreeMap<>())
-                            .put(rs.getShort(2), rs.getString(3).toLowerCase(Locale.ROOT)
-                                    + ":" + rs.getString(4).toLowerCase(Locale.ROOT));
-                }
-            }
-        } else {
-            try (ResultSet rs = c.getMetaData().getImportedKeys(source.catalog(), source.schema(), source.name())) {
-                while (rs.next()) {
-                    if (!target.name().equalsIgnoreCase(rs.getString("PKTABLE_NAME"))
-                            || !Objects.equals(target.schema(), rs.getString("PKTABLE_SCHEM"))) continue;
-                    keys.computeIfAbsent(rs.getString("FK_NAME"), unused -> new TreeMap<>())
-                            .put(rs.getShort("KEY_SEQ"), rs.getString("FKCOLUMN_NAME").toLowerCase(Locale.ROOT)
-                                    + ":" + rs.getString("PKCOLUMN_NAME").toLowerCase(Locale.ROOT));
-                }
-            }
-        }
-        List<String> expected = new ArrayList<>();
-        for (int i = 0; i < sourceColumns.size(); i++) expected.add(sourceColumns.get(i) + ":" + targetColumns.get(i));
-        // Hibernate may order the same four source/target pairs differently.
-        // Compare the complete mapping, retaining cardinality and each pairing.
-        return keys.values().stream().anyMatch(key -> key.size() == expected.size()
-                && new LinkedHashSet<>(key.values()).equals(new LinkedHashSet<>(expected)));
+        return ForeignKeyMetadata.matches(c, source.catalog(), source.schema(), source.name(),
+                target.schema(), target.name(), sourceColumns, targetColumns);
     }
     private void ensureBinaryBranchCollation(Connection c, TableRef parent, TableRef evidence) throws SQLException {
         if (!isSqlServer(c)) return;
@@ -684,12 +644,12 @@ final class SchemaContractMigrator {
                     "Cannot enforce repository scope for " + logicalTableName
                             + ": system_repository is missing");
         }
-        if (hasImportedKey(
+        if (hasExactForeignKey(
                 connection,
                 tenantTable,
-                "repository_id",
                 repositoryTable,
-                "repository_id")) {
+                List.of("repository_id"),
+                List.of("repository_id"))) {
             return;
         }
         String constraintName = "fk_" + logicalTableName + "_repository";
@@ -699,25 +659,6 @@ final class SchemaContractMigrator {
                 + qualified(connection, repositoryTable) + " (repository_id)");
         log.info("Created repository foreign key {} on {}",
                 constraintName, logicalTableName);
-    }
-
-    private boolean hasImportedKey(
-            Connection connection,
-            TableRef sourceTable,
-            String sourceColumn,
-            TableRef targetTable,
-            String targetColumn) throws SQLException {
-        try (ResultSet keys = connection.getMetaData().getImportedKeys(
-                sourceTable.catalog(), sourceTable.schema(), sourceTable.name())) {
-            while (keys.next()) {
-                if (sourceColumn.equalsIgnoreCase(keys.getString("FKCOLUMN_NAME"))
-                        && targetTable.name().equalsIgnoreCase(keys.getString("PKTABLE_NAME"))
-                        && targetColumn.equalsIgnoreCase(keys.getString("PKCOLUMN_NAME"))) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     private void ensurePasswordChangeColumn(Connection connection) throws SQLException {

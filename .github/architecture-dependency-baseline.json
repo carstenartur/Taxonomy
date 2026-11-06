@@ -188,7 +188,7 @@
       "fromPackage": "com.taxonomy.analysis.session",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
-      "classDependencyCount": 2
+      "classDependencyCount": 3
     },
     {
       "fromContext": "analysis",

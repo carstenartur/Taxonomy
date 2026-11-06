@@ -56,8 +56,11 @@ class NativeInstallationOracleRecoveryIT {
                     .table(io.github.carstenartur.jgit.storage.hibernate.schema.CoreSchemaMigrations.SCHEMA_HISTORY_TABLE).load();
             assertThat(migration.migrate().migrationsExecuted).isEqualTo(1);
             application(sourceUser, sourcePassword, loginPassword, source, oracle, "seed", "seed", evidence);
+            var foreignKeys = repositoryForeignKeys(sourceUser, sourcePassword, evidence.resolve("source-before-restart-foreign-keys.json"));
             // A second normal JVM must reuse the exact source Git objects and application authority.
             application(sourceUser, sourcePassword, loginPassword, source, oracle, "restart", "source-restart", evidence);
+            assertThat(repositoryForeignKeys(sourceUser, sourcePassword, evidence.resolve("source-after-restart-foreign-keys.json")))
+                    .as("Restart retains the exact enabled repository foreign keys to the natural UNIQUE key").isEqualTo(foreignKeys);
             Properties expected = new Properties();
             try (var input = Files.newInputStream(oracle)) { expected.load(input); }
             String version = expected.getProperty("applicationVersion");
@@ -222,6 +225,53 @@ class NativeInstallationOracleRecoveryIT {
             }
             return NativeRecoveryRowDigests.tables(connection, tables);
         }
+    }
+
+    private static List<Map<String, Object>> repositoryForeignKeys(String user, String password, Path evidence) throws Exception {
+        var dictionary = new ArrayList<Map<String, Object>>();
+        var jdbc = new ArrayList<Map<String, Object>>();
+        var tables = List.of("RELATION_PROPOSAL", "TAXONOMY_RELATION", "RELATION_HYPOTHESIS", "ARCHITECTURE_COMMIT_INDEX");
+        try (var connection = DriverManager.getConnection(DATABASE.getJdbcUrl(), user, password);
+             var query = connection.prepareStatement("""
+                     SELECT f.table_name, f.constraint_name, fc.position, fc.column_name,
+                            p.owner, p.table_name, p.constraint_type, pc.column_name, f.status
+                     FROM all_constraints f
+                     JOIN all_constraints p ON p.owner=f.r_owner AND p.constraint_name=f.r_constraint_name
+                     JOIN all_cons_columns fc ON fc.owner=f.owner AND fc.constraint_name=f.constraint_name AND fc.table_name=f.table_name
+                     JOIN all_cons_columns pc ON pc.owner=p.owner AND pc.constraint_name=p.constraint_name
+                       AND pc.table_name=p.table_name AND pc.position=fc.position
+                     WHERE f.constraint_type='R' AND f.owner=? AND p.owner=? AND p.table_name='SYSTEM_REPOSITORY'
+                     ORDER BY f.table_name, f.constraint_name, fc.position
+                     """)) {
+            query.setString(1, user); query.setString(2, user);
+            try (var result = query.executeQuery()) {
+                while (result.next()) {
+                    if (!tables.contains(result.getString(1))) continue;
+                    dictionary.add(Map.of("table", result.getString(1), "constraint", result.getString(2),
+                            "position", result.getInt(3), "column", result.getString(4), "parentOwner", result.getString(5),
+                            "parentTable", result.getString(6), "parentConstraintType", result.getString(7),
+                            "parentColumn", result.getString(8), "status", result.getString(9)));
+                }
+            }
+            for (String table : tables) {
+                try (var keys = connection.getMetaData().getImportedKeys(null, user, table)) {
+                    while (keys.next()) jdbc.add(Map.of("table", table, "constraint", keys.getString("FK_NAME"),
+                            "column", keys.getString("FKCOLUMN_NAME"), "parentOwner", keys.getString("PKTABLE_SCHEM"),
+                            "parentTable", keys.getString("PKTABLE_NAME"), "parentColumn", keys.getString("PKCOLUMN_NAME")));
+                }
+            }
+        }
+        Files.writeString(evidence, JsonMapper.builder().build().writerWithDefaultPrettyPrinter()
+                .writeValueAsString(Map.of("dictionary", dictionary, "jdbcImportedKeys", jdbc)));
+        assertThat(dictionary).extracting(key -> key.get("table")).containsExactlyInAnyOrderElementsOf(tables);
+        assertThat(dictionary).allSatisfy(key -> {
+            assertThat(key.get("column")).isEqualTo("REPOSITORY_ID");
+            assertThat(key.get("parentColumn")).isEqualTo("REPOSITORY_ID");
+            assertThat(key.get("parentConstraintType")).isEqualTo("U");
+            assertThat(key.get("status")).isEqualTo("ENABLED");
+            assertThat(key.get("position")).isEqualTo(1);
+        });
+        return dictionary;
     }
 
     private static Map<String, String> grants(String user) throws SQLException {

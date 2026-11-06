@@ -1,55 +1,61 @@
 # Shared architecture editing verification
 
-The private-by-default editor has an owner-managed sharing opt-in. Joining requires
-an exact workspace link, an active stable principal and explicit source-repository
-CONTRIBUTOR authority. Public/primary compatibility access is insufficient. The
-existing journal retains both actors’ edits, revision conflicts and personal undo.
+Sharing remains an owner-managed opt-in on the existing private editor. Shared requests
+require an active stable principal and ACTIVE source; joining collaborators also
+require explicit source-repository CONTRIBUTOR authority. Every collaborative analysis-draft operation, including an
+owner request identified only by its URL path, rejects an archived source. Private
+owner behavior is preserved. Revocation applies to new requests; already authorized
+requests are not cancelled by a later sharing change.
 
-## Verified source
+## Atomic control boundary
 
-The shared changes compose writer `055e83f986a7083f74aac7dcb6dd16e63c875171`,
-including release repair `16415195fdf3117ade536eca27646fef76d24337`. PostgreSQL
-V47 and HSQL restore V17 preserve the peer’s V46/V16 and exact version inventories.
-Frozen V1, bounded binary reads, frozen diagram-ID checks and SDK contracts remain
-unchanged. Ordinary metadata merges cannot overwrite the sharing flag; its locked
-owner operation owns updates. History capture retains registered former actors
-without replaying grants. Unmapped legacy labels retain private quarantine.
+Sharing control belongs to `com.taxonomy.editor` in the existing workspace Maven
+module, preventing the former workspace-to-editor backedge. A scalar ownership,
+branch and readiness preflight avoids caching workspace metadata before locking.
+The journal control transaction then owns the journal row before locking metadata,
+checks the revision, pending checkpoint and fresh Git HEAD, and updates the flag.
+Both locks survive until the caller commits or rolls back.
 
-## Evidence and scope
+HSQL MVCC does not make a locking SELECT exclusive. The control boundary therefore
+uses the existing backup-fence pattern: a no-op UPDATE of `rowVersion`, followed by
+entity refresh. Initial rows are inserted and flushed in the caller transaction.
+Neither row nor semantic versions advance; no operation or Git commit is invented.
+Ordinary journal/integration paths and next-request authority remain unchanged.
 
-| Gate | Result | Scope |
+## Evidence
+
+| Owner | Result | Scope |
 | --- | --- | --- |
-| Composed source before redundant-test cleanup | 176 passed | App 104, interop backup 57, extension contracts 6, workspace JPA 5, release verification 4. |
-| Final cleanup candidate | 33 passed | Peer SPI contracts 6, workspace JPA 5, app schema/restore/version contracts 22. |
-| Architecture browser owner | 19 passed | Native Chrome 149 executes EN/DE editor controls, join links and retained deleted-target drafts against the existing HTTP fixture. |
-| Workspace MVC boundary owner | 15 passed | Real application/JPA/JGit authority, persisted identities, disabled old principals, membership revocation and exact workspace routing. |
+| Clean workspace owners | 56 passed | Editor 40, sharing 14, four-process restart owner 2. |
+| Completed app guard gate | 99 passed | Draft service 20, draft MVC 14, workspace MVC 20, lifecycle 9, dependency ratchet 34, cycle rule 1, generated OpenAPI 1. |
+| Earlier composed source | 176 passed | Schema, backup, SDK, sharing JPA and release contracts on writer `055e83f`; subsequent duplicate-test cleanup passed 33. |
+| Earlier browser owner | 19 passed | Native Chrome executes unchanged EN/DE editor controls and retained-draft behavior through its HTTP fixture. |
 
-Both completed Maven gates reported `BUILD SUCCESS`, zero failures/errors/skips.
-The browser and MVC production sources did not change in subsequent composition
-or cleanup; those named reports remain applicable. Additional focused journal,
-restart, lifecycle and source-draft contracts passed. Existing owner metadata/list
-behavior is preserved; shared workspace resolution/edit/history/export authority
-is revalidated.
+The new guard regressions failed before correction. Commit-level concurrency cases
+cover edits/checkpoint reservations in both orders, caller commit/rollback, first-row
+commit/rollback and unchanged versions. Real MVC tests cover all five unpinned owner
+draft operations after archival. The multi-request session fixture uses per-request
+transactions, retains all authority assertions and cleans only its owned storage.
+The completed app gate reported `BUILD SUCCESS`, zero failures/errors/skips.
 
-The cleanup removes an older duplicate SDK test class and schema smoke method.
-Peer contracts provide broader field-order/immutability coverage; peer schema
-checks cover V16 upgrade preservation, BLOB storage and model registration. The
-interop backup owner verifies binary roundtrips. The schema test now differs from
-writer `055e83f` only in expecting 17 applied business migrations.
+The tested snapshot is base `5ef4c30b38f1ee03f0a145e976f440dcccdb73b4` plus these
+reviewed changes. A fresh detached `/tmp` checkout avoids known executor replay of
+obsolete untracked source; intended Java/test/config bytes were compared directly.
+The dependency baseline adds only the immutable lifecycle enum reference (2 to 3).
+No cycle exceptions or test assertions were relaxed. Independent review cleared
+physical locking, request authority, editor ownership, Swagger composition and fixtures.
 
 ## Reproduction and limits
 
-Use Java 25 and the configured Mockito agent. The final lightweight gate is:
+With Java 25 and the configured Mockito agent, use the Maven reactor:
 
 ```sh
 ./mvnw -B -pl taxonomy-app -am test -Ptest-local -Dmaven.build.cache.enabled=false \
-  -Dtest=BasedFileExportContractsTest,RestoreSchemaMigrationTest,WorkspaceRestoreImporterTest,WorkspaceCollaborationServiceTest,TaxonomyMigrationVersionContractTest \
+  -Dtest=WorkspaceCollaborationServiceTest,ArchitectureEditorServiceTest,ArchitectureEditorRestartTest,AnalysisWorkingDraftServiceTest,AnalysisWorkingDraftMvcContractTest,WorkspaceProvisioningBoundaryIT,ArchitectureLifecycleServiceTest,ArchitectureContextDependencyRatchetTest,ArchitectureCycleBoundaryTest,OpenApiGeneratedContractTest \
   -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-Native browser evidence uses matching headless shell/chromedriver 149.0.7827.55.
-The focused HSQL and browser owners do not replace canonical CI, PostgreSQL
-migration/validation, packaged runtime acceptance or SQL Server/Oracle native
-recovery. Those gates remain parent-coordinated. Independent source review cleared
-the authority, sharing lost-update, historical actor fixes and final cleanup, with
-no remaining blockers. The peer coverage remains authoritative.
+These focused HSQL/JPA/MVC and contract owners do not replace canonical CI,
+PostgreSQL/SQL Server/Oracle locking, migration and recovery acceptance, packaged
+runtime checks or commit-bound screenshot production. Those gates remain
+parent-coordinated; the guard changes do not modify visual assets.

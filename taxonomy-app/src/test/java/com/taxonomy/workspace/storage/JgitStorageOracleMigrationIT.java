@@ -15,6 +15,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.oracle.OracleContainer;
 
 import javax.sql.DataSource;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.*;
 import java.time.Duration;
 import java.util.*;
@@ -131,7 +133,7 @@ class JgitStorageOracleMigrationIT {
         return result;
     }
 
-    private static void assertPhysicalCoreContract(DataSource data) throws SQLException {
+    private static void assertPhysicalCoreContract(DataSource data) throws Exception {
         try (var connection = data.getConnection()) {
             var metadata = connection.getMetaData();
             for (var column : Map.of("GIT_PACKS.PACK_EXTENSION", 32, "GIT_REFLOG.REF_NAME", 1024).entrySet()) {
@@ -146,25 +148,38 @@ class JgitStorageOracleMigrationIT {
         }
     }
 
-    private static List<List<String>> indexes(Connection connection, String table, boolean uniqueOnly) throws SQLException {
+    private static List<List<String>> indexes(Connection connection, String table, boolean uniqueOnly) throws Exception {
         var result = new TreeMap<String, SortedMap<Integer, String>>();
+        var dictionary = new StringBuilder();
         // Oracle's approximate=false path gathers table statistics. This inspection is read-only.
         try (var rows = connection.getMetaData().getIndexInfo(null, connection.getSchema(), table, uniqueOnly, true)) {
             while (rows.next()) {
                 String name = rows.getString("INDEX_NAME"), column = rows.getString("COLUMN_NAME");
                 if (name != null && column != null && rows.getShort("TYPE") != DatabaseMetaData.tableIndexStatistic) {
+                    String physicalColumn = column, indexedExpression = null;
                     if (column.startsWith("SYS_NC")) {
                         try (var expression = connection.prepareStatement("SELECT column_expression FROM user_ind_expressions WHERE index_name = ? AND column_position = ?")) {
                             expression.setString(1, name); expression.setInt(2, rows.getInt("ORDINAL_POSITION"));
                             try (var value = expression.executeQuery()) {
-                                if (value.next() && "SYS_OP_DESCEND(\"ID\")".equals(value.getString(1))) column = "ID";
+                                if (value.next()) {
+                                    indexedExpression = value.getString(1);
+                                    if ("SYS_OP_DESCEND(\"ID\")".equals(indexedExpression)) column = "ID";
+                                    // Oracle represents a TIMESTAMP WITH TIME ZONE index by its UTC expression.
+                                    if ("SYS_EXTRACT_UTC(\"WRITE_LEASE_UNTIL\")".equals(indexedExpression)) column = "WRITE_LEASE_UNTIL";
+                                }
                             }
                         }
                     }
+                    dictionary.append(name).append(" position=").append(rows.getInt("ORDINAL_POSITION"))
+                            .append(" column=").append(physicalColumn).append(" expression=").append(indexedExpression)
+                            .append(" resolved=").append(column).append(System.lineSeparator());
                     result.computeIfAbsent(name, ignored -> new TreeMap<>()).put(rows.getInt("ORDINAL_POSITION"), column);
                 }
             }
         }
+        Path evidence = Path.of("target/failsafe-reports/oracle-core-" + table + "-" + uniqueOnly + ".txt");
+        Files.createDirectories(evidence.getParent());
+        Files.writeString(evidence, dictionary);
         return result.values().stream().map(columns -> List.copyOf(columns.values())).toList();
     }
 

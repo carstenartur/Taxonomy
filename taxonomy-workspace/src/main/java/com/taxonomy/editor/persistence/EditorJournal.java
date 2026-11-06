@@ -105,8 +105,21 @@ public class EditorJournal {
         return transact(joinedTransaction, context, scope(context), initial, action, new boolean[1]);
     }
 
+    /** Control writes need physical row ownership even where MVCC ignores SELECT FOR UPDATE. */
+    public <T> T joinedControlLocked(RepositoryContext context, State initial, Function<Session, T> action)
+            throws CommandProblem, IllegalArgumentException {
+        if (!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("A durable control transaction is required");
+        return transact(joinedTransaction, context, scope(context), initial, action, new boolean[1], true);
+    }
+
     private <T> T transact(TransactionTemplate template, RepositoryContext context, String scope, State initial,
                            Function<Session, T> action, boolean[] initializing) {
+        return transact(template, context, scope, initial, action, initializing, false);
+    }
+
+    private <T> T transact(TransactionTemplate template, RepositoryContext context, String scope, State initial,
+                           Function<Session, T> action, boolean[] initializing, boolean control) {
         return template.execute(status -> {
             EditorWorkspace workspace = em.find(EditorWorkspace.class, scope, LockModeType.PESSIMISTIC_WRITE);
             if (workspace == null) {
@@ -121,6 +134,13 @@ public class EditorJournal {
                 em.persist(workspace);
                 em.flush();
                 initializing[0] = false;
+            } else if (control) {
+                // Like the backup fence, use a no-op write rather than relying on a locking read.
+                // Keep rowVersion unchanged: this administrative change is not a semantic edit.
+                if (em.createQuery("update EditorWorkspace w set w.rowVersion=w.rowVersion where w.scopeId=:scope")
+                        .setParameter("scope", scope).executeUpdate() != 1)
+                    throw new PersistenceException("The editor control row is unavailable");
+                em.refresh(workspace, LockModeType.PESSIMISTIC_WRITE);
             }
             T result = action.apply(new Session(workspace));
             em.flush();

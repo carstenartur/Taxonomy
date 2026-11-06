@@ -32,10 +32,10 @@ public class ArchitectureEditorController {
     private final ArchitectureEditorService service;
     private final ArchitectureEditorProjection projection;
     private final WorkspaceResolver resolver;
-    private com.taxonomy.workspace.service.WorkspaceCollaborationService collaboration;
+    private WorkspaceCollaborationService collaboration;
 
     @org.springframework.beans.factory.annotation.Autowired
-    public void setCollaboration(com.taxonomy.workspace.service.WorkspaceCollaborationService collaboration) {
+    public void setCollaboration(WorkspaceCollaborationService collaboration) {
         this.collaboration = collaboration;
     }
 
@@ -95,8 +95,9 @@ public class ArchitectureEditorController {
     @ResponseBody
     @io.swagger.v3.oas.annotations.Operation(summary = "Enable or disable shared editing of this working copy",
             description = "Only the working-copy owner may opt in. Active explicit source-repository contributors can then join the exact workspace link. Private workspaces remain the default; disabling sharing retains all accepted operations.")
-    public ResponseEntity<com.taxonomy.workspace.service.WorkspaceCollaborationService.Status> share(
+    public ResponseEntity<WorkspaceCollaborationService.Status> share(
             @RequestBody SharingRequest request,
+            @Parameter(description = "Required ETag of the exact semantic revision, in the form \"workspace-revision-N\"", required = true, schema = @Schema(type = "string", pattern = "\"workspace-revision-[0-9]+\""))
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) throws IOException {
         requireRevision(request.context(), ifMatch, null);
         return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")

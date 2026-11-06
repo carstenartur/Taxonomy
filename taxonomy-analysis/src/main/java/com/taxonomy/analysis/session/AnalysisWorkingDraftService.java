@@ -207,7 +207,11 @@ public class AnalysisWorkingDraftService {
         }
 
         SystemRepository sourceRepository = resolveSourceRepository(workspace);
-        if (workspace.isCollaborative()) actorAccess.requireActive(username);
+        if (workspace.isCollaborative()) {
+            actorAccess.requireActive(username);
+            if (sourceRepository.getLifecycleState() != com.taxonomy.workspace.model.RepositoryLifecycleState.ACTIVE)
+                throw new AccessDeniedException("The shared working-copy source repository is unavailable");
+        }
         // Sharing the architecture never changes the username of an analysis draft.
         if (!workspace.getUsername().equals(username) && !(workspace.isCollaborative() && membership != null
                 && membership.canCollaborate(sourceRepository, username))) {

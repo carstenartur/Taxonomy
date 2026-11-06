@@ -3,6 +3,7 @@ package com.taxonomy.openapi;
 import com.taxonomy.analysis.controller.AnalysisProgressController;
 import com.taxonomy.backup.web.BackupJobController;
 import com.taxonomy.editor.ArchitectureEditorController;
+import com.taxonomy.editor.WorkspaceCollaborationService;
 import com.taxonomy.interop.controller.IntegrationController;
 import com.taxonomy.analysis.recovery.AnalysisContinuationController;
 import com.taxonomy.composition.analysis.artemis.AnalysisDispatchAdminController;
@@ -41,8 +42,8 @@ import java.util.List;
 
 /**
  * The real Spring MVC mappings and Springdoc generator, without a database, broker
- * or provider. Controller collaborators are deliberately absent: schema reads must
- * never execute a business operation. Security remains covered by the application
+ * or provider. Controller collaborators are inert or absent: schema reads must never
+ * execute a business operation. Security remains covered by the application
  * security suites; this fixture does not replace them.
  */
 public final class OpenApiContractCases {
@@ -473,6 +474,9 @@ public final class OpenApiContractCases {
         }
         @Bean ArchitectureEditorController editorController() {
             return new ArchitectureEditorController(null, null, null);
+        }
+        @Bean WorkspaceCollaborationService workspaceCollaborationService() {
+            return org.mockito.Mockito.mock(WorkspaceCollaborationService.class);
         }
         @Bean IntegrationController integrationController() {
             return new IntegrationController(null, null);

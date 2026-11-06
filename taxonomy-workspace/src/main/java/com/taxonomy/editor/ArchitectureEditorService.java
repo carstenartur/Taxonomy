@@ -229,6 +229,25 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         }
     }
 
+    /** Sharing and the exact journal stand commit together; journal precedes workspace metadata. */
+    public <T> T collaborationBoundary(RepositoryContext context, java.util.function.Function<Document, T> action) throws IOException {
+        try (var write = writeBarrier.enter(backupScope(context))) {
+            requireWritable(context);
+            try {
+                return journal.joinedControlLocked(context, seed(context), session -> {
+                    State state = session.state();
+                    String actualHead;
+                    try { actualHead = head(repositories.resolveRepository(context), context.branch()); }
+                    catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
+                    String status = state.pendingCheckpoint() != null ? "CHECKPOINT_PENDING"
+                            : !Objects.equals(actualHead, state.checkpointCommit()) ? "VERSION_CHANGED" : "READY";
+                    return action.apply(new Document(Context.of(context, state.checkpointCommit(), state.revision()), state.dsl(),
+                            status, List.of(), List.of(), state.checkpointRevision(), state.pendingCheckpoint(), "WORKSPACE_REVISION"));
+                });
+            } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }
+        }
+    }
+
     /** Read checkpoint evidence from the caller's locked integration transaction; no Git writes. */
     public boolean integrationCheckpointMatches(RepositoryContext context, Context expected) throws IOException {
         try (var write = writeBarrier.enter(backupScope(context))) {

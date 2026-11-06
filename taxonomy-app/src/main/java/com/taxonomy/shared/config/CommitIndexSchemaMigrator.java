@@ -195,7 +195,7 @@ final class CommitIndexSchemaMigrator {
             throw new IllegalStateException(
                     "Cannot scope architecture commit index: system_repository is missing");
         }
-        if (hasImportedKey(
+        if (hasForeignKey(
                 connection,
                 table,
                 "repository_id",
@@ -210,25 +210,14 @@ final class CommitIndexSchemaMigrator {
                 + qualified(connection, repositoryTable) + " (repository_id)");
     }
 
-    private boolean hasImportedKey(
+    private boolean hasForeignKey(
             Connection connection,
             TableRef sourceTable,
             String sourceColumn,
             TableRef targetTable,
             String targetColumn) throws SQLException {
-        try (ResultSet keys = connection.getMetaData().getImportedKeys(
-                sourceTable.catalog(), sourceTable.schema(), sourceTable.name())) {
-            while (keys.next()) {
-                if (sourceColumn.equalsIgnoreCase(keys.getString("FKCOLUMN_NAME"))
-                        && targetTable.name().equalsIgnoreCase(
-                                keys.getString("PKTABLE_NAME"))
-                        && targetColumn.equalsIgnoreCase(
-                                keys.getString("PKCOLUMN_NAME"))) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        return ForeignKeyMetadata.matches(connection, sourceTable.catalog(), sourceTable.schema(), sourceTable.name(),
+                targetTable.schema(), targetTable.name(), List.of(sourceColumn), List.of(targetColumn));
     }
 
     private void setNotNull(

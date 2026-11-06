@@ -84,6 +84,10 @@ and file digests must remain unchanged after target edits and restarts.
 The existing database workflow uploads `target/native-oracle-recovery/` process
 and Data Pump logs. `result.json` is written only after every assertion passes;
 it records the dump and filesystem manifest digests, version, scope and limits.
+The retained Failsafe reports include raw Core index columns, positions and Oracle
+expressions. Native evidence also records actual dictionary foreign keys beside
+JDBC imported-key metadata before and after source restart, including the enabled
+repository references to their natural `UNIQUE` key.
 The private dump itself is disposable and remains inside the test container.
 
 This rehearses trusted same-version Oracle Free schema recovery. It does not

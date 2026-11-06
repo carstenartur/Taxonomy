@@ -198,11 +198,56 @@ class PortfolioClientRoutingIT {
     void aboutResourceLinksStayWithinTheirMountedContext(String prefix) {
         installRoutes(prefix);
         open("index", prefix, "/", "localStorage.setItem('taxonomy_onboarded', 'true');");
-        assertThat(driver.findElements(By.cssSelector("#aboutModal a[href^='/']")))
+        assertAboutResourceLinks(prefix);
+    }
+
+    @ParameterizedTest(name = "Late About resource links stay under [{0}]")
+    @MethodSource("prefixes")
+    void aboutResourceLinksWaitForTheirTemplateSection(String prefix) {
+        installRoutes(prefix);
+        open("index", prefix, "/", "localStorage.setItem('taxonomy_onboarded', 'true');");
+        wait.until(ignored -> Boolean.TRUE.equals(driver.executeScript("""
+                return document.readyState === 'complete'
+                    && document.querySelectorAll('#aboutModal a[href^="/"]').length === 6;
+                """)));
+        // Exercise the real rendered section becoming available after document readiness.
+        driver.executeScript("""
+                const section = document.getElementById('aboutModal');
+                section.remove();
+                window.setTimeout(() => document.body.appendChild(section), 250);
+                """);
+        assertAboutResourceLinks(prefix);
+    }
+
+    private static void assertAboutResourceLinks(String prefix) {
+        String expectedUrl = page.origin() + prefix + "/?lang=de";
+        List<WebElement> links = new WebDriverWait(driver, Duration.ofSeconds(20))
+                .withMessage(PortfolioClientRoutingIT::aboutResourceState)
+                .until(browser -> {
+                    if (!browser.getCurrentUrl().split("#", 2)[0].equals(expectedUrl)) return null;
+                    List<WebElement> current = browser.findElements(By.cssSelector("#aboutModal a[href^='/']"));
+                    return current.size() == 6 ? current : null;
+                });
+        assertThat(links)
+                .as(PortfolioClientRoutingIT::aboutResourceState)
                 .extracting(link -> link.getDomAttribute("href"))
                 .containsExactly(prefix + "/LICENSE", prefix + "/swagger-ui.html",
                         prefix + "/THIRD-PARTY-NOTICES.md", prefix + "/NOTICE",
                         prefix + "/LICENSE", prefix + "/THIRD-PARTY-NOTICES.md");
+    }
+
+    private static String aboutResourceState() {
+        try {
+            String state = String.valueOf(driver.executeScript("""
+                    return JSON.stringify({url:location.href, readyState:document.readyState,
+                        modal:!!document.getElementById('aboutModal'),
+                        hrefs:[...document.querySelectorAll('#aboutModal a[href^="/"]')]
+                            .map(link => link.getAttribute('href'))});
+                    """));
+            return state.substring(0, Math.min(1200, state.length()));
+        } catch (RuntimeException unavailable) {
+            return "About resource state unavailable: " + unavailable.getClass().getSimpleName();
+        }
     }
 
     @ParameterizedTest(name = "{1} initializes its project under [{0}]")

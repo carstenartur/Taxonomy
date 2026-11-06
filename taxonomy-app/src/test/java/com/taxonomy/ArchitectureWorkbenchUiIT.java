@@ -377,10 +377,7 @@ class ArchitectureWorkbenchUiIT {
             assertThat(driver.findElement(By.id("editorTitle")).getDomProperty("value"))
                     .isEqualTo("Hospital communication platform");
             assertThat(driver.findElement(By.id("editorNew")).isEnabled()).isTrue();
-            clickDocumentationControl(By.id("editorFocus"));
-            wait.until(browser -> !browser.findElements(By.cssSelector("#editorGraph .editor-node")).isEmpty());
-            saveDocumentationCapture("architecture-editor-current-" + language + ".png",
-                    driver.findElement(By.id("architectureEditor")));
+            saveEditorOverviewDocumentationScreenshot(language);
 
             WebElement useAi = driver.findElement(By.id("editorLensUseAi"));
             if (useAi.isSelected()) clickDocumentationControl(By.id("editorLensUseAi"));
@@ -391,6 +388,60 @@ class ArchitectureWorkbenchUiIT {
             saveDocumentationCapture("architecture-editor-focus-" + language + ".png",
                     driver.findElement(By.cssSelector(".editor-lens-panel")));
         }
+    }
+
+    private static void saveEditorOverviewDocumentationScreenshot(String language) {
+        Dimension previousSize = driver.manage().window().getSize();
+        try {
+            driver.manage().window().setSize(new Dimension(1800, 2000));
+            clickDocumentationControl(By.id("editorFocus"));
+            WebElement editor = driver.findElement(By.id("architectureEditor"));
+            javascript().executeScript("""
+                    arguments[0].scrollTop = 0;
+                    arguments[0].scrollIntoView({block:'start', inline:'nearest', behavior:'instant'});
+                    """, editor);
+            waitForEditorDocumentationFraming();
+            saveDocumentationCapture("architecture-editor-current-" + language + ".png", editor);
+            // Element screenshots must not scroll the illustrated controls out of the capture.
+            waitForEditorDocumentationFraming();
+        } finally {
+            driver.manage().window().setSize(previousSize);
+        }
+    }
+
+    private static void waitForEditorDocumentationFraming() {
+        new WebDriverWait(driver, Duration.ofSeconds(20))
+                .withMessage("The editor capture must show its status, toolbar, sharing card, both example nodes, canvas and properties form")
+                .until(browser -> Boolean.TRUE.equals(javascript().executeScript("""
+                        const canvas = document.getElementById('editorGraph');
+                        const canvasBounds = canvas.getBoundingClientRect();
+                        const nodes = ['Clinical identity service', 'Hospital communication platform']
+                            .map(title => [...canvas.querySelectorAll('.editor-node')]
+                                .find(node => (node.getAttribute('aria-label') || '').includes(title)));
+                        const controls = ['#editorStatus',
+                            '#architectureEditor > .editor-toolbar', '#editorMode', '#editorCollaboration',
+                            '#editorCollaborationToggle', '#editorGraph', '#editorPropertiesTitle',
+                            '#editorForm', '#editorTitle', '#editorPreviewElement']
+                            .map(selector => document.querySelector(selector)).concat(nodes);
+                        const privateState = document.documentElement.lang === 'de'
+                            ? 'Diese Arbeitskopie ist privat. Ihre Eigentümerin oder ihr Eigentümer verwaltet die Freigabe.'
+                            : 'This working copy is private. Its owner controls sharing.';
+                        return !document.getElementById('editorCollaborationToggle').disabled
+                            && document.getElementById('editorCollaborationState').textContent.trim() === privateState
+                            && controls.every(control => {
+                            if (!control) return false;
+                            const bounds = control.getBoundingClientRect();
+                            return bounds.width > 0 && bounds.height > 0
+                                && bounds.left >= 0 && bounds.top >= 0
+                                && bounds.right <= innerWidth && bounds.bottom <= innerHeight
+                                && control.contains(document.elementFromPoint(
+                                    bounds.left + bounds.width / 2, bounds.top + bounds.height / 2));
+                        }) && nodes.every(node => {
+                            const bounds = node.getBoundingClientRect();
+                            return bounds.left >= canvasBounds.left && bounds.right <= canvasBounds.right
+                                && bounds.top >= canvasBounds.top && bounds.bottom <= canvasBounds.bottom;
+                        });
+                        """)));
     }
 
     private static void createDocumentationElement(String title) {

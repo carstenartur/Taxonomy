@@ -109,4 +109,15 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
               and w.shared=false and w.archived=false
             """)
     long countOwnedPrivateWorkspace(@Param("workspace") String workspace, @Param("actor") String actor, @Param("repository") String repository);
+
+    /** Scalar preflight keeps metadata out of the persistence context before the journal lock. */
+    @Query("""
+            select count(w) from UserWorkspace w
+            where w.workspaceId=:workspace and w.username=:actor and w.sourceRepositoryId=:repository
+              and w.currentBranch=:branch and w.provisioningStatus=:status
+              and w.shared=false and w.archived=false
+            """)
+    long countReadyOwnedWorkspace(@Param("workspace") String workspace, @Param("actor") String actor,
+                                 @Param("repository") String repository, @Param("branch") String branch,
+                                 @Param("status") WorkspaceProvisioningStatus status);
 }
