@@ -112,7 +112,8 @@ class FrontendPackagingLifecycleTest {
                 assertNotNull(Instant.parse(System.getProperty("taxonomy.docs.startedAt")));
             } }
             """);
-        Result result=maven("verify","-Pscreenshots");
+        // Failsafe is not loaded by the outer unit-test phase. Resolve its pinned runtime on a cold cache.
+        Result result=maven(List.of(),"verify","-Pscreenshots");
         assertEquals(0,result.code,result.output);
         assertFalse(Files.exists(fixture.resolve("target/failsafe-reports")),
                 "The parent POM must configure the owner without running its tests");
@@ -178,8 +179,11 @@ class FrontendPackagingLifecycleTest {
         }
     }
     private Result maven(String phase,String... flags) throws Exception {
+        return maven(List.of("-o"),phase,flags);
+    }
+    private Result maven(List<String> options,String phase,String... flags) throws Exception {
         List<String> command=new ArrayList<>(wrapperCommand(fixture,System.getProperty("os.name")));
-        command.addAll(List.of("-B","-o",phase,"-Dmaven.build.cache.enabled=false"));command.addAll(List.of(flags));
+        command.addAll(List.of("-B",phase,"-Dmaven.build.cache.enabled=false"));command.addAll(options);command.addAll(List.of(flags));
         Path log=fixture.resolve("maven.log");var builder=new ProcessBuilder(command).directory(fixture.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
         builder.environment().put("JAVA_HOME",System.getProperty("java.home"));
         var process=builder.start();

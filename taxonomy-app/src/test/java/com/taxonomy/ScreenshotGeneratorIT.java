@@ -459,9 +459,19 @@ class ScreenshotGeneratorIT {
     }
 
     private void showAdminSettings() {
+        // Element captures can leave the document scrolled deep into a full-width view.
+        // Return to the actual shared menu before asking Selenium to click it.
+        js("window.scrollTo({top:0, left:0, behavior:'instant'});");
+        WebElement summary = wait(10).until(ExpectedConditions.elementToBeClickable(
+                By.cssSelector("#applicationTools > summary")));
+        wait(5).until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript("""
+                const bounds = arguments[0].getBoundingClientRect();
+                return bounds.top >= 0 && bounds.bottom <= innerHeight
+                    && bounds.left >= 0 && bounds.right <= innerWidth;
+                """, summary)));
         WebElement menu = driver.findElement(By.id("applicationTools"));
         if (menu.getAttribute("open") == null) {
-            driver.findElement(By.cssSelector("#applicationTools > summary")).click();
+            summary.click();
         }
         wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("adminNavTab")));
     }
@@ -757,13 +767,9 @@ class ScreenshotGeneratorIT {
     /** Uses Tools for administrator-only destinations and the common router otherwise. */
     private void navigateToTab(String page) {
         if ("admin".equals(page) || "preferences".equals(page)) {
-            WebElement menu = driver.findElement(By.id("applicationTools"));
-            if (menu.getAttribute("open") == null) {
-                driver.findElement(By.cssSelector("#applicationTools > summary")).click();
-            }
+            showAdminSettings();
             String destination = "admin".equals(page) ? "adminNavTab" : "preferencesNavTab";
-            wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id(destination)));
-            driver.findElement(By.id(destination)).click();
+            wait(10).until(ExpectedConditions.elementToBeClickable(By.id(destination))).click();
         } else {
             js("if (window.navigateToPage) { window.navigateToPage(arguments[0]); }", page);
         }
@@ -1835,8 +1841,10 @@ class ScreenshotGeneratorIT {
     void captureRootRelevanceClarification() throws IOException {
         org.openqa.selenium.Dimension originalSize = driver.manage().window().getSize();
         Path savedFile = Files.createTempFile("taxonomy-demo-r0-", ".json");
+        boolean completed = false;
         try {
-            driver.manage().window().setSize(new org.openqa.selenium.Dimension(1680, 1280));
+            // Show all eight collapsed root summaries and the unresolved question without inner scrolling.
+            driver.manage().window().setSize(new org.openqa.selenium.Dimension(1680, 1800));
             resetPageState("de");
             WebElement input = driver.findElement(By.id("businessText"));
             input.clear();
@@ -1892,10 +1900,12 @@ class ScreenshotGeneratorIT {
                 resetPageState(language);
                 navigateToTab("export");
                 // Selenium's real file upload invokes the production importer and its HTTP validation.
+                js("window.__screenshotPreviousImportScores = window.TaxonomyState.currentRawScores;");
                 driver.findElement(By.id("importJsonFile")).sendKeys(savedFile.toAbsolutePath().toString());
                 wait(30).until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript("""
                         const state = window.TaxonomyState;
-                        return state.lastAnalysisStatus === 'PARTIAL'
+                        return state.currentRawScores !== window.__screenshotPreviousImportScores
+                            && state.lastAnalysisStatus === 'PARTIAL'
                             && state.analysisCoverage?.nodes?.CO?.state === 'UNKNOWN'
                             && !Object.prototype.hasOwnProperty.call(state.currentScores, 'CO')
                             && !Object.prototype.hasOwnProperty.call(state.currentRawScores, 'CO');
@@ -1904,7 +1914,16 @@ class ScreenshotGeneratorIT {
                 safeClick(By.id("viewList"));
                 wait(10).until(ExpectedConditions.attributeToBe(
                         By.id("taxonomyTree"), "data-view-rendered", "list"));
-                safeClick(By.id("collapseAll"));
+                List<WebElement> rootToggles = driver.findElements(By.cssSelector(
+                        "#taxonomyTree > .tax-container > .tax-container-heading > .tax-container-toggle"));
+                Assertions.assertFalse(rootToggles.isEmpty(), "Imported catalogue must expose root controls");
+                for (WebElement toggle : rootToggles) {
+                    if ("true".equals(toggle.getAttribute("aria-expanded"))) {
+                        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", toggle);
+                        wait(5).until(ExpectedConditions.elementToBeClickable(toggle)).click();
+                        wait(5).until(ExpectedConditions.attributeToBe(toggle, "aria-expanded", "false"));
+                    }
+                }
                 WebElement question = wait(10).until(ExpectedConditions.visibilityOfElementLocated(
                         By.id("tax-container-clarification-CO")));
                 Assertions.assertEquals(reason.substring("CLARIFICATION:".length()).trim(), question.getText());
@@ -1921,19 +1940,34 @@ class ScreenshotGeneratorIT {
                 rootToggle.sendKeys(org.openqa.selenium.Keys.SPACE);
                 wait(5).until(ExpectedConditions.attributeToBe(rootToggle, "aria-expanded", "false"));
                 Assertions.assertTrue(question.isDisplayed(), "The unresolved root question remains visible when collapsed");
-                Assertions.assertTrue(Boolean.TRUE.equals(((JavascriptExecutor) driver).executeScript("""
+                Map<?, ?> layout = (Map<?, ?>) ((JavascriptExecutor) driver).executeScript("""
                         const tree = document.getElementById('taxonomyTree');
                         const body = tree.closest('.card-body');
-                        return body.scrollHeight <= body.clientHeight + 1
-                            && body.scrollWidth <= body.clientWidth + 1;
-                        """)), "Collapsed root evidence must fit without clipping");
+                        return {scrollHeight:body.scrollHeight, clientHeight:body.clientHeight,
+                            scrollWidth:body.scrollWidth, clientWidth:body.clientWidth, scrollTop:body.scrollTop,
+                            viewportWidth:innerWidth, viewportHeight:innerHeight,
+                            roots:Array.from(tree.querySelectorAll(':scope > .tax-container')).map(root => ({
+                                code:root.dataset.taxonomyContainer,
+                                expanded:root.querySelector(':scope > .tax-container-heading > .tax-container-toggle')
+                                    ?.getAttribute('aria-expanded')}))};
+                        """);
+                Assertions.assertTrue(
+                        ((Number) layout.get("scrollHeight")).doubleValue()
+                                <= ((Number) layout.get("clientHeight")).doubleValue() + 1
+                        && ((Number) layout.get("scrollWidth")).doubleValue()
+                                <= ((Number) layout.get("clientWidth")).doubleValue() + 1,
+                        "Collapsed root evidence must fit without clipping: " + layout);
                 saveElementScreenshot(driver.findElement(By.cssSelector("#leftPanel > .card")),
                         "root-relevance-clarification-" + language + ".png");
             }
+            completed = true;
         } finally {
             Files.deleteIfExists(savedFile);
-            driver.manage().window().setSize(originalSize);
-            resetPageState();
+            // Preserve the failing layout for the TestWatcher's PNG and page-source evidence.
+            if (completed) {
+                driver.manage().window().setSize(originalSize);
+                resetPageState();
+            }
         }
     }
 }

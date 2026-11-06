@@ -4,6 +4,9 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.api.extension.TestWatcher;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.Keys;
@@ -43,6 +46,14 @@ class ArchitectureWorkbenchUiIT {
     private static ContainerTestUtils.BrowserSession browserSession;
     private static RemoteWebDriver driver;
     private static WebDriverWait wait;
+
+    @RegisterExtension
+    static final TestWatcher captureFailureEvidence = new TestWatcher() {
+        @Override
+        public void testFailed(ExtensionContext context, Throwable cause) {
+            if (driver != null) saveViewportFailure(driver.manage().window().getSize(), cause);
+        }
+    };
 
     @BeforeAll
     static void startApplicationAndBrowser() {
@@ -265,6 +276,7 @@ class ArchitectureWorkbenchUiIT {
             java.nio.file.Files.createDirectories(directory);
             java.nio.file.Files.write(directory.resolve("viewport.png"),
                     driver.getScreenshotAs(org.openqa.selenium.OutputType.BYTES));
+            java.nio.file.Files.writeString(directory.resolve("page.html"), driver.getPageSource());
             String state = String.valueOf(javascript().executeScript("""
                     const bounds = selector => {
                         const element = document.querySelector(selector);
@@ -279,6 +291,9 @@ class ArchitectureWorkbenchUiIT {
                             documentWidth:document.documentElement.scrollWidth},
                         canvas:bounds('#architectureCanvasShell'),details:bounds('.workbench-detail-panel'),
                         grid:bounds('.workbench-grid'),workbench:bounds('#architectureWorkbench'),
+                        editor:bounds('#architectureEditor'),previewButton:bounds('#editorPreviewElement'),
+                        previewDialog:bounds('#editorPreviewDialog'),acceptButton:bounds('#editorAccept'),
+                        activeElement:document.activeElement?.id,
                         controls:bounds('.architecture-controls'),userAgent:navigator.userAgent},null,2);
                     """, requestedSize.width, requestedSize.height));
             java.nio.file.Files.writeString(directory.resolve("layout.json"), state);
@@ -350,7 +365,7 @@ class ArchitectureWorkbenchUiIT {
         waitForEditor();
         List<WebElement> createWorkspace = driver.findElements(By.id("editorWorkspace"));
         if (!createWorkspace.isEmpty() && createWorkspace.getFirst().isDisplayed()) {
-            createWorkspace.getFirst().click();
+            clickDocumentationControl(By.id("editorWorkspace"));
             wait.until(ExpectedConditions.elementToBeClickable(By.id("editorNew")));
         }
         createDocumentationElement("Clinical identity service");
@@ -362,15 +377,15 @@ class ArchitectureWorkbenchUiIT {
             assertThat(driver.findElement(By.id("editorTitle")).getDomProperty("value"))
                     .isEqualTo("Hospital communication platform");
             assertThat(driver.findElement(By.id("editorNew")).isEnabled()).isTrue();
-            driver.findElement(By.id("editorFocus")).click();
+            clickDocumentationControl(By.id("editorFocus"));
             wait.until(browser -> !browser.findElements(By.cssSelector("#editorGraph .editor-node")).isEmpty());
             saveDocumentationCapture("architecture-editor-current-" + language + ".png",
                     driver.findElement(By.id("architectureEditor")));
 
             WebElement useAi = driver.findElement(By.id("editorLensUseAi"));
-            if (useAi.isSelected()) useAi.click();
+            if (useAi.isSelected()) clickDocumentationControl(By.id("editorLensUseAi"));
             WebElement enableLens = wait.until(ExpectedConditions.elementToBeClickable(By.id("editorLensEnabled")));
-            if (!enableLens.isSelected()) enableLens.click();
+            if (!enableLens.isSelected()) clickDocumentationControl(By.id("editorLensEnabled"));
             assertThat(enableLens.isSelected()).isTrue();
             assertThat(useAi.isSelected()).isFalse();
             saveDocumentationCapture("architecture-editor-focus-" + language + ".png",
@@ -379,15 +394,15 @@ class ArchitectureWorkbenchUiIT {
     }
 
     private static void createDocumentationElement(String title) {
-        wait.until(ExpectedConditions.elementToBeClickable(By.id("editorNew"))).click();
+        clickDocumentationControl(By.id("editorNew"));
         new Select(driver.findElement(By.id("editorType"))).selectByValue("System");
         driver.findElement(By.id("editorTitle")).sendKeys(title);
         WebElement rationale = driver.findElement(By.id("editorRationale"));
         rationale.clear();
         rationale.sendKeys("Document the hospital communication example");
-        driver.findElement(By.id("editorPreviewElement")).click();
+        clickDocumentationControl(By.id("editorPreviewElement"));
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#editorPreviewDialog[open]")));
-        wait.until(ExpectedConditions.elementToBeClickable(By.id("editorAccept"))).click();
+        clickDocumentationControl(By.id("editorAccept"));
         wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("editorPreviewDialog")));
         waitForEditor();
         assertThat(driver.findElement(By.id("editorTitle")).getDomProperty("value")).isEqualTo(title);
@@ -396,6 +411,20 @@ class ArchitectureWorkbenchUiIT {
     private static void waitForEditor() {
         wait.until(browser -> "false".equals(browser.findElement(
                 By.id("architectureEditor")).getDomAttribute("aria-busy")));
+    }
+
+    private static void clickDocumentationControl(By locator) {
+        WebElement control = wait.until(ExpectedConditions.elementToBeClickable(locator));
+        javascript().executeScript("arguments[0].scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});", control);
+        new WebDriverWait(driver, Duration.ofSeconds(20))
+                .withMessage("The control must be visible and unobscured: " + locator)
+                .until(browser -> Boolean.TRUE.equals(javascript().executeScript("""
+                        const control = arguments[0], bounds = control.getBoundingClientRect();
+                        const x = bounds.left + bounds.width / 2, y = bounds.top + bounds.height / 2;
+                        return x >= 0 && x < innerWidth && y >= 0 && y < innerHeight
+                            && control.contains(document.elementFromPoint(x, y));
+                        """, control)));
+        control.click();
     }
 
     private static void openDocumentationLanguage(String sourceUrl, String language, By readyElement) {

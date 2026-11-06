@@ -107,7 +107,9 @@ jobs:
           name: documentation-screenshot-failures
           path: |
             target/screenshot-failures/
+            target/generated-screenshots/
             taxonomy-app/target/failsafe-reports/
+            taxonomy-app/target/architecture-workbench-native/
             taxonomy-build/target/failsafe-reports/
             target/junit-drivers/
             target/ui-verification/document-template-report/
