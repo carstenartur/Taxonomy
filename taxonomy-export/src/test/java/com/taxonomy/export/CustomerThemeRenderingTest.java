@@ -18,6 +18,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class CustomerThemeRenderingTest {
     @ParameterizedTest
+    @ValueSource(strings = {"--taxonomy-layer-surface", "--taxonomy-layer--surface",
+            "--taxonomy-layer-x-surface", "--taxonomy-layer-surface-surface"})
+    void unsupportedLayerNamesKeepBundledFillsAndDoNotDiscardAdjacentValidColors(String name) {
+        var theme = ExportTheme.fromStylesheet(":root{" + name + ":#abc;--taxonomy-layer-app-surface:#123456}");
+        String svg = new SvgDiagramRenderer(() -> theme).render(scene());
+        assertThat(svg).contains("fill=\"#DBEAFE\"", "fill=\"#FEF3C7\"", "fill=\"#123456\"",
+                "Original fixture capability", "Original fixture application")
+                .doesNotContain("fill=\"#AABBCC\"");
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {
             "@import url(data:text/css;:root{--taxonomy-layer-cap-surface:#123456});",
             "@supports selector(example;:root{--taxonomy-layer-cap-surface:#123456}) {}",

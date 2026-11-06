@@ -126,8 +126,10 @@ public final class ExportTheme {
         if (!name.startsWith("--taxonomy-")) return false;
         String key = name.substring("--taxonomy-".length());
         if (SURFACES.contains(key)) return true;
-        if (key.startsWith("layer-") && key.endsWith("-surface"))
-            return LAYERS.contains(key.substring(6, key.length() - 8));
+        if (key.startsWith("layer-") && key.endsWith("-surface")) {
+            int start = "layer-".length(), end = key.length() - "-surface".length();
+            return end > start && LAYERS.contains(key.substring(start, end));
+        }
         return key.startsWith("relation-") && RELATIONS.contains(key.substring(9));
     }
 
@@ -183,6 +185,8 @@ public final class ExportTheme {
                 + ":root{--navy:" + heading + ";--ink:" + ink + ";--muted:" + ink
                 + ";--paper:" + paper + ";--line:" + border + "}"
                 + "html,body{background:" + paper + ";color:" + ink + "}"
+                + "a:link,a:visited{color:inherit;text-decoration:underline}"
+                + ".small-label{color:" + ink + "}"
                 + "h1,h2,h3,h4,strong,.eyebrow,.section-kicker,.chapter-number{color:" + heading + ";border-color:" + border + "}"
                 + "th,.leading-leaf{background:" + accent + ";color:" + accentInk + "}"
                 + "th strong,.leading-leaf strong,.leading-leaf .small-label{color:" + accentInk + "}"

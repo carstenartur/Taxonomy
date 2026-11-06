@@ -19,6 +19,29 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 
 class DecisionCompactReportTest {
+    @Test void decisionContentsLinksInheritTheDarkCustomerPagesReadableForeground() {
+        var theme = com.taxonomy.export.ExportTheme.fromStylesheet(":root{--taxonomy-surface-background:#102030}");
+        String html = new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer(), () -> theme)
+                .render(customerChapterReport());
+        assertThat(html).contains("html,body{background:#102030;color:#FFFFFF}",
+                "<a href=\"#decision_summary\">", "<a href=\"#decision_chapters\">",
+                "a:link,a:visited{color:inherit;text-decoration:underline}", "Saved parent");
+    }
+
+    @Test void chapterParentLabelUsesTheCustomerPageForegroundAndLeadingLabelKeepsItsCardForeground() {
+        var theme = com.taxonomy.export.ExportTheme.fromStylesheet("""
+                :root{--taxonomy-surface-background:#007a78;--taxonomy-navigation-background:#f0f4f8;
+                  --taxonomy-navigation-foreground:#102030}
+                """);
+        String html = new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer(), () -> theme)
+                .render(customerChapterReport());
+        assertThat(html).contains("html,body{background:#007A78;color:#FFFFFF}",
+                "class=\"chapter-heading\"><div><span class=\"small-label\">Parent node</span>",
+                "class=\"leading-leaf\"><div><span class=\"small-label\">Leading leaf by effective relevance</span>",
+                ".leading-leaf .small-label{color:#102030}")
+                .containsPattern("(?:^|}|,)\\.small-label(?=,|\\{)[^{}]*\\{[^{}]*color:#FFFFFF[;}]");
+    }
+
     @Test void darkCustomerPaperKeepsMutedTableTextReadableOnLightAndSemanticRows() {
         var base = DecisionRationaleTemplateRendererTest.report();
         var children = List.of(
@@ -215,6 +238,19 @@ class DecisionCompactReportTest {
             assertThat(doc.getDocument().xmlText()).doesNotContain(com.taxonomy.reporting.templates.DecisionRationaleTemplateContract.BODY_MARKER);
         }
     }
+    private static DecisionRationaleReport customerChapterReport() {
+        var base = DecisionRationaleTemplateRendererTest.report();
+        var leading = new DecisionRationaleReport.LeafCandidate("fixture-leading", "Saved leading title", 75d,
+                "fixture-root", 1, "Saved parent → Saved leading title", "Saved leading evidence",
+                DecisionRationaleReport.ReasonSource.AI_SCORING);
+        var chapter = new DecisionRationaleReport.DecisionChapter(1, "fixture-parent", "Saved parent", "", 100d,
+                0, true, "Saved decision", "Saved comparison", List.of(), List.of());
+        var summary = new DecisionRationaleReport.ExecutiveSummary(leading, List.of(),
+                "Saved conclusion", "Saved methodology");
+        return new DecisionRationaleReport(base.title(), base.languageTag(), base.requirement(), base.status(),
+                base.metadata(), summary, List.of(chapter), List.of(leading), List.of(), List.of(), List.of(), null);
+    }
+
     static DecisionRationaleReport report(DecisionReportOptions.TreeLayout layout, int size) {
         var rows = new ArrayList<DecisionTreeOverview.DecisionTreeRow>();
         rows.add(new DecisionTreeOverview.DecisionTreeRow(0, "CP", "Capabilities", 100d, Disposition.CONTINUED, null, null));
