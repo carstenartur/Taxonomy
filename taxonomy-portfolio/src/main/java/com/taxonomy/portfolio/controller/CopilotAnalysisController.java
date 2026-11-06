@@ -49,8 +49,8 @@ public class CopilotAnalysisController {
     }
 
     @GetMapping("/requirements/{requirementId}/copilot/latest")
-    @Operation(summary = "Resume the newest Copilot or Autopilot operation for a requirement",
-            description = "Reads the newest retained Copilot operation for the authorized requirement so the client can restore its view. Returns 204 when none exists. Despite the compatibility route name, this GET never executes or resumes model work.")
+    @Operation(summary = "Read the newest Copilot or Autopilot operation for a requirement",
+            description = "Reads the newest retained Copilot operation for the authorized requirement so the client can restore its view. Returns 204 when none exists. This GET observes persisted work without scheduling passes, promoting snapshots or enriching the portfolio.")
     public ResponseEntity<CopilotOperationView> latest(
             @PathVariable Long projectId,
             @PathVariable Long requirementId) {
@@ -62,14 +62,28 @@ public class CopilotAnalysisController {
     }
 
     @GetMapping("/copilot-operations/{operationId}")
-    @Operation(summary = "Read and resume a persisted Copilot operation",
-            description = "Reads the persisted Copilot operation, including its passes and review state, after authorizing the project, requirement and current workspace. This endpoint observes existing work and never starts or resumes a pass.")
+    @Operation(summary = "Read a persisted Copilot operation",
+            description = "Reads the persisted Copilot operation, including its passes and review state, after authorizing the project, requirement and current workspace. This GET observes persisted work without scheduling passes, promoting snapshots or enriching the portfolio.")
     public CopilotOperationView getOperation(
             @PathVariable Long projectId,
             @PathVariable String operationId) {
         RequestScope scope = scope();
         return automationService.getOperation(
                 projectId, operationId, scope.username(), scope.context());
+    }
+
+    @PostMapping("/copilot-operations/{operationId}/resume")
+    @Operation(summary = "Resume processing of a persisted Copilot operation",
+            description = "Explicitly resumes unfinished passes or finalizes completed analysis using the operation's persisted run options. Requires business editing and analysis execution permission because completion may create solution or product proposals. Returns 202 with the operation Location; cancelled operations remain cancelled.")
+    public ResponseEntity<CopilotOperationView> resume(
+            @PathVariable Long projectId,
+            @PathVariable String operationId) {
+        RequestScope scope = scope();
+        CopilotOperationView operation = automationService.resumeOperation(
+                projectId, operationId, scope.username(), scope.context());
+        return ResponseEntity.accepted()
+                .location(operationLocation(projectId, operation.operationId()))
+                .body(operation);
     }
 
     @PostMapping("/copilot-operations/{operationId}/cancel")

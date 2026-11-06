@@ -69,6 +69,21 @@ class WorkspaceManagerProvisioningTest {
     }
 
     @Test
+    void explicitSystemProvisioningRemainsAvailableWhenAutomaticCreationIsDenied() throws IOException {
+        manager.setWorkspaceProvisionPermission(actor -> false);
+        UserWorkspace ws = createWorkspace("system", WorkspaceProvisioningStatus.NOT_PROVISIONED);
+        when(wsRepo.findByUsernameAndSharedFalse("system")).thenReturn(Optional.of(ws));
+        when(sysRepoService.getPrimaryRepository()).thenReturn(createSystemRepository());
+        gitRepo.commitDsl("draft", "meta { language: \"taxdsl\"; }", "system", "initial");
+
+        UserWorkspace result = manager.provisionWorkspaceRepository("system");
+
+        assertEquals(WorkspaceProvisioningStatus.READY, result.getProvisioningStatus());
+        assertNotNull(gitRepo.getHeadCommit(result.getCurrentBranch()));
+        assertNull(manager.getWorkspace("system"));
+    }
+
+    @Test
     void provisionWorkspace_alreadyReady_isNoOp() {
         UserWorkspace ws = createWorkspace("alice", WorkspaceProvisioningStatus.READY);
         when(wsRepo.findByUsernameAndSharedFalse("alice")).thenReturn(Optional.of(ws));

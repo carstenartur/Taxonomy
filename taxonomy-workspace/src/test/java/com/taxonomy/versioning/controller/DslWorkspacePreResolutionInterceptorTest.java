@@ -9,10 +9,15 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -98,6 +103,27 @@ class DslWorkspacePreResolutionInterceptorTest {
         verifyNoInteractions(repositoryStateService);
     }
 
+    @ParameterizedTest
+    @CsvSource({
+            "GET,/api/projects/1/copilot-operations/retained-operation",
+            "HEAD,/api/projects/1/copilot-operations/retained-operation",
+            "GET,/api/projects/1/requirements/2/copilot/latest",
+            "HEAD,/api/projects/1/requirements/2/copilot/latest"
+    })
+    void observationalCopilotReadsUseCentralContextWithoutAllocatingState(String method, String path) {
+        interceptor.setWorkspaceProvisionPermission(actor -> false);
+        when(request.getMethod()).thenReturn(method);
+        when(request.getRequestURI()).thenReturn(path);
+        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(
+                RepositoryContext.centralRead("repository-a", "draft", WORKSPACE.username()));
+        when(workspaceResolver.resolveCurrentContext()).thenReturn(
+                new WorkspaceContext(WORKSPACE.username(), null, "draft", "repository-a"));
+
+        assertThatCode(() -> interceptor.preHandle(request, response, new Object()))
+                .doesNotThrowAnyException();
+        verifyNoInteractions(repositoryStateService);
+    }
+
     @Test
     void readerWithExistingWorkspaceRetainsItsSelectedContext() {
         interceptor.setWorkspaceProvisionPermission(actor -> false);
@@ -127,7 +153,7 @@ class DslWorkspacePreResolutionInterceptorTest {
     }
 
     @Test
-    void deniedProvisioningDoesNotAllowCentralWritesOrUnlistedReads() {
+    void deniedProvisioningRejectsCentralWritesBeforeAllocatingState() {
         interceptor.setWorkspaceProvisionPermission(actor -> false);
         when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(
                 RepositoryContext.centralRead("repository-a", "draft", WORKSPACE.username()));
@@ -135,13 +161,24 @@ class DslWorkspacePreResolutionInterceptorTest {
                 new WorkspaceContext(WORKSPACE.username(), null, "draft", "repository-a"));
         when(request.getMethod()).thenReturn("POST");
         assertThatThrownBy(() -> interceptor.preHandle(request, response, new Object()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("isolated workspace");
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        failure -> assertThat(failure.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN));
+        verifyNoInteractions(repositoryStateService);
+    }
+
+    @Test
+    void deniedProvisioningRejectsWorkspaceRequiredReadsBeforeAllocatingState() {
+        interceptor.setWorkspaceProvisionPermission(actor -> false);
+        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(
+                RepositoryContext.centralRead("repository-a", "draft", WORKSPACE.username()));
+        when(workspaceResolver.resolveCurrentContext()).thenReturn(
+                new WorkspaceContext(WORKSPACE.username(), null, "draft", "repository-a"));
         when(request.getMethod()).thenReturn("GET");
-        when(request.getRequestURI()).thenReturn("/api/projects/1/copilot-operations/operation-3");
+        when(request.getRequestURI()).thenReturn("/api/dsl/current");
         assertThatThrownBy(() -> interceptor.preHandle(request, response, new Object()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("isolated workspace");
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        failure -> assertThat(failure.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN));
+        verifyNoInteractions(repositoryStateService);
     }
 
 }

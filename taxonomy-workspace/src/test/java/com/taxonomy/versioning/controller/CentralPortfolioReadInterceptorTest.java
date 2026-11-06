@@ -82,16 +82,20 @@ class CentralPortfolioReadInterceptorTest {
     }
 
     @Test
-    void statusReadsThatCanScheduleOrFinalizeCopilotRemainWorkspaceOnly() {
+    void copilotStatusReadsObserveCentralWorkWhileUnknownOperationsRemainWorkspaceOnly() {
         for (String method : List.of("GET", "HEAD")) {
             for (String path : List.of("/api/projects/1/requirements/2/copilot/latest",
-                    "/api/projects/1/copilot-operations/operation-3",
-                    "/api/projects/1/future-operation")) {
+                    "/api/projects/1/copilot-operations/operation-3")) {
                 var fixture = fixture(CENTRAL, CENTRAL_VIEW);
-                var failure = assertThrows(ResponseStatusException.class,
-                        () -> fixture.interceptor.preHandle(request(method, path, "", ""), null, null), path);
-                assertEquals(403, failure.getStatusCode().value());
+                assertTrue(fixture.interceptor.preHandle(request(method, path, "", ""), null, null), path);
+                assertEquals(0, fixture.state.provisions, "Copilot reads must not create workspace state");
             }
+            var fixture = fixture(CENTRAL, CENTRAL_VIEW);
+            var failure = assertThrows(ResponseStatusException.class,
+                    () -> fixture.interceptor.preHandle(request(method,
+                            "/api/projects/1/future-operation", "", ""), null, null));
+            assertEquals(403, failure.getStatusCode().value());
+            assertEquals(0, fixture.state.provisions);
         }
     }
 

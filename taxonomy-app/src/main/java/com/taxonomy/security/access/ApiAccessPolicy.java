@@ -16,14 +16,28 @@ import static com.taxonomy.security.access.ApiPermission.*;
 public final class ApiAccessPolicy {
     public enum Access { PUBLIC, AUTHENTICATED, PERMISSION, DENIED }
 
+    /** Runtime guards enforce conditions that depend on the request or retained operation. */
+    public record ConditionalPermission(String condition, ApiPermission permission) { }
+
     public record Rule(String method, String pattern, Access access, ApiPermission permission,
-                       String resourceRequirement, PathPattern matcher, List<ApiPermission> additionalPermissions) {
+                       String resourceRequirement, PathPattern matcher, List<ApiPermission> additionalPermissions,
+                       List<ApiPermission> alternativePermissions, List<ConditionalPermission> conditionalPermissions) {
+        /** The primary conjunctive alternative; admission must also consider permissionAlternatives(). */
         public List<ApiPermission> permissions() {
             if (access != Access.PERMISSION) return List.of();
             var permissions = new ArrayList<ApiPermission>();
             permissions.add(permission);
             permissions.addAll(additionalPermissions);
             return List.copyOf(permissions);
+        }
+
+        /** Every permission within an alternative is required; satisfying any one alternative admits the request. */
+        public List<List<ApiPermission>> permissionAlternatives() {
+            if (access != Access.PERMISSION) return List.of();
+            var alternatives = new ArrayList<List<ApiPermission>>();
+            alternatives.add(permissions());
+            alternativePermissions.forEach(permission -> alternatives.add(List.of(permission)));
+            return List.copyOf(alternatives);
         }
 
         boolean matches(String method, String path) {
@@ -36,6 +50,9 @@ public final class ApiAccessPolicy {
             + "ownership checks also apply where the operation addresses those resources; see the endpoint description.";
     private static final String OWNER = "Repository OWNER permission is additionally required for the exact repository.";
     private static final String CONTRIBUTOR = "Repository CONTRIBUTOR permission and ownership of the personal workspace are additionally required.";
+    private static final String OPTIONAL_AUTOMATION = RESOURCE_CHECKS
+            + " Configured automatic analysis/enrichment runs only when the caller also has analysis:run "
+            + "(USER OR ARCHITECT). Without that capability, the business write succeeds and optional execution is skipped.";
     private static final AuthenticationTrustResolverImpl TRUST = new AuthenticationTrustResolverImpl();
     private static final List<Rule> RULES = createRules();
     private static final Rule DENIED = rule(null, "/**", Access.DENIED, null, "No permission grants this operation.");
@@ -53,7 +70,8 @@ public final class ApiAccessPolicy {
         if (rule.access == Access.PUBLIC) return true;
         if (rule.access == Access.DENIED || !authenticated(authentication)) return false;
         if (rule.access == Access.AUTHENTICATED) return true;
-        return rule.permissions().stream().allMatch(permission -> hasPermission(authentication, permission));
+        return rule.permissionAlternatives().stream().anyMatch(permissions ->
+                permissions.stream().allMatch(permission -> hasPermission(authentication, permission)));
     }
 
     /** Used by capability projections as well as the HTTP request boundary. */
@@ -95,7 +113,7 @@ public final class ApiAccessPolicy {
         add(rules, "POST", ADMIN_CONFIGURATION, "/api/workspace/external/fetch");
         for (String path : List.of("/api/workspace/external/push", "/api/workspace/external/full-sync")) {
             rules.add(new Rule("POST", path, Access.PERMISSION, ARCHITECTURE_PUBLISH, RESOURCE_CHECKS,
-                    PathPatternParser.defaultInstance.parse(path), List.of(ADMIN_CONFIGURATION)));
+                    PathPatternParser.defaultInstance.parse(path), List.of(ADMIN_CONFIGURATION), List.of(), List.of()));
         }
         add(rules, "PUT", ADMIN_CONFIGURATION, "/api/workspace/external/configure");
         add(rules, "POST", ARCHITECTURE_PUBLISH, "/api/workspace/sync-from-shared", "/api/workspace/publish", "/api/workspace/resolve-diverged");
@@ -108,6 +126,18 @@ public final class ApiAccessPolicy {
 
         add(rules, "GET", INTEGRATION_EXPORT, "/api/integrations/**", "/oslc/**");
         add(rules, "POST", INTEGRATION_EXPORT, "/api/integrations/*/export-previews", "/api/integrations/*/files");
+        add(rules, "POST", ARCHITECTURE_PUBLISH, "/api/integrations/*/publish");
+        String retry = "/api/integrations/*/operations/*/retry";
+        rules.add(new Rule("POST", retry, Access.PERMISSION, INTEGRATION_IMPORT,
+                RESOURCE_CHECKS + " Retry permission is selected from the persisted operation direction: "
+                        + "INBOUND requires integration:import, OUTBOUND requires integration:export, "
+                        + "PUSH or SYNCHRONIZE requires architecture:publish. Request parameters cannot change "
+                        + "the retained operation kind; publication retains its exact-branch checks.",
+                PathPatternParser.defaultInstance.parse(retry), List.of(),
+                List.of(INTEGRATION_EXPORT, ARCHITECTURE_PUBLISH), List.of(
+                        new ConditionalPermission("persistedOperation.direction=INBOUND", INTEGRATION_IMPORT),
+                        new ConditionalPermission("persistedOperation.direction=OUTBOUND", INTEGRATION_EXPORT),
+                        new ConditionalPermission("persistedOperation.direction=PUSH or SYNCHRONIZE", ARCHITECTURE_PUBLISH))));
         add(rules, "POST", INTEGRATION_IMPORT, "/api/integrations", "/api/integrations/**");
         rules.add(rule("OPTIONS", "/oslc/**", Access.AUTHENTICATED, null, RESOURCE_CHECKS));
         rules.add(rule(null, "/api/integrations/**", Access.DENIED, null, "Unclassified integration operation is denied."));
@@ -116,15 +146,55 @@ public final class ApiAccessPolicy {
         add(rules, "POST", ARCHITECTURE_READ, "/api/dsl/parse", "/api/dsl/validate", "/api/dsl/format", "/api/graph/**", "/api/scores/**");
         add(rules, "POST", INTEGRATION_EXPORT, "/api/diagram/**", "/api/export/**", "/api/report/**", "/api/decision-report/**");
         add(rules, "GET", INTEGRATION_EXPORT, "/api/export/**", "/api/report/**", "/api/decision-report/**", "/api/diagram/**");
+        // Capability metadata and saved-snapshot options precede the dynamic report format route.
+        add(rules, "GET", ARCHITECTURE_READ, "/api/projects/*/snapshots/*/decision-report/formats");
+        add(rules, "GET", ANALYSIS_READ, "/api/projects/*/snapshots/*/decision-report/options");
+        // Downloads must precede both saved-analysis reads and the generic architecture read fallback.
+        add(rules, "GET", INTEGRATION_EXPORT, "/api/architecture/editor.svg", "/api/architecture/editor.pdf",
+                "/api/dsl/export", "/api/projects/git/export", "/api/projects/*/reports/*",
+                "/api/projects/*/snapshots/*/architecture-report/docx",
+                "/api/projects/*/snapshots/*/decision-report/*", "/api/projects/*/architecture-workbench/*.svg",
+                "/api/projects/*/architecture-workbench/*.pdf", "/api/projects/*/architecture-workbench/*.archimate.xml",
+                "/api/projects/*/architecture-workbench/*.archimate.zip", "/api/projects/*/architecture-workbench/*.vsdx",
+                "/api/projects/*/architecture-workbench/*.visio.zip",
+                "/api/projects/*/requirements/*/reformulations/*/revisions/*/export",
+                "/api/projects/*/requirements/*/reformulations/*/adoptions/*/export");
         add(rules, "POST", ANALYSIS_READ, "/api/architecture/focus/suggestions");
         // These GET handlers start new LLM work; HTTP method alone does not make them read-only.
         add(rules, "GET", ANALYSIS_RUN, "/api/analyze-stream", "/api/analyze-node");
         add(rules, "POST", ANALYSIS_RUN, "/api/analyze", "/api/justify-leaf", "/api/recommend", "/api/gap/**", "/api/patterns/**", "/api/explain/**",
                 "/api/analysis-runs/*/cancel", "/api/analysis-continuations/*/cancel", "/api/architecture/lifecycle/intake-review",
-                "/api/import/preview/**", "/api/projects/*/analyses", "/api/projects/*/requirements/*/analyses", "/api/projects/*/analysis-jobs/*/retry-failed");
+                "/api/import/preview/**", "/api/projects/*/analyses", "/api/projects/*/requirements/*/analyses",
+                "/api/projects/*/analysis-jobs/*/retry-failed", "/api/projects/*/analysis-jobs/*/items/*/continue",
+                "/api/projects/*/copilot-operations/*/cancel");
+        for (String path : List.of("/api/projects/*/requirements/*/copilot", "/api/projects/*/autopilot/run",
+                "/api/projects/*/copilot-operations/*/resume")) {
+            rules.add(new Rule("POST", path, Access.PERMISSION, ARCHITECTURE_WRITE, RESOURCE_CHECKS,
+                    PathPatternParser.defaultInstance.parse(path), List.of(ANALYSIS_RUN), List.of(), List.of()));
+        }
         add(rules, "GET", ANALYSIS_READ, "/api/analysis-drafts/**", "/api/analysis-runs/**", "/api/analysis-continuations/**", "/api/analysis-progress/**");
+        add(rules, "GET", ANALYSIS_READ, "/api/projects/*/analysis-jobs/**", "/api/projects/*/requirements/*/snapshots",
+                "/api/projects/*/snapshots/**", "/api/projects/*/architecture-workbench/*",
+                "/api/projects/*/requirements/*/copilot/latest", "/api/projects/*/copilot-operations/*");
         for (String method : List.of("POST", "PUT", "DELETE")) add(rules, method, ANALYSIS_RUN, "/api/analysis-drafts/**");
+        // An unadopted reformulation is an analysis draft; adoption remains a business edit below.
+        String proposals = "/api/projects/*/requirements/*/reformulations";
+        add(rules, "GET", ANALYSIS_READ, proposals, proposals + "/*", proposals + "/*/revisions/*",
+                proposals + "/*/synthesis-runs", proposals + "/*/synthesis-runs/**");
+        add(rules, "POST", ANALYSIS_RUN, proposals, proposals + "/*/revisions", proposals + "/*/answers",
+                proposals + "/*/statements/*", proposals + "/*/variants", proposals + "/*/synthesis-runs",
+                proposals + "/*/synthesis-runs/*/cancel");
         add(rules, "POST", INTEGRATION_IMPORT, "/api/import/**");
+
+        for (String path : List.of("/api/projects/*/requirements/import", "/api/projects/*/requirements/import-review")) {
+            rules.add(new Rule("POST", path, Access.PERMISSION, ARCHITECTURE_WRITE,
+                    path.endsWith("/import") ? OPTIONAL_AUTOMATION : RESOURCE_CHECKS,
+                    PathPatternParser.defaultInstance.parse(path), List.of(), List.of(),
+                    List.of(new ConditionalPermission("analyzeAfterImport=true", ANALYSIS_RUN))));
+        }
+        for (String path : List.of("/api/projects/*/requirements", "/api/projects/*/requirements/*/versions")) {
+            rules.add(rule("POST", path, Access.PERMISSION, ARCHITECTURE_WRITE, OPTIONAL_AUTOMATION));
+        }
 
         for (String path : List.of("/api/relations/**", "/api/proposals/**", "/api/architecture/relations/**",
                 "/api/architecture/proposals/**", "/api/dsl/**", "/api/git/**", "/api/provenance/**", "/api/projects/**",
@@ -149,6 +219,7 @@ public final class ApiAccessPolicy {
     }
 
     private static Rule rule(String method, String path, Access access, ApiPermission permission, String resource) {
-        return new Rule(method, path, access, permission, resource, PathPatternParser.defaultInstance.parse(path), List.of());
+        return new Rule(method, path, access, permission, resource, PathPatternParser.defaultInstance.parse(path),
+                List.of(), List.of(), List.of());
     }
 }

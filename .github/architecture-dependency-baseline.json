@@ -949,6 +949,20 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.security.access",
+      "toContext": "interop",
+      "toPackage": "com.taxonomy.interop",
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.security.access",
+      "toContext": "portfolio",
+      "toPackage": "com.taxonomy.portfolio.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.security.access",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.editor",
       "classDependencyCount": 1

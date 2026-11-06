@@ -160,6 +160,10 @@ Antwort bei einer späteren Modellabfrage. Die gespeicherten Arbeitsabläufe erl
 [Projektportfolio](PROJECT_REQUIREMENT_PORTFOLIO.md) und
 [Architektureditor](ARCHITECTURE_EDITOR.md).
 
+### Gespeicherte Projekt-Copilot-Arbeit fortsetzen
+
+Das Öffnen einer Anforderung, Aktualisieren des Status und Wiederherstellen der Seite liest nur den gespeicherten Vorgang. Für unterbrochene Verarbeitung wählen Sie im Projekt-Copilot **Verarbeitung fortsetzen**. Dabei gelten die gespeicherten Einstellungen dieses Vorgangs auch nach einer Änderung der Vorgaben; ausstehende Ergebnisverarbeitung kann abgeschlossen werden. Erforderlich sind sowohl die Berechtigung zum Bearbeiten von Fachdaten als auch zur Analyseausführung. Abgebrochene Vorgänge lassen sich nicht fortsetzen. Bei ungewisser Antwort aktualisieren Sie vor einer erneuten Entscheidung den gespeicherten Status; der Browser wiederholt den POST nicht automatisch.
+
 <a id="analysis-scope-and-progress"></a>
 ## Umfang auswählen und Fortschritt verstehen
 

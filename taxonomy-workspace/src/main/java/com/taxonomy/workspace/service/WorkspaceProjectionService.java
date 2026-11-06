@@ -123,7 +123,9 @@ public class WorkspaceProjectionService {
 
         // Also update in-memory state
         UserWorkspaceState ws = workspaceManager.getOrCreateWorkspace(username);
-        ws.recordProjection(commitId, branch);
+        if (ws != null) {
+            ws.recordProjection(commitId, branch);
+        }
     }
 
     /**
@@ -150,7 +152,9 @@ public class WorkspaceProjectionService {
 
         // Also update in-memory state
         UserWorkspaceState ws = workspaceManager.getOrCreateWorkspace(username);
-        ws.recordIndexBuild(commitId);
+        if (ws != null) {
+            ws.recordIndexBuild(commitId);
+        }
     }
 
     /**
@@ -181,13 +185,13 @@ public class WorkspaceProjectionService {
      */
     public boolean isProjectionStale(String username, String branch, WorkspaceContext ctx) {
         UserWorkspaceState ws = workspaceManager.getOrCreateWorkspace(username);
-        String projCommit = ws.getLastProjectionCommit();
+        String projCommit = ws == null ? null : ws.getLastProjectionCommit();
 
         // Also check persistent record for a more recent commit
         WorkspaceProjection projection = null;
         try {
-            projection = getOrCreateProjection(username);
-            String persistedCommit = projection.getProjectionCommitId();
+            projection = projectionRepository.findByUsername(username).orElse(null);
+            String persistedCommit = projection == null ? null : projection.getProjectionCommitId();
             if (persistedCommit != null) {
                 projCommit = persistedCommit;
             }
@@ -208,7 +212,8 @@ public class WorkspaceProjectionService {
             }
             boolean stale = !headCommit.equals(projCommit);
             // Persist the computed stale flag back to the entity
-            if (projection != null && projection.isStale() != stale) {
+            if (projection != null && projection.isStale() != stale
+                    && workspaceManager.mayProvisionDefaultWorkspace(username)) {
                 projection.setStale(stale);
                 projection.setUpdatedAt(Instant.now());
                 projectionRepository.save(projection);
@@ -234,20 +239,20 @@ public class WorkspaceProjectionService {
         info.put("username", username);
 
         UserWorkspaceState ws = workspaceManager.getOrCreateWorkspace(username);
-        info.put("lastProjectionCommit", ws.getLastProjectionCommit());
-        info.put("lastProjectionBranch", ws.getLastProjectionBranch());
-        info.put("lastProjectionTimestamp", ws.getLastProjectionTimestamp());
-        info.put("lastIndexCommit", ws.getLastIndexCommit());
-        info.put("lastIndexTimestamp", ws.getLastIndexTimestamp());
+        info.put("lastProjectionCommit", ws == null ? null : ws.getLastProjectionCommit());
+        info.put("lastProjectionBranch", ws == null ? null : ws.getLastProjectionBranch());
+        info.put("lastProjectionTimestamp", ws == null ? null : ws.getLastProjectionTimestamp());
+        info.put("lastIndexCommit", ws == null ? null : ws.getLastIndexCommit());
+        info.put("lastIndexTimestamp", ws == null ? null : ws.getLastIndexTimestamp());
 
         try {
-            WorkspaceProjection projection = getOrCreateProjection(username);
-            info.put("persistedProjectionCommit", projection.getProjectionCommitId());
-            info.put("persistedProjectionBranch", projection.getProjectionBranch());
-            info.put("persistedProjectionTimestamp", projection.getProjectionTimestamp());
-            info.put("persistedIndexCommit", projection.getIndexCommitId());
-            info.put("persistedIndexTimestamp", projection.getIndexTimestamp());
-            info.put("stale", projection.isStale());
+            WorkspaceProjection projection = projectionRepository.findByUsername(username).orElse(null);
+            info.put("persistedProjectionCommit", projection == null ? null : projection.getProjectionCommitId());
+            info.put("persistedProjectionBranch", projection == null ? null : projection.getProjectionBranch());
+            info.put("persistedProjectionTimestamp", projection == null ? null : projection.getProjectionTimestamp());
+            info.put("persistedIndexCommit", projection == null ? null : projection.getIndexCommitId());
+            info.put("persistedIndexTimestamp", projection == null ? null : projection.getIndexTimestamp());
+            info.put("stale", projection != null && projection.isStale());
         } catch (Exception e) {
             log.warn("Could not read persistent projection for user '{}': {}",
                     username, e.getMessage());

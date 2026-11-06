@@ -106,7 +106,10 @@ public class WorkspaceManager {
         this.repositoryFactory = null;
     }
 
-    /** Return or create the user's default workspace state. */
+    /**
+     * Return or create the user's default workspace state.
+     * Returns {@code null} when automatic creation is denied and no READY copy exists.
+     */
     public UserWorkspaceState getOrCreateWorkspace(String username) {
         if (username == null || username.isBlank()) {
             username = DEFAULT_USER;
@@ -119,6 +122,18 @@ public class WorkspaceManager {
             if (existing != null) {
                 return existing;
             }
+        }
+
+        if (!mayProvisionDefaultWorkspace(user)) {
+            UserWorkspace workspace = findUserWorkspace(user);
+            if (workspace == null || !user.equals(workspace.getUsername())
+                    || workspace.isArchived() || workspace.isShared()
+                    || workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY) {
+                return null;
+            }
+            // An existing working copy may gain navigation state without writing
+            // metadata or allocating a repository through an implicit read.
+            return getOrCreateWorkspace(user, workspace.getWorkspaceId());
         }
 
         ensurePersistentWorkspace(user);

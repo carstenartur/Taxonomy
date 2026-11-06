@@ -7,11 +7,13 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.ImportRequirementsResult;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
 import com.taxonomy.portfolio.service.CopilotAutomationService;
+import com.taxonomy.portfolio.service.AnalysisExecutionPermission;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.MethodParameter;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.server.ServerHttpRequest;
@@ -40,6 +42,12 @@ public class AutopilotRequirementResponseAdvice implements ResponseBodyAdvice<Ob
 
     private final CopilotAutomationService automationService;
     private final WorkspaceResolver workspaceResolver;
+    private AnalysisExecutionPermission analysisExecutionPermission = actor -> true;
+
+    @Autowired(required = false)
+    void analysisExecutionPermission(AnalysisExecutionPermission permission) {
+        this.analysisExecutionPermission = permission;
+    }
 
     public AutopilotRequirementResponseAdvice(
             CopilotAutomationService automationService,
@@ -77,6 +85,7 @@ public class AutopilotRequirementResponseAdvice implements ResponseBodyAdvice<Ob
             AnalysisLanguage analysisLanguage = AnalysisLanguage.fromValue(
                     request.getHeaders().getFirst(ANALYSIS_LANGUAGE_HEADER));
             String username = workspaceResolver.resolveCurrentUsername();
+            if (!analysisExecutionPermission.mayExecute(username)) return body;
             WorkspaceContext context = workspaceResolver.resolveCurrentContext();
             DispatchSummary dispatch = new DispatchSummary();
 

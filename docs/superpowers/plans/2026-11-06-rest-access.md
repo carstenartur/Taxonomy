@@ -77,10 +77,12 @@
 - [x] Complete final affected suites and available local core test batches; record commands and environmental blockers.
 - [x] Obtain one independent whole-branch code review and fix material findings with regression tests.
 - [x] Commit the tested change.
-- [ ] Publish the feature branch, open the pull request and check GitHub CI.
+- [x] Publish the feature branch, open the pull request and check GitHub CI.
 
 ### Validation outcome
 
 The final HTTP/JWT/Swagger/search regression selection passed 123 tests. The unchanged product demo passed four tests in an isolated JVM. The additional quota and architecture-boundary regression selection passed 41 tests, and the application-owned test placement check passed after registering the real full-application provisioning fixture. Core batches also exercised existing feature and build-policy tests; every failure found in those batches was corrected and its affected test rerun successfully.
+
+PR #1405 adds review regressions for nested analysis/export routes, retained integration retry permissions, conditional import/model execution, pure Copilot observation with explicit resumption, and read-side absence across workspace diagnostics. The fresh access/publication selection passed 290 behavioral tests; the 34 architecture checks passed after reviewing exactly two new composition-to-domain permission-port edges. Copilot execution/recovery passed 132 tests, the JavaScript JUnit bridge passed 88 cases, and optional-feature composition passed 12 tests. The first published CI completed all functional shards successfully and found missing Swagger OAuth configuration branch coverage; a regression now exercises proxy URLs and an initially empty OpenAPI document. The new publication fixture is registered with its domain-integration shard. The updated PR must complete CI before integration.
 
 Local Maven execution used a startup Mockito agent because this sandbox disallows runtime self-attachment, and omitted the unchanged native GPG-agent interoperability method because the agent IPC is unavailable. Dedicated browser, container, external-database, scenario and live-IdP deployment suites remain separate from the local core selection. The published feature branch must also pass GitHub CI.

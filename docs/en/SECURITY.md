@@ -60,7 +60,7 @@ Read an automatically generated credential file only from the trusted host accou
 
 Roles are independent assignments. An administrator who edits architecture needs an explicit `ROLE_ARCHITECT`; an administrator who runs analyses needs `ROLE_USER` or `ROLE_ARCHITECT`. Existing multi-role accounts keep their assignments. The local bootstrap administrator explicitly receives `ROLE_USER`, `ROLE_ARCHITECT` and `ROLE_ADMIN`; that account's capabilities do not imply an ADMIN role hierarchy. Local startup seeds `ROLE_READER` idempotently, and the local user-management form offers all four roles.
 
-For each permission-protected REST operation, Spring Security requires an allowed application role in **every required permission group**. A Bearer JWT additionally requires **every listed OAuth scope**: allowed role within each group AND all explicit scopes. A role-only token has no unscoped fallback; a scope never supplies a missing role. Local HTTP Basic and browser sessions use roles with their existing CSRF rules. Own-authentication/password endpoints and preflight follow the specific authenticated/public rules in the shared catalogue.
+For each permission-protected REST operation, Spring Security requires an allowed application role in **every required permission group**. A Bearer JWT additionally requires **every listed OAuth scope**: allowed role within each group AND all explicit scopes. A role-only token has no unscoped fallback; a scope never supplies a missing role. Local HTTP Basic and browser sessions use roles with their existing CSRF rules. If capability alternatives are listed, one complete alternative must match; every role group and scope within that alternative is required. Conditional requirements apply when their stated condition holds. Own-authentication/password endpoints and preflight follow the specific authenticated/public rules in the shared catalogue.
 
 | OAuth scope | Allowed application roles |
 |---|---|
@@ -91,6 +91,14 @@ Workspace lifecycle routes use explicit permissions, with existing ownership and
 | Administrative eviction of in-memory workspace state | `ADMIN_CONFIGURATION` (`admin:configuration`; ADMIN) |
 
 Unclassified workspace writes are denied.
+
+Retained project analysis jobs, snapshots, Copilot status and unadopted reformulation drafts use `analysis:read`. Continuing a job or managing an analysis draft uses `analysis:run`. Copilot/Autopilot start and explicit Copilot resumption can also enrich business data, so they require both `architecture:write` and `analysis:run`. Status GETs only observe saved work; they neither resume model calls nor promote results.
+
+An import with `analyzeAfterImport=true` needs `analysis:run` in addition to its business-write permission, checked before any import is persisted. With the flag false, a write-scoped token can import without model-execution permission. Configured automatic analysis after requirement saves is skipped when execution permission is absent.
+
+Artifact downloads, including editor SVG/PDF, portfolio DSL, saved reports and reformulation exports, require `integration:export`; format/capability metadata remains a separate read. Business integration publication requires `architecture:publish`. Retrying an integration uses the saved operation direction: INBOUND requires `integration:import`, OUTBOUND requires `integration:export`, and PUSH/SYNCHRONIZE requires `architecture:publish`. A different allowed retry scope cannot authorize another operation kind. Swagger shows these alternatives and conditional requirements explicitly.
+
+Fresh readers and read-scoped tokens can inspect Git, context and projection diagnostics without creating workspace metadata, navigation state or projection records. Reads requiring an isolated working copy return 403 when no ready copy exists; explicit system provisioning remains available through its existing path.
 
 `ApiPermission` and the ordered `ApiAccessPolicy` are the common source for server authorization and OpenAPI. The policy distinguishes reads (including read-only POST), analysis execution, changes/deletion/publication, import/export and administration. Unclassified writes are denied, including for administrators. Existing project/repository visibility, membership, lifecycle and personal-workspace ownership checks still apply. Neither a global role nor a scope grants access to someone else's private resources. Hiding a UI control is not an authorization boundary.
 

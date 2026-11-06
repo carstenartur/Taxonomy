@@ -10,8 +10,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -71,7 +73,17 @@ public class ContextNavigationService {
      * @return the current context, never null
      */
     public ContextRef getCurrentContext(String username) {
-        return resolveState(username).getCurrentContext();
+        UserWorkspaceState state = workspaceManager.getOrCreateWorkspace(username);
+        if (state != null) {
+            return state.getCurrentContext();
+        }
+        String branch = stateService.resolveWorkspaceBranch(username);
+        String actor = username == null ? WorkspaceManager.DEFAULT_USER : username;
+        String contextId = UUID.nameUUIDFromBytes(
+                ("central-read:" + actor.length() + ":" + actor + branch)
+                        .getBytes(StandardCharsets.UTF_8)).toString();
+        return new ContextRef(contextId, branch, null, Instant.now(), ContextMode.READ_ONLY,
+                null, null, null, null, null, false);
     }
 
     /**
@@ -267,7 +279,8 @@ public class ContextNavigationService {
      * @return list of navigation entries (newest last)
      */
     public List<ContextHistoryEntry> getHistory(String username) {
-        return resolveState(username).getHistory();
+        UserWorkspaceState state = workspaceManager.getOrCreateWorkspace(username);
+        return state == null ? List.of() : state.getHistory();
     }
 
     /**
@@ -326,7 +339,9 @@ public class ContextNavigationService {
      * @return true if edits should be blocked
      */
     public boolean isReadOnly(String username) {
-        ContextRef ctx = resolveState(username).getCurrentContext();
+        UserWorkspaceState state = workspaceManager.getOrCreateWorkspace(username);
+        if (state == null) return true;
+        ContextRef ctx = state.getCurrentContext();
         return ctx.mode() == ContextMode.READ_ONLY
             || ctx.mode() == ContextMode.TEMPORARY;
     }
@@ -334,7 +349,11 @@ public class ContextNavigationService {
     // ── Internal helpers ────────────────────────────────────────────
 
     private UserWorkspaceState resolveState(String username) {
-        return workspaceManager.getOrCreateWorkspace(username);
+        UserWorkspaceState state = workspaceManager.getOrCreateWorkspace(username);
+        if (state == null) {
+            throw new AccessDeniedException("An existing workspace or provisioning permission is required");
+        }
+        return state;
     }
 
     private String resolveCommit(String branch, String commitId, WorkspaceContext ctx) {

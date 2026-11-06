@@ -153,6 +153,10 @@ completeness or guarantee that a later model call will reproduce the same answer
 See [Project portfolio](PROJECT_REQUIREMENT_PORTFOLIO.md) and the
 [architecture editor](ARCHITECTURE_EDITOR.md) for the corresponding saved workflows.
 
+### Resume stored project Copilot work
+
+Opening a requirement, refreshing its status or restoring the page only reads the saved operation. To resume interrupted processing, choose **Resume processing** in the project Copilot panel. It uses that operation's recorded settings, even if defaults have since changed, and can finish pending result processing. Business editing and analysis execution permissions are both required. Cancelled operations cannot be resumed. If the response is uncertain, refresh the saved status before deciding whether to retry; the browser does not automatically repeat the POST.
+
 <a id="analysis-scope-and-progress"></a>
 ## Select scope and interpret progress
 

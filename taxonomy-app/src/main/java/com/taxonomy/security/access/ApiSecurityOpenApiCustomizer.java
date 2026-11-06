@@ -11,7 +11,10 @@ import org.springdoc.core.customizers.OpenApiCustomizer;
 import org.springframework.core.Ordered;
 import org.springframework.core.env.Environment;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /** Renders the enforced REST policy as visible Swagger descriptions and OpenAPI requirements. */
 public final class ApiSecurityOpenApiCustomizer implements OpenApiCustomizer, Ordered {
@@ -51,8 +54,9 @@ public final class ApiSecurityOpenApiCustomizer implements OpenApiCustomizer, Or
                     | Administrator (`ROLE_ADMIN`) | Manage technical configuration, accounts and access. Business editing requires an explicit ARCHITECT role. |
 
                     Any listed role can satisfy a single role group. When multiple role groups are listed, every group
-                    is required. Bearer JWT calls additionally require
-                    every listed OAuth scope. A scope never grants a role or access to another repository/workspace.
+                    is required. Capability alternatives are joined by OR; each alternative requires its own role
+                    groups and, for bearer JWT calls, every scope in that alternative. Conditional requirements also
+                    apply when their stated condition is met. A scope never grants a role or access to another repository/workspace.
                     Organizational groups are assigned roles at the identity provider. Repository group grants and stored
                     memberships remain additional resource restrictions. Local Basic and browser sessions use roles;
                     browser writes retain CSRF protection. Unclassified write operations are denied by default.
@@ -68,14 +72,24 @@ public final class ApiSecurityOpenApiCustomizer implements OpenApiCustomizer, Or
 
     private void describe(Operation operation, ApiAccessPolicy.Rule rule) {
         boolean permissionRequired = rule.access() == ApiAccessPolicy.Access.PERMISSION;
-        List<String> scopes = rule.permissions().stream().map(ApiPermission::scope).distinct().toList();
-        List<List<String>> roleGroups = rule.permissions().stream().map(ApiPermission::roles).toList();
-        List<String> roles = roleGroups.stream().flatMap(List::stream).distinct().toList();
+        var alternatives = rule.permissionAlternatives();
+        var scopeAlternatives = alternatives.stream()
+                .map(permissions -> permissions.stream().map(ApiPermission::scope).distinct().toList()).toList();
+        var roleAlternatives = alternatives.stream()
+                .map(permissions -> permissions.stream().map(ApiPermission::roles).toList()).toList();
+        var commonPermissions = alternatives.isEmpty() ? List.<ApiPermission>of() : alternatives.getFirst().stream()
+                .filter(permission -> alternatives.stream().allMatch(permissions -> permissions.contains(permission))).toList();
+        List<String> scopes = commonPermissions.stream().map(ApiPermission::scope).distinct().toList();
+        List<List<String>> roleGroups = commonPermissions.stream().map(ApiPermission::roles).toList();
+        List<String> roles = roleAlternatives.stream().flatMap(List::stream).flatMap(List::stream).distinct().toList();
         if (rule.access() == ApiAccessPolicy.Access.PUBLIC) {
             operation.setSecurity(List.of());
         } else if (keycloak) {
-            operation.setSecurity(List.of(new SecurityRequirement().addList("keycloak", scopes),
-                    new SecurityRequirement().addList("sessionCookie")));
+            var security = new ArrayList<SecurityRequirement>();
+            if (scopeAlternatives.isEmpty()) security.add(new SecurityRequirement().addList("keycloak"));
+            else scopeAlternatives.forEach(alternative -> security.add(new SecurityRequirement().addList("keycloak", alternative)));
+            security.add(new SecurityRequirement().addList("sessionCookie"));
+            operation.setSecurity(security);
         } else {
             // Separate requirement objects are alternatives (Basic OR browser session).
             operation.setSecurity(List.of(new SecurityRequirement().addList("basicAuth"),
@@ -84,6 +98,20 @@ public final class ApiSecurityOpenApiCustomizer implements OpenApiCustomizer, Or
         operation.addExtension("x-required-roles", roles);
         operation.addExtension("x-required-role-groups", roleGroups);
         operation.addExtension("x-required-scopes", scopes);
+        operation.addExtension("x-required-role-alternatives", roleAlternatives);
+        operation.addExtension("x-required-permission-alternatives", scopeAlternatives);
+        if (!rule.conditionalPermissions().isEmpty()) {
+            var conditionalScopes = new LinkedHashMap<String, List<String>>();
+            var conditionalRoles = new LinkedHashMap<String, List<List<String>>>();
+            for (var conditional : rule.conditionalPermissions()) {
+                conditionalScopes.computeIfAbsent(conditional.condition(), ignored -> new ArrayList<>())
+                        .add(conditional.permission().scope());
+                conditionalRoles.computeIfAbsent(conditional.condition(), ignored -> new ArrayList<>())
+                        .add(conditional.permission().roles());
+            }
+            operation.addExtension("x-conditional-required-scopes", conditionalScopes);
+            operation.addExtension("x-conditional-required-role-groups", conditionalRoles);
+        }
         operation.addExtension("x-access-policy", rule.access().name());
         if (operation.getResponses() == null) operation.setResponses(new ApiResponses());
         if (rule.access() != ApiAccessPolicy.Access.PUBLIC) {
@@ -93,9 +121,15 @@ public final class ApiSecurityOpenApiCustomizer implements OpenApiCustomizer, Or
         }
         String current = operation.getDescription() == null ? "" : operation.getDescription();
         if (current.contains(ACCESS_HEADER)) return;
-        String effect = permissionRequired ? rule.permission().effect().name() : rule.access().name();
-        String roleText = permissionRequired ? roleGroups.stream().map(group -> String.join(" OR ", group))
-                .collect(java.util.stream.Collectors.joining(" AND ")) : switch (rule.access()) {
+        boolean alternativeAccess = alternatives.size() > 1;
+        String effect = permissionRequired ? alternatives.stream()
+                .map(permissions -> permissions.stream().map(permission -> permission.effect().name()).distinct()
+                        .collect(Collectors.joining(" AND "))).distinct().collect(Collectors.joining(" OR "))
+                : rule.access().name();
+        String roleText = permissionRequired ? alternativeAccess ? alternatives.stream()
+                .map(permissions -> "(" + roleGroups(permissions.stream().map(ApiPermission::roles).toList())
+                        + " with " + scopes(permissions.stream().map(ApiPermission::scope).toList()) + ")")
+                .collect(Collectors.joining(" OR ")) : roleGroups(roleGroups) : switch (rule.access()) {
             case PUBLIC -> "Public";
             case AUTHENTICATED -> "Authenticated account";
             case DENIED -> "None — Denied by default";
@@ -104,11 +138,15 @@ public final class ApiSecurityOpenApiCustomizer implements OpenApiCustomizer, Or
         operation.setDescription(current + ACCESS_HEADER
                 + "| Requirement | Value |\n| --- | --- |\n"
                 + "| Effect | " + effect + " |\n"
-                + "| " + (roleGroups.size() > 1 ? "Required application role groups" : "Any application role") + " | " + roleText + " |\n"
-                + "| Permission / bearer OAuth scope | " + (scopes.isEmpty() ? "None" : scopes.stream()
-                        .map(scope -> "`" + scope + "`").collect(java.util.stream.Collectors.joining(" AND "))) + " |\n"
+                + "| " + (alternativeAccess ? "Capability alternatives (role groups and scopes)"
+                        : roleGroups.size() > 1 ? "Required application role groups" : "Any application role") + " | " + roleText + " |\n"
+                + "| Permission / bearer OAuth scope | " + (scopeAlternatives.isEmpty() ? "None" : scopeAlternatives.stream()
+                        .map(ApiSecurityOpenApiCustomizer::scopes).collect(Collectors.joining(" OR "))) + " |\n"
+                + rule.conditionalPermissions().stream().map(conditional -> "| Conditional permission | `"
+                        + conditional.condition() + "` requires `" + conditional.permission().scope() + "` ("
+                        + String.join(" OR ", conditional.permission().roles()) + ") |\n").collect(Collectors.joining())
                 + "| Resource restriction | " + rule.resourceRequirement() + " |\n"
-                + (keycloak ? "\nBearer access requires the role groups and every listed scope. An existing OIDC browser session uses roles; session writes additionally require the CSRF token."
+                + (keycloak ? "\nBearer access requires one listed capability alternative, including its role groups and every scope. An existing OIDC browser session uses roles; session writes additionally require the CSRF token."
                 : "\nLocal Basic and browser sessions use roles; session writes also require the CSRF token."));
         if (operation.getTags() == null || operation.getTags().isEmpty()) {
             operation.addTagsItem(permissionRequired ? switch (rule.permission().effect()) {
@@ -118,5 +156,16 @@ public final class ApiSecurityOpenApiCustomizer implements OpenApiCustomizer, Or
                 default -> "Architecture";
             } : "Account and access");
         }
+    }
+
+    private static String scopes(List<String> scopes) {
+        return scopes.stream().map(scope -> "`" + scope + "`").collect(Collectors.joining(" AND "));
+    }
+
+    private static String roleGroups(List<List<String>> groups) {
+        return groups.stream().map(group -> {
+            String roles = String.join(" OR ", group);
+            return groups.size() > 1 && group.size() > 1 ? "(" + roles + ")" : roles;
+        }).collect(Collectors.joining(" AND "));
     }
 }

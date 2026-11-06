@@ -3,19 +3,25 @@ package com.taxonomy.workspace.controller;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.repository.WorkspaceProjectionRepository;
 import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceManager;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -38,6 +44,9 @@ class WorkspaceReadOnlyProvisioningTest {
     @Autowired private WorkspaceManager manager;
     @Autowired private WorkspaceContextResolver contexts;
     @Autowired private SystemRepositoryService repositories;
+    @Autowired private WorkspaceProjectionRepository projections;
+    @Autowired private JdbcTemplate jdbc;
+    @Autowired private DslGitRepositoryFactory git;
 
     @AfterEach
     void evictNavigation() {
@@ -70,16 +79,91 @@ class WorkspaceReadOnlyProvisioningTest {
         assertCentralWithoutMetadata("architect-read-only-copy");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/workspace/projection", "/api/git/state", "/api/git/projection",
+            "/api/git/branches", "/api/git/stale", "/api/context/current", "/api/context/history"})
+    @WithMockUser(username = "reader-without-copy", roles = "READER")
+    void readerStateReadsDoNotAllocateWorkingCopy(String path) throws Exception {
+        var repositoriesBefore = workspaceRepositoryNames();
+        mvc.perform(get(path)).andExpect(status().isOk());
+        assertUnallocated("reader-without-copy", repositoriesBefore);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/workspace/projection", "/api/git/state", "/api/git/projection",
+            "/api/git/branches", "/api/git/stale", "/api/context/current", "/api/context/history"})
+    void readOnlyArchitectBearerStateReadsDoNotAllocateWorkingCopy(String path) throws Exception {
+        var repositoriesBefore = workspaceRepositoryNames();
+        mvc.perform(get(path).with(jwt()
+                        .jwt(token -> token.subject("architect-read-only-copy"))
+                        .authorities(AuthorityUtils.createAuthorityList("ROLE_ARCHITECT", "SCOPE_architecture:read"))))
+                .andExpect(status().isOk());
+        assertUnallocated("architect-read-only-copy", repositoriesBefore);
+    }
+
+    @Test
+    @WithMockUser(username = "reader-without-copy", roles = "READER")
+    void commonImplicitCreationBoundaryDoesNotAllocateForReader() {
+        var repositoriesBefore = workspaceRepositoryNames();
+        try {
+            manager.getOrCreateWorkspace("reader-without-copy");
+        } catch (AccessDeniedException denied) {
+            // Denying an implicit allocation is valid; read callers must still support absence.
+        }
+        assertUnallocated("reader-without-copy", repositoriesBefore);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/dsl/current", "/api/dsl/history", "/api/dsl/git/head"})
+    @WithMockUser(username = "reader-without-copy", roles = "READER")
+    void workspaceRequiredReaderReadsRejectBeforeAllocation(String path) throws Exception {
+        var repositoriesBefore = workspaceRepositoryNames();
+        mvc.perform(get(path)).andExpect(status().isForbidden());
+        assertUnallocated("reader-without-copy", repositoriesBefore);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/dsl/current", "/api/dsl/history", "/api/dsl/git/head"})
+    void workspaceRequiredReadOnlyArchitectReadsRejectBeforeAllocation(String path) throws Exception {
+        var repositoriesBefore = workspaceRepositoryNames();
+        mvc.perform(get(path).with(jwt()
+                        .jwt(token -> token.subject("architect-read-only-copy"))
+                        .authorities(AuthorityUtils.createAuthorityList("ROLE_ARCHITECT", "SCOPE_architecture:read"))))
+                .andExpect(status().isForbidden());
+        assertUnallocated("architect-read-only-copy", repositoriesBefore);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/projects/987654321/copilot-operations/missing-operation",
+            "/api/projects/987654321/requirements/987654321/copilot/latest"})
+    @WithMockUser(username = "reader-without-copy", roles = "READER")
+    void observationalCopilotReadsKeepMissingResourceChecksWithoutAllocation(String path) throws Exception {
+        var repositoriesBefore = workspaceRepositoryNames();
+        mvc.perform(get(path)).andExpect(status().isNotFound());
+        assertUnallocated("reader-without-copy", repositoriesBefore);
+    }
+
     @Test
     @WithMockUser(username = "reader-existing-copy", roles = "READER")
     void readerCanReadExistingReadyWorkspace() throws Exception {
         var workspace = workspace("reader-existing-copy", WorkspaceProvisioningStatus.READY);
+        Instant lastAccess = workspace.getLastAccessedAt();
+        String checkpoint = git.openWorkspaceRepository(workspace.getWorkspaceId()).commitDsl(
+                "draft", "meta { language: \"taxdsl\"; }", "system", "Existing ready reader copy");
+        var repositoriesBefore = workspaceRepositoryNames();
         mvc.perform(get("/api/workspace/current"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workspaceId").value(workspace.getWorkspaceId()))
                 .andExpect(jsonPath("$.provisioningStatus").value("READY"));
         assertThat(contexts.resolveRepositoryContextForUser("reader-existing-copy").workspaceId())
                 .isEqualTo(workspace.getWorkspaceId());
+        mvc.perform(get("/api/workspace/projection")).andExpect(status().isOk());
+        mvc.perform(get("/api/git/state")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.headCommit").value(checkpoint));
+        assertThat(rows.findByUsername("reader-existing-copy"))
+                .extracting(UserWorkspace::getWorkspaceId).containsExactly(workspace.getWorkspaceId());
+        assertThat(workspaceRepositoryNames()).isEqualTo(repositoriesBefore);
+        assertThat(workspace.getLastAccessedAt()).isEqualTo(lastAccess);
     }
 
     @Test
@@ -115,10 +199,22 @@ class WorkspaceReadOnlyProvisioningTest {
 
     private void assertCentralWithoutMetadata(String username) {
         assertThat(rows.findByUsernameAndSharedFalse(username)).isEmpty();
+        assertThat(manager.getWorkspace(username)).isNull();
         var context = contexts.resolveRepositoryContextForUser(username);
         assertThat(context.scope()).isEqualTo(RepositoryScope.CENTRAL_READ);
         assertThat(context.workspaceId()).isNull();
         assertThat(context.repositoryId()).isEqualTo(repositories.getPrimaryRepository().getRepositoryId());
+    }
+
+    private List<String> workspaceRepositoryNames() {
+        return jdbc.queryForList("select repository_name from git_repository_lifecycle "
+                + "where repository_name like 'ws-%' order by repository_name", String.class);
+    }
+
+    private void assertUnallocated(String username, List<String> repositoriesBefore) {
+        assertCentralWithoutMetadata(username);
+        assertThat(projections.findByUsername(username)).isEmpty();
+        assertThat(workspaceRepositoryNames()).isEqualTo(repositoriesBefore);
     }
 
     private UserWorkspace workspace(String username, WorkspaceProvisioningStatus status) {
@@ -128,6 +224,7 @@ class WorkspaceReadOnlyProvisioningTest {
         workspace.setDisplayName(username + " workspace");
         workspace.setDefault(true);
         workspace.setCreatedAt(Instant.now());
+        workspace.setLastAccessedAt(Instant.parse("2026-11-01T12:00:00Z"));
         workspace.setSourceRepositoryId(repositories.getPrimaryRepository().getRepositoryId());
         workspace.setProvisioningStatus(status);
         return rows.saveAndFlush(workspace);

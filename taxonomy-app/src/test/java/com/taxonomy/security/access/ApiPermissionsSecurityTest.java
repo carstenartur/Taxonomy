@@ -4,6 +4,8 @@ import com.taxonomy.security.config.AuthorizationRulesConfigurer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.mock.web.MockServletContext;
@@ -144,6 +146,138 @@ class ApiPermissionsSecurityTest {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/projects/p/analysis-jobs/j/items/i/continue",
+            "/api/projects/p/copilot-operations/o/cancel",
+            "/api/projects/p/requirements/r/reformulations",
+            "/api/projects/p/requirements/r/reformulations/f/synthesis-runs",
+            "/api/projects/p/requirements/r/reformulations/f/synthesis-runs/u/cancel",
+            "/api/projects/p/requirements/r/reformulations/f/revisions",
+            "/api/projects/p/requirements/r/reformulations/f/answers",
+            "/api/projects/p/requirements/r/reformulations/f/statements/t",
+            "/api/projects/p/requirements/r/reformulations/f/variants"
+    })
+    void personalAnalysisWorkRequiresExecutionWithoutRequiringBusinessEditing(String path) throws Exception {
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"),
+                new SimpleGrantedAuthority("SCOPE_analysis:run")))).andExpect(status().isOk());
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ARCHITECT"),
+                new SimpleGrantedAuthority("SCOPE_architecture:write")))).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(csrf()).with(user("reader").roles("READER")))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(path).with(csrf()).with(user("operator").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/projects/p/requirements/r/copilot",
+            "/api/projects/p/copilot-operations/o/resume",
+            "/api/projects/p/autopilot/run"
+    })
+    void automaticBusinessEnrichmentRequiresEditingAndModelExecution(String path) throws Exception {
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ARCHITECT"),
+                new SimpleGrantedAuthority("SCOPE_architecture:write")))).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"),
+                new SimpleGrantedAuthority("SCOPE_analysis:run")))).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ARCHITECT"),
+                new SimpleGrantedAuthority("SCOPE_architecture:write"),
+                new SimpleGrantedAuthority("SCOPE_analysis:run")))).andExpect(status().isOk());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/architecture/editor.svg", "/api/architecture/editor.pdf", "/api/dsl/export",
+            "/api/projects/git/export",
+            "/api/projects/p/reports/docx",
+            "/api/projects/p/snapshots/s/architecture-report/docx",
+            "/api/projects/p/snapshots/s/decision-report/docx",
+            "/api/projects/p/architecture-workbench/s.svg", "/api/projects/p/architecture-workbench/s.pdf",
+            "/api/projects/p/architecture-workbench/s.archimate.xml",
+            "/api/projects/p/architecture-workbench/s.archimate.zip",
+            "/api/projects/p/architecture-workbench/s.vsdx",
+            "/api/projects/p/architecture-workbench/s.visio.zip",
+            "/api/projects/p/requirements/r/reformulations/f/revisions/1/export",
+            "/api/projects/p/requirements/r/reformulations/f/adoptions/c/export"
+    })
+    void downloadedArtifactsRequireExportScopeInsteadOfGenericOrAnalysisReading(String path) throws Exception {
+        mvc.perform(get(path).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_READER"),
+                new SimpleGrantedAuthority("SCOPE_architecture:read")))).andExpect(status().isForbidden());
+        mvc.perform(get(path).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_READER"),
+                new SimpleGrantedAuthority("SCOPE_analysis:read")))).andExpect(status().isForbidden());
+        mvc.perform(get(path).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_READER"),
+                new SimpleGrantedAuthority("SCOPE_integration:export")))).andExpect(status().isOk());
+        mvc.perform(head(path).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_READER"),
+                new SimpleGrantedAuthority("SCOPE_architecture:read")))).andExpect(status().isForbidden());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/projects/p/analysis-jobs", "/api/projects/p/analysis-jobs/j",
+            "/api/projects/p/analysis-jobs/j/items/i/continuation",
+            "/api/projects/p/requirements/r/snapshots", "/api/projects/p/snapshots/s",
+            "/api/projects/p/snapshots/diff", "/api/projects/p/architecture-workbench/s",
+            "/api/projects/p/snapshots/s/decision-report/options",
+            "/api/projects/p/requirements/r/copilot/latest", "/api/projects/p/copilot-operations/o",
+            "/api/projects/p/requirements/r/reformulations",
+            "/api/projects/p/requirements/r/reformulations/f",
+            "/api/projects/p/requirements/r/reformulations/f/revisions/1",
+            "/api/projects/p/requirements/r/reformulations/f/synthesis-runs",
+            "/api/projects/p/requirements/r/reformulations/f/synthesis-runs/u/progress",
+            "/api/projects/p/requirements/r/reformulations/f/synthesis-runs/u/usage"
+    })
+    void retainedProjectAnalysisRequiresAnalysisReadScope(String path) throws Exception {
+        mvc.perform(get(path).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_READER"),
+                new SimpleGrantedAuthority("SCOPE_analysis:read")))).andExpect(status().isOk());
+        mvc.perform(get(path).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_READER"),
+                new SimpleGrantedAuthority("SCOPE_architecture:read")))).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void reportFormatMetadataRemainsAnArchitectureCapabilityRead() throws Exception {
+        mvc.perform(get("/api/projects/p/snapshots/s/decision-report/formats").with(jwt().authorities(
+                new SimpleGrantedAuthority("ROLE_READER"), new SimpleGrantedAuthority("SCOPE_architecture:read"))))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/projects/p/snapshots/s/decision-report/formats").with(jwt().authorities(
+                new SimpleGrantedAuthority("ROLE_READER"), new SimpleGrantedAuthority("SCOPE_integration:export"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adoptingAReformulationRemainsABusinessEdit() throws Exception {
+        String path = "/api/projects/p/requirements/r/reformulations/f/adoptions";
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"),
+                new SimpleGrantedAuthority("SCOPE_analysis:run")))).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ARCHITECT"),
+                new SimpleGrantedAuthority("SCOPE_architecture:write")))).andExpect(status().isOk());
+    }
+
+    @Test
+    void businessPublicationRequiresThePublicationScopeAndBusinessRole() throws Exception {
+        String path = "/api/integrations/c/publish";
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ARCHITECT"),
+                new SimpleGrantedAuthority("SCOPE_architecture:publish")))).andExpect(status().isOk());
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ARCHITECT"),
+                new SimpleGrantedAuthority("SCOPE_integration:import")))).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(csrf()).with(user("operator").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void integrationRetryAdmitsEachPossibleCapabilityForThePersistedDirectionCheck() throws Exception {
+        String path = "/api/integrations/c/operations/o/retry";
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_READER"),
+                new SimpleGrantedAuthority("SCOPE_integration:export")))).andExpect(status().isOk());
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ARCHITECT"),
+                new SimpleGrantedAuthority("SCOPE_architecture:publish")))).andExpect(status().isOk());
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ARCHITECT"),
+                new SimpleGrantedAuthority("SCOPE_integration:import")))).andExpect(status().isOk());
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_READER"),
+                new SimpleGrantedAuthority("SCOPE_integration:import")))).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"),
+                new SimpleGrantedAuthority("SCOPE_admin:configuration")))).andExpect(status().isForbidden());
+    }
+
     @Test
     void externalPublicationRequiresBothTechnicalAdministrationAndBusinessPublication() throws Exception {
         for (String path : java.util.List.of("/api/workspace/external/push", "/api/workspace/external/full-sync")) {
@@ -191,7 +325,10 @@ class ApiPermissionsSecurityTest {
         @RequestMapping({"/api/projects/p", "/api/analyze", "/api/analysis-drafts", "/api/workspace/provision",
                 "/api/export/mermaid", "/api/dsl/validate", "/api/admin/users", "/api/unclassified-write", "/api/account/me",
                 "/api/analyze-stream", "/api/analyze-node", "/api/workspace/external/push", "/api/workspace/external/full-sync",
-                "/api/workspace/create", "/api/workspace/copy", "/api/workspace/compare", "/api/workspace/unclassified"})
+                "/api/workspace/create", "/api/workspace/copy", "/api/workspace/compare", "/api/workspace/unclassified",
+                "/api/projects/p/**", "/api/architecture/editor.svg", "/api/architecture/editor.pdf", "/api/dsl/export",
+                "/api/projects/git/export",
+                "/api/integrations/c/publish", "/api/integrations/c/operations/o/retry"})
         String ok() { return "ok"; }
     }
 }

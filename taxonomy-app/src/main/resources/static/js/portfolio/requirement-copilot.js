@@ -16,6 +16,9 @@
     let activeOperation = null;
     let pollingGeneration = 0;
     let manualCopilotReady = false;
+    let architectureMutationAllowed = false;
+    let analysisExecutionAllowed = false;
+    let resuming = false;
     let lastAnnouncement = null;
     let lastServerContact = null;
     let consecutivePollFailures = 0;
@@ -23,7 +26,9 @@
 
     const copy = {
         en: {
-            title: 'Copilot full analysis', run: 'Run full analysis', cancel: 'Cancel',
+            title: 'Copilot full analysis', run: 'Run full analysis', cancel: 'Cancel', resume: 'Resume processing',
+            resumeHint: 'Resume interrupted processing with this operation’s saved settings.',
+            permission: 'Business editing and analysis execution permissions are required.',
             profile: 'Profile', standard: 'Standard', full: 'Full', exhaustive: 'Exhaustive',
             force: 'Force a new run even when the current state was already analysed',
             autopilotReady: 'Autopilot active: new requirement versions are analysed automatically.',
@@ -47,7 +52,9 @@
             exportSuccess: 'Export created', exportFailed: 'Export failed', exportCancelled: 'Export cancelled', bytes: 'bytes'
         },
         de: {
-            title: 'Copilot-Vollanalyse', run: 'Vollanalyse starten', cancel: 'Abbrechen',
+            title: 'Copilot-Vollanalyse', run: 'Vollanalyse starten', cancel: 'Abbrechen', resume: 'Verarbeitung fortsetzen',
+            resumeHint: 'Unterbrochene Verarbeitung mit den gespeicherten Einstellungen dieses Vorgangs fortsetzen.',
+            permission: 'Berechtigungen für fachliche Bearbeitung und Analyseausführung sind erforderlich.',
             profile: 'Profil', standard: 'Standard', full: 'Vollständig', exhaustive: 'Umfassend',
             force: 'Neuen Lauf erzwingen, auch wenn dieser Stand bereits analysiert wurde',
             autopilotReady: 'Autopilot aktiv: Neue Anforderungsversionen werden automatisch analysiert.',
@@ -84,16 +91,21 @@
         ensureSurface();
         translate();
         installControlInventory();
+        setControls(false);
         document.getElementById('copilotRun')?.addEventListener('click', start);
         document.getElementById('copilotCancel')?.addEventListener('click', cancel);
+        document.getElementById('copilotResume')?.addEventListener('click', resume);
         document.getElementById('copilotRetryStatus')?.addEventListener('click', retryStatusConnection);
         document.addEventListener('click', interceptDecisionReportExport, true);
 
         try {
-            const [status, latest] = await Promise.all([
+            const [status, latest, account] = await Promise.all([
                 api().status(),
-                api().latest(projectId, requirementId)
+                api().latest(projectId, requirementId),
+                Promise.resolve(window.TaxonomyPortfolioApi?.getAccount?.()).catch(() => null)
             ]);
+            architectureMutationAllowed = account?.architectureMutationAllowed === true;
+            analysisExecutionAllowed = account?.analysisExecutionAllowed === true;
             renderPolicy(status);
             if (latest) {
                 lastServerContact = new Date();
@@ -145,6 +157,7 @@
                             <span id="copilotRunLabel">Run full analysis</span>
                         </button>
                         <button id="copilotCancel" type="button" class="btn btn-outline-danger" disabled>Cancel</button>
+                        <button id="copilotResume" type="button" class="btn btn-outline-primary d-none" disabled>Resume processing</button>
                     </div>
                 </div>
                 <p id="copilotReviewBoundary" class="small text-body-secondary mt-3 mb-0"></p>
@@ -186,6 +199,8 @@
         setText('copilotHeading', t('title'));
         setText('copilotRunLabel', t('run'));
         setText('copilotCancel', t('cancel'));
+        setText('copilotResume', t('resume'));
+        document.getElementById('copilotResume')?.setAttribute('title', t('resumeHint'));
         setText('copilotProfileLabel', t('profile'));
         setText('copilotProfileStandard', t('standard'));
         setText('copilotProfileFull', t('full'));
@@ -201,6 +216,7 @@
         markControl('copilotForce', 'force-new-run', 'toggle');
         markControl('copilotRun', 'run-full-analysis', 'operation');
         markControl('copilotCancel', 'cancel-full-analysis', 'cancel');
+        markControl('copilotResume', 'resume-full-analysis', 'operation');
         markControl('copilotRetryStatus', 'retry-status-connection', 'operation');
         markControl('copilotOpenResult', 'open-selected-result', 'navigation');
     }
@@ -213,6 +229,7 @@
     }
 
     async function start() {
+        if (!manualCopilotReady) return;
         stopPolling();
         setControls(true);
         clearError();
@@ -238,7 +255,7 @@
     }
 
     async function cancel() {
-        if (!activeOperationId) return;
+        if (!activeOperationId || !analysisExecutionAllowed || resuming) return;
         clearError();
         renderLocalState('CANCELLING', t('cancelling'));
         setControls(true);
@@ -256,6 +273,39 @@
         } catch (error) {
             showError(error);
             if (activeOperation && !terminal.has(activeOperation.status)) startPolling(activeOperationId);
+        }
+    }
+
+    async function resume() {
+        if (!activeOperationId || !architectureMutationAllowed || !analysisExecutionAllowed
+                || activeOperation?.status === 'CANCELLED' || resuming) return;
+        stopPolling();
+        resuming = true;
+        setControls(true);
+        clearError();
+        hideReconnect();
+        try {
+            const operation = await api().resume(projectId, activeOperationId);
+            lastServerContact = new Date();
+            renderOperation(operation);
+            if (terminal.has(operation.status)) handleTerminal(operation);
+            else startPolling(operation.operationId);
+        } catch (error) {
+            showError(error);
+            // An uncertain response can already have resumed work. Only observe it.
+            try {
+                const current = await api().get(projectId, activeOperationId);
+                lastServerContact = new Date();
+                renderOperation(current);
+                if (terminal.has(current.status)) handleTerminal(current);
+                else startPolling(current.operationId);
+            } catch (statusError) {
+                renderReconnect(statusError, ++consecutivePollFailures);
+                startPolling(activeOperationId);
+            }
+        } finally {
+            resuming = false;
+            setControls(Boolean(activeOperation && !terminal.has(activeOperation.status)));
         }
     }
 
@@ -326,9 +376,10 @@
             + escapeHtml(status.autopilotReady ? t('autopilotReady') : t('autopilotOff'))
             + '</span><div class="small text-body-secondary mt-1">'
             + escapeHtml(status.reason || '') + '</div>';
-        manualCopilotReady = Boolean(status.manualCopilotReady);
+        manualCopilotReady = Boolean(status.manualCopilotReady
+            && architectureMutationAllowed && analysisExecutionAllowed);
         const button = document.getElementById('copilotRun');
-        if (button) button.title = manualCopilotReady ? '' : (status.reason || '');
+        if (button) button.title = manualCopilotReady ? '' : (status.reason || t('permission'));
         setControls(Boolean(activeOperation && !terminal.has(activeOperation.status)));
     }
 
@@ -380,8 +431,6 @@
         renderResultAction(operation);
         renderContinuationActions(operation);
 
-        const cancelButton = document.getElementById('copilotCancel');
-        if (cancelButton) cancelButton.disabled = terminal.has(operation.status);
         setControls(!terminal.has(operation.status));
         announce(message + ' ' + operation.completedPasses
             + '/' + operation.verificationPasses);
@@ -443,7 +492,7 @@
             button.type = 'button';
             button.className = 'btn btn-sm btn-outline-primary';
             button.textContent = t('continueAnalysis') + ' · ' + t('continuePass') + ' ' + candidate.pass;
-            button.disabled = decision?.available !== true;
+            button.disabled = !analysisExecutionAllowed || decision?.available !== true;
             button.dataset.sessionControl = 'continue-analysis-pass';
             button.dataset.sessionTestOutcome = 'operation';
             button.dataset.jobId = candidate.job.id;
@@ -461,7 +510,7 @@
     }
 
     async function continueAnalysis(candidate, decision) {
-        if (!decision?.available || activeOperation?.status !== 'PARTIAL') return;
+        if (!analysisExecutionAllowed || !decision?.available || activeOperation?.status !== 'PARTIAL') return;
         ++continuationGeneration;
         document.getElementById('copilotContinuationActions')?.querySelectorAll('button')
             .forEach(button => { button.disabled = true; });
@@ -574,13 +623,25 @@
         const spinner = document.getElementById('copilotRunSpinner');
         const profile = document.getElementById('copilotProfile');
         const force = document.getElementById('copilotForce');
+        const cancelButton = document.getElementById('copilotCancel');
+        const resumeButton = document.getElementById('copilotResume');
+        const busy = running || resuming;
         if (run) {
-            run.disabled = running || !manualCopilotReady;
-            run.setAttribute('aria-busy', running ? 'true' : 'false');
+            run.disabled = running || !manualCopilotReady || resuming;
+            run.setAttribute('aria-busy', busy ? 'true' : 'false');
         }
-        if (profile) profile.disabled = running;
-        if (force) force.disabled = running;
-        spinner?.classList.toggle('d-none', !running);
+        if (profile) profile.disabled = busy || !manualCopilotReady;
+        if (force) force.disabled = busy || !manualCopilotReady;
+        if (cancelButton) cancelButton.disabled = !analysisExecutionAllowed || !activeOperation
+            || terminal.has(activeOperation.status) || resuming;
+        if (resumeButton) {
+            const available = architectureMutationAllowed && analysisExecutionAllowed
+                && activeOperation && activeOperation.status !== 'CANCELLED';
+            resumeButton.classList.toggle('d-none', !available);
+            resumeButton.disabled = !available || resuming;
+            resumeButton.setAttribute('aria-busy', resuming ? 'true' : 'false');
+        }
+        spinner?.classList.toggle('d-none', !busy);
     }
 
     function showError(error) {

@@ -40,12 +40,14 @@ import java.util.regex.Pattern;
 @Component
 public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor {
 
-    // Keep this an explicit list: some GET endpoints (notably Copilot status)
-    // can schedule work or promote snapshots, and therefore require isolation.
+    // Keep this list explicit: GET handlers outside these observational routes
+    // may schedule work or promote snapshots and therefore require isolation.
     private static final List<Pattern> CENTRAL_READ_PATHS = List.of(
             "/api/(?:projects|solutions|products)(?:/[0-9]+)?/?",
             "/api/projects/[0-9]+/requirements(?:/[0-9]+(?:/(?:versions|snapshots))?)?/?",
             "/api/projects/[0-9]+/(?:analysis-jobs(?:/[^/]+)?|snapshots/[^/]+|portfolio|conflicts|reports/[^/]+)/?",
+            "/api/projects/[0-9]+/copilot-operations/[^/]+/?",
+            "/api/projects/[0-9]+/requirements/[0-9]+/copilot/latest/?",
             "/api/projects/[0-9]+/solutions(?:/[0-9]+/products)?/?",
             "/api/projects/[0-9]+/architecture-workbench/[^/]+/?",
             "/api/search/graph")
@@ -71,13 +73,14 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
                              HttpServletResponse response,
                              Object handler) {
         String username = workspaceResolver.resolveCurrentUsername();
+        boolean mayProvision = provisionPermission.mayProvision(username);
+        boolean explicitCentral = "".equals(WorkspaceContextResolver.requestedWorkspaceId(request));
         // 1.3 portfolios and the legacy graph source belong to the central repository.
         // An explicit central selection may read them without creating workspace
         // state or turning historical data into a personal workspace.
         // Git operations and every mutation retain the isolation contract below.
         if (isSupportedCentralRead(request)) {
-            boolean explicitCentral = "".equals(WorkspaceContextResolver.requestedWorkspaceId(request));
-            if (explicitCentral || !provisionPermission.mayProvision(username)) {
+            if (explicitCentral || !mayProvision) {
                 RepositoryContext repository = workspaceResolver.resolveCurrentRepositoryContext();
                 WorkspaceContext workspace = workspaceResolver.resolveCurrentContext();
                 // A reader's existing working copy remains selected. Only an actual
@@ -95,6 +98,20 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
                     }
                     return true;
                 }
+            }
+        }
+        if (explicitCentral) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Select an isolated workspace before starting this operation");
+        }
+        if (!mayProvision) {
+            RepositoryContext repository = workspaceResolver.resolveCurrentRepositoryContext();
+            WorkspaceContext workspace = workspaceResolver.resolveCurrentContext();
+            if (repository != null && workspace != null
+                    && (repository.workspaceId() == null || workspace.workspaceId() == null
+                    || workspace.workspaceId().isBlank())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "An existing isolated workspace is required for this operation");
             }
         }
         repositoryStateService.ensureWorkspaceState(username);
