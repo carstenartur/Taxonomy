@@ -83,6 +83,44 @@ class FrontendPackagingLifecycleTest {
         assertEquals(List.of("cmd.exe","/d","/c","mvnw.cmd"),wrapperCommand(fixture,"Windows 11"));
         assertEquals(List.of(fixture.resolve("mvnw").toString()),wrapperCommand(fixture,"Linux"));
     }
+    @Test void screenshotsProfileRunsCaptureSettingsOnlyInTheOwningModule() throws Exception {
+        prepare(true);
+        var actual=XmlSupport.parse(JavascriptJUnitBridge.root().resolve("pom.xml")).getDocumentElement();
+        var document=XmlSupport.parse(fixture.resolve("pom.xml"));
+        var project=document.getDocumentElement();
+        // Use the real Spring Boot parent: its managed Failsafe execution caused the parent activation bug.
+        project.insertBefore(document.importNode(XmlSupport.child(actual,"parent"),true),XmlSupport.child(project,"groupId"));
+        var profile=XmlSupport.children(XmlSupport.child(actual,"profiles"),"profile").stream()
+                .filter(value -> "screenshots".equals(XmlSupport.childText(value,"id"))).findFirst().orElseThrow();
+        XmlSupport.child(project,"profiles").appendChild(document.importNode(profile,true));
+        Files.writeString(fixture.resolve("pom.xml"),xml(project));
+        Path child=fixture.resolve("child/pom.xml");
+        Files.writeString(child,Files.readString(child).replace("</project>","""
+            <build><plugins><plugin><groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId></plugin></plugins></build></project>
+            """));
+        Files.writeString(fixture.resolve("child/src/test/java/ScreenshotGeneratorIT.java"),"""
+            import org.junit.jupiter.api.Test;
+            import java.nio.file.Path;
+            import java.time.Instant;
+            import static org.junit.jupiter.api.Assertions.*;
+            class ScreenshotGeneratorIT { @Test void captureSettingsReachTheForkedJvm() {
+                assertTrue(Boolean.getBoolean("generateScreenshots"));
+                Path output=Path.of(System.getProperty("taxonomy.docs.image.dir"));
+                assertTrue(output.isAbsolute());
+                assertEquals("generated-screenshots",output.getFileName().toString());
+                assertNotNull(Instant.parse(System.getProperty("taxonomy.docs.startedAt")));
+            } }
+            """);
+        // Failsafe is not loaded by the outer unit-test phase. Resolve its pinned runtime on a cold cache.
+        Result result=maven(List.of(),"verify","-Pscreenshots");
+        assertEquals(0,result.code,result.output);
+        assertFalse(Files.exists(fixture.resolve("target/failsafe-reports")),
+                "The parent POM must configure the owner without running its tests");
+        Element report=XmlSupport.parse(fixture.resolve("child/target/failsafe-reports/TEST-ScreenshotGeneratorIT.xml")).getDocumentElement();
+        assertEquals("1",report.getAttribute("tests"));
+        for(String outcome:List.of("failures","errors","skipped")) assertEquals("0",report.getAttribute(outcome));
+    }
     private void prepare(boolean npmInputs) throws Exception {
         Path root=JavascriptJUnitBridge.root();
         var project=XmlSupport.parse(root.resolve("pom.xml")).getDocumentElement();
@@ -141,8 +179,11 @@ class FrontendPackagingLifecycleTest {
         }
     }
     private Result maven(String phase,String... flags) throws Exception {
+        return maven(List.of("-o"),phase,flags);
+    }
+    private Result maven(List<String> options,String phase,String... flags) throws Exception {
         List<String> command=new ArrayList<>(wrapperCommand(fixture,System.getProperty("os.name")));
-        command.addAll(List.of("-B","-o",phase,"-Dmaven.build.cache.enabled=false"));command.addAll(List.of(flags));
+        command.addAll(List.of("-B",phase,"-Dmaven.build.cache.enabled=false"));command.addAll(options);command.addAll(List.of(flags));
         Path log=fixture.resolve("maven.log");var builder=new ProcessBuilder(command).directory(fixture.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
         builder.environment().put("JAVA_HOME",System.getProperty("java.home"));
         var process=builder.start();

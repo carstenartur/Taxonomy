@@ -2,12 +2,36 @@ name: Documentation Screenshots
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/documentation-screenshots.yml'
+      - '.github/scripts/decision-export-browser.mjs'
+      - '.github/scripts/install-playwright-github.sh'
+      - '.github/actions/document-rendering/**'
+      - '.github/scripts/apt-packages.sh'
+      - '.github/scripts/install-document-rendering.sh'
+      - '.github/package.json'
+      - '.github/package-lock.json'
+      - '.github/scripts/document-template-*.mjs'
+      - 'pom.xml'
+      - 'taxonomy-build/pom.xml'
+      - 'taxonomy-build/src/test/java/com/taxonomy/build/*Capture*'
+      - 'taxonomy-build/src/test/java/com/taxonomy/build/*Screenshot*'
+      - 'taxonomy-build/src/test/java/com/taxonomy/build/ScreenshotDocumentationIT.java'
+      - 'taxonomy-build/src/test/java/com/taxonomy/build/DocumentTemplateReportDownloadIT.java'
+      - 'taxonomy-app/src/test/java/com/taxonomy/ScreenshotGeneratorIT.java'
+      - 'taxonomy-app/src/test/java/com/taxonomy/ArchitectureWorkbenchUiIT.java'
+      - 'taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java'
+      - 'taxonomy-app/src/main/resources/templates/**'
+      - 'taxonomy-app/src/main/resources/static/**'
+      - 'docs/de/**'
+      - 'docs/en/**'
 
 permissions:
   contents: read
 
 concurrency:
-  group: taxonomy-documentation-screenshots-main
+  group: taxonomy-documentation-screenshots-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -22,9 +46,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Validate trusted invocation
+      - name: Validate invocation
         run: |
-          test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
+          case "${GITHUB_EVENT_NAME}" in workflow_dispatch|pull_request) ;; *) exit 1 ;; esac
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -63,33 +87,18 @@ jobs:
           # Every screenshot owner honors TAXONOMY_DOCS_IMAGE_DIR. Retained docs
           # remain available for link checks and application resource packaging.
           mkdir -p target/generated-screenshots
-          find target/generated-screenshots -maxdepth 1 -type f -name '*.png' -delete
+          find target/generated-screenshots -maxdepth 1 -type f \( -name '*.png' -o -name '*.json' \) -delete
 
       - name: Generate deterministic documentation screenshots
         env:
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/multilingual-minilm
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
-        run: ./mvnw -B install -Pscreenshots -Dfailsafe.rerunFailingTestsCount=1
-
-      - name: Install pinned Node and Chromium
-        run: |
-          ./mvnw -B -pl taxonomy-build pre-integration-test \
-            -Dtaxonomy.ui.skip=false \
-            -Dtaxonomy.quality.skip=true \
-            -Dtaxonomy.playwright.install.arguments="run install:playwright:github -- --chromium-only"
-
-      - name: Generate document-template browser and report screenshots
-        env:
-          TAXONOMY_RENDER_DOCX_PREVIEW: 'true'
-        run: |
-          ./mvnw -B -pl taxonomy-build \
-            -Pdocument-template-report-e2e \
-            verify
+        run: ./mvnw -B verify -Pscreenshots
 
       - name: Stage screenshot artifact
         run: |
           set -euo pipefail
-          test -n "$(find target/generated-screenshots -maxdepth 1 -name '*.png' -print -quit)"
+          test -s target/generated-screenshots/documentation-screenshots.json
 
       - name: Upload screenshot failure evidence
         if: failure()
@@ -98,7 +107,12 @@ jobs:
           name: documentation-screenshot-failures
           path: |
             target/screenshot-failures/
+            target/generated-screenshots/
             taxonomy-app/target/failsafe-reports/
+            taxonomy-app/target/architecture-workbench-native/
+            taxonomy-build/target/failsafe-reports/
+            target/junit-drivers/
+            target/ui-verification/document-template-report/
           if-no-files-found: warn
           retention-days: 7
 
@@ -106,14 +120,16 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: generated-documentation-screenshots
-          path: target/generated-screenshots/*.png
+          path: |
+            target/generated-screenshots/*.png
+            target/generated-screenshots/*.json
           if-no-files-found: error
           retention-days: 7
 
   publish:
     name: Publish screenshots to main
     needs: generate
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -128,6 +144,7 @@ jobs:
           test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
           test "${GITHUB_REF}" = "refs/heads/main"
           test "$(git branch --show-current)" = "main"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
 
       - name: Download verified screenshots
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -135,12 +152,13 @@ jobs:
           name: generated-documentation-screenshots
           path: docs/images
 
-      - name: Commit changed screenshots only
+      - name: Commit verified screenshots and provenance
         run: |
-          git pull --ff-only origin main
+          jq -e --arg sha "${GITHUB_SHA}" '.sourceCommit == $sha and .sourceDirty == false' \
+            docs/images/documentation-screenshots.json
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add docs/images/*.png
+          git add docs/images/*.png docs/images/documentation-screenshots.json docs/images/decision-export-screenshots.json
           if git diff --staged --quiet; then
             echo "No screenshot changes to publish."
             exit 0

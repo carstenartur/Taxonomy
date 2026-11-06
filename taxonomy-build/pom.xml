@@ -415,6 +415,15 @@
             </properties>
         </profile>
         <profile>
+            <id>screenshots</id>
+            <properties>
+                <documentTemplateE2E>true</documentTemplateE2E>
+                <documentTemplateRenderPreview>true</documentTemplateRenderPreview>
+                <!-- After the hosted-runtime default so this explicit lane wins on GitHub too. -->
+                <taxonomy.playwright.install.arguments>run install:playwright:github -- --chromium-only</taxonomy.playwright.install.arguments>
+            </properties>
+        </profile>
+        <profile>
             <id>supply-chain-policy</id>
             <build>
                 <plugins>

@@ -779,9 +779,7 @@ Die Hauptvisualisierung ist ein **stabiler, nach Architekturebenen geordneter Au
 - **Klicken** Sie auf eine Elementkarte oder Verbindung, um im Detailbereich Relevanz, Entfernung, Begründung und verbundene Elemente anzuzeigen. Von dort können Sie das Element im Graph Explorer öffnen.
 - Wechseln Sie zu **„🏗️ Layer View"** für die kompakte Swimlane-Darstellung nach Architekturebene.
 
-![Historische Darstellung der Architekturansicht](../images/20-architecture-view.png)
-
-*Historisches Beispiel (#20): Sein Generator verwendete einen nicht mehr unterstützten Schreibweg für Katalog-Testbeziehungen und ist zurückgezogen. Das Bild belegt nicht, wie angenommene Workspace-Vorschläge in der aktuellen Anwendung erscheinen. Einen aktuellen persistierten Stand zeigt die [Architektur-Workbench](COPILOT_AUTOPILOT.md#persistierte-architektur-workbench).*
+Einen persistierten Stand zeigt die [Architektur-Workbench](COPILOT_AUTOPILOT.md#persistierte-architektur-workbench).
 
 ---
 
@@ -858,10 +856,6 @@ Die Tabelle/der Graph zeigt:
 ![Graph Explorer Ausfallauswirkung](../images/22-graph-explorer-failure.png)
 
 Angenommene Vorschläge gehören zur Relationsprojektion des ausgewählten Workspaces. Der Graph Explorer fragt den primären Katalog ab; das Annehmen eines Workspace-Vorschlags fügt dieser Katalogabfrage nicht automatisch eine Kante hinzu. Prüfen Sie die Entscheidung in der Relationsansicht des ausgewählten Workspaces (siehe [Abschnitt 9](#9-working-with-relation-proposals)).
-
-![Historische Graph-Darstellung mit vorbereiteten Katalogbeziehungen](../images/37-graph-with-accepted-relation.png)
-
-*Historisches Beispiel (#37): Sein Generator verwendete einen nicht mehr unterstützten Schreibweg für Katalog-Testbeziehungen. Das Bild belegt nicht, dass der aktuelle Graph Explorer angenommene Workspace-Vorschläge anzeigt; siehe [Screenshot-Herkunft](../../.github/copilot-ref-screenshots.md).*
 
 ---
 
@@ -1158,7 +1152,7 @@ Eingabebeispiel und sichtbare Hilfe passen sich dem gewählten Modus an. **Full-
 
 Wenn Sie ein Ergebnis per Maus oder Tastatur aktivieren, wird sein Knoten auch im **Graph Explorer** ausgewählt; der aktuelle Abfragemodus und die Hop-Grenze bleiben erhalten. **Vorheriges** und **Nächstes** verwenden dieselbe verknüpfte Auswahl. Auswahl, Fokusmodus, Filter und Ausschnitt des Architekturdiagramms bleiben erhalten. Ihr aktueller Arbeitsbereich, die Architekturquelle und Editorentwürfe bleiben erhalten.
 
-Darstellungen der Suchmodi (die Graph-Aufnahme ist historisch):
+Darstellungen der Suchmodi:
 
 ![Volltextsuche-Ergebnisse](../images/29-search-fulltext.png)
 
@@ -1166,9 +1160,7 @@ Darstellungen der Suchmodi (die Graph-Aufnahme ist historisch):
 
 ![Hybridsuche-Ergebnisse](../images/31-search-hybrid.png)
 
-![Historische Darstellung der graph-semantischen Suche](../images/32-search-graph.png)
-
-*Historisches Beispiel (#32): Sein Generator stellte die erforderliche Relationsprojektion des ausgewählten Workspaces nicht sicher. Ein neuer Workspace kann **409 NOT_BUILT** liefern; dieses Bild ist kein aktueller Abnahmenachweis der graph-semantischen Suche. Knotenabfragen im Graph Explorer sind eine getrennte Operation.*
+Knotenabfragen im Graph Explorer und die graph-semantische Suche sind getrennte Operationen.
 
 Der Graph-Modus prüft bei jeder Anfrage das ausgewählte Repository, den Geltungsbereich und den exakten Branch-Head. Beziehungsähnlichkeit ist nur für den zentralen Standardbranch im Migrationsbetrieb verfügbar, solange der kanonische Beziehungsleser seinen Legacy-Fallback erlaubt. Eine nachweislich leere Branch-Projektion liefert globale Knotentreffer mit leeren Beziehungsstatistiken. Eine fehlende Workspace-Relationsprojektion kann **409 NOT_BUILT** liefern. Nichtleere Branch-Projektionen und andere nicht bereite Geltungsbereiche liefern HTTP 503 statt unvollständiger Graph-Ergebnisse. Der Status `graphReady` beschreibt die globalen Modell-/Indexvoraussetzungen; eine sichtbare Graph-Option garantiert daher keine Suche im ausgewählten Geltungsbereich. Semantische Branch-Indizierung bleibt Folgearbeit (#741).
 
@@ -1831,10 +1823,6 @@ Nicht-geschützte Varianten-Branches können mit der Schaltfläche **🗑 Delete
 
 Wenn Sie eine Variante im **READ-ONLY**-Modus anzeigen, erscheint eine Schaltfläche **📤 Copy Back** in der Kontextleiste. Dies ermöglicht es Ihnen, Elemente und Beziehungen selektiv aus der schreibgeschützten Variante in Ihren bearbeitbaren Arbeitsbereich zu übertragen — nützlich zum gezielten Übernehmen von Ideen aus experimentellen Branches.
 
-> Historisches Darstellungsbeispiel: Dieses Bild verwendet eingesetzten UI-Zustand und belegt keinen abgeschlossenen Anwendungsvorgang. Siehe [Screenshot-Herkunft](../../.github/copilot-ref-screenshots.md).
-
-![Historisches Beispiel — Schaltfläche Zurückkopieren](../images/49-copy-back-button.png)
-
 ### Merge-Vorschau
 
 Bevor eine Merge-Operation ausgeführt wird, wird ein **Merge-Vorschau-Modal** angezeigt. Dieses Modal zeigt:
@@ -1861,27 +1849,11 @@ Wenn ein Merge oder Cherry-Pick nicht automatisch abgeschlossen werden kann (bei
 - **Manuelle Bearbeitung**: Ein Textfeld, in dem Sie den endgültigen aufgelösten Inhalt erstellen
 - **Resolve & Commit**: Committet den aufgelösten Inhalt in den Ziel-Branch
 
-> Historisches Darstellungsbeispiel: Dieses Bild verwendet eingesetzten UI-Zustand und belegt keinen abgeschlossenen Anwendungsvorgang. Siehe [Screenshot-Herkunft](../../.github/copilot-ref-screenshots.md).
+Cherry-Pick-Konflikte verwenden dasselbe Modal mit einem Cherry-Pick-spezifischen Titel.
 
-![Historisches Beispiel — Merge-Konfliktlösungs-Modal](../images/52-merge-conflict-modal.png)
+Die Cherry-Pick-Vorschau zeigt die geplante Operation.
 
-Cherry-Pick-Konflikte verwenden dasselbe Modal mit einem Cherry-Pick-spezifischen Titel:
-
-> Historisches Darstellungsbeispiel: Dieses Bild verwendet eingesetzten UI-Zustand und belegt keinen abgeschlossenen Anwendungsvorgang. Siehe [Screenshot-Herkunft](../../.github/copilot-ref-screenshots.md).
-
-![Historisches Beispiel — Cherry-Pick-Konfliktlösung](../images/54-cherry-pick-conflict-modal.png)
-
-Die Cherry-Pick-Vorschau zeigt die geplante Operation:
-
-> Historisches Darstellungsbeispiel: Dieses Bild verwendet eingesetzten UI-Zustand und belegt keinen abgeschlossenen Anwendungsvorgang. Siehe [Screenshot-Herkunft](../../.github/copilot-ref-screenshots.md).
-
-![Historisches Beispiel — Cherry-Pick-Vorschau-Dialog](../images/62-cherry-pick-preview-modal.png)
-
-Nach der Auflösung bestätigt eine Erfolgs-Toast-Benachrichtigung die Operation:
-
-> Historisches Darstellungsbeispiel: Dieses Bild verwendet eingesetzten UI-Zustand und belegt keinen abgeschlossenen Anwendungsvorgang. Siehe [Screenshot-Herkunft](../../.github/copilot-ref-screenshots.md).
-
-![Historisches Beispiel — Erfolgreicher Cherry-Pick](../images/59-cherry-pick-success-toast.png)
+Nach der Auflösung bestätigt eine Erfolgs-Toast-Benachrichtigung die Operation.
 
 ### Synchronisation mit dem gemeinsamen Repository
 

@@ -197,10 +197,6 @@ Two diff modes are available:
 
 Click **🔍 Compare** in the context bar or history view. The comparison view shows three levels: summary, three-column grid, and DSL diff.
 
-![Compare dialog](../images/48-compare-modal-branches.png)
-
-![Diff view](../images/68-diff-view.png)
-
 <details>
 <summary>🔧 REST API equivalent (for automation)</summary>
 
@@ -231,9 +227,7 @@ In the **Version History**, select the desired commit and click the transfer act
 
 ![Timeline before cherry-pick](../images/73-cherry-pick-before.png)
 
-**2. Preview** — Click the transfer action on the desired commit. The preview modal shows what will change:
-
-![Cherry-pick preview](../images/62-cherry-pick-preview-modal.png)
+**2. Preview** — Click the transfer action on the desired commit. The preview modal shows what will change.
 
 **3. After** — Once confirmed, the cherry-picked commit appears as a new commit on the draft branch:
 
@@ -258,13 +252,7 @@ Combine two branches using three-way merge:
 
 In the **Variants Panel**, click **🔀 Integrate** on the desired variant. A preview modal shows the change summary.
 
-![Merge preview](../images/60-merge-preview-modal.png)
-
-![Fast-forward merge](../images/61-merge-preview-fast-forward.png)
-
-After a successful merge, a confirmation toast is displayed:
-
-![Merge success](../images/58-merge-success-toast.png)
+After a successful merge, a confirmation toast is displayed.
 
 <details>
 <summary>🔧 REST API equivalent (for automation)</summary>
@@ -284,10 +272,6 @@ The merge strategy is RECURSIVE (standard Git behaviour). Fast-forward merges ar
 Before executing a merge or cherry-pick, you can preview the operation to check for conflicts:
 
 During merge, the system automatically checks for conflicts. If conflicts are found, the conflict resolution dialog opens with a side-by-side view of the diverging content.
-
-![Conflict dialog](../images/52-merge-conflict-modal.png)
-
-![Conflict resolved](../images/53-merge-conflict-resolved.png)
 
 ### Merge Preview
 
@@ -414,8 +398,6 @@ relation CO-1011 USES CR-1047 {
 A reviewer accepts a proposed relation on the `review` branch. The change is cherry-picked to `draft`:
 
 The reviewer opens the **Version History** of the review branch, finds commit `a3f8c2d`, and transfers it to the `draft` branch using the transfer action.
-
-![Cherry-pick success](../images/59-cherry-pick-success-toast.png)
 
 The cherry-picked commit changes only the relation status:
 ```diff

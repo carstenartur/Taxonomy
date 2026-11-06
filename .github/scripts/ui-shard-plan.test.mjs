@@ -410,7 +410,15 @@ test('Chromium-only document preparation uses the pinned browser without apt or 
   assert.equal(result.commands, 'playwright install chromium\n');
   for (const name of ['document-template-report-e2e.yml', 'documentation-screenshots.yml']) {
     const workflow = await readFile(path.join(repoRoot, '.github/workflows', name), 'utf8');
-    assert.match(workflow, /-Dtaxonomy\.playwright\.install\.arguments="run install:playwright:github -- --chromium-only"/);
+    if (name === 'documentation-screenshots.yml') {
+      assert.match(workflow, /run: \.\/mvnw -B verify -Pscreenshots/);
+      const pom = await readFile(path.join(repoRoot, 'taxonomy-build/pom.xml'), 'utf8');
+      const profile = pom.match(/<id>screenshots<\/id>([\s\S]*?)<\/profile>/)?.[1];
+      assert.ok(profile, 'The screenshots profile owns its browser preparation');
+      assert.match(profile, /<taxonomy\.playwright\.install\.arguments>run install:playwright:github -- --chromium-only<\//);
+    } else {
+      assert.match(workflow, /-Dtaxonomy\.playwright\.install\.arguments="run install:playwright:github -- --chromium-only"/);
+    }
     assert.doesNotMatch(workflow, /install --with-deps/);
     if (workflow.includes('pull_request:')) {
       assert.ok(workflow.includes("'.github/scripts/install-playwright-github.sh'"));

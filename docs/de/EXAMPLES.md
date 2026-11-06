@@ -260,13 +260,9 @@ Jeder Vorschlag zeigt:
 
 ### Schritt 3 — Akzeptieren oder ablehnen
 
-Klicken Sie auf **Accept**, um die Beziehung zum Wissensgraphen hinzuzufügen, oder auf **Reject**, um sie zu verwerfen.
+Klicken Sie auf **Accept**, um die Beziehung im ausgewählten Workspace zu genehmigen, oder auf **Reject**, um sie zu verwerfen.
 
 ![Akzeptierter Vorschlag](../images/36-proposal-accepted.png)
-
-Nach dem Akzeptieren wird die Beziehung im Wissensgraphen sichtbar:
-
-![Graph mit akzeptierter Beziehung](../images/37-graph-with-accepted-relation.png)
 
 <details>
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
@@ -309,8 +305,6 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/pr
 2. Wechseln Sie zum Reiter **Empfehlungen** im Ergebnisbereich.
 3. Klicken Sie auf **💡 Empfehlungen generieren**.
 4. Die Ergebniskarten zeigen empfohlene zusätzliche Architekturelemente und Beziehungen.
-
-![Architekturansicht mit Empfehlungen](../images/20-architecture-view.png)
 
 Siehe auch [Benutzerhandbuch](USER_GUIDE.md) für Details zur Empfehlungs-Oberfläche.
 
@@ -445,8 +439,6 @@ negativen Befunde. Hypothetische Treffer könnten folgende sein:
 ### Schritt 2 — Architekturansicht überprüfen
 
 Die Architekturansicht gruppiert bewertete Knoten nach Schicht (Capability → Service → Process) und zeigt die Beziehungen zwischen ihnen.
-
-![Architekturansicht](../images/20-architecture-view.png)
 
 ### Schritt 3 — Auf Lücken prüfen
 

@@ -758,9 +758,7 @@ The main visualization is a **stable impact graph arranged by architecture layer
 - **Click** an element card or connection to view its relevance, distance, inclusion reason, and connected elements in the detail area. From there you can open the element in Graph Explorer.
 - Toggle to **"🏗️ Layer View"** for the compact swimlane representation grouped by architecture layer.
 
-![Historical in-page impact illustration](../images/20-architecture-view.png)
-
-*Historical illustration (#20): its generator depended on unsupported catalogue-relation seeding and is retired. It does not demonstrate how accepted workspace proposals appear in the current application. For a current persisted result, see the [architecture workbench](COPILOT_AUTOPILOT.md#persisted-architecture-workbench).*
+For a persisted result, see the [architecture workbench](COPILOT_AUTOPILOT.md#persisted-architecture-workbench).
 
 ---
 
@@ -836,10 +834,6 @@ The table/graph shows:
 ![Graph Explorer failure impact](../images/22-graph-explorer-failure.png)
 
 Accepted proposals belong to the selected workspace's relation projection. The Graph Explorer queries the primary catalogue; accepting a workspace proposal does not automatically add an edge to this catalogue query. Review the decision in the selected workspace's relation view (see [Section 9](#9-working-with-relation-proposals)).
-
-![Historical Graph illustration with seeded relations](../images/37-graph-with-accepted-relation.png)
-
-*Historical illustration (#37): its generator used unsupported catalogue-relation seeding. It is not evidence that the current Graph Explorer exposes accepted workspace proposals; see [screenshot provenance](../../.github/copilot-ref-screenshots.md).*
 
 ---
 
@@ -1132,7 +1126,7 @@ The input example and visible help change with the selected mode. **Full-text** 
 
 Activating a result by mouse or keyboard also selects its node in **Graph Explorer**, retaining the current query mode and hop limit. **Previous** and **Next** use the same linked selection. The architecture diagram retains its selection, focus mode, filters and viewport. Your current work area, architecture source and editor drafts are preserved.
 
-Search-mode illustrations (the Graph capture is historical):
+Search-mode illustrations:
 
 ![Full-text search results](../images/29-search-fulltext.png)
 
@@ -1140,9 +1134,7 @@ Search-mode illustrations (the Graph capture is historical):
 
 ![Hybrid search results](../images/31-search-hybrid.png)
 
-![Historical graph-semantic search illustration](../images/32-search-graph.png)
-
-*Historical illustration (#32): its generator did not establish the selected workspace's required relation projection. A fresh workspace can return **409 NOT_BUILT**; this image is not current acceptance evidence for graph-semantic search. Graph Explorer node queries are a separate operation.*
+Graph Explorer node queries are a separate operation from graph-semantic search.
 
 Graph mode checks the selected repository, scope and exact branch head on each request. Relation similarity is available only for the migration-compatible central default branch while the canonical relation reader permits its legacy fallback. A proven empty branch projection returns global node matches with empty relation statistics. A missing workspace relation projection can return **409 NOT_BUILT**. Nonempty branch projections and other unready selected scopes return HTTP 503; they do not return partial graph results. The `graphReady` status reports global model/index prerequisites, so a visible Graph option does not guarantee that the selected scope can be searched. Branch semantic indexing remains follow-up work (#741).
 
@@ -1810,10 +1802,6 @@ Non-protected variant branches can be deleted using the **🗑 Delete** button. 
 
 When viewing a variant in **READ-ONLY** mode, a **📤 Copy Back** button appears in the Context Bar. This allows you to selectively transfer elements and relations from the read-only variant back to your editable workspace — useful for cherry-picking ideas from experimental branches.
 
-> Historical presentation fixture: this image used injected UI state and does not demonstrate a completed application operation. See [screenshot provenance](../../.github/copilot-ref-screenshots.md).
-
-![Historical fixture — Copy Back Button](../images/49-copy-back-button.png)
-
 ### Merge Preview
 
 Before any merge operation is executed, a **Merge Preview Modal** is displayed. This modal shows:
@@ -1840,27 +1828,11 @@ When a merge or cherry-pick cannot be completed automatically (both sides modifi
 - **Manual editing**: A textarea where you compose the final resolved content
 - **Resolve & Commit**: Commits the resolved content to the target branch
 
-> Historical presentation fixture: this image used injected UI state and does not demonstrate a completed application operation. See [screenshot provenance](../../.github/copilot-ref-screenshots.md).
+Cherry-pick conflicts use the same modal with a cherry-pick-specific title.
 
-![Historical fixture — Merge conflict resolution modal](../images/52-merge-conflict-modal.png)
+The cherry-pick preview shows the operation that will be performed.
 
-Cherry-pick conflicts use the same modal with a cherry-pick-specific title:
-
-> Historical presentation fixture: this image used injected UI state and does not demonstrate a completed application operation. See [screenshot provenance](../../.github/copilot-ref-screenshots.md).
-
-![Historical fixture — Cherry-pick conflict resolution](../images/54-cherry-pick-conflict-modal.png)
-
-The cherry-pick preview shows the operation that will be performed:
-
-> Historical presentation fixture: this image used injected UI state and does not demonstrate a completed application operation. See [screenshot provenance](../../.github/copilot-ref-screenshots.md).
-
-![Historical fixture — Cherry-pick preview modal](../images/62-cherry-pick-preview-modal.png)
-
-After resolution, a success toast notification confirms the operation:
-
-> Historical presentation fixture: this image used injected UI state and does not demonstrate a completed application operation. See [screenshot provenance](../../.github/copilot-ref-screenshots.md).
-
-![Historical fixture — Cherry-pick success toast](../images/59-cherry-pick-success-toast.png)
+After resolution, a success toast notification confirms the operation.
 
 ### Sync with Shared Repository
 

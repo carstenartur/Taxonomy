@@ -254,13 +254,9 @@ Each proposal shows:
 
 ### Step 3 — Accept or reject
 
-Click **Accept** to add the relation to the knowledge graph, or **Reject** to discard it.
+Click **Accept** to approve the relation in the selected workspace, or **Reject** to discard it.
 
 ![Accepted proposal](../images/36-proposal-accepted.png)
-
-After accepting, the relation becomes visible in the knowledge graph:
-
-![Graph with accepted relation](../images/37-graph-with-accepted-relation.png)
 
 <details>
 <summary>🔧 REST API equivalent (for automation)</summary>
@@ -303,8 +299,6 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/pr
 2. Switch to the **Recommendations** tab in the results area.
 3. Click **💡 Generate Recommendations**.
 4. The result cards show recommended additional architecture elements and relations.
-
-![Architecture view with recommendations](../images/20-architecture-view.png)
 
 See also [User Guide](USER_GUIDE.md) for details on the recommendations interface.
 
@@ -439,8 +433,6 @@ findings. Hypothetical matches might include:
 ### Step 2 — Review the architecture view
 
 The architecture view groups scored nodes by layer (Capability → Service → Process) and shows relations between them.
-
-![Architecture view](../images/20-architecture-view.png)
 
 ### Step 3 — Check for gaps
 

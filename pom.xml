@@ -731,11 +731,44 @@
         <profile>
             <id>screenshots</id>
             <properties>
-                <skipITs>false</skipITs><it.test>ScreenshotGeneratorIT,ArchitectureWorkbenchUiIT,CompleteCopilotSessionIT</it.test>
+                <skipITs>false</skipITs>
+                <it.test>ScreenshotGeneratorIT,ArchitectureWorkbenchUiIT,CompleteCopilotSessionIT,DocumentTemplateReportDownloadIT,ScreenshotDocumentationIT</it.test>
                 <generateScreenshots>true</generateScreenshots>
+                <taxonomy.docs.image.dir>${maven.multiModuleProjectDirectory}/target/generated-screenshots</taxonomy.docs.image.dir>
+                <taxonomy.docs.startedAt>${maven.build.timestamp}</taxonomy.docs.startedAt>
+                <maven.build.timestamp.format>yyyy-MM-dd'T'HH:mm:ss'Z'</maven.build.timestamp.format>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+                <taxonomy.ui.skip>false</taxonomy.ui.skip>
+                <taxonomy.quality.skip>false</taxonomy.quality.skip>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.app.architectureAnchorPhase>none</taxonomy.app.architectureAnchorPhase>
                 <excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>
                 <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
             </properties>
+            <build><plugins>
+                <!-- This opt-in lane runs the capture ITs; ordinary unit suites have their own lanes. -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <configuration><skipTests>true</skipTests></configuration>
+                </plugin>
+            </plugins>
+            <!-- Manage forked JVM configuration without activating Failsafe in the parent POM. -->
+            <pluginManagement><plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <configuration>
+                        <!-- The final build-module owner checks outputs after the report owner. -->
+                        <runOrder>alphabetical</runOrder>
+                        <systemPropertyVariables>
+                            <generateScreenshots>${generateScreenshots}</generateScreenshots>
+                            <taxonomy.docs.image.dir>${taxonomy.docs.image.dir}</taxonomy.docs.image.dir>
+                            <taxonomy.docs.startedAt>${taxonomy.docs.startedAt}</taxonomy.docs.startedAt>
+                        </systemPropertyVariables>
+                    </configuration>
+                </plugin>
+            </plugins></pluginManagement></build>
         </profile>
         <profile>
             <id>ci-app-test-shards-core</id>

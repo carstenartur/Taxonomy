@@ -34,6 +34,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -48,7 +49,7 @@ import java.util.Map;
  */
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@EnabledIfSystemProperty(named = "generateScreenshots", matches = ".*")
+@EnabledIfSystemProperty(named = "generateScreenshots", matches = "true")
 @Tag("docker-required")
 class ScreenshotGeneratorIT {
 
@@ -88,6 +89,9 @@ class ScreenshotGeneratorIT {
     /** Guard flag: {@link #buildGitHistory()} runs at most once per test class execution. */
     private static boolean gitHistoryBuilt;
 
+    /** Actual persisted example version used by the DSL history capture. */
+    private static String draftFixtureCommitId;
+
     /** Guard flag: {@link #buildRichGitHistory()} runs at most once per test class execution. */
     private static boolean richGitHistoryBuilt;
 
@@ -97,8 +101,8 @@ class ScreenshotGeneratorIT {
     private static final Path OUTPUT_DIR = resolveOutputDir();
 
     /**
-     * Uses {@code TAXONOMY_DOCS_IMAGE_DIR} when configured, otherwise the repository's
-     * {@code docs/images/} folder. CI uses a fresh directory shared by all capture owners.
+     * Uses {@code TAXONOMY_DOCS_IMAGE_DIR}, then {@code taxonomy.docs.image.dir}, otherwise
+     * the repository's {@code docs/images/} folder. CI uses a fresh directory shared by all capture owners.
      *
      * <p>Maven Failsafe forks a JVM with {@code workingDirectory=${project.basedir}}, which is the
      * module directory (e.g. {@code taxonomy-app/}), not the repository root.  We use the
@@ -112,6 +116,9 @@ class ScreenshotGeneratorIT {
      */
     private static Path resolveOutputDir() {
         String configured = System.getenv("TAXONOMY_DOCS_IMAGE_DIR");
+        if (configured == null || configured.isBlank()) {
+            configured = System.getProperty("taxonomy.docs.image.dir");
+        }
         return configured == null || configured.isBlank() ? resolveDefaultOutputDir() : Path.of(configured);
     }
 
@@ -226,6 +233,8 @@ class ScreenshotGeneratorIT {
                             .getAttribute("data-view-rendered");
                     return rendered != null && !rendered.isEmpty();
                 });
+        new WebDriverWait(driver, Duration.ofSeconds(30))
+                .until(ExpectedConditions.presenceOfElementLocated(By.id("analysisTaskProgress")));
         // Dismiss the onboarding overlay if it is present (it blocks clicks on all UI elements)
         List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
         if (!dismissBtns.isEmpty()) {
@@ -305,9 +314,187 @@ class ScreenshotGeneratorIT {
     }
 
     private boolean hasSuccessfulAnalysis() {
-        return Boolean.TRUE.equals(((JavascriptExecutor) driver).executeScript(
-                "var state=window.TaxonomyState; return !!state && state.lastAnalysisStatus === 'SUCCESS'" +
-                " && Object.values(state.currentScores || {}).some(function(score) { return score > 0; });"));
+        return Boolean.TRUE.equals(((JavascriptExecutor) driver).executeScript("""
+                const state = window.TaxonomyState;
+                const input = document.getElementById('businessText');
+                const status = document.getElementById('statusArea');
+                const staleWarning = status?.dataset.analysisSessionMessage === 'stale'
+                    && status.getClientRects().length > 0;
+                return !!state && state.lastAnalysisStatus === 'SUCCESS'
+                    && input?.value === arguments[0] && state.storedBusinessText === arguments[0]
+                    && !input.classList.contains('stale-results') && !staleWarning
+                    && Object.values(state.currentScores || {}).some(score => score > 0);
+                """, REQUIREMENT_TEXT));
+    }
+
+    private void clickVisible(WebElement element) {
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", element);
+        wait(5).until(ExpectedConditions.elementToBeClickable(element)).click();
+    }
+
+    private void closeSearchPanel() {
+        WebElement panel = driver.findElement(By.id("searchPanel"));
+        if (panel.getAttribute("open") != null) {
+            clickVisible(panel.findElement(By.cssSelector(":scope > summary")));
+            wait(5).until(d -> panel.getAttribute("open") == null);
+        }
+    }
+
+    /** Capture the actual diagram scrollport after fitting a readable, collapsed overview. */
+    private void saveDiagramScreenshot(String view, String filename, boolean scored) throws IOException {
+        org.openqa.selenium.Dimension originalSize = driver.manage().window().getSize();
+        boolean completed = false;
+        try {
+            driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 1800));
+            closeSearchPanel();
+            String button = switch (view) {
+                case "sunburst" -> "viewSunburst";
+                case "tree" -> "viewTree";
+                default -> "viewDecision";
+            };
+            clickVisible(driver.findElement(By.id(button)));
+            wait(10).until(ExpectedConditions.attributeContains(By.id("taxonomyTree"), "data-view-rendered", view));
+            new org.openqa.selenium.support.ui.Select(driver.findElement(By.id("diagramRelevanceFilter")))
+                    .selectByValue(scored ? "positive" : "all");
+            wait(10).until(ExpectedConditions.attributeContains(By.id("taxonomyTree"), "data-view-rendered", view));
+            if (!"sunburst".equals(view)) {
+                clickVisible(driver.findElement(By.cssSelector("#taxonomyTree .tax-diagram-collapse-all")));
+                if ("tree".equals(view)) {
+                    WebElement surface = driver.findElement(By.cssSelector("#taxonomyTree canvas, #taxonomyTree > svg"));
+                    // The native diagram keyboard opens just the selected root's first branch level.
+                    WebElement rootControl = "canvas".equals(surface.getTagName()) ? surface
+                            : surface.findElement(By.cssSelector(".tax-diagram-node"));
+                    rootControl.sendKeys(org.openqa.selenium.Keys.HOME);
+                    rootControl.sendKeys(org.openqa.selenium.Keys.SPACE);
+                }
+                if (!"tree-canvas".equals(driver.findElement(By.id("taxonomyTree")).getAttribute("data-view-rendered"))) {
+                    waitForTransitionsComplete();
+                }
+                String fit = (String) ((JavascriptExecutor) driver).executeScript(
+                        "return window.TaxonomyI18n.t('views.diagram.fit');");
+                WebElement fitButton = driver.findElements(By.cssSelector("#taxonomyTree .tax-diagram-controls > button"))
+                        .stream().filter(element -> fit.equals(element.getText())).findFirst().orElseThrow();
+                clickVisible(fitButton);
+            }
+            WebElement tree = driver.findElement(By.id("taxonomyTree"));
+            js("arguments[0].scrollIntoView({behavior:'instant', block:'start'});", tree);
+            Map<?, ?> layout = (Map<?, ?>) ((JavascriptExecutor) driver).executeScript("""
+                    const tree = arguments[0], body = tree.closest('.card-body');
+                    const bounds = body.getBoundingClientRect();
+                    const clip = {left:Math.max(0,bounds.left+body.clientLeft),
+                        top:Math.max(0,bounds.top+body.clientTop),
+                        right:Math.min(innerWidth,bounds.left+body.clientLeft+body.clientWidth),
+                        bottom:Math.min(innerHeight,bounds.top+body.clientTop+body.clientHeight)};
+                    const inside = box => box.width > 0 && box.height > 0
+                        && box.left >= clip.left-2 && box.right <= clip.right+2
+                        && box.top >= clip.top-2 && box.bottom <= clip.bottom+2;
+                    const controls = tree.querySelector('.tax-diagram-controls');
+                    const canvas = tree.querySelector('canvas');
+                    const svg = tree.querySelector('svg');
+                    let occupied = [], labelHeight = null;
+                    if (canvas) {
+                        const box = canvas.getBoundingClientRect();
+                        // Fit transforms the complete logical canvas; avoid copying a potentially huge pixel buffer.
+                        const zoom=window.d3.zoomTransform(canvas), dpr=devicePixelRatio||1;
+                        const width=canvas.width/dpr*zoom.k, height=canvas.height/dpr*zoom.k;
+                        occupied.push({left:box.left+zoom.x,right:box.left+zoom.x+width,
+                            top:box.top+zoom.y,bottom:box.top+zoom.y+height,width,height});
+                        labelHeight = 12*zoom.k;
+                    } else if (arguments[1]==='sunburst') {
+                        if (svg) occupied.push(svg.getBoundingClientRect().toJSON());
+                    } else {
+                        occupied = Array.from(tree.querySelectorAll('g.tv-node, g.dm-node, text.dm-area-caption'))
+                            .map(node=>node.getBoundingClientRect().toJSON());
+                        if (arguments[1]==='tree') labelHeight=12*window.d3.zoomTransform(svg).k;
+                    }
+                    return {fits:!!controls && inside(controls.getBoundingClientRect())
+                            && occupied.length>0 && occupied.every(inside)
+                            && (labelHeight===null || labelHeight>=9),
+                        clip,scrollport:bounds.toJSON(),controls:controls?.getBoundingClientRect().toJSON(),
+                        occupiedCount:occupied.length,occupiedOutside:occupied.filter(box=>!inside(box)),labelHeight};
+                    """, tree, view);
+            Assertions.assertEquals(Boolean.TRUE, layout.get("fits"),
+                    "Diagram content and controls must fit the visible scrollport: " + layout);
+            saveElementScreenshot(tree.findElement(By.xpath("ancestor::div[contains(@class,'card-body')][1]")), filename);
+            completed = true;
+        } finally {
+            if (completed) {
+                driver.manage().window().setSize(originalSize);
+                new org.openqa.selenium.support.ui.Select(driver.findElement(By.id("diagramRelevanceFilter")))
+                        .selectByValue("all");
+                safeClick(By.id("viewList"));
+            }
+        }
+    }
+
+    private void saveScoredUaScreenshot(String filename, boolean expanded) throws IOException {
+        org.openqa.selenium.Dimension originalSize = driver.manage().window().getSize();
+        boolean descriptions = driver.findElement(By.id("showDescriptions")).isSelected();
+        String originalFilter = new org.openqa.selenium.support.ui.Select(
+                driver.findElement(By.id("diagramRelevanceFilter"))).getFirstSelectedOption().getAttribute("value");
+        boolean completed = false;
+        try {
+            driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 1800));
+            closeSearchPanel();
+            new org.openqa.selenium.support.ui.Select(driver.findElement(By.id("diagramRelevanceFilter")))
+                    .selectByValue("positive");
+            clickVisible(driver.findElement(By.id("viewList")));
+            if (descriptions) clickVisible(driver.findElement(By.id("showDescriptions")));
+            clickVisible(driver.findElement(By.id("collapseAll")));
+            Map<?, ?> evidence = (Map<?, ?>) ((JavascriptExecutor) driver).executeScript("""
+                    const state=window.TaxonomyState;
+                    const root=state.taxonomyData.find(node=>node.code==='UA');
+                    function positiveLeaf(node,path) {
+                        const next=path.concat(node.code);
+                        if (!(node.children||[]).length && state.currentScores[node.code]>0) return next;
+                        for (const child of node.children||[]) { const found=positiveLeaf(child,next);if(found)return found; }
+                        return null;
+                    }
+                    return {rootScore:state.currentScores.UA,path:root?positiveLeaf(root,[]):null};
+                    """);
+            Assertions.assertTrue(evidence.get("rootScore") instanceof Number score && score.doubleValue() > 0,
+                    "The documentation branch must have a real positive root assessment: " + evidence);
+            Assertions.assertInstanceOf(List.class, evidence.get("path"), "A positive UA leaf must exist: " + evidence);
+            List<?> path = (List<?>) evidence.get("path");
+            WebElement root = driver.findElement(By.cssSelector(
+                    "#taxonomyTree > [data-taxonomy-container='UA'] > .tax-container-heading > .tax-container-toggle"));
+            clickVisible(root);
+            if (expanded) {
+                for (int index = 1; index < path.size() - 1; index++) {
+                    By selector = By.cssSelector("#taxonomyTree .tax-node[data-code='" + path.get(index) + "']");
+                    WebElement node = wait(5).until(ExpectedConditions.visibilityOfElementLocated(selector));
+                    if (!"true".equals(node.getAttribute("aria-expanded"))) {
+                        clickVisible(node.findElement(By.cssSelector(":scope > .tax-node-header > .tax-toggle")));
+                    }
+                }
+            }
+            String visibleCode = String.valueOf(path.get(expanded ? path.size() - 1 : 1));
+            Assertions.assertEquals(Boolean.TRUE, ((JavascriptExecutor) driver).executeScript(
+                    "return window.TaxonomyState.currentScores[arguments[0]] > 0;", visibleCode),
+                    "The visible UA row must have a real positive score: " + visibleCode);
+            WebElement positive = wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(
+                    "#taxonomyTree .tax-node[data-code='" + visibleCode + "'] .tax-pct")));
+            WebElement area = driver.findElement(By.cssSelector("#taxonomyTree > [data-taxonomy-container='UA']"));
+            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", area);
+            Map<?, ?> layout = (Map<?, ?>) ((JavascriptExecutor) driver).executeScript("""
+                    const area=arguments[0].getBoundingClientRect(), row=arguments[1].getBoundingClientRect();
+                    const body=arguments[1].closest('.card-body').getBoundingClientRect();
+                    const inside=box=>box.top>=Math.max(body.top,0)-2
+                        && box.bottom<=Math.min(body.bottom,innerHeight)+2
+                        && box.left>=Math.max(body.left,0)-2 && box.right<=Math.min(body.right,innerWidth)+2;
+                    return {fits:inside(area)&&inside(row),area:area.toJSON(),positive:row.toJSON(),scrollport:body.toJSON()};
+                    """, area, positive);
+            Assertions.assertEquals(Boolean.TRUE, layout.get("fits"), "Positive UA evidence must be visible: " + layout);
+            saveElementScreenshot(area, filename);
+            completed = true;
+        } finally {
+            if (completed) {
+                if (descriptions) clickVisible(driver.findElement(By.id("showDescriptions")));
+                new org.openqa.selenium.support.ui.Select(driver.findElement(By.id("diagramRelevanceFilter")))
+                        .selectByValue(originalFilter);
+                driver.manage().window().setSize(originalSize);
+            }
+        }
     }
 
     private void selectSearchMode(String mode) {
@@ -325,25 +512,37 @@ class ScreenshotGeneratorIT {
     private void loadCurrentDsl(String expectedBlock) {
         wait(15).until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d)
                 .executeScript("return !!window.dslCmView;")));
-        safeClick(By.id("dslLoadCurrentBtn"));
+        js("window.__screenshotPreviousDslDocument = window.dslCmView.state.doc;");
+        clickVisible(driver.findElement(By.id("dslLoadCurrentBtn")));
         wait(15).withMessage(() -> "DSL load failed: "
-                + driver.findElement(By.id("dslStatusArea")).getText()).until(d -> {
+                + driver.findElement(By.id("dslStatusArea")).getText() + "; " + dslCaptureDiagnostic()).until(d -> {
             WebElement status = d.findElement(By.id("dslStatusArea"));
             String classes = status.getAttribute("class");
-            Assertions.assertFalse(classes.contains("alert-danger"), status.getText());
-            return classes.contains("alert-success");
+            Assertions.assertFalse(classes.contains("alert-danger"), () -> status.getText() + "; " + dslCaptureDiagnostic());
+            return classes.contains("alert-success") && Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript("""
+                    const view=window.dslCmView;
+                    return view.state.doc!==window.__screenshotPreviousDslDocument
+                        && view.state.doc.toString().split('\\n').some(line=>line.startsWith(arguments[0]+' '));
+                    """, expectedBlock));
         });
-        String content = (String) ((JavascriptExecutor) driver).executeScript(
-                "return window.dslCmView.state.doc.toString();");
-        Assertions.assertTrue(content.contains(expectedBlock + " "),
-                "Loaded DSL must include a real " + expectedBlock + " block");
+    }
+
+    private String dslCaptureDiagnostic() {
+        return String.valueOf(((JavascriptExecutor) driver).executeScript("""
+                const text=window.dslCmView?.state.doc.toString()||'';
+                return JSON.stringify({beginning:text.slice(0,1400),
+                    relationLines:text.split('\\n').filter(line=>line.includes('relation')).slice(0,8)
+                        .map(line=>line.slice(0,240))});
+                """));
     }
 
     private void openOperationalStatus() {
-        WebElement status = driver.findElement(By.id("operationalContextDetails"));
-        if (status.getAttribute("open") == null) {
-            driver.findElement(By.cssSelector("#operationalContextDetails > summary")).click();
-        }
+        // The onboarding module creates this disclosure in #applicationSystemStatus.
+        WebElement status = wait(30).until(ExpectedConditions.visibilityOfElementLocated(
+                By.id("operationalContextDetails")));
+        openDetails(status);
+        wait(5).until(ExpectedConditions.visibilityOfElementLocated(
+                By.cssSelector("#operationalContextDetails .operational-context-content")));
     }
 
     private void refreshVersionHistory() {
@@ -433,6 +632,15 @@ class ScreenshotGeneratorIT {
         safeClick(driver.findElement(locator));
     }
 
+    /** Reveal the real node action through its visible on-demand action menu. */
+    private WebElement revealNodeAction(WebElement action) {
+        WebElement node = action.findElement(By.xpath(
+                "ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' tax-node ')][1]"));
+        safeClick(node.findElement(By.cssSelector(":scope > .tax-node-header .tax-node-actions-toggle")));
+        wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("taxonomyActionsDialog")));
+        return wait(5).until(ExpectedConditions.visibilityOf(action));
+    }
+
     /** Closes the actual Bootstrap modal and waits for its lifecycle event. */
     private void closeModalAndWait(String modalId) {
         js("var modal=bootstrap.Modal.getInstance(document.getElementById(arguments[0]));" +
@@ -442,9 +650,19 @@ class ScreenshotGeneratorIT {
     }
 
     private void showAdminSettings() {
+        // Element captures can leave the document scrolled deep into a full-width view.
+        // Return to the actual shared menu before asking Selenium to click it.
+        js("window.scrollTo({top:0, left:0, behavior:'instant'});");
+        WebElement summary = wait(10).until(ExpectedConditions.elementToBeClickable(
+                By.cssSelector("#applicationTools > summary")));
+        wait(5).until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript("""
+                const bounds = arguments[0].getBoundingClientRect();
+                return bounds.top >= 0 && bounds.bottom <= innerHeight
+                    && bounds.left >= 0 && bounds.right <= innerWidth;
+                """, summary)));
         WebElement menu = driver.findElement(By.id("applicationTools"));
         if (menu.getAttribute("open") == null) {
-            driver.findElement(By.cssSelector("#applicationTools > summary")).click();
+            summary.click();
         }
         wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("adminNavTab")));
     }
@@ -464,7 +682,11 @@ class ScreenshotGeneratorIT {
 
     /** Reloads the page and waits for the taxonomy tree to be fully rendered. */
     private void resetPageState() {
-        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
+        resetPageState("en");
+    }
+
+    private void resetPageState(String language) {
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/?lang=" + language);
         wait(15).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         // Wait for the data-view-rendered attribute which is set by renderView() after
         // the taxonomy data has been fetched and the view has been fully rendered.
@@ -475,6 +697,9 @@ class ScreenshotGeneratorIT {
                     .getAttribute("data-view-rendered");
             return rendered != null && !rendered.isEmpty();
         });
+        // The task hierarchy and welcome dialog initialize after the translation bundle.
+        wait(30).until(ExpectedConditions.presenceOfElementLocated(By.id("analysisTaskProgress")));
+        wait(10).until(ExpectedConditions.attributeToBe(By.tagName("html"), "lang", language));
         // Dismiss the onboarding overlay if it reappears after page reload
         List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
         if (!dismissBtns.isEmpty()) {
@@ -511,7 +736,7 @@ class ScreenshotGeneratorIT {
      */
     private void buildGitHistory() {
         if (gitHistoryBuilt) return;
-        commitAndWait("draft", "Initial+architecture+definition", DRAFT_DSL);
+        draftFixtureCommitId = commitAndWait("draft", "Initial+architecture+definition", DRAFT_DSL);
         createBranch("feature-voice", "draft");
         commitAndWait("feature-voice", "Add+Voice+Gateway+component", FEATURE_VOICE_DSL);
         gitHistoryBuilt = true;
@@ -724,27 +949,28 @@ class ScreenshotGeneratorIT {
 
     /** Opens a <details> element if it is currently closed. */
     private void openDetails(WebElement details) {
-        js("arguments[0].setAttribute('open', '');", details);
-        wait(5).until(ExpectedConditions.attributeContains(details, "open", ""));
+        if (details.getAttribute("open") == null) {
+            safeClick(details.findElement(By.cssSelector(":scope > summary")));
+        }
+        wait(5).until(ExpectedConditions.attributeToBe(details, "open", "true"));
     }
 
-    /** Uses Settings for administrator-only destinations and the common router otherwise. */
+    /** Uses Tools for administrator-only destinations and the common router otherwise. */
     private void navigateToTab(String page) {
         if ("admin".equals(page) || "preferences".equals(page)) {
-            WebElement menu = driver.findElement(By.id("applicationTools"));
-            if (menu.getAttribute("open") == null) {
-                driver.findElement(By.cssSelector("#applicationTools > summary")).click();
-            }
+            showAdminSettings();
             String destination = "admin".equals(page) ? "adminNavTab" : "preferencesNavTab";
-            wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id(destination)));
-            driver.findElement(By.id(destination)).click();
+            wait(10).until(ExpectedConditions.elementToBeClickable(By.id(destination))).click();
         } else {
             js("if (window.navigateToPage) { window.navigateToPage(arguments[0]); }", page);
         }
-        wait(5).until(d -> {
-            WebElement pane = d.findElement(By.id("tab-" + page));
-            return !pane.getAttribute("class").contains("d-none");
-        });
+        boolean architectureSubtab = "relations".equals(page) || "export".equals(page);
+        wait(5).until(ExpectedConditions.visibilityOfElementLocated(
+                By.id("tab-" + (architectureSubtab ? "architecture" : page))));
+        if (architectureSubtab) {
+            wait(5).until(ExpectedConditions.visibilityOfElementLocated(
+                    By.id("subtab-arch-" + page)));
+        }
     }
 
     // ── Screenshots 1–14: no LLM required ─────────────────────────────────────
@@ -752,18 +978,10 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(1)
     void captureFullPageLayout() throws IOException {
-        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
-        wait(15).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+        resetPageState();
         // Wait for actual taxonomy nodes to be rendered (not just the container div with loading spinner)
         wait(15).until(ExpectedConditions.presenceOfElementLocated(
                 By.cssSelector("#taxonomyTree .tax-node")));
-        // Dismiss the onboarding overlay if present
-        List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
-        if (!dismissBtns.isEmpty()) {
-            dismissBtns.get(0).click();
-            new WebDriverWait(driver, Duration.ofSeconds(5))
-                    .until(ExpectedConditions.invisibilityOfElementLocated(By.id("onboardingOverlay")));
-        }
         saveScreenshot("01-full-page-layout.png");
     }
 
@@ -813,30 +1031,13 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(6)
     void captureSunburstView() throws IOException {
-        safeClick(By.id("viewSunburst"));
-        wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
-        wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "sunburst"));
-        saveScreenshot("06-sunburst-view.png");
-        safeClick(By.id("viewList"));
+        saveDiagramScreenshot("sunburst", "06-sunburst-view.png", false);
     }
 
     @Test
     @Order(7)
     void captureTreeView() throws IOException {
-        safeClick(By.id("viewTree"));
-        wait(5).until(ExpectedConditions.attributeContains(By.id("viewTree"), "class", "btn-primary"));
-        wait(10).until(ExpectedConditions.attributeContains(By.id("taxonomyTree"), "data-view-rendered", "tree"));
-        // Wait for D3 SVG tree nodes to be fully rendered (avoids capturing mid-transition state
-        // where node labels overlap because the layout animation has not completed).
-        wait(10).until(d -> {
-            Long nodeCount = (Long) ((JavascriptExecutor) d).executeScript(
-                    "return document.querySelectorAll('#taxonomyTree svg g.tv-node').length;");
-            return nodeCount != null && nodeCount > 0;
-        });
-        // Wait for D3 tree transitions to complete (event-driven via data-transitions-complete)
-        waitForTransitionsComplete();
-        saveScreenshot("07-tree-view.png");
-        safeClick(By.id("viewList"));
+        saveDiagramScreenshot("tree", "07-tree-view.png", false);
     }
 
     @Test
@@ -863,9 +1064,15 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(10)
     void captureMatchLegend() throws IOException {
-        WebElement legendCard = driver.findElement(
-                By.xpath("//div[contains(@class,'card')]//small[contains(text(),'Match legend')]/ancestor::div[contains(@class,'card')]"));
-        saveElementScreenshot(legendCard, "10-match-legend.png");
+        WebElement legend = driver.findElement(By.id("analysisScoreLegend"));
+        openDetails(legend);
+        try {
+            wait(5).until(ExpectedConditions.visibilityOfElementLocated(
+                    By.cssSelector("#analysisScoreLegend .legend-box")));
+            saveElementScreenshot(legend, "10-match-legend.png");
+        } finally {
+            safeClick(By.cssSelector("#analysisScoreLegend > summary"));
+        }
     }
 
     @Test
@@ -893,18 +1100,13 @@ class ScreenshotGeneratorIT {
         // Clean up any leftover modal state from a previous failed retry run
         resetModalState();
         navigateToTab("analyze");
-        // Scroll to the taxonomy tree so the proposal buttons become visible
-        WebElement taxonomyTree = driver.findElement(By.id("taxonomyTree"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'start'});", taxonomyTree);
-        // Wait for at least one proposal button to be present in the DOM
+        // Proposals are exposed through each node's visible action-menu button.
         wait(15).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".proposal-btn")));
-        // Use JS click to work around any overlay or scroll positioning issues
-        WebElement proposeBtn = driver.findElement(By.cssSelector(".proposal-btn"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", proposeBtn);
+        WebElement proposeBtn = revealNodeAction(driver.findElement(By.cssSelector(".proposal-btn")));
         // Clear stale content-ready signal before clicking
         js("var m = document.getElementById('proposeRelationsModal');" +
            "if (m) m.removeAttribute('data-content-ready');");
-        js("arguments[0].click();", proposeBtn);
+        safeClick(proposeBtn);
         // Wait for the click handler to set modal content (data-content-ready="true")
         wait(10).until(ExpectedConditions.attributeToBe(
                 By.id("proposeRelationsModal"), "data-content-ready", "true"));
@@ -920,8 +1122,11 @@ class ScreenshotGeneratorIT {
     @Order(14)
     void captureAdminSettings() throws IOException {
         showAdminSettings();
-        WebElement navbar = driver.findElement(By.id("applicationNavigation"));
-        saveElementScreenshot(navbar, "14-navbar-settings.png");
+        wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("preferencesNavTab")));
+        js("window.scrollTo(0, 0);");
+        // The Tools dropdown is absolutely positioned below the navigation row.
+        // A navigation-element screenshot would clip its administration links.
+        saveScreenshot("14-navbar-settings.png");
         driver.findElement(By.cssSelector("#applicationTools > summary")).click();
     }
 
@@ -938,7 +1143,7 @@ class ScreenshotGeneratorIT {
         }
 
         runAnalysis();
-        saveScreenshot("15-scored-taxonomy-tree.png");
+        saveScoredUaScreenshot("15-scored-taxonomy-tree.png", false);
     }
 
     @Test
@@ -973,7 +1178,16 @@ class ScreenshotGeneratorIT {
     void captureMatchLegendWithScores() throws IOException {
         forceNonInteractiveMode();
         runAnalysis();
-        saveScreenshot("17-match-legend-with-scores.png");
+        WebElement legend = driver.findElement(By.id("analysisScoreLegend"));
+        openDetails(legend);
+        try {
+            wait(5).until(ExpectedConditions.visibilityOfElementLocated(
+                    By.cssSelector("#analysisScoreLegend .legend-box")));
+            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", legend);
+            saveScreenshot("17-match-legend-with-scores.png");
+        } finally {
+            safeClick(By.cssSelector("#analysisScoreLegend > summary"));
+        }
     }
 
     @Test
@@ -1004,8 +1218,7 @@ class ScreenshotGeneratorIT {
                 "No leaf justify buttons found after non-interactive analysis + expand-all. " +
                 "The mock LLM may not be producing scores > 0 for leaf nodes.");
 
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", justifyBtns.get(0));
-        js("arguments[0].click();", justifyBtns.get(0));
+        safeClick(revealNodeAction(justifyBtns.get(0)));
         // Wait for the /api/justify-leaf mock call to populate the modal body text.
         // The data-modal-loaded attribute is set by the JS after the content is populated,
         // which is more reliable than getText() which returns empty on hidden modals.
@@ -1099,12 +1312,11 @@ class ScreenshotGeneratorIT {
     @Order(24)
     void captureLlmDiagnostics() throws IOException {
         navigateToTab("admin");
-        js("var btn = document.getElementById('refreshDiagnostics'); if (btn) btn.click();");
-
         WebElement diagPanel = driver.findElement(By.id("diagnosticsPanel"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", diagPanel);
         openDetails(diagPanel);
-        wait(5).until(ExpectedConditions.visibilityOf(diagPanel));
+        wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("refreshDiagnostics")));
+        safeClick(By.id("refreshDiagnostics"));
         waitForResult("diagnosticsContent", "table", 10);
         saveElementScreenshot(diagPanel, "24-llm-diagnostics.png");
     }
@@ -1117,6 +1329,14 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", promptEditor);
         openDetails(promptEditor);
         wait(5).until(ExpectedConditions.visibilityOf(promptEditor));
+        wait(15).withMessage(() -> "Prompt template did not load: "
+                + driver.findElement(By.id("promptStatusMsg")).getText()).until(d -> {
+            Assertions.assertTrue(d.findElements(By.cssSelector("#promptStatusMsg .text-danger")).isEmpty(),
+                    "Prompt template load failed: " + d.findElement(By.id("promptStatusMsg")).getText());
+            String template = d.findElement(By.id("promptTextarea")).getAttribute("value");
+            return !d.findElements(By.cssSelector("#promptSelect option")).isEmpty()
+                    && template != null && !template.isBlank();
+        });
         saveElementScreenshot(promptEditor, "25-prompt-template-editor.png");
     }
 
@@ -1259,8 +1479,28 @@ class ScreenshotGeneratorIT {
         // Two-phase wait: first ensure the element exists in the DOM, then wait for CSS visibility
         wait(10).until(ExpectedConditions.presenceOfElementLocated(By.id("exportGroup")));
         wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("exportGroup")));
-        // Take a full-tab screenshot showing all export options
-        saveScreenshot("33-export-tab.png");
+        org.openqa.selenium.Dimension originalSize = driver.manage().window().getSize();
+        boolean completed = false;
+        try {
+            driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 1800));
+            WebElement pane = driver.findElement(By.id("subtab-arch-export"));
+            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", pane);
+            Map<?, ?> layout = (Map<?, ?>) ((JavascriptExecutor) driver).executeScript("""
+                    const pane=arguments[0].getBoundingClientRect();
+                    const groups=['exportSvg','exportReportMd','importJson'].map(id=>({id,
+                        bounds:document.getElementById(id).getBoundingClientRect().toJSON()}));
+                    return {fits:pane.top>=-2 && pane.bottom<=innerHeight+2 && pane.left>=-2 && pane.right<=innerWidth+2
+                            && groups.every(group=>group.bounds.width>0 && group.bounds.height>0
+                                && group.bounds.top>=pane.top && group.bounds.bottom<=pane.bottom
+                                && group.bounds.left>=pane.left && group.bounds.right<=pane.right),
+                        pane:pane.toJSON(),groups};
+                    """, pane);
+            Assertions.assertEquals(Boolean.TRUE, layout.get("fits"), "All export groups must fit the capture: " + layout);
+            saveElementScreenshot(pane, "33-export-tab.png");
+            completed = true;
+        } finally {
+            if (completed) driver.manage().window().setSize(originalSize);
+        }
     }
 
     @Test
@@ -1277,47 +1517,15 @@ class ScreenshotGeneratorIT {
 
     @Test
     @Order(35)
-    void captureFullScoredBPTreeExpanded() throws IOException {
+    void captureScoredUaBranchExpanded() throws IOException {
         // Ensure analysis is complete (reuse scores from test 15)
         navigateToTab("analyze");
         if (!hasSuccessfulAnalysis()) {
             forceNonInteractiveMode();
             runAnalysis();
         }
-        // Switch to list view and expand all nodes
-        safeClick(By.id("viewList"));
-        wait(5).until(ExpectedConditions.attributeContains(By.id("viewList"), "class", "btn-primary"));
-        // Turn descriptions OFF so each node shows only code + name + score bar (much more compact)
-        js("var cb = document.getElementById('showDescriptions'); if (cb && cb.checked) { cb.click(); }");
-        wait(2).until(d -> true); // brief settle after toggling descriptions
-        js("document.getElementById('expandAll').click();");
-        wait(5).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-toggle")));
-        // Remove the max-height CSS constraint so the full expanded tree renders without clipping
-        js("var cardBody = document.querySelector('#taxonomyTree').closest('.card-body');" +
-           " if (cardBody) { cardBody.style.maxHeight = 'none'; cardBody.style.overflow = 'visible'; }");
-        // Use a moderate viewport height (2000px) to capture the top portion of the expanded
-        // tree without creating an excessively tall/narrow image that is hard to read in
-        // GitHub documentation.  Also hide the right panel to give the tree full width.
-        js("var rightCol = document.querySelector('.col-lg-5');" +
-           " if (rightCol) rightCol.style.display = 'none';" +
-           " var leftCol = document.querySelector('.col-lg-7');" +
-           " if (leftCol) { leftCol.className = leftCol.className.replace('col-lg-7', 'col-12'); }");
-        driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 2000));
-        wait(2).until(d -> true); // brief settle
-        // Scroll to the top and capture a full-page screenshot (avoids the narrow-strip problem
-        // caused by element screenshots on very tall elements)
-        js("window.scrollTo(0, 0);");
-        saveScreenshot("35-scored-bp-tree-expanded.png");
-        // Reset viewport and layout
-        driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
-        js("var rightCol = document.querySelector('.col-lg-5');" +
-           " if (rightCol) rightCol.style.display = '';" +
-           " var leftCol = document.querySelector('.col-12');" +
-           " if (leftCol) { leftCol.className = leftCol.className.replace('col-12', 'col-lg-7'); }");
-        // Restore max-height constraint and descriptions
-        js("var cardBody = document.querySelector('#taxonomyTree').closest('.card-body');" +
-           " if (cardBody) { cardBody.style.maxHeight = '82vh'; cardBody.style.overflow = 'auto'; }");
-        js("var cb = document.getElementById('showDescriptions'); if (cb && !cb.checked) { cb.click(); }");
+        // Retain the historical filename while showing a genuinely positive UA path.
+        saveScoredUaScreenshot("35-scored-bp-tree-expanded.png", true);
     }
 
     @Test
@@ -1421,23 +1629,63 @@ class ScreenshotGeneratorIT {
             forceNonInteractiveMode();
             runAnalysis();
         }
-        // Switch to sunburst view — scores are already computed, so the sunburst will be coloured
-        safeClick(By.id("viewSunburst"));
-        wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
-        // Wait for the sunburst SVG to actually finish rendering
-        wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "sunburst"));
-        // Scroll sunburst into viewport before capturing — by test 39 the page may have scrolled
-        js("document.getElementById('taxonomyTree').scrollIntoView({behavior:'instant', block:'center'});");
-        saveScreenshot("39-scored-sunburst.png");
-        // Reset to list view
-        safeClick(By.id("viewList"));
+        saveDiagramScreenshot("sunburst", "39-scored-sunburst.png", true);
     }
 
     @Test
     @Order(40)
     void captureDslWithRelations() throws IOException {
+        buildGitHistory();
+        Assertions.assertNotNull(draftFixtureCommitId, "The authored draft version must have been persisted");
+        Map<?, ?> version = requestFixture("/api/dsl/git/commit/" + draftFixtureCommitId, "GET", null, null);
+        Assertions.assertEquals(draftFixtureCommitId, version.get("commitId"));
+        Assertions.assertInstanceOf(String.class, version.get("dslText"));
+        String savedDsl = (String) version.get("dslText");
+        Assertions.assertEquals(DRAFT_DSL, savedDsl, "The example version must retain the committed DSL text");
         navigateToTab("dsl-editor");
-        loadCurrentDsl("relation");
+        wait(15).until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d)
+                .executeScript("return !!window.dslCmView;")));
+        // Load the retained version through its existing history action. Load Current exports
+        // materialized catalogue state and does not promise to contain this workspace example.
+        org.openqa.selenium.support.ui.Select branches =
+                new org.openqa.selenium.support.ui.Select(driver.findElement(By.id("dslBranchSelect")));
+        branches.selectByValue("feature-voice");
+        wait(15).until(d -> d.findElements(By.cssSelector("#dslHistoryBody tr td:nth-child(2)"))
+                .stream().anyMatch(cell -> "feature-voice".equals(cell.getText())));
+        branches.selectByValue("draft");
+        By loadVersion = By.cssSelector("#dslHistoryBody .dsl-load-commit[data-commit-id='" + draftFixtureCommitId + "']");
+        WebElement load = wait(15).withMessage(() -> "Persisted draft version is absent from history: "
+                + driver.findElement(By.id("dslHistoryBody")).getText()).until(ExpectedConditions.elementToBeClickable(loadVersion));
+        js("window.__screenshotPreviousDslDocument = window.dslCmView.state.doc;");
+        clickVisible(load);
+        wait(20).withMessage(() -> "Saved DSL version did not load its relation block: "
+                + driver.findElement(By.id("dslStatusArea")).getText() + "; " + dslCaptureDiagnostic()).until(d -> {
+            WebElement status = d.findElement(By.id("dslStatusArea"));
+            Assertions.assertFalse(status.getAttribute("class").contains("alert-danger"),
+                    () -> status.getText() + "; " + dslCaptureDiagnostic());
+            return status.getAttribute("class").contains("alert-success")
+                    && Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript("""
+                        const view=window.dslCmView;
+                        return view.state.doc!==window.__screenshotPreviousDslDocument
+                            && view.state.doc.toString()===arguments[0]
+                            && /^relation\\s/m.test(view.state.doc.toString());
+                        """, savedDsl));
+        });
+        js("""
+                const view=window.dslCmView;
+                const match=/^relation\\s/m.exec(view.state.doc.toString());
+                view.dispatch({selection:{anchor:match.index},
+                    effects:view.constructor.scrollIntoView(match.index,{y:'center'})});
+                """);
+        wait(10).withMessage(this::dslCaptureDiagnostic).until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript("""
+                const view=window.dslCmView, port=view.scrollDOM.getBoundingClientRect();
+                return Array.from(view.contentDOM.querySelectorAll('.cm-line')).some(line=>{
+                    const box=line.getBoundingClientRect();
+                    return /^relation\\s/.test(line.textContent) && box.top>=port.top && box.bottom<=port.bottom;
+                });
+                """)));
+        WebElement editor = driver.findElement(By.id("dslEditorContainer"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", editor);
         saveScreenshot("40-dsl-editor-with-relations.png");
     }
 
@@ -1496,6 +1744,7 @@ class ScreenshotGeneratorIT {
         // The context bar polls /api/context/current. Wait for the render signal attribute.
         wait(30).until(ExpectedConditions.attributeToBe(
                 By.id("contextBar"), "data-context-rendered", "true"));
+        wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("contextBar")));
         saveElementScreenshot(driver.findElement(By.id("contextBar")),
                 "44-context-bar.png");
     }
@@ -1569,14 +1818,7 @@ class ScreenshotGeneratorIT {
             forceNonInteractiveMode();
             runAnalysis();
         }
-        // Switch to the decision map view — with scores, it renders the D3 treemap + decision table
-        safeClick(By.id("viewDecision"));
-        wait(5).until(ExpectedConditions.attributeContains(By.id("viewDecision"), "class", "btn-primary"));
-        wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "decision"));
-        // Wait for D3 decision map transitions to complete (event-driven via data-transitions-complete)
-        waitForTransitionsComplete();
-        saveScreenshot("69-decision-map-scored.png");
-        safeClick(By.id("viewList"));
+        saveDiagramScreenshot("decision", "69-decision-map-scored.png", true);
     }
 
     // ── Screenshot 70: Swagger UI (API Documentation) ─────────────────────────
@@ -1694,5 +1936,232 @@ class ScreenshotGeneratorIT {
         WebElement policySelect = driver.findElement(By.id("pref-diagram-policy"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", policySelect);
         saveScreenshot("75-preferences-diagram-policy.png");
+    }
+
+    @Test
+    @Order(76)
+    void captureCurrentGraphEntry() throws IOException {
+        resetPageState("de");
+        try {
+            safeClick(By.id("viewList"));
+            wait(10).until(ExpectedConditions.attributeToBe(
+                    By.id("taxonomyTree"), "data-view-rendered", "list"));
+            WebElement processRoot = driver.findElement(By.cssSelector(
+                    "#taxonomyTree [data-taxonomy-container='BP'] > .tax-container-heading > .tax-container-toggle"));
+            if (!"true".equals(processRoot.getAttribute("aria-expanded"))) {
+                safeClick(processRoot);
+            }
+            By actions = By.cssSelector(
+                    "#taxonomyTree .tax-node[data-code='BP-1000'] .tax-node-actions-toggle");
+            wait(10).until(ExpectedConditions.visibilityOfElementLocated(actions));
+            safeClick(actions);
+            By graphAction = By.cssSelector("#taxonomyActionsDialog .graph-explore-btn");
+            wait(5).until(ExpectedConditions.visibilityOfElementLocated(graphAction));
+            Assertions.assertEquals("BP-1000", driver.findElement(graphAction).getAttribute("data-code"));
+            safeClick(graphAction);
+            wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("tab-graph")));
+            waitForResult("graphResultsContent", "#graphViewTable", 30);
+            Assertions.assertEquals("BP-1000", driver.findElement(By.id("graphNodeInput")).getAttribute("value"));
+            wait(5).until(d -> d.findElement(By.id("graphNodeInput")).equals(d.switchTo().activeElement()));
+            // Retain the real catalogue response, including its empty state when no neighbours exist.
+            saveScreenshot("graph-entry-current-de.png");
+        } finally {
+            resetPageState();
+        }
+    }
+
+    @Test
+    @Order(77)
+    void captureCurrentDatabaseSetup() throws IOException {
+        org.openqa.selenium.Dimension originalSize = driver.manage().window().getSize();
+        try {
+            driver.manage().window().setSize(new org.openqa.selenium.Dimension(1440, 1100));
+            for (String language : List.of("de", "en")) {
+                resetPageState(language);
+                showAdminSettings();
+                safeClick(By.id("databaseSetupMenuAction"));
+                wait(15).until(ExpectedConditions.visibilityOfElementLocated(By.id("databaseSetupDialog")));
+                new org.openqa.selenium.support.ui.Select(driver.findElement(By.id("databaseSetupType")))
+                        .selectByValue("postgres");
+                safeClick(By.id("databaseSetupNext"));
+                wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("databaseSetupHost")));
+                driver.findElement(By.id("databaseSetupHost")).sendKeys("postgres.database.svc.cluster.local");
+                Assertions.assertTrue(driver.findElement(By.id("databaseSetupTls")).isSelected());
+                Assertions.assertFalse(driver.findElement(By.id("databaseSetupResult")).isDisplayed(),
+                        "Connection preparation must not claim a connection test or deployment result");
+                saveElementScreenshot(driver.findElement(By.id("databaseSetupDialog")),
+                        "database-setup-current-" + language + ".png");
+                safeClick(By.id("databaseSetupClose"));
+                wait(5).until(ExpectedConditions.invisibilityOfElementLocated(By.id("databaseSetupDialog")));
+            }
+        } finally {
+            driver.manage().window().setSize(originalSize);
+            resetPageState();
+        }
+    }
+
+    @Test
+    @Order(78)
+    void captureCurrentDiagramPrintControls() throws IOException {
+        try {
+            for (String language : List.of("de", "en")) {
+                resetPageState(language);
+                forceNonInteractiveMode();
+                runAnalysis();
+                safeClick(By.id("viewDecision"));
+                wait(10).until(ExpectedConditions.attributeToBe(
+                        By.id("taxonomyTree"), "data-view-rendered", "decision"));
+                new org.openqa.selenium.support.ui.Select(driver.findElement(By.id("diagramRelevanceFilter")))
+                        .selectByValue("positive");
+                waitForTransitionsComplete();
+                By controls = By.cssSelector("#taxonomyTree .tax-diagram-controls");
+                wait(10).until(ExpectedConditions.visibilityOfElementLocated(controls));
+                new org.openqa.selenium.support.ui.Select(driver.findElement(By.cssSelector(
+                        "#taxonomyTree .tax-diagram-print-mode"))).selectByValue("taxonomy");
+                new org.openqa.selenium.support.ui.Select(driver.findElement(By.cssSelector(
+                        "#taxonomyTree .tax-diagram-print-paper"))).selectByValue("A0");
+                Assertions.assertTrue(driver.findElement(By.cssSelector(
+                        "#taxonomyTree .tax-diagram-relevance input")).isSelected());
+                saveElementScreenshot(driver.findElement(controls),
+                        "diagram-print-controls-" + language + ".png");
+            }
+        } finally {
+            resetPageState();
+        }
+    }
+
+    @Test
+    @Order(79)
+    void captureRootRelevanceClarification() throws IOException {
+        org.openqa.selenium.Dimension originalSize = driver.manage().window().getSize();
+        Path savedFile = Files.createTempFile("taxonomy-demo-r0-", ".json");
+        boolean completed = false;
+        try {
+            // Show all eight collapsed root summaries and the unresolved question without inner scrolling.
+            driver.manage().window().setSize(new org.openqa.selenium.Dimension(1680, 1800));
+            resetPageState("de");
+            WebElement input = driver.findElement(By.id("businessText"));
+            input.clear();
+            input.sendKeys("produktdemo");
+            safeClick(By.id("analyzeBtn"));
+            wait(60).until(ExpectedConditions.visibilityOfElementLocated(By.id("productDemoBanner")));
+            var route = java.util.regex.Pattern.compile("/projects/(\\d+)/requirements/(\\d+)")
+                    .matcher(driver.getCurrentUrl());
+            Assertions.assertTrue(route.find(), "Product demo must open its actual requirement page");
+            String projectId = route.group(1);
+            String requirementId = route.group(2);
+            wait(15).until(ExpectedConditions.elementToBeClickable(By.id("reanalyzeRequirement")));
+            safeClick(By.id("reanalyzeRequirement"));
+            By selectedSnapshot = By.cssSelector("#snapshotList [data-snapshot-id].active");
+            wait(180).withMessage(() -> "R0 analysis did not produce a persisted snapshot: "
+                    + driver.findElement(By.id("detailError")).getText())
+                    .until(ExpectedConditions.presenceOfElementLocated(selectedSnapshot));
+            String snapshotId = driver.findElement(selectedSnapshot).getAttribute("data-snapshot-id");
+            Map<?, ?> snapshot = requestFixture("/api/projects/" + projectId + "/snapshots/" + snapshotId,
+                    "GET", null, null);
+            Map<?, ?> summary = (Map<?, ?>) snapshot.get("summary");
+            Map<?, ?> analysis = (Map<?, ?>) snapshot.get("analysis");
+            Assertions.assertEquals("PARTIAL", summary.get("status"));
+            Assertions.assertEquals("DEMO.TIME-TRACKING-V1.R0", summary.get("provider"));
+            Map<?, ?> requirement = requestFixture("/api/projects/" + projectId + "/requirements/" + requirementId,
+                    "GET", null, null);
+            Map<String, Object> export = new LinkedHashMap<>();
+            export.put("requirement", ((Map<?, ?>) requirement.get("currentVersion")).get("text"));
+            export.put("analysisStatus", analysis.get("status"));
+            for (String field : List.of("scores", "rawScores", "reasons", "provider", "analysisCoverage",
+                    "analysisScope", "analysisLanguage", "analysisReasonLength", "copilot",
+                    "analysisOperationId", "analysisProviderId")) {
+                if (analysis.get(field) != null) export.put(field, analysis.get(field));
+            }
+            Map<?, ?> saved = requestFixture("/api/scores/export", "POST", "application/json",
+                    JSON.writeValueAsString(export));
+            Map<?, ?> scores = (Map<?, ?>) saved.get("scores");
+            Assertions.assertFalse(scores.containsKey("CO"), "An unresolved root has no numeric score");
+            for (var expected : Map.of("BP", 40, "CR", 45, "UA", 70).entrySet()) {
+                Assertions.assertEquals(expected.getValue().doubleValue(),
+                        ((Number) scores.get(expected.getKey())).doubleValue(), "Retained demo root " + expected.getKey());
+            }
+            Map<?, ?> coverage = (Map<?, ?>) saved.get("analysisCoverage");
+            Map<?, ?> communication = (Map<?, ?>) ((Map<?, ?>) coverage.get("nodes")).get("CO");
+            Assertions.assertEquals("UNKNOWN", communication.get("state"));
+            Assertions.assertNull(communication.get("score"));
+            String reason = String.valueOf(communication.get("reason"));
+            Assertions.assertTrue(reason.startsWith("CLARIFICATION:"));
+            Files.writeString(savedFile, JSON.writeValueAsString(saved));
+            ((org.openqa.selenium.remote.RemoteWebDriver) driver)
+                    .setFileDetector(new org.openqa.selenium.remote.LocalFileDetector());
+            for (String language : List.of("de", "en")) {
+                resetPageState(language);
+                navigateToTab("export");
+                // Selenium's real file upload invokes the production importer and its HTTP validation.
+                js("window.__screenshotPreviousImportScores = window.TaxonomyState.currentRawScores;");
+                driver.findElement(By.id("importJsonFile")).sendKeys(savedFile.toAbsolutePath().toString());
+                wait(30).until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript("""
+                        const state = window.TaxonomyState;
+                        return state.currentRawScores !== window.__screenshotPreviousImportScores
+                            && state.lastAnalysisStatus === 'PARTIAL'
+                            && state.analysisCoverage?.nodes?.CO?.state === 'UNKNOWN'
+                            && !Object.prototype.hasOwnProperty.call(state.currentScores, 'CO')
+                            && !Object.prototype.hasOwnProperty.call(state.currentRawScores, 'CO');
+                        """)));
+                navigateToTab("analyze");
+                safeClick(By.id("viewList"));
+                wait(10).until(ExpectedConditions.attributeToBe(
+                        By.id("taxonomyTree"), "data-view-rendered", "list"));
+                List<WebElement> rootToggles = driver.findElements(By.cssSelector(
+                        "#taxonomyTree > .tax-container > .tax-container-heading > .tax-container-toggle"));
+                Assertions.assertFalse(rootToggles.isEmpty(), "Imported catalogue must expose root controls");
+                for (WebElement toggle : rootToggles) {
+                    if ("true".equals(toggle.getAttribute("aria-expanded"))) {
+                        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", toggle);
+                        wait(5).until(ExpectedConditions.elementToBeClickable(toggle)).click();
+                        wait(5).until(ExpectedConditions.attributeToBe(toggle, "aria-expanded", "false"));
+                    }
+                }
+                WebElement question = wait(10).until(ExpectedConditions.visibilityOfElementLocated(
+                        By.id("tax-container-clarification-CO")));
+                Assertions.assertEquals(reason.substring("CLARIFICATION:".length()).trim(), question.getText());
+                Map<?, ?> importedScores = (Map<?, ?>) ((JavascriptExecutor) driver)
+                        .executeScript("return window.TaxonomyState.currentScores;");
+                for (String code : List.of("BP", "CR", "UA")) {
+                    Assertions.assertEquals(((Number) scores.get(code)).doubleValue(),
+                            ((Number) importedScores.get(code)).doubleValue(), "Imported demo root " + code);
+                }
+                WebElement rootToggle = driver.findElement(By.cssSelector(
+                        "#taxonomyTree [data-taxonomy-container='CO'] > .tax-container-heading > .tax-container-toggle"));
+                rootToggle.sendKeys(org.openqa.selenium.Keys.SPACE);
+                wait(5).until(ExpectedConditions.attributeToBe(rootToggle, "aria-expanded", "true"));
+                rootToggle.sendKeys(org.openqa.selenium.Keys.SPACE);
+                wait(5).until(ExpectedConditions.attributeToBe(rootToggle, "aria-expanded", "false"));
+                Assertions.assertTrue(question.isDisplayed(), "The unresolved root question remains visible when collapsed");
+                Map<?, ?> layout = (Map<?, ?>) ((JavascriptExecutor) driver).executeScript("""
+                        const tree = document.getElementById('taxonomyTree');
+                        const body = tree.closest('.card-body');
+                        return {scrollHeight:body.scrollHeight, clientHeight:body.clientHeight,
+                            scrollWidth:body.scrollWidth, clientWidth:body.clientWidth, scrollTop:body.scrollTop,
+                            viewportWidth:innerWidth, viewportHeight:innerHeight,
+                            roots:Array.from(tree.querySelectorAll(':scope > .tax-container')).map(root => ({
+                                code:root.dataset.taxonomyContainer,
+                                expanded:root.querySelector(':scope > .tax-container-heading > .tax-container-toggle')
+                                    ?.getAttribute('aria-expanded')}))};
+                        """);
+                Assertions.assertTrue(
+                        ((Number) layout.get("scrollHeight")).doubleValue()
+                                <= ((Number) layout.get("clientHeight")).doubleValue() + 1
+                        && ((Number) layout.get("scrollWidth")).doubleValue()
+                                <= ((Number) layout.get("clientWidth")).doubleValue() + 1,
+                        "Collapsed root evidence must fit without clipping: " + layout);
+                saveElementScreenshot(driver.findElement(By.cssSelector("#leftPanel > .card")),
+                        "root-relevance-clarification-" + language + ".png");
+            }
+            completed = true;
+        } finally {
+            Files.deleteIfExists(savedFile);
+            // Preserve the failing layout for the TestWatcher's PNG and page-source evidence.
+            if (completed) {
+                driver.manage().window().setSize(originalSize);
+                resetPageState();
+            }
+        }
     }
 }
