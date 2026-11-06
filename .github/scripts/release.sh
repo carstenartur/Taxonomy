@@ -383,7 +383,7 @@ validate_release_notes
 if [[ "$SKIP_TESTS" == "true" ]]; then
   run_maven_release_check release release-check clean package -DskipTests
 else
-  run_maven_release_check release release-check,ci clean verify
+  run_maven_release_check release release-check,ci clean verify -DrunOnnxTests=true
 fi
 java -jar "$TOOLING_JAR" generate-sbom-companion \
   --sbom target/taxonomy-sbom.json \
