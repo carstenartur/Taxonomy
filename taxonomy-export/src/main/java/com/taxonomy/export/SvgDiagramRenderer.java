@@ -8,9 +8,17 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 /** Produces a standalone SVG with compact shapes and a visible, complete evidence inventory. */
 public class SvgDiagramRenderer {
+    private final ExportThemeProvider themes;
+
+    public SvgDiagramRenderer() { this(ExportThemeProvider.defaults()); }
+
+    public SvgDiagramRenderer(ExportThemeProvider themes) {
+        this.themes = Objects.requireNonNull(themes, "themes");
+    }
     private static final int EVIDENCE_FONT_SIZE = 14;
     private static final double EVIDENCE_COLUMN_WIDTH = 720;
     private static final double EVIDENCE_TEXT_WIDTH = EVIDENCE_COLUMN_WIDTH - 28;
@@ -28,6 +36,10 @@ public class SvgDiagramRenderer {
                          Map<String, Map<String, String>> relationReasons) {
         if (scene == null || scene.isEmpty())
             throw new IllegalArgumentException("Architecture scene must contain at least one node");
+        ExportTheme theme = Objects.requireNonNull(themes.current(), "export theme");
+        var markers = new LinkedHashMap<String, String>();
+        scene.edges().forEach(edge -> markers.computeIfAbsent(theme.relationshipStroke(edge.relationType(),
+                edge.metadata() != null && edge.metadata().proposed()), color -> "arrow-" + (markers.size() + 1)));
         var nodeReferences = new LinkedHashMap<String, String>();
         scene.nodes().forEach(node -> nodeReferences.putIfAbsent(node.id(), "evidence-node-" + (nodeReferences.size() + 1)));
         var edgeReferences = new LinkedHashMap<String, String>();
@@ -66,30 +78,35 @@ public class SvgDiagramRenderer {
             .append(number(width)).append("\" height=\"").append(number(height)).append("\">\n")
             .append("<title>").append(xml(scene.title())).append("</title>\n")
             .append("<desc>Requirement-derived architecture diagram. Shapes link to the visible inventory of complete labels, scores and recorded explanations below. AI verification is not human approval.</desc>\n")
-            .append("<defs><marker id=\"arrow\" markerWidth=\"10\" markerHeight=\"8\" refX=\"9\" refY=\"4\" orient=\"auto\"><path d=\"M0,0 L10,4 L0,8 z\" fill=\"#586174\"/></marker></defs>\n")
-            .append("<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>\n");
+            .append("<defs>");
+        markers.forEach((color, id) -> svg.append("<marker id=\"").append(id)
+                .append("\" markerWidth=\"10\" markerHeight=\"8\" refX=\"9\" refY=\"4\" orient=\"auto\"><path d=\"M0,0 L10,4 L0,8 z\" fill=\"")
+                .append(color).append("\"/></marker>"));
+        svg.append("</defs>\n<rect width=\"100%\" height=\"100%\" fill=\"")
+                .append(theme.canvasBackground()).append("\"/>\n");
         for (var edge : scene.edges()) {
             String status = DiagramPresentation.relationshipStatus(edge.metadata());
             boolean proposed = edge.metadata() != null && edge.metadata().proposed();
+            String stroke = theme.relationshipStroke(edge.relationType(), proposed);
             svg.append("<a xlink:href=\"#").append(edgeReferences.get(edge.id())).append("\"><g class=\"architecture-edge\" data-edge-id=\"").append(xml(edge.id()))
                 .append("\" data-origin=\"").append(edge.metadata() == null || edge.metadata().origin() == null ? "unrecorded" : edge.metadata().origin().name())
                 .append("\"><title>").append(xml(edge.id() + " | " + edge.sourceId() + " -> " + edge.targetId() + " | " + edge.relationType()
                         + "\n" + String.join("\n", DiagramPresentation.relationshipDetails(edge.metadata())))).append("</title>\n")
                 .append("<line x1=\"").append(number(edge.sourceX())).append("\" y1=\"").append(number(edge.sourceY()))
                 .append("\" x2=\"").append(number(edge.targetX())).append("\" y2=\"").append(number(edge.targetY()))
-                .append("\" stroke=\"").append(proposed ? "#9333ea" : "#586174").append("\" stroke-width=\"")
+                .append("\" stroke=\"").append(stroke).append("\" stroke-width=\"")
                 .append(number(1.2 + Math.max(0, edge.relevance()) * 1.8)).append('"');
             if (proposed) svg.append(" stroke-dasharray=\"6 4\"");
-            svg.append(" marker-end=\"url(#arrow)\"/>\n");
+            svg.append(" marker-end=\"url(#").append(markers.get(stroke)).append(")\"/>\n");
             svg.append("<metadata><relationship xmlns=\"urn:taxonomy:diagram\">");
             metadataValue(svg, "provenance", edge.metadata());
             svg.append("</relationship></metadata>\n");
             double captionWidth = Math.max(12, Math.min(210, Math.abs(edge.targetX() - edge.sourceX()) - 12));
             double captionX = (edge.sourceX() + edge.targetX()) / 2;
             double captionY = (edge.sourceY() + edge.targetY()) / 2;
-            text(svg, captionX, captionY - 15, "middle", 11, false, "#394150",
+            text(svg, captionX, captionY - 15, "middle", 11, false, theme.canvasText("#394150"),
                     DiagramTextWrapper.wrapMeasured(edge.relationType(), font(11, false), captionWidth, 1, "Relationship").getFirst());
-            text(svg, captionX, captionY + 23, "middle", 11, false, "#394150",
+            text(svg, captionX, captionY + 23, "middle", 11, false, theme.canvasText("#394150"),
                     DiagramTextWrapper.wrapMeasured(status, font(11, false), captionWidth, 1, "Origin unrecorded").getFirst());
             svg.append("</g></a>\n");
         }
@@ -100,23 +117,23 @@ public class SvgDiagramRenderer {
                 .append("<title>").append(xml(node.id() + " | " + node.label() + " | " + node.type()
                         + " | Depth " + node.depth() + (node.container() ? " | Container" : ""))).append("</title>\n")
                 .append("<rect width=\"").append(number(node.width())).append("\" height=\"").append(number(node.height()))
-                .append("\" rx=\"10\" fill=\"").append(DiagramPresentation.fill(node.type())).append("\" stroke=\"")
-                .append(node.anchor() ? "#172554" : "#64748b").append("\" stroke-width=\"").append(node.anchor() ? "3" : "1.3").append("\"/>\n");
-            text(svg, 14, 17, "start", 10, true, "#334155", DiagramTextWrapper.wrapMeasured(node.id(), font(10, true), nodeTextWidth, 1, "ID unrecorded").getFirst());
+                .append("\" rx=\"10\" fill=\"").append(theme.nodeFill(node.type())).append("\" stroke=\"")
+                .append(theme.nodeBorder(node.type(), node.anchor())).append("\" stroke-width=\"").append(node.anchor() ? "3" : "1.3").append("\"/>\n");
+            text(svg, 14, 17, "start", 10, true, theme.nodeText(node.type(), "#334155"), DiagramTextWrapper.wrapMeasured(node.id(), font(10, true), nodeTextWidth, 1, "ID unrecorded").getFirst());
             var labels = DiagramTextWrapper.wrapMeasured(node.label(), font(13, false), nodeTextWidth, 2, "Unnamed architecture element");
-            for (int i = 0; i < labels.size(); i++) text(svg, 14, 36 + i * 17, "start", 13, false, "#0f172a", labels.get(i));
-            text(svg, 14, 72, "start", 10, false, "#475569", DiagramTextWrapper.wrapMeasured(
+            for (int i = 0; i < labels.size(); i++) text(svg, 14, 36 + i * 17, "start", 13, false, theme.nodeText(node.type(), "#0f172a"), labels.get(i));
+            text(svg, 14, 72, "start", 10, false, theme.nodeText(node.type(), "#475569"), DiagramTextWrapper.wrapMeasured(
                     node.type() + " · " + DiagramPresentation.percent(node.relevance()), font(10, false), nodeTextWidth, 1, "Unclassified").getFirst());
             svg.append("</g></a>\n");
         }
-        for (int i = 0; i < summary.size(); i++) text(svg, 14, footer + 16 + i * 16, "start", 11, false, "#334155",
+        for (int i = 0; i < summary.size(); i++) text(svg, 14, footer + 16 + i * 16, "start", 11, false, theme.canvasText("#334155"),
                 summary.get(i));
-        text(svg, 14, evidenceTitleY, "start", 16, true, "#0f172a", "Scores and complete explanations");
+        text(svg, 14, evidenceTitleY, "start", 16, true, theme.canvasText("#0f172a"), "Scores and complete explanations");
         for (int column = 0; column < columns; column++) {
             double x = 14 + column * EVIDENCE_COLUMN_WIDTH;
             var header = columnHeaders.get(column);
             for (int line = 0; line < header.size(); line++) text(svg, x,
-                    evidenceTitleY + 28 + line * EVIDENCE_LINE_HEIGHT, "start", EVIDENCE_FONT_SIZE, true, "#334155", header.get(line));
+                    evidenceTitleY + 28 + line * EVIDENCE_LINE_HEIGHT, "start", EVIDENCE_FONT_SIZE, true, theme.canvasText("#334155"), header.get(line));
             int index = column * linesPerColumn;
             int end = Math.min(evidence.size(), index + linesPerColumn);
             while (index < end) {
@@ -128,7 +145,7 @@ public class SvgDiagramRenderer {
                 do {
                     var line = evidence.get(index);
                     if (!line.value().isEmpty()) text(svg, x, evidenceTop + (index % linesPerColumn) * EVIDENCE_LINE_HEIGHT,
-                            "start", EVIDENCE_FONT_SIZE, line.bold(), "#0f172a", line.value());
+                            "start", EVIDENCE_FONT_SIZE, line.bold(), theme.canvasText("#0f172a"), line.value());
                     index++;
                 } while (index < end && evidence.get(index).reference().equals(first.reference()));
                 svg.append("</g>\n");
