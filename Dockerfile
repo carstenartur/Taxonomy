@@ -24,6 +24,7 @@ COPY taxonomy-tooling/pom.xml taxonomy-tooling/pom.xml
 COPY taxonomy-domain/pom.xml taxonomy-domain/pom.xml
 COPY taxonomy-reporting-api/pom.xml taxonomy-reporting-api/pom.xml
 COPY taxonomy-dsl/pom.xml taxonomy-dsl/pom.xml
+COPY taxonomy-sparx-mapping/pom.xml taxonomy-sparx-mapping/pom.xml
 COPY taxonomy-export/pom.xml taxonomy-export/pom.xml
 COPY taxonomy-extension-api/pom.xml taxonomy-extension-api/pom.xml
 COPY taxonomy-extension-runtime/pom.xml taxonomy-extension-runtime/pom.xml
@@ -56,6 +57,7 @@ COPY taxonomy-tooling/src taxonomy-tooling/src
 COPY taxonomy-domain/src taxonomy-domain/src
 COPY taxonomy-reporting-api/src taxonomy-reporting-api/src
 COPY taxonomy-dsl/src taxonomy-dsl/src
+COPY taxonomy-sparx-mapping/src taxonomy-sparx-mapping/src
 COPY taxonomy-export/src taxonomy-export/src
 COPY taxonomy-extension-api/src taxonomy-extension-api/src
 COPY taxonomy-extension-runtime/src taxonomy-extension-runtime/src
