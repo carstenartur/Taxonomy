@@ -54,7 +54,12 @@ class ScreenshotDocumentationIT {
         metadata.put("runStartedAt", startedAt.toString());
         metadata.put("sourceCommit", git("rev-parse", "HEAD"));
         metadata.put("sourceTree", git("rev-parse", "HEAD^{tree}"));
-        metadata.put("sourceDirty", !git("status", "--porcelain", "--untracked-files=normal").isBlank());
+        List<String> sourceChanges = git("status", "--porcelain", "--untracked-files=normal").lines().toList();
+        metadata.put("sourceDirty", !sourceChanges.isEmpty());
+        metadata.put("sourceChanges", sourceChanges);
+        if ("true".equals(System.getenv("GITHUB_ACTIONS"))) {
+            assertTrue(sourceChanges.isEmpty(), "CI captures require an unchanged source checkout: " + sourceChanges);
+        }
         metadata.put("entryPoint", "./mvnw -B verify -Pscreenshots");
         metadata.put("applicationData", "isolated deterministic mock/demo data; no external LLM calls");
         metadata.put("componentExamples", "decision-export-{dialog,options,mobile}-{de,en}.png use production components with authored example input");

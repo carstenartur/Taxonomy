@@ -16,6 +16,9 @@ __pycache__/
 .github/node_modules/
 .cache/ui-frontend/
 .cache/playwright-system-packages/
+# Generated, checksum-verified bundles from download-embedding-model.sh.
+/models/multilingual-minilm/
+/models/bge-small-en-v1.5/
 
 # Isolated implementation worktrees and local execution ledgers.
 .worktrees/
