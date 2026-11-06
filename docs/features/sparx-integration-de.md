@@ -1,10 +1,49 @@
 # Austausch mit Sparx Enterprise Architect
 
-Status: **experimentelle XMI-Implementierung; Produktkompatibilität noch ungeprüft**.
+Status: **experimentelle XMI- und optionale QEA-Implementierungen; Produktkompatibilität noch ungeprüft**.
 Dies ist ein Umsetzungsschritt von [#1075](https://github.com/carstenartur/Taxonomy/issues/1075).
 Das Issue bleibt offen. Für die Produktabnahme standen weder Enterprise Architect
 noch Pro Cloud Server zur Verfügung. Die synthetische Testdatei belegt keine
 Unterstützung einer bestimmten EA-Version.
+
+## Optionaler QEA-Import als Plugin
+
+Das eigenständige [Sparx-QEA-Plugin](../../plugins/taxonomy-sparx-plugin/README.md)
+ergänzt das Profil **Sparx EA QEA** (`sparx-qea@1`) in derselben
+Integrationsoberfläche. Es liest SQLite-basierte QEA-Snapshots und benötigt Java 25
+sowie die Host-SPI ab 1.3.0. Es wird separat gebaut und installiert:
+
+```bash
+./mvnw -B -pl taxonomy-extension-api -am install
+./mvnw -B -f plugins/taxonomy-sparx-plugin/pom.xml verify
+```
+
+Den Host stoppen, die fertige Plugin-JAR aus dem `target`-Verzeichnis des Plugins
+in `taxonomy.plugins.directory` kopieren und den Host neu starten. Die JAR ist
+eine vertrauenswürdige Betreiber-Erweiterung und läuft im Hostprozess. Die
+STARTUP-Installation hat denselben Lebenszyklus wie Alfabet und LeanIX.
+
+1. Unter **Werkzeugintegrationen** eine Verbindung mit `sparx-qea@1`, einer
+   dauerhaft eindeutigen externen Modellkennung und **Importkopie** anlegen.
+2. Einen konsistenten, geschlossenen QEA-Snapshot hochladen (im Host höchstens
+   16 MiB). Die Datei wird lesend verarbeitet. Dieses Profil behandelt seine
+   Projektion immer als unvollständig und leitet aus fehlenden Objekten keine
+   Löschungen ab.
+3. Typzuordnungen, Beziehungen, Paketverschiebungen und den Verlustbericht prüfen.
+   Unbekannte Typen benötigen eine ausdrückliche Zuordnung oder Ablehnung.
+   Diagrammzugehörigkeit und Paketzugehörigkeit werden getrennt behandelt.
+4. Die ausgewählten Änderungen mit Begründung übernehmen. Wiederholte Importe
+   verwenden dieselben externen GUIDs; eine Umbenennung erzeugt kein neues Objekt.
+
+Das Profil bietet zunächst den lesenden Import. Diagrammgeometrie und weitere
+EA-Details können als Nachweis erhalten bleiben, ohne vollständig in Taxonomy
+darstellbar zu sein; maßgeblich ist der Verlustbericht. Synthetische JUnit-Tests
+prüfen den deklarierten Umfang. Ein Test mit einer realen EA-Version steht aus.
+
+Bei einer aktualisierten Plugin-JAR muss eine offene Importvorschau neu erstellt
+werden (`INTEGRATION_PLUGIN_CHANGED`). Bereits übernommene Daten und die gespeicherte
+Historie bleiben bei einer Deinstallation erhalten. Details zu Schema, unterstützten
+Typen, Grenzen und Herkunft stehen im Plugin-README.
 
 ## Geprüfter XMI-Ablauf
 

@@ -7,7 +7,7 @@ import java.util.*;
 import java.util.jar.JarFile;
 import static org.assertj.core.api.Assertions.*;
 
-/** Real independently built plugin, unchanged packaged host, authenticated HTTP exports. */
+/** Real independently built plugins, unchanged packaged host, authenticated HTTP exchanges. */
 class ExternalPluginPackagedIT {
     @TempDir Path temporary;
     @Test void standardDistributionIncludesChecksumsForEveryExternalPlugin() throws Exception {
@@ -74,6 +74,67 @@ class ExternalPluginPackagedIT {
             assertThat(app.request("GET", "/actuator/health/readiness", null).statusCode()).isEqualTo(200);
         }
         assertThat(PackagedPluginSupport.sha256(host)).isEqualTo(original);
+    }
+
+    @Test void externalSparxQeaJarImportsReviewedSnapshotsAndRemainsOptional() throws Exception {
+        Path root = PackagedPluginSupport.repository();
+        Path host = PackagedPluginSupport.application(root);
+        String original = PackagedPluginSupport.sha256(host);
+        try (var jar = new JarFile(host.toFile())) {
+            assertThat(jar.stream().map(entry -> entry.getName()))
+                    .noneMatch(name -> name.contains("taxonomy-sparx-plugin") || name.contains("com/taxonomy/plugins/sparx/"));
+        }
+        Path plugin = PackagedPluginSupport.buildIndependentPlugin(root, temporary,
+                "taxonomy-sparx-plugin", 25, "sparx-sdk-verification.txt");
+        String pluginVersion;
+        try (var jar = new JarFile(plugin.toFile())) {
+            var manifest = jar.getManifest().getMainAttributes();
+            assertThat(manifest.getValue("Plugin-Id")).isEqualTo("taxonomy.sparx");
+            assertThat(manifest.getValue("Taxonomy-Plugin-Mode")).isEqualTo("STARTUP");
+            assertThat(manifest.getValue("Plugin-Requires")).contains("1.3.0");
+            pluginVersion = manifest.getValue("Plugin-Version");
+            assertThat(pluginVersion).isNotBlank();
+            assertThat(jar.getJarEntry("META-INF/services/com.taxonomy.extension.api.plugin.TaxonomyPlugin")).isNotNull();
+            assertThat(jar.getJarEntry("org/sqlite/JDBC.class")).isNotNull();
+            assertThat(jar.stream().map(entry -> entry.getName()))
+                    .anyMatch(name -> name.startsWith("org/sqlite/native/") && name.endsWith("/libsqlitejdbc.so"));
+            assertThat(jar.stream().map(entry -> entry.getName())).noneMatch(name -> name.startsWith("com/taxonomy/extension/")
+                    || name.startsWith("com/taxonomy/interop/") || name.startsWith("com/taxonomy/dsl/")
+                    || name.startsWith("org/springframework/") || name.endsWith(".jar"));
+        }
+        Path fixtures = plugin.getParent().resolve("packaged-fixtures");
+        Path base = fixtures.resolve("base.qea"), renamed = fixtures.resolve("renamed.qea");
+        assertThat(base).isRegularFile();
+        assertThat(renamed).isRegularFile();
+        String baseDigest = PackagedPluginSupport.sha256(base), renamedDigest = PackagedPluginSupport.sha256(renamed);
+        assertThat(renamedDigest).isNotEqualTo(baseDigest);
+        String pluginDigest = PackagedPluginSupport.sha256(plugin);
+        Path installed = Files.createDirectory(temporary.resolve("sparx-installed"));
+        Files.copy(plugin, installed.resolve("sparx.jar"));
+        Path state = temporary.resolve("sparx-retained-state");
+        var arguments = List.of("--taxonomy.features.multi-repository-api.enabled=true",
+                "--spring.datasource.url=jdbc:hsqldb:file:" + state.resolve("database") + ";shutdown=true",
+                "--spring.jpa.hibernate.ddl-auto=update");
+        SparxQeaPackagedChecks.RetainedState retained;
+        try (var app = PackagedPluginSupport.start(host, installed, host.getParent().resolve("features"),
+                state, arguments)) {
+            retained = SparxQeaPackagedChecks.reviewedImports(app, base, renamed, pluginVersion, pluginDigest);
+        }
+        Files.copy(state.resolve("application.log"), state.resolve("application-with-plugin.log"));
+        Path absent = Files.createDirectory(temporary.resolve("sparx-absent"));
+        try (var app = PackagedPluginSupport.start(host, absent, host.getParent().resolve("features"),
+                state, arguments)) {
+            SparxQeaPackagedChecks.absentPlugin(app, retained, renamed);
+        }
+        assertThat(PackagedPluginSupport.sha256(base)).isEqualTo(baseDigest);
+        assertThat(PackagedPluginSupport.sha256(renamed)).isEqualTo(renamedDigest);
+        assertThat(PackagedPluginSupport.sha256(host)).isEqualTo(original);
+        Files.writeString(root.resolve("taxonomy-build/target/sparx-packaging-evidence.txt"),
+                "host.sha256=" + original + "\nsparx.sha256=" + pluginDigest
+                        + "\nindependent.emptyRepository=true\nfixtures=synthetic\nhttp.reviewedImport=completed"
+                        + "\nhttp.repeat=unchanged\nhttp.renameMove=stable-identities\npackageAndViewMembership=independent"
+                        + "\nwithout.plugin=ready,profileUnavailable\nhttp.removal=retained-architecture-identities-history-revision"
+                        + "\nhttp.absentPreview=PROFILE_VERSION_CHANGED\nhttp.absentCreate=UNKNOWN_CONNECTOR\n");
     }
 
     @Test void externalMermaidJarIsOptionalAndDoesNotRequireRebuildingTheHost() throws Exception {

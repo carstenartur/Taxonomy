@@ -64,7 +64,14 @@ public class IntegrationPublicationService {
         local.authorize(context, false, null);
         var connection = store.read(context, connectionId);
         local.authorize(context, false, connection);
-        var connector = connectors.require(connection.connectorId(), connection.profileVersion());
+        LifecycleIntegrationConnector connector;
+        try {
+            connector = connectors.require(connection.connectorId(), connection.profileVersion());
+        } catch (IntegrationProblem problem) {
+            if (!"UNKNOWN_CONNECTOR".equals(problem.code())) throw problem;
+            // Reading retained connection history does not require its optional plugin.
+            return new PublicationAvailability(false, Set.of(), Set.of(), "PROFILE_VERSION_CHANGED");
+        }
         if (!(connector instanceof ConditionalPublicationConnector conditional)) {
             return new PublicationAvailability(false, Set.of(), Set.of(), "PUBLICATION_GUARANTEES_UNVERIFIED");
         }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { createNavigationPollEvidence } from './ui-navigation-poll-evidence.mjs';
+import { createConsoleErrorLedger, createNavigationPollEvidence } from './ui-navigation-poll-evidence.mjs';
 
 const source = await readFile(
   new URL('./ui-role-state-acceptance.mjs', import.meta.url),
@@ -119,9 +119,10 @@ function consoleAudit(browserName = 'webkit') {
   const observersEnd = source.indexOf("\n  taskMeasurements.failedStep = 'isolating", observersStart);
   assert.ok(functionsStart >= 0 && functionsEnd > functionsStart);
   assert.ok(observersStart >= 0 && observersEnd > observersStart);
-  return new Function('browserName', 'createNavigationPollEvidence', `
+  return new Function('browserName', 'createNavigationPollEvidence', 'createConsoleErrorLedger', `
     const baseUrl = 'http://127.0.0.1:8080';
     const consoleErrors = [], reconciledConsoleErrors = [], navigationConsoleCandidates = [], navigationEvidence = [];
+    const consoleErrorLedger = createConsoleErrorLedger(consoleErrors, reconciledConsoleErrors);
     const navigationPollEvidence = createNavigationPollEvidence({ browserName, baseUrl });
     let systemInformationNavigationLocale = null;
     const handlers = {};
@@ -139,7 +140,7 @@ function consoleAudit(browserName = 'webkit') {
       },
       settle(cases) { reconcileSystemInformationConsoleErrors(cases); }
     };
-  `)(browserName, createNavigationPollEvidence);
+  `)(browserName, createNavigationPollEvidence, createConsoleErrorLedger);
 }
 
 const settledLocale = { locale: 'de', aiStatusSettled: true, operationalStatusSettled: true,
@@ -158,6 +159,28 @@ for (const event of ['console', 'pageerror']) {
     assert.deepEqual(audit.errors, []);
     assert.equal(audit.reconciled.length, 2);
     assert.deepEqual(audit.reconciled.map(item => item.message), [contextCancellation, gitCancellation]);
+  });
+
+  test(`a consumed locale proof cannot clear a later live ${event} with the same message`, () => {
+    const audit = consoleAudit();
+    audit.begin('de'); audit.emit(contextCancellation, event); audit.end();
+    audit.settle([settledLocale]);
+    assert.deepEqual(audit.errors, []);
+    audit.emit(contextCancellation, event);
+    audit.settle([settledLocale]);
+    assert.deepEqual(audit.errors, [contextCancellation]);
+    assert.equal(audit.reconciled.length, 1);
+  });
+
+  test(`separate verified ${event} cancellations retain their own proof identity`, () => {
+    const audit = consoleAudit();
+    for (let navigation = 0; navigation < 2; navigation++) {
+      audit.begin('de'); audit.emit(contextCancellation, event); audit.end();
+      audit.settle([settledLocale]);
+    }
+    assert.deepEqual(audit.errors, []);
+    assert.equal(audit.reconciled.length, 2);
+    assert.notEqual(audit.reconciled[0].errorId, audit.reconciled[1].errorId);
   });
 }
 

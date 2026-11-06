@@ -43,7 +43,8 @@ final class PackagedPluginSupport {
     }
     static Path buildIndependentPlugin(Path root, Path temporary, String artifactId,
                                        int minimumTests, String evidenceFile) throws Exception {
-        if (!Set.of("taxonomy-mermaid-plugin", "taxonomy-leanix-plugin", "taxonomy-alfabet-plugin").contains(artifactId))
+        if (!Set.of("taxonomy-mermaid-plugin", "taxonomy-leanix-plugin", "taxonomy-alfabet-plugin",
+                "taxonomy-sparx-plugin").contains(artifactId))
             throw new IllegalArgumentException("Unsupported packaged test fixture");
         Path localRepository = Files.createDirectory(temporary.resolve("empty-maven-repository"));
         try (var contents = Files.list(localRepository)) { assertThat(contents).isEmpty(); }
@@ -105,7 +106,7 @@ final class PackagedPluginSupport {
         int port;
         try (var socket = new ServerSocket(0, 0, InetAddress.getLoopbackAddress())) { port = socket.getLocalPort(); }
         var command = new ArrayList<>(List.of(Path.of(System.getProperty("java.home"), "bin/java").toString(),
-                "-Xmx700m", "-Dloader.path=" + features, "-jar", host.toString(), "--server.address=127.0.0.1", "--server.port=" + port,
+                "-Xmx700m", "--enable-native-access=ALL-UNNAMED", "-Dloader.path=" + features, "-jar", host.toString(), "--server.address=127.0.0.1", "--server.port=" + port,
                 "--taxonomy.plugins.directory=" + plugins, "--taxonomy.plugins.cache-directory=" + state.resolve("cache"),
                 "--taxonomy.admin-password=" + PASSWORD, "--taxonomy.security.require-password-change=false",
                 "--llm.mock=true", "--embedding.enabled=false", "--embedding.allow-download=false",
@@ -138,11 +139,30 @@ final class PackagedPluginSupport {
             return request(method, route, body, Map.of());
         }
         HttpResponse<String> request(String method, String route, String body, Map<String, String> headers) throws IOException, InterruptedException {
+            return request(method, route, body == null ? null : body.getBytes(StandardCharsets.UTF_8), "application/json", headers);
+        }
+        HttpResponse<String> upload(String route, String metadata, Path file, String mediaType,
+                                    Map<String, String> headers) throws IOException, InterruptedException {
+            String boundary = "taxonomy-packaged-" + UUID.randomUUID();
+            String filename = file.getFileName().toString();
+            if (filename.indexOf('"') >= 0 || filename.indexOf('\r') >= 0 || filename.indexOf('\n') >= 0)
+                throw new IllegalArgumentException("Unsafe multipart filename");
+            var body = new java.io.ByteArrayOutputStream();
+            body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"request\"\r\n"
+                    + "Content-Type: application/json\r\n\r\n" + metadata + "\r\n"
+                    + "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + filename + "\"\r\n"
+                    + "Content-Type: " + mediaType + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+            Files.copy(file, body);
+            body.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+            return request("POST", route, body.toByteArray(), "multipart/form-data; boundary=" + boundary, headers);
+        }
+        private HttpResponse<String> request(String method, String route, byte[] body, String contentType,
+                                             Map<String, String> headers) throws IOException, InterruptedException {
             var builder = HttpRequest.newBuilder(origin.resolve(route)).timeout(Duration.ofSeconds(60))
                     .header("Authorization", "Basic " + Base64.getEncoder().encodeToString(("admin:" + PASSWORD).getBytes(StandardCharsets.UTF_8)))
-                    .header("Content-Type", "application/json");
+                    .header("Content-Type", contentType);
             headers.forEach(builder::header);
-            builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body));
+            builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofByteArray(body));
             return HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
                     .send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         }

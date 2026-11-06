@@ -28,6 +28,8 @@ public final class ExchangeItems {
         }
         Map<String, String> modelMetadata = new TreeMap<>(document.metadata());
         modelMetadata.remove("remoteRequest"); modelMetadata.remove("discovery");
+        // Parser identity is a host precondition, never an editable model change.
+        PluginExchangeConnector.BINDING_KEYS.forEach(modelMetadata::remove);
         add(result, new Artifact("package", ArtifactKind.METADATA, document.profile(), "", "", modelMetadata, Map.of()));
         return result;
     }
@@ -44,7 +46,12 @@ public final class ExchangeItems {
             case METADATA -> metadata = item.attributes();
             default -> artifacts.add(item);
         }
-        return new ExchangeDocument(template.profile(), template.profileVersion(), template.externalVersion(), template.completeScope(), template.source(), artifacts, relations, placements, metadata, template.losses());
+        var boundMetadata = new TreeMap<>(metadata);
+        for (String key : PluginExchangeConnector.BINDING_KEYS) {
+            boundMetadata.remove(key);
+            if (template.metadata().containsKey(key)) boundMetadata.put(key, template.metadata().get(key));
+        }
+        return new ExchangeDocument(template.profile(), template.profileVersion(), template.externalVersion(), template.completeScope(), template.source(), artifacts, relations, placements, boundMetadata, template.losses());
     }
     public static Map<String, String> fields(Artifact artifact) {
         Map<String, String> result = new TreeMap<>();

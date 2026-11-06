@@ -1,14 +1,17 @@
 package com.taxonomy.shared.config;
 
 import com.taxonomy.export.ArchiMateDiagramService;
+import com.taxonomy.export.ArchitecturePdfRenderer;
 import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
 import com.taxonomy.export.ConfigurableDiagramSelectionPolicy;
 import com.taxonomy.export.DiagramProjectionService;
 import com.taxonomy.export.DiagramSelectionConfig;
 import com.taxonomy.export.DiagramSelectionPolicy;
 import com.taxonomy.export.DiagramViewMetadata;
+import com.taxonomy.export.LayeredDiagramLayoutService;
 import com.taxonomy.export.MermaidExportService;
 import com.taxonomy.export.StructurizrExportService;
+import com.taxonomy.export.SvgDiagramRenderer;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
 import com.taxonomy.preferences.PreferencesService;
@@ -26,6 +29,23 @@ import org.springframework.context.annotation.Configuration;
 public class ExportConfig {
 
     private static final Logger log = LoggerFactory.getLogger(ExportConfig.class);
+
+    // The shared extension catalog and workspace editor use these even when the
+    // optional architecture feature is not installed.
+    @Bean
+    public LayeredDiagramLayoutService layeredDiagramLayoutService() {
+        return new LayeredDiagramLayoutService();
+    }
+
+    @Bean
+    public SvgDiagramRenderer svgDiagramRenderer() {
+        return new SvgDiagramRenderer();
+    }
+
+    @Bean
+    public ArchitecturePdfRenderer neutralArchitecturePdfRenderer() {
+        return new ArchitecturePdfRenderer();
+    }
 
     @Bean
     public ArchiMateDiagramService archiMateDiagramService() {

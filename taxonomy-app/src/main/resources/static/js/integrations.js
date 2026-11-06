@@ -12,6 +12,25 @@
     function connection() { return el('integrationConnection').value; }
     function prefix() { return '/' + encodeURIComponent(connection()); }
     function selectedProfile() { return overview && profiles.find(function (profile) { return profile.id === overview.connection.connectorId && profile.version === overview.connection.profileVersion; }); }
+    function canonicalProjection(context) {
+        return context && profiles.some(function (profile) {
+            return profile.id === context.profile && profile.version === context.profileVersion
+                && profile.capabilities.includes('CANONICAL_PROJECTION_V1') && profile.capabilities.includes('ARCHITECTURE_MODEL');
+        });
+    }
+    function legacySparxProfile(context) { return context && ['sparx-xmi-2.1', 'sparx-oslc-am-2.0'].includes(context.profile); }
+    function typedEndpointReview(context) {
+        return canonicalProjection(context) || legacySparxProfile(context)
+            && (context.profileVersion === '2' || context.profile === 'sparx-xmi-2.1' && context.profileVersion === '3');
+    }
+    function acceptedFiles(profile) {
+        var extensions = { 'application/xml': ['.xml', '.reqif', '.xmi'], 'application/reqif+xml': ['.reqif', '.xml'],
+            'application/xmi+xml': ['.xmi', '.xml'], 'application/archimate+xml': ['.xml'], 'application/vnd.sparx.qea': ['.qea', '.qeax'] };
+        var types = profile && Array.isArray(profile.mediaTypes) ? profile.mediaTypes : [];
+        return Array.from(new Set(types.flatMap(function (type) {
+            return type === 'application/octet-stream' ? [] : (extensions[type] || []).concat(type);
+        }))).join(',');
+    }
     function report(error) { var body = error.responseBody || {}; el('integrationError').textContent = (body.code ? body.code + ': ' : '') + (body.message || error.message); el('integrationError').hidden = false; }
     async function run(action) {
         if (initializing || busy) return; busy = true; el('integrationError').hidden = true; controls();
@@ -55,13 +74,14 @@
         el('integrationPublicationReason').textContent = !overview ? t('publicationNoConnection')
             : availability && availability.available ? t('publicationReady') : t('reason.' + (availability && availability.reasonCode || 'PUBLICATION_GUARANTEES_UNVERIFIED'));
         var profile = selectedProfile(), capabilities = profile ? profile.capabilities : [];
+        el('integrationFile').accept = acceptedFiles(profile);
         el('integrationRemote').hidden = !capabilities.includes('READ_LINK');
         el('integrationImport').hidden = overview && !capabilities.includes('FILE_IMPORT');
         el('integrationExport').disabled = busy || !mayWrite || !capabilities.includes('FILE_EXPORT');
         el('integrationSparxNotice').hidden = !overview || overview.connection.connectorId !== 'sparx-xmi-2.1';
         el('integrationPcsNotice').hidden = !overview || overview.connection.connectorId !== 'sparx-oslc-am-2.0';
         var creating = profiles.find(function (candidate) { return candidate.id + '@' + candidate.version === el('connectionProfile').value; });
-        var readOnly = creating && creating.id === 'sparx-oslc-am-2.0';
+        var readOnly = creating && !creating.capabilities.includes('FILE_EXPORT') && !creating.capabilities.includes('CONDITIONAL_PUBLISH');
         Array.from(el('connectionAuthority').options).forEach(function (choice) {
             choice.disabled = !!readOnly && ['BIDIRECTIONAL', 'PUBLISH_TARGET'].includes(choice.value);
         });
@@ -122,10 +142,11 @@
                 fields.forEach(function (field) {
                     var label = document.createElement('label'), mapping = document.createElement('select'); label.textContent = t('mapping.' + field); option(mapping, '', t('profileDefault'));
                     var values = field !== 'canonicalType' ? Object.keys(artifact.attributes) : artifact.kind === 'ELEMENT' ? ['Capability', 'Process', 'CoreService', 'COIService', 'CommunicationsService', 'UserApplication', 'InformationProduct', 'BusinessRole', 'System', 'Component'] : ['REALIZES', 'SUPPORTS', 'ASSIGNED_TO', 'COMMUNICATES_WITH', 'CONTAINS', 'RELATED_TO', 'CONSUMES', 'DEPENDS_ON'];
-                    if (field === 'canonicalType' && artifact.kind === 'RELATION' && operation.context.profile.startsWith('sparx-')) {
-                        values = operation.context.profile === 'sparx-xmi-2.1' && operation.context.profileVersion === '3'
-                            ? ['REALIZES', 'SUPPORTS', 'CONSUMES', 'USES', 'FULFILLS', 'ASSIGNED_TO', 'DEPENDS_ON', 'PRODUCES', 'COMMUNICATES_WITH', 'CONTAINS', 'REQUIRES', 'RELATED_TO']
-                            : ['REALIZES', 'COMMUNICATES_WITH', 'CONTAINS', 'RELATED_TO', 'CONSUMES', 'DEPENDS_ON'];
+                    if (field === 'canonicalType' && artifact.kind === 'RELATION') {
+                        if (canonicalProjection(operation.context) || operation.context.profile === 'sparx-xmi-2.1' && operation.context.profileVersion === '3')
+                            values = ['REALIZES', 'SUPPORTS', 'CONSUMES', 'USES', 'FULFILLS', 'ASSIGNED_TO', 'DEPENDS_ON', 'PRODUCES', 'COMMUNICATES_WITH', 'CONTAINS', 'REQUIRES', 'RELATED_TO'];
+                        else if (legacySparxProfile(operation.context))
+                            values = ['REALIZES', 'COMMUNICATES_WITH', 'CONTAINS', 'RELATED_TO', 'CONSUMES', 'DEPENDS_ON'];
                     }
                     values.forEach(function (key) { option(mapping, key, artifact.extensions['definition:' + key] || key); });
                     mapping.value = mappings[change.id] && mappings[change.id][field] || '';
@@ -139,7 +160,7 @@
                     target.addEventListener('input', function () { if (!mappings[change.id]) mappings[change.id] = {}; mappings[change.id].internalIdentity = target.value.trim() || null; });
                     targetLabel.append(target); advanced.append(targetLabel); fields.push('internalIdentity');
                 }
-                if (artifact.kind === 'RELATION' && ['2', '3'].includes(operation.context.profileVersion) && operation.context.profile.startsWith('sparx-')) {
+                if (artifact.kind === 'RELATION' && typedEndpointReview(operation.context)) {
                     var endpointLabel = document.createElement('label'), projection = document.createElement('select');
                     endpointLabel.textContent = t('endpointProjection'); option(projection, '', t('choose'));
                     ['ARCHITECTURE_RELATION', 'REQUIREMENT_MAPPING', 'PRESERVE_ONLY'].forEach(function (value) { option(projection, value, t('projection.' + value)); });
@@ -295,7 +316,7 @@
         if (value.operationId && value.phase) { showPublication(value); return; }
         publication = null; el('integrationPublicationOutcomes').hidden = true; el('integrationPredecessor').hidden = true;
         operation = value; endpoints = Object.assign({}, value.review ? value.review.endpoints : {}); endpointOptions = {};
-        if (value.status === 'PREVIEWED' && ['2', '3'].includes(value.context.profileVersion) && value.context.profile.startsWith('sparx-')) {
+        if (value.status === 'PREVIEWED' && typedEndpointReview(value.context)) {
             api.read(prefix() + '/operations/' + value.id + '/endpoint-options').then(function (result) { if (operation && operation.id === value.id) { endpointOptions = result.external; renderChanges(); } }).catch(report);
         }
         decisions = Object.assign({}, value.review ? value.review.decisions : {}); mappings = Object.assign({}, value.review ? value.review.mappings : {}); page = 0;

@@ -19,7 +19,8 @@ class Element {
     focus() {}
 }
 
-async function page(profileId, { profilesMissing = false, publication = false, availabilityMissing = false, failPreview = false, predecessor = null, change = null } = {}) {
+async function page(profileId, { profilesMissing = false, publication = false, availabilityMissing = false, failPreview = false, predecessor = null, change = null,
+    profileVersion = '1', descriptorVersion = profileVersion, capabilities = ['FILE_IMPORT'], mediaTypes = ['application/xml'], endpointCandidates = {} } = {}) {
     const elements = new Map();
     const el = id => {
         if (!elements.has(id)) elements.set(id, new Element());
@@ -30,21 +31,23 @@ async function page(profileId, { profilesMissing = false, publication = false, a
         const option = new Element('option'); option.value = mode; authority.append(option);
     }
     authority.value = 'IMPORT_COPY';
+    el('integrationFile').accept = '.reqif,.xml,.xmi';
     const operation = {
-        id: 'op', status: 'PREVIEWED', direction: publication ? 'PUSH' : 'INBOUND', context: { profile: profileId, authority: 'IMPORT_COPY' },
+        id: 'op', status: 'PREVIEWED', direction: publication ? 'PUSH' : 'INBOUND', context: { profile: profileId, profileVersion, authority: 'IMPORT_COPY' },
         document: { losses: [], metadata: {} },
         changes: [change || { id: 'change', externalId: 'RELATION:r', kind: 'ADD', conflicts: [],
             after: { kind: 'RELATION', title: 'Dependency', attributes: {}, extensions: {} } }]
     };
-    const overview = { connection: { connectorId: profileId, authority: 'IMPORT_COPY' }, current: {}, history: [{ id: 'op', status: 'PREVIEWED', createdAt: 'first' }, { id: 'other', status: 'PREVIEWED', createdAt: 'second' }], oslcCatalogPath: '/oslc' };
-    const uploads = [], writes = [];
+    const overview = { connection: { connectorId: profileId, profileVersion, authority: 'IMPORT_COPY' }, current: {}, history: [{ id: 'op', status: 'PREVIEWED', createdAt: 'first' }, { id: 'other', status: 'PREVIEWED', createdAt: 'second' }], oslcCatalogPath: '/oslc' };
+    const uploads = [], writes = [], reads = [];
     const publicationOperation = { operationId: 'op', predecessorOperationId: predecessor, mode: 'PUSH', phase: 'PREVIEWED', status: 'PREVIEWED', allowedActions: ['REVIEW', 'PUBLISH', 'CANCEL'], scope: { rootResource: 'urn:model', selectorFingerprint: 'all' }, expectedExternalRevision: 'scope-1', items: [], acknowledgedCount: 0, unknownCount: 0, remainingCount: 0, preview: { fingerprint: 'frozen', changes: [{ id: 'change', externalId: 'RELATION:r', local: operation.changes[0].after, remote: null, merged: operation.changes[0].after, localFields: ['title'], remoteFields: [], conflicts: [], dependencies: [] }], losses: [] } };
     overview.publicationAvailability = { available: publication, modes: publication ? ['PUSH', 'SYNCHRONIZE'] : [], reasonCode: publication ? null : 'PUBLICATION_GUARANTEES_UNVERIFIED' };
     if (availabilityMissing) delete overview.publicationAvailability;
     const api = {
         async read(path) {
-            if (path === '/profiles') return profilesMissing ? [] : [{ id: profileId, title: profileId,
-                capabilities: ['FILE_IMPORT'], mediaTypes: ['application/xml'] }];
+            reads.push(path);
+            if (path === '/profiles') return profilesMissing ? [] : [{ id: profileId, version: descriptorVersion, title: profileId,
+                capabilities, mediaTypes }];
             if (path === '') return [{ id: 'conn', displayName: 'Test', connectorId: profileId }];
             if (path === '/conn' || path.startsWith('/conn?')) return overview;
             const match = path.match(/^\/conn\/operations\/(op|other)(.*)$/);
@@ -53,13 +56,13 @@ async function page(profileId, { profilesMissing = false, publication = false, a
                 if (!match[2]) return structuredClone({ ...operation, id });
                 if (match[2] === '/publication') return structuredClone({ ...publicationOperation, operationId: id,
                     requestFingerprint: 'request-' + id, preview: { ...publicationOperation.preview, fingerprint: 'preview-' + id } });
-                if (match[2] === '/endpoint-options') return { external: {} };
+                if (match[2] === '/endpoint-options') return { external: endpointCandidates };
                 if (match[2] === '/events') return [];
             }
             throw new Error('Unexpected read: ' + path);
         },
         async write(path, request) { writes.push({ path, request }); if (failPreview && path.endsWith("/publication-previews")) throw new Error("Preview transport unavailable"); return publicationOperation; },
-        async upload(path, request) { uploads.push({ path, request }); return operation; }
+        async upload(path, request, file) { uploads.push({ path, request, file }); return operation; }
     };
     vm.runInNewContext(source, {
         document: { body: { dataset: { mayWrite: 'true' } }, getElementById: el,
@@ -70,7 +73,7 @@ async function page(profileId, { profilesMissing = false, publication = false, a
     });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(el('integrationError').hidden, true, el('integrationError').textContent);
-    return { el, uploads, writes, api, publicationOperation };
+    return { el, uploads, writes, reads, api, publicationOperation };
 }
 
 function descendants(node) { return node.children.flatMap(child => [child, ...descendants(child)]); }
@@ -121,6 +124,62 @@ test('Sparx reviewers can select only serializable relation mappings', async () 
     const choices = descendants(el('integrationChanges')).filter(node => node.tag === 'option').map(node => node.value);
     assert.ok(choices.includes('SUPPORTS'));
     assert.ok(choices.includes('ASSIGNED_TO'));
+});
+
+test('a neutral canonical profile offers typed endpoint review and canonical relation choices', async () => {
+    const { el, reads } = await page('external-model', {
+        capabilities: ['FILE_IMPORT', 'ARCHITECTURE_MODEL', 'CANONICAL_PROJECTION_V1'],
+        endpointCandidates: { source: { kind: 'ARCHITECTURE_ELEMENT', businessIdentity: 'arch-source' },
+            target: { kind: 'ARCHITECTURE_ELEMENT', businessIdentity: 'arch-target' } },
+        change: { id: 'change', externalId: 'RELATION:r', kind: 'ADD', conflicts: [],
+            after: { kind: 'RELATION', title: 'Connection', attributes: {}, extensions: { source: 'source', target: 'target' } } }
+    });
+    assert.ok(reads.includes('/conn/operations/op/endpoint-options'));
+    const options = descendants(el('integrationChanges')).filter(node => node.tag === 'option').map(node => node.value);
+    assert.ok(options.includes('PRESERVE_ONLY'));
+    assert.ok(options.includes('REQUIREMENT_MAPPING'));
+    assert.ok(options.includes('USES'));
+    assert.ok(options.includes('PRODUCES'));
+    assert.ok(options.includes('arch-source'));
+    assert.ok(options.includes('arch-target'));
+});
+
+test('a different profile version cannot grant typed endpoint controls', async () => {
+    const { el, reads } = await page('external-model', {
+        profileVersion: '1', descriptorVersion: '2',
+        capabilities: ['FILE_IMPORT', 'ARCHITECTURE_MODEL', 'CANONICAL_PROJECTION_V1']
+    });
+    assert.ok(!reads.includes('/conn/operations/op/endpoint-options'));
+    assert.ok(!descendants(el('integrationChanges')).some(node => node.tag === 'option' && node.value === 'PRESERVE_ONLY'));
+});
+
+test('a read-only file source cannot be configured as a publication target', async () => {
+    const { el } = await page('external-model', { capabilities: ['FILE_IMPORT', 'ARCHITECTURE_MODEL', 'CANONICAL_PROJECTION_V1'] });
+    el('connectionProfile').value = 'external-model@1';
+    el('connectionAuthority').value = 'PUBLISH_TARGET';
+    el('connectionProfile').listeners.change();
+    assert.equal(el('connectionAuthority').value, 'IMPORT_COPY');
+    for (const option of el('connectionAuthority').options) {
+        assert.equal(option.disabled, ['PUBLISH_TARGET', 'BIDIRECTIONAL'].includes(option.value));
+    }
+});
+
+test('a QEA profile accepts its file extension and uploads the unchanged binary file with an advertised media type', async () => {
+    const mediaTypes = ['application/vnd.sparx.qea', 'application/vnd.sqlite3', 'application/octet-stream'];
+    const { el, uploads } = await page('external-model', {
+        capabilities: ['FILE_IMPORT', 'ARCHITECTURE_MODEL', 'CANONICAL_PROJECTION_V1'], mediaTypes
+    });
+    assert.ok(el('integrationFile').accept.split(',').includes('.qea'));
+    assert.ok(el('integrationFile').accept.split(',').includes('.qeax'));
+    assert.ok(!el('integrationFile').accept.split(',').includes('.xml'));
+    const file = { name: 'model.qea', type: '', bytes: Uint8Array.from([83, 81, 76, 105, 116, 101, 32, 102, 111, 114, 109, 97, 116, 32, 51, 0, 255]) };
+    el('integrationFile').files = [file];
+    el('integrationImport').listeners.submit({ preventDefault() {} });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(uploads.length, 1);
+    assert.equal(uploads[0].file, file);
+    assert.equal(uploads[0].request.mediaType, 'application/vnd.sparx.qea');
+    assert.equal(el('integrationExport').disabled, true);
 });
 
 test('a missing connection profile produces an actionable import error', async () => {

@@ -555,7 +555,7 @@ The cache is disposable; it never contains the plugin's user data.
 A plugin implements the framework-free `TaxonomyPlugin` service and includes
 `META-INF/services/com.taxonomy.extension.api.plugin.TaxonomyPlugin`. Its manifest
 has `Plugin-Id`, a semantic `Plugin-Version`, `Plugin-Requires` for the host SPI
-(currently `1.0.0`), `Taxonomy-Plugin-Mode` (`STARTUP` or `DYNAMIC`) and optional
+(currently `1.3.0`), `Taxonomy-Plugin-Mode` (`STARTUP` or `DYNAMIC`) and optional
 comma-separated `Taxonomy-Plugin-Capabilities`. For example, a compatible host
 range is `>=1.0.0 & <2.0.0`. Optional `Plugin-Dependencies` entries use
 `plugin.id@>=1.0.0 & <2.0.0`, separated by commas. Dependencies name catalog
