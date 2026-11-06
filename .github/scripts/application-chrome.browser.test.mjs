@@ -125,9 +125,35 @@ test('the shared Projects link retains the mounted project and workspace before 
         assert.deepEqual(page.errors,[]);
     }finally{await page.close();}
 });
-for(const locale of ['de','en'])for(const width of [390,700,1100])test(`${locale}: ${width}px common work navigation uses ordinary keyboard-accessible links`,async()=>{
+for(const locale of ['de','en'])for(const width of [320,390,700,768,800,900,1024,1440])test(`${locale}: ${width}px commands and work navigation share one compact row`,async()=>{
     const page=await fixture({mode:'index',locale,width});try{
+        const geometry=await page.evaluate(()=>{
+            const commands=document.getElementById('applicationNavigation').getBoundingClientRect();
+            const workspaces=document.getElementById('applicationWorkspaces').getBoundingClientRect();
+            return {height:Math.max(commands.bottom,workspaces.bottom)-Math.min(commands.top,workspaces.top),
+                centerDifference:Math.abs(commands.top+commands.height/2-workspaces.top-workspaces.height/2)};
+        });
+        assert.ok(geometry.height<=64 && geometry.centerDifference<=2,
+            `Commands and work areas must not consume two header rows: ${JSON.stringify(geometry)}`);
+        const targets=await page.evaluate(()=>{
+            const controls=[...document.querySelectorAll('#applicationNavigation summary')]
+                .filter(node=>node.checkVisibility()).map(node=>node.getBoundingClientRect());
+            return {lastCommandRight:Math.max(...controls.map(box=>box.right)),
+                workspaceLeft:document.getElementById('applicationWorkspaces').getBoundingClientRect().left};
+        });
+        assert.ok(targets.lastCommandRight<=targets.workspaceLeft,
+            `Visible commands must not cover work-area targets: ${JSON.stringify(targets)}`);
         const links=page.locator('#applicationWorkspaces a');assert.equal(await links.count(),3);
+        for(const link of await links.all()){
+            await link.focus();
+            assert.equal(await link.evaluate(node=>{
+                const box=node.getBoundingClientRect(),row=node.parentElement.getBoundingClientRect();
+                const hit=document.elementFromPoint(box.left+box.width/2,box.top+box.height/2);
+                const range=document.createRange();range.selectNodeContents(node);
+                return box.width>=44 && box.height>=44 && box.left>=row.left-1 && box.right<=row.right+1
+                    && (hit===node || node.contains(hit)) && range.getClientRects().length===1;
+            }),true,'Keyboard focus reveals each complete, unobstructed work-area label without word breaks');
+        }
         for(const destination of ['analyze','architecture']){
             const link=page.locator(`#applicationWorkspaces [data-page="${destination}"]`);
             assert.equal(await link.isVisible(),true);assert.ok((await link.boundingBox()).height>=44);

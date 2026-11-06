@@ -6,11 +6,12 @@
 </th:block>
 </head><body>
 <header th:fragment="navigation(active, localActions, helpDocument, helpSection)" class="taxonomy-app-chrome">
+    <div class="taxonomy-app-toolbar">
     <nav id="applicationNavigation" class="taxonomy-app-navigation" th:aria-label="#{app.navigation.label}" aria-label="Application commands">
         <div class="taxonomy-app-mainrow">
             <a class="taxonomy-app-brand" th:href="@{/}" href="/">Taxonomy</a>
             <details id="applicationNavigationMenu" class="taxonomy-app-menu" open>
-                <summary aria-controls="applicationMenuGroups" th:text="#{app.navigation.menu}">Menu</summary>
+                <summary aria-controls="applicationMenuGroups" aria-labelledby="applicationNavigationLabel"><span class="taxonomy-app-menu-icon" aria-hidden="true">☰</span><span id="applicationNavigationLabel" class="taxonomy-app-menu-label" th:text="#{app.navigation.menu}">Menu</span></summary>
             </details>
             <div id="applicationMenuGroups" class="taxonomy-app-menu-content">
                 <details id="applicationFile" class="application-menu">
@@ -95,6 +96,7 @@
         <a id="applicationRequirementLink" data-app-route="analysis" data-page="analyze" th:href="@{/#analyze}" href="/#analyze" th:attr="aria-current=${active == 'analysis' || active == 'requirement' ? 'page' : null}" th:text="#{app.workspace.requirement}">Requirement</a>
         <a id="applicationArchitectureLink" data-app-route="architecture" data-page="architecture" data-taxonomy-feature="architecture" th:href="@{/#architecture}" href="/#architecture" th:attr="aria-current=${active == 'architecture' ? 'page' : null}" th:text="#{nav.architecture}">Architecture</a>
     </nav>
+    </div>
     <div id="applicationPageActions" class="taxonomy-app-page-actions"><th:block th:replace="${localActions}"></th:block></div>
     <div id="applicationSystemStatus" class="taxonomy-app-status"></div>
     <details id="applicationContextDisclosure" class="taxonomy-app-context-disclosure" open>

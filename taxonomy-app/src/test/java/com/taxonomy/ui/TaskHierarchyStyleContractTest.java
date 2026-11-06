@@ -18,11 +18,9 @@ class TaskHierarchyStyleContractTest {
         assertThat(source)
                 .contains("next.className = 'analysis-next-action'")
                 .contains("body.className = 'analysis-secondary-tools-content'")
-                .contains("legendDetails.className = 'score-legend-details mb-3'")
                 .doesNotContain("analysis-task-next")
                 .doesNotContain("operational-context-body")
-                .doesNotContain("analysis-secondary-tools-body")
-                .doesNotContain("analysis-score-legend");
+                .doesNotContain("analysis-secondary-tools-body");
     }
 
     @Test

@@ -1061,18 +1061,23 @@ class ScreenshotGeneratorIT {
         saveScreenshot("09-list-view-descriptions.png");
     }
 
+    private WebElement visibleMatchLegend() {
+        WebElement legend = wait(5).until(ExpectedConditions.visibilityOfElementLocated(
+                By.id("analysisScoreLegend")));
+        List<WebElement> swatches = legend.findElements(By.className("legend-box"));
+        Assertions.assertEquals(List.of("0%", "25%", "50%", "75%", "100%"),
+                swatches.stream().map(WebElement::getText).toList());
+        Assertions.assertTrue(swatches.stream().allMatch(WebElement::isDisplayed),
+                "Score meanings must be visible without expanding another panel");
+        Assertions.assertTrue(legend.getRect().getHeight() <= 40,
+                "Desktop legend must remain a compact row: " + legend.getRect());
+        return legend;
+    }
+
     @Test
     @Order(10)
     void captureMatchLegend() throws IOException {
-        WebElement legend = driver.findElement(By.id("analysisScoreLegend"));
-        openDetails(legend);
-        try {
-            wait(5).until(ExpectedConditions.visibilityOfElementLocated(
-                    By.cssSelector("#analysisScoreLegend .legend-box")));
-            saveElementScreenshot(legend, "10-match-legend.png");
-        } finally {
-            safeClick(By.cssSelector("#analysisScoreLegend > summary"));
-        }
+        saveElementScreenshot(visibleMatchLegend(), "10-match-legend.png");
     }
 
     @Test
@@ -1178,16 +1183,9 @@ class ScreenshotGeneratorIT {
     void captureMatchLegendWithScores() throws IOException {
         forceNonInteractiveMode();
         runAnalysis();
-        WebElement legend = driver.findElement(By.id("analysisScoreLegend"));
-        openDetails(legend);
-        try {
-            wait(5).until(ExpectedConditions.visibilityOfElementLocated(
-                    By.cssSelector("#analysisScoreLegend .legend-box")));
-            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", legend);
-            saveScreenshot("17-match-legend-with-scores.png");
-        } finally {
-            safeClick(By.cssSelector("#analysisScoreLegend > summary"));
-        }
+        WebElement legend = visibleMatchLegend();
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", legend);
+        saveScreenshot("17-match-legend-with-scores.png");
     }
 
     @Test

@@ -296,7 +296,7 @@
         var menu = node('applicationNavigationMenu');
         if (!menu || !window.matchMedia) return;
         var content = node('applicationMenuGroups');
-        var compact = window.matchMedia('(max-width: 767.98px)');
+        var compact = window.matchMedia('(max-width: 1023.98px)');
         var summary = menu.querySelector('summary');
         var previousFocus = document.activeElement;
         function positionMenu() {
