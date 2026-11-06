@@ -229,6 +229,7 @@
           "com.taxonomy.CoreUiAcceptanceIT",
           "com.taxonomy.ui.DatabaseSetupBrowserTest",
           "com.taxonomy.PortfolioClientRoutingIT",
+          "com.taxonomy.OnnxBrowserBootstrapIT",
           "com.taxonomy.CompleteCopilotSessionIT",
           "com.taxonomy.SeleniumPostgresContainerIT",
           "com.taxonomy.AnalysisSnapshotAdoptionUiIT",

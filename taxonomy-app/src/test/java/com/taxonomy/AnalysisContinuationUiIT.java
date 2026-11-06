@@ -53,7 +53,7 @@ class AnalysisContinuationUiIT {
     @ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings = {"de", "en"})
     void normalNodeOnlyAnalysisCanExplicitlyAddRelationsWithoutChangingRetainedScores(String language) {
         relationWrites.clear();
-        browser.get(session.origin() + "/relations-fixture?lang=" + language);
+        openRelationsFixture("?lang=" + language);
         var wait = new WebDriverWait(browser, Duration.ofSeconds(15));
         browser.findElement(By.id("analyzeBtn")).click();
         wait.until(driver -> relationWrites.size() == 1 && driver.findElement(By.id("extendAnalysisRelationsBtn")).isEnabled());
@@ -91,11 +91,37 @@ class AnalysisContinuationUiIT {
     }
 
     @Test void legacyNodeOnlyEvidenceExplainsWhyRelationsCannotBeAdded() {
-        relationWrites.clear(); browser.get(session.origin() + "/relations-fixture?lang=en");
+        assertLegacyNodeOnlyEvidence("?lang=en");
+    }
+
+    @Test void relationsModuleCanFinishLoadingAfterTheDocument() {
+        assertLegacyNodeOnlyEvidence("?deferExtension=true&lang=en");
+        assertThat(browser.executeScript("return window.fixtureExtensionScheduledAfterLoad")).isEqualTo(true);
+    }
+
+    private static void assertLegacyNodeOnlyEvidence(String query) {
+        relationWrites.clear(); openRelationsFixture(query);
         browser.executeScript("TaxonomyState.lastAnalysisScope={taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'};TaxonomyState.currentRawScores={CP:71.125};TaxonomyRelationsExtension.render();");
         assertThat(browser.findElement(By.id("extendAnalysisRelationsBtn")).isEnabled()).isFalse();
         assertThat(browser.findElement(By.id("analysisRelationsExtensionHint")).getText()).contains("no retained execution source");
         assertThat(relationWrites).isEmpty();
+    }
+
+    private static void openRelationsFixture(String query) {
+        browser.get(session.origin() + "/relations-fixture" + query);
+        new WebDriverWait(browser, Duration.ofSeconds(15))
+                .withMessage("Relations fixture context, controls and product modules must be initialized")
+                .until(driver -> Boolean.TRUE.equals(browser.executeScript("""
+                        const context = window.__TaxonomyAnalysisSessionContext;
+                        return location.pathname === '/relations-fixture' && location.search === arguments[0]
+                            && Boolean(context?.S && context?.runtime)
+                            && ['analysisRelationsExtension', 'extendAnalysisRelationsBtn',
+                                'analysisRelationsExtensionHint'].every(id => document.getElementById(id))
+                            && typeof window.TaxonomyScoring?.runAnalysis === 'function'
+                            && typeof window.TaxonomyAnalysisRecovery?.extendRelations === 'function'
+                            && typeof window.TaxonomyAnalysisRecovery?.nodeEvidenceMatches === 'function'
+                            && typeof window.TaxonomyRelationsExtension?.render === 'function';
+                        """, query)));
     }
 
     static void serve(HttpExchange exchange) throws java.io.IOException {
@@ -105,6 +131,12 @@ class AnalysisContinuationUiIT {
             String template = new ClassPathResource("templates/index.html").getContentAsString(StandardCharsets.UTF_8);
             var control = java.util.regex.Pattern.compile("<div id=\"analysisRelationsExtension\"[\\s\\S]*?</div>").matcher(template);
             if (!control.find()) throw new java.io.IOException("Product relations extension control is missing");
+            // Deliver the real module after document load to exercise component readiness.
+            String extensionScript = exchange.getRequestURI().getQuery().contains("deferExtension=true")
+                    ? "<script>window.addEventListener('load',function(){window.fixtureExtensionScheduledAfterLoad=true;"
+                        + "setTimeout(function(){var script=document.createElement('script');script.src='/extension.js';"
+                        + "document.head.appendChild(script);},250);},{once:true});</script>"
+                    : "<script src=\"/extension.js\"></script>";
             send(exchange, "text/html", """
                 <!doctype html><html lang="%s"><head><meta charset="utf-8"></head><body>
                 <input id="businessText" value="retained relations fixture"><input type="checkbox" id="includeArchitectureView">
@@ -121,9 +153,9 @@ class AnalysisContinuationUiIT {
                 window.TaxonomyAnalysisProgress={start:()=>({acceptsResult:()=>true,finish:()=>{}})};
                 window.fixtureFollowups=0;window.TaxonomyAnalysis={runCopilotFlow:async()=>{window.fixtureFollowups++;},renderPartialCopilot:()=>{}};
                 window.TaxonomyAnalysisSessionApi={request:async(url,options)=>fetch(url,options)};
-                </script><script src="/scoring.js"></script><script src="/viewport.js"></script><script src="/recovery.js"></script><script src="/extension.js"></script>
+                </script><script src="/scoring.js"></script><script src="/viewport.js"></script><script src="/recovery.js"></script>%s
                 </body></html>
-                """.formatted(language, control.group(), language, language)); return;
+                """.formatted(language, control.group(), language, language, extensionScript)); return;
         }
         if (path.equals("/fixture")) {
             String language = exchange.getRequestURI().getQuery().endsWith("en") ? "en" : "de";
