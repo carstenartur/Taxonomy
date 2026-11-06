@@ -48,6 +48,12 @@ public class WorkspaceContextResolver {
     private final SystemRepositoryService systemRepositoryService;
     private final UserWorkspaceRepository workspaceRepository;
     private final RepositoryMembershipService repositoryMembershipService;
+    private WorkspaceActorAccess actorAccess = WorkspaceActorAccess.unavailable();
+
+    @Autowired(required = false)
+    public void setActorAccess(WorkspaceActorAccess actorAccess) {
+        this.actorAccess = java.util.Objects.requireNonNull(actorAccess);
+    }
 
     @Autowired
     public WorkspaceContextResolver(WorkspaceManager workspaceManager,
@@ -132,11 +138,11 @@ public class WorkspaceContextResolver {
             String branch = hasText(workspace.getCurrentBranch())
                     ? workspace.getCurrentBranch().strip()
                     : requireBranch(repository);
-            RepositoryContext context = RepositoryContext.workspace(
+            RepositoryContext context = new RepositoryContext(
                     requireRepositoryId(repository),
                     workspace.getWorkspaceId().strip(),
                     branch,
-                    user);
+                    user, RepositoryScope.WORKSPACE, workspace.isCollaborative());
             log.debug(
                     "Resolved repository context for user '{}': repository={}, workspace={}, branch={}",
                     user, context.repositoryId(), context.workspaceId(), context.branch());
@@ -221,11 +227,24 @@ public class WorkspaceContextResolver {
 
         if (workspace == null
                 || !hasText(workspace.getUsername())
-                || !workspace.getUsername().strip().equals(username.strip())
+                || (!workspace.getUsername().strip().equals(username.strip())
+                    && !(requestedWorkspaceId != null && workspace.isCollaborative()
+                        && repositoryMembershipService != null
+                        && hasText(workspace.getSourceRepositoryId())
+                        && repositoryMembershipService.canCollaborate(
+                            systemRepositoryService.getRepository(workspace.getSourceRepositoryId()), username)))
                 || workspace.isArchived()
                 || workspace.isShared()) {
             throw new AccessDeniedException(
                     "Requested workspace is not available to the authenticated user");
+        }
+        if (workspace.isCollaborative()) {
+            actorAccess.requireActive(username);
+            if (!hasText(workspace.getSourceRepositoryId()) || systemRepositoryService
+                    .getRepository(workspace.getSourceRepositoryId()).getLifecycleState()
+                    != com.taxonomy.workspace.model.RepositoryLifecycleState.ACTIVE) {
+                throw new AccessDeniedException("The shared working-copy source repository is unavailable");
+            }
         }
         return workspace;
     }

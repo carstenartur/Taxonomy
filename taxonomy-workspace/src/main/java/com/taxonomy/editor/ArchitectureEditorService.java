@@ -137,7 +137,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 : state.pendingCheckpoint() != null ? "CHECKPOINT_PENDING"
                 : !Objects.equals(head, state.checkpointCommit()) ? "VERSION_CHANGED" : "READY";
         return new Document(Context.of(context, state.checkpointCommit(), selected), dsl, status,
-                snapshot.operations().stream().filter(e -> e.revision() <= selected && e.actor().equals(context.username()))
+                snapshot.operations().stream().filter(e -> e.revision() <= selected && (context.collaborative() || e.actor().equals(context.username())))
                         .limit(50).map(ArchitectureEditorService::history).toList(), versions,
                 state.checkpointRevision(), state.pendingCheckpoint(), "WORKSPACE_REVISION",
                 selected == state.revision() ? historyTargets(snapshot.operations(), context.username()) : new HistoryTargets(null, null));

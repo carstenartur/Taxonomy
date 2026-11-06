@@ -53,6 +53,12 @@ public class UserWorkspace {
     @Column(nullable = false)
     private boolean shared = false;
 
+    /** Explicit opt-in for repository contributors; unrelated to the legacy central shared workspace. */
+    // Ordinary metadata merges must not replay a stale sharing decision.
+    // WorkspaceCollaborationService owns updates through its locked repository operation.
+    @Column(updatable = false)
+    private Boolean collaborative = false;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -165,6 +171,11 @@ public class UserWorkspace {
     public void setShared(boolean shared) {
         this.shared = shared;
     }
+
+    public boolean isCollaborative() { return Boolean.TRUE.equals(collaborative); }
+
+    /** Initializes a new row; persisted sharing changes belong to WorkspaceCollaborationService. */
+    public void setCollaborative(boolean collaborative) { this.collaborative = collaborative; }
 
     public Instant getCreatedAt() {
         return createdAt;

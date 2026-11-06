@@ -350,7 +350,6 @@ class CompleteCopilotSessionIT {
                     if (settings) settings.open = false;
                     document.querySelectorAll('#snapshotDetail details[open]')
                         .forEach(detail => { detail.open = false; });
-                    window.scrollTo(0, 0);
                     return wasOpen;
                     """);
             wait.until(attributeEquals(By.id("analyses-tab"),
@@ -363,6 +362,27 @@ class CompleteCopilotSessionIT {
                                 + ".getBoundingClientRect().height");
                 return height.doubleValue() > 100.0;
             });
+            javascript().executeScript("""
+                    document.getElementById('snapshotDetail')
+                        .scrollIntoView({block:'start', inline:'nearest', behavior:'instant'});
+                    """);
+            new WebDriverWait(driver, Duration.ofSeconds(20))
+                    .withMessage("The captured viewport must show the selected snapshot, result overview and decision-report action")
+                    .until(browser -> Boolean.TRUE.equals(javascript().executeScript("""
+                            const detail = document.getElementById('snapshotDetail');
+                            return [detail.querySelector('h2'),
+                                document.getElementById('snapshotResultOverview'),
+                                detail.querySelector('[data-decision-report-format]')].every(control => {
+                                if (!control) return false;
+                                const bounds = control.getBoundingClientRect();
+                                const x = bounds.left + bounds.width / 2;
+                                const y = bounds.top + bounds.height / 2;
+                                return bounds.width > 0 && bounds.height > 0
+                                    && bounds.left >= 0 && bounds.top >= 0
+                                    && bounds.right <= innerWidth && bounds.bottom <= innerHeight
+                                    && control.contains(document.elementFromPoint(x, y));
+                            });
+                            """)));
 
             Path module = Path.of(System.getProperty("project.basedir", "."))
                     .toAbsolutePath()

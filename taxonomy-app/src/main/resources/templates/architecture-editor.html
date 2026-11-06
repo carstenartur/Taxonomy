@@ -41,6 +41,14 @@
         <a id="editorPdf" hidden data-i18n="editor.pdf">Download PDF</a>
     </div>
     <p id="editorMode"></p>
+    <section id="editorCollaboration" aria-labelledby="editorCollaborationTitle" hidden>
+        <h2 id="editorCollaborationTitle" data-i18n="editor.collaboration.title">Shared editing</h2>
+        <p id="editorCollaborationNotice" data-i18n="editor.collaboration.notice">Enabling sharing grants active source-repository contributors access to this draft and its operation history. Shared editing requires an active local account or mapped stable SSO identity. Each person can undo only their own operations.</p>
+        <p id="editorCollaborationState" role="status" aria-live="polite"></p>
+        <button id="editorCollaborationToggle" type="button" disabled data-i18n="editor.collaboration.enable">Enable shared editing</button>
+        <label id="editorCollaborationLinkLabel" for="editorCollaborationLink" data-i18n="editor.collaboration.link" hidden>Link for authorized contributors</label>
+        <input id="editorCollaborationLink" type="text" readonly hidden/>
+    </section>
     <section id="snapshotAdoption" aria-labelledby="adoptionHeading" hidden>
         <h2 id="adoptionHeading" data-i18n="adoption.title">Adopt a frozen analysis snapshot</h2>
         <p id="adoptionHelp"></p>

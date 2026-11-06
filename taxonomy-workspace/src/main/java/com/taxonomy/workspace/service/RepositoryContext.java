@@ -14,7 +14,12 @@ public record RepositoryContext(
         String workspaceId,
         String branch,
         String username,
-        RepositoryScope scope) {
+        RepositoryScope scope,
+        boolean collaborative) {
+
+    public RepositoryContext(String repositoryId, String workspaceId, String branch, String username, RepositoryScope scope) {
+        this(repositoryId, workspaceId, branch, username, scope, false);
+    }
 
     public RepositoryContext {
         repositoryId = requireText(repositoryId, "repositoryId");
@@ -32,6 +37,9 @@ public record RepositoryContext(
         if (scope != RepositoryScope.WORKSPACE && workspaceId != null) {
             throw new IllegalArgumentException(
                     "workspaceId must be absent outside WORKSPACE scope");
+        }
+        if (collaborative && scope != RepositoryScope.WORKSPACE) {
+            throw new IllegalArgumentException("Collaborative editing requires a workspace");
         }
     }
 
@@ -51,6 +59,10 @@ public record RepositoryContext(
             String repositoryId, String workspaceId, String branch, String username) {
         return new RepositoryContext(
                 repositoryId, workspaceId, branch, username, RepositoryScope.WORKSPACE);
+    }
+
+    public static RepositoryContext collaborativeWorkspace(String repositoryId, String workspaceId, String branch, String username) {
+        return new RepositoryContext(repositoryId, workspaceId, branch, username, RepositoryScope.WORKSPACE, true);
     }
 
     /**

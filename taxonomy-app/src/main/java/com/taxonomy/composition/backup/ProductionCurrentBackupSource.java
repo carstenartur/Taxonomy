@@ -106,7 +106,7 @@ public final class ProductionCurrentBackupSource implements BackupCaptureSource 
         delegates.add(new TemplateBackupContributor(templates));
         delegates.add(new IntegrationBackupContributor(database,closure::integrations));
         delegates.add(ApplicationBackupComponent.create(database,portfolio::sourceReferences,
-                new PrincipalScopeBackupSelector(database,List.of(workspace::principalScopes,portfolio::principalScopes)),
+                new PrincipalScopeBackupSelector(database,List.of(workspace::principalScopes,portfolio::principalScopes),List.of(workspace::historyActorScopes)),
                 Path.of(environment.getProperty("taxonomy.backup.source-content-directory","./data/source-content")),preferences,environment));
         delegates.addAll(additional);
         var contributors=new ArrayList<BackupContributor>();var components=new TreeMap<BackupComponentId,BackupSnapshotCoordinator.CaptureComponent>(Comparator.comparing(BackupComponentId::value));

@@ -71,6 +71,16 @@ class ArchitectureSourceFocusServiceTest {
         assertThat(draft.payload()).isEqualTo(before); verifyNoInteractions(editor,llm,budget);
         verify(drafts,never()).save(any(),any(),any());
     }
+    @Test void sharedSourceUsesTheActorsPersonalDraftAndRechecksContributorAuthority() {
+        var copy=new UserWorkspace(); copy.setUsername("bob"); copy.setSourceRepositoryId("repo");
+        copy.setCurrentBranch("draft"); copy.setCollaborative(true);
+        when(workspaces.findByWorkspaceId("copy")).thenReturn(Optional.of(copy));
+        when(membership.canCollaborate(repositories.getRepository("repo"),"alice")).thenReturn(true,false);
+        service.setActorAccess(username -> {});
+        assertThat(service.investigate(selected,request(draftSource,"CP-1000",false)).suggestions()).isNotEmpty();
+        verify(drafts).read("alice","copy"); verify(drafts,never()).read("bob","copy");
+        assertCode(()->service.investigate(selected,request(draftSource,"CP-1000",false)),"NOT_FOUND");
+    }
     @Test void immutablePartialSnapshotUsesExactSavedPinsAndRecordedCatalogueWithoutWrites() throws Exception {
         var before = json.writeValueAsString(snapshot);
         var first = service.investigate(selected,request(snapshotSource,"CP-1000",false));

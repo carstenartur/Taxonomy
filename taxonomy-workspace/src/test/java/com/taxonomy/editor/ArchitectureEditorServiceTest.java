@@ -40,6 +40,32 @@ class ArchitectureEditorServiceTest {
         assertThat(service.read(alice, null, 1L).historyTargets().undo()).isNull();
     }
 
+    @Test void collaboratorsShareRevisionsButOnlyInvertTheirOwnOperationsAndRetainUnrelatedChanges() throws Exception {
+        var owner = RepositoryContext.collaborativeWorkspace("repo-a", "workspace-a1", "draft", "alice");
+        var contributor = RepositoryContext.collaborativeWorkspace("repo-a", "workspace-a1", "draft", "bob");
+        var first = service.read(owner, null).context();
+        var stale = service.read(contributor, null).context();
+        var changed = service.execute(owner, new Command(first, metadata(), update("Alice shared edit")));
+        assertThatThrownBy(() -> service.execute(contributor, new Command(stale, metadata(), update("Bob stale edit"))))
+                .isInstanceOf(EditorJournal.RevisionConflict.class);
+        var unrelated = service.execute(contributor, new Command(service.read(contributor, null).context(), metadata(),
+                new SemanticCommand(new CreateArchitectureElement("arch-bob", "Component", Map.of("title", "Bob retained")))));
+        assertThat(service.read(owner, null).history()).extracting(ArchitectureEditorService.HistoryEntry::actor)
+                .containsExactly("bob", "alice");
+        assertThat(service.read(owner, null).historyTargets().undo().operationId()).isEqualTo(changed.operationId());
+        assertThat(service.read(contributor, null).historyTargets().undo().operationId()).isEqualTo(unrelated.operationId());
+        assertCode(() -> service.preview(contributor, new Command(service.read(contributor, null).context(), metadata(),
+                new UndoArchitectureCommand(UUID.fromString(changed.operationId())))), "NOT_FOUND");
+        var undone = service.execute(owner, new Command(service.read(owner, null).context(), metadata(),
+                new UndoArchitectureCommand(UUID.fromString(changed.operationId()))));
+        assertThat(service.read(contributor, null).dsl()).contains("Original", "Bob retained").doesNotContain("Alice shared edit");
+        var restarted = new ArchitectureEditorService(fixture.repositories, fixture.journal, new ArchitectureCheckpointWriter());
+        restarted.execute(owner, new Command(restarted.read(owner, null).context(), metadata(),
+                new RedoArchitectureCommand(UUID.fromString(undone.operationId()))));
+        assertThat(restarted.read(contributor, null).dsl()).contains("Alice shared edit", "Bob retained");
+        assertThat(fixture.repositories.resolveRepository(owner).getCommitCount("draft")).isEqualTo(1);
+    }
+
     @Test void anotherActorsLaterChangeBlocksRatherThanSkipsThePersonalTarget() throws Exception {
         var aliceChange = execute(update("Alice"));
         var bob = RepositoryContext.workspace("repo-a", "workspace-a1", "draft", "bob");

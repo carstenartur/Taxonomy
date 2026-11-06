@@ -21,6 +21,25 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class PrincipalScopeBackupSelectorTest {
+    @Test void historicalActorEvidenceIncludesRegisteredDisabledActorsWithoutInventingLegacyIdentities() throws Exception {
+        var f = new Fixture(false); var owner = PrincipalId.create(); var retired = PrincipalId.create();
+        f.add("owner", owner.value().toString()); f.add("retired", retired.value().toString());
+        var selector = new PrincipalScopeBackupSelector(f.database,
+                List.of((snapshot, checkpoint) -> Set.of("owner")),
+                List.of((snapshot, checkpoint) -> Set.of("retired", "unmapped-legacy-label")));
+        assertThat(selector.select(snapshot(), () -> {})).containsExactlyInAnyOrder(owner, retired);
+        assertThat(f.jdbc.queryForObject("select count(*) from app_principal", Integer.class)).isEqualTo(2);
+    }
+
+    @Test void optionalActorLabelsDoNotBorrowCaseInsensitivePrincipalMappingsOrEscapeTheSharedBudget() throws Exception {
+        var f = new Fixture(true); var owner = PrincipalId.create();
+        f.add("owner", owner.value().toString()); f.add("Actor", PrincipalId.create().value().toString());
+        var strict = List.<BackupPrincipalScopeSelector>of((snapshot, checkpoint) -> Set.of("owner"));
+        var actors = List.<BackupPrincipalScopeSelector>of((snapshot, checkpoint) -> Set.of("actor"));
+        assertThat(new PrincipalScopeBackupSelector(f.database, strict, actors).select(snapshot(), () -> {})).containsExactly(owner);
+        assertFailure(new PrincipalScopeBackupSelector(f.database, strict, actors, 1));
+    }
+
     @Test void onlyExplicitPersistedScopesResolveIncludingDisabledHistoricalOwners() throws Exception {
         var database = new JDBCDataSource(); database.setUrl("jdbc:hsqldb:mem:principal-scope-" + UUID.randomUUID()); database.setUser("SA");
         var jdbc = new JdbcTemplate(database); jdbc.execute("create table app_principal(principal_id varchar(36),scope_key varchar(255),enabled integer)");

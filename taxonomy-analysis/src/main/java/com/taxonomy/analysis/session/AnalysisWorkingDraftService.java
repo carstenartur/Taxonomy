@@ -7,6 +7,8 @@ import com.taxonomy.analysis.session.AnalysisDraftDtos.SaveAnalysisDraftRequest;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
+import com.taxonomy.workspace.service.WorkspaceActorAccess;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceManager;
 import com.taxonomy.workspace.service.WorkspaceScope;
@@ -41,20 +43,34 @@ public class AnalysisWorkingDraftService {
     private final SystemRepositoryService systemRepositoryService;
     private final ObjectMapper objectMapper;
     private final int maximumPayloadCharacters;
+    private final RepositoryMembershipService membership;
+    private WorkspaceActorAccess actorAccess = WorkspaceActorAccess.unavailable();
 
-    @Autowired
+    @Autowired(required = false)
+    public void setActorAccess(WorkspaceActorAccess actorAccess) {
+        this.actorAccess = java.util.Objects.requireNonNull(actorAccess);
+    }
+
     public AnalysisWorkingDraftService(
             AnalysisWorkingDraftRepository repository,
             WorkspaceManager workspaceManager,
             SystemRepositoryService systemRepositoryService,
             ObjectMapper objectMapper,
-            @Value("${taxonomy.analysis-draft.max-characters:2000000}")
             int maximumPayloadCharacters) {
+        this(repository, workspaceManager, systemRepositoryService, objectMapper, maximumPayloadCharacters, null);
+    }
+
+    @Autowired
+    public AnalysisWorkingDraftService(AnalysisWorkingDraftRepository repository, WorkspaceManager workspaceManager,
+            SystemRepositoryService systemRepositoryService, ObjectMapper objectMapper,
+            @Value("${taxonomy.analysis-draft.max-characters:2000000}") int maximumPayloadCharacters,
+            RepositoryMembershipService membership) {
         this.repository = repository;
         this.workspaceManager = workspaceManager;
         this.systemRepositoryService = systemRepositoryService;
         this.objectMapper = objectMapper;
         this.maximumPayloadCharacters = Math.max(10_000, maximumPayloadCharacters);
+        this.membership = membership;
     }
 
     @Transactional(readOnly = true)
@@ -184,13 +200,19 @@ public class AnalysisWorkingDraftService {
         UserWorkspace workspace = workspaceManager.getWorkspaceById(requestedWorkspace);
         if (workspace == null
                 || workspace.getUsername() == null
-                || !workspace.getUsername().equals(username)
+                || (!workspace.getUsername().equals(username) && !workspace.isCollaborative())
                 || workspace.isArchived()
                 || workspace.isShared()) {
             throw new AccessDeniedException("Workspace is not available to the current user");
         }
 
         SystemRepository sourceRepository = resolveSourceRepository(workspace);
+        if (workspace.isCollaborative()) actorAccess.requireActive(username);
+        // Sharing the architecture never changes the username of an analysis draft.
+        if (!workspace.getUsername().equals(username) && !(workspace.isCollaborative() && membership != null
+                && membership.canCollaborate(sourceRepository, username))) {
+            throw new AccessDeniedException("Workspace is not available to the current user");
+        }
         String repositoryId = requireText(
                 sourceRepository.getRepositoryId(), "workspace source repository ID");
         String branch = hasText(workspace.getCurrentBranch())

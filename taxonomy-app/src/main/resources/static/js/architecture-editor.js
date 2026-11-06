@@ -116,6 +116,7 @@
         el('editorRelationFields').disabled = !writable || !selectedElement();
         el('editorDelete').disabled = !writable || !selectedElement();
         el('editorAccept').disabled = busy || !pending;
+        el('editorCollaborationToggle').disabled = !writable || !view?.collaboration?.mayManage;
     }
     async function load(scope, commit, preserveDraft) {
         if (!active) return false;
@@ -136,7 +137,7 @@
             layout = view.schema.layoutStrategy || 'stable';
             layoutRevision = view.schema.layoutRevision === undefined ? null : view.schema.layoutRevision;
             Object.freeze(view.document.context);
-            if (!selectedElement()) selected = null;
+            if (!preserveDraft && !selectedElement()) selected = null;
             render(preserveDraft);
             linkSelection(true);
             return true;
@@ -166,7 +167,8 @@
         publishContext();
         var state = view.document.projectionState;
         setStatus(t('editor.projection.' + state));
-        el('editorMode').textContent = view.mayEdit ? t('editor.writable') : t('editor.readOnly');
+        el('editorMode').textContent = view.mayEdit ? t(c.writeMode === 'SHARED_WORKSPACE' ? 'editor.collaboration.writable' : 'editor.writable') : t('editor.readOnly');
+        renderCollaboration();
         el('editorWorkspace').hidden = c.writeMode !== 'READ_ONLY' || state === 'HISTORICAL';
         el('editorRebuild').hidden = !view.mayEdit || state === 'READY';
         el('editorResumeCheckpoint').hidden = state !== 'CHECKPOINT_PENDING';
@@ -194,6 +196,24 @@
         permissions();
         if (!preserveDraft) draftBaseline = draftValue();
         document.dispatchEvent(new CustomEvent('taxonomy:architecture-diagram-updated'));
+    }
+    function renderCollaboration() {
+        var sharing = view.collaboration;
+        el('editorCollaboration').hidden = !sharing || (!sharing.enabled && !sharing.mayManage);
+        el('editorCollaborationToggle').hidden = !sharing?.mayManage;
+        el('editorCollaborationToggle').textContent = t(sharing?.enabled ? 'editor.collaboration.disable' : 'editor.collaboration.enable');
+        el('editorCollaborationState').textContent = t(sharing?.enabled ? 'editor.collaboration.shared' : 'editor.collaboration.private');
+        el('editorCollaborationLinkLabel').hidden = !sharing?.enabled;
+        el('editorCollaborationLink').hidden = !sharing?.enabled;
+        if (!sharing?.enabled) return;
+        var url = new URL(location.pathname, location.origin), c = context();
+        var language = new URLSearchParams(location.search).get('lang');
+        if (language) url.searchParams.set('lang',language);
+        ['repositoryId','workspaceScopeKey','branch'].forEach(function (key) { url.searchParams.set(key,c[key]); });
+        url.searchParams.set('workspaceId',c.workspaceScopeKey);
+        url.searchParams.set('architectureSource','working');
+        url.hash = 'architecture';
+        el('editorCollaborationLink').value = url.href;
     }
     function renderTree() {
         var query = el('editorSearch').value.toLowerCase();
@@ -440,7 +460,9 @@
     }
     el('editorForm').addEventListener('submit', function (event) {
         event.preventDefault();
-        var existing = selectedElement();
+        // Preserve the target of an unsaved update even when a collaborator deleted it.
+        // The command boundary reports NOT_FOUND; it must never silently become CREATE.
+        var existing = selected !== null;
         var properties = {};
         Object.keys(fieldMap).forEach(function (key) {
             var value = el(fieldMap[key]).value;
@@ -493,9 +515,20 @@
         finally { busy = false; permissions(); }
     };
     el('editorRefresh').onclick = function () {
-        if (busy || loading || (hasDraft() && !window.confirm(t('editor.refreshDiscardDraft')))) return;
+        var preserve = view && context().writeMode === 'SHARED_WORKSPACE' && hasDraft();
+        if (busy || loading || (!preserve && hasDraft() && !window.confirm(t('editor.refreshDiscardDraft')))) return;
         pending = null;
-        load(view ? context() : scopeFromUrl(), null).then(function (ok) { if (ok) renderer.focus(); });
+        load(view ? context() : scopeFromUrl(), null, preserve).then(function (ok) { if (ok) renderer.focus(); });
+    };
+    el('editorCollaborationToggle').onclick = async function () {
+        if (busy || loading || !view?.mayEdit || !view.collaboration?.mayManage) return;
+        busy = true; permissions();
+        try {
+            await api.setSharing(context(), !view.collaboration.enabled);
+            pending = null;
+            await load(context(),null,hasDraft());
+        } catch (error) { report(error); }
+        finally { busy = false; permissions(); }
     };
     el('editorCancel').onclick = function () { if (!busy) { pending = null; dialog.close(); } };
     dialog.addEventListener('cancel', function (event) { if (busy) event.preventDefault(); else pending = null; });

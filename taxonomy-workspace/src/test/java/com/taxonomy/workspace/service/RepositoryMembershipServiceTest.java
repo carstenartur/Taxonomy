@@ -44,6 +44,24 @@ class RepositoryMembershipServiceTest {
     }
 
     @Test
+    void collaborativeDraftsRequireExplicitContributorAuthorityEvenForThePrimaryRepository() {
+        var primary = repository(RepositoryVisibility.PUBLIC, RepositoryLifecycleState.ACTIVE, true);
+        assertTrue(service.canContribute(primary, "outsider"));
+        assertFalse(service.canCollaborate(primary, "outsider"));
+        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "reader"))
+                .thenReturn(Optional.of(membership("repo-a", "reader", RepositoryRole.READER)));
+        assertFalse(service.canCollaborate(primary, "reader"));
+        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "contributor"))
+                .thenReturn(Optional.of(membership("repo-a", "contributor", RepositoryRole.CONTRIBUTOR)));
+        assertTrue(service.canCollaborate(primary, "contributor"));
+        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "contributor"))
+                .thenReturn(Optional.empty());
+        assertFalse(service.canCollaborate(primary, "contributor"));
+        primary.setLifecycleState(RepositoryLifecycleState.ARCHIVED);
+        assertFalse(service.canCollaborate(primary, "owner"));
+    }
+
+    @Test
     void assignOwnerCreatesExplicitOwnerMembership() {
         when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "alice"))
                 .thenReturn(Optional.empty());

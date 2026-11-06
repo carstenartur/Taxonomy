@@ -46,6 +46,27 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
             return new PrincipalScopeCapture.Scope(text(row, "principal_scope"));
         }, checkpoint);
     }
+
+    /** Historical actor labels are optional identity evidence, never ownership or current grants. */
+    public Set<String> historyActorScopes(SnapshotContext snapshot, BackupCheckpoint checkpoint) throws IOException {
+        var scope = new BackupRowScope(snapshot); var queries = new ArrayList<Query>();
+        if (scope.history() && !scope.selectedVersion()) {
+            var history = scope.repositories("w.repository_id", "w.workspace_id");
+            for (String table : List.of("editor_operation", "editor_checkpoint"))
+                queries.add(new Query("select w.repository_id,w.workspace_id,w.scope_id as parent_scope,h.scope_id as child_scope,h.actor as principal_scope from "
+                        + table + " h join editor_workspace w on w.scope_id=h.scope_id where " + history.sql() + " order by h.id", history.parameters()));
+        }
+        return new PrincipalScopeCapture(rows).capture(queries, row -> {
+            if (!scope.includesWorkspace(text(row, "repository_id"), text(row, "workspace_id"))
+                    || !Objects.equals(text(row, "parent_scope"), text(row, "child_scope")))
+                throw new IOException("Historical actor belongs to a different editor scope");
+            String actor = text(row, "principal_scope");
+            // Old audit labels have a broader domain than registered identity scopes.
+            // Preserve their raw journal evidence and existing private quarantine.
+            if (actor != null && (actor.isBlank() || actor.length() > 255 || actor.chars().anyMatch(Character::isISOControl))) actor = null;
+            return new PrincipalScopeCapture.Scope(actor);
+        }, checkpoint);
+    }
     @Override public int schemaVersion() { return 1; }
     @Override public Set<String> categories() {
         return Set.of("com.taxonomy.workspace.model.SystemRepository", "com.taxonomy.workspace.model.UserWorkspace",
@@ -73,12 +94,12 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                         instant(r,"last_fetch_at"),instant(r,"last_push_at"),text(r,"last_fetch_commit"),r.getBoolean("primary_repo"),
                         text(r,"created_by"),instant(r,"created_at"),instant(r,"updated_at"))));
         var workspaces = scope.repositories("source_repository_id", "workspace_id");
-        write(sink,"workspaces",profile,query(scope,false,"select workspace_id,username,display_name,current_branch,base_branch,shared,created_at,last_accessed_at,provisioning_status,topology_mode,source_repository_id,source_branch,relationship_type,base_commit,current_commit,last_fetched_commit,last_integrated_commit,sync_target_branch,provisioned_at,description,archived,is_default from user_workspace",workspaces,"workspace_id"),
+        write(sink,"workspaces",profile,query(scope,false,"select workspace_id,username,display_name,current_branch,base_branch,shared,created_at,last_accessed_at,provisioning_status,topology_mode,source_repository_id,source_branch,relationship_type,base_commit,current_commit,last_fetched_commit,last_integrated_commit,sync_target_branch,provisioned_at,description,archived,is_default,collaborative from user_workspace",workspaces,"workspace_id"),
                 scoped(scope,"source_repository_id","workspace_id",r -> new WorkspaceRecord(text(r,"workspace_id"),text(r,"username"),text(r,"display_name"),text(r,"current_branch"),text(r,"base_branch"),r.getBoolean("shared"),
                         instant(r,"created_at"),instant(r,"last_accessed_at"),enumeration(r,"provisioning_status",WorkspaceProvisioningStatus.class),
                         enumeration(r,"topology_mode",RepositoryTopologyMode.class),text(r,"source_repository_id"),text(r,"source_branch"),
                         enumeration(r,"relationship_type",WorkspaceRelationshipType.class),text(r,"base_commit"),text(r,"current_commit"),text(r,"last_fetched_commit"),
-                        text(r,"last_integrated_commit"),text(r,"sync_target_branch"),instant(r,"provisioned_at"),text(r,"description"),r.getBoolean("archived"),r.getBoolean("is_default"))));
+                        text(r,"last_integrated_commit"),text(r,"sync_target_branch"),instant(r,"provisioned_at"),text(r,"description"),r.getBoolean("archived"),r.getBoolean("is_default"),r.getBoolean("collaborative"))));
         write(sink,"memberships",profile,query(scope,false,"select id,repository_id,username,repository_role,created_at,created_by,updated_at from repository_membership",repositories,"id"),
                 scoped(scope,"repository_id",null,r -> new MembershipRecord(reference(r,"workspace.membership","id"),text(r,"repository_id"),text(r,"username"),enumeration(r,"repository_role",RepositoryRole.class),instant(r,"created_at"),text(r,"created_by"),instant(r,"updated_at"))));
         var sync = scope.repositories("w.source_repository_id","w.workspace_id");
@@ -121,7 +142,11 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
         String value=text(row,column); return value==null?null:Enum.valueOf(type,value);
     }
     public record RepositoryRecord(String repositoryId,String slug,String displayName,String description,RepositoryVisibility visibility,RepositoryLifecycleState lifecycleState,RepositoryOwnerType ownerType,String ownerScope,RepositoryTopologyMode topologyMode,String defaultBranch,String upstreamRepositoryId,String upstreamBranch,String forkPointCommit,String lastFetchAt,String lastPushAt,String lastFetchCommit,boolean primaryRepository,String createdBy,String createdAt,String updatedAt) { }
-    public record WorkspaceRecord(String workspaceId,String ownerScope,String displayName,String currentBranch,String baseBranch,boolean shared,String createdAt,String lastAccessedAt,WorkspaceProvisioningStatus provisioningStatus,RepositoryTopologyMode topologyMode,String repositoryId,String sourceBranch,WorkspaceRelationshipType relationshipType,String baseCommit,String currentCommit,String lastFetchedCommit,String lastIntegratedCommit,String syncTargetBranch,String provisionedAt,String description,boolean archived,boolean defaultWorkspace) { }
+    public record WorkspaceRecord(String workspaceId,String ownerScope,String displayName,String currentBranch,String baseBranch,boolean shared,String createdAt,String lastAccessedAt,WorkspaceProvisioningStatus provisioningStatus,RepositoryTopologyMode topologyMode,String repositoryId,String sourceBranch,WorkspaceRelationshipType relationshipType,String baseCommit,String currentCommit,String lastFetchedCommit,String lastIntegratedCommit,String syncTargetBranch,String provisionedAt,String description,boolean archived,boolean defaultWorkspace,boolean collaborative) {
+        public WorkspaceRecord(String workspaceId,String ownerScope,String displayName,String currentBranch,String baseBranch,boolean shared,String createdAt,String lastAccessedAt,WorkspaceProvisioningStatus provisioningStatus,RepositoryTopologyMode topologyMode,String repositoryId,String sourceBranch,WorkspaceRelationshipType relationshipType,String baseCommit,String currentCommit,String lastFetchedCommit,String lastIntegratedCommit,String syncTargetBranch,String provisionedAt,String description,boolean archived,boolean defaultWorkspace) {
+            this(workspaceId,ownerScope,displayName,currentBranch,baseBranch,shared,createdAt,lastAccessedAt,provisioningStatus,topologyMode,repositoryId,sourceBranch,relationshipType,baseCommit,currentCommit,lastFetchedCommit,lastIntegratedCommit,syncTargetBranch,provisionedAt,description,archived,defaultWorkspace,false);
+        }
+    }
     public record MembershipRecord(SourceRecordId sourceId,String repositoryId,String principalScope,RepositoryRole role,String createdAt,String createdBy,String updatedAt) { }
     public record SyncRecord(SourceRecordId sourceId,String principalScope,String workspaceId,String lastSyncedCommit,String lastSyncAt,String lastPublishedCommit,String lastPublishAt,String syncStatus,int unpublishedCommitCount,String createdAt,String updatedAt) { }
     public record WorkingStateRecord(SourceRecordId sourceId,String repositoryId,String workspaceId,String branch,String dsl,long semanticRevision,String checkpointCommit,long checkpointRevision,String interruptedCheckpoint) { }

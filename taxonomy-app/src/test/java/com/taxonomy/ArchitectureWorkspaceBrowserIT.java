@@ -238,6 +238,77 @@ class ArchitectureWorkspaceBrowserIT {
         assertThat(page.driver().executeScript("return window.__integrationErrors;")).isEqualTo(List.of());
     }
 
+    @ParameterizedTest @ValueSource(strings = {"en", "de"})
+    void ownerOptsIntoTheExistingWorkingCopyWithAnExplicitPermissionNotice(String locale) {
+        open(locale, 1440);
+        var shared = new java.util.concurrent.atomic.AtomicBoolean();
+        page.route("GET", "/taxonomy/api/architecture/editor", request -> {
+            var result = new LinkedHashMap<>(editorView(query(request.query())));
+            var document = new LinkedHashMap<>((Map<String,Object>) result.get("document"));
+            var context = new LinkedHashMap<>((Map<String,Object>) document.get("context"));
+            context.put("writeMode",shared.get() ? "SHARED_WORKSPACE" : "PRIVATE_WORKSPACE");
+            document.put("context",context);result.put("document",document);
+            result.put("collaboration",Map.of("enabled",shared.get(),"mayManage",true));
+            return json(200,result);
+        });
+        page.route("POST", "/taxonomy/api/architecture/editor/collaboration", request -> {
+            shared.set(Boolean.TRUE.equals(read(request.body()).get("enabled")));
+            return json(200,Map.of("enabled",shared.get(),"mayManage",true));
+        });
+        source("working",scope("repository-B","private-B","draft/B"));
+        assertThat(page.driver().findElement(By.id("editorCollaborationNotice")).getText())
+                .contains(locale.equals("de") ? "Operationshistorie" : "operation history");
+        page.driver().findElement(By.id("editorCollaborationToggle")).click();
+        wait.until(driver -> shared.get() && page.driver().findElement(By.id("editorCollaborationLink")).isDisplayed());
+        String link = page.driver().findElement(By.id("editorCollaborationLink")).getDomProperty("value");
+        assertThat(link).contains("repositoryId=repository-B","workspaceId=private-B","branch=draft%2FB","architectureSource=working")
+                .doesNotContain("revision=","commit=");
+        var request = page.requests().stream().filter(item -> item.path().endsWith("/editor/collaboration")).findFirst().orElseThrow();
+        assertThat(read(request.body())).containsEntry("enabled",true);
+        assertThat((Map<String,Object>) read(request.body()).get("context")).containsEntry("revision",7);
+        page.driver().findElement(By.id("editorCollaborationToggle")).click();
+        wait.until(driver -> !shared.get() && !page.driver().findElement(By.id("editorCollaborationLink")).isDisplayed());
+        noScriptErrors();
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"en", "de"})
+    void sharedRefreshRetainsTheDraftAndNeverTurnsADeletedUpdateIntoCreation(String locale) {
+        open(locale, 1440);
+        var revision = new AtomicInteger(7);
+        page.route("GET", "/taxonomy/api/architecture/editor", request -> {
+            var result = new LinkedHashMap<>(editorView(query(request.query())));
+            var document = new LinkedHashMap<>((Map<String, Object>) result.get("document"));
+            var context = new LinkedHashMap<>((Map<String, Object>) document.get("context"));
+            context.put("writeMode", "SHARED_WORKSPACE"); context.put("revision", revision.get());
+            document.put("context", context); result.put("document", document);
+            result.put("collaboration", Map.of("enabled", true, "mayManage", false));
+            if (revision.get() == 8) {
+                var model = new LinkedHashMap<>((Map<String, Object>) result.get("model"));
+                model.put("elements", List.of()); result.put("model", model);
+                result.put("searchIndex", List.of());
+                result.put("scene", Map.of("width", 1100, "height", 420, "nodes", List.of(), "edges", List.of()));
+            }
+            return json(200, result);
+        });
+        page.route("POST", "/taxonomy/api/architecture/editor/preview", request ->
+                json(404, Map.of("code", "NOT_FOUND", "detail", "The edited element was deleted", "dependencies", List.of())));
+        var target = new LinkedHashMap<>(scope("repository-B", "private-B", "draft/B"));
+        target.put("element", "CP-1000"); source("working", target);
+        var title = page.driver().findElement(By.id("editorTitle")); title.clear(); title.sendKeys("Retained local edit");
+        page.driver().findElement(By.id("editorRationale")).sendKeys("Keep my target after another editor deletes it");
+        revision.set(8);
+        page.driver().executeScript("window.confirm=()=>true; document.getElementById('editorRefresh').click();");
+        wait.until(driver -> Long.valueOf(8).equals(page.driver().executeScript("return TaxonomyArchitectureWorkspace.getData()?.document?.context?.revision;")));
+        assertThat(page.driver().findElement(By.id("editorTitle")).getDomProperty("value")).isEqualTo("Retained local edit");
+        assertThat(page.driver().executeScript("return TaxonomyArchitectureWorkspace.getSource().element;")).isEqualTo("CP-1000");
+        page.driver().executeScript("document.getElementById('editorForm').requestSubmit();");
+        wait.until(driver -> page.requests().stream().anyMatch(request -> request.path().endsWith("/editor/preview")));
+        var request = page.requests().stream().filter(item -> item.path().endsWith("/editor/preview")).findFirst().orElseThrow();
+        assertThat(read(request.body())).containsEntry("kind", "UPDATE_ELEMENT").containsEntry("id", "CP-1000");
+        assertThat(page.driver().findElement(By.id("editorTitle")).getDomProperty("value")).isEqualTo("Retained local edit");
+        noScriptErrors();
+    }
+
     private static void resize(int width, int height) {
         ((HasCdp) new Augmenter().augment(page.driver())).executeCdpCommand("Emulation.setDeviceMetricsOverride",
                 Map.of("width", width, "height", height, "deviceScaleFactor", 1, "mobile", false));

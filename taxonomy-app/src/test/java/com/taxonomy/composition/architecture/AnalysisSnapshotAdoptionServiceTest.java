@@ -48,6 +48,28 @@ class AnalysisSnapshotAdoptionServiceTest {
                 new RequirementVersionView(3L,1,"Old requirement text", "old-hash",null,"alice",Instant.now(),null)));
     }
     @AfterEach void close() { fixture.close(); }
+    @Test void sharedContributorAdoptsIntoTheSameJournalAndRevocationClosesTheTarget() throws Exception {
+        var copy=workspace("copy-a","alice"); copy.setCollaborative(true);
+        when(workspaces.findByWorkspaceId("copy-a")).thenReturn(Optional.of(copy));
+        var repository=repositories.getRepository("repo-a");
+        when(membership.canCollaborate(repository,"bob")).thenReturn(true,true,false);
+        when(membership.canRead(repository,"bob")).thenReturn(true);
+        service.setActorAccess(username -> {});
+        var bobSource=new WorkspaceContext("bob",null,"draft","repo-a");
+        when(snapshots.getSnapshot(1L,"snapshot-old","bob",bobSource)).thenReturn(snapshot);
+        var versions=projects.listRequirementVersions(1L,2L,"alice",source);
+        when(projects.listRequirementVersions(1L,2L,"bob",bobSource)).thenReturn(versions);
+        var bob=RepositoryContext.collaborativeWorkspace("repo-a","copy-a","draft","bob");
+        var base=request(ref,null);
+        var request=new AnalysisSnapshotAdoptionService.Request(fixture.service.read(bob,null).context(),base.metadata(),ref,null);
+        var preview=service.preview(bob,request);
+        service.adopt(bob,new AnalysisSnapshotAdoptionService.Request(request.context(),request.metadata(),ref,preview.fingerprint()));
+        assertThat(fixture.service.read(bob,null).history().getFirst().actor()).isEqualTo("bob");
+        assertThat(fixture.service.read(bob,null).context().revision()).isEqualTo(1);
+        assertThatThrownBy(()->service.preview(bob,request)).isInstanceOfSatisfying(
+                com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem.class,error->assertThat(error.code()).isEqualTo("NOT_FOUND"));
+    }
+
     @Test void frozenSourcePreviewIsReadOnlyAcceptanceUsesOneRevisionAndRepeatOpensExistingView() throws Exception {
         var request = request(ref, null);
         var preview = service.preview(target, request);

@@ -87,6 +87,16 @@ class ProductionHistoryBackupIT {
             assertThat(codes).containsAll(fixture.codes().subList(0,5)).doesNotContain(fixture.codes().get(5));
             var operations=records(verified,"data/workspace/operations.ndjson");
             assertThat(operations).hasSize(2);
+            assertThat(operations).anySatisfy(row -> assertThat(row.get("actor").asText())
+                    .isEqualTo(identities.find(fixture.foreignActor()).orElseThrow().scopeKey()));
+            assertThat(records(verified,"identities/principals.ndjson")).anySatisfy(row -> {
+                assertThat(row.get("id")).isEqualTo(PortableRows.json().valueToTree(fixture.foreignActor()));
+                assertThat(row.get("sourceEnabled").asBoolean()).isFalse();
+            });
+            assertThat(records(verified,"data/workspace/memberships.ndjson")).noneSatisfy(row ->
+                    assertThat(row.get("principalScope").asText()).isEqualTo(identities.find(fixture.foreignActor()).orElseThrow().scopeKey()));
+            assertThat(records(verified,"data/workspace/workspaces.ndjson")).singleElement()
+                    .satisfies(row -> assertThat(row.get("collaborative").asBoolean()).isTrue());
             assertThat(operations).anySatisfy(row->{
                 assertThat(row.get("beforeDsl").asText()).isEqualTo(fixture.headDsl());
                 assertThat(row.get("afterDsl").asText()).isEqualTo(fixture.editorHistoryDsl());
@@ -152,7 +162,7 @@ class ProductionHistoryBackupIT {
         var bob=identities.oidc("https://history-fixture.example","bob-"+suffix);
         String repository="history-"+suffix,workspace="work-"+suffix;
         String foreignRepository="foreign-"+suffix,foreignWorkspace="foreign-work-"+suffix;
-        route(repository,workspace,alice.scopeKey());route(foreignRepository,foreignWorkspace,bob.scopeKey());
+        route(repository,workspace,alice.scopeKey(),true);route(foreignRepository,foreignWorkspace,bob.scopeKey());
         var jdbc=new JdbcTemplate(database);
         for(var actor:List.of(alice,bob))jdbc.update("insert into backup_capability_grant values (?,'EXPORT_HISTORY')",actor.id().value().toString());
         var codes=jdbc.queryForList("select n.code from taxonomy_node n where n.parent_code is not null and not exists (select 1 from taxonomy_node child where child.parent_code=n.code) order by n.code",String.class).stream().limit(6).toList();
@@ -179,21 +189,27 @@ class ProductionHistoryBackupIT {
         }
         var context=RepositoryContext.workspace(repository,workspace,"draft",alice.scopeKey());
         var journal=new EditorJournal(entities,new JpaTransactionManager(entities));
-        journal.locked(context,new EditorJournal.State(headDsl,0,head,0,null),session->session.append(metadata(),alice.scopeKey(),"SEMANTIC",null,StableIdentityHash.sha256(editorDsl),editorDsl,List.of(codes.get(3))));
+        jdbc.update("insert into repository_membership(repository_id,username,repository_role,created_at,created_by,version) values(?,?,'CONTRIBUTOR',?,?,0)",repository,bob.scopeKey(),java.sql.Timestamp.from(now),alice.scopeKey());
+        journal.locked(context,new EditorJournal.State(headDsl,0,head,0,null),session->session.append(metadata(),bob.scopeKey(),"SEMANTIC",null,StableIdentityHash.sha256(editorDsl),editorDsl,List.of(codes.get(3))));
         var checkpoint=metadata();
-        journal.locked(context,journal.read(context).state(),session->{session.prepare(checkpoint,alice.scopeKey(),StableIdentityHash.sha256("checkpoint"));session.rejectCheckpoint(checkpoint.commandId());return null;});
+        journal.locked(context,journal.read(context).state(),session->{session.prepare(checkpoint,bob.scopeKey(),StableIdentityHash.sha256("checkpoint"));session.rejectCheckpoint(checkpoint.commandId());return null;});
         journal.locked(context,journal.read(context).state(),session->session.append(metadata(),alice.scopeKey(),"SEMANTIC",null,StableIdentityHash.sha256(savedDsl),savedDsl,List.of(codes.get(4))));
+        jdbc.update("delete from repository_membership where repository_id=? and username=?",repository,bob.scopeKey());
+        jdbc.update("update app_principal set enabled=0 where principal_id=?",bob.id().value().toString());
         String sourceFile="historical-source-"+suffix+".bin",sourceContent="HISTORICAL-SOURCE-BYTES-"+suffix;
         Files.writeString(root.resolve(sourceFile),sourceContent);
         requirement(repository,workspace,alice.scopeKey(),sourceFile,sourceContent);
         return new Fixture(repository,workspace,alice.id(),bob.id(),first,head,orphan,firstDsl,headDsl,orphanDsl,editorDsl,savedDsl,codes,binary,sourceFile,sourceContent);
     }
     private void route(String repository,String workspace,String owner) {
+        route(repository,workspace,owner,false);
+    }
+    private void route(String repository,String workspace,String owner,boolean collaborative) {
         try(var em=entities.createEntityManager()) {
             var tx=em.getTransaction();tx.begin();var repo=new SystemRepository();
             repo.setRepositoryId(repository);repo.setStorageRepositoryName("central-"+repository);repo.setSlug(repository);repo.setDisplayName(repository);
             repo.setOwnerId(owner);repo.setOwnerType(RepositoryOwnerType.USER);repo.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);repo.setCreatedAt(now);em.persist(repo);
-            var work=new UserWorkspace();work.setWorkspaceId(workspace);work.setUsername(owner);work.setSourceRepositoryId(repository);work.setDisplayName(workspace);work.setCreatedAt(now);em.persist(work);tx.commit();
+            var work=new UserWorkspace();work.setWorkspaceId(workspace);work.setUsername(owner);work.setSourceRepositoryId(repository);work.setDisplayName(workspace);work.setCreatedAt(now);work.setCollaborative(collaborative);em.persist(work);tx.commit();
         }
         repositories.createCentralRepository(repository,"central-"+repository);repositories.createWorkspaceRepository(workspace,repository,"draft");
     }

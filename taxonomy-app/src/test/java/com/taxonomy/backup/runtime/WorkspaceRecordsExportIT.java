@@ -19,6 +19,45 @@ import static com.taxonomy.backup.runtime.CurrentStateExportIT.*;
 import static org.assertj.core.api.Assertions.*;
 
 class WorkspaceRecordsExportIT {
+    @ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings = {"control", "long"})
+    void legacyJournalLabelsOutsideTheIdentityDomainDoNotBecomePrincipalReferences(String shape) throws Exception {
+        try (var fixture = new Fixture()) {
+            graph(fixture, "repo-a", "private-a", "ALICE");
+            String actor=shape.equals("control") ? "old\tactor" : "x".repeat(320);
+            fixture.jdbc.update("update editor_operation set actor=?",actor);
+            fixture.jdbc.update("update editor_checkpoint set actor=?",actor);
+            var contributor=new WorkspaceBackupContributor(fixture.database,dsl -> dsl);
+            var selected=snapshot(BackupProfile.REPOSITORY_HISTORY,new BackupScope.Workspace("repo-a","private-a"));
+            assertThat(contributor.historyActorScopes(selected,() -> {})).isEmpty();
+            assertThat(contributor.principalScopes(selected,() -> {})).containsExactly("ALICE");
+        }
+    }
+
+    @Test void historyActorDiscoveryRetainsRemovedCollaboratorsOnlyInsideTheCapturedWorkspace() throws Exception {
+        try (var fixture = new Fixture()) {
+            graph(fixture, "repo-a", "private-a", "ALICE"); graph(fixture, "repo-b", "private-b", "BOB");
+            fixture.jdbc.update("update editor_operation set actor='former-contributor' where scope_id='editor-ALICE'");
+            fixture.jdbc.update("update editor_checkpoint set actor='retired-checkpointer' where scope_id='editor-ALICE'");
+            var contributor = new WorkspaceBackupContributor(fixture.database, dsl -> dsl);
+            var scope = new BackupScope.Workspace("repo-a", "private-a");
+            assertThat(contributor.principalScopes(snapshot(BackupProfile.REPOSITORY_HISTORY, scope), () -> {})).containsExactly("ALICE");
+            assertThat(contributor.historyActorScopes(snapshot(BackupProfile.REPOSITORY_HISTORY, scope), () -> {}))
+                    .containsExactlyInAnyOrder("former-contributor", "retired-checkpointer");
+            assertThat(contributor.historyActorScopes(snapshot(BackupProfile.CURRENT_STATE, scope), () -> {})).isEmpty();
+        }
+    }
+
+    @ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings = {"editor_operation", "editor_checkpoint"})
+    void historicalActorDiscoveryRejectsCaseAliasedEditorParentLinks(String table) throws Exception {
+        try (var fixture = caseInsensitiveFixture()) {
+            graph(fixture, "repo-a", "private-a", "ALICE");
+            fixture.jdbc.update("update " + table + " set scope_id=upper(scope_id)");
+            var contributor = new WorkspaceBackupContributor(fixture.database, dsl -> dsl);
+            assertThatThrownBy(() -> contributor.historyActorScopes(snapshot(BackupProfile.REPOSITORY_HISTORY,
+                    new BackupScope.Workspace("repo-a", "private-a")), () -> {})).isInstanceOf(java.io.IOException.class);
+        }
+    }
+
     @ParameterizedTest @CsvSource({
             "system_repository,repository_id", "repository_membership,repository_id",
             "user_workspace,source_repository_id", "user_workspace,workspace_id",
@@ -95,6 +134,7 @@ class WorkspaceRecordsExportIT {
             }
             assertThat(records(current, "repositories").getFirst().path("repositoryId").asText()).isEqualTo("repo-a");
             assertThat(records(current, "memberships").getFirst().path("principalScope").asText()).isEqualTo("ALICE");
+            assertThat(records(current, "workspaces").getFirst().path("collaborative").asBoolean()).isTrue();
             var working = records(current, "working-states").getFirst();
             var editorId = PortableRows.json().valueToTree(new SourceRecordId("workspace.editor", "editor-ALICE"));
             assertThat(working.path("sourceId")).isEqualTo(editorId);
@@ -167,6 +207,7 @@ class WorkspaceRecordsExportIT {
             repository.setLastFetchCommit(COMMIT); em.persist(repository);
             var workspace = new UserWorkspace();
             workspace.setWorkspaceId(workspaceId); workspace.setUsername(owner); workspace.setDisplayName("Workspace " + owner);
+            workspace.setCollaborative(true);
             workspace.setSourceRepositoryId(repositoryId); workspace.setSourceBranch("draft"); workspace.setCreatedAt(NOW);
             workspace.setLastAccessedAt(NOW); workspace.setProvisionedAt(NOW); workspace.setCurrentCommit(COMMIT);
             workspace.setBaseCommit(COMMIT); workspace.setLastFetchedCommit(COMMIT); workspace.setLastIntegratedCommit(COMMIT);

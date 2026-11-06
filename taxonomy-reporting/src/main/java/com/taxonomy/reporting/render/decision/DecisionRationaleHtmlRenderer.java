@@ -16,6 +16,9 @@ import com.taxonomy.extension.api.report.ReportRenderContext;
 import com.taxonomy.extension.api.report.ReportRenderResult;
 import com.taxonomy.extension.api.report.ReportRendererExtension;
 import org.springframework.stereotype.Component;
+import com.taxonomy.export.ExportThemeProvider;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -33,9 +36,20 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
             "html", "HTML", "html", "text/html; charset=UTF-8", false);
 
     private final DecisionChapterDiagramRenderer diagramRenderer;
+    private final ExportThemeProvider themes;
 
     public DecisionRationaleHtmlRenderer(DecisionChapterDiagramRenderer diagramRenderer) {
+        this(diagramRenderer, ExportThemeProvider.defaults());
+    }
+
+    public DecisionRationaleHtmlRenderer(DecisionChapterDiagramRenderer diagramRenderer, ExportThemeProvider themes) {
         this.diagramRenderer = diagramRenderer;
+        this.themes = java.util.Objects.requireNonNull(themes, "themes");
+    }
+
+    @Autowired
+    DecisionRationaleHtmlRenderer(DecisionChapterDiagramRenderer diagramRenderer, ObjectProvider<ExportThemeProvider> themes) {
+        this(diagramRenderer, themes.getIfAvailable(ExportThemeProvider::defaults));
     }
 
     @Override
@@ -68,6 +82,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                 .append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
                 .append("<title>").append(text(report.title())).append("</title>")
                 .append(styles(report, labels))
+                .append(themes.current().htmlReportStyles())
                 .append("</head><body>");
 
         html.append("<footer class=\"running-footer\"><span>")

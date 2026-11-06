@@ -3,6 +3,9 @@ package com.taxonomy.reporting.render.document;
 import com.taxonomy.dto.*;
 import com.taxonomy.reporting.render.decision.DecisionReportLabels;
 import org.springframework.stereotype.Component;
+import com.taxonomy.export.ExportThemeProvider;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -11,6 +14,18 @@ import java.util.*;
 /** Format-only rendering of an already captured architecture report. */
 @Component
 public final class ArchitectureReportTextRenderer {
+    private final ExportThemeProvider themes;
+
+    public ArchitectureReportTextRenderer() { this(ExportThemeProvider.defaults()); }
+
+    public ArchitectureReportTextRenderer(ExportThemeProvider themes) {
+        this.themes = Objects.requireNonNull(themes, "themes");
+    }
+
+    @Autowired
+    ArchitectureReportTextRenderer(ObjectProvider<ExportThemeProvider> themes) {
+        this(themes.getIfAvailable(ExportThemeProvider::defaults));
+    }
     /**
      * Renders an {@link ArchitectureReport} as Markdown text.
      */
@@ -273,6 +288,7 @@ public final class ArchitectureReportTextRenderer {
         html.append("    strong { color: #2c3e50; }\n");
         html.append("    p,td,th { overflow-wrap: anywhere; } h2,h3,h4 { break-after: avoid; }\n");
         html.append("  </style>\n");
+        html.append(themes.current().htmlReportStyles());
         html.append("</head>\n<body>\n");
 
         // Convert markdown to simple HTML

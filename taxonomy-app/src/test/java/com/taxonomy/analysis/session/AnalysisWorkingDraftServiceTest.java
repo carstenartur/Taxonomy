@@ -68,6 +68,24 @@ class AnalysisWorkingDraftServiceTest {
     }
 
     @Test
+    void collaborativeContributorsUseOnlyTheirOwnAnalysisDraftAndRevocationBlocksThem() {
+        var membership = org.mockito.Mockito.mock(com.taxonomy.workspace.service.RepositoryMembershipService.class);
+        service = new AnalysisWorkingDraftService(repository, workspaceManager, systemRepositoryService, objectMapper, 50_000, membership);
+        service.setActorAccess(username -> {});
+        workspace.setCollaborative(true);
+        var source = repository("repo-1", "main");
+        when(systemRepositoryService.getRepository("repo-1")).thenReturn(source);
+        when(membership.canCollaborate(source, "Bob")).thenReturn(true, false);
+        when(repository.findByScopeKeyAndUsername(any(), org.mockito.ArgumentMatchers.eq("bob")))
+                .thenReturn(Optional.empty());
+        assertThat(service.read("Bob", "ws-1")).isEmpty();
+        verify(repository, never()).findByScopeKeyAndUsername(any(), org.mockito.ArgumentMatchers.eq("alice"));
+        assertThatThrownBy(() -> service.read("Bob", "ws-1")).isInstanceOf(AccessDeniedException.class);
+        workspace.setCollaborative(false);
+        assertThatThrownBy(() -> service.read("Bob", "ws-1")).isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
     void createsOneExactTenantScopedDraft() {
         when(repository.findByScopeKeyAndUsername(any(), any())).thenReturn(Optional.empty());
         when(repository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));

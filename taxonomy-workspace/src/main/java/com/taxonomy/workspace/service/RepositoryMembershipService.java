@@ -170,6 +170,20 @@ public class RepositoryMembershipService {
                 .orElse(false);
     }
 
+    /** Shared drafts require explicit repository authority; public/primary compatibility is insufficient. */
+    public boolean canCollaborate(SystemRepository repository, String username) {
+        return isActive(repository) && effectiveRole(repository, username)
+                .map(role -> role.grants(RepositoryRole.CONTRIBUTOR)).orElse(false);
+    }
+
+    /** Does not provision, select or disclose a foreign private working copy. */
+    public boolean canUseWorkspace(SystemRepository repository, com.taxonomy.workspace.model.UserWorkspace workspace, String username) {
+        return workspace != null && !workspace.isShared() && !workspace.isArchived()
+                && java.util.Objects.equals(workspace.getSourceRepositoryId(), repository.getRepositoryId())
+                && (java.util.Objects.equals(workspace.getUsername(), username)
+                || (workspace.isCollaborative() && canCollaborate(repository, username)));
+    }
+
     public boolean isOwner(SystemRepository repository, String username) {
         return isActive(repository)
                 && effectiveRole(repository, username)

@@ -32,6 +32,12 @@ public class ArchitectureEditorController {
     private final ArchitectureEditorService service;
     private final ArchitectureEditorProjection projection;
     private final WorkspaceResolver resolver;
+    private com.taxonomy.workspace.service.WorkspaceCollaborationService collaboration;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setCollaboration(com.taxonomy.workspace.service.WorkspaceCollaborationService collaboration) {
+        this.collaboration = collaboration;
+    }
 
     public ArchitectureEditorController(ArchitectureEditorService service, ArchitectureEditorProjection projection,
                                         WorkspaceResolver resolver) {
@@ -74,7 +80,27 @@ public class ArchitectureEditorController {
         var document = service.read(context, commit, revision);
         ArchitectureEditorProjection.requireLayoutRevision(document, strategy, layoutRevision);
         var reference = layoutRevision == null ? null : service.read(context, null, layoutRevision);
-        return documentResponse(document).body(projection.project(document, mayEdit(), strategy, reference, viewId));
+        var result = projection.project(document, mayEdit(), strategy, reference, viewId);
+        if (collaboration != null) result = result.withCollaboration(collaboration.status(context));
+        return documentResponse(document).body(result);
+    }
+
+    public record SharingRequest(Context context, Boolean enabled) {
+        public SharingRequest {
+            if (context == null || enabled == null) throw new IllegalArgumentException("Context and an explicit sharing choice are required");
+        }
+    }
+
+    @PostMapping("/api/architecture/editor/collaboration")
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Enable or disable shared editing of this working copy",
+            description = "Only the working-copy owner may opt in. Active explicit source-repository contributors can then join the exact workspace link. Private workspaces remain the default; disabling sharing retains all accepted operations.")
+    public ResponseEntity<com.taxonomy.workspace.service.WorkspaceCollaborationService.Status> share(
+            @RequestBody SharingRequest request,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) throws IOException {
+        requireRevision(request.context(), ifMatch, null);
+        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(collaboration.setEnabled(resolver.resolveCurrentRepositoryContext(), request.context(), request.enabled()));
     }
 
     public ResponseEntity<ArchitectureEditorProjection.View> read(String repositoryId, String workspaceScopeKey,

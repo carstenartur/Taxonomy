@@ -31,6 +31,13 @@ import java.util.zip.ZipOutputStream;
  * separate product evidence.
  */
 public class VisioPackageBuilder {
+    private final ExportThemeProvider themes;
+
+    public VisioPackageBuilder() { this(ExportThemeProvider.defaults()); }
+
+    public VisioPackageBuilder(ExportThemeProvider themes) {
+        this.themes = java.util.Objects.requireNonNull(themes, "themes");
+    }
 
     private static final Logger log = LoggerFactory.getLogger(VisioPackageBuilder.class);
     private static final String XML_DECLARATION =
@@ -50,11 +57,12 @@ public class VisioPackageBuilder {
      */
     public byte[] build(VisioDocument doc) throws IOException {
         VisioPackageValidator.validate(doc);
+        ExportTheme theme = java.util.Objects.requireNonNull(themes.current(), "export theme");
         // Stable sorting retains page IDs and all native page-name hyperlinks.
         // Reserve evidence capacity during conversion, but do not put dozens of
         // text pages between the overview and its editable relationship drawings.
         doc.getPages().sort(java.util.Comparator.comparing(VisioPage::isEvidencePage));
-        Map<String, String> parts = buildParts(doc, Map.of());
+        Map<String, String> parts = buildParts(doc, Map.of(), theme);
         long bytes = partBytes(parts);
         boolean trimmed = false;
         // Appendices now follow drawings. Optional relationship pages may be
@@ -73,7 +81,7 @@ public class VisioPackageBuilder {
         }
         if (trimmed) {
             VisioPresentation.updateDetailCoverage(doc, "byte capacity");
-            parts = buildParts(doc, pageContents);
+            parts = buildParts(doc, pageContents, theme);
         }
         VisioOpcValidator.validate(parts);
 
@@ -108,7 +116,7 @@ public class VisioPackageBuilder {
         return parts.values().stream().mapToLong(value -> value.getBytes(StandardCharsets.UTF_8).length).sum();
     }
 
-    private Map<String, String> buildParts(VisioDocument doc, Map<String, String> previousParts) {
+    private Map<String, String> buildParts(VisioDocument doc, Map<String, String> previousParts, ExportTheme theme) {
         Map<String, String> parts = new LinkedHashMap<>();
         parts.put("[Content_Types].xml", buildContentTypes(doc));
         parts.put("_rels/.rels", buildRootRelationships());
@@ -130,7 +138,7 @@ public class VisioPackageBuilder {
         for (int index = 0; index < doc.getPages().size(); index++) {
             VisioPage page = doc.getPages().get(index);
             String name = "visio/pages/page" + (index + 1) + ".xml";
-            parts.put(name, previousParts.containsKey(page.getId()) ? previousParts.get(page.getId()) : buildPageXml(page));
+            parts.put(name, previousParts.containsKey(page.getId()) ? previousParts.get(page.getId()) : buildPageXml(page, theme));
             if (!VisioNativeShape.usedOn(page).isEmpty())
                 parts.put("visio/pages/_rels/page" + (index + 1) + ".xml.rels", buildPageMasterRelationships(page));
         }
@@ -309,11 +317,11 @@ public class VisioPackageBuilder {
         return xml.toString();
     }
 
-    private String buildPageXml(VisioPage page) {
+    private String buildPageXml(VisioPage page, ExportTheme theme) {
         XStream xstream = new XStream(new XppDriver());
         xstream.setMode(XStream.NO_REFERENCES);
         xstream.alias("PageContents", VisioPage.class);
-        xstream.registerConverter(new VisioPageContentsConverter());
+        xstream.registerConverter(new VisioPageContentsConverter(null, theme));
         return XML_DECLARATION + xstream.toXML(page);
     }
 

@@ -14,6 +14,8 @@ import com.taxonomy.export.StructurizrExportService;
 import com.taxonomy.export.SvgDiagramRenderer;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
+import com.taxonomy.export.ExportThemeProvider;
+import org.springframework.beans.factory.ObjectProvider;
 import com.taxonomy.preferences.PreferencesService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,13 +40,13 @@ public class ExportConfig {
     }
 
     @Bean
-    public SvgDiagramRenderer svgDiagramRenderer() {
-        return new SvgDiagramRenderer();
+    public SvgDiagramRenderer svgDiagramRenderer(ObjectProvider<ExportThemeProvider> themes) {
+        return new SvgDiagramRenderer(themes.getIfAvailable(ExportThemeProvider::defaults));
     }
 
     @Bean
-    public ArchitecturePdfRenderer neutralArchitecturePdfRenderer() {
-        return new ArchitecturePdfRenderer();
+    public ArchitecturePdfRenderer neutralArchitecturePdfRenderer(ObjectProvider<ExportThemeProvider> themes) {
+        return new ArchitecturePdfRenderer(themes.getIfAvailable(ExportThemeProvider::defaults));
     }
 
     @Bean
@@ -86,8 +88,8 @@ public class ExportConfig {
     }
 
     @Bean
-    public VisioPackageBuilder visioPackageBuilder() {
-        return new VisioPackageBuilder();
+    public VisioPackageBuilder visioPackageBuilder(ObjectProvider<ExportThemeProvider> themes) {
+        return new VisioPackageBuilder(themes.getIfAvailable(ExportThemeProvider::defaults));
     }
 
     /**

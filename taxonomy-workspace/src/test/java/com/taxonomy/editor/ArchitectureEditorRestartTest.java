@@ -18,7 +18,15 @@ import static org.assertj.core.api.Assertions.*;
 class ArchitectureEditorRestartTest {
     @TempDir Path directory;
     @Test void operationRetryUndoRedoHistoryAndCanonicalStateSurviveCompleteProcessRestarts() throws Exception {
-        for (String phase : new String[]{"accept", "undo", "redo", "verify"}) {
+        phases("accept", "undo", "redo", "verify");
+    }
+
+    @Test void sharedOptInAndBothActorsOperationsSurviveIndependentApplicationProcesses() throws Exception {
+        phases("shared-accept", "shared-contribute", "shared-undo", "shared-verify");
+    }
+
+    private void phases(String... phases) throws Exception {
+        for (String phase : phases) {
             Path output = directory.resolve(phase + ".log");
             Process process = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
                     "-cp", System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")),
@@ -34,13 +42,49 @@ class ArchitectureEditorRestartTest {
     public static final class RecoveryApplication {
         public static void main(String[] args) throws Exception {
             RepositoryContext scope = RepositoryContext.workspace("restart-repository", "restart-workspace", "draft", "alice");
+            if (args[1].startsWith("shared-")) scope = RepositoryContext.collaborativeWorkspace("restart-repository", "restart-workspace", "draft", "alice");
             String originalId = "e15f597d-a235-4cf6-aac3-ef42c7a66201";
             String undoId = "e15f597d-a235-4cf6-aac3-ef42c7a66202";
-            try (var fixture = new EditorPersistenceFixture("jdbc:hsqldb:file:" + args[0] + ";shutdown=true")) {
+            try (var fixture = new EditorPersistenceFixture("jdbc:hsqldb:file:" + args[0] + ";shutdown=true", com.taxonomy.workspace.model.UserWorkspace.class)) {
                 var editor = fixture.service;
                 var command = new Command(Context.of(scope, null, 0), metadata(originalId),
                         new SemanticCommand(new CreateArchitectureElement("arch-persisted", "System", Map.of("title", "Durable"))));
                 switch (args[1]) {
+                    case "shared-accept" -> {
+                        try (var session = fixture.factory.openSession()) {
+                            var tx = session.beginTransaction(); var workspace = new com.taxonomy.workspace.model.UserWorkspace();
+                            workspace.setWorkspaceId(scope.workspaceId()); workspace.setUsername("alice");
+                            workspace.setSourceRepositoryId(scope.repositoryId()); workspace.setCurrentBranch("draft");
+                            workspace.setCreatedAt(java.time.Instant.now()); workspace.setCollaborative(true);
+                            session.persist(workspace); tx.commit();
+                        }
+                        editor.execute(scope, command);
+                    }
+                    case "shared-contribute" -> {
+                        var bob = RepositoryContext.collaborativeWorkspace(scope.repositoryId(), scope.workspaceId(), scope.branch(), "bob");
+                        editor.execute(bob, new Command(editor.read(bob, null).context(), metadata(UUID.randomUUID().toString()),
+                                new SemanticCommand(new CreateArchitectureElement("arch-bob", "Component", Map.of("title", "Bob durable")))));
+                        check(editor.read(scope, null).history().size() == 2);
+                        check(editor.read(scope, null).historyTargets().undo().actor().equals("alice"));
+                        check(editor.read(bob, null).historyTargets().undo().actor().equals("bob"));
+                    }
+                    case "shared-undo" -> {
+                        editor.execute(scope, new Command(editor.read(scope, null).context(), metadata(undoId),
+                                new UndoArchitectureCommand(UUID.fromString(originalId))));
+                        check(editor.read(scope, null).dsl().contains("Bob durable"));
+                        check(!editor.read(scope, null).dsl().contains("element arch-persisted"));
+                    }
+                    case "shared-verify" -> {
+                        try (var session = fixture.factory.openSession()) {
+                            check(session.createQuery("from UserWorkspace", com.taxonomy.workspace.model.UserWorkspace.class).getSingleResult().isCollaborative());
+                        }
+                        editor.execute(scope, new Command(editor.read(scope, null).context(), metadata(UUID.randomUUID().toString()),
+                                new RedoArchitectureCommand(UUID.fromString(undoId))));
+                        var document = editor.read(scope, null);
+                        check(document.context().revision() == 4); check(document.history().size() == 4);
+                        check(document.dsl().contains("Durable") && document.dsl().contains("Bob durable"));
+                        check(fixture.repositories.resolveRepository(scope).getHeadCommit("draft") == null);
+                    }
                     case "accept" -> { editor.execute(scope, command); check(fixture.journal.read(scope).operations().size() == 1); }
                     case "undo" -> {
                         check(editor.execute(scope, command).replayed());

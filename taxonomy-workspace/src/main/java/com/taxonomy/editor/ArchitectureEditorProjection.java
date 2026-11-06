@@ -44,7 +44,15 @@ public class ArchitectureEditorProjection {
                                List<String> values, String labelKey) {}
     public record SearchEntry(String id, String text) {}
     public record View(ArchitectureEditorService.Document document, CanonicalArchitectureModel model,
-                       DiagramScene scene, Schema schema, boolean mayEdit, List<SearchEntry> searchIndex) {
+                       DiagramScene scene, Schema schema, boolean mayEdit, List<SearchEntry> searchIndex,
+                       com.taxonomy.workspace.service.WorkspaceCollaborationService.Status collaboration) {
+        public View(ArchitectureEditorService.Document document, CanonicalArchitectureModel model,
+                    DiagramScene scene, Schema schema, boolean mayEdit, List<SearchEntry> searchIndex) {
+            this(document, model, scene, schema, mayEdit, searchIndex, null);
+        }
+        public View withCollaboration(com.taxonomy.workspace.service.WorkspaceCollaborationService.Status status) {
+            return new View(document, model, scene, schema, mayEdit, searchIndex, status);
+        }
         public Map<String, List<com.taxonomy.dsl.planning.PlanningInformation.View>> getPlanningInformation() {
             var registry = new com.taxonomy.dsl.planning.PlanningInformation();
             Map<String, List<com.taxonomy.dsl.planning.PlanningInformation.View>> result = new java.util.LinkedHashMap<>();
@@ -80,7 +88,7 @@ public class ArchitectureEditorProjection {
                 DslValidator.relationTypeRules(), TaxonomyRootTypes.TYPE_TO_ROOT, properties(),
                 strategy == Strategy.STABLE ? "DERIVED_SERVER_LAYOUT" : "DERIVED_SERVER_LAYOUT_REDUCE_CROSSINGS",
                 strategy.id(), layoutRevision);
-        return new View(document, model, scene, schema, mayEdit && "PRIVATE_WORKSPACE".equals(document.context().writeMode())
+        return new View(document, model, scene, schema, mayEdit && List.of("PRIVATE_WORKSPACE", "SHARED_WORKSPACE").contains(document.context().writeMode())
                 && "READY".equals(document.projectionState()),
                 model.getElements().stream().map(element -> new SearchEntry(element.getId(),
                         (element.getId() + " " + element.getTitle() + " " + element.getType()).toLowerCase(java.util.Locale.ROOT))).toList());

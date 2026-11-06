@@ -106,3 +106,12 @@ Acceptance covers 100 mixed semantic operations without Git advancement, full pr
 The canonical gate is `./mvnw verify -DexcludedGroups="real-llm"`, together with the existing database/browser/security/export integration jobs. A blocked dependency download is not a passing test; current-commit CI evidence must be checked before merge.
 
 D3/SVG renderer, server validation, read-only DSL view and immutable analysis snapshots are retained. Persistent layouts, editable DSL-to-command translation, shared undo, extended history pagination and full large-repository budgets remain follow-ups under #814.
+
+## November 2026 opt-in extension
+
+The [shared architecture editing design](../superpowers/specs/2026-11-06-shared-architecture-editing-design.md)
+adds owner-managed collaboration to the existing working copy. Private remains the
+default. Active stable identities with explicit source-repository contributor
+authority can join its exact link, share one revision stream and view all actors'
+history. Undo/redo remains personal, and the refresh/repreview workflow preserves
+unaccepted intent. Shared undo and live synchronization remain outside this extension.
