@@ -247,22 +247,28 @@ test('refreshing an unchanged legacy exporter preserves its failed request for r
 });
 
 test('creating a new connection clears the previous export basis and pending request', async () => {
-    const { el, api, overview } = await basedPage({ fileExport: frozenFileExport, operationDirection: 'OUTBOUND' });
-    selectExportFile(el); const attempts = [], read = api.read;
-    api.upload = async (path, request, file) => { attempts.push({ path, request, file }); throw new Error('Response lost'); };
-    el('integrationExport').listeners.click(); await settle();
-    api.write = async () => ({ id: 'next-conn' });
-    api.read = path => path === '' ? Promise.resolve([{ id: 'next-conn', displayName: 'New connection', connectorId: 'external-file-profile' }])
-        : path === '/next-conn' ? Promise.resolve({ ...overview, connection: { ...overview.connection, id: 'next-conn' }, history: [], fileBases: [] }) : read(path);
-    el('connectionProfile').value = 'external-file-profile@1';
-    el('integrationCreate').listeners.submit({ preventDefault() {} }); await settle();
-    assert.equal(el('integrationConnection').value, 'next-conn');
-    assert.equal(el('integrationExportBaseFile').files.length, 0);
-    assert.equal(el('integrationExport').disabled, true);
-    assert.equal(el('integrationFileExportSummary').hidden, true);
-    selectExportFile(el); el('integrationExport').listeners.click(); await settle();
-    assert.equal(attempts.length, 2); assert.equal(attempts[1].path, '/next-conn/export-previews');
-    assert.notEqual(attempts[1].request.operationId, attempts[0].request.operationId);
+    for (const unavailable of [false, true]) {
+        const { el, api, overview } = await basedPage({ fileExport: frozenFileExport, operationDirection: 'OUTBOUND' });
+        selectExportFile(el); const attempts = [], read = api.read;
+        api.upload = async (path, request, file) => { attempts.push({ path, request, file }); throw new Error('Response lost'); };
+        el('integrationExport').listeners.click(); await settle();
+        api.write = async () => ({ id: 'next-conn' });
+        api.read = path => path === '' ? Promise.resolve([{ id: 'next-conn', displayName: 'New connection', connectorId: 'external-file-profile' }])
+            : path === '/next-conn' ? unavailable ? Promise.reject(new Error('New connection unavailable'))
+                : Promise.resolve({ ...overview, connection: { ...overview.connection, id: 'next-conn' }, history: [], fileBases: [] }) : read(path);
+        el('connectionProfile').value = 'external-file-profile@1';
+        el('integrationCreate').listeners.submit({ preventDefault() {} }); await settle();
+        assert.equal(el('integrationConnection').value, 'next-conn');
+        assert.equal(el('integrationExportBaseFile').files.length, 0);
+        assert.equal(el('integrationExport').disabled, true);
+        assert.equal(el('integrationFileExportSummary').hidden, true);
+        selectExportFile(el); el('integrationExport').listeners.click(); await settle();
+        if (unavailable) assert.equal(attempts.length, 1, 'The previous connection overview cannot authorize an export');
+        else {
+            assert.equal(attempts.length, 2); assert.equal(attempts[1].path, '/next-conn/export-previews');
+            assert.notEqual(attempts[1].request.operationId, attempts[0].request.operationId);
+        }
+    }
 });
 
 for (const field of ['mode', 'base', 'file', 'connection']) test('changing the export ' + field + ' invalidates a failed pending preview', async () => {

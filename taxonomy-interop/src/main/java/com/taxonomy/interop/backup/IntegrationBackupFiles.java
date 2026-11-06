@@ -11,6 +11,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.DateTimeException;
+import java.time.Instant;
 import java.util.*;
 
 import static com.taxonomy.exchange.backup.PortableRows.*;
@@ -18,7 +20,7 @@ import static com.taxonomy.exchange.backup.PortableRows.*;
 /** Binary evidence is streamed as archive entries; only typed references enter portable JSON records. */
 final class IntegrationBackupFiles {
     private static final String COLUMNS = "e.id,e.scope_id,e.connection_id,e.operation_id,e.actor,e.kind,e.profile,e.profile_version,e.binding_json,"
-            + "e.sha256,e.byte_count,e.media_type,e.filename,e.model_identifier,e.review_fingerprint,e.content,e.created_at,"
+            + "e.sha256,e.byte_count,e.media_type,e.filename,e.model_identifier,e.review_fingerprint,e.losses_json,e.content,e.created_at,"
             + "o.actor as source_actor,o.context_json,o.document_json,o.direction,o.base_file_id,o.result_file_id,o.review_fingerprint as source_review";
     private final PortableRows rows;
     private final IntegrationBackupSelection selection;
@@ -68,11 +70,15 @@ final class IntegrationBackupFiles {
                 if (!id.equals(text(row, "result_file_id")) || text(row, "source_review") == null
                         || !Objects.equals(text(row, "review_fingerprint"), text(row, "source_review"))) throw invalid();
             } else throw invalid();
+            var losses = IntegrationBackupJson.read(text(row, "losses_json"), MappingLoss[].class);
+            if (losses == null) throw invalid();
+            String createdAt = Instant.parse(text(row, "created_at")).toString();
             return new FileData(new SourceRecordId("interop.file", id), selection.scope(row),
                     reference(row, "interop.connection", "connection_id"), reference(row, "interop.operation", "operation_id"), actor, kind,
                     context.profile(), context.profileVersion(), binding, sha, bytes, text(row, "media_type"), text(row, "filename"),
-                    text(row, "model_identifier"), text(row, "review_fingerprint"), "data/interop/files/" + id + ".bin", "MANUAL_REVIEW_REQUIRED");
-        } catch (IllegalArgumentException | NullPointerException failure) { throw invalid(); }
+                    text(row, "model_identifier"), text(row, "review_fingerprint"), List.of(losses), createdAt,
+                    "data/interop/files/" + id + ".bin", "MANUAL_REVIEW_REQUIRED");
+        } catch (IllegalArgumentException | NullPointerException | DateTimeException failure) { throw invalid(); }
     }
     private void verifyContent(ResultSet row, FileData metadata) throws SQLException, IOException {
         MessageDigest digest;
@@ -102,5 +108,5 @@ final class IntegrationBackupFiles {
     record FileData(SourceRecordId sourceId, BackupIntegrationScope scope, SourceRecordId connection, SourceRecordId sourceOperation,
                     String sourceActor, String kind, String profile, String profileVersion, Map<String, String> sourcePluginBinding,
                     String sha256, long bytes, String mediaType, String filename, String modelIdentifier, String sourceReviewFingerprint,
-                    String path, String targetExecutionPolicy) { }
+                    List<MappingLoss> losses, String createdAt, String path, String targetExecutionPolicy) { }
 }

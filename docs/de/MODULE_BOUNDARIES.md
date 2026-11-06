@@ -14,6 +14,7 @@ nicht den heutigen offenen Arbeitsbestand.
 |---|---|---|
 | `taxonomy-domain` | Grundlage | Frameworkfreie gemeinsame Architektur-/Analyseverträge |
 | `taxonomy-dsl` | Grundlage | Frameworkfreie TaxDSL-Syntax, Modell, Validierung, Mapping, Diff und Befehle |
+| `taxonomy-sparx-mapping` | Grundlage | Kanonische Sparx-Typen nur auf JDK-Basis, gemeinsam für XMI-Export und optionales QEA-Plugin |
 | `taxonomy-export` | Grundlage | Frameworkfreie Exportverträge, Codecs und neutrales Rendering |
 | `taxonomy-extension-api` | Grundlage | Frameworkfreie Erweiterungsverträge und Metadaten |
 | `taxonomy-extension-runtime` | Laufzeit | Atomarer Plugin-Katalog, Artefaktvalidierung und gekapselter Classloader |
@@ -33,13 +34,22 @@ nicht den heutigen offenen Arbeitsbestand.
 | `taxonomy-coverage` | Build/Werkzeuge | Reactor-weite Coverage-Aggregation; keine Laufzeit-Fachbibliothek |
 | `taxonomy-build` | Build/Werkzeuge | Reactor-weite Qualitätsprüfungen und Browser-/Verifikationsverträge |
 
-Der Root-Aggregator ist kein weiteres Untermodul. Die zwanzig Untermodule bestehen
-aus sechs Grundlagen, acht Fachmodulen, der Plugin-Laufzeit, einem externen Plugin, dem Kompositionsmodul und drei Build-/Werkzeugmodulen.
+Der Root-Aggregator ist kein weiteres Untermodul. Die einundzwanzig Untermodule bestehen
+aus sieben Grundlagen, acht Fachmodulen, der Plugin-Laufzeit, einem externen Plugin, dem Kompositionsmodul und drei Build-/Werkzeugmodulen.
 Nur `taxonomy-app` ist eine ausführbare Anwendung. Die Build-Gruppe bildet keine
 Laufzeitdienste. Siehe [geprüften Fachmodulgraphen](ARCHITECTURE.md#modularchitektur)
 und [Laufzeit-/Persistenzdarstellungen](ARCHITECTURE.md).
 
 ## Fachmodule und Zuständigkeiten
+
+### `taxonomy-sparx-mapping`
+
+Besitzt die kanonischen Elementtypen und Relationstransporte der Sparx-Integrationen
+und hängt ausschließlich vom JDK ab. `taxonomy-export` verwendet die Zuordnungen in
+seinen bestehenden XMI-Fassaden. Das separat gebaute QEA-Plugin verpackt eine Kopie
+mit eigenem Paketnamen, ohne Host-Implementierungen in seinen privaten Classloader
+zu ziehen. Transport und versionsspezifische Kompatibilität bleiben bei den Codecs
+und Konnektoren.
 
 ### `taxonomy-knowledge`
 

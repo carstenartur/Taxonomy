@@ -1,6 +1,45 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { classifyWebKitPollCancellation } from './ui-navigation-poll-evidence.mjs';
+import { classifyWebKitPollCancellation, createConsoleErrorLedger, createNavigationPollEvidence } from './ui-navigation-poll-evidence.mjs';
+
+test('the passive request observer captures the application workspace-routing header', async () => {
+  const handlers = {};
+  const page = { on: (name, fn) => { handlers[name] = fn; }, url: () => reloadUrl,
+    evaluate: async () => ({ epoch: oldEpoch, url: reloadUrl }) };
+  const context = { exposeBinding: async () => {}, addInitScript: async () => {} };
+  const observer = createNavigationPollEvidence({ browserName: 'webkit', baseUrl });
+  await observer.attach(page, context);
+  handlers.request({ url: () => baseUrl + 'api/context/current', method: () => 'GET',
+    headers: () => ({ 'x-taxonomy-workspace-id': 'workspace-1' }), redirectedFrom: () => null });
+  assert.equal(observer.snapshot().reads[0].workspaceId, 'workspace-1');
+});
+
+test('a consumed reload proof cannot remove a later identical unproved error', () => {
+  const errors = [], reconciled = [], ledger = createConsoleErrorLedger(errors, reconciled);
+  const message = 'same native error text';
+  const first = ledger.record(message), firstProof = { errorId: first, message, reason: 'proven-reload', epoch: 1 };
+  ledger.reconcile([firstProof]);
+  const second = ledger.record(message);
+  ledger.reconcile([firstProof]);
+  assert.deepEqual(errors, [message]);
+  assert.deepEqual(reconciled, [firstProof]);
+  assert.notEqual(first, second);
+  ledger.reconcile([{ errorId: second, message, reason: 'proven-reload', epoch: 2 }]);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(reconciled.map(proof => proof.epoch), [1, 2]);
+});
+
+test('removing one proven error preserves identities and ordering of other live errors', () => {
+  const errors = [], reconciled = [], ledger = createConsoleErrorLedger(errors, reconciled);
+  const first = ledger.record('unproved'), second = ledger.record('proved'), third = ledger.record('last');
+  ledger.reconcile([{ errorId: second, message: 'proved', reason: 'proof' }]);
+  assert.deepEqual(errors, ['unproved', 'last']);
+  ledger.reconcile([{ errorId: third, message: 'wrong text', reason: 'proof' }]);
+  assert.deepEqual(errors, ['unproved', 'last']);
+  ledger.reconcile([{ errorId: third, message: 'last', reason: 'proof' }]);
+  assert.deepEqual(errors, ['unproved']);
+  assert.equal(reconciled.some(proof => proof.errorId === first), false);
+});
 
 const baseUrl = 'http://127.0.0.1:8091/';
 const oldUrl = `${baseUrl}?architectureSource=analysis&repositoryId=f2edadfe-395b-4230-bbe8-62921500d68f&workspaceId=0c099050-b36e-4c38-8798-7b19b4cd6aef&workspaceScopeKey=0c099050-b36e-4c38-8798-7b19b4cd6aef&branch=draft#analyze`;
@@ -140,6 +179,92 @@ const rejectedBoundaries = [
     }
   ])
 ];
+
+// The two native signatures were recorded in the mobile-admin-webkit artifact
+// from run 42240324789, during the editor's revision-16 reload. Destination
+// bodies/renders are controlled proofs here; the browser driver records its own.
+const reloadUrl = `${baseUrl}architecture/editor?lang=en&repositoryId=repository-1&workspaceId=workspace-1&workspaceScopeKey=workspace-1&branch=draft&revision=16`;
+const reloadEndpoints = ['/api/git/state?branch=draft', '/api/context/current'];
+function reloadFixture(endpoint) {
+  const input = fixture(endpoints[0]);
+  const context = { contextId: 'context-1', branch: 'draft', commitId: 'a'.repeat(40),
+    mode: 'EDITABLE', timestamp: '2026-11-06T15:18:30Z', dirty: false };
+  const git = { currentBranch: 'draft', headCommit: 'a'.repeat(40), projectionStale: false,
+    indexStale: false, branches: [{ name: 'draft' }], totalCommits: 7, operationInProgress: false };
+  Object.assign(input.error, { pageUrl: reloadUrl, name: 'Fetch API cannot load http',
+    message: `/127.0.0.1:8091${endpoint} due to access control checks.`,
+    stack: `Fetch API cannot load http://127.0.0.1:8091${endpoint} due to access control checks.\n    at poll (http://127.0.0.1:8091/js/poll.js:51:14)` });
+  input.navigation.kind = 'reload';
+  input.navigation.oldDocument.url = reloadUrl;
+  input.navigation.newDocument.url = reloadUrl;
+  input.events.forEach(event => { event.url = reloadUrl; });
+  Object.assign(input.reads[0], { url: new URL(endpoint, baseUrl).href, pageUrl: reloadUrl,
+    workspaceId: 'workspace-1', payload: endpoint === reloadEndpoints[0] ? git : context });
+  Object.assign(input.observation, { url: reloadUrl,
+    git: { text: '🔀 draft @ aaaaaaa │ Projection: Fresh │ Index: Fresh │ 1 variant │ 7 versions', writeCount: 1 },
+    context: { state: structuredClone(context), branchText: 'Draft', modeText: '🟢 Editable',
+      rendered: true, writeCount: 1 } });
+  Object.assign(input.observation.messages['fresh-read'], { gitProjection: 'Projection', gitIndex: 'Index',
+    gitProjectionState: 'Fresh', gitIndexState: 'Fresh', gitVariants: '1 variant', gitVersions: '7 versions',
+    gitOperation: 'Operation running', contextBranch: 'Draft', contextMode: '🟢 Editable' });
+  return input;
+}
+
+for (const endpoint of reloadEndpoints) {
+  test(`${endpoint}: an explicit editor reload requires a fresh matching adopted response`, () => {
+    assertReconciled(reloadFixture(endpoint), endpoint);
+  });
+  const failures = [
+    ...rejectedBoundaries.filter(([name]) => !['wrong destination locale', 'no new DOM write',
+      'error from a different old URL', 'read from another page URL', 'observation from another destination'].includes(name)),
+    ['undeclared navigation kind', x => { x.navigation.kind = 'other'; }],
+    ['a language navigation cannot use reload proof', x => { x.navigation.kind = 'locale'; }],
+    ['changed destination fragment', x => { x.navigation.newDocument.url += '#other'; }],
+    ['changed destination language', x => { x.navigation.newDocument.url = reloadUrl.replace('lang=en', 'lang=de'); }],
+    ['changed revision pin', x => { x.navigation.newDocument.url = reloadUrl.replace('revision=16', 'revision=17'); }],
+    ['different error page', x => { x.error.pageUrl = `${baseUrl}projects`; }],
+    ['different destination request page', x => { x.reads[0].pageUrl = `${baseUrl}projects`; }],
+    ['different observed page', x => { x.observation.url += '#other'; }],
+    ['missing workspace request header', x => { delete x.reads[0].workspaceId; }],
+    ['different workspace request header', x => { x.reads[0].workspaceId = 'other-workspace'; }],
+    ['changed adopted context branch', x => { x.observation.context.state.branch = 'other'; }],
+    ['no fresh git/context DOM writes', x => { x.observation.git.writeCount = 0; x.observation.context.writeCount = 0; }],
+    ['real error in the new document', x => { x.events.push({ type: 'error', documentEpoch: newEpoch, sequence: 61 }); }],
+    ['real old request failure', x => { x.reads.push({ ...x.reads[0], documentEpoch: oldEpoch,
+      pageUrl: reloadUrl, sequence: 25, failed: true, finished: false, jsonParsed: false }); }],
+    ['later destination HTTP failure', x => { x.reads.push({ ...x.reads[0], sequence: 70, status: 403 }); }]
+  ];
+  for (const [boundary, change] of failures) {
+    test(`${endpoint}: reload ${boundary} remains blocking`, () => {
+      const input = reloadFixture(endpoint); change(input);
+      assert.equal(classifyWebKitPollCancellation(input), null);
+    });
+  }
+}
+
+for (const [boundary, change] of [
+  ['wrong response branch', x => { x.reads[0].payload.currentBranch = 'other'; }],
+  ['unrendered HEAD', x => { x.reads[0].payload.headCommit = 'b'.repeat(40); }],
+  ['unrendered projection state', x => { x.observation.messages['fresh-read'].gitProjectionState = 'Stale'; }],
+  ['unrendered version count', x => { x.observation.messages['fresh-read'].gitVersions = '8 versions'; }],
+  ['unrendered operation warning', x => { x.reads[0].payload.operationInProgress = true; }],
+  ['missing translated label', x => { x.observation.messages['fresh-read'].gitProjection = 'git.projection'; }]
+]) test(`git reload rejects ${boundary}`, () => {
+  const input = reloadFixture(reloadEndpoints[0]); change(input);
+  assert.equal(classifyWebKitPollCancellation(input), null);
+});
+
+for (const [boundary, change] of [
+  ['unadopted context identity', x => { x.reads[0].payload.contextId = 'other'; }],
+  ['unadopted commit', x => { x.reads[0].payload.commitId = 'b'.repeat(40); }],
+  ['unrendered branch', x => { x.observation.context.branchText = 'Other'; }],
+  ['unrendered mode', x => { x.observation.context.modeText = 'Read only'; }],
+  ['missing rendered marker', x => { x.observation.context.rendered = false; }],
+  ['missing translation', x => { x.observation.messages['fresh-read'].contextMode = 'context.mode.editable'; }]
+]) test(`context reload rejects ${boundary}`, () => {
+  const input = reloadFixture(reloadEndpoints[1]); change(input);
+  assert.equal(classifyWebKitPollCancellation(input), null);
+});
 
 for (const endpoint of endpoints) {
   for (const [boundary, change] of rejectedBoundaries) {

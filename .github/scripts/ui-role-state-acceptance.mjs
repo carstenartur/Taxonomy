@@ -6,7 +6,7 @@ import { captureFailureEvidence } from './ui-evidence-policy.mjs';
 import { isolateRoleStateScenario } from './ui-role-state-isolation.mjs';
 import { runRoleStateFlow } from './ui-role-state-flow.mjs';
 import { runSystemInformationAcceptance } from './system-information-acceptance.mjs';
-import { createNavigationPollEvidence } from './ui-navigation-poll-evidence.mjs';
+import { createConsoleErrorLedger, createNavigationPollEvidence } from './ui-navigation-poll-evidence.mjs';
 
 import { runBrowserSessionsAcceptance } from './browser-sessions-acceptance.mjs';
 import { runArchitectureEditorAcceptance } from './architecture-editor-acceptance.mjs';
@@ -43,6 +43,7 @@ const checks = [];
 const findings = [];
 const consoleErrors = [];
 const reconciledConsoleErrors = [];
+const consoleErrorLedger = createConsoleErrorLedger(consoleErrors, reconciledConsoleErrors);
 const navigationConsoleCandidates = [];
 const navigationEvidence = [];
 const navigationRequestStarts = new WeakMap();
@@ -113,32 +114,26 @@ function reconcileSystemInformationConsoleErrors(systemInformation) {
         : item.operationalStatusSettled === true
           && (candidate.read !== 'git-state'
             || candidate.requestedBranch === item.operationalBranch)))),
-    ...navigationPollEvidence.reconciliations()]
-    .sort((left, right) => right.index - left.index);
-  for (const candidate of candidates) {
-    if (consoleErrors[candidate.index] !== candidate.message) continue;
-    consoleErrors.splice(candidate.index, 1);
-    const { index, ...retainedEvidence } = candidate;
-    reconciledConsoleErrors.unshift({
-      ...retainedEvidence,
+    ...navigationPollEvidence.reconciliations()];
+  consoleErrorLedger.reconcile(candidates.map(candidate => ({
+      ...candidate,
       reason: candidate.reason || (candidate.read === 'ai-status'
         ? 'webkit-locale-navigation-ai-status-cancelled'
         : 'webkit-locale-navigation-operational-status-cancelled')
-    });
-  }
+    })));
 }
 
 function recordConsoleError(text) {
-  const index = consoleErrors.push(text) - 1;
-  if (browserName !== 'webkit' || !systemInformationNavigationLocale) return;
+  const errorId = consoleErrorLedger.record(text);
+  if (browserName !== 'webkit' || !systemInformationNavigationLocale) return errorId;
   const suffix = ' due to access control checks.';
-  if (!text.endsWith(suffix)) return;
+  if (!text.endsWith(suffix)) return errorId;
   const base = new URL(baseUrl);
   // WebKit can emit this navigation cancellation through console OR pageerror,
   // with either the Fetch API prefix or its abbreviated /host/path form.
   const prefixes = [`Fetch API cannot load ${base.origin}`, base.origin, `/${base.host}`];
   const prefix = prefixes.find(value => text.startsWith(value));
-  if (!prefix) return;
+  if (!prefix) return errorId;
   const target = text.slice(prefix.length, -suffix.length);
   const api = `${base.pathname.replace(/\/$/, '')}/api/`;
   let read = null;
@@ -147,10 +142,11 @@ function recordConsoleError(text) {
   else if (target.startsWith(`${api}git/state`)
       && /^\?branch=[^&#]+$/.test(target.slice(`${api}git/state`.length))) read = 'git-state';
   if (read) navigationConsoleCandidates.push({
-    index, locale: systemInformationNavigationLocale, message: text, read,
+    errorId, locale: systemInformationNavigationLocale, message: text, read,
     requestedBranch: read === 'git-state'
       ? new URL(target, base).searchParams.get('branch') : undefined
   });
+  return errorId;
 }
 
 function recordNavigationEvidence(kind, detail = {}) {
@@ -236,8 +232,8 @@ try {
   page.on('pageerror', error => {
     recordNavigationEvidence('page-error', { name: error.name, message: error.message,
       stack: error.stack, pageUrl: page.url() });
-    recordConsoleError(error.message);
-    navigationPollEvidence.recordError(error, consoleErrors.length - 1, page.url());
+    const errorId = recordConsoleError(error.message);
+    navigationPollEvidence.recordError(error, errorId, page.url());
   });
 
   taskMeasurements.failedStep = 'isolating resumable analysis draft';
@@ -301,7 +297,13 @@ try {
   const editorConsoleErrors = consoleErrors.length;
   const editorExternalRequests = externalRequests.length;
   taskMeasurements.architectureEditor = await runArchitectureEditorAcceptance({
-    page, role, baseUrl, evidence, outputDir, httpFailures
+    page, role, baseUrl, evidence, outputDir, httpFailures,
+    onReloadStart: () => navigationPollEvidence.begin(null, 'reload'),
+    onReloadEnd: succeeded => navigationPollEvidence.end(null, succeeded, 'reload'),
+    onReloadVerified: async () => {
+      await navigationPollEvidence.verifyDestination(null, 'reload');
+      reconcileSystemInformationConsoleErrors([]);
+    }
   });
   if (consoleErrors.length !== editorConsoleErrors || externalRequests.length !== editorExternalRequests) {
     throw new Error('Architecture editor introduced console errors or external requests');

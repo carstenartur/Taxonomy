@@ -40,12 +40,11 @@
     function selectedFileBase() { return fileBases().find(function (base) { return base.id === el('integrationExportBase').value; }); }
     function invalidateExport() { pendingExport = null; }
     function resetFileExport() {
-        invalidateExport();
         ['integrationExportMode', 'integrationExportBase'].forEach(function (id) { el(id).replaceChildren(); el(id).value = ''; });
         el('integrationExportBaseFile').value = ''; el('integrationExportModeHint').textContent = '';
     }
     function configureFileExport() {
-        if (!basedFileExport(selectedProfile())) { resetFileExport(); return; }
+        if (!basedFileExport(selectedProfile())) { if (pendingExport && pendingExport.based) invalidateExport(); resetFileExport(); return; }
         var mode = el('integrationExportMode'), base = el('integrationExportBase'), priorMode = mode.value, priorBase = base.value;
         var modes = fileExportModes(), preferred = overview.checkpoint || overview.connection.checkpointId ? 'UPDATE_COPY' : 'NEW_PROJECT';
         mode.replaceChildren(); modes.forEach(function (value) { option(mode, value, t('exportMode.' + value)); });
@@ -64,7 +63,7 @@
     }
     function canPreviewExport() {
         var profile = selectedProfile();
-        if (initializing || busy || !mayWrite || !connection() || !profile || !profile.capabilities.includes('FILE_EXPORT')) return false;
+        if (initializing || busy || !mayWrite || !connection() || !profile || overview.connection.id !== connection() || !profile.capabilities.includes('FILE_EXPORT')) return false;
         if (!basedFileExport(profile)) return true;
         return fileExportModes().includes(el('integrationExportMode').value)
             && (el('integrationExportBase').value === 'upload' ? !!el('integrationExportBaseFile').files[0] : !!selectedFileBase());
@@ -420,7 +419,7 @@
     function clearConnectionContext() {
         ++generation;
         overview = null;
-        resetFileExport(); showFileExport(null);
+        invalidateExport(); resetFileExport(); showFileExport(null);
         el('integrationContext').textContent = '';
         ['integrationSystemSummary', 'integrationRepositorySummary', 'integrationBranchSummary', 'integrationRevisionSummary', 'integrationAuthoritySummary'].forEach(function (id) { el(id).textContent = ''; });
         el('integrationContextSummary').hidden = true; el('integrationContextDetails').hidden = true; el('integrationContextDetails').open = false;
@@ -429,9 +428,10 @@
         el('integrationOslcCatalog').hidden = true;
     }
     async function connections(selected) {
-        var values = await api.read(''); el('integrationConnection').replaceChildren(); option(el('integrationConnection'), '', t('choose'));
+        var previous = connection(), values = await api.read(''); el('integrationConnection').replaceChildren(); option(el('integrationConnection'), '', t('choose'));
         values.forEach(function (value) { option(el('integrationConnection'), value.id, value.displayName + ' · ' + value.connectorId + '@' + value.profileVersion); });
         if (selected) el('integrationConnection').value = selected; else if (values.length) el('integrationConnection').value = values[0].id;
+        if (previous !== connection()) { invalidateExport(); resetFileExport(); showFileExport(null); }
         await refresh();
     }
     el('integrationConnection').addEventListener('change', function () {

@@ -68,6 +68,33 @@ class IntegrationBackupExportTest {
         }
     }
 
+    @Test void historyPreservesFinalFileLossReportAndCreationTime() throws Exception {
+        try (var fixture = new Fixture()) {
+            var retained = retainedBase(fixture, new byte[]{1, 2, 3});
+            var finalLosses = List.of(new MappingLoss("file-object", "nativeStyle", "FINAL_NATIVE_STYLE_PRESERVED",
+                    LossDisposition.PRESERVED_EXTENSION, "Preserved source style in the delivered file"));
+            fixture.store.locked(OWN, retained.connection(), session -> {
+                session.beginReview(new ReviewedChangeSet(retained.operation(), "source-fingerprint", Map.of("change", Decision.ACCEPT), "Reviewed file"));
+                session.applied(retained.operation(), state(OWN), document("FILE-CANDIDATE"), false);
+                session.file(retained.operation(), new ExchangeFile("application/octet-stream", "output.bin", new byte[]{4, 5, 6}, finalLosses));
+                session.complete(retained.operation(), state(OWN), null, "result-fingerprint", false);
+                return null;
+            });
+            var operation = fixture.store.operation(OWN, retained.connection(), retained.operation());
+            assertThat(operation.document().losses()).isEmpty();
+            String createdAt = NOW.plusSeconds(37).toString();
+            fixture.jdbc.update("update interop_file set created_at=? where id=?", createdAt, operation.fileExport().outputFileId().toString());
+            var history = new BinaryContents();
+            contributor(fixture, OWN).write(snapshot(BackupProfile.REPOSITORY_HISTORY, OWN), history);
+            var result = history.text("data/interop/files.ndjson").lines().skip(1).map(line -> fixture.json.read(line, Map.class))
+                    .filter(row -> "RESULT".equals(row.get("kind"))).findFirst().orElseThrow();
+            org.junit.jupiter.api.Assertions.assertAll(
+                    () -> assertThat(result.get("losses")).isEqualTo(fixture.json.read(fixture.json.write(finalLosses), List.class)),
+                    () -> assertThat(result.get("createdAt")).isEqualTo(createdAt));
+            assertThat(result.get("targetExecutionPolicy")).isEqualTo("MANUAL_REVIEW_REQUIRED");
+        }
+    }
+
     @ParameterizedTest @ValueSource(strings={"scope", "actor", "hash", "pointer"})
     void inconsistentBinaryEvidenceIsRejectedBeforeAnyArchiveOutput(String broken) throws Exception {
         try (var fixture = new Fixture()) {

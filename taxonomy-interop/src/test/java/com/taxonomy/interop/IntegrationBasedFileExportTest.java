@@ -2,8 +2,10 @@ package com.taxonomy.interop;
 
 import com.taxonomy.dsl.command.ArchitectureCommand.CreateArchitectureElement;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.extension.api.integration.IntegrationConnectorExtension;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
-import com.taxonomy.extension.api.integration.LifecycleIntegrationConnector;
+import com.taxonomy.extension.api.plugin.*;
+import com.taxonomy.extension.runtime.PluginCatalog;
 import com.taxonomy.interop.oslc.OslcTransport;
 import com.taxonomy.interop.persistence.*;
 import com.taxonomy.interop.persistence.IntegrationStore.*;
@@ -13,6 +15,10 @@ import org.hibernate.cfg.Configuration;
 import org.hsqldb.jdbc.JDBCDataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import tools.jackson.databind.json.JsonMapper;
@@ -21,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Function;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -201,6 +208,59 @@ class IntegrationBasedFileExportTest {
         }
     }
 
+    @ParameterizedTest @ValueSource(booleans = {true, false})
+    void completedResultBindingIsCheckedAfterRestartWithOrWithoutThePlugin(boolean installed) throws Exception {
+        String url = "jdbc:hsqldb:file:" + directory.resolve("result-binding").toAbsolutePath() + ";shutdown=true";
+        UUID operation, resultFile; byte[] delivered;
+        try (var fixture = new Fixture(url, true, true)) {
+            fixture.create(CONNECTION);
+            var preview = fixture.preview(UUID.randomUUID(), TEMPLATE);
+            var completed = fixture.service.prepareFile(CONTEXT, CONNECTION, accept(preview));
+            assertEquals("a".repeat(64), completed.document().metadata().get("taxonomy.plugin.sha256"));
+            operation = completed.id(); resultFile = completed.fileExport().outputFileId();
+            delivered = fixture.service.file(CONTEXT, CONNECTION, operation).content();
+        }
+        try (var restarted = new Fixture(url, installed, true)) {
+            assertArrayEquals(delivered, restarted.service.file(CONTEXT, CONNECTION, operation).content());
+            String encoded = restarted.jdbc.queryForObject("select binding_json from interop_file where id=?", String.class, resultFile.toString());
+            var binding = restarted.json.read(encoded, Map.class);
+            var keys = new ArrayList<>(binding.keySet()); Collections.reverse(keys);
+            var reordered = new LinkedHashMap<Object, Object>(); keys.forEach(key -> reordered.put(key, binding.get(key)));
+            String reorderedJson = restarted.json.write(reordered);
+            assertNotEquals(encoded, reorderedJson);
+            restarted.jdbc.update("update interop_file set binding_json=? where id=?", reorderedJson, resultFile.toString());
+            assertArrayEquals(delivered, restarted.service.file(CONTEXT, CONNECTION, operation).content(), "Binding equality uses map values");
+            reordered.put("taxonomy.plugin.sha256", "b".repeat(64));
+            restarted.jdbc.update("update interop_file set binding_json=? where id=?", restarted.json.write(reordered), resultFile.toString());
+            assertEquals("FILE_BINDING_CHANGED", assertThrows(IntegrationProblem.class,
+                    () -> restarted.service.file(CONTEXT, CONNECTION, operation)).code());
+        }
+    }
+
+    @ParameterizedTest @MethodSource("invalidResultBindings")
+    void missingOrInvalidResultBindingFailsClosedWithoutThePlugin(String binding, Class<? extends RuntimeException> failureType) throws Exception {
+        String url = "jdbc:hsqldb:file:" + directory.resolve("invalid-result-binding").toAbsolutePath() + ";shutdown=true";
+        UUID operation, resultFile;
+        try (var fixture = new Fixture(url, true, true)) {
+            fixture.create(CONNECTION);
+            var preview = fixture.preview(UUID.randomUUID(), TEMPLATE);
+            var completed = fixture.service.prepareFile(CONTEXT, CONNECTION, accept(preview));
+            operation = completed.id(); resultFile = completed.fileExport().outputFileId();
+        }
+        try (var restarted = new Fixture(url, false, true)) {
+            restarted.jdbc.update("update interop_file set binding_json=? where id=?", binding, resultFile.toString());
+            var failure = assertThrows(failureType, () -> restarted.service.file(CONTEXT, CONNECTION, operation));
+            if (failure instanceof IntegrationProblem problem) assertEquals("FILE_BINDING_CHANGED", problem.code());
+            else assertEquals("Cannot decode versioned integration evidence", failure.getMessage());
+        }
+    }
+
+    private static Stream<Arguments> invalidResultBindings() {
+        return Stream.of(Arguments.of("null", IntegrationProblem.class), Arguments.of("{}", IntegrationProblem.class),
+                Arguments.of("", IllegalStateException.class), Arguments.of("{", IllegalStateException.class),
+                Arguments.of("[]", IllegalStateException.class));
+    }
+
     @Test void updateCopyRequiresTheExactImportedBasisAndRejectingAnEditKeepsTheBasisValue() throws Exception {
         try (var fixture = new Fixture(memory(), true)) {
             fixture.create(CONNECTION);
@@ -252,7 +312,8 @@ class IntegrationBasedFileExportTest {
         final IntegrationService service;
         final IntegrationDomainAdapter domain;
         final WorkspaceArchitectureIntegrationPort.WorkspaceDocument workspace;
-        Fixture(String url, boolean installed) throws Exception {
+        Fixture(String url, boolean installed) throws Exception { this(url, installed, false); }
+        Fixture(String url, boolean installed, boolean externalPlugin) throws Exception {
             var database = new JDBCDataSource(); database.setUrl(url); database.setUser("SA"); database.setPassword("");
             var configuration = new Configuration().setProperty("hibernate.hbm2ddl.auto", "update")
                     .setProperty("hibernate.show_sql", "false");
@@ -262,7 +323,13 @@ class IntegrationBasedFileExportTest {
                     IntegrationPublishItemEntity.class, IntegrationPublishAttemptEntity.class, IntegrationFileEntity.class)) configuration.addAnnotatedClass(entity);
             factory = configuration.buildSessionFactory(); jdbc = new JdbcTemplate(database);
             store = new IntegrationStore(factory, new JpaTransactionManager(factory), json);
-            var registry = new ExchangeConnectorRegistry(installed ? List.of(new BinaryConnector(json)) : List.of());
+            ExchangeConnectorRegistry registry;
+            if (externalPlugin) {
+                var catalog = new PluginCatalog();
+                if (installed) catalog.publish(new PluginDescriptor(new PluginIdentity("example.binary", "1.0.0", "a".repeat(64)),
+                        ">=1.4.0 & <2.0.0", List.of(), Set.of("integration.read"), PluginMode.STARTUP), List.of(new BinaryConnector(json)));
+                registry = new ExchangeConnectorRegistry(List.of(), catalog);
+            } else registry = new ExchangeConnectorRegistry(installed ? List.of(new BinaryConnector(json)) : List.of());
             domain = new IntegrationDomainAdapter(null, json, registry);
             String dsl = new ArchitectureDslCommands().apply("", new CreateArchitectureElement("alpha", "System", Map.of("title", "Local title"))).dsl();
             workspace = new WorkspaceArchitectureIntegrationPort.WorkspaceDocument(new WorkspaceArchitectureIntegrationPort.State("WORKSPACE:workspace", null, 0), dsl);
@@ -286,7 +353,7 @@ class IntegrationBasedFileExportTest {
         @Override public void close() { factory.close(); }
     }
 
-    private static final class BinaryConnector implements LifecycleIntegrationConnector {
+    private static final class BinaryConnector implements IntegrationConnectorExtension {
         private final IntegrationJson json;
         BinaryConnector(IntegrationJson json) { this.json = json; }
         @Override public IntegrationDescriptor descriptor() { return new IntegrationDescriptor("example-binary", "2", "Generic binary fixture",

@@ -308,6 +308,9 @@ public class IntegrationStore {
             var entity = requireFile(uuid(operation.resultFileId), "RESULT");
             if (!entity.operationId.equals(operation.id) || !entity.actor.equals(operation.actor)
                     || !Objects.equals(entity.reviewFingerprint, operation.reviewFingerprint)) throw IntegrationProblem.conflict("FILE_BINDING_CHANGED");
+            var source = json.read(operation.documentJson, ExchangeDocument.class);
+            if (!IntegrationFileBinding.plugin(source).equals(json.read(entity.bindingJson, java.util.Map.class)))
+                throw IntegrationProblem.conflict("FILE_BINDING_CHANGED");
             verifyBinary(entity);
             return new ExchangeFile(entity.mediaType, entity.filename, entity.content,
                     Arrays.asList(json.read(entity.lossesJson, MappingLoss[].class)));

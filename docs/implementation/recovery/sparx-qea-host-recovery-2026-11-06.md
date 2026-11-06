@@ -58,3 +58,14 @@ Portable backup stores binary entries and source binding metadata. CURRENT_STATE
 * PostgreSQL migration, full application restart/composition and packaged-plugin acceptance remain integration gates owned by the parent. This host verification does not claim an Enterprise Architect product-open test.
 
 For reliable verification in this environment, generated output cleanup, Maven and class-mtime evidence run in one process. Prior cross-tool deletion of ignored build output was observed to be restored at the tool boundary.
+
+## Subsequent independent-review corrections
+
+After the baseline GREEN, independent review identified two additional persisted-evidence gaps. They were corrected with new failing regressions before implementation:
+
+* RESULT download now structurally compares its stored plugin binding with the frozen operation document, just as BASE access does. The new tests use an actual catalog-bound fixture plugin, complete the export, restart with or without that plugin, accept a reordered but equal map, and reject a changed RESULT artifact SHA with FILE_BINDING_CHANGED. JSON null/empty-object binding also rejects; malformed JSON retains the existing decode-failure convention and never returns bytes. The database already forbids SQL NULL for binding_json.
+* File backup metadata now includes the final ExchangeFile loss report and the file creation instant. A separate history regression proves that an output loss report differing from the preview is retained, along with the exact timestamp. Typed decoding and validation occur before archive output; target mapping/manual-review policies are unchanged.
+
+`result-binding-red.log` executed all 17 based-file cases and reproduced exactly seven new assertion failures. `file-provenance-backup-red.log` reproduced both absent provenance fields in the new backup test. After the minimal fixes, `result-binding-and-provenance-green.log` reports BUILD SUCCESS, exit 0, 83 tests passed with no failures, errors or skips: based-file 17, backup 55, journal 4, download 1 and plugin lease 6. Relevant generated classes were again removed and rebuilt in the same process; newer class timestamps are recorded in the log.
+
+The integration build slot was returned to the parent after this verification. No additional application test class or shard selector was introduced.
