@@ -1,6 +1,7 @@
 package com.taxonomy.exchange.sparx;
 
 import com.taxonomy.exchange.ExchangeXml;
+import com.taxonomy.sparx.mapping.SparxSemanticTypes;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
@@ -14,8 +15,7 @@ public final class SparxMappingProfile {
     public static final String VERSION = "1";
     public static final String XMI = "http://schema.omg.org/spec/XMI/2.1";
     public static final String UML = "http://schema.omg.org/spec/UML/2.1";
-    public static final Set<String> CANONICAL_TYPES = Set.of("Capability", "Process", "CoreService", "COIService",
-            "CommunicationsService", "UserApplication", "InformationProduct", "BusinessRole", "System", "Component");
+    public static final Set<String> CANONICAL_TYPES = SparxSemanticTypes.canonicalTypes();
     private static final Map<String, String> ELEMENTS = Map.of("Class", "Component", "Component", "Component",
             "Actor", "BusinessRole", "Activity", "Process", "UseCase", "Capability", "Interface", "CoreService",
             "Node", "System", "Artifact", "InformationProduct");
@@ -76,15 +76,10 @@ public final class SparxMappingProfile {
     }
 
     public static String umlType(String canonical) {
-        if (!CANONICAL_TYPES.contains(canonical)) throw ExchangeXml.invalid("SPARX_TYPE_MAPPING", "No explicit Sparx element mapping");
-        return switch (canonical) {
-            case "BusinessRole" -> "Actor";
-            case "Process" -> "Activity";
-            case "Capability" -> "UseCase";
-            case "InformationProduct" -> "Artifact";
-            case "CoreService", "COIService", "CommunicationsService" -> "Interface";
-            default -> "Component";
-        };
+        try { return SparxSemanticTypes.umlType(canonical); }
+        catch (IllegalArgumentException unsupported) {
+            throw ExchangeXml.invalid("SPARX_TYPE_MAPPING", "No explicit Sparx element mapping");
+        }
     }
 
     public static String relationType(String eaType) { return RELATIONS.get(eaType); }

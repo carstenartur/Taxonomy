@@ -2,6 +2,7 @@ package com.taxonomy.exchange.sparx;
 
 import com.taxonomy.exchange.ExchangeXml;
 import com.taxonomy.extension.api.integration.IntegrationContracts.Relation;
+import com.taxonomy.sparx.mapping.SparxSemanticTypes;
 
 import java.util.Map;
 import java.util.Objects;
@@ -18,25 +19,19 @@ public final class SparxRelationProfileV3 {
     public static final String VERSION = "3";
     public static final String TYPE_TAG = "tag:taxonomy.relationType";
     public static final String DIRECTION_TAG = "tag:taxonomy.relationDirection";
-    public static final Map<String, String> TRANSPORTS = Map.ofEntries(
-            Map.entry("DEPENDS_ON", "Dependency"), Map.entry("REALIZES", "Association"),
-            Map.entry("COMMUNICATES_WITH", "InformationFlow"), Map.entry("RELATED_TO", "Association"),
-            Map.entry("CONSUMES", "Usage"), Map.entry("CONTAINS", "Composition"),
-            Map.entry("SUPPORTS", "Association"), Map.entry("USES", "Association"),
-            Map.entry("FULFILLS", "Association"), Map.entry("ASSIGNED_TO", "Association"),
-            Map.entry("PRODUCES", "Association"), Map.entry("REQUIRES", "Association"));
-    public static final Set<String> ASSOCIATION_TRANSPORTS = Set.of(
-            "REALIZES", "SUPPORTS", "USES", "FULFILLS", "ASSIGNED_TO", "PRODUCES", "REQUIRES");
+    public static final Map<String, String> TRANSPORTS = SparxSemanticTypes.relationTypes();
+    public static final Set<String> ASSOCIATION_TRANSPORTS = SparxSemanticTypes.associationTypes();
 
     private SparxRelationProfileV3() { }
 
     public static String transport(String canonical) {
-        String transport = canonical == null ? null : TRANSPORTS.get(canonical);
-        if (transport == null) throw ExchangeXml.invalid("SPARX_RELATION_UNMAPPED", "Profile 3 requires an exact supported Taxonomy relation type");
-        return transport;
+        try { return SparxSemanticTypes.relationTransport(canonical); }
+        catch (IllegalArgumentException unsupported) {
+            throw ExchangeXml.invalid("SPARX_RELATION_UNMAPPED", "Profile 3 requires an exact supported Taxonomy relation type");
+        }
     }
 
-    public static String stereotype(String canonical) { transport(canonical); return "Taxonomy::" + canonical; }
+    public static String stereotype(String canonical) { transport(canonical); return SparxSemanticTypes.taxonomyStereotype(canonical); }
 
     /** The same assertions apply before writing and after reading every redundant declaration. */
     public static void validate(Relation relation) {

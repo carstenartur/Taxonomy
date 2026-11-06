@@ -1,30 +1,35 @@
-# Sparx QEA read plugin (experimental)
+# Sparx QEA exchange plugin (experimental)
 
-This independently built, operator-installed plugin contributes the `sparx-qea@1`
-integration profile to Taxonomy's existing preview and reviewed-apply workflow.
-It reads an uploaded SQLite `.qea`/`.qeax` snapshot. It does not run Enterprise
-Architect, contact a Sparx server, alter the uploaded database, or write QEA/XMI.
+This independently built, operator-installed plugin contributes two versioned
+profiles to Taxonomy's existing integration workflow. `sparx-qea@1` retains its
+read-only contract. `sparx-qea@2` reads snapshots and writes reviewed native QEA
+copies from an uploaded binary basis. Neither profile runs Enterprise Architect
+or publishes to a Sparx server. The supplied database is never modified.
 
-**Compatibility evidence is synthetic only.** The tests construct small SQLite
-databases using the examined EA table shapes. They are not EA product exports
-and do not establish compatibility with any Enterprise Architect version.
+**EA product acceptance remains unverified.** Public tests construct synthetic
+SQLite fixtures. Local schema inspection and writing against an operator-supplied
+official empty template are separate evidence from opening a file in EA desktop
+or accepting it through PCS. No proprietary template is bundled with this plugin.
 
 ## Build and install
 
-Use Java 25. Install the matching public SDK from the repository first, then build
-this project independently:
+Use Java 25. Install the matching public SDK and independent Sparx mapping library
+from the repository first, then build this project independently:
 
 ```sh
-./mvnw -pl taxonomy-extension-api -am install -DskipTests
+./mvnw -pl taxonomy-extension-api,taxonomy-sparx-mapping -am install
 cd plugins/taxonomy-sparx-plugin
 ../../mvnw verify
 ```
 
 Install `target/taxonomy-sparx-plugin-1.5.3-SNAPSHOT.jar` through the host's existing
 operator plugin installation flow and restart the host. The manifest declares
-plugin ID `taxonomy.sparx`, mode `STARTUP`, and host SPI `>=1.3.0 & <2.0.0`.
+plugin ID `taxonomy.sparx`, mode `STARTUP`, and host SPI `>=1.4.0 & <2.0.0`.
 The SDK is provided by the host and is not included in the plugin JAR. SQLite
-and its native libraries are included. The plugin has no dependency on the
+and its native libraries are included. The JDK-only `taxonomy-sparx-mapping`
+library is shaded into the plugin's own package namespace, so its element and
+version-3 relation meanings stay aligned with XMI without bundling a host module.
+The plugin has no dependency on the
 Taxonomy application, interop implementation, Spring, Neo4j, or AAroN binaries.
 Allow the driver's native library with the host JVM option
 `--enable-native-access=ALL-UNNAMED` on Java 25. The standalone test JVM already
@@ -69,6 +74,64 @@ Databases without that identity require a documented schema extension; the reade
 does not silently invent an identity from the file hash. This is a deliberate
 boundary of profile 1, not a claim that every SQLite database is an EA model.
 
+## Reviewed QEA output: profile 2
+
+Choose the mode and upload its binary basis in the existing integration export
+flow. Preview the candidate, select supported changes in the existing review and
+download the retained result. The file is an exchange artifact; delivery does not
+acknowledge an EA/PCS write or promote a common synchronization checkpoint.
+
+| Mode | Required basis | Identity and preservation |
+| --- | --- | --- |
+| `NEW_PROJECT` | An operator-supplied empty EA QEA template with one root package and no model objects, mirrors, connectors, diagrams, tags or cross references | The host supplies the new model, root and object GUIDs before review. The existing root's integer ID is retained; reviewed top-level packages and unplaced new objects are placed under it. |
+| `UPDATE_COPY` | The exact imported QEA snapshot, with its model identity and SHA-256 bound to the operation | Existing GUIDs and integer IDs remain stable. Only selected supported fields are changed on a copy. Unselected objects and occurrences are never deleted. |
+
+Obtain an empty template from Sparx's [repository resources](https://sparxsystems.com/resources/repositories/)
+or your authorized EA installation and supply it yourself. The official Schema
+1558 empty QEA template examined during development has no `ProjectGUID`; profile
+2 validates template emptiness separately and initializes the identity on the
+output copy. Populated core/model-reference tables are rejected. Preserved lookup
+and configuration rows do not establish that an arbitrarily customized repository
+is a suitable empty template; use an empty project supplied by EA. The writer never
+creates a guessed replacement database schema.
+
+Supported output includes package names/notes and parent moves; element and
+requirement names/notes, declared element types and tagged values; explicit
+connector meanings, endpoints and direction; and view names/notes, packages and
+new diagram membership. A package's existing object mirror is kept consistent
+without changing its GUID. New packages get their native mirrors. Existing
+diagram rectangles, style, sequence and routing remain untouched; changing native
+layout is rejected. New occurrences use frozen rectangles or a simple declared
+grid, with a `QEA_NEW_DIAGRAM_LAYOUT` transformation notice. Native package `TPos`
+ordering is preserved and is not rewritten from derived reader positions.
+
+The copied database preserves unknown tables, unknown columns, BLOB bytes,
+unselected tagged-value rows and unrelated cross references. This is logical
+content preservation: SQLite pages and the output file hash can change. No
+`INSERT OR REPLACE`, schema reconstruction or inferred deletion is used. A
+selected change to a binary field, duplicate tag name, foreign/mixed stereotype,
+implicit reference, unsupported column or generated column fails explicitly.
+Schemas with triggers or cascading foreign-key update actions are rejected before model writes. Required insert columns
+need an understood value or constant native default. New nullable native
+timestamps are left null so replay does not fabricate a different wall-clock
+value; existing timestamps remain intact.
+
+The semantic transport is explicit. Every newly encoded canonical element or
+connector carries a qualified `Taxonomy::...` stereotype and
+`taxonomy.mappingProfile=sparx-qea@2`, together with `taxonomy.elementType` or
+`taxonomy.relationType`. Connectors also carry `taxonomy.relationDirection`.
+The reader requires the redundant declarations to agree. `REALIZES` uses an
+Association transport with its explicit Taxonomy meaning. `CONTAINS` uses EA's
+native Aggregation representation, with composite flag 2 at the container end,
+and reads back as the shared Composition transport. A generic UML realization or
+aggregation does not acquire those Taxonomy meanings merely from its native type.
+
+Version 2 requires the host's binary-basis export capability. Calls without an
+explicit mode and exact bytes fail; a source digest or filename alone cannot
+reconstruct a native file. The host retains basis and result bytes separately
+from JSON, binds review to the plugin artifact and exact basis, and owns scope,
+authority, restart, backup and download behavior.
+
 ## Semantics and review
 
 The generic mappings are `Component` → `Component`, `Node` → `System`, `Activity`
@@ -109,7 +172,7 @@ as views or virtual tables are rejected.
 ## Bounds
 
 The host's 16 MiB upload limit remains the effective limit for its HTTP import
-workflow. Independently, profile 1 limits a decoder input to 32 MiB, supported rows to 20,000 in total, a scalar
+workflow. Independently, the plugin limits input and generated output to 32 MiB, supported rows to 20,000 in total, a scalar
 cell to 65,536 characters, total retained text to 16 Mi characters, schema entries
 to 512, columns per supported table to 128, and hierarchy depth to 128. A deadline
 and SQLite progress handler bound database reads. Exceeding a limit rejects the
@@ -121,7 +184,9 @@ Run the independent project's `verify` lifecycle. Tests cover discovery, actual
 SQLite reads, stable GUIDs, package moves, same-name objects, package mirrors,
 diagram membership, tags, unknown semantics, unresolved references, reviewed
 dependency rejection, corrupt/truncated input, schema substitution and bounds.
-Tests also write `target/packaged-fixtures/base.qea` and `renamed.qea` for the host's
+Writer tests inspect native SQL rows and BLOBs independently of the reader, cover
+all declared mappings and reject unsupported schema/identity changes. Tests also
+write `target/packaged-fixtures/base.qea`, `renamed.qea` and `empty-template.qea` for the host's
 installed-JAR integration smoke test. These files are not shipped in the JAR.
 
 Before claiming EA product compatibility, add a permitted real export with its EA

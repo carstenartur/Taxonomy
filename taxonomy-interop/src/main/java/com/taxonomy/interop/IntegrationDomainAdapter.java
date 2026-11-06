@@ -85,12 +85,13 @@ public class IntegrationDomainAdapter {
     /** Bind only identities actually delivered in a reviewed file; this is not an external acknowledgement. */
     public Map<String, AppliedRequirement> exportBindings(Connection connection, Snapshot current,
                                                           WorkspaceDocument document, Map<String, Artifact> selected) {
+        FileExportProfile fileProfile = fileExportProfile(connection);
         Map<String, AppliedRequirement> result = new TreeMap<>();
         if (connection.projectId() != null) {
             for (RequirementData requirement : current.requirements()) {
                 String external = connection.connectorId().equals(OslcRdf.RM_PROFILE)
                         ? "urn:uuid:" + UUID.nameUUIDFromBytes((connection.id() + ":requirement:" + requirement.id()).getBytes(StandardCharsets.UTF_8))
-                        : requirementExternalId(connection, requirement.id());
+                        : requirementExternalId(connection, requirement.id(), fileProfile);
                 result.put("REQUIREMENT:" + external, new AppliedRequirement(requirement.requirementKey(), requirement.id()));
             }
         }
@@ -98,7 +99,7 @@ public class IntegrationDomainAdapter {
             String kind = block.getKind();
             if (!Set.of("element", "view", "relation").contains(kind) && !(supportsNativePackages(connection) && "package".equals(kind))) continue;
             String business = kind.equals("relation") ? String.join(" ", block.getHeaderTokens()) : block.getHeaderTokens().getFirst();
-            result.put(("package".equals(kind) ? "SPECIFICATION" : kind.toUpperCase(java.util.Locale.ROOT)) + ":" + externalId(connection, "export-" + kind + ":" + business), new AppliedRequirement(business, null));
+            result.put(("package".equals(kind) ? "SPECIFICATION" : kind.toUpperCase(java.util.Locale.ROOT)) + ":" + externalId(connection, "export-" + kind + ":" + business, fileProfile), new AppliedRequirement(business, null));
         }
         if (supportsNativePackages(connection)) for (Artifact a : selected.values()) if (a.kind() == ArtifactKind.RELATION
                 && "REQUIREMENT_MAPPING".equals(a.extensions().get("nativeProjection")))
@@ -108,6 +109,7 @@ public class IntegrationDomainAdapter {
         return result;
     }
     public Snapshot snapshot(RepositoryContext context, Connection connection, List<Identity> mappings, WorkspaceDocument document) {
+        boolean basedExport = supportsBasedFileExport(connection);
         List<RequirementData> requirements = connection.projectId() == null ? List.of()
                 : projects.listRequirements(connection.projectId(), context.username(), workspace(context));
         Map<Long, RequirementData> byId = new LinkedHashMap<>(); requirements.forEach(r -> byId.put(r.id(), r));
@@ -150,8 +152,8 @@ public class IntegrationDomainAdapter {
                             && !Set.of("title", "description").contains(property.key())) extensions.put("taxonomy:" + property.key(), property.value());
                 }
                 Map<String, String> attributes = new TreeMap<>(baseline.attributes());
-                if (sparxV3(connection) && baseline.kind() == ArtifactKind.ELEMENT) reconcileEditableElementTags(attributes, extensions);
-                if (SparxSnapshots.isSparx(connection.connectorId()) && baseline.kind() == ArtifactKind.ELEMENT
+                if ((sparxV3(connection) || basedExport) && baseline.kind() == ArtifactKind.ELEMENT) reconcileEditableElementTags(attributes, extensions);
+                if ((SparxSnapshots.isSparx(connection.connectorId()) || basedExport) && baseline.kind() == ArtifactKind.ELEMENT
                         && !Objects.equals(extensions.get("canonicalType"), baseline.extensions().get("canonicalType")))
                     attributes.put("tag:taxonomy.elementType", block.getHeaderTokens().get(2));
                 current = new Artifact(baseline.id(), baseline.kind(), type, value(block.property("title")), value(block.property("description")), attributes, extensions);
@@ -166,7 +168,12 @@ public class IntegrationDomainAdapter {
                 if (extensions.containsKey("taxonomy:RelationType")) extensions.put("taxonomy:RelationType", relation.getHeaderTokens().get(1));
                 if (extensions.containsKey("taxonomy:status") || !"accepted".equals(relation.property("status")))
                     extensions.put("taxonomy:status", value(relation.property("status")));
-                current = new Artifact(baseline.id(), baseline.kind(), baseline.type(), baseline.title(), baseline.text(), baseline.attributes(), extensions);
+                Map<String, String> attributes = new TreeMap<>(baseline.attributes());
+                if (basedExport && attributes.containsKey("tag:taxonomy.status")) {
+                    if (extensions.containsKey("taxonomy:status")) attributes.put("tag:taxonomy.status", extensions.get("taxonomy:status"));
+                    else attributes.remove("tag:taxonomy.status");
+                }
+                current = new Artifact(baseline.id(), baseline.kind(), baseline.type(), baseline.title(), baseline.text(), attributes, extensions);
             }
             items.put(mapping.externalId(), current);
         }
@@ -228,17 +235,18 @@ public class IntegrationDomainAdapter {
     /** Capture the complete selected project/model, overlaying current canonical values on accepted exchange evidence. */
     public ExchangeDocument exportDocument(Connection connection, Snapshot current, WorkspaceDocument document,
                                            List<Identity> mappings, ExchangeDocument previous) {
+        FileExportProfile fileProfile = fileExportProfile(connection);
         Map<String, BlockAst> planningBlocks = ArchitectureSemanticPatch.index(document.dsl());
         List<MappingLoss> evidenceLosses = new ArrayList<>();
         ExchangeDocument template;
         if (previous == null) {
             template = new ExchangeDocument(connection.connectorId(), connection.profileVersion(), null, true, "",
-                    List.of(), List.of(), List.of(), exportMetadata(connection, planningBlocks, current, null, evidenceLosses), List.of());
+                    List.of(), List.of(), List.of(), exportMetadata(connection, planningBlocks, current, null, evidenceLosses, fileProfile), List.of());
         } else if (sparxV3(connection)) {
             // A checkpoint does not prove that later native additions share its requirement or snapshot.
             // Reconcile every currently referenced origin, retaining prior model values only while uncontradicted.
             template = new ExchangeDocument(previous.profile(), previous.profileVersion(), previous.externalVersion(), previous.completeScope(), previous.source(),
-                    previous.artifacts(), previous.relations(), previous.placements(), exportMetadata(connection, planningBlocks, current, previous, evidenceLosses),
+                    previous.artifacts(), previous.relations(), previous.placements(), exportMetadata(connection, planningBlocks, current, previous, evidenceLosses, fileProfile),
                     previous.losses().stream().filter(loss -> !"EXCHANGE_MODEL_EVIDENCE_CONFLICT".equals(loss.code())).toList());
         } else template = previous;
         Map<String, Artifact> items = new TreeMap<>(current.items());
@@ -260,8 +268,8 @@ public class IntegrationDomainAdapter {
                 boolean oslc = connection.connectorId().equals(OslcRdf.RM_PROFILE);
                 String id = existing != null ? existing.externalId().substring("REQUIREMENT:".length())
                         : oslc ? "urn:uuid:" + UUID.nameUUIDFromBytes((connection.id() + ":requirement:" + requirement.id()).getBytes(StandardCharsets.UTF_8))
-                        : requirementExternalId(connection, requirement.id());
-                Artifact artifact = new Artifact(id, ArtifactKind.REQUIREMENT, oslc ? OslcRdf.RM + "Requirement" : SparxSnapshots.isSparx(connection.connectorId()) ? "Class" : "taxonomy-object", requirement.title(),
+                        : requirementExternalId(connection, requirement.id(), fileProfile);
+                Artifact artifact = new Artifact(id, ArtifactKind.REQUIREMENT, fileProfile != null ? fileProfile.requirementType() : oslc ? OslcRdf.RM + "Requirement" : SparxSnapshots.isSparx(connection.connectorId()) ? "Class" : "taxonomy-object", requirement.title(),
                         requirement.requireCurrentVersion().text(), Map.of(), Map.of());
                 if (planning != null) artifact = planning.overlay(artifact, current.projectKey(), requirement.requirementKey());
                 items.put(ExchangeItems.key(artifact), artifact); added.add(artifact);
@@ -285,7 +293,7 @@ public class IntegrationDomainAdapter {
             for (BlockAst block : blocks.values()) if (block.getKind().equals("element")) {
                 String id = block.getHeaderTokens().getFirst(), canonical = block.getHeaderTokens().get(2);
                 if (ids.containsKey(id)) continue;
-                String external = externalId(connection, "export-element:" + id); ids.put(id, external);
+                String external = externalId(connection, "export-element:" + id, fileProfile); ids.put(id, external);
                 Artifact evidence = retainedArtifact(connection, block);
                 Map<String, String> extensions = new TreeMap<>(evidence == null ? Map.of() : evidence.extensions()); extensions.put("canonicalType", canonical);
                 if (extensions.containsKey("taxonomy:ElementType")) extensions.put("taxonomy:ElementType", canonical);
@@ -294,9 +302,9 @@ public class IntegrationDomainAdapter {
                 for (var property : block.getProperties()) if (ArchitectureDslCommands.ELEMENT_PROPERTIES.contains(property.key()) && !Set.of("title", "description").contains(property.key()))
                     extensions.put("taxonomy:" + property.key(), property.value());
                 Map<String, String> attributes = new TreeMap<>(evidence == null ? Map.of() : evidence.attributes());
-                if (sparxV3(connection)) reconcileEditableElementTags(attributes, extensions);
+                if (sparxV3(connection) || fileProfile != null) reconcileEditableElementTags(attributes, extensions);
                 if (SparxSnapshots.isSparx(connection.connectorId())) attributes.put("tag:taxonomy.elementType", canonical);
-                Artifact artifact = new Artifact(external, ArtifactKind.ELEMENT, elementType(connection, canonical), value(block.property("title")), value(block.property("description")), attributes, extensions);
+                Artifact artifact = new Artifact(external, ArtifactKind.ELEMENT, elementType(connection, canonical, fileProfile), value(block.property("title")), value(block.property("description")), attributes, extensions);
                 items.put(ExchangeItems.key(artifact), artifact);
             }
             Set<String> known = mappings.stream().filter(m -> !m.removed()).map(Identity::businessIdentity).collect(java.util.stream.Collectors.toSet());
@@ -313,9 +321,10 @@ public class IntegrationDomainAdapter {
                 extension.putAll(Map.of("source", source, "target", target, "canonicalType", type, "taxonomy:status", value(block.property("status"))));
                 if (extension.containsKey("taxonomy:RelationType")) extension.put("taxonomy:RelationType", type);
                 if (type.equals("PRODUCES")) extension.put("accessType", "Write");
-                String mappedType = SparxSnapshots.isSparx(connection.connectorId()) ? SparxMappingProfile.eaRelation(type, connection.profileVersion()) : archimateRelation(type);
-                String externalId = externalId(connection, "export-relation:" + key);
-                if (SparxSnapshots.isSparx(connection.connectorId())) extension.putIfAbsent("direction", type.equals("RELATED_TO") ? "Unspecified" : "Source -> Destination");
+                String mappedType = fileProfile != null ? fileProfile.relationTypes().get(type)
+                        : SparxSnapshots.isSparx(connection.connectorId()) ? SparxMappingProfile.eaRelation(type, connection.profileVersion()) : archimateRelation(type);
+                String externalId = externalId(connection, "export-relation:" + key, fileProfile);
+                if (SparxSnapshots.isSparx(connection.connectorId()) || fileProfile != null) extension.putIfAbsent("direction", type.equals("RELATED_TO") ? "Unspecified" : "Source -> Destination");
                 if (mappedType == null) losses.add(new MappingLoss(externalId, "type", "UNSUPPORTED_RELATION_TYPE", LossDisposition.UNSUPPORTED,
                         "Canonical " + type + " has no declared exchange mapping; reject this relation or explicitly select an export mapping"));
                 Map<String, String> attributes = new TreeMap<>(evidence == null ? Map.of() : evidence.attributes());
@@ -327,7 +336,7 @@ public class IntegrationDomainAdapter {
                 Map<String, String> requirementIds = new HashMap<>();
                 for (RequirementData requirement : current.requirements()) {
                     Identity mapping = mappings.stream().filter(m -> requirement.id().equals(m.requirementId()) && !m.removed()).findFirst().orElse(null);
-                    String external = mapping == null ? requirementExternalId(connection, requirement.id()) : mapping.internal().id();
+                    String external = mapping == null ? requirementExternalId(connection, requirement.id(), fileProfile) : mapping.internal().id();
                     List<BlockAst> candidates = blocks.values().stream().filter(b -> b.getKind().equals("requirement")
                             && Objects.equals(current.projectKey(), b.property("x-project-key"))
                             && requirement.requirementKey().equals(b.property("x-requirement-key"))).toList();
@@ -337,7 +346,8 @@ public class IntegrationDomainAdapter {
                     String key = String.join(" ", block.getHeaderTokens()); if (known.contains(key)) continue;
                     String source = requirementIds.get(block.getHeaderTokens().get(0)), target = ids.get(block.getHeaderTokens().get(2));
                     if (source == null || target == null) continue;
-                    Artifact relation = new Artifact(externalId(connection, "export-mapping:" + key), ArtifactKind.RELATION, "Dependency", "", "", Map.of(),
+                    Artifact relation = new Artifact(externalId(connection, "export-mapping:" + key, fileProfile), ArtifactKind.RELATION,
+                            fileProfile == null ? "Dependency" : fileProfile.relationTypes().get("DEPENDS_ON"), "", "", Map.of(),
                             Map.of("source", source, "target", target, "canonicalType", "DEPENDS_ON", "direction", "Source -> Destination",
                                     "nativeProjection", "REQUIREMENT_MAPPING", "nativeSource", block.getHeaderTokens().get(0), "nativeTarget", block.getHeaderTokens().get(2)));
                     items.put(ExchangeItems.key(relation), relation);
@@ -349,8 +359,9 @@ public class IntegrationDomainAdapter {
                             "Taxonomy views are outside the Sparx semantic profile and are not exported"));
                     continue;
                 }
-                String viewId = stableId(connection.id(), "export-view:" + block.getHeaderTokens().getFirst());
-                Artifact view = new Artifact(viewId, ArtifactKind.VIEW, "Diagram", value(block.property("title")), value(block.property("description")), Map.of(), Map.of());
+                String viewId = fileProfile == null ? stableId(connection.id(), "export-view:" + block.getHeaderTokens().getFirst())
+                        : externalId(connection, "export-view:" + block.getHeaderTokens().getFirst(), fileProfile);
+                Artifact view = new Artifact(viewId, ArtifactKind.VIEW, fileProfile == null ? "Diagram" : fileProfile.viewType(), value(block.property("title")), value(block.property("description")), Map.of(), Map.of());
                 items.put(ExchangeItems.key(view), view); int position = 0;
                 for (var property : block.getProperties()) if (property.key().equals("include") && ids.containsKey(property.value())) {
                     String elementId = ids.get(property.value());
@@ -366,7 +377,7 @@ public class IntegrationDomainAdapter {
         }
         // Local removals have an explicit export loss report; never leave an orphaned hierarchy or view connection.
         if (supportsNativePackages(connection)) IntegrationPackageProjection.synchronize(connection, document.dsl(), mappings, items,
-                template.metadata().get("identifier"), true);
+                template.metadata().get("identifier"), true, fileProfile);
         boolean removed;
         do {
             Set<String> present = items.values().stream().filter(a -> a.kind() != ArtifactKind.PLACEMENT && a.kind() != ArtifactKind.METADATA).map(Artifact::id).collect(java.util.stream.Collectors.toSet());
@@ -420,7 +431,7 @@ public class IntegrationDomainAdapter {
     }
 
     private Map<String, String> exportMetadata(Connection connection, Map<String, BlockAst> blocks, Snapshot current,
-                                              ExchangeDocument previous, List<MappingLoss> losses) {
+                                              ExchangeDocument previous, List<MappingLoss> losses, FileExportProfile fileProfile) {
         Map<String, String> metadata = new TreeMap<>(previous == null ? Map.of() : previous.metadata());
         if (sparxV3(connection)) {
             // File delivery already binds model metadata before an external checkpoint exists.
@@ -456,7 +467,8 @@ public class IntegrationDomainAdapter {
                 else metadata.putIfAbsent(name, value); // The outgoing connection owns its opaque reviewed metadata.
             });
         }
-        metadata.putIfAbsent("identifier", SparxSnapshots.isSparx(connection.connectorId()) ? externalId(connection, "model") : "taxonomy-" + connection.id());
+        metadata.putIfAbsent("identifier", fileProfile != null ? externalId(connection, "model", fileProfile)
+                : SparxSnapshots.isSparx(connection.connectorId()) ? externalId(connection, "model") : "taxonomy-" + connection.id());
         metadata.putIfAbsent("title", connection.displayName());
         return metadata;
     }
@@ -864,11 +876,35 @@ public class IntegrationDomainAdapter {
     static String externalId(Connection connection, String identity) {
         return SparxSnapshots.isSparx(connection.connectorId()) ? SparxMappingProfile.externalId(connection.id(), identity) : stableId(connection.id(), identity);
     }
+    static String externalId(Connection connection, String identity, FileExportProfile profile) {
+        if (profile == null) return externalId(connection, identity);
+        return switch (profile.identityFormat()) {
+            case UUID_BRACED_UPPER -> "{" + UUID.nameUUIDFromBytes((connection.id() + "\u0000" + identity).getBytes(StandardCharsets.UTF_8))
+                    .toString().toUpperCase(java.util.Locale.ROOT) + "}";
+        };
+    }
     private static String requirementExternalId(Connection connection, Long identity) {
         return SparxSnapshots.isSparx(connection.connectorId()) ? externalId(connection, "export-requirement:" + identity) : "taxonomy-requirement-" + identity;
     }
+    private static String requirementExternalId(Connection connection, Long identity, FileExportProfile profile) {
+        return profile == null ? requirementExternalId(connection, identity) : externalId(connection, "export-requirement:" + identity, profile);
+    }
     private static String elementType(Connection connection, String canonical) {
         return SparxSnapshots.isSparx(connection.connectorId()) ? SparxMappingProfile.umlType(canonical) : archimateType(canonical);
+    }
+    private static String elementType(Connection connection, String canonical, FileExportProfile profile) {
+        if (profile == null) return elementType(connection, canonical);
+        String value = profile.elementTypes().get(canonical);
+        if (value == null) throw new IntegrationProblem("UNSUPPORTED_ELEMENT_TYPE", 422, "Canonical element type has no declared file mapping");
+        return value;
+    }
+    private boolean supportsBasedFileExport(Connection connection) {
+        return connectors != null && connectors.descriptors().stream().anyMatch(profile -> profile.id().equals(connection.connectorId())
+                && profile.version().equals(connection.profileVersion()) && profile.capabilities().contains(Capability.BASED_FILE_EXPORT_V1));
+    }
+    private FileExportProfile fileExportProfile(Connection connection) {
+        if (!supportsBasedFileExport(connection)) return null;
+        return connectors.require(connection.connectorId(), connection.profileVersion()).fileExportProfile();
     }
     public static boolean architectureProfile(Connection connection) {
         return connection.connectorId().equals(ArchiMateExchangeCodec.PROFILE) || SparxSnapshots.isSparx(connection.connectorId());

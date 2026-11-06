@@ -24,6 +24,7 @@ com.taxonomy.interop.persistence.IntegrationCheckpointEntity	interop	PORTABLE_PR
 com.taxonomy.interop.persistence.IntegrationConnectionEntity	interop	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.interop.persistence.IntegrationEventEntity	interop	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.interop.persistence.IntegrationOperationEntity	interop	PORTABLE_PRIMARY	Durable work/status retained; restore interrupted, never restore leases or automatically start external work
+com.taxonomy.interop.persistence.IntegrationFileEntity	interop	PORTABLE_PRIMARY	Immutable source and output bytes with scoped provenance and digests; restore as evidence requiring target mapping and manual review
 com.taxonomy.interop.persistence.IntegrationPublicationEntity	interop	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.interop.persistence.IntegrationPublishAttemptEntity	interop	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.interop.persistence.IntegrationPublishItemEntity	interop	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys

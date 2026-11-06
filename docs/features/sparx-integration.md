@@ -10,11 +10,12 @@ for any EA release.
 
 The independent [Sparx QEA plugin](../../plugins/taxonomy-sparx-plugin/README.md)
 adds the **Sparx EA QEA** profile (`sparx-qea@1`) to the same integrations UI.
-It reads SQLite-based QEA snapshots and requires Java 25 and host SPI 1.3.0 or
-later. Build and install it separately:
+It reads SQLite-based QEA snapshots. The current plugin requires Java 25 and host
+SPI 1.4.0 or later within major version 1; its version 1 profile stays read-only.
+Build and install it separately:
 
 ```bash
-./mvnw -B -pl taxonomy-extension-api -am install
+./mvnw -B -pl taxonomy-extension-api,taxonomy-sparx-mapping -am install
 ./mvnw -B -f plugins/taxonomy-sparx-plugin/pom.xml verify
 ```
 
@@ -41,6 +42,97 @@ a real EA release remains unverified.
 After replacing the plugin JAR, create a new preview for any outstanding review
 (`INTEGRATION_PLUGIN_CHANGED`). Uninstalling the plugin retains previously applied
 data and history. See the plugin README for schema, mapping, limits and provenance.
+
+## Reviewed native QEA files: version 2
+
+The same optional plugin adds `sparx-qea@2` for reviewed native QEA file delivery.
+It implements the public `BASED_FILE_EXPORT_V1` contract alongside file import.
+The host owns uploaded bases, frozen previews, decisions, immutable downloads and
+history. The plugin reads a supplied SQLite basis and writes a separate copy;
+the original file is never edited. Profile 1 keeps its existing inbound behavior.
+
+| Mode | Required basis | Identity and result |
+|---|---|---|
+| `NEW_PROJECT` | An empty, consistent QEA template supplied by the operator | Creates an independent model and object GUID namespace, frozen before review. |
+| `UPDATE_COPY` | The exact QEA snapshot previously imported into this connection | Updates a copy while keeping the imported model/object GUIDs, existing local IDs and untouched basis content. |
+
+Use an empty project from an authorized EA installation or obtain a starter
+directly from [Sparx's repository resources](https://sparxsystems.com/resources/repositories/).
+No proprietary template is bundled with Taxonomy. Some empty starter files have
+no `ProjectGUID`; the `NEW_PROJECT` path assigns the new model identity instead of
+pretending the template is an imported model. Files uploaded through the host are
+limited to 16 MiB. Close the source project and provide a consistent single-file
+snapshot, including committed changes that might otherwise be left in a WAL.
+
+1. Create a version 2 connection in **Tool integrations**. For an update, use
+   **Import copy**, import the snapshot and apply its reviewed changes first.
+   For an independent project, use a separate **Publish target** connection.
+   The server exposes only the modes permitted by the connection and its history.
+2. Select the desired file mode and upload its basis, or select an already retained
+   basis belonging to this connection. An update requires the SHA-256 of the last
+   imported snapshot; a different file cannot silently replace that baseline.
+3. Preview the current canonical state. Review the changes, declared mappings and
+   losses, including diagram-placement transformations. Supply explicit decisions
+   and a rationale through the existing integration review.
+4. Complete the reviewed file operation and download the resulting `.qea`. The
+   download is bound to its operation, basis and installed plugin artifact.
+5. Open and validate that copy in your authorized EA environment. Downloading it
+   does not confirm that EA accepted it. Import a later observed snapshot when a
+   new external baseline is needed.
+
+### Supported native-file scope and losses
+
+Version 2 covers supported elements, requirements, packages (`SPECIFICATION`),
+views, package placements and diagram membership. Canonical element and relation
+meaning uses the shared Sparx mapping library also used by XMI version 3. The 12
+declared relation mappings are written with explicit tags where needed to preserve
+their meaning; unsupported or contradictory mappings fail rather than guessing a
+different transport type. Requirements retain the ordinary project and endpoint
+review rules.
+
+In `UPDATE_COPY`, unchanged tables, unrecognized columns, BLOBs and unrelated rows
+remain in the copied basis. Existing diagram geometry and diagram links remain
+unless a supported explicit change requires an update. Newly added diagram
+members receive simple deterministic rectangles and a declared `TRANSFORMED`
+loss. This is not an MDG or arbitrary EA layout round trip. Missing membership or
+objects do not imply deletion. Unknown required schema shapes are rejected; the
+writer does not manufacture a supposedly complete EA database schema.
+
+The source/model GUID and the reviewed native object GUIDs are separate from local
+SQLite row IDs and from per-diagram occurrences. Package ownership is independent
+of diagram membership. A file export neither edits canonical architecture nor
+advances the observed external/common synchronization checkpoint.
+
+### Retention, restart and public API
+
+The host persists binary bases and delivered files separately from operation JSON.
+The overview lists retained `fileBases`; an operation's `fileExport` descriptor
+records the mode, identity namespace, basis ID, SHA-256, media type and byte count,
+model identifier, and after delivery the output file ID, SHA-256 and byte count.
+Back up these database records with the rest of the integration state.
+
+An exact operation retry reuses its frozen basis and identity namespace. A restart
+can resume that review. A changed plugin artifact invalidates outstanding review
+execution (`INTEGRATION_PLUGIN_CHANGED`); create a fresh preview. Removing the
+plugin prevents new work but preserves completed files, canonical data, identities
+and history. A completed download does not need a plugin callback.
+
+API clients use multipart `POST /api/integrations/{connection}/export-previews`.
+The JSON part `request` contains `operationId`, exact local `expected`,
+`expectedExternalVersion`, `mode`, `mediaType` and optional `baseFileId`. Supply
+exactly one basis: the optional binary part `file` or an existing `baseFileId`.
+Review uses the existing JSON
+`POST /api/integrations/{connection}/files` with `ReviewedChangeSet`; completed
+bytes are available from
+`GET /api/integrations/{connection}/operations/{operation}/file`.
+
+The separate PCS connector remains read/pull until its exact provider has a
+verified conditional-publication contract. A native file writer does not confer
+PCS write guarantees. See [native QEA acceptance and operator evidence](../qa/sparx-qea-file-acceptance.md)
+for the installed-JAR HTTP test, operator-template inputs and explicitly separate
+EA evidence. Native EA/PCS execution remains `NOT_EXECUTED` unless an actual
+product run is independently established; self-reading generated SQLite files is
+not that proof.
 
 ## Use the reviewed XMI workflow
 

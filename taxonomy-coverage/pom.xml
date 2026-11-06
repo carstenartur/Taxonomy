@@ -92,6 +92,11 @@
         </dependency>
         <dependency>
             <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-sparx-mapping</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
             <artifactId>taxonomy-extension-api</artifactId>
             <version>${project.version}</version>
         </dependency>

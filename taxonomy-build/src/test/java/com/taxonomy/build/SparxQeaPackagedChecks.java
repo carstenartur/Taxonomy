@@ -31,7 +31,10 @@ final class SparxQeaPackagedChecks {
                                          String pluginVersion, String pluginDigest) throws Exception {
         Scope scope = createWorkspace(app);
         var profiles = get(app, scope, "/api/integrations/profiles");
-        var profile = matching(profiles, "id", "sparx-qea");
+        var versions = rows(profiles).stream().filter(value -> "sparx-qea".equals(value.path("id").asText())
+                && "1".equals(value.path("version").asText())).toList();
+        assertThat(versions).as("The independently installed reader retains QEA profile 1").hasSize(1);
+        var profile = versions.getFirst();
         assertThat(profile.path("version").asText()).isEqualTo("1");
         assertThat(strings(profile.path("capabilities"))).containsExactlyInAnyOrder(
                 "FILE_IMPORT", "ARCHITECTURE_MODEL", "CANONICAL_PROJECTION_V1");

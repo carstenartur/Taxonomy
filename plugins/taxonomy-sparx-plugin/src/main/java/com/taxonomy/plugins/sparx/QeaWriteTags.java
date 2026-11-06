@@ -31,11 +31,11 @@ final class QeaWriteTags {
             List<Row> found = basis.rows(table).stream().filter(r -> r.number(ownerColumn) == owner && r.text("property").equals(entry.getKey())).toList();
             if (found.size() > 1) throw fail("QEA_AMBIGUOUS_TAG", "The selected tag name identifies multiple native rows");
             Row old = found.isEmpty() ? null : found.getFirst();
-            String current = old == null ? null : old.text("value").equals("<memo>") ? old.text("notes") : old.text("value");
+            String current = old == null ? null : old.text("value").equals("<memo>") && !old.text("notes").isEmpty() ? old.text("notes") : old.text("value");
             if (Objects.equals(current, entry.getValue())) continue;
             if (old != null && (old.binaryFields().contains("value") || old.binaryFields().contains("notes")))
                 throw fail("QEA_BINARY_FIELD_UNSUPPORTED", "A binary tagged value cannot be replaced by scalar evidence");
-            boolean memo = old != null && old.text("value").equals("<memo>") || entry.getValue().length() > 255;
+            boolean memo = old != null && old.text("value").equals("<memo>") && !entry.getValue().isEmpty() || entry.getValue().length() > 255;
             if (old == null) {
                 var fields = new LinkedHashMap<String, Object>();
                 fields.put("propertyid", database.next(table, "propertyid")); fields.put(ownerColumn, owner);
@@ -48,6 +48,7 @@ final class QeaWriteTags {
                 var fields = new LinkedHashMap<String, Object>();
                 fields.put("value", memo ? "<memo>" : entry.getValue());
                 if (memo) fields.put("notes", entry.getValue());
+                else if (old.text("value").equals("<memo>") && database.hasColumn(table, "notes")) fields.put("notes", "");
                 database.update(table, "propertyid", old.id("propertyid"), fields);
             }
         }
@@ -83,7 +84,8 @@ final class QeaWriteTags {
                 || description.indexOf("@STEREO;", 1) >= 0) return false;
         var values = new HashMap<String, String>();
         for (String item : description.substring(8, description.length() - 11).split(";")) {
-            int equal = item.indexOf('='); if (equal < 1) continue;
+            int equal = item.indexOf('=');
+            if (equal < 1) continue;
             String key = item.substring(0, equal);
             if (!Set.of("Name", "FQName").contains(key) || values.put(key, item.substring(equal + 1)) != null) return false;
         }

@@ -28,6 +28,11 @@
             <artifactId>taxonomy-extension-api</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-sparx-mapping</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <!-- Server-side vector PDF export shared by application adapters. -->
         <dependency>
             <groupId>org.apache.pdfbox</groupId>

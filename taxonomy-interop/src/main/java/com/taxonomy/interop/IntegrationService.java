@@ -64,9 +64,21 @@ public class IntegrationService {
     }
     public record PreviewRequest(UUID operationId, InternalState expected, String mediaType, boolean completeScope) {}
     public record ExportRequest(UUID operationId, InternalState expected, String expectedExternalVersion) {}
+    public record BasedExportRequest(UUID operationId, InternalState expected, String expectedExternalVersion,
+                                     FileExportMode mode, String mediaType, UUID baseFileId) {}
     public record RemoteRequest(UUID operationId, InternalState expected, String resource, String expectedExternalVersion) {}
-    public record Overview(Connection connection, InternalState current, Checkpoint checkpoint, List<OperationSummary> history, String oslcCatalogPath, PublicationAvailability publicationAvailability) {
+    public record Overview(Connection connection, InternalState current, Checkpoint checkpoint, List<OperationSummary> history,
+                           String oslcCatalogPath, PublicationAvailability publicationAvailability,
+                           List<FileBase> fileBases, Set<FileExportMode> fileExportModes) {
         public Overview(Connection connection, InternalState current, Checkpoint checkpoint, List<OperationSummary> history, String oslcCatalogPath) { this(connection, current, checkpoint, history, oslcCatalogPath, new PublicationAvailability(false, Set.of(), Set.of(), "PUBLICATION_GUARANTEES_UNVERIFIED")); }
+        public Overview(Connection connection, InternalState current, Checkpoint checkpoint, List<OperationSummary> history,
+                        String oslcCatalogPath, PublicationAvailability publicationAvailability) {
+            this(connection, current, checkpoint, history, oslcCatalogPath, publicationAvailability, List.of(), Set.of());
+        }
+        public Overview {
+            fileBases = fileBases == null ? List.of() : List.copyOf(fileBases);
+            fileExportModes = fileExportModes == null ? Set.of() : Set.copyOf(fileExportModes);
+        }
     }
 
     public List<IntegrationDescriptor> profiles(RepositoryContext context) { authorize(context, false); return connectors.descriptors(); }
@@ -108,9 +120,11 @@ public class IntegrationService {
     public Overview overview(RepositoryContext context, UUID connectionId) { return overview(context, connectionId, null, null); }
     public Overview overview(RepositoryContext context, UUID connectionId, String rootResource, String selector) {
         authorize(context, false); Connection connection = store.read(context, connectionId);
-        return new Overview(connection, domain.snapshot(context, connection, store.identities(context, connectionId), read(context)).state(),
+        var identities = store.identities(context, connectionId);
+        return new Overview(connection, domain.snapshot(context, connection, identities, read(context)).state(),
                 store.checkpoint(context, connectionId), store.history(context, connectionId), "/oslc/scopes/" + context.repositoryWorkspaceScopeKey()
-                + "/catalog?repositoryId=" + encode(context.repositoryId()) + "&workspaceId=" + encode(context.workspaceId()) + "&branch=" + encode(context.branch()), publicationService == null ? new PublicationAvailability(false, Set.of(), Set.of(), "PUBLICATION_GUARANTEES_UNVERIFIED") : publicationService.availability(context, connectionId, rootResource == null || rootResource.isBlank() || selector == null || selector.isBlank() ? null : new PublicationScope(connection.externalScope(), rootResource, selector)));
+                + "/catalog?repositoryId=" + encode(context.repositoryId()) + "&workspaceId=" + encode(context.workspaceId()) + "&branch=" + encode(context.branch()), publicationService == null ? new PublicationAvailability(false, Set.of(), Set.of(), "PUBLICATION_GUARANTEES_UNVERIFIED") : publicationService.availability(context, connectionId, rootResource == null || rootResource.isBlank() || selector == null || selector.isBlank() ? null : new PublicationScope(connection.externalScope(), rootResource, selector)),
+                store.bases(context, connectionId), fileExportModes(connection, identities));
     }
     public PublicationOperation previewPublication(RepositoryContext context, UUID connection, PublicationPreviewRequest request) { return publicationService.previewPublication(context, connection, request); }
     public PublicationOperation publish(RepositoryContext context, UUID connection, PublicationReview review) { return publicationService.publish(context, connection, review); }
@@ -154,8 +168,13 @@ public class IntegrationService {
             expect(request.expected(), state.state());
             ExchangeDocument described = ReqifExchangeCodec.PROFILE.equals(connection.connectorId())
                     ? PlanningExchangeBridge.describeInbound(document, state.items()) : document;
-            return session.preview(request.operationId(), authority, "INBOUND", fingerprint, described,
+            var preview = session.preview(request.operationId(), authority, "INBOUND", fingerprint, described,
                     diff.compare(described, connection.authority(), session.identities(), state.items()));
+            if (connector.descriptor().capabilities().contains(Capability.BASED_FILE_EXPORT_V1)) {
+                session.retainBase(request.operationId(), request.mediaType(), content, described.metadata().get("identifier"));
+                return session.operation(request.operationId());
+            }
+            return preview;
         });
     }
 
@@ -384,6 +403,8 @@ public class IntegrationService {
                 throw new IntegrationProblem("AUTHORITY_MODE", 409, "This authority mode does not permit publication");
             var connector = connectors.require(connection.connectorId(), connection.profileVersion());
             if (!connector.descriptor().capabilities().contains(Capability.FILE_EXPORT)) throw new IntegrationProblem("CAPABILITY_UNAVAILABLE", 409, "Profile has no file export capability");
+            if (connector.descriptor().capabilities().contains(Capability.BASED_FILE_EXPORT_V1))
+                throw new IntegrationProblem("FILE_BASE_REQUIRED", 428, "Choose a file export mode and an explicit binary basis");
             String fingerprint = json.fingerprint(Arrays.asList(connectionId, context.username(), request));
             Operation prior = session.find(request.operationId()); if (prior != null) return replay(prior, fingerprint);
             var document = read(context); List<Identity> mappings = session.identities();
@@ -408,6 +429,114 @@ public class IntegrationService {
         });
     }
 
+    public Operation previewExport(RepositoryContext context, UUID connectionId, BasedExportRequest request, byte[] uploaded) {
+        authorize(context, true);
+        if (request == null || request.operationId() == null || request.expected() == null) throw precondition();
+        if (request.mode() == null || (uploaded == null) == (request.baseFileId() == null))
+            throw new IntegrationProblem("FILE_BASE_REQUIRED", 428, "Choose a mode and exactly one uploaded or retained basis");
+        if (uploaded != null) checkFileBytes(uploaded);
+        return store.locked(context, connectionId, session -> {
+            Connection connection = session.connection(); requireProfile(connection);
+            if (Set.of(AuthorityMode.LINK_ONLY, AuthorityMode.MIRROR_READ).contains(connection.authority()))
+                throw new IntegrationProblem("AUTHORITY_MODE", 409, "This authority mode does not permit publication");
+            var connector = connectors.require(connection.connectorId(), connection.profileVersion());
+            if (!connector.descriptor().capabilities().containsAll(Set.of(Capability.FILE_EXPORT, Capability.BASED_FILE_EXPORT_V1)))
+                throw new IntegrationProblem("CAPABILITY_UNAVAILABLE", 409, "Profile has no based file export capability");
+            FileExportProfile profile = connector.fileExportProfile();
+            if (!profile.modes().contains(request.mode()))
+                throw new IntegrationProblem("CAPABILITY_UNAVAILABLE", 409, "Profile does not support this file export mode");
+            RetainedBinary retained = request.baseFileId() == null ? null : session.base(request.baseFileId());
+            byte[] bytes = retained == null ? uploaded : retained.content();
+            String mediaType = retained == null ? request.mediaType() : retained.reference().mediaType();
+            if (mediaType == null || !connector.descriptor().mediaTypes().contains(mediaType)
+                    || retained != null && request.mediaType() != null && !request.mediaType().equals(mediaType))
+                throw new IntegrationProblem("UNSUPPORTED_MEDIA", 415, "Profile does not accept this basis media type");
+            String digest = ReqifExchangeCodec.digest(bytes);
+            var binding = connectors.bind(new ExchangeDocument(connection.connectorId(), connection.profileVersion(), null,
+                    false, "", List.of(), List.of(), List.of(), Map.of(), List.of()));
+            String fingerprint = json.fingerprint(Arrays.asList(connectionId, context.username(), request, digest, mediaType,
+                    IntegrationFileBinding.plugin(binding), profile));
+            Operation prior = session.find(request.operationId());
+            if (prior != null) { requireActor(context, prior); connectors.requireCompatible(prior.document()); return replay(prior, fingerprint); }
+
+            var nativeDocument = read(context); List<Identity> mappings = session.identities();
+            var current = domain.snapshot(context, connection, mappings, nativeDocument); expect(request.expected(), current.state());
+            ExchangeDocument previous = connection.checkpointId() == null ? null : session.operation(connection.checkpointId()).resultDocument();
+            if (request.mode() == FileExportMode.NEW_PROJECT && (connection.checkpointId() != null || mappings.stream().anyMatch(m -> m.external() != null)))
+                throw new IntegrationProblem("FILE_EXPORT_NEW_CONNECTION_REQUIRED", 409, "Use a new connection for an independent project; imported identities require update-copy");
+            if (!Objects.equals(request.expectedExternalVersion(), previous == null ? null : previous.externalVersion()))
+                throw IntegrationProblem.conflict("EXTERNAL_STATE_CHANGED");
+            var authority = authority(context, connection, current.state());
+            ExchangeDocument baseDocument = null;
+            if (request.mode() == FileExportMode.UPDATE_COPY) {
+                if (previous == null || !digest.equals(previous.externalVersion())) throw IntegrationProblem.conflict("FILE_BASE_CHANGED");
+                connectors.requireCompatible(previous);
+                baseDocument = connector.previewInbound(new InboundRequest(authority, mediaType, bytes, digest, false));
+                String importedModel = previous.metadata().get("identifier");
+                if (importedModel == null || !importedModel.equals(baseDocument.metadata().get("identifier")))
+                    throw IntegrationProblem.conflict("FILE_BASE_CHANGED");
+            }
+            if (retained != null) session.requireBaseBinding(retained.reference().id(), binding);
+            ExchangeDocument outgoing = connectors.bind(domain.exportDocument(connection, current, nativeDocument, mappings, previous));
+            if (request.mode() == FileExportMode.NEW_PROJECT) outgoing = withNewFileIdentity(connection, profile, outgoing);
+            Map<String, Artifact> baseItems = baseDocument == null ? Map.of() : ExchangeItems.flatten(baseDocument);
+            if (baseDocument != null) {
+                var preserved = new TreeMap<>(baseItems); preserved.putAll(ExchangeItems.flatten(outgoing));
+                outgoing = ExchangeItems.expand(outgoing, preserved);
+            }
+            String modelIdentifier = outgoing.metadata().get("identifier");
+            if (modelIdentifier == null) throw new IntegrationProblem("FILE_MODEL_IDENTITY_REQUIRED", 422, "A reviewed model identity is required");
+            ExchangeFile candidate = connector.previewOutbound(new BasedOutboundRequest(new OutboundRequest(authority, outgoing, request.expectedExternalVersion()),
+                    request.mode(), connection.id(), digest, mediaType, bytes));
+            checkFileBytes(candidate.content());
+            ExchangeDocument normalized = connector.previewInbound(new InboundRequest(authority, candidate.mediaType(), candidate.content(), outgoing.externalVersion(), false));
+            if (!modelIdentifier.equals(normalized.metadata().get("identifier"))) throw IntegrationProblem.conflict("FILE_MODEL_IDENTITY_CHANGED");
+            var metadata = new TreeMap<>(normalized.metadata());
+            if (request.mode() == FileExportMode.NEW_PROJECT) metadata.put("rootIdentifier", outgoing.metadata().get("rootIdentifier"));
+            var losses = new ArrayList<>(outgoing.losses());
+            for (var loss : candidate.losses()) if (!losses.contains(loss)) losses.add(loss);
+            for (var loss : normalized.losses()) if (!losses.contains(loss)) losses.add(loss);
+            outgoing = connectors.bind(new ExchangeDocument(normalized.profile(), normalized.profileVersion(), outgoing.externalVersion(), false,
+                    normalized.source(), normalized.artifacts(), normalized.relations(), normalized.placements(), metadata, losses));
+            List<IntegrationChange> changes = diff.compare(outgoing, AuthorityMode.IMPORT_COPY, fileBaselines(baseItems), baseItems);
+            session.preview(request.operationId(), authority, "OUTBOUND", fingerprint, outgoing, changes);
+            FileBase base = retained == null ? session.retainBase(request.operationId(), mediaType, bytes,
+                    baseDocument == null ? null : baseDocument.metadata().get("identifier")) : retained.reference();
+            session.fileExport(request.operationId(), new FileExportPlan(request.mode(), connection.id(), base, modelIdentifier, profile));
+            return session.operation(request.operationId());
+        });
+    }
+
+    private ExchangeDocument withNewFileIdentity(Connection connection, FileExportProfile profile, ExchangeDocument document) {
+        var metadata = new TreeMap<>(document.metadata());
+        metadata.put("identifier", IntegrationDomainAdapter.externalId(connection, "model", profile));
+        metadata.put("rootIdentifier", IntegrationDomainAdapter.externalId(connection, "bootstrap-root", profile));
+        return new ExchangeDocument(document.profile(), document.profileVersion(), document.externalVersion(), false, document.source(),
+                document.artifacts(), document.relations(), document.placements(), metadata, document.losses());
+    }
+    private static List<Identity> fileBaselines(Map<String, Artifact> items) {
+        return items.entrySet().stream().map(e -> new Identity(e.getKey(), e.getValue().id(), null, null, null,
+                e.getValue(), e.getValue(), null, false)).toList();
+    }
+    private static void checkFileBytes(byte[] bytes) {
+        if (bytes == null || bytes.length == 0 || bytes.length > ExchangeXml.MAX_BYTES)
+            throw new IntegrationProblem("PAYLOAD_LIMIT", 413, "Integration files must contain 1 byte to 16 MiB");
+    }
+    private Set<FileExportMode> fileExportModes(Connection connection, List<Identity> identities) {
+        if (Set.of(AuthorityMode.LINK_ONLY, AuthorityMode.MIRROR_READ).contains(connection.authority())) return Set.of();
+        try {
+            var connector = connectors.require(connection.connectorId(), connection.profileVersion());
+            if (!connector.descriptor().capabilities().containsAll(Set.of(Capability.FILE_EXPORT, Capability.BASED_FILE_EXPORT_V1))) return Set.of();
+            var modes = EnumSet.copyOf(connector.fileExportProfile().modes());
+            boolean imported = connection.checkpointId() != null || identities.stream().anyMatch(identity -> identity.external() != null);
+            if (imported) modes.remove(FileExportMode.NEW_PROJECT); else modes.remove(FileExportMode.UPDATE_COPY);
+            return Set.copyOf(modes);
+        } catch (IntegrationProblem unavailable) {
+            if ("UNKNOWN_CONNECTOR".equals(unavailable.code())) return Set.of();
+            throw unavailable;
+        }
+    }
+
     /** Reviewed file delivery is not a remote publish acknowledgement and does not advance the synchronization baseline. */
     public Operation prepareFile(RepositoryContext context, UUID connectionId, ReviewedChangeSet review) {
         authorize(context, true);
@@ -424,11 +553,46 @@ public class IntegrationService {
             List<Identity> known = session.identities();
             var current = domain.snapshot(context, session.connection(), known, before);
             expect(operation.context().internalState(), current.state());
-            Map<String, Artifact> selected = select(operation, review, Map.of(), Map.of());
+            FileExportPlan filePlan = session.fileExportPlan(operation.id());
+            RetainedBinary basis = null;
+            Map<String, Artifact> priorItems = Map.of();
+            Map<String, Identity> priorBindings = new TreeMap<>();
+            if (filePlan != null) {
+                var connector = connectors.require(operation.context().profile(), operation.context().profileVersion());
+                if (!filePlan.profile().equals(connector.fileExportProfile())) throw IntegrationProblem.conflict("INTEGRATION_PLUGIN_CHANGED");
+                basis = session.base(filePlan.base().id());
+                if (!basis.reference().equals(filePlan.base())) throw IntegrationProblem.conflict("FILE_BASE_CHANGED");
+                session.requireBaseBinding(filePlan.base().id(), operation.document());
+                if (filePlan.mode() == FileExportMode.UPDATE_COPY) {
+                    var parsed = connector.previewInbound(new InboundRequest(operation.context(), basis.reference().mediaType(), basis.content(), basis.reference().sha256(), false));
+                    if (!filePlan.modelIdentifier().equals(parsed.metadata().get("identifier"))) throw IntegrationProblem.conflict("FILE_BASE_CHANGED");
+                    priorItems = ExchangeItems.flatten(parsed);
+                    fileBaselines(priorItems).forEach(identity -> priorBindings.put(identity.externalId(), identity));
+                }
+            }
+            Map<String, Artifact> selected = select(operation, review, priorItems, priorBindings);
+            if (filePlan != null && filePlan.mode() == FileExportMode.NEW_PROJECT) {
+                String root = operation.document().metadata().get("rootIdentifier");
+                boolean reviewedRoot = root != null && operation.document().artifacts().stream()
+                        .anyMatch(artifact -> artifact.kind() == ArtifactKind.SPECIFICATION && root.equals(artifact.id()));
+                if (reviewedRoot && !selected.containsKey("SPECIFICATION:" + root))
+                    throw new IntegrationProblem("FILE_REQUIRED_STRUCTURE", 422, "The required project root must be included in the reviewed file");
+            }
             ExchangeDocument result = ExchangeItems.expand(operation.document(), selected);
             boolean complete = selected.size() == operation.changes().size();
-            result = new ExchangeDocument(result.profile(), result.profileVersion(), result.externalVersion(), complete, result.source(), result.artifacts(), result.relations(), result.placements(), result.metadata(), result.losses());
-            ExchangeFile file = connectors.require(operation.context().profile(), operation.context().profileVersion()).previewOutbound(new OutboundRequest(operation.context(), result, result.externalVersion()));
+            result = new ExchangeDocument(result.profile(), result.profileVersion(), result.externalVersion(), filePlan == null && complete, result.source(), result.artifacts(), result.relations(), result.placements(), result.metadata(), result.losses());
+            var connector = connectors.require(operation.context().profile(), operation.context().profileVersion());
+            ExchangeFile file;
+            if (filePlan == null) file = connector.previewOutbound(new OutboundRequest(operation.context(), result, result.externalVersion()));
+            else {
+                if (filePlan.mode() == FileExportMode.NEW_PROJECT) result = withNewFileIdentity(session.connection(), filePlan.profile(), result);
+                if (!filePlan.modelIdentifier().equals(result.metadata().get("identifier"))) throw IntegrationProblem.conflict("FILE_MODEL_IDENTITY_CHANGED");
+                file = connector.previewOutbound(new BasedOutboundRequest(new OutboundRequest(operation.context(), result, result.externalVersion()),
+                        filePlan.mode(), filePlan.identityNamespace(), basis.reference().sha256(), basis.reference().mediaType(), basis.content()));
+                checkFileBytes(file.content());
+                var verified = connector.previewInbound(new InboundRequest(operation.context(), file.mediaType(), file.content(), result.externalVersion(), false));
+                verifyFileProjection(result, verified);
+            }
             session.beginReview(review); session.applied(operation.id(), operation.context().internalState(), result, false);
             Map<String, IntegrationDomainAdapter.AppliedRequirement> bindings = domain.exportBindings(session.connection(), current, before, selected);
             Set<String> existing = known.stream().map(Identity::externalId).collect(java.util.stream.Collectors.toSet());
@@ -444,8 +608,26 @@ public class IntegrationService {
     public ExchangeFile file(RepositoryContext context, UUID connectionId, UUID operationId) {
         authorize(context, false); Operation operation = store.operation(context, connectionId, operationId);
         if (!"OUTBOUND".equals(operation.direction()) || operation.status() != OperationStatus.COMPLETED) throw IntegrationProblem.conflict("FILE_NOT_READY");
+        if (operation.fileExport() != null) return store.file(context, connectionId, operationId);
         if (operation.resultFile() == null) throw IntegrationProblem.conflict("FILE_NOT_READY");
         return operation.resultFile();
+    }
+
+    /** A writer may preserve extra basis content, but cannot silently change reviewed object identities or meaning. */
+    private static void verifyFileProjection(ExchangeDocument expected, ExchangeDocument actual) {
+        if (!Objects.equals(expected.metadata().get("identifier"), actual.metadata().get("identifier")))
+            throw IntegrationProblem.conflict("FILE_MODEL_IDENTITY_CHANGED");
+        var returned = ExchangeItems.flatten(actual);
+        for (var entry : ExchangeItems.flatten(expected).entrySet()) {
+            Artifact wanted = entry.getValue();
+            if (Set.of(ArtifactKind.METADATA, ArtifactKind.FEATURE, ArtifactKind.PLACEMENT).contains(wanted.kind())) continue;
+            Artifact got = returned.get(entry.getKey());
+            if (got == null || wanted.kind() != got.kind() || !wanted.title().equals(got.title()) || !wanted.text().equals(got.text()))
+                throw IntegrationProblem.conflict("FILE_PROJECTION_CHANGED");
+            for (String field : List.of("canonicalType", "source", "target"))
+                if (wanted.extensions().containsKey(field) && !wanted.extensions().get(field).equals(got.extensions().get(field)))
+                    throw IntegrationProblem.conflict("FILE_PROJECTION_CHANGED");
+        }
     }
 
     private Map<String, Artifact> select(Operation operation, ReviewedChangeSet review, Map<String, Artifact> current, Map<String, Identity> known) {

@@ -176,7 +176,7 @@ final class QeaWriteDatabase implements AutoCloseable {
         values.keySet().forEach(column -> allowed(table, column));
         String names = values.keySet().stream().map(c -> "\"" + c + "\"").collect(Collectors.joining(","));
         String markers = String.join(",", Collections.nCopies(values.size(), "?"));
-        try (var statement = connection.prepareStatement("INSERT INTO \"" + table + "\" (" + names + ") VALUES (" + markers + ")")) {
+        try (var statement = connection.prepareStatement("INSERT OR ABORT INTO \"" + table + "\" (" + names + ") VALUES (" + markers + ")")) {
             int index = 0; for (Object value : values.values()) statement.setObject(++index, value);
             if (statement.executeUpdate() != 1) throw fail("QEA_WRITE_CONFLICT", "Native insertion did not create exactly one row");
             dirty = true;
@@ -194,7 +194,7 @@ final class QeaWriteDatabase implements AutoCloseable {
         budget(); allowed(table, key); required(table, values.keySet()); required(table, Set.of(key));
         var sorted = new TreeMap<>(values);
         String setters = sorted.keySet().stream().map(c -> "\"" + c + "\"=?").collect(Collectors.joining(","));
-        try (var statement = connection.prepareStatement("UPDATE \"" + table + "\" SET " + setters + " WHERE \"" + key + "\"=?")) {
+        try (var statement = connection.prepareStatement("UPDATE OR ABORT \"" + table + "\" SET " + setters + " WHERE \"" + key + "\"=?")) {
             int index = 0; for (Object value : sorted.values()) statement.setObject(++index, value);
             statement.setObject(++index, id);
             if (statement.executeUpdate() != 1) throw fail("QEA_WRITE_CONFLICT", "A native update must identify exactly one existing row");
