@@ -752,6 +752,9 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <configuration><skipTests>true</skipTests></configuration>
                 </plugin>
+            </plugins>
+            <!-- Manage forked JVM configuration without activating Failsafe in the parent POM. -->
+            <pluginManagement><plugins>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-failsafe-plugin</artifactId>
@@ -765,7 +768,7 @@
                         </systemPropertyVariables>
                     </configuration>
                 </plugin>
-            </plugins></build>
+            </plugins></pluginManagement></build>
         </profile>
         <profile>
             <id>ci-app-test-shards-core</id>
