@@ -32,7 +32,7 @@ window.TaxonomyAbout = (function () {
         if (!url) return;
         var link = document.createElement('a');
         link.className = 'btn btn-sm btn-outline-secondary';
-        link.href = url;
+        link.href = TaxonomyI18n.resolveUrl(url);
         link.target = '_blank';
         link.rel = 'noopener';
         link.textContent = label;

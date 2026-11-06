@@ -84,7 +84,7 @@ public class CopilotAnalysisController {
     }
 
     private URI operationLocation(Long projectId, String operationId) {
-        return URI.create("/api/projects/" + projectId
+        return PortfolioResourceLocation.forPath("/api/projects/" + projectId
                 + "/copilot-operations/" + operationId);
     }
 

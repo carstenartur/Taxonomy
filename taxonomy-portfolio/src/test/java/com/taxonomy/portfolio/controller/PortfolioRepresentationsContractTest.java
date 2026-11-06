@@ -3,14 +3,29 @@ package com.taxonomy.portfolio.controller;
 import com.taxonomy.portfolio.service.*;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.workspace.service.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import java.util.Locale;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class PortfolioRepresentationsContractTest {
+    @BeforeEach
+    void bindRequest() {
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest()));
+    }
+
+    @AfterEach
+    void clearRequest() {
+        RequestContextHolder.resetRequestAttributes();
+    }
+
     @Test void guiRoutesRetainTheirDedicatedTemplates() {
         var pages=new PortfolioPageController();
         assertThat(pages.projects()).isEqualTo("projects");

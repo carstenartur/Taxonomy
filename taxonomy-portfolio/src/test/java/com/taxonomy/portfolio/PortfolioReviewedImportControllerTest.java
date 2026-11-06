@@ -15,12 +15,21 @@ import com.taxonomy.portfolio.service.PortfolioReviewedImportService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.filter.ForwardedHeaderFilter;
 
 import java.time.Instant;
 import java.util.Arrays;
@@ -33,6 +42,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
 @ExtendWith(MockitoExtension.class)
 class PortfolioReviewedImportControllerTest {
@@ -43,6 +56,47 @@ class PortfolioReviewedImportControllerTest {
 
     private final WorkspaceContext context =
             new WorkspaceContext("architect", "ws-architect", "feature/reviewed-import");
+
+    @BeforeEach
+    void bindRequest() {
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest()));
+    }
+
+    @AfterEach
+    void clearRequest() {
+        RequestContextHolder.resetRequestAttributes();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "'', '', /api/projects/41/analysis-jobs/job-reviewed-import",
+            "/taxonomy, '', /taxonomy/api/projects/41/analysis-jobs/job-reviewed-import",
+            "/tenant/taxonomy, '', /tenant/taxonomy/api/projects/41/analysis-jobs/job-reviewed-import",
+            "/internal, /edge/taxonomy, /edge/taxonomy/api/projects/41/analysis-jobs/job-reviewed-import"
+    })
+    void acceptedLocationRetainsTheEffectiveApplicationPrefix(
+            String contextPath, String forwardedPrefix, String expectedLocation) throws Exception {
+        stubWorkspace();
+        var items = List.of(item("REQ-1", "text", null));
+        when(importService.persist(41L, items, context.username(), context))
+                .thenReturn(new PersistedReviewImport(List.of(requirement(7L)), List.of()));
+        when(analysisService.enqueueProject(41L,
+                new AnalyzeProjectRequest(List.of(7L), false, null, null, null), context.username(), context))
+                .thenReturn(pendingJob("job-reviewed-import"));
+        var request = post(contextPath + "/api/projects/41/requirements/import-review")
+                .contextPath(contextPath)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"items":[{"decision":"NEW_REQUIREMENT","requirementKey":"REQ-1",
+                        "title":"Title REQ-1","text":"text"}],"analyzeAfterImport":true}
+                        """);
+        if (!forwardedPrefix.isEmpty()) request.header("X-Forwarded-Prefix", forwardedPrefix);
+
+        standaloneSetup(controller(10, 1_000)).addFilters(new ForwardedHeaderFilter()).build()
+                .perform(request)
+                .andExpect(status().isAccepted())
+                .andExpect(header().string("Location", expectedLocation));
+    }
 
     @Test
     void missingItemsFailBeforeWorkspaceOrServiceResolution() {

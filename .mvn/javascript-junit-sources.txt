@@ -29,6 +29,7 @@
 .github/scripts/backup-export.test.mjs
 .github/scripts/browser-sessions-acceptance.test.mjs
 .github/scripts/browser-validation-departure.test.mjs
+.github/scripts/context-path-resources.test.mjs
 .github/scripts/copilot-operation-lifecycle.test.mjs
 .github/scripts/copilot-session-i18n-ready-regression.test.mjs
 .github/scripts/copilot-session-ui-regression.test.mjs

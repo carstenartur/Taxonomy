@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.URI;
 import java.util.List;
 
 @RestController
@@ -42,7 +41,7 @@ public class SolutionCatalogController {
         RequestScope scope = scope();
         SolutionView solution = solutionService.createSolution(
                 request, scope.username(), scope.context());
-        return ResponseEntity.created(URI.create("/api/solutions/" + solution.id())).body(solution);
+        return ResponseEntity.created(PortfolioResourceLocation.forPath("/api/solutions/" + solution.id())).body(solution);
     }
 
     @GetMapping

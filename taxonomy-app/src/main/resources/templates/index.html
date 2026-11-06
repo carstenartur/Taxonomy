@@ -1735,23 +1735,23 @@
                             <tr><th scope="row" th:text="#{about.build.time}">Build time</th><td id="aboutBuildTime"><span class="text-muted small" th:text="#{index.ui.loading}">Loading…</span></td></tr>
                             <tr><th scope="row" th:text="#{about.commit}">Commit</th><td id="aboutCommit"><span class="text-muted small" th:text="#{index.ui.loading}">Loading…</span></td></tr>
                             <tr><th scope="row" th:text="#{about.branch}">Branch</th><td id="aboutBranch"><span class="text-muted small" th:text="#{index.ui.loading}">Loading…</span></td></tr>
-                            <tr><th scope="row" th:text="#{about.license}">License</th><td><a href="/LICENSE" target="_blank">MIT License</a></td></tr>
+                            <tr><th scope="row" th:text="#{about.license}">License</th><td><a th:href="@{/LICENSE}" href="/LICENSE" target="_blank">MIT License</a></td></tr>
                             <tr><th scope="row" th:text="#{about.copyright}">Copyright</th><td>Copyright 2026 Carsten Hammer</td></tr>
                             <tr><th scope="row" th:text="#{about.source}">Source</th><td><a href="https://github.com/carstenartur/Taxonomy" target="_blank" rel="noopener">github.com/carstenartur/Taxonomy</a></td></tr>
-                            <tr><th scope="row" th:text="#{about.api.docs}">API Docs</th><td><a href="/swagger-ui.html" target="_blank">Swagger UI</a></td></tr>
+                            <tr><th scope="row" th:text="#{about.api.docs}">API Docs</th><td><a th:href="@{/swagger-ui.html}" href="/swagger-ui.html" target="_blank">Swagger UI</a></td></tr>
                         </tbody>
                     </table>
                 </div>
                 <!-- Notices tab -->
                 <div id="about-notices-pane" class="d-none">
-                    <p class="small text-muted"><span th:text="#{about.third.party.notice}">This product contains third-party open-source software. Full text:</span> <a href="/THIRD-PARTY-NOTICES.md" target="_blank">THIRD-PARTY-NOTICES.md</a></p>
+                    <p class="small text-muted"><span th:text="#{about.third.party.notice}">This product contains third-party open-source software. Full text:</span> <a th:href="@{/THIRD-PARTY-NOTICES.md}" href="/THIRD-PARTY-NOTICES.md" target="_blank">THIRD-PARTY-NOTICES.md</a></p>
                     <pre id="aboutThirdPartyContent" class="small bg-light p-2 rounded" style="max-height:400px;overflow-y:auto;white-space:pre-wrap;"><span class="text-muted" th:text="#{index.ui.loading}">Loading…</span></pre>
                 </div>
             </div>
             <div class="modal-footer">
-                <a href="/NOTICE" target="_blank" class="btn btn-sm btn-outline-secondary" th:text="#{about.notice.link}">NOTICE</a>
-                <a href="/LICENSE" target="_blank" class="btn btn-sm btn-outline-secondary" th:text="#{about.license}">LICENSE</a>
-                <a href="/THIRD-PARTY-NOTICES.md" target="_blank" class="btn btn-sm btn-outline-secondary" th:text="#{about.third.party.link}">Third-Party Notices</a>
+                <a th:href="@{/NOTICE}" href="/NOTICE" target="_blank" class="btn btn-sm btn-outline-secondary" th:text="#{about.notice.link}">NOTICE</a>
+                <a th:href="@{/LICENSE}" href="/LICENSE" target="_blank" class="btn btn-sm btn-outline-secondary" th:text="#{about.license}">LICENSE</a>
+                <a th:href="@{/THIRD-PARTY-NOTICES.md}" href="/THIRD-PARTY-NOTICES.md" target="_blank" class="btn btn-sm btn-outline-secondary" th:text="#{about.third.party.link}">Third-Party Notices</a>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" th:text="#{about.btn.close}">Close</button>
             </div>
         </div>
