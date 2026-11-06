@@ -24,6 +24,9 @@ public class IntegrationOperationEntity {
     @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name="result_json") String resultJson;
     @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name="result_state_json") String resultStateJson;
     @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name="result_file_json") String resultFileJson;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name="file_export_json") String fileExportJson;
+    @Column(name="base_file_id", length=36) String baseFileId;
+    @Column(name="result_file_id", length=36) String resultFileId;
     @Column(name="result_commit", length=40) String resultCommit;
     @Column(name="result_revision") Long resultRevision;
     @Column(name="failure_code", length=64) String failureCode;

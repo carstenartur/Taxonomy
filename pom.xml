@@ -57,6 +57,7 @@
         <module>taxonomy-domain</module>
         <module>taxonomy-reporting-api</module>
         <module>taxonomy-dsl</module>
+        <module>taxonomy-sparx-mapping</module>
         <module>taxonomy-export</module>
         <module>taxonomy-extension-api</module>
         <module>taxonomy-extension-runtime</module>

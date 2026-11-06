@@ -91,7 +91,7 @@ class ExternalPluginPackagedIT {
             var manifest = jar.getManifest().getMainAttributes();
             assertThat(manifest.getValue("Plugin-Id")).isEqualTo("taxonomy.sparx");
             assertThat(manifest.getValue("Taxonomy-Plugin-Mode")).isEqualTo("STARTUP");
-            assertThat(manifest.getValue("Plugin-Requires")).contains("1.3.0");
+            assertThat(manifest.getValue("Plugin-Requires")).contains("1.4.0");
             pluginVersion = manifest.getValue("Plugin-Version");
             assertThat(pluginVersion).isNotBlank();
             assertThat(jar.getJarEntry("META-INF/services/com.taxonomy.extension.api.plugin.TaxonomyPlugin")).isNotNull();
@@ -135,6 +135,87 @@ class ExternalPluginPackagedIT {
                         + "\nhttp.repeat=unchanged\nhttp.renameMove=stable-identities\npackageAndViewMembership=independent"
                         + "\nwithout.plugin=ready,profileUnavailable\nhttp.removal=retained-architecture-identities-history-revision"
                         + "\nhttp.absentPreview=PROFILE_VERSION_CHANGED\nhttp.absentCreate=UNKNOWN_CONNECTOR\n");
+    }
+
+    @Test void externalSparxQeaV2JarExportsReviewedFilesAndRetainsDownloadsAcrossPluginChanges() throws Exception {
+        Path root = PackagedPluginSupport.repository();
+        Path report = root.resolve("taxonomy-build/target/sparx-file-export-evidence.json");
+        Files.deleteIfExists(report);
+        Path host = PackagedPluginSupport.application(root);
+        String hostSha = PackagedPluginSupport.sha256(host);
+        Path plugin = PackagedPluginSupport.buildIndependentPlugin(root, temporary,
+                "taxonomy-sparx-plugin", 25, "sparx-writer-sdk-verification.txt");
+        String pluginSha = PackagedPluginSupport.sha256(plugin), pluginVersion;
+        try (var jar = new JarFile(plugin.toFile())) {
+            var manifest = jar.getManifest().getMainAttributes();
+            assertThat(manifest.getValue("Plugin-Id")).isEqualTo("taxonomy.sparx");
+            assertThat(manifest.getValue("Taxonomy-Plugin-Mode")).isEqualTo("STARTUP");
+            assertThat(manifest.getValue("Plugin-Requires")).contains("1.4.0");
+            pluginVersion = manifest.getValue("Plugin-Version");
+            assertThat(pluginVersion).isNotBlank();
+        }
+        Path fixtures = plugin.getParent().resolve("packaged-fixtures");
+        Path base = fixtures.resolve("base.qea"), renamed = fixtures.resolve("renamed.qea");
+        String operatorTemplate = System.getProperty("taxonomy.sparx.template");
+        boolean supplied = operatorTemplate != null && !operatorTemplate.isBlank();
+        Path template = supplied ? Path.of(operatorTemplate).toAbsolutePath() : fixtures.resolve("empty-template.qea");
+        for (Path file : List.of(base, renamed, template)) assertThat(file).isRegularFile();
+        String baseSha = PackagedPluginSupport.sha256(base), templateSha = PackagedPluginSupport.sha256(template);
+        Path installed = Files.createDirectory(temporary.resolve("sparx-writer-installed"));
+        Files.copy(plugin, installed.resolve("sparx.jar"));
+        Path state = temporary.resolve("sparx-writer-retained-state");
+        var arguments = List.of("--taxonomy.features.multi-repository-api.enabled=true",
+                "--spring.datasource.url=jdbc:hsqldb:file:" + state.resolve("database") + ";shutdown=true",
+                "--spring.jpa.hibernate.ddl-auto=update");
+        SparxQeaFilePackagedChecks.RetainedFiles retained;
+        try (var app = PackagedPluginSupport.start(host, installed, host.getParent().resolve("features"), state, arguments)) {
+            retained = SparxQeaFilePackagedChecks.reviewedExports(app, base, renamed, template,
+                    temporary.resolve("writer-downloads"), pluginVersion, pluginSha);
+        }
+        Files.copy(state.resolve("application.log"), state.resolve("application-export.log"));
+        try (var app = PackagedPluginSupport.start(host, installed, host.getParent().resolve("features"), state, arguments)) {
+            retained = SparxQeaFilePackagedChecks.resumeAfterRestart(app, retained);
+        }
+        Files.copy(state.resolve("application.log"), state.resolve("application-restart.log"));
+
+        Path replaced = Files.createDirectory(temporary.resolve("sparx-writer-replaced"));
+        Path replacement = replaced.resolve("sparx.jar");
+        copyWithArtifactMarker(plugin, replacement);
+        assertThat(PackagedPluginSupport.sha256(replacement)).isNotEqualTo(pluginSha);
+        try (var app = PackagedPluginSupport.start(host, replaced, host.getParent().resolve("features"), state, arguments)) {
+            SparxQeaFilePackagedChecks.replacedPluginRejectsRetainedReview(app, retained);
+        }
+        Files.copy(state.resolve("application.log"), state.resolve("application-replacement.log"));
+        Path absent = Files.createDirectory(temporary.resolve("sparx-writer-absent"));
+        try (var app = PackagedPluginSupport.start(host, absent, host.getParent().resolve("features"), state, arguments)) {
+            SparxQeaFilePackagedChecks.absentPluginRetainsFiles(app, retained);
+        }
+        assertThat(PackagedPluginSupport.sha256(template)).as("The supplied template remains untouched").isEqualTo(templateSha);
+        assertThat(PackagedPluginSupport.sha256(base)).as("The imported snapshot remains untouched").isEqualTo(baseSha);
+        assertThat(PackagedPluginSupport.sha256(plugin)).isEqualTo(pluginSha);
+        assertThat(PackagedPluginSupport.sha256(host)).isEqualTo(hostSha);
+        var evidence = SparxQeaFilePackagedChecks.evidence(retained, hostSha, pluginSha, template, supplied);
+        String operatorOutput = System.getProperty("taxonomy.sparx.qa.output");
+        if (operatorOutput != null && !operatorOutput.isBlank())
+            SparxQeaFilePackagedChecks.retainOperatorOutputs(Path.of(operatorOutput).toAbsolutePath(), retained, evidence);
+        Files.writeString(report,
+                tools.jackson.databind.json.JsonMapper.builder().build().writerWithDefaultPrettyPrinter().writeValueAsString(evidence) + "\n");
+    }
+
+    /** Changes only a test copy, retaining the same plugin ID/version and every original class/resource. */
+    private static void copyWithArtifactMarker(Path source, Path target) throws Exception {
+        try (var input = new JarFile(source.toFile());
+             var output = new java.util.jar.JarOutputStream(Files.newOutputStream(target))) {
+            for (var entry : input.stream().toList()) {
+                var copy = new java.util.jar.JarEntry(entry.getName()); copy.setTime(entry.getTime());
+                output.putNextEntry(copy);
+                if (!entry.isDirectory()) try (var content = input.getInputStream(entry)) { content.transferTo(output); }
+                output.closeEntry();
+            }
+            output.putNextEntry(new java.util.jar.JarEntry("META-INF/packaged-artifact-change.txt"));
+            output.write("Packaged test replacement with unchanged plugin identity\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            output.closeEntry();
+        }
     }
 
     @Test void externalMermaidJarIsOptionalAndDoesNotRequireRebuildingTheHost() throws Exception {

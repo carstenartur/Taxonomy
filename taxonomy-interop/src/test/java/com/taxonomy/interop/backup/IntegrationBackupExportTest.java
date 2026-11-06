@@ -21,8 +21,15 @@ import org.springframework.orm.jpa.JpaTransactionManager;
 import tools.jackson.databind.json.JsonMapper;
 import javax.sql.DataSource;
 import java.io.*;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
@@ -34,9 +41,120 @@ class IntegrationBackupExportTest {
     private static final RepositoryContext FOREIGN = RepositoryContext.workspace("repo-b", "private-c", "draft", "carol");
     private static final Class<?>[] ENTITIES = { IntegrationConnectionEntity.class, ExternalIdentityMappingEntity.class,
             IntegrationCheckpointEntity.class, IntegrationOperationEntity.class, IntegrationEventEntity.class,
-            IntegrationPublicationEntity.class, IntegrationPublishItemEntity.class, IntegrationPublishAttemptEntity.class, InventoryComparisonEntity.class,InventoryAssertionEntity.class,InventoryObservationEntity.class,InventoryReviewEntity.class,InventoryMappingEntity.class };
+            IntegrationPublicationEntity.class, IntegrationPublishItemEntity.class, IntegrationPublishAttemptEntity.class, IntegrationFileEntity.class, InventoryComparisonEntity.class,InventoryAssertionEntity.class,InventoryObservationEntity.class,InventoryReviewEntity.class,InventoryMappingEntity.class };
     private static final List<String> TABLES = List.of("interop_connection", "interop_identity", "interop_checkpoint", "interop_operation",
-            "interop_event", "interop_publication", "interop_publish_item", "interop_publish_attempt");
+            "interop_event", "interop_publication", "interop_publish_item", "interop_publish_attempt", "interop_file");
+
+    @Test void retainedBasesAndResultsAreBinaryArchiveEntriesWithManualRestoreAuthority() throws Exception {
+        try (var fixture = new Fixture()) {
+            byte[] content = {0, 1, (byte) 255, 4};
+            var retained = retainedBase(fixture, content);
+            var pending = new BinaryContents();
+            contributor(fixture, OWN).write(snapshot(BackupProfile.CURRENT_STATE, OWN), pending);
+            assertThat(pending.entries.get("data/interop/files/" + retained.base().id() + ".bin")).containsExactly(content);
+            assertThat(pending.text("data/interop/files.ndjson")).contains(retained.base().sha256(), retained.operation().toString(),
+                    "MANUAL_REVIEW_REQUIRED", "\"sourceActor\":\"alice\"");
+            assertThat(pending.text("data/interop/policy.json")).contains("SOURCE_EVIDENCE_REQUIRES_TARGET_MAPPING", "\"automaticExecutionEnabled\":false");
+            byte[] result = {5, 0, (byte) 254, 9};
+            fixture.store.locked(OWN, retained.connection(), session -> {
+                session.beginReview(new ReviewedChangeSet(retained.operation(), "source-fingerprint", Map.of("change", Decision.ACCEPT), "Reviewed file"));
+                session.applied(retained.operation(), state(OWN), document("FILE-CANDIDATE"), false);
+                session.file(retained.operation(), new ExchangeFile("application/octet-stream", "output.bin", result, List.of()));
+                session.complete(retained.operation(), state(OWN), null, "result-fingerprint", false);
+                return null;
+            });
+            var operation = fixture.store.operation(OWN, retained.connection(), retained.operation());
+            var history = new BinaryContents();
+            contributor(fixture, OWN).write(snapshot(BackupProfile.REPOSITORY_HISTORY, OWN), history);
+            assertThat(history.entries.get("data/interop/files/" + retained.base().id() + ".bin")).containsExactly(content);
+            assertThat(history.entries.get("data/interop/files/" + operation.fileExport().outputFileId() + ".bin")).containsExactly(result);
+            assertThat(history.text("data/interop/files.ndjson")).contains(operation.fileExport().outputSha256(), operation.reviewFingerprint());
+            var current = new BinaryContents();
+            contributor(fixture, OWN).write(snapshot(BackupProfile.CURRENT_STATE, OWN), current);
+            assertThat(current.entries.keySet()).noneMatch(path -> path.endsWith(".bin"));
+        }
+    }
+
+    @Test void historyPreservesFinalFileLossReportAndCreationTime() throws Exception {
+        try (var fixture = new Fixture()) {
+            var retained = retainedBase(fixture, new byte[]{1, 2, 3});
+            var finalLosses = List.of(new MappingLoss("file-object", "nativeStyle", "FINAL_NATIVE_STYLE_PRESERVED",
+                    LossDisposition.PRESERVED_EXTENSION, "Preserved source style in the delivered file"));
+            fixture.store.locked(OWN, retained.connection(), session -> {
+                session.beginReview(new ReviewedChangeSet(retained.operation(), "source-fingerprint", Map.of("change", Decision.ACCEPT), "Reviewed file"));
+                session.applied(retained.operation(), state(OWN), document("FILE-CANDIDATE"), false);
+                session.file(retained.operation(), new ExchangeFile("application/octet-stream", "output.bin", new byte[]{4, 5, 6}, finalLosses));
+                session.complete(retained.operation(), state(OWN), null, "result-fingerprint", false);
+                return null;
+            });
+            var operation = fixture.store.operation(OWN, retained.connection(), retained.operation());
+            assertThat(operation.document().losses()).isEmpty();
+            String createdAt = NOW.plusSeconds(37).toString();
+            fixture.jdbc.update("update interop_file set created_at=? where id=?", createdAt, operation.fileExport().outputFileId().toString());
+            var history = new BinaryContents();
+            contributor(fixture, OWN).write(snapshot(BackupProfile.REPOSITORY_HISTORY, OWN), history);
+            var result = history.text("data/interop/files.ndjson").lines().skip(1).map(line -> fixture.json.read(line, Map.class))
+                    .filter(row -> "RESULT".equals(row.get("kind"))).findFirst().orElseThrow();
+            org.junit.jupiter.api.Assertions.assertAll(
+                    () -> assertThat(result.get("losses")).isEqualTo(fixture.json.read(fixture.json.write(finalLosses), List.class)),
+                    () -> assertThat(result.get("createdAt")).isEqualTo(createdAt));
+            assertThat(result.get("targetExecutionPolicy")).isEqualTo("MANUAL_REVIEW_REQUIRED");
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings={"CURRENT_STATE", "REPOSITORY_HISTORY"})
+    void binaryBackupFetchesOneFileAtATimeWithoutLoadingPayloadsForMetadata(String profileName) throws Exception {
+        try (var fixture = new Fixture()) {
+            byte[] firstBytes = {1, 2, (byte) 255}, secondBytes = {3, 4, 0, 5};
+            var first = retainedBase(fixture, firstBytes);
+            var second = retainedBase(fixture, secondBytes);
+            var database = new BinaryReadAudit(fixture.database);
+            var output = new BinaryContents();
+            var contributor = new IntegrationBackupContributor(database,
+                    (ignored, checkpoint) -> List.of(scope(OWN)));
+            contributor.write(snapshot(BackupProfile.valueOf(profileName), OWN), database.observe(output));
+
+            assertThat(output.entries.get("data/interop/files/" + first.base().id() + ".bin")).containsExactly(firstBytes);
+            assertThat(output.entries.get("data/interop/files/" + second.base().id() + ".bin")).containsExactly(secondBytes);
+            org.junit.jupiter.api.Assertions.assertAll(
+                    () -> assertThat(database.maximumBinaryRows).as("each binary result set contains at most one bounded file").isEqualTo(1),
+                    () -> assertThat(database.metadataPayloadQueries).as("NDJSON capture never selects binary content").isZero(),
+                    () -> assertThat(database.maximumOpenBinaryResults).as("binary result sets do not overlap").isEqualTo(1),
+                    () -> assertThat(database.openBinaryResults).as("binary result sets are closed").isZero());
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings={"scope", "actor", "hash", "pointer"})
+    void inconsistentBinaryEvidenceIsRejectedBeforeAnyArchiveOutput(String broken) throws Exception {
+        try (var fixture = new Fixture()) {
+            var retained = retainedBase(fixture, new byte[]{1, 2, 3});
+            switch (broken) {
+                case "scope" -> fixture.jdbc.update("update interop_file set scope_id='foreign' where id=?", retained.base().id().toString());
+                case "actor" -> fixture.jdbc.update("update interop_file set actor='mallory' where id=?", retained.base().id().toString());
+                case "hash" -> fixture.jdbc.update("update interop_file set sha256=? where id=?", "0".repeat(64), retained.base().id().toString());
+                case "pointer" -> fixture.jdbc.update("update interop_operation set base_file_id=? where id=?", UUID.randomUUID().toString(), retained.operation().toString());
+                default -> throw new AssertionError(broken);
+            }
+            var out = new BinaryContents();
+            assertThatThrownBy(() -> contributor(fixture, OWN).write(snapshot(BackupProfile.CURRENT_STATE, OWN), out)).isInstanceOf(IOException.class);
+            assertThat(out.entries).isEmpty();
+        }
+    }
+
+    private static RetainedBase retainedBase(Fixture fixture, byte[] content) {
+        UUID connection = fixture.connection(OWN, "Binary");
+        UUID operation = fixture.preview(OWN, connection, "FILE-CANDIDATE");
+        fixture.jdbc.update("update interop_operation set direction='OUTBOUND' where id=?", operation.toString());
+        var base = fixture.store.locked(OWN, connection, session -> {
+            var retained = session.retainBase(operation, "application/octet-stream", content, null);
+            var profile = new FileExportProfile(Set.of(FileExportMode.NEW_PROJECT), ExternalIdentityFormat.UUID_BRACED_UPPER,
+                    Map.of(), Map.of(), "Requirement", "Package", "Diagram");
+            session.fileExport(operation, new IntegrationStore.FileExportPlan(FileExportMode.NEW_PROJECT, connection, retained, "model", profile));
+            return retained;
+        });
+        return new RetainedBase(connection, operation, base);
+    }
+    private record RetainedBase(UUID connection, UUID operation, IntegrationStore.FileBase base) {}
 
     @ParameterizedTest @ValueSource(strings={"project","solution","scope","repository","branch"})
     void inventoryVariantRejectsMissingOrCrossScopeSolutionReferences(String broken) throws Exception {
@@ -122,7 +240,8 @@ class IntegrationBackupExportTest {
                     .doesNotContain("SECRET", "removed-business", "PRIVATE-SIBLING", "OTHER-REPOSITORY", "\"before\"", "\"rowVersion\"");
             assertThat(out.rows("operations")).hasSize(2); assertThat(out.rows("identities")).hasSize(1);
             assertThat(out.rows("events")).isEmpty(); assertThat(out.rows("checkpoints")).isEmpty();
-            assertThat(out.entries).hasSize(14); assertThat(fixture.image()).isEqualTo(before);
+            assertThat(out.rows("files")).isEmpty();
+            assertThat(out.entries).hasSize(15); assertThat(fixture.image()).isEqualTo(before);
         }
     }
 
@@ -204,11 +323,13 @@ class IntegrationBackupExportTest {
     @Test void selectedVersionAndEmptyScopeDoNotReadLiveData() throws Exception {
         var selected = new IntegrationBackupContributor(noReads(), (ignored, checkpoint) -> { throw new AssertionError("No live selection"); });
         var out = new Contents(); selected.write(snapshot(BackupProfile.SELECTED_VERSION, OWN), out);
-        assertThat(out.text()).contains("OUTSIDE_SCOPE"); assertThat(out.entries).hasSize(14);
+        assertThat(out.text()).contains("OUTSIDE_SCOPE"); assertThat(out.entries).hasSize(15);
+        assertThat(out.rows("files")).isEmpty();
         assertThat(selected.omissions(BackupProfile.SELECTED_VERSION)).isNotEmpty();
         out = new Contents(); new IntegrationBackupContributor(noReads(), (ignored, checkpoint) -> List.of())
                 .write(snapshot(BackupProfile.CURRENT_STATE, OWN), out);
-        assertThat(out.entries).hasSize(14);
+        assertThat(out.entries).hasSize(15);
+        assertThat(out.rows("files")).isEmpty();
     }
 
     @Test void rejectsForeignAndDuplicateSelectionBeforeDatabaseAccessAndHonorsCancellation() throws Exception {
@@ -409,6 +530,76 @@ class IntegrationBackupExportTest {
         @Override public Connection getConnection() { throw new AssertionError("Database must not be read"); }
         @Override public Connection getConnection(String user, String password) { return getConnection(); }
     }; }
+    /** Observe real JDBC query results without replacing SQL execution or allocating large test BLOBs. */
+    private static final class BinaryReadAudit extends AbstractDataSource {
+        private final DataSource delegate;
+        private String outputPath;
+        int maximumBinaryRows, metadataPayloadQueries, maximumOpenBinaryResults, openBinaryResults;
+        BinaryReadAudit(DataSource delegate) { this.delegate = delegate; }
+        ComponentSink observe(ComponentSink sink) {
+            return new ComponentSink() {
+                @Override public BackupEntry write(String path, InputStream input) throws IOException {
+                    outputPath = path;
+                    try { return sink.write(path, input); }
+                    finally { outputPath = null; }
+                }
+            };
+        }
+        @Override public Connection getConnection() throws SQLException { return connection(delegate.getConnection()); }
+        @Override public Connection getConnection(String user, String password) throws SQLException {
+            return connection(delegate.getConnection(user, password));
+        }
+        private Connection connection(Connection target) {
+            return proxy(Connection.class, (ignored, method, arguments) -> {
+                Object result = call(target, method, arguments);
+                return method.getName().equals("prepareStatement") ? statement((PreparedStatement) result) : result;
+            });
+        }
+        private PreparedStatement statement(PreparedStatement target) {
+            return proxy(PreparedStatement.class, (ignored, method, arguments) -> {
+                Object result = call(target, method, arguments);
+                return method.getName().equals("executeQuery") ? result((ResultSet) result) : result;
+            });
+        }
+        private ResultSet result(ResultSet target) throws SQLException {
+            var columns = target.getMetaData();
+            boolean binary = false;
+            for (int column = 1; column <= columns.getColumnCount(); column++)
+                binary |= "content".equalsIgnoreCase(columns.getColumnLabel(column));
+            if (!binary) return target;
+            if (outputPath != null && outputPath.endsWith(".ndjson")) metadataPayloadQueries++;
+            maximumOpenBinaryResults = Math.max(maximumOpenBinaryResults, ++openBinaryResults);
+            return proxy(ResultSet.class, new InvocationHandler() {
+                private int rows;
+                private boolean closed;
+                @Override public Object invoke(Object ignored, Method method, Object[] arguments) throws Throwable {
+                    try {
+                        Object result = call(target, method, arguments);
+                        if (method.getName().equals("next") && Boolean.TRUE.equals(result))
+                            maximumBinaryRows = Math.max(maximumBinaryRows, ++rows);
+                        return result;
+                    } finally {
+                        if (method.getName().equals("close") && !closed) { closed = true; openBinaryResults--; }
+                    }
+                }
+            });
+        }
+        private static <T> T proxy(Class<T> type, InvocationHandler handler) {
+            return type.cast(Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, handler));
+        }
+        private static Object call(Object target, Method method, Object[] arguments) throws Throwable {
+            try { return method.invoke(target, arguments); }
+            catch (InvocationTargetException failure) { throw failure.getCause(); }
+        }
+    }
+    private static final class BinaryContents implements ComponentSink {
+        final Map<String, byte[]> entries = new LinkedHashMap<>();
+        @Override public BackupEntry write(String path, InputStream input) throws IOException {
+            var bytes = input.readAllBytes(); assertThat(entries.put(path, bytes)).isNull();
+            return new BackupEntry(path, bytes.length, com.taxonomy.exchange.ReqifExchangeCodec.digest(bytes));
+        }
+        String text(String path) { return new String(entries.get(path), StandardCharsets.UTF_8); }
+    }
     private static final class Contents implements ComponentSink {
         final Map<String, String> entries = new LinkedHashMap<>();
         @Override public BackupEntry write(String path, InputStream input) throws IOException {

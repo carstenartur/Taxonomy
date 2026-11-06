@@ -13,10 +13,11 @@ class SparxPluginTest {
         var plugins = ServiceLoader.load(TaxonomyPlugin.class).stream().map(ServiceLoader.Provider::get).toList();
         assertEquals(1, plugins.size(), "An installed JAR must expose its entry point without opening a database");
         var extensions = plugins.getFirst().extensions();
-        assertEquals(1, extensions.size());
-        var connector = assertInstanceOf(LifecycleIntegrationConnector.class, extensions.getFirst());
+        assertEquals(2, extensions.size());
+        var readOnly = extensions.stream().filter(e -> e.id().equals("sparx-qea@1")).findFirst().orElseThrow();
+        var connector = assertInstanceOf(LifecycleIntegrationConnector.class, readOnly);
         assertEquals("sparx-qea", connector.descriptor().id());
         assertEquals("1", connector.descriptor().version());
-        assertEquals("sparx-qea@1", extensions.getFirst().id());
+        assertEquals("sparx-qea@1", readOnly.id());
     }
 }

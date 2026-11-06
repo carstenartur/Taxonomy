@@ -39,7 +39,7 @@ class ArchitectureModulePackagingIT {
         assertThat(foundHostClasses).containsExactlyInAnyOrderElementsOf(hostClasses);
         assertThat(registrations).containsExactly("com.taxonomy.architecture.config.ArchitectureFeatureAutoConfiguration");
         // Excluding the optional feature must retain its shared runtime dependencies in the host.
-        for (String dependency : List.of("taxonomy-domain", "taxonomy-dsl", "taxonomy-export", "taxonomy-extension-api",
+        for (String dependency : List.of("taxonomy-domain", "taxonomy-dsl", "taxonomy-sparx-mapping", "taxonomy-export", "taxonomy-extension-api",
                 "taxonomy-workspace", "taxonomy-knowledge", "taxonomy-reporting-api", "spring-context", "spring-tx",
                 "spring-security-core", "springdoc-openapi-starter-common")) {
             DistributionArchives.assertSingleLibrary(libraries, dependency, false);

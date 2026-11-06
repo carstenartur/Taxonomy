@@ -10,11 +10,12 @@ Unterstützung einer bestimmten EA-Version.
 
 Das eigenständige [Sparx-QEA-Plugin](../../plugins/taxonomy-sparx-plugin/README.md)
 ergänzt das Profil **Sparx EA QEA** (`sparx-qea@1`) in derselben
-Integrationsoberfläche. Es liest SQLite-basierte QEA-Snapshots und benötigt Java 25
-sowie die Host-SPI ab 1.3.0. Es wird separat gebaut und installiert:
+Integrationsoberfläche. Es liest SQLite-basierte QEA-Snapshots. Das aktuelle Plugin
+benötigt Java 25 und die Host-SPI ab 1.4.0 innerhalb der Hauptversion 1; sein Profil
+in Version 1 bleibt rein lesend. Es wird separat gebaut und installiert:
 
 ```bash
-./mvnw -B -pl taxonomy-extension-api -am install
+./mvnw -B -pl taxonomy-extension-api,taxonomy-sparx-mapping -am install
 ./mvnw -B -f plugins/taxonomy-sparx-plugin/pom.xml verify
 ```
 
@@ -44,6 +45,108 @@ Bei einer aktualisierten Plugin-JAR muss eine offene Importvorschau neu erstellt
 werden (`INTEGRATION_PLUGIN_CHANGED`). Bereits übernommene Daten und die gespeicherte
 Historie bleiben bei einer Deinstallation erhalten. Details zu Schema, unterstützten
 Typen, Grenzen und Herkunft stehen im Plugin-README.
+
+## Geprüfte native QEA-Dateien: Version 2
+
+Dasselbe optionale Plugin ergänzt `sparx-qea@2` für die geprüfte Ausgabe nativer
+QEA-Dateien. Zusätzlich zum Dateiimport implementiert es den öffentlichen Vertrag
+`BASED_FILE_EXPORT_V1`. Der Host verwaltet hochgeladene Basisdateien, eingefrorene
+Vorschauen, Entscheidungen, unveränderliche Downloads und Historie. Das Plugin
+liest eine bereitgestellte SQLite-Basis und schreibt eine separate Kopie; die
+Originaldatei wird nicht bearbeitet. Profil 1 behält sein bisheriges Importverhalten.
+
+| Modus | Erforderliche Basis | Identität und Ergebnis |
+|---|---|---|
+| `NEW_PROJECT` | Eine vom Betreiber bereitgestellte leere, konsistente QEA-Vorlage | Erzeugt einen unabhängigen Namensraum für Modell- und Objekt-GUIDs, der vor der Prüfung feststeht. |
+| `UPDATE_COPY` | Genau der zuvor in diese Verbindung importierte QEA-Snapshot | Ändert eine Kopie unter Erhalt der importierten Modell-/Objekt-GUIDs, vorhandenen lokalen IDs und unberührten Basisinhalte. |
+
+Eine leere Vorlage aus einer berechtigten EA-Installation verwenden oder direkt
+aus den [Repository-Ressourcen von Sparx](https://sparxsystems.com/resources/repositories/)
+beziehen. Taxonomy liefert keine proprietäre Vorlage mit. Manche leeren Vorlagen
+enthalten noch keine `ProjectGUID`; `NEW_PROJECT` vergibt dafür eine neue
+Modellkennung und behandelt die Vorlage nicht als bereits importiertes Modell.
+Im Host gilt die Upload-Grenze von 16 MiB. Das Quellprojekt schließen und einen
+konsistenten Dateisnapshot bereitstellen, einschließlich bestätigter Änderungen,
+die sonst noch in einer WAL-Datei liegen könnten.
+
+1. Unter **Werkzeugintegrationen** eine Verbindung mit Version 2 anlegen. Für eine
+   Aktualisierung **Importkopie** wählen, den Snapshot importieren und dessen
+   geprüfte Änderungen zunächst übernehmen. Für ein unabhängiges Projekt eine
+   separate Verbindung als **Veröffentlichungsziel** verwenden. Der Server bietet
+   nur die zur Verbindung und ihrer Historie passenden Modi an.
+2. Den gewünschten Dateimodus wählen und die Basis hochladen oder eine bereits zu
+   dieser Verbindung gespeicherte Basis auswählen. Ein Update verlangt den SHA-256
+   des zuletzt importierten Snapshots; eine andere Datei ersetzt diesen Stand
+   nicht stillschweigend.
+3. Den aktuellen kanonischen Zustand als Vorschau prüfen. Änderungen, Zuordnungen
+   und Verluste einschließlich transformierter Diagrammplatzierungen durchsehen.
+   Über die vorhandene Integrationsprüfung ausdrückliche Entscheidungen und eine
+   Begründung angeben.
+4. Den geprüften Dateivorgang abschließen und die erzeugte `.qea` herunterladen.
+   Der Download ist an Vorgang, Basisdatei und installiertes Plugin-Artefakt gebunden.
+5. Die Kopie in einer berechtigten EA-Umgebung öffnen und prüfen. Der Download
+   bestätigt keine erfolgreiche Übernahme in EA. Für eine neue externe
+   Abgleichbasis einen später beobachteten Snapshot zurück importieren.
+
+### Unterstützter Dateiumfang und Verluste
+
+Version 2 umfasst unterstützte Elemente, Anforderungen, Pakete (`SPECIFICATION`),
+Ansichten, Paketplatzierungen und Diagrammzugehörigkeit. Die kanonische Bedeutung
+von Elementen und Beziehungen stammt aus derselben Sparx-Mapping-Bibliothek wie
+bei XMI-Version 3. Die 12 deklarierten Beziehungsabbildungen erhalten erforderliche
+explizite Tags, damit ihre Bedeutung erhalten bleibt. Nicht unterstützte oder
+widersprüchliche Zuordnungen werden abgewiesen. Für Anforderungen gelten weiterhin
+die vorhandenen Projekt- und Endpunktregeln.
+
+Bei `UPDATE_COPY` bleiben unveränderte Tabellen, unbekannte Spalten, BLOBs und
+unbeteiligte Zeilen in der kopierten Basis erhalten. Vorhandene Diagrammgeometrie
+und Diagrammverknüpfungen bleiben bestehen, soweit keine unterstützte ausdrückliche
+Änderung einen Eingriff erfordert. Neue Diagrammzugehörigkeiten erhalten einfache,
+deterministische Rechtecke und einen deklarierten `TRANSFORMED`-Verlust. Das ist
+kein vollständiger MDG- oder beliebiger EA-Layout-Rundlauf. Fehlende Zuordnungen
+oder Objekte führen nicht zu abgeleiteten Löschungen. Unbekannte erforderliche
+Schemastrukturen werden abgewiesen; der Writer erfindet kein vermeintlich
+vollständiges EA-Datenbankschema.
+
+Modell- und geprüfte Objekt-GUIDs sind von lokalen SQLite-Zeilen-IDs und einzelnen
+Diagrammvorkommen getrennt. Paketbesitz und Diagrammzugehörigkeit sind unabhängig.
+Eine Dateiausgabe verändert weder die kanonische Architektur noch den beobachteten
+externen oder gemeinsamen Synchronisationscheckpoint.
+
+### Aufbewahrung, Neustart und öffentliche API
+
+Der Host speichert binäre Basisdateien und Ergebnisse getrennt vom Vorgangs-JSON.
+Die Übersicht enthält gespeicherte `fileBases`. Der `fileExport`-Deskriptor eines
+Vorgangs enthält Modus, Identitätsnamensraum, Basis-ID, SHA-256, Medientyp und
+Byteanzahl, Modellkennung sowie nach der Ausgabe die Ergebnisdatei-ID, deren
+SHA-256 und Byteanzahl. Diese Datenbankeinträge zusammen mit dem übrigen
+Integrationszustand sichern.
+
+Eine identische Wiederholung verwendet dieselbe eingefrorene Basis und denselben
+Identitätsnamensraum. Nach einem Neustart kann die Prüfung fortgesetzt werden.
+Ein verändertes Plugin-Artefakt verhindert die Ausführung einer offenen Prüfung
+(`INTEGRATION_PLUGIN_CHANGED`); eine neue Vorschau ist erforderlich. Ohne Plugin
+sind neue Vorgänge gesperrt, während abgeschlossene Dateien, kanonische Daten,
+Identitäten und Historie erhalten bleiben. Ein fertiger Download benötigt keinen
+Plugin-Aufruf.
+
+API-Clients verwenden multipart
+`POST /api/integrations/{connection}/export-previews`. Der JSON-Part `request`
+enthält `operationId`, den exakten lokalen Zustand `expected`,
+`expectedExternalVersion`, `mode`, `mediaType` und optional `baseFileId`. Genau
+eine Basis angeben: den optionalen binären Part `file` oder eine vorhandene
+`baseFileId`. Die Prüfung verwendet weiterhin JSON
+`POST /api/integrations/{connection}/files` mit `ReviewedChangeSet`. Abgeschlossene
+Dateien liefert `GET /api/integrations/{connection}/operations/{operation}/file`.
+
+Der getrennte PCS-Connector bleibt bei Lesen/Pull, bis für seinen konkreten
+Provider ein verifizierter Vertrag zur bedingten Veröffentlichung vorliegt.
+Eine native Dateiausgabe begründet keine PCS-Schreibgarantien. Die Anleitung
+[QEA-Dateiabnahme und Betreiberbelege](../qa/sparx-qea-file-acceptance.md) beschreibt
+den HTTP-Test der installierten JAR, eigene Vorlagen und getrennte EA-Nachweise.
+Native EA-/PCS-Ausführung bleibt `NOT_EXECUTED`, solange kein tatsächlicher
+Produktlauf separat belegt ist. Das Zurücklesen erzeugter SQLite-Dateien ersetzt
+diesen Nachweis nicht.
 
 ## Geprüfter XMI-Ablauf
 

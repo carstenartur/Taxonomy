@@ -1,6 +1,7 @@
 package com.taxonomy.backup.restore;
 
 import com.taxonomy.security.persistence.PrincipalSchemaMigration;
+import com.taxonomy.interop.persistence.IntegrationFileEntity;
 import org.flywaydb.core.Flyway;
 import org.hsqldb.jdbc.JDBCDataSource;
 import org.junit.jupiter.api.Test;
@@ -20,15 +21,17 @@ class RestoreSchemaMigrationTest {
         source.execute("insert into active_marker values(42)");
         RestoreSchemaMigration.bootstrap(active, target, () -> {});
         try (var factory = RestoreSchemaMigration.openValidatedFactory(active, target, model(), () -> {})) {
+            assertThat(factory.getMetamodel().entity(IntegrationFileEntity.class).getJavaType()).isEqualTo(IntegrationFileEntity.class);
             try (var session = factory.openSession()) {
                 session.doWork(connection -> assertThat(connection.getMetaData().getURL()).contains("restore-schema-"));
             }
         }
         var rows = new JdbcTemplate(target);
-        for (String table : List.of("source_artifact", "source_version", "source_fragment", "user_workspace", "app_user", "app_principal", "principal_binding", "backup_capability_grant", "git_packs", "workspace_git_reflog_provenance", "analysis_cluster_call", "analysis_cluster_attempt", "inventory_comparison", "inventory_assertion", "inventory_observation", "inventory_review", "inventory_mapping"))
+        for (String table : List.of("source_artifact", "source_version", "source_fragment", "user_workspace", "app_user", "app_principal", "principal_binding", "backup_capability_grant", "git_packs", "workspace_git_reflog_provenance", "analysis_cluster_call", "analysis_cluster_attempt", "inventory_comparison", "inventory_assertion", "inventory_observation", "inventory_review", "inventory_mapping", "interop_file"))
             assertThat(rows.queryForObject("select count(*) from " + table, Long.class)).as(table).isZero();
         assertThat(rows.queryForObject("select count(*) from principal_installation", Long.class)).isEqualTo(1);
-        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(15);
+        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(16);
+        assertFileExportSchema(target);
         assertReasonLengthColumn(target);
         assertLanguageColumn(target);
         assertRelationLedgerColumns(target);
@@ -38,6 +41,39 @@ class RestoreSchemaMigrationTest {
         rows.execute("alter table source_artifact drop column canonical_identifier");
         assertThatThrownBy(() -> RestoreSchemaMigration.openValidatedFactory(active, target, model(), () -> {}))
                 .isInstanceOf(IOException.class).hasMessage("Staged restore schema validation failed");
+    }
+    @Test void additiveFileExportMigrationPreservesLegacyOperationsAndDoesNotInventRetainedFiles() throws Exception {
+        var target = database();
+        migrateBusinessSchema(target, "1");
+        PrincipalSchemaMigration.migrate(target);
+        migrateBusinessSchema(target, "15");
+        var rows = new JdbcTemplate(target);
+        rows.execute("""
+                insert into interop_operation (id, scope_id, connection_id, actor, status, direction,
+                    fingerprint, connection_revision, context_json, document_json, changes_json,
+                    result_file_json, created_at, updated_at, row_version)
+                values ('97c078aa-d157-4c17-a517-3ecb9a725337', 'legacy-scope',
+                    'c66db66d-dd6b-4263-adfc-2ad5dfd24de3', 'alice', 'COMPLETED', 'OUTBOUND',
+                    'legacy-fingerprint', 7, '{}', '{}', '[]', '{"legacy":"retained"}',
+                    '2026-01-01T12:00:00Z', '2026-01-01T12:00:00Z', 3)
+                """);
+        var legacy = rows.queryForMap("select * from interop_operation");
+        assertThat(legacy).doesNotContainKeys("FILE_EXPORT_JSON", "BASE_FILE_ID", "RESULT_FILE_ID");
+        assertThat(tableNames(target)).doesNotContain("INTEROP_FILE");
+
+        migrateBusinessSchema(target, "16");
+
+        assertFileExportSchema(target);
+        var migrated = rows.queryForMap("select * from interop_operation");
+        for (String column : List.of("FILE_EXPORT_JSON", "BASE_FILE_ID", "RESULT_FILE_ID")) {
+            assertThat(migrated).containsEntry(column, null);
+            migrated.remove(column);
+        }
+        assertThat(migrated).isEqualTo(legacy);
+        assertThat(rows.queryForObject("select count(*) from interop_file", Long.class)).isZero();
+        migrateBusinessSchema(target, "16");
+        assertThat(rows.queryForObject("select result_file_json from interop_operation", String.class)).isEqualTo("{\"legacy\":\"retained\"}");
+        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(16);
     }
     @Test void restoredHypothesesKeepBranchIdentityAndRejectForeignEvidenceAuthority() throws Exception {
         var active = database(); var target = database();
@@ -235,6 +271,27 @@ class RestoreSchemaMigrationTest {
             while (tables.next()) names.add(tables.getString("TABLE_NAME"));
         }
         return names;
+    }
+    private static void assertFileExportSchema(javax.sql.DataSource database) throws Exception {
+        try (var connection = database.getConnection()) {
+            for (var column : Map.of("FILE_EXPORT_JSON", java.sql.Types.CLOB,
+                    "BASE_FILE_ID", java.sql.Types.VARCHAR, "RESULT_FILE_ID", java.sql.Types.VARCHAR).entrySet()) {
+                try (var metadata = connection.getMetaData().getColumns(connection.getCatalog(), connection.getSchema(), "INTEROP_OPERATION", column.getKey())) {
+                    assertThat(metadata.next()).as("file export column %s", column.getKey()).isTrue();
+                    assertThat(metadata.getInt("DATA_TYPE")).isEqualTo(column.getValue());
+                    assertThat(metadata.getInt("NULLABLE")).isEqualTo(java.sql.DatabaseMetaData.columnNullable);
+                    assertThat(metadata.getString("COLUMN_DEF")).isNull();
+                    if (column.getValue() == java.sql.Types.VARCHAR) assertThat(metadata.getInt("COLUMN_SIZE")).isEqualTo(36);
+                    assertThat(metadata.next()).isFalse();
+                }
+            }
+            try (var metadata = connection.getMetaData().getColumns(connection.getCatalog(), connection.getSchema(), "INTEROP_FILE", "CONTENT")) {
+                assertThat(metadata.next()).as("retained binary content").isTrue();
+                assertThat(metadata.getInt("DATA_TYPE")).isEqualTo(java.sql.Types.BLOB);
+                assertThat(metadata.getInt("NULLABLE")).isEqualTo(java.sql.DatabaseMetaData.columnNoNulls);
+                assertThat(metadata.next()).isFalse();
+            }
+        }
     }
     private static void assertReasonLengthColumn(javax.sql.DataSource database) throws Exception {
         try (var connection = database.getConnection();

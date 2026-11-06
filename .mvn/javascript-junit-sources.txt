@@ -105,3 +105,4 @@ taxonomy-app/src/test/js/contextual-help.cjs
 .github/scripts/database-setup.browser.test.mjs
 .github/scripts/git-sync-status.browser.test.mjs
 .github/scripts/user-management-navigation.browser.test.mjs
+.github/scripts/integrations.browser.test.mjs

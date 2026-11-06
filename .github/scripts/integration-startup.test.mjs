@@ -60,7 +60,7 @@ function harness({ mayWrite = true, failProfiles = false, empty = false, incompl
             }
             if (path === '') return empty ? [] : [{ id: 'conn', connectorId: 'test', profileVersion: '1', displayName: 'TEST ONLY' }];
             if (path === '/conn') return {
-                connection: { connectorId: 'test', profileVersion: '1', displayName: 'TEST ONLY',
+                connection: { id: 'conn', connectorId: 'test', profileVersion: '1', displayName: 'TEST ONLY',
                     authority: incomplete ? null : 'BIDIRECTIONAL',
                     externalScope: incomplete ? null : { systemType: 'Archi', repository: 'roadmap' } },
                 history: [{ id: 'old-op', status: 'COMPLETED', createdAt: 'earlier' }],

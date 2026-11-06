@@ -414,6 +414,7 @@ capabilities, the shared catalog and startup versus dynamic lifecycle rules.
 |---|---|
 | `taxonomy-domain` | Framework-free shared architecture and analysis types |
 | `taxonomy-dsl` | Framework-free DSL syntax, parsing, mapping, semantic diff, and model processing |
+| `taxonomy-sparx-mapping` | JDK-only canonical Sparx types shared by XMI export and the optional QEA plugin |
 | `taxonomy-export` | Framework-free export contracts, codecs, and neutral rendering |
 | `taxonomy-extension-api` | Framework-free extension interfaces and metadata |
 | `taxonomy-extension-runtime` | Atomic plugin catalog, artifact validation and private classloader |

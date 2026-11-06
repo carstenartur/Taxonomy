@@ -18,6 +18,7 @@
   "expectedGroups": [
     "taxonomy-domain",
     "taxonomy-dsl",
+    "taxonomy-sparx-mapping",
     "taxonomy-export",
     "taxonomy-extension-api",
     "taxonomy-app",

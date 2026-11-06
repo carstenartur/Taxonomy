@@ -14,12 +14,15 @@ final class QeaSelectionValidator {
     private QeaSelectionValidator() { }
 
     static void validate(OutboundRequest selection) {
+        validate(selection, SparxQeaConnector.VERSION);
+    }
+    static void validate(OutboundRequest selection, String version) {
         if (selection == null || selection.context() == null || selection.document() == null)
             throw fail("QEA_PROFILE", "A reviewed QEA selection is required");
         var document = selection.document();
-        if (!SparxQeaConnector.PROFILE.equals(document.profile()) || !SparxQeaConnector.VERSION.equals(document.profileVersion())
+        if (!SparxQeaConnector.PROFILE.equals(document.profile()) || !version.equals(document.profileVersion())
                 || !document.profile().equals(selection.context().profile()) || !document.profileVersion().equals(selection.context().profileVersion()))
-            throw fail("QEA_PROFILE", "Reviewed selection must use sparx-qea profile version 1");
+            throw fail("QEA_PROFILE", "Reviewed selection must use the selected sparx-qea profile version");
         String model = QeaIds.guid(document.metadata().get("identifier"), "QEA_MODEL_IDENTITY");
         if ((long) document.artifacts().size() + document.relations().size() + document.placements().size() > QeaDatabase.MAX_ROWS * 8L)
             throw fail("QEA_LIMIT", "The reviewed projection exceeds the supported item budget");

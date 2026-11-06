@@ -23,6 +23,7 @@ com.taxonomy.interop.persistence.ExternalIdentityMappingEntity
 com.taxonomy.interop.persistence.IntegrationCheckpointEntity
 com.taxonomy.interop.persistence.IntegrationConnectionEntity
 com.taxonomy.interop.persistence.IntegrationEventEntity
+com.taxonomy.interop.persistence.IntegrationFileEntity
 com.taxonomy.interop.persistence.IntegrationOperationEntity
 com.taxonomy.interop.persistence.IntegrationPublicationEntity
 com.taxonomy.interop.persistence.IntegrationPublishAttemptEntity

@@ -70,12 +70,23 @@ public class IntegrationController {
         if (file.getSize() > com.taxonomy.exchange.ExchangeXml.MAX_BYTES) throw new IntegrationProblem("PAYLOAD_LIMIT", 413, "Exchange exceeds 16 MiB");
         return service.preview(resolver.resolveCurrentRepositoryContext(), connection, request, file.getBytes());
     }
-    @PostMapping("/api/integrations/{connection}/export-previews") @ResponseBody
+    @PostMapping(value="/api/integrations/{connection}/export-previews", consumes="application/json") @ResponseBody
     @io.swagger.v3.oas.annotations.Operation(summary = "Preview a scoped integration export",
             description = "Creates an export preview from the requested exact local state for human review. This does not publish to a remote endpoint or implicitly accept a generated change set.")
     @ApiResponse(responseCode = "200", description = "Preview a scoped integration export response")
     public Operation previewExport(@Parameter(description = "Connection UUID within the authenticated repository context")
             @PathVariable UUID connection, @RequestBody ExportRequest request) { return service.previewExport(resolver.resolveCurrentRepositoryContext(), connection, request); }
+    @PostMapping(value="/api/integrations/{connection}/export-previews", consumes="multipart/form-data") @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Preview a file export from an immutable binary basis",
+            description = "Uses exactly one uploaded basis or a retained basis handle owned by this actor and connection. The mode, exact local state and binary digest are frozen before review. No remote repository is changed.")
+    @ApiResponse(responseCode = "200", description = "Reviewed file export candidate with retained basis metadata")
+    public Operation previewBasedExport(@Parameter(description = "Connection UUID within the authenticated repository context")
+                                        @PathVariable UUID connection, @RequestPart("request") BasedExportRequest request,
+                                        @RequestPart(value="file", required=false) MultipartFile file) throws IOException {
+        if (file != null && file.getSize() > com.taxonomy.exchange.ExchangeXml.MAX_BYTES)
+            throw new IntegrationProblem("PAYLOAD_LIMIT", 413, "Exchange exceeds 16 MiB");
+        return service.previewExport(resolver.resolveCurrentRepositoryContext(), connection, request, file == null ? null : file.getBytes());
+    }
     @PostMapping("/api/integrations/{connection}/remote-previews") @ResponseBody
     @io.swagger.v3.oas.annotations.Operation(summary = "Preview a remote integration import",
             description = "Obtains a remote-source preview through the configured integration in the authorized context. It may contact that endpoint but does not apply changes to the local architecture.")

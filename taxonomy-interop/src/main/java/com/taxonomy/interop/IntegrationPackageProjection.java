@@ -104,14 +104,18 @@ final class IntegrationPackageProjection {
     }
     static void synchronize(Connection connection, String dsl, List<Identity> mappings, Map<String, Artifact> items,
                             String modelId, boolean includeNew) {
+        synchronize(connection, dsl, mappings, items, modelId, includeNew, null);
+    }
+    static void synchronize(Connection connection, String dsl, List<Identity> mappings, Map<String, Artifact> items,
+                            String modelId, boolean includeNew, FileExportProfile fileProfile) {
         CanonicalArchitectureModel model = new ArchitectureDslCommands().model(dsl);
         Map<String, String> external = new HashMap<>();
         for (Identity mapping : mappings) if (!mapping.removed() && mapping.internal() != null
                 && Set.of(ArtifactKind.ELEMENT, ArtifactKind.SPECIFICATION).contains(mapping.internal().kind()))
             external.put(mapping.businessIdentity(), mapping.internal().id());
         if (includeNew) {
-            model.getElements().forEach(e -> external.putIfAbsent(e.getId(), IntegrationDomainAdapter.externalId(connection, "export-element:" + e.getId())));
-            model.getPackages().forEach(p -> external.putIfAbsent(p.id(), IntegrationDomainAdapter.externalId(connection, "export-package:" + p.id())));
+            model.getElements().forEach(e -> external.putIfAbsent(e.getId(), IntegrationDomainAdapter.externalId(connection, "export-element:" + e.getId(), fileProfile)));
+            model.getPackages().forEach(p -> external.putIfAbsent(p.id(), IntegrationDomainAdapter.externalId(connection, "export-package:" + p.id(), fileProfile)));
         }
         Set<String> existingPackages = model.getPackages().stream().map(ArchitecturePackage::id).collect(java.util.stream.Collectors.toSet());
         for (Identity mapping : mappings) if (mapping.internal() != null && mapping.internal().kind() == ArtifactKind.SPECIFICATION && !existingPackages.contains(mapping.businessIdentity()))
@@ -119,14 +123,16 @@ final class IntegrationPackageProjection {
         for (ArchitecturePackage pkg : model.getPackages()) {
             String id = external.get(pkg.id()); if (id == null) continue;
             Artifact previous = items.get("SPECIFICATION:" + id);
-            items.put("SPECIFICATION:" + id, new Artifact(id, ArtifactKind.SPECIFICATION, "Package", pkg.title(), pkg.description() == null ? "" : pkg.description(),
+            items.put("SPECIFICATION:" + id, new Artifact(id, ArtifactKind.SPECIFICATION, fileProfile == null ? "Package" : fileProfile.packageType(), pkg.title(), pkg.description() == null ? "" : pkg.description(),
                     previous == null ? Map.of() : previous.attributes(), previous == null ? Map.of() : previous.extensions()));
         }
         Map<String, Artifact> occurrences = new HashMap<>();
         Set<String> viewContainers = viewContainers(items, mappings);
         for (Artifact a : items.values()) if (isPackagePlacement(a, viewContainers)) occurrences.put(a.extensions().get("artifact"), a);
         Map<String, String> placementIds = new HashMap<>();
-        external.forEach((nativeId, id) -> placementIds.put(nativeId, occurrences.containsKey(id) ? occurrences.get(id).id() : (com.taxonomy.interop.sparx.SparxSnapshots.isSparx(connection.connectorId()) ? "placement:" + id : IntegrationDomainAdapter.externalId(connection, "export-placement:" + nativeId))));
+        external.forEach((nativeId, id) -> placementIds.put(nativeId, occurrences.containsKey(id) ? occurrences.get(id).id()
+                : fileProfile != null ? (existingPackages.contains(nativeId) ? "package:" : "member:") + id
+                : com.taxonomy.interop.sparx.SparxSnapshots.isSparx(connection.connectorId()) ? "placement:" + id : IntegrationDomainAdapter.externalId(connection, "export-placement:" + nativeId)));
         List<PackagePlacement> members = new ArrayList<>();
         model.getPackages().forEach(p -> members.add(new PackagePlacement(PackageMemberKind.PACKAGE, p.id(), p.parentId(), p.position())));
         model.getElements().forEach(e -> {

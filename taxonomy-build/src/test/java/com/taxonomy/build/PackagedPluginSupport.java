@@ -51,7 +51,7 @@ final class PackagedPluginSupport {
         String version = System.getProperty("taxonomy.project.version");
         assertThat(version).isNotBlank();
         // Install only exact built SDK JARs and their original published POMs, never host sources.
-        for (String module : List.of("taxonomy", "taxonomy-domain", "taxonomy-extension-api", "taxonomy-export")) {
+        for (String module : List.of("taxonomy", "taxonomy-domain", "taxonomy-extension-api", "taxonomy-sparx-mapping", "taxonomy-export")) {
             Path destination = Files.createDirectories(localRepository.resolve("com/taxonomy/" + module + "/" + version));
             Files.copy(root.resolve(module.equals("taxonomy") ? "pom.xml" : module + "/pom.xml"),
                     destination.resolve(module + "-" + version + ".pom"));
@@ -144,17 +144,27 @@ final class PackagedPluginSupport {
         HttpResponse<String> upload(String route, String metadata, Path file, String mediaType,
                                     Map<String, String> headers) throws IOException, InterruptedException {
             String boundary = "taxonomy-packaged-" + UUID.randomUUID();
-            String filename = file.getFileName().toString();
-            if (filename.indexOf('"') >= 0 || filename.indexOf('\r') >= 0 || filename.indexOf('\n') >= 0)
-                throw new IllegalArgumentException("Unsafe multipart filename");
             var body = new java.io.ByteArrayOutputStream();
             body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"request\"\r\n"
-                    + "Content-Type: application/json\r\n\r\n" + metadata + "\r\n"
-                    + "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + filename + "\"\r\n"
-                    + "Content-Type: " + mediaType + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
-            Files.copy(file, body);
-            body.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+                    + "Content-Type: application/json\r\n\r\n" + metadata + "\r\n").getBytes(StandardCharsets.UTF_8));
+            if (file != null) {
+                String filename = file.getFileName().toString();
+                if (filename.indexOf('"') >= 0 || filename.indexOf('\r') >= 0 || filename.indexOf('\n') >= 0)
+                    throw new IllegalArgumentException("Unsafe multipart filename");
+                body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + filename + "\"\r\n"
+                        + "Content-Type: " + mediaType + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                Files.copy(file, body);
+                body.write("\r\n".getBytes(StandardCharsets.UTF_8));
+            }
+            body.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
             return request("POST", route, body.toByteArray(), "multipart/form-data; boundary=" + boundary, headers);
+        }
+        HttpResponse<byte[]> download(String route, Map<String, String> headers) throws IOException, InterruptedException {
+            var builder = HttpRequest.newBuilder(origin.resolve(route)).timeout(Duration.ofSeconds(60))
+                    .header("Authorization", "Basic " + Base64.getEncoder().encodeToString(("admin:" + PASSWORD).getBytes(StandardCharsets.UTF_8)));
+            headers.forEach(builder::header);
+            return HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
+                    .send(builder.GET().build(), HttpResponse.BodyHandlers.ofByteArray());
         }
         private HttpResponse<String> request(String method, String route, byte[] body, String contentType,
                                              Map<String, String> headers) throws IOException, InterruptedException {

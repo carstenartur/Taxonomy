@@ -1,10 +1,12 @@
 package com.taxonomy.extension.api.integration;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 
 /** Framework-neutral exchange values. These are transport/evidence values, never a second authoring model. */
@@ -22,13 +24,31 @@ public final class IntegrationContracts {
          * approval metadata is never an authorization grant from the source.
          * Raw artifact type and attributes remain external evidence.
          */
-        CANONICAL_PROJECTION_V1
+        CANONICAL_PROJECTION_V1,
+        /** File output from an immutable operator-supplied basis with host-reserved identities. */
+        BASED_FILE_EXPORT_V1
     }
     public enum ArtifactKind { REQUIREMENT, ELEMENT, VIEW, SPECIFICATION, FEATURE, RELATION, PLACEMENT, METADATA }
     public enum ChangeKind { ADD, UPDATE, MOVE, REMOVE_CANDIDATE, RELATION, CONFLICT, UNCHANGED }
     public enum Decision { ACCEPT, REJECT, TAKE_EXTERNAL, KEEP_INTERNAL }
     public enum OperationStatus { FETCH_PENDING, FETCH_FAILED, PREVIEWED, APPLYING, APPLIED, CHECKPOINT_PENDING, COMPLETED, CONFLICT, CANCELLED, FAILED, PARTIAL }
     public enum LossDisposition { MAPPED, PRESERVED_EXTENSION, TRANSFORMED, UNSUPPORTED }
+    public enum FileExportMode { NEW_PROJECT, UPDATE_COPY }
+    public enum ExternalIdentityFormat { UUID_BRACED_UPPER }
+
+    /** Neutral host projection policy; native serialization stays inside the connector. */
+    public record FileExportProfile(Set<FileExportMode> modes, ExternalIdentityFormat identityFormat,
+                                    Map<String, String> elementTypes, Map<String, String> relationTypes,
+                                    String requirementType, String packageType, String viewType) {
+        public FileExportProfile {
+            modes = Set.copyOf(modes); Objects.requireNonNull(identityFormat);
+            if (modes.isEmpty()) throw new IllegalArgumentException("At least one file export mode is required");
+            elementTypes = Map.copyOf(elementTypes); relationTypes = Map.copyOf(relationTypes);
+            elementTypes.forEach((canonical, transport) -> { require(canonical, "canonical element type"); require(transport, "element transport type"); });
+            relationTypes.forEach((canonical, transport) -> { require(canonical, "canonical relation type"); require(transport, "relation transport type"); });
+            require(requirementType, "requirement type"); require(packageType, "package type"); require(viewType, "view type");
+        }
+    }
 
     /** Adapter guarantees are profile-specific, not claims about every product that reads the format. */
     public record PlanningSupport(String profile, String version, Set<String> fields,
@@ -123,7 +143,11 @@ public final class IntegrationContracts {
     public record IntegrationChange(String id, String externalId, ChangeKind kind, Set<String> fields,
                                     String expectedInternalFingerprint, String expectedExternalFingerprint,
                                     Artifact before, Artifact after, List<String> conflicts) {
-        public IntegrationChange { fields = Set.copyOf(fields); conflicts = List.copyOf(conflicts); }
+        public IntegrationChange {
+            // This set is an HTTP array too; retained reviews need the same order after a JVM restart.
+            fields = Collections.unmodifiableSet(new TreeSet<>(fields));
+            conflicts = List.copyOf(conflicts);
+        }
     }
 
     public record IntegrationChangeSet(UUID operationId, IntegrationContext context, String fingerprint,
@@ -162,6 +186,18 @@ public final class IntegrationContracts {
         @Override public byte[] content() { return content.clone(); }
     }
     public record OutboundRequest(IntegrationContext context, ExchangeDocument document, String expectedExternalVersion) {}
+    public record BasedOutboundRequest(OutboundRequest outbound, FileExportMode mode, UUID identityNamespace,
+                                       String baseSha256, String baseMediaType, byte[] baseContent) {
+        public BasedOutboundRequest {
+            Objects.requireNonNull(outbound); Objects.requireNonNull(mode); Objects.requireNonNull(identityNamespace);
+            if (baseSha256 == null || !baseSha256.matches("[0-9a-f]{64}"))
+                throw new IllegalArgumentException("A lowercase SHA-256 basis digest is required");
+            require(baseMediaType, "basis media type");
+            baseContent = Objects.requireNonNull(baseContent).clone();
+            if (baseContent.length == 0) throw new IllegalArgumentException("A nonempty file basis is required");
+        }
+        @Override public byte[] baseContent() { return baseContent.clone(); }
+    }
     public record ExchangeFile(String mediaType, String filename, byte[] content, List<MappingLoss> losses) {
         public ExchangeFile {
             require(filename, "filename");

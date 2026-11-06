@@ -303,6 +303,12 @@ try {
     onReloadVerified: async () => {
       await navigationPollEvidence.verifyDestination(null, 'reload');
       reconcileSystemInformationConsoleErrors([]);
+    },
+    onSnapshotNavigationStart: declaration => navigationPollEvidence.begin('en', 'portfolio-snapshot', declaration),
+    onSnapshotNavigationEnd: succeeded => navigationPollEvidence.end('en', succeeded, 'portfolio-snapshot'),
+    onSnapshotNavigationVerified: async () => {
+      await navigationPollEvidence.verifyDestination('en', 'portfolio-snapshot');
+      reconcileSystemInformationConsoleErrors([]);
     }
   });
   if (consoleErrors.length !== editorConsoleErrors || externalRequests.length !== editorExternalRequests) {

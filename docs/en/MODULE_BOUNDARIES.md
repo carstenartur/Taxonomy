@@ -12,6 +12,7 @@ Its intermediate blockers, counts, and issue status describe past checkpoints, n
 |---|---|---|
 | `taxonomy-domain` | Foundation | Framework-free shared architecture/analysis contracts |
 | `taxonomy-dsl` | Foundation | Framework-free TaxDSL syntax, model, validation, mapping, diff and commands |
+| `taxonomy-sparx-mapping` | Foundation | JDK-only canonical Sparx types shared by XMI export and the optional QEA plugin |
 | `taxonomy-export` | Foundation | Framework-free export contracts, codecs and neutral rendering |
 | `taxonomy-extension-api` | Foundation | Framework-free extension contracts and metadata |
 | `taxonomy-extension-runtime` | Runtime | Atomic plugin catalog, artifact validation and private classloader |
@@ -31,13 +32,21 @@ Its intermediate blockers, counts, and issue status describe past checkpoints, n
 | `taxonomy-coverage` | Build/tooling | Reactor-wide coverage aggregation; not a runtime feature library |
 | `taxonomy-build` | Build/tooling | Whole-reactor quality gates and browser/verification contracts |
 
-The root aggregator is not an additional child module. The twenty children comprise
-six foundations, eight features, the plugin runtime, an external plugin, the composition root, and three build/tooling modules.
+The root aggregator is not an additional child module. The twenty-one children comprise
+seven foundations, eight features, the plugin runtime, an external plugin, the composition root, and three build/tooling modules.
 Only `taxonomy-app` is an executable application. The build/tooling group is not a
 set of runtime services. See [the verified feature dependency graph](ARCHITECTURE.md#module-architecture)
 and [runtime/persistence views](ARCHITECTURE.md).
 
 ## Current ownership contracts
+
+### `taxonomy-sparx-mapping`
+
+Owns the canonical element types and relation transports used by Sparx integrations.
+It depends only on the JDK. `taxonomy-export` consumes these mappings for its existing
+XMI facades; the independently built QEA plugin packages a relocated copy without
+pulling host implementation libraries into its private classloader. Transport and
+version-specific compatibility behavior remain with their codecs and connectors.
 
 ### `taxonomy-knowledge`
 

@@ -69,6 +69,15 @@ their restore combination can be registered. A validated schema is not evidence
 that its business datasets have been imported or that a database matrix combination
 or production deployment can be activated.
 
+Business migration V16 adds the nullable based-file export plan and basis/result
+references to integration operations, plus the immutable binary `interop_file`
+table. The approved model includes `IntegrationFileEntity`, so Hibernate validates
+its metadata and BLOB storage together with `IntegrationOperationEntity`. V1 is
+unchanged; existing `result_file_json` exports and operation evidence are preserved,
+without invented binary files or basis identifiers. This schema registration does
+not import or reactivate integration operations. Portable integration evidence still
+requires explicit target mapping and manual review before any outgoing work.
+
 ## Typed source owner import
 
 `ApplicationSourceRestoreImporter` consumes only the reviewed application schema1 source-artifact,

@@ -43,7 +43,7 @@ final class IntegrationBackupSelection {
             });
         }
         for (String table : List.of("interop_identity", "interop_checkpoint", "interop_operation", "interop_event",
-                "interop_publication", "interop_publish_item", "interop_publish_attempt")) {
+                "interop_publication", "interop_publish_item", "interop_publish_attempt", "interop_file")) {
             // Include either end of the edge: a child with a changed hash must not disappear from its selected parent.
             for (var query : queries("e.id", table + " e left join interop_connection c on c.id=e.connection_id",
                     "(c.id is null or c.scope_id<>e.scope_id)", List.of("e.scope_id", "c.scope_id"))) requireEmpty(query);
@@ -55,6 +55,9 @@ final class IntegrationBackupSelection {
         }
         for (String table : List.of("interop_identity", "interop_checkpoint", "interop_event"))
             parent(table, "operation_id", "interop_operation", "");
+        parent("interop_file", "operation_id", "interop_operation", " and p.actor=e.actor");
+        parent("interop_operation", "base_file_id", "interop_file", " and p.kind='BASE' and p.actor=e.actor");
+        parent("interop_operation", "result_file_id", "interop_file", " and p.kind='RESULT' and p.operation_id=e.id and p.actor=e.actor");
         parent("interop_publication", "id", "interop_operation", "");
         parent("interop_publication", "predecessor_id", "interop_publication", "");
         parent("interop_publication", "common_checkpoint_id", "interop_checkpoint", "");

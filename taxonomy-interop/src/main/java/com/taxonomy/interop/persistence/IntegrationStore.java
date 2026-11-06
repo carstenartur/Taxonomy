@@ -4,6 +4,9 @@ import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.interop.IntegrationJson;
 import com.taxonomy.interop.IntegrationProblem;
+import com.taxonomy.interop.IntegrationFileBinding;
+import com.taxonomy.exchange.ExchangeXml;
+import com.taxonomy.exchange.ReqifExchangeCodec;
 import com.taxonomy.workspace.service.RepositoryContext;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
@@ -46,7 +49,30 @@ public class IntegrationStore {
     public record Operation(UUID id, UUID connectionId, IntegrationContext context, String direction, OperationStatus status,
                             String fingerprint, long connectionRevision, ExchangeDocument document, List<IntegrationChange> changes,
                             ReviewedChangeSet review, String reviewFingerprint, String resultCommit, Long resultRevision,
-                            ExchangeDocument resultDocument, InternalState resultState, @com.fasterxml.jackson.annotation.JsonIgnore ExchangeFile resultFile, String failureCode, Instant createdAt) {}
+                            ExchangeDocument resultDocument, InternalState resultState, @com.fasterxml.jackson.annotation.JsonIgnore ExchangeFile resultFile, String failureCode, Instant createdAt,
+                            FileExportInfo fileExport) {
+        public Operation(UUID id, UUID connectionId, IntegrationContext context, String direction, OperationStatus status,
+                         String fingerprint, long connectionRevision, ExchangeDocument document, List<IntegrationChange> changes,
+                         ReviewedChangeSet review, String reviewFingerprint, String resultCommit, Long resultRevision,
+                         ExchangeDocument resultDocument, InternalState resultState, ExchangeFile resultFile, String failureCode, Instant createdAt) {
+            this(id, connectionId, context, direction, status, fingerprint, connectionRevision, document, changes, review,
+                    reviewFingerprint, resultCommit, resultRevision, resultDocument, resultState, resultFile, failureCode, createdAt, null);
+        }
+    }
+    public record FileBase(UUID id, String sha256, String mediaType, long bytes, String modelIdentifier, UUID sourceOperationId) {}
+    public record RetainedBinary(FileBase reference, byte[] content) {
+        public RetainedBinary { content = content.clone(); }
+        @Override public byte[] content() { return content.clone(); }
+    }
+    /** Frozen host policy and opaque basis reference; contains no binary content. */
+    public record FileExportPlan(FileExportMode mode, UUID identityNamespace, FileBase base,
+                                 String modelIdentifier, FileExportProfile profile) {
+        public FileExportPlan { Objects.requireNonNull(mode); Objects.requireNonNull(identityNamespace); Objects.requireNonNull(base);
+            Objects.requireNonNull(modelIdentifier); Objects.requireNonNull(profile); }
+    }
+    public record FileExportInfo(FileExportMode mode, UUID identityNamespace, UUID baseFileId, String baseSha256,
+                                 String baseMediaType, long baseBytes, String modelIdentifier,
+                                 UUID outputFileId, String outputSha256, Long outputBytes) {}
     public record OperationSummary(UUID id, UUID connectionId, String direction, OperationStatus status, String fingerprint,
                                    String resultCommit, Long resultRevision, String failureCode, Instant createdAt) {}
     public record Identity(String externalId, String businessIdentity, Long requirementId, String externalVersion,
@@ -83,6 +109,10 @@ public class IntegrationStore {
         return transaction.execute(status -> { T result = action.apply(new Session(context, requireConnection(context, connectionId, true))); em.flush(); return result; });
     }
     public Operation operation(RepositoryContext context, UUID connectionId, UUID id) { return locked(context, connectionId, session -> session.operation(id)); }
+    public List<FileBase> bases(RepositoryContext context, UUID connectionId) { return locked(context, connectionId, Session::bases); }
+    public ExchangeFile file(RepositoryContext context, UUID connectionId, UUID operationId) {
+        return locked(context, connectionId, session -> session.file(operationId));
+    }
     public List<Identity> identities(RepositoryContext context, UUID connectionId) { return locked(context, connectionId, Session::identities); }
     public List<OperationSummary> history(RepositoryContext context, UUID connectionId) {
         return transaction.execute(status -> {
@@ -134,6 +164,62 @@ public class IntegrationStore {
         public List<Identity> identities() {
             return em.createQuery("select m from ExternalIdentityMappingEntity m where m.scopeId=:scope and m.connectionId=:connection order by m.externalId", ExternalIdentityMappingEntity.class)
                     .setParameter("scope", connection.scopeId).setParameter("connection", connection.id).getResultList().stream().map(IntegrationStore.this::identity).toList();
+        }
+        /** Read descriptors only: overview/history must never materialize file BLOBs. */
+        public List<FileBase> bases() {
+            return em.createQuery("select f.id,f.sha256,f.mediaType,f.byteCount,f.modelIdentifier,f.operationId from IntegrationFileEntity f "
+                            + "where f.scopeId=:scope and f.connectionId=:connection and f.actor=:actor and f.kind='BASE' "
+                            + "and f.profile=:profile and f.profileVersion=:version order by f.createdAt desc,f.id", Object[].class)
+                    .setParameter("scope", connection.scopeId).setParameter("connection", connection.id).setParameter("actor", context.username())
+                    .setParameter("profile", connection.connectorId).setParameter("version", connection.profileVersion).setMaxResults(100)
+                    .getResultList().stream().map(IntegrationStore::fileBase).toList();
+        }
+        public FileBase retainBase(UUID operationId, String mediaType, byte[] content, String modelIdentifier) {
+            var operation = requireOperation(operationId);
+            if (!operation.actor.equals(context.username())) throw IntegrationProblem.missing();
+            validateBinary(mediaType, content);
+            if (operation.baseFileId != null) {
+                var existing = base(uuid(operation.baseFileId));
+                if (!existing.reference().sha256().equals(ReqifExchangeCodec.digest(content))
+                        || !existing.reference().mediaType().equals(mediaType)) throw IntegrationProblem.conflict("FILE_BASE_CHANGED");
+                return existing.reference();
+            }
+            var entity = newFile(operation, "BASE", mediaType, "source.bin", content, modelIdentifier, List.of());
+            operation.baseFileId = entity.id;
+            return fileBase(entity);
+        }
+        public RetainedBinary base(UUID id) {
+            var entity = requireFile(id, "BASE");
+            if (!entity.actor.equals(context.username())) throw IntegrationProblem.missing();
+            var origin = requireOperation(uuid(entity.operationId));
+            if (!origin.actor.equals(entity.actor) || !Objects.equals(origin.baseFileId, entity.id))
+                throw IntegrationProblem.conflict("FILE_BINDING_CHANGED");
+            var source = json.read(origin.documentJson, ExchangeDocument.class);
+            if (!IntegrationFileBinding.plugin(source).equals(json.read(entity.bindingJson, java.util.Map.class))
+                    || ("INBOUND".equals(origin.direction) && !entity.sha256.equals(source.externalVersion())))
+                throw IntegrationProblem.conflict("FILE_BINDING_CHANGED");
+            verifyBinary(entity);
+            return new RetainedBinary(fileBase(entity), entity.content);
+        }
+        public void requireBaseBinding(UUID id, ExchangeDocument document) {
+            var entity = requireFile(id, "BASE");
+            if (!entity.actor.equals(context.username())) throw IntegrationProblem.missing();
+            if (!IntegrationFileBinding.plugin(document).equals(json.read(entity.bindingJson, java.util.Map.class)))
+                throw IntegrationProblem.conflict("INTEGRATION_PLUGIN_CHANGED");
+        }
+        public FileExportPlan fileExportPlan(UUID operationId) {
+            return json.read(requireOperation(operationId).fileExportJson, FileExportPlan.class);
+        }
+        public void fileExport(UUID operationId, FileExportPlan plan) {
+            var operation = requireOperation(operationId);
+            if (!operation.actor.equals(context.username()) || !"OUTBOUND".equals(operation.direction)) throw IntegrationProblem.missing();
+            var source = base(plan.base().id());
+            if (!source.reference().equals(plan.base()) || !plan.identityNamespace().toString().equals(connection.id))
+                throw IntegrationProblem.conflict("FILE_BINDING_CHANGED");
+            requireBaseBinding(plan.base().id(), json.read(operation.documentJson, ExchangeDocument.class));
+            String encoded = json.write(plan);
+            if (operation.fileExportJson != null && !operation.fileExportJson.equals(encoded)) throw IntegrationProblem.conflict("FILE_BINDING_CHANGED");
+            operation.baseFileId = plan.base().id().toString(); operation.fileExportJson = encoded;
         }
         public Operation preview(UUID id, IntegrationContext authority, String direction, String fingerprint,
                                  ExchangeDocument document, List<IntegrationChange> changes) {
@@ -203,7 +289,51 @@ public class IntegrationStore {
         public void file(UUID operationId, ExchangeFile file) {
             var operation = requireOperation(operationId);
             if (!operation.status.equals(OperationStatus.APPLIED.name())) throw IntegrationProblem.conflict("OPERATION_STATE");
-            operation.resultFileJson = json.write(file);
+            if (operation.fileExportJson == null) { operation.resultFileJson = json.write(file); return; }
+            validateBinary(file.mediaType(), file.content());
+            if (operation.resultFileId != null) throw IntegrationProblem.conflict("FILE_ALREADY_RETAINED");
+            var plan = fileExportPlan(operationId);
+            var result = newFile(operation, "RESULT", file.mediaType(), file.filename(), file.content(), plan.modelIdentifier(), file.losses());
+            operation.resultFileId = result.id; operation.resultFileJson = null;
+        }
+        public ExchangeFile file(UUID operationId) {
+            var operation = requireOperation(operationId);
+            if (!"OUTBOUND".equals(operation.direction) || !OperationStatus.COMPLETED.name().equals(operation.status))
+                throw IntegrationProblem.conflict("FILE_NOT_READY");
+            if (operation.resultFileId == null) {
+                var legacy = json.read(operation.resultFileJson, ExchangeFile.class);
+                if (legacy == null) throw IntegrationProblem.conflict("FILE_NOT_READY");
+                return legacy;
+            }
+            var entity = requireFile(uuid(operation.resultFileId), "RESULT");
+            if (!entity.operationId.equals(operation.id) || !entity.actor.equals(operation.actor)
+                    || !Objects.equals(entity.reviewFingerprint, operation.reviewFingerprint)) throw IntegrationProblem.conflict("FILE_BINDING_CHANGED");
+            var source = json.read(operation.documentJson, ExchangeDocument.class);
+            if (!IntegrationFileBinding.plugin(source).equals(json.read(entity.bindingJson, java.util.Map.class)))
+                throw IntegrationProblem.conflict("FILE_BINDING_CHANGED");
+            verifyBinary(entity);
+            return new ExchangeFile(entity.mediaType, entity.filename, entity.content,
+                    Arrays.asList(json.read(entity.lossesJson, MappingLoss[].class)));
+        }
+        private IntegrationFileEntity requireFile(UUID id, String kind) {
+            var entity = id == null ? null : em.find(IntegrationFileEntity.class, id.toString());
+            if (entity == null || !entity.scopeId.equals(connection.scopeId) || !entity.connectionId.equals(connection.id)
+                    || !entity.kind.equals(kind) || !entity.profile.equals(connection.connectorId) || !entity.profileVersion.equals(connection.profileVersion))
+                throw IntegrationProblem.missing();
+            return entity;
+        }
+        private IntegrationFileEntity newFile(IntegrationOperationEntity operation, String kind, String mediaType, String filename,
+                                               byte[] content, String modelIdentifier, List<MappingLoss> losses) {
+            validateBinary(mediaType, content);
+            var entity = new IntegrationFileEntity(); entity.id = UUID.randomUUID().toString(); entity.scopeId = connection.scopeId;
+            entity.connectionId = connection.id; entity.operationId = operation.id; entity.actor = operation.actor; entity.kind = kind;
+            entity.profile = connection.connectorId; entity.profileVersion = connection.profileVersion;
+            entity.bindingJson = json.write(IntegrationFileBinding.plugin(json.read(operation.documentJson, ExchangeDocument.class)));
+            entity.sha256 = ReqifExchangeCodec.digest(content); entity.byteCount = content.length; entity.content = content.clone();
+            entity.mediaType = mediaType; entity.filename = filename; entity.modelIdentifier = modelIdentifier;
+            entity.reviewFingerprint = "RESULT".equals(kind) ? operation.reviewFingerprint : null;
+            entity.lossesJson = json.write(losses); entity.createdAt = Instant.now().toString(); em.persist(entity);
+            return entity;
         }
         public void complete(UUID id, InternalState state, String externalVersion, String fingerprint, boolean synchronizedState) {
             IntegrationOperationEntity operation = requireOperation(id);
@@ -270,7 +400,41 @@ public class IntegrationStore {
         return new Operation(uuid(o.id), uuid(o.connectionId), json.read(o.contextJson, IntegrationContext.class), o.direction, OperationStatus.valueOf(o.status),
                 o.fingerprint, o.connectionRevision, json.read(o.documentJson, ExchangeDocument.class), Arrays.asList(json.read(o.changesJson, IntegrationChange[].class)),
                 json.read(o.reviewJson, ReviewedChangeSet.class), o.reviewFingerprint, o.resultCommit, o.resultRevision, json.read(o.resultJson, ExchangeDocument.class),
-                json.read(o.resultStateJson, InternalState.class), json.read(o.resultFileJson, ExchangeFile.class), o.failureCode, Instant.parse(o.createdAt));
+                json.read(o.resultStateJson, InternalState.class), json.read(o.resultFileJson, ExchangeFile.class), o.failureCode, Instant.parse(o.createdAt), fileExportInfo(o));
+    }
+    private FileExportInfo fileExportInfo(IntegrationOperationEntity operation) {
+        var plan = json.read(operation.fileExportJson, FileExportPlan.class);
+        if (plan == null) return null;
+        if (!plan.base().id().toString().equals(operation.baseFileId) || !plan.identityNamespace().toString().equals(operation.connectionId))
+            throw IntegrationProblem.conflict("FILE_BINDING_CHANGED");
+        FileBase output = null;
+        if (operation.resultFileId != null) {
+            var rows = em.createQuery("select f.id,f.sha256,f.mediaType,f.byteCount,f.modelIdentifier,f.operationId from IntegrationFileEntity f "
+                            + "where f.id=:id and f.scopeId=:scope and f.connectionId=:connection and f.operationId=:operation and f.kind='RESULT'", Object[].class)
+                    .setParameter("id", operation.resultFileId).setParameter("scope", operation.scopeId).setParameter("connection", operation.connectionId)
+                    .setParameter("operation", operation.id).getResultList();
+            if (rows.size() != 1) throw IntegrationProblem.conflict("FILE_BINDING_CHANGED");
+            output = fileBase(rows.getFirst());
+        }
+        return new FileExportInfo(plan.mode(), plan.identityNamespace(), plan.base().id(), plan.base().sha256(), plan.base().mediaType(),
+                plan.base().bytes(), plan.modelIdentifier(), output == null ? null : output.id(), output == null ? null : output.sha256(),
+                output == null ? null : output.bytes());
+    }
+    private static FileBase fileBase(IntegrationFileEntity file) {
+        return new FileBase(uuid(file.id), file.sha256, file.mediaType, file.byteCount, file.modelIdentifier, uuid(file.operationId));
+    }
+    private static FileBase fileBase(Object[] row) {
+        return new FileBase(uuid((String) row[0]), (String) row[1], (String) row[2], ((Number) row[3]).longValue(), (String) row[4], uuid((String) row[5]));
+    }
+    private static void validateBinary(String mediaType, byte[] content) {
+        if (mediaType == null || mediaType.isBlank() || mediaType.length() > 200)
+            throw new IntegrationProblem("UNSUPPORTED_MEDIA", 415, "A bounded file media type is required");
+        if (content == null || content.length == 0 || content.length > ExchangeXml.MAX_BYTES)
+            throw new IntegrationProblem("PAYLOAD_LIMIT", 413, "Integration files must contain 1 byte to 16 MiB");
+    }
+    private static void verifyBinary(IntegrationFileEntity file) {
+        if (file.content == null || file.byteCount != file.content.length || file.byteCount < 1 || file.byteCount > ExchangeXml.MAX_BYTES
+                || !ReqifExchangeCodec.digest(file.content).equals(file.sha256)) throw IntegrationProblem.conflict("FILE_CONTENT_CHANGED");
     }
     private Identity identity(ExternalIdentityMappingEntity m) {
         return new Identity(m.externalId, m.businessIdentity, m.requirementId, m.externalVersion, m.fingerprint,

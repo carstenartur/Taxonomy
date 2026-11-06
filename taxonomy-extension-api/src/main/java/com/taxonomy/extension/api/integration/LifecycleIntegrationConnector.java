@@ -12,6 +12,15 @@ public interface LifecycleIntegrationConnector {
     ExchangeDocument previewInbound(InboundRequest request);
     ExchangeFile previewOutbound(OutboundRequest request);
 
+    /** Additive policy for BASED_FILE_EXPORT_V1; legacy connectors need not implement this callback. */
+    default FileExportProfile fileExportProfile() {
+        throw new UnsupportedOperationException("Based file export is not supported by this connector");
+    }
+    /** Serialize only the frozen reviewed document into a copy of the supplied basis. */
+    default ExchangeFile previewOutbound(BasedOutboundRequest request) {
+        throw new UnsupportedOperationException("Based file export is not supported by this connector");
+    }
+
     /** Validate a reviewed inbound selection before any canonical changes. Read-only profiles
      * override this boundary without pretending to support file or remote publication. */
     default void validateInboundSelection(OutboundRequest selection) { previewOutbound(selection); }

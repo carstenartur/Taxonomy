@@ -11,6 +11,9 @@ import static com.taxonomy.plugins.sparx.QeaFailure.fail;
 
 /** Projects a fixed EA subset. Raw source evidence never authorizes a canonical change. */
 final class QeaReader {
+    private final String version;
+    QeaReader() { this(SparxQeaConnector.VERSION); }
+    QeaReader(String version) { this.version = version; }
     private static final Set<String> STEREOTYPED_BASES = Set.of("Class", "Component", "Node", "Activity", "Actor", "UseCase", "Interface", "Artifact");
     private static final Map<String, String> GENERIC_ELEMENTS = Map.of("Component", "Component", "Node", "System",
             "Activity", "Process", "Actor", "BusinessRole");
@@ -51,15 +54,16 @@ final class QeaReader {
         final String source;
         final String target;
         final Row row;
+        String type;
         final Map<String, String> attributes = new TreeMap<>();
         final Map<String, String> extensions = new TreeMap<>();
         ConnectorDraft(String id, String source, String target, Row row) {
-            this.id = id; this.source = source; this.target = target; this.row = row;
+            this.id = id; this.source = source; this.target = target; this.row = row; this.type = row.text("connector_type");
             attributes.putAll(row.evidence());
             extensions.put("direction", row.text("direction").isEmpty() ? "Unspecified" : row.text("direction"));
             if (!row.text("stereotype").isEmpty()) extensions.put("stereotype", row.text("stereotype"));
         }
-        Relation freeze() { return new Relation(id, row.text("connector_type"), source, target, attributes, extensions); }
+        Relation freeze() { return new Relation(id, type, source, target, attributes, extensions); }
     }
     private record EvidenceTarget(String id, Map<String, String> attributes, Map<String, String> extensions) { }
 
@@ -94,11 +98,31 @@ final class QeaReader {
             String named = stereotype.startsWith("Taxonomy::") ? stereotype.substring(10) : stereotype;
             String canonical = stereotype.isEmpty() ? GENERIC_ELEMENTS.get(draft.type)
                     : STEREOTYPED_BASES.contains(draft.type) && QeaSelectionValidator.ELEMENT_TYPES.contains(named) ? named : null;
+            if (version.equals("2") && QeaSemanticProfile.declared(draft.attributes, draft.extensions)) {
+                try { canonical = QeaSemanticProfile.readElement(draft.type, draft.attributes, draft.extensions); }
+                catch (QeaFailure invalid) {
+                    canonical = null;
+                    loss(draft.id, "type", "QEA_TAXONOMY_DECLARATION_INVALID", LossDisposition.UNSUPPORTED,
+                            "Taxonomy tags, UML transport and qualified stereotype contradict each other or are incomplete");
+                }
+            }
             if (canonical != null) draft.extensions.put("canonicalType", canonical);
             else loss(draft.id, "type", "QEA_ELEMENT_UNMAPPED", LossDisposition.UNSUPPORTED, "Choose an explicit Taxonomy type or reject this source element");
         }
         for (ConnectorDraft connector : connectors.values()) {
             String canonical = connector.extensions.getOrDefault("stereotype", "").isEmpty() ? GENERIC_RELATIONS.get(connector.row.text("connector_type")) : null;
+            if (version.equals("2") && QeaSemanticProfile.declared(connector.attributes, connector.extensions)) {
+                try {
+                    String transport = QeaNativeRelations.transport(connector.row);
+                    canonical = QeaSemanticProfile.readRelation(transport, connector.attributes, connector.extensions);
+                    connector.type = transport;
+                }
+                catch (QeaFailure invalid) {
+                    canonical = null;
+                    loss(connector.id, "type", "QEA_TAXONOMY_DECLARATION_INVALID", LossDisposition.UNSUPPORTED,
+                            "Taxonomy relation tags, UML transport, stereotype and direction must all agree");
+                }
+            }
             if (canonical != null && !connector.extensions.get("direction").equals("Bi-Directional")) connector.extensions.put("canonicalType", canonical);
             else loss(connector.id, "type", "QEA_RELATION_UNMAPPED", LossDisposition.UNSUPPORTED,
                     "Original connector type and endpoints require an explicit mapping or preserve-only review");
@@ -122,10 +146,15 @@ final class QeaReader {
         relations.sort(Comparator.comparing(Relation::id));
         placements.sort(Comparator.comparing(Placement::id));
         losses.sort(Comparator.comparing(MappingLoss::artifactId).thenComparing(MappingLoss::field).thenComparing(MappingLoss::code).thenComparing(MappingLoss::detail));
-        return new ExchangeDocument(SparxQeaConnector.PROFILE, SparxQeaConnector.VERSION, externalVersion, false,
+        var metadata = new TreeMap<>(Map.of("identifier", model, "sourceSha256", snapshot.sha256(), "sourceBytes", Integer.toString(snapshot.bytes()),
+                "sourceFormat", "qea", "mappingProfile", "sparx-qea@" + version, "compatibilityEvidence", "synthetic-fixtures-only"));
+        if (version.equals("2")) {
+            List<Draft> roots = packages.values().stream().filter(p -> p.row.number("parent_id") == 0).toList();
+            if (roots.size() == 1) metadata.put("rootIdentifier", roots.getFirst().id);
+        }
+        return new ExchangeDocument(SparxQeaConnector.PROFILE, version, externalVersion, false,
                 "QEA SQLite snapshot; SHA-256 " + snapshot.sha256(), artifacts.values().stream().map(Draft::freeze).toList(), relations, placements,
-                Map.of("identifier", model, "sourceSha256", snapshot.sha256(), "sourceBytes", Integer.toString(snapshot.bytes()),
-                        "sourceFormat", "qea", "mappingProfile", "sparx-qea@1", "compatibilityEvidence", "synthetic-fixtures-only"), losses);
+                metadata, losses);
     }
 
     private Draft add(Row row, ArtifactKind kind, String type, String notes) {

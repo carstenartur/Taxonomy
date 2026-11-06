@@ -85,7 +85,7 @@ export async function verifyConstrainedEditorFrames(page) {
 }
 
 /** Real retained central evidence and the existing private journal, including uncertain transport. */
-async function runSnapshotAdoptionAcceptance(page, base, initial) {
+async function runSnapshotAdoptionAcceptance(page, base, initial, navigationEvidence) {
   const repository = initial.document.context.repositoryId;
   const current = new URL(page.url()).searchParams;
   const branch = current.get('branch') || initial.document.context.branch;
@@ -141,8 +141,20 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
   assert.equal(await resultRow.locator('td').nth(3).locator(':scope > code').innerText(),snapshot.slice(0,12));
   assert.equal(await jobCard.locator('.text-warning').count(),0);
   await request(`/api/projects/${project.id}/requirements/${requirement.id}/versions`,{text:'Later edited requirement must not replace frozen evidence.',changeReason:'Retained version regression'});
-  await page.goto(base+`/architecture/workbench?projectId=${project.id}&snapshotId=${snapshot}&${pin}&lang=en`);
-  await page.locator('#workflow-adopt').waitFor({state:'visible'});
+  await navigationEvidence.onSnapshotNavigationStart?.({ projectId: project.id, requirementId: requirement.id,
+    requirementKey: requirementBody.requirementKey, requirementText: requirementBody.text,
+    jobId: job.id, jobStatus: completed.status, itemStatus: completed.items[0].status, snapshotId: snapshot,
+    repositoryId: repository, workspaceId: sourceWorkspace, branch, locale: 'en' });
+  let snapshotNavigationSucceeded = false;
+  try {
+    await page.goto(base+`/architecture/workbench?projectId=${project.id}&snapshotId=${snapshot}&${pin}&lang=en`);
+    await page.locator('#workflow-adopt').waitFor({state:'visible'});
+    await page.waitForFunction(expected => window.TaxonomyArchitectureWorkspace?.isActive?.() === true
+      && window.TaxonomyArchitectureWorkspace.getSource()?.kind === 'snapshot'
+      && window.TaxonomyArchitectureWorkspace.getData()?.snapshotId === expected, snapshot);
+    snapshotNavigationSucceeded = true;
+  } finally { await navigationEvidence.onSnapshotNavigationEnd?.(snapshotNavigationSucceeded); }
+  await navigationEvidence.onSnapshotNavigationVerified?.();
   const frozenEvidence = await page.evaluate(() => JSON.stringify(window.TaxonomyArchitectureWorkspace.getData()));
   const frozenNode = page.locator('#architectureCanvas [data-node-id]').first();
   await frozenNode.focus(); await page.keyboard.press('Enter');
@@ -284,7 +296,8 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
 
 /** Real authenticated UI commands, sharing the existing role/engine/reflow application fixture. */
 export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evidence, outputDir, httpFailures,
-  onReloadStart, onReloadEnd, onReloadVerified }) {
+  onReloadStart, onReloadEnd, onReloadVerified,
+  onSnapshotNavigationStart, onSnapshotNavigationEnd, onSnapshotNavigationVerified }) {
   const failureStart = httpFailures.length;
   const expectedFailures = [];
   const accepted = [];
@@ -777,7 +790,8 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
       `Renderer exceeded its 1500 ms CI budget: ${JSON.stringify(measurement)}`);
   }
   if (role !== 'USER') {
-    measurements.snapshotAdoption = await runSnapshotAdoptionAcceptance(page,base,initial);
+    measurements.snapshotAdoption = await runSnapshotAdoptionAcceptance(page,base,initial,
+      { onSnapshotNavigationStart, onSnapshotNavigationEnd, onSnapshotNavigationVerified });
     await page.goBack();
     await page.waitForFunction(()=>document.getElementById('architectureEditor')?.getAttribute('aria-busy')==='false');
   }

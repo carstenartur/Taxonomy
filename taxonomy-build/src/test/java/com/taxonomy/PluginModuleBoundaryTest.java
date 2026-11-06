@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.*;
 
 /** Physical module boundaries are measured from production sources and direct Maven dependencies. */
 class PluginModuleBoundaryTest {
-    private static final Set<String> SDKS=Set.of("taxonomy-domain","taxonomy-reporting-api","taxonomy-templates-api","taxonomy-extension-api","taxonomy-dsl","taxonomy-export");
+    private static final Set<String> SDKS=Set.of("taxonomy-domain","taxonomy-reporting-api","taxonomy-templates-api","taxonomy-extension-api","taxonomy-dsl","taxonomy-sparx-mapping","taxonomy-export");
     @Test void realDistributionHasOneOwnerPerJavaPackage() throws Exception {
         var owners=new TreeMap<String,Set<String>>();var packages=Pattern.compile("(?m)^package\\s+([a-zA-Z0-9_.]+)\\s*;");
         for(var module:modules().entrySet()) {
@@ -42,6 +42,15 @@ class PluginModuleBoundaryTest {
     }
     @Test void aSplitPackageFixtureFailsEvenWithoutAnImportBetweenOwners() {
         assertThat(splitPackages(Map.of("example.api",Set.of("sdk","host")))).containsExactly("example.api: [host, sdk]");
+    }
+    @Test void sharedSparxMappingHasNoProductionLibraryDependencies() throws Exception {
+        Path module=modules().get("taxonomy-sparx-mapping");
+        assertThat(module).as("The common Sparx semantics have an independent reactor owner").isNotNull();
+        var dependencies=read(module.resolve("pom.xml")).getElementsByTagName("dependency");
+        for(int i=0;i<dependencies.getLength();i++) {
+            var dependency=(Element)dependencies.item(i);
+            assertThat(text(dependency,"scope")).as("JDK-only mapping dependency %s",text(dependency,"artifactId")).isEqualTo("test");
+        }
     }
     @Test void anSdkToHostFixtureFailsEvenIfTheMavenGraphIsAcyclic() {
         assertThat(sdkViolations(Map.of("taxonomy-extension-api",Set.of("taxonomy-app")))).containsExactly("taxonomy-extension-api -> taxonomy-app");

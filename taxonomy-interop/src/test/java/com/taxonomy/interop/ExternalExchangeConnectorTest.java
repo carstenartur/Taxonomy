@@ -89,6 +89,36 @@ class ExternalExchangeConnectorTest {
         assertEquals(0, other.activeLeases(plugin.identity()));
     }
 
+    @Test void basedFileCallbacksHoldTheExactLeaseAndCannotUseAReplacedArtifact() throws Exception {
+        catalog.publish(plugin, List.of(new Connector("example-model", "1") {
+            @Override public IntegrationDescriptor descriptor() {
+                return new IntegrationDescriptor("example-model", "1", "Based fixture",
+                        Set.of(Capability.FILE_IMPORT, Capability.FILE_EXPORT, Capability.BASED_FILE_EXPORT_V1), Set.of("application/example"));
+            }
+            @Override public FileExportProfile fileExportProfile() {
+                assertEquals(1, catalog.activeLeases(plugin.identity()));
+                return new FileExportProfile(Set.of(FileExportMode.NEW_PROJECT), ExternalIdentityFormat.UUID_BRACED_UPPER,
+                        Map.of("System", "Node"), Map.of("DEPENDS_ON", "Dependency"), "Requirement", "Package", "Diagram");
+            }
+            @Override public ExchangeFile previewOutbound(BasedOutboundRequest request) {
+                assertEquals(1, catalog.activeLeases(plugin.identity()));
+                return new ExchangeFile("application/example", "result.bin", new byte[]{7, 8}, List.of());
+            }
+        }));
+        var registry = new ExchangeConnectorRegistry(List.of(), catalog);
+        var connector = registry.require("example-model", "1");
+        var request = request(); var preview = connector.previewInbound(request);
+        assertEquals(Set.of(FileExportMode.NEW_PROJECT), connector.fileExportProfile().modes());
+        var based = new BasedOutboundRequest(new OutboundRequest(request.context(), preview, preview.externalVersion()),
+                FileExportMode.NEW_PROJECT, request.context().connectionId(), "a".repeat(64), "application/example", new byte[]{1});
+        assertArrayEquals(new byte[]{7, 8}, connector.previewOutbound(based).content());
+        assertEquals(0, catalog.activeLeases(plugin.identity()));
+        catalog.beginDraining(plugin.identity()); assertTrue(catalog.awaitReleased(plugin.identity(), Duration.ZERO));
+        catalog.remove(plugin.identity());
+        assertEquals("INTEGRATION_PLUGIN_CHANGED", assertThrows(IntegrationProblem.class, connector::fileExportProfile).code());
+        assertEquals("INTEGRATION_PLUGIN_CHANGED", assertThrows(IntegrationProblem.class, () -> connector.previewOutbound(based)).code());
+    }
+
     private static PluginDescriptor plugin(String hash) {
         return new PluginDescriptor(new PluginIdentity("example.exchange", "1.0.0", hash.repeat(64)),
                 ">=1.3.0 & <2.0.0", List.of(), Set.of("integration.read"), PluginMode.STARTUP);
