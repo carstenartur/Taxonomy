@@ -66,7 +66,7 @@ for (const scopeKind of ['missing', 'null', 'selected']) {
         f.window.TaxonomyAnalysisScope = {acceptResult(scope) {f.state.lastAnalysisScope = scope;}};
         const browse = readFileSync(path.resolve(__dirname, '../../main/resources/static/js/core/taxonomy-browse.js'), 'utf8');
         // Run the actual import event registration with UI rendering isolated from the evidence behavior.
-        const registration = browse.slice(browse.indexOf('// Import JSON button'), browse.indexOf('// Dark mode toggle'));
+        const registration = browse.slice(browse.indexOf('// Import JSON button'), browse.indexOf('// Diagnostics panel'));
         const statuses = [];
         let diagramContextResets = 0;
         vm.runInNewContext(registration, {window: f.window, document: f.document, S: f.state,

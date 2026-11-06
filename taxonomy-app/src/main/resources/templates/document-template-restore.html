@@ -81,6 +81,6 @@
     </section>
 </main>
 <script th:src="@{/js/taxonomy-i18n.js}"></script>
-<script th:src="@{/js/shared/application-chrome.js}"></script>
+<th:block th:replace="~{fragments/application-chrome :: navigationScript}"></th:block>
 </body>
 </html>

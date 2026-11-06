@@ -675,7 +675,7 @@ class CompleteCopilotSessionIT {
         driver.findElement(By.cssSelector("form")).submit();
         wait.until(browser -> !browser.getCurrentUrl().contains("/login"));
         driver.get(browserOrigin + "/");
-        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("mainNavTabs")));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("applicationWorkspaces")));
         dismissOnboardingWhenShown();
     }
 

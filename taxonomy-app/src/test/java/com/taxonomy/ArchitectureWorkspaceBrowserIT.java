@@ -546,9 +546,9 @@ class ArchitectureWorkspaceBrowserIT {
     @ParameterizedTest @CsvSource({"en,1440", "de,390"})
     void renderedApplicationHasOneNavigationAndLensOpensAnalysisInPlace(String locale, int width) throws IOException {
         open(locale, width);
-        assertThat(page.driver().findElements(By.cssSelector("[data-app-route]")))
+        assertThat(page.driver().findElements(By.cssSelector("#applicationWorkspaces [data-app-route]")))
                 .extracting(element -> element.getDomAttribute("data-app-route"))
-                .containsExactly("projects", "analysis", "architecture", "graph", "versions", "dsl-editor");
+                .containsExactly("projects", "analysis", "architecture");
         assertThat(page.driver().executeScript("""
                 const counts=new Map();document.querySelectorAll('[id]').forEach(e=>counts.set(e.id,(counts.get(e.id)||0)+1));
                 return [...counts].filter(([,count])=>count>1).map(([id])=>id);

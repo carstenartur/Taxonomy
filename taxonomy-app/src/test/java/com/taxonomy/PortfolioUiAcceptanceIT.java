@@ -410,7 +410,7 @@ class PortfolioUiAcceptanceIT {
         // Authentication may return to a saved request. The navigation contract
         // belongs to the application workbench, so open it explicitly.
         driver.get(browserOrigin + contextPath + "/");
-        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("mainNavTabs")));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("applicationWorkspaces")));
         wait.until(browser -> Boolean.TRUE.equals(javascript().executeScript(
                 "return !!window.TaxonomyRoleSurface?.ready")));
         assertThat(javascript().executeAsyncScript("""

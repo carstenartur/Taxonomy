@@ -22,17 +22,26 @@ async function fixture({mode='requirement',locale='en',width=1200}={}){
     page.errors=[];page.on('pageerror',error=>page.errors.push(error.message));
     await page.route('http://chrome.test/**',route=>route.fulfill({body:'',contentType:'text/html'}));await page.goto('http://chrome.test/');
     const panes=['analyze','architecture','graph','versions','dsl-editor','help','admin','preferences'];
-    const content=mode==='index'?`<div id="architectureWorkspace"></div><div id="leftPanel"></div><div id="rightPanel">${panes.map(p=>`<section id="tab-${p}">${p}</section>`).join('')}</div>`
+    const content=mode==='index'?`<div id="architectureWorkspace"></div><div id="leftPanel"></div><div id="rightPanel">${panes.map(p=>`${index.match(new RegExp(`<div id="tab-${p}"[^>]*>`))[0]}${p}</div>`).join('')}</div>`
         :mode==='projects'?'<input id="projectFilter">':mode==='editor'?'<main id="architectureEditor"></main>':mode==='snapshot'?'<main id="architectureWorkbench"></main>':'<main id="requirementDetails"></main>';
-    await page.setContent(`<html lang="${locale}"><head></head><body>${header}${content}</body></html>`);
+    const standalone={editor:'architecture-editor',integrations:'integrations',snapshot:'architecture-workbench'}[mode];
+    let navigation=header;
+    if(standalone){
+        const source=await readFile(path.join(resources,`templates/${standalone}.html`),'utf8');
+        const local=source.match(/<th:block\b[^>]*th:fragment="localActions"[^>]*>([\s\S]*?)<\/th:block>/);
+        assert.ok(local,'Use the actual standalone page actions');
+        navigation=navigation.replace(/<th:block\b[^>]*th:replace="\$\{localActions\}"[^>]*><\/th:block>/,()=>local[1]);
+    }
+    await page.setContent(`<html lang="${locale}"><head></head><body${mode==='editor'?' class="architecture-editor-surface"':mode==='snapshot'?' class="architecture-snapshot-surface"':''}>${navigation}${content}</body></html>`);
     let translations={};
     for(const name of ['messages.properties',...(locale==='de'?['messages_de.properties']:[])])for(const line of (await readFile(path.join(resources,'i18n',name),'utf8')).split('\n')){const m=line.match(/^([^#!\s][^=]*)=(.*)$/);if(m)translations[m[1]]=m[2].replace(/\\u([0-9a-fA-F]{4})/g,(_,code)=>String.fromCharCode(parseInt(code,16)));}
     await page.evaluate(translations=>{
         window.TaxonomyI18n={t:key=>translations[key]||key,resolveUrl:p=>p,getLocale:()=>document.documentElement.lang,formatEnum:value=>value,ready:()=>Promise.resolve()};
         document.querySelectorAll('[th\\:text]').forEach(node=>{const key=node.getAttribute('th:text').match(/^#\{(.+)\}$/)?.[1];if(key)node.textContent=TaxonomyI18n.t(key);});
     },translations);
-    await page.addStyleTag({content:bootstrap});
-    for(const css of ['taxonomy.css','taxonomy-ergonomics.css','application-chrome.css','architecture-lifecycle.css'])await page.addStyleTag({path:path.join(resources,'static/css',css)});
+    if(!standalone||mode==='snapshot')await page.addStyleTag({content:bootstrap});
+    for(const css of [...(standalone?[`${standalone}.css`]:['taxonomy.css','taxonomy-ergonomics.css']),'application-chrome.css','architecture-lifecycle.css'])await page.addStyleTag({path:path.join(resources,'static/css',css)});
+    await page.addScriptTag({path:path.join(resources,'static/js/shared/application-commands.js')});
     await page.addScriptTag({path:path.join(resources,'static/js/shared/application-chrome.js')});
     if(mode==='index'){
         await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-utils.js')});
@@ -41,6 +50,41 @@ async function fixture({mode='requirement',locale='en',width=1200}={}){
     }
     return page;
 }
+for(const mode of ['editor','integrations'])for(const width of [390,1440])test(`${mode}: real standalone actions retain the shared foreground and touch target at ${width}px`,async()=>{
+    const page=await fixture({mode,width});try{
+        assert.equal(await page.locator('.taxonomy-app-brand').evaluate(node=>getComputedStyle(node).color),
+            await page.locator('#applicationNavigation').evaluate(node=>getComputedStyle(node).color),
+            'Page-specific link colors must not override the shared header foreground');
+        const links=page.locator('#applicationPageActions a');
+        assert.ok(await links.count()>0);
+        for(const link of await links.all()){
+            assert.equal(await link.isVisible(),true);
+            const style=await link.evaluate(node=>({color:getComputedStyle(node).color,height:node.getBoundingClientRect().height}));
+            assert.equal(style.color,await page.locator('#applicationPageActions').evaluate(node=>getComputedStyle(node).color),'Contextual links inherit their own toolbar foreground');
+            assert.ok(style.height>=44,`Standalone actions retain a touch target: ${JSON.stringify(style)}`);
+        }
+        assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    }finally{await page.close();}
+});
+test('each active work area remains a named landmark',async()=>{
+    const page=await fixture({mode:'index'});try{
+        for(const destination of ['analyze','architecture','graph','versions','dsl-editor','help','admin','preferences']){
+            await page.evaluate(name=>window.navigateToPage(name),destination);
+            const pane=page.locator('#tab-'+destination);
+            assert.equal(await pane.getAttribute('role'),'region');
+            await assert.doesNotReject(()=>pane.ariaSnapshot().then(snapshot=>assert.match(snapshot,/region \"[^\"]+\"/)),
+                `${destination} must expose the localized name of its navigation destination`);
+        }
+        assert.deepEqual(page.errors,[]);
+    }finally{await page.close();}
+});
+test('snapshot Export uses the common menu launcher style with its existing export form',async()=>{
+    const page=await fixture({mode:'snapshot',width:1440});try{
+        assert.ok((await page.locator('#architectureExportOptions > summary').boundingBox()).height>=44);
+        await page.locator('#architectureExportOptions > summary').click();
+        assert.equal(await page.locator('#workbenchDocumentLanguage').isVisible(),true);
+    }finally{await page.close();}
+});
 for(const mode of ['requirement','editor','snapshot'])test(`${mode}: common tabs do not collapse source details or lifecycle actions`,async()=>{
     const page=await fixture({mode});try{
         await page.evaluate(()=>{
@@ -81,38 +125,60 @@ test('the shared Projects link retains the mounted project and workspace before 
         assert.deepEqual(page.errors,[]);
     }finally{await page.close();}
 });
-for(const locale of ['de','en'])for(const width of [390,700,1100])test(`${locale}: ${width}px common navigation exposes Projects and five keyboard/touch destinations`,async()=>{
+for(const locale of ['de','en'])for(const width of [390,700,1100])test(`${locale}: ${width}px common work navigation uses ordinary keyboard-accessible links`,async()=>{
     const page=await fixture({mode:'index',locale,width});try{
-        const links=page.locator('#mainNavTabs a[data-page]');
-        assert.equal(await links.count(),5);
-        assert.equal(await page.locator('#applicationNavigation [data-app-route="projects"]').count(),1);
-        const toggle=page.locator('#applicationNavigationMenu > summary');
-        if(width<992){
-            assert.equal(await page.locator('#mainNavTabs').isVisible(),false);
-            assert.ok((await page.locator('#applicationNavigation').boundingBox()).height<=64,
-                'Keep the analysis action visible below a compact mobile header');
-            await toggle.click();
-        }
-        assert.equal(await page.locator('#mainNavTabs').isVisible(),true);
-        assert.equal(await page.locator('.mobile-main-navigation:visible, #mobileMainNavigationSelect:visible').count(),0,'No second visible or keyboard-accessible primary menu');
-        for(const destination of ['analyze','architecture','graph','versions','dsl-editor']){
-            const link=page.locator(`#mainNavTabs [data-page="${destination}"]`);
-            assert.equal(await link.isVisible(),true);
-            const box=await link.boundingBox();assert.ok(box.height>=44,'44px touch target: '+destination);
-            await link.tap();assert.equal(await page.locator('#tab-'+destination).isVisible(),true);
-            if(width<992){await page.waitForFunction(()=>!document.getElementById('applicationNavigationMenu').open);await toggle.click();}
+        const links=page.locator('#applicationWorkspaces a');assert.equal(await links.count(),3);
+        for(const destination of ['analyze','architecture']){
+            const link=page.locator(`#applicationWorkspaces [data-page="${destination}"]`);
+            assert.equal(await link.isVisible(),true);assert.ok((await link.boundingBox()).height>=44);
             await link.focus();await page.keyboard.press('Enter');assert.equal(await page.locator('#tab-'+destination).isVisible(),true);
-            if(width<992){
-                await page.waitForFunction(()=>!document.getElementById('applicationNavigationMenu').open);
-                assert.equal(await toggle.evaluate(node=>document.activeElement===node),true);
-                await toggle.click();
-            } else assert.equal(await link.evaluate(node=>document.activeElement===node),true);
+            assert.equal(await link.getAttribute('aria-current'),'page');
         }
-        const dimensions=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));
-        assert.ok(dimensions.scroll<=dimensions.width,'Navigation must not force horizontal page overflow: '+JSON.stringify(dimensions));
-        const projects=page.locator('#applicationNavigation [data-app-route="projects"]');
-        assert.equal(await projects.isVisible(),true);await projects.focus();
-        assert.equal(await projects.evaluate(node=>document.activeElement===node),true);
+        const projects=page.locator('#applicationProjectsLink');await projects.focus();
+        assert.equal(await projects.evaluate(node=>node===document.activeElement),true);
+        assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+        assert.deepEqual(page.errors,[]);
+    }finally{await page.close();}
+});
+
+for(const mode of ['editor','integrations'])test(`${mode}: common appearance controls also theme standalone menus`,async()=>{
+    const page=await fixture({mode,width:1440});try{
+        await page.locator('#applicationTools > summary').click();
+        await page.locator('#darkModeToggle').click();
+        await page.locator('#applicationView > summary').click();
+        const colors=await page.locator('#applicationView .application-menu-content').evaluate(node=>({foreground:getComputedStyle(node).color,background:getComputedStyle(node).backgroundColor}));
+        assert.deepEqual(colors,{foreground:'rgb(231, 237, 246)',background:'rgb(16, 27, 43)'});
+        const contrast=await page.locator('#applicationArchitectureLink').evaluate(node=>{
+            node.setAttribute('aria-current','page');
+            const style=getComputedStyle(node),luminance=color=>{
+                const [r,g,b]=color.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>{v/=255;return v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4);});
+                return r*.2126+g*.7152+b*.0722;
+            };
+            const a=luminance(style.color),b=luminance(style.backgroundColor);
+            return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+        });
+        assert.ok(contrast>=4.5,'The selected work area must remain readable in the shared dark appearance: '+contrast);
+
+        assert.deepEqual(page.errors,[]);
+    }finally{await page.close();}
+});
+
+test('standalone user-management explanation retains the same mounted context as Administration',async()=>{
+    const page=await fixture({mode:'editor',locale:'de'});try{
+        await page.evaluate(()=>{
+            history.replaceState(null,'','/taxonomy/architecture/editor?lang=de&repositoryId=repo&workspaceId=private&branch=draft');
+            TaxonomyI18n.resolveUrl=p=>'/taxonomy'+p;TaxonomyI18n.getBasePath=()=>'/taxonomy';
+            window.TaxonomyApiClient={getJson:async()=>({username:'admin',roles:['ADMIN'],administrator:true,localUserManagementAllowed:false})};
+            TaxonomyAppChrome.refreshNavigation();
+        });
+        await page.addScriptTag({path:path.join(resources,'static/js/security/taxonomy-role-surface.js')});
+        await page.evaluate(()=>TaxonomyRoleSurface.ready);
+        for(const update of [false,true]){
+            if(update)await page.evaluate(()=>TaxonomyAppChrome.updateContext({architecture:{repositoryId:'next',workspaceScopeKey:'other',branch:'review'}}));
+            const admin=await page.locator('#adminNavTab').getAttribute('href');
+            assert.equal(await page.locator('#userManagementMenuAction').getAttribute('href'),admin);
+            assert.match(admin,/lang=de/);assert.match(admin,/#admin$/);
+        }
         assert.deepEqual(page.errors,[]);
     }finally{await page.close();}
 });

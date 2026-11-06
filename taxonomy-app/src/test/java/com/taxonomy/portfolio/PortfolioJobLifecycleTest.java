@@ -45,15 +45,61 @@ class PortfolioJobLifecycleTest {
         run("activeFailureRetainsBoundedRetry");
     }
 
+    @Test
+    void leavingPortfolioCancelsScheduledJobDiscovery() throws Exception {
+        run("departureCancelsScheduledDiscovery");
+    }
+
+    @Test
+    void leavingPortfolioAbortsDiscoveryThroughThePortfolioApiTransport() throws Exception {
+        run("departureAbortsInFlightDiscovery");
+    }
+
+    @Test
+    void lateDiscoveryResponseFromDepartedDocumentCannotRegisterJobs() throws Exception {
+        run("departedDiscoveryResponseCannotRegisterJobs");
+    }
+
+    @Test
+    void changingSelectionBeforeProjectLoadsRejectsOldDiscoveredJobs() throws Exception {
+        run("changedSelectionCannotRegisterOldDiscovery");
+    }
+
+    @Test
+    void selectingAnotherProjectAbortsAndInvalidatesPreviousDiscovery() throws Exception {
+        run("replacedDiscoveryAbortsAndRejectsOldResponse");
+    }
+
+    @Test
+    void beginningSelectionCancelsDiscoveryEvenWhenPortfolioRefreshFails() throws Exception {
+        run("selectionStartCancelsDiscoveryBeforeFailedRefresh");
+    }
+
+    @Test
+    void returningToProjectBeforeSelectionRefreshCompletesCannotReviveOldDiscovery() throws Exception {
+        run("pendingSelectionsCannotReviveOldDiscovery");
+    }
+
+    @Test
+    void returningFromBackForwardCacheResumesDiscoveryExactlyOnce() throws Exception {
+        run("backForwardCacheResumesDiscoveryOnce");
+    }
+
+    @Test
+    void activeDiscoveryFailuresKeepTheExistingBoundedRetries() throws Exception {
+        run("activeDiscoveryFailureRetainsBoundedRetries");
+    }
+
     private void run(String contract) throws Exception {
         Path script = copyResource("/portfolio/job-lifecycle-contract.cjs");
         Path api = copyResource("/static/js/api/portfolio-api.js");
         Path adapter = copyResource("/static/js/portfolio/taxonomy-portfolio-async.js");
+        Path discovery = copyResource("/static/js/portfolio/portfolio-analysis-job-synchronizer.js");
         String node = System.getProperty("taxonomy.node.executable");
         assertNotNull(node, "Maven must provide its pinned Node runtime");
         Path log = directory.resolve(contract + ".log");
         Process process = new ProcessBuilder(List.of(node, script.toString(), contract,
-                api.toString(), adapter.toString()))
+                api.toString(), adapter.toString(), discovery.toString()))
                 .redirectErrorStream(true)
                 .redirectOutput(log.toFile())
                 .start();

@@ -442,9 +442,9 @@ class ScreenshotGeneratorIT {
     }
 
     private void showAdminSettings() {
-        WebElement menu = driver.findElement(By.id("applicationSettings"));
+        WebElement menu = driver.findElement(By.id("applicationTools"));
         if (menu.getAttribute("open") == null) {
-            driver.findElement(By.cssSelector("#applicationSettings > summary")).click();
+            driver.findElement(By.cssSelector("#applicationTools > summary")).click();
         }
         wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("adminNavTab")));
     }
@@ -731,9 +731,9 @@ class ScreenshotGeneratorIT {
     /** Uses Settings for administrator-only destinations and the common router otherwise. */
     private void navigateToTab(String page) {
         if ("admin".equals(page) || "preferences".equals(page)) {
-            WebElement menu = driver.findElement(By.id("applicationSettings"));
+            WebElement menu = driver.findElement(By.id("applicationTools"));
             if (menu.getAttribute("open") == null) {
-                driver.findElement(By.cssSelector("#applicationSettings > summary")).click();
+                driver.findElement(By.cssSelector("#applicationTools > summary")).click();
             }
             String destination = "admin".equals(page) ? "adminNavTab" : "preferencesNavTab";
             wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id(destination)));
@@ -922,7 +922,7 @@ class ScreenshotGeneratorIT {
         showAdminSettings();
         WebElement navbar = driver.findElement(By.id("applicationNavigation"));
         saveElementScreenshot(navbar, "14-navbar-settings.png");
-        driver.findElement(By.cssSelector("#applicationSettings > summary")).click();
+        driver.findElement(By.cssSelector("#applicationTools > summary")).click();
     }
 
     // ── Screenshots 15–27: LLM-dependent (use mock LLM — no real API key needed) ──

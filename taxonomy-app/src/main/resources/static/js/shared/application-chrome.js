@@ -4,7 +4,7 @@
     var state = {};
     var sourceContexts = {};
     var groupKeys = ['architecture', 'project', 'requirement', 'source'];
-    var routes = {projects: '/projects', analysis: '/', architecture: '/', graph: '/', versions: '/', 'dsl-editor': '/'};
+    var routes = {projects: '/projects', analysis: '/', architecture: '/', graph: '/', versions: '/', 'dsl-editor': '/', help: '/', admin: '/', preferences: '/', integrations: '/integrations'};
     function node(value) { return typeof value === 'string' ? document.getElementById(value) : value; }
     function t(key) { return window.TaxonomyI18n.t.apply(null, arguments); }
     function present(value) { return value !== null && value !== undefined && value !== ''; }
@@ -206,7 +206,7 @@
             else target.searchParams.delete('sourceWorkspaceId');
         }
         target.searchParams.set('lang', window.TaxonomyI18n.getLocale());
-        if (route !== 'projects') target.hash = route === 'analysis' ? 'analyze' : route;
+        if (route !== 'projects' && route !== 'integrations') target.hash = route === 'analysis' ? 'analyze' : route;
         return target.pathname + target.search + target.hash;
     }
     function refreshNavigation() {
@@ -226,6 +226,16 @@
         renderContext(); refreshNavigation();
         return getContext();
     }
+    function restoreFocus(element, options) {
+        var menu = element?.closest('details');
+        var candidates = [element, menu?.querySelector('summary'),
+            node('applicationNavigationMenu')?.querySelector('summary'), node('applicationTools')?.querySelector('summary')];
+        var target = candidates.find(function (candidate) {
+            return candidate?.isConnected && !candidate.disabled && candidate.getClientRects().length
+                && getComputedStyle(candidate).visibility !== 'hidden';
+        });
+        target?.focus(options);
+    }
     function updateContext(value, owner) {
         owner = owner || 'analysis';
         var workspace = window.TaxonomyArchitectureWorkspace;
@@ -242,12 +252,53 @@
         document.dispatchEvent(new CustomEvent('taxonomy:entity-context-changed', {detail: getContext()}));
         return getContext();
     }
+    function installCommandMenus() {
+        var navigation = node('applicationNavigation');
+        if (!navigation) return;
+        function menus() { return Array.from(node('applicationMenuGroups').querySelectorAll(':scope > details.application-menu')); }
+        function items(menu) {
+            return Array.from(menu.querySelectorAll('.application-menu-content a[href], .application-menu-content button:not(:disabled), .application-menu-content select'))
+                .filter(function (item) { return !item.hidden && item.getClientRects().length && item.getAttribute('aria-disabled') !== 'true'; });
+        }
+        function close(menu, restore) {
+            menu.open = false;
+            if (restore && menu.contains(document.activeElement)) menu.querySelector('summary').focus();
+        }
+        document.addEventListener('click', function (event) {
+            var action = event.target.closest?.('a[href], button:not(:disabled)');
+            menus().forEach(function (menu) {
+                if (menu.open && (!menu.contains(event.target) || (action && menu.contains(action)))) close(menu, true);
+            });
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+            var menu = event.target.closest?.('#applicationMenuGroups > details.application-menu');
+            if (!menu) return;
+            if (event.key === 'Escape' && menu.open) { event.preventDefault(); close(menu, true); return; }
+            if (event.target.matches('input, textarea, select')) return;
+            var group = menus(), summary = menu.querySelector('summary');
+            if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                event.preventDefault();
+                var wasOpen = menu.open, next = group[(group.indexOf(menu) + (event.key === 'ArrowRight' ? 1 : group.length - 1)) % group.length];
+                close(menu, false); next.querySelector('summary').focus(); next.open = wasOpen;
+            } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+                event.preventDefault(); menu.open = true;
+                window.TaxonomyAppCommands?.refresh();
+                var options = items(menu), index = options.indexOf(document.activeElement);
+                var nextIndex = event.key === 'End' ? options.length - 1 : event.key === 'Home' ? 0
+                    : event.key === 'ArrowUp' ? (index <= 0 ? options.length - 1 : index - 1)
+                    : (index + 1) % options.length;
+                options[nextIndex]?.focus();
+            }
+        });
+    }
     function installResponsiveMenu() {
         var menu = node('applicationNavigationMenu');
         if (!menu || !window.matchMedia) return;
-        var content = node('applicationNavigationMenuContent');
-        var compact = window.matchMedia('(max-width: 991.98px)');
+        var content = node('applicationMenuGroups');
+        var compact = window.matchMedia('(max-width: 767.98px)');
         var summary = menu.querySelector('summary');
+        var previousFocus = document.activeElement;
         function positionMenu() {
             if (!compact.matches || !content) return;
             var bottom = node('applicationNavigation').getBoundingClientRect().bottom;
@@ -256,11 +307,12 @@
         }
         function updateMode() {
             var focused = document.activeElement;
+            // Hiding the compact launcher can move native focus to the body before the media event.
+            if (focused === document.body && previousFocus === summary) focused = summary;
             if (compact.matches && content?.contains(focused)) summary.focus();
             menu.open = !compact.matches;
             if (!compact.matches && focused === summary && content) {
-                var destination = content.querySelector('[role="tab"][aria-selected="true"], [aria-current="page"]')
-                    || content.querySelector('[data-app-route], button, a');
+                var destination = content.querySelector('details.application-menu > summary');
                 destination?.focus();
             }
             positionMenu();
@@ -271,13 +323,14 @@
         window.addEventListener('resize', positionMenu);
         document.addEventListener('scroll', positionMenu, true);
         document.addEventListener('focusin', function (event) {
+            previousFocus = event.target;
             if (compact.matches && menu.open && !menu.contains(event.target) && !content.contains(event.target)) {
                 menu.open = false;
             }
         });
         document.addEventListener('click', function (event) {
             if (!compact.matches || !menu.open) return;
-            var route = event.target.closest?.('[data-app-route], [data-page]');
+            var route = event.target.closest?.('a[href], button:not(:disabled)');
             if (route && content.contains(route) && event.isTrusted && event.button === 0
                     && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
                 window.setTimeout(function () {
@@ -289,10 +342,6 @@
         document.addEventListener('keydown', function (event) {
             if (event.defaultPrevented || !compact.matches || !menu.open || event.key !== 'Escape'
                     || (!menu.contains(event.target) && !content.contains(event.target))) return;
-            var nearest = event.target.closest?.('details');
-            if (nearest && nearest !== menu && nearest.open) {
-                event.preventDefault(); nearest.open = false; nearest.querySelector('summary')?.focus(); return;
-            }
             event.preventDefault(); menu.open = false; summary.focus();
         });
     }
@@ -305,8 +354,8 @@
     }, true);
     document.addEventListener('focusin', function (event) {
         refreshNavigation();
-        var link = event.target.closest?.('#applicationNavigation #mainNavTabs .nav-link');
-        var row = link?.closest('#mainNavTabs');
+        var link = event.target.closest?.('#applicationWorkspaces a');
+        var row = link?.closest('#applicationWorkspaces');
         if (row && row.scrollWidth > row.clientWidth) {
             // Native focus may leave a partially visible destination clipped.
             link.scrollIntoView({block: 'nearest', inline: 'nearest'});
@@ -317,8 +366,9 @@
     window.addEventListener('hashchange', refreshNavigation);
     document.addEventListener('taxonomy-i18n-loaded', function () { renderContext(); refreshNavigation(); });
     window.TaxonomyAppChrome = Object.freeze({updateContext: updateContext, getContext: getContext, activateContext:activateContext,
-        refreshNavigation: refreshNavigation, renderEntity: renderEntity, renderDetails: renderDetails,
+        refreshNavigation: refreshNavigation, restoreFocus: restoreFocus, renderEntity: renderEntity, renderDetails: renderDetails,
         setStatus: setStatus, statusLabel: statusLabel});
+    installCommandMenus();
     installResponsiveMenu();
     initializeContextDisclosure();
     refreshNavigation();

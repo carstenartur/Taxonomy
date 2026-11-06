@@ -762,7 +762,7 @@ class TaxonomyLargeResultBudgetIT {
 
     private static void openAnalyzer() {
         driver.get(ContainerTestUtils.APP_ORIGIN + "/");
-        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("mainNavTabs")));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("applicationWorkspaces")));
         wait.until(browser -> !browser.findElements(
                 By.cssSelector("#taxonomyTree .tax-node")).isEmpty());
         List<WebElement> dismissButtons = driver.findElements(By.id("onboardingDismiss"));

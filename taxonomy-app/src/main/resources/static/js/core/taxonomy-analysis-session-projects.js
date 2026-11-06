@@ -291,7 +291,10 @@
 
     function installLifecycleCommands() {
         var commands = {
-            fileNewAnalysisAction: startNewAnalysis,
+            fileNewAnalysisAction: function () {
+                return Promise.resolve(window.navigateToPage ? window.navigateToPage('analyze') : true)
+                    .then(function (allowed) { return allowed === false ? false : startNewAnalysis(); });
+            },
             fileCancelAnalysisAction: function () {
                 return C.cancelCurrentAnalysis();
             },

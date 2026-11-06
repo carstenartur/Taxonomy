@@ -184,7 +184,7 @@ Im Analyse-Status bleibt jede ausgewählte Teiltaxonomie in derselben Reihenfolg
 | Relationssuche | Im selben Balken werden vollständig geprüfte positive Quellknoten grün und ungeklärte Quellen orange. Der aktuelle Suchbereich erhält eine Randmarkierung. Eine abgeschlossene Quellenprüfung muss keine Beziehung ergeben. Der separate Gesamtbalken zählt Suchaufträge; eine Quelle kann mehrere Aufträge auslösen. |
 | Gefundene Beziehungen | Ergebniszahl der Relationssuche; sie misst keinen Arbeitsfortschritt und bedeutet keine menschliche Freigabe. |
 
-Abbruch oder Fehler füllen offene Balken nicht nachträglich auf. Technische Statuscodes, Speicherwerte und Verbindungsdetails stehen unter **Technische Details**. **Ausblenden** schließt die Anzeige; der Lauf arbeitet weiter. Über **Einstellungen → Analyse-Status** öffnen Sie sie wieder.
+Abbruch oder Fehler füllen offene Balken nicht nachträglich auf. Technische Statuscodes, Speicherwerte und Verbindungsdetails stehen unter **Technische Details**. **Ausblenden** schließt die Anzeige; der Lauf arbeitet weiter. Über den Knopf **Analyse-Status** im Anforderungsarbeitsbereich öffnen Sie sie wieder.
 
 Direkt bewertete Knoten, durch eine gültige Nullbewertung ausgeschlossene Nachfahren,
 offene und nicht ausgewählte Knoten sind unterschiedlich zu lesen. Budgetende,
@@ -270,7 +270,7 @@ Der **Taxonomy Architecture Analyzer** unterstützt Architektur- und Anforderung
 | Ein Diagramm oder Bewertungsbogen exportieren | **Architektur → Export** (Formate abhängig von Ergebnissen und Fähigkeiten) |
 | Analyse als JSON speichern | **Architektur → Export → JSON** |
 | Eine gespeicherte Analyse laden | **Architektur → Export → Load Scores** |
-| Benutzerkonten oder Servereinstellungen verwalten | **Einstellungen** (⚙) in der Navigationsleiste öffnen; Admin-Einträge richten sich nach den Serverfunktionen |
+| Benutzerkonten oder Servereinstellungen verwalten | **Werkzeuge → Administration / Servereinstellungen** öffnen; Admin-Einträge richten sich nach den Serverfunktionen |
 
 > Für die REST-API-Referenz, die von Entwicklern und Integratoren verwendet wird, siehe [API-Referenz](API_REFERENCE.md).
 
@@ -340,7 +340,7 @@ Das rechte Panel (schmalere Spalte) enthält alle interaktiven Werkzeuge:
 
 ![Match Legend](../images/10-match-legend.png)
 
-- **Analyse-Status** — Fortschritt und Warnungen direkt im Analysebereich; Ausblenden bricht den Lauf nicht ab. Über **Einstellungen → Analyse-Status** lässt er sich wieder öffnen.
+- **Analyse-Status** — Fortschritt und Warnungen direkt im Analysebereich; Ausblenden bricht den Lauf nicht ab. Mit dem Knopf **Analyse-Status** im Anforderungsarbeitsbereich lässt er sich wieder öffnen.
 - **Statusmenü** — Betriebs- und Anbieterstatusdetails öffnen; Warnungen öffnen das Menü nicht selbsttätig.
 - **Analyseprotokoll** (einklappbar) — Schritt-für-Schritt-Protokoll des Bewertungsprozesses.
 - **Architekturansicht-Panel** — erscheint nach der Analyse, wenn das Architecture View-Kontrollkästchen aktiviert ist.
@@ -353,20 +353,25 @@ Das rechte Panel (schmalere Spalte) enthält alle interaktiven Werkzeuge:
 
 ### Navigationsleiste
 
-Auf schmalen Bildschirmen öffnen Sie **Menü**, um dieselben Arbeitsbereiche und Aktionen zu erreichen. Nach der Auswahl eines Bereichs schließt sich das Menü; mit Escape können Sie es ohne Wechsel schließen. Sprache und kontextbezogene Hilfe bleiben in der Kopfzeile.
+Die Kopfzeile trennt Befehle und Arbeitsbereiche. Die Befehlszeile enthält fünf gleich gestaltete Menüs:
 
-Die Navigationsleiste am oberen Rand der Seite enthält:
+| Menü | Befehle |
+|---|---|
+| **Datei** | Anforderung öffnen, Analyse beginnen/abbrechen, Entwurf speichern, Architekturversion anlegen, drucken und exportieren |
+| **Bearbeiten** | Rückgängig/wiederholen sowie Architekturelemente anlegen/löschen |
+| **Ansicht** | Versionshistorie, Modellquelltext (DSL), Zoom und Darstellungen des Taxonomiekatalogs |
+| **Werkzeuge** | Graph Explorer, Integrationen, Darstellung, Oberflächensprache sowie freigegebene Administration und Servereinstellungen |
+| **Hilfe** | Hilfe zur aktuellen Sicht, Handbuch und auf der Analyse-/Workspace-Seite Über |
 
-- **Anwendungstitel / Logo**
-- **Datei-Menü** — eine neue Analyse beginnen, eine laufende Analyse abbrechen oder den aktuellen Arbeitsentwurf sofort speichern
-- **Projekte** öffnet die Projektübersicht. Auf der Analyseseite stehen unter **Nächste Schritte** das Anlegen eines Projekts und das Speichern des aktuellen Texts als Anforderung bereit.
-- **Einstellungen (⚙)** — Sprache, Design, Admin-Werkzeuge und den Analyse-Status öffnen.
-- **Status** — Details zum Betriebsstatus.
-- **Hilfe** und **Über** — rechts in der Navigationsleiste direkt nebeneinander.
+Darunter wählen **Projekte**, **Anforderung** und **Architektur** den Arbeitsbereich. Projekte öffnet die vorhandene Projektübersicht; Anforderung öffnet den aktuellen Analysearbeitsbereich. Historie und Quelltext sind Ansichten der Architektur. Kontextbezogene Aktionen stehen bei ihrer Anforderung oder ihrem Diagramm. Nicht verfügbare Befehle sind deaktiviert. Menü und Werkzeugknopf führen dieselbe Fachoperation aus.
+
+Unter 768 CSS-Pixeln enthält **Menü** dieselben fünf Befehlsgruppen. Die drei Arbeitsbereiche bleiben direkt sichtbar. Escape schließt die aktive Gruppe und setzt den Fokus auf deren Auslöser zurück; ein zweites Escape schließt das kompakte Menü. Links/rechts wechselt zwischen Befehlsgruppen, oben/unten zwischen verfügbaren Befehlen. Die Arbeitsbereichslinks sind mit Tab und Eingabe bedienbar.
+
+**Systemstatus** und dessen Warn- und Bereitschaftshinweise stehen außerhalb der Befehlsmenüs. Analysefortschritt und der Knopf **Analyse-Status** gehören zum Anforderungsarbeitsbereich.
 
 ### Dunkelmodus
 
-Öffnen Sie **Einstellungen** und wählen Sie **🌙** (Mond), um in den Dunkelmodus zu wechseln. Klicken Sie auf **☀️** (Sonne), um zum Hellmodus zurückzukehren. Ihre Einstellung wird in Ihrem Browser gespeichert und bleibt über Sitzungen hinweg erhalten.
+Wählen Sie **Werkzeuge → Dunkles Design verwenden** oder **Helles Design verwenden**. Der Browser merkt sich die Auswahl über Arbeitsbereiche und eigenständige Seiten hinweg. Unter **Werkzeuge → Englisch / Deutsch** wechseln Sie die Oberflächensprache.
 
 ---
 
@@ -790,7 +795,7 @@ Der Graph Explorer verfolgt gespeicherte Beziehungen im primären Katalog um ein
 
 ### Einen Knoten auswählen
 
-Öffnen Sie **Graph** in der Hauptnavigation, um den Graph Explorer anzuzeigen.
+Öffnen Sie **Werkzeuge → Graph Explorer**, um den Graph Explorer anzuzeigen.
 
 1. Öffnen Sie an einem Taxonomieknoten die Knotenaktionen und wählen Sie **Graph**, oder wählen Sie **Im Graph Explorer öffnen** in den Elementdetails der Architekturansicht. Die Anwendung wechselt zum Register **Graph**, füllt und fokussiert **Knoten-Code** und startet sofort eine **Vorgelagerte Elemente (Upstream)**-Abfrage für diesen Knoten. Das Ergebnis beziehungsweise die Lade-, Leer- oder Fehlermeldung erscheint im sichtbaren Panel.
 
@@ -1104,7 +1109,7 @@ Unter **Weitere Optionen** können Sie die Abschnitte einzeln wählen. Das Inhal
 
 Der Word-Bericht beginnt mit einer Übersicht je ausgewählter Teiltaxonomie: Bereichsrelevanz, Bewertungsstand, wesentlicher Entscheidungspfad und gespeicherte Begründung. Auch Bereiche ohne positive Treffer oder ohne abgeschlossene Bewertung erscheinen dort. Anschließend zeigen verbundene Baumgrafiken die Eltern-Kind-Beziehungen, Zahlenwerte und Relevanzbalken. Für die gedruckten Seiten werden die Knoten je Teiltaxonomie vertikal und eingerückt angeordnet; das räumliche Layout unterscheidet sich von der gemeinsamen Browseransicht. Ein anklickbarer Knotenschlüssel unter jeder Grafik führt zur vollständigen Begründung; von dort gelangen Sie zum zugehörigen Baum zurück. Entscheidungskapitel und Begründungen stehen vor umfangreichen Architektur- und Herkunftsnachweisen.
 
-Der Export verwendet die bereits gespeicherten Begründungen. Für ausführlichere Begründungen wählen Sie vor einer neuen Analyse **Einstellungen → LLM-Konfiguration → Begründungsumfang → Ausführlich**. Die Auswahl des Berichtsumfangs **Kompakt**, **Standard** oder **Vollständig** steuert die enthaltenen Abschnitte; sie erzeugt keine zusätzlichen Modellantworten.
+Der Export verwendet die bereits gespeicherten Begründungen. Für ausführlichere Begründungen wählen Sie vor einer neuen Analyse **Werkzeuge → Servereinstellungen → LLM-Konfiguration → Begründungsumfang → Ausführlich**. Die Auswahl des Berichtsumfangs **Kompakt**, **Standard** oder **Vollständig** steuert die enthaltenen Abschnitte; sie erzeugt keine zusätzlichen Modellantworten.
 
 ![Weitere Exportoptionen: kurzes Inhaltsverzeichnis, A4-Querformat und einzeln wählbare Berichtsabschnitte](../images/decision-export-options-de.png)
 
@@ -1130,7 +1135,7 @@ Weitere Einzelheiten zu Quellen, Formatgrenzen und Screenshot-Herkunft stehen in
 <a id="guide-section-11"></a>
 ## 11. Suche
 
-Das Panel **Search Taxonomy** (rechte Spalte, einklappbar) bietet vier Suchmodi zum Auffinden von Taxonomie-Knoten. Öffnen Sie es durch Klicken auf die Zusammenfassung **🔍 Search Taxonomy**.
+Das Panel **Search Taxonomy** im Taxonomie-Katalog (einklappbar, über dem Baum) bietet vier Suchmodi zum Auffinden von Taxonomie-Knoten. Öffnen Sie es durch Klicken auf die Zusammenfassung **🔍 Search Taxonomy**.
 
 ### Suchmodi
 
@@ -1143,11 +1148,15 @@ Das Panel **Search Taxonomy** (rechte Spalte, einklappbar) bietet vier Suchmodi 
 
 ### Verwendung des Suchpanels
 
-1. Geben Sie Ihre Abfrage in das **Sucheingabefeld** ein.
-2. Wählen Sie einen **Suchmodus** aus dem Dropdown-Menü.
+Eingabebeispiel und sichtbare Hilfe passen sich dem gewählten Modus an. **Full-text** akzeptiert Stichwörter oder vollständige beziehungsweise angefangene Knoten-Codes, etwa `BP-1000`. **Semantic** akzeptiert natürliche Sprache, etwa „Wie erfassen wir Arbeitszeiten sicher?“; eine besondere Suchsyntax ist nicht erforderlich. **Hybrid** akzeptiert Stichwörter oder natürliche Sprache und kombiniert beide Trefferarten. **Graph** akzeptiert ein natürlichsprachliches Thema und benötigt einen unterstützten, bereiten ausgewählten Branch, wie unten beschrieben.
+
+1. Wählen Sie einen **Suchmodus** aus dem Dropdown-Menü und lesen Sie seine Eingabehilfe.
+2. Geben Sie Ihre Abfrage in das **Sucheingabefeld** ein.
 3. Wählen Sie die **maximale Ergebnisanzahl** (10, 20 oder 50).
 4. Klicken Sie auf **🔍 Search** oder drücken Sie die Eingabetaste.
 5. Die Ergebnisse erscheinen als anklickbare Liste. Klicken Sie auf ein Ergebnis, um den Knoten im Taxonomie-Baum hervorzuheben.
+
+Wenn Sie ein Ergebnis per Maus oder Tastatur aktivieren, wird sein Knoten auch im **Graph Explorer** ausgewählt; der aktuelle Abfragemodus und die Hop-Grenze bleiben erhalten. **Vorheriges** und **Nächstes** verwenden dieselbe verknüpfte Auswahl. Auswahl, Fokusmodus, Filter und Ausschnitt des Architekturdiagramms bleiben erhalten. Ihr aktueller Arbeitsbereich, die Architekturquelle und Editorentwürfe bleiben erhalten.
 
 Darstellungen der Suchmodi (die Graph-Aufnahme ist historisch):
 
@@ -1986,7 +1995,7 @@ Wenn die KI nicht verfügbar ist, erscheint eine **Inline-Warnmeldung** unterhal
 
 ### Benutzerverwaltung und Admin-Werkzeuge
 
-Öffnen Sie **Einstellungen (⚙) → Benutzerverwaltung**, um die vorhandene
+Öffnen Sie **Werkzeuge → Benutzerverwaltung**, um die vorhandene
 Kontenverwaltung aufzurufen. Ist die lokale Kontenverwaltung deaktiviert, erklärt
 der Eintrag, dass der Betreiber sie freigeben muss oder externe Konten beim
 konfigurierten Identitätsanbieter verwaltet werden. Das Menü aktiviert weder die
@@ -2270,7 +2279,7 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 
 **Ursache:** Ihrem Konto fehlt die erforderliche Admin-Funktion oder sein Status konnte nicht bestätigt werden.
 
-**Maßnahme:** Öffnen Sie **Einstellungen (⚙)** und prüfen Sie, ob der Admin-Eintrag verfügbar ist. Fehlt er, wenden Sie sich an den Betreiber; ein separates Administratorpasswort gibt es nicht.
+**Maßnahme:** Öffnen Sie **Werkzeuge** und prüfen Sie, ob der Admin-Eintrag verfügbar ist. Fehlt er, wenden Sie sich an den Betreiber; ein separates Administratorpasswort gibt es nicht.
 
 ### Der Graph Explorer zeigt ein „Failure Impact"-Ergebnis — ist das ein Fehler?
 

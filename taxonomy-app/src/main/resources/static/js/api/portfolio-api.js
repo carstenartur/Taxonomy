@@ -274,8 +274,8 @@ window.TaxonomyPortfolioApi = (function () {
 
         // ── Analysis jobs ─────────────────────────────────────────────────────
         analysisJobUrl: analysisJobUrl,
-        listAnalysisJobs: function (projectId) {
-            return getJson(projectPath(projectId) + '/analysis-jobs');
+        listAnalysisJobs: function (projectId, options) {
+            return getJson(projectPath(projectId) + '/analysis-jobs', options);
         },
         getAnalysisJob: function (projectId, jobId) {
             return getJson(projectPath(projectId) + '/analysis-jobs/'

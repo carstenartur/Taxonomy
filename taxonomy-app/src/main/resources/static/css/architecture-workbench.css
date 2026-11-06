@@ -1,5 +1,5 @@
 .architecture-snapshot-surface {
-    color-scheme: light;
+    color-scheme: inherit;
     --workbench-border: var(--taxonomy-panel-border, #d7dde7);
     --workbench-panel: var(--taxonomy-panel-background, #ffffff);
     --workbench-muted: #64748b;
@@ -28,11 +28,6 @@
     gap: 0.5rem 1rem;
 }
 
-.architecture-snapshot-surface .workbench-toolbar .navbar-brand {
-    min-width: 0;
-    margin-right: 0;
-    white-space: normal;
-}
 
 .architecture-snapshot-surface .workbench-export-options {
     position: relative;
@@ -547,9 +542,6 @@
         position: static;
     }
 
-    .architecture-snapshot-surface .workbench-toolbar .navbar-brand {
-        font-size: 1rem;
-    }
 
     .architecture-snapshot-surface .architecture-kpis {
         justify-content: flex-start;
@@ -747,6 +739,6 @@
     .architecture-snapshot-surface .architecture-workbench { grid-column: 1; grid-row: 1; }
     .architecture-snapshot-surface .workbench-heading { grid-column: 1; grid-row: 2; overflow: visible; }
     .architecture-snapshot-surface .workbench-detail-panel { grid-column: 1; grid-row: 3; contain: none; }
-    .architecture-snapshot-surface .architecture-control, .architecture-snapshot-surface .architecture-toggle, .architecture-snapshot-surface .architecture-search, .architecture-snapshot-surface .taxonomy-app-local .btn { min-height: 44px; }
+    .architecture-snapshot-surface .architecture-control, .architecture-snapshot-surface .architecture-toggle, .architecture-snapshot-surface .architecture-search { min-height: 44px; }
     .architecture-snapshot-surface .architecture-control.icon-only { min-width: 44px; }
 }

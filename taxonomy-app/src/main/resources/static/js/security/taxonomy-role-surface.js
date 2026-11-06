@@ -154,13 +154,15 @@ window.TaxonomyRoleSurface = (function () {
             ? window.TaxonomyI18n.resolveUrl('/admin/users') : applicationBasePath + '/admin/users';
         if (menuLink) {
             menuLink.hidden = false;
-            menuLink.href = allowed ? userUrl : '#admin';
+            menuLink.href = allowed ? userUrl : applicationBasePath + '/#admin';
             if (allowed) {
                 delete menuLink.dataset.page;
+                delete menuLink.dataset.appRoute;
                 menuLink.removeAttribute('aria-current');
                 menuLink.removeAttribute('aria-controls');
             }
-            else menuLink.dataset.page = 'admin';
+            else { menuLink.dataset.page = 'admin'; menuLink.dataset.appRoute = 'admin'; }
+            window.TaxonomyAppChrome?.refreshNavigation();
         }
         var adminTab = document.getElementById('tab-admin');
         if (!adminTab) return;

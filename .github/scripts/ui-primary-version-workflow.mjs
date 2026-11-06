@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { openSharedNavigation } from './ui-role-fixtures.mjs';
+import { navigateToPage } from './ui-role-fixtures.mjs';
 
 /** Allocate the ref before setup so partial failures cannot lose its cleanup identity. */
 export async function usingComparisonBranch(run, cleanup) {
@@ -74,8 +74,7 @@ export async function runVersionComparisonWorkflow({ page, role, evidence }) {
       if (unchanged.dslText !== original) throw new Error('Comparison commits changed the active draft');
       return { branch, left, right, before, after, description: diff.semanticChanges[0].description };
     }, { branch, fixture });
-    await openSharedNavigation(page);
-    await page.locator('#mainNavTabs [data-page="versions"]').click();
+    await navigateToPage(page,'versions');
     await page.evaluate(() => window.TaxonomyVersions.loadTimeline());
     await page.locator(`#versionsBranchSelect option[value="${versions.branch}"]`).waitFor({ state: 'attached' });
     await page.locator('#versionsBranchSelect').selectOption(versions.branch);

@@ -79,19 +79,21 @@ class DocumentTemplateNavigationBrowserIT {
         awaitNavigation(previousDocument, "/taxonomy" + view.path(), language);
 
         assertThat(page.driver().findElements(By.id("applicationNavigation"))).hasSize(1);
+        assertThat(page.driver().executeScript("return Boolean(window.TaxonomyApiClient && window.TaxonomyAppCommands);"))
+                .as("Every template view initializes the shared API and menu controls").isEqualTo(true);
         assertThat(page.driver().findElement(By.id("applicationNavigation")).getDomAttribute("aria-label"))
                 .isEqualTo(language.equals("de") ? "Anwendungsnavigation" : "Application navigation");
-        assertThat(page.driver().findElements(By.cssSelector("#applicationNavigation [data-app-route='architecture']"))).hasSize(1);
+        assertThat(page.driver().findElements(By.cssSelector("#applicationWorkspaces [data-app-route='architecture']"))).hasSize(1);
         assertThat(page.driver().findElements(By.id(view.retained()))).hasSize(1);
         assertThat(page.driver().findElement(By.cssSelector("#applicationNavigation .context-help")).getDomAttribute("href"))
                 .contains("/taxonomy/?lang=" + language + "#help/" + view.help());
         assertThat(page.driver().findElement(By.cssSelector("#applicationNavigation [data-app-locale='" + language + "']"))
                 .getDomAttribute("aria-current")).isEqualTo("true");
-        if (width >= 992) {
+        if (width >= 1200) {
             var verticalSpread = (Number) page.driver().executeScript("""
                     const nav = document.getElementById('applicationNavigation');
-                    const centers = ['.taxonomy-app-brand', '.taxonomy-app-primary', '.taxonomy-app-local',
-                            '.taxonomy-app-languages', '.context-help'].map(selector => {
+                    const centers = ['.taxonomy-app-brand', '#fileMenuButton', '#applicationView > summary',
+                            '#applicationTools > summary', '#applicationHelp > summary'].map(selector => {
                         const rect = nav.querySelector(selector).getBoundingClientRect();
                         return rect.top + rect.height / 2;
                     });

@@ -85,7 +85,7 @@ The **Settings (⚙) → Server settings** entry opens the Preferences page for 
 
 ### Opening Preferences
 
-1. Open **Settings (⚙)** in the main navigation bar and select **Server settings** (visible only when logged in as admin).
+1. Open **Tools → Server settings** (visible only when logged in as admin).
 2. The Preferences page opens, showing all settings grouped into four sections.
 
 ### Editing Settings

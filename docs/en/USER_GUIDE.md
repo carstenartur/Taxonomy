@@ -177,7 +177,7 @@ Each selected taxonomy keeps the same position and node bar throughout node asse
 | Relationship search | In the same bar, fully checked positive source nodes turn green and unresolved sources turn orange. A border marks the current search scope. A completed source assessment need not find a relationship. The separate total bar counts search tasks; a single source can require several tasks. |
 | Relationships found | The number of search results; this is not a measure of work progress or human approval. |
 
-Cancellation or failure does not fill the remaining bars. Status codes, memory figures and connection details are available under **Technical details**. **Hide** closes the display while work continues. Reopen it through **Settings → Analysis status**.
+Cancellation or failure does not fill the remaining bars. Status codes, memory figures and connection details are available under **Technical details**. **Hide** closes the display while work continues. Reopen it through the **Analysis status** button in the requirement workspace.
 
 Directly assessed nodes, descendants excluded by a valid zero assessment, open
 nodes and unselected nodes are different. A budget stop, a failed answer or an
@@ -261,7 +261,7 @@ The **Taxonomy Architecture Analyzer** helps architects, analysts and requiremen
 | Export a diagram or scoresheet | **Architecture → Export** (formats depend on available results/capabilities) |
 | Save analysis as JSON | **Architecture → Export → JSON** |
 | Load a saved analysis | **Architecture → Export → Load Scores** |
-| Manage user accounts or server settings | Open **Settings** (⚙) in the navigation bar; administrator entries depend on server capabilities |
+| Manage user accounts or server settings | Open **Tools → Administration / Server settings**; administrator entries depend on server capabilities |
 
 > For the REST API reference used by developers and integrators, see [API Reference](API_REFERENCE.md).
 
@@ -329,7 +329,7 @@ The right panel (narrower column) contains all interactive tools:
 
 ![Match Legend](../images/10-match-legend.png)
 
-- **Analysis status** — inline progress and warnings; hide it without cancelling the run, then reopen it from **Settings → Analysis status**.
+- **Analysis status** — inline progress and warnings; hide it without cancelling the run, then reopen it from the **Analysis status** button in the requirement workspace.
 - **Status menu** — open operational and provider status details; warnings do not open the menu automatically.
 - **Analysis Log** (collapsible) — step-by-step log of the scoring process.
 - **Architecture View Panel** — appears after analysis when the Architecture View checkbox is enabled.
@@ -342,20 +342,25 @@ The right panel (narrower column) contains all interactive tools:
 
 ### Navigation Bar
 
-On narrow screens, open **Menu** to reach the same work areas and actions. Select an area to close the menu, or press Escape to close it without switching. Language and contextual help remain in the header.
+The header separates commands from work navigation. The command row contains five equally styled menus:
 
-The navigation bar at the top of the page contains:
+| Menu | Commands |
+|---|---|
+| **File** | Open a requirement, start/cancel an analysis, save its draft, create an architecture version, print and export |
+| **Edit** | Undo/redo and create/delete architecture elements |
+| **View** | Version history, model source (DSL), zoom and taxonomy catalogue views |
+| **Tools** | Graph Explorer, integrations, appearance, interface language and authorized administration/server settings |
+| **Help** | Help for the current view, the user manual and About on the analysis/workspace page |
 
-- **Application title / logo**
-- **Settings (⚙)** — language and theme controls, administrator tools, and the analysis-status launcher.
-- **Status** — operational status details.
-- **File menu** — start a new analysis, cancel a running analysis, or save the current working draft immediately
-- **Projects** opens the project overview. On the analysis page, **Next steps** offers creating a project and saving the current text as a requirement.
-- **Help** and **About** — adjacent at the right side of the navigation bar.
+Under that row, **Projects**, **Requirement** and **Architecture** select the work area. Projects opens the existing project overview; Requirement opens the current analysis workspace. History and source are views of the architecture. Contextual actions remain beside their requirement or diagram. Unavailable commands are disabled and invoke the same feature operation as their toolbar counterparts when enabled.
+
+Below 768 CSS pixels, **Menu** contains the same five command groups. The three work areas stay directly visible. Escape closes the active group and returns focus to its launcher; a second Escape closes the compact Menu. Left/right arrows move between command groups, up/down arrows traverse enabled commands. Work navigation uses ordinary links with Tab and Enter.
+
+**System status** and its warning/readiness text remain outside the command menus. Analysis progress and the **Analysis status** button belong to the requirement workspace.
 
 ### Dark Mode
 
-Open **Settings** and click **🌙** (moon) to switch to dark mode. Click **☀️** (sun) to switch back to light mode. Your preference is saved in your browser and persists across sessions.
+Choose **Tools → Use dark appearance** or **Use light appearance**. The browser remembers the preference across work areas and standalone pages. Choose **Tools → English / German** to change the interface language.
 
 ---
 
@@ -768,7 +773,7 @@ The Graph Explorer traces stored relationships in the primary catalogue around a
 
 ### Selecting a Node
 
-Open **Graph** in the main navigation to display the Graph Explorer.
+Open **Tools → Graph Explorer** to display the Graph Explorer.
 
 1. From a taxonomy node, open its actions and choose **Graph**, or select **Open in Graph Explorer** in the Architecture View's element details. The application switches to **Graph**, fills and focuses **Node Code**, and immediately runs an **Upstream** query for that node. The result or its loading, empty, or error message appears in the visible panel.
 
@@ -1104,7 +1109,7 @@ See the [export contracts and verification evidence](https://github.com/carstena
 <a id="guide-section-11"></a>
 ## 11. Search
 
-The **Search Taxonomy** panel (right column, collapsible) provides four search modes to find taxonomy nodes. Open it by clicking the **🔍 Search Taxonomy** summary.
+The **Search Taxonomy** panel in the taxonomy catalogue (collapsible, above the tree) provides four search modes to find taxonomy nodes. Open it by clicking the **🔍 Search Taxonomy** summary.
 
 ### Search Modes
 
@@ -1117,11 +1122,15 @@ The **Search Taxonomy** panel (right column, collapsible) provides four search m
 
 ### Using the Search Panel
 
-1. Type your query into the **search input** field.
-2. Select a **search mode** from the dropdown.
+The input example and visible help change with the selected mode. **Full-text** accepts keywords or a full or partial node code, such as `BP-1000`. **Semantic** accepts natural language, such as “How can we record working time securely?”; no special query syntax is required. **Hybrid** accepts keywords or natural language and combines both kinds of matches. **Graph** accepts a natural-language topic and requires a supported, ready selected branch, as described below.
+
+1. Select a **search mode** from the dropdown and read its input guidance.
+2. Type your query into the **search input** field.
 3. Choose the **max results** count (10, 20, or 50).
 4. Click **🔍 Search** or press Enter.
 5. Results appear as a clickable list. Click any result to highlight the node in the taxonomy tree.
+
+Activating a result by mouse or keyboard also selects its node in **Graph Explorer**, retaining the current query mode and hop limit. **Previous** and **Next** use the same linked selection. The architecture diagram retains its selection, focus mode, filters and viewport. Your current work area, architecture source and editor drafts are preserved.
 
 Search-mode illustrations (the Graph capture is historical):
 
@@ -1964,7 +1973,7 @@ When AI is unavailable, an **inline warning message** appears below the Analyze 
 
 ### User management and administrator tools
 
-Open **Settings (⚙) → User management** to reach the existing account-management
+Open **Tools → User management** to reach the existing account-management
 page. If local account management is disabled, the entry explains that local
 account creation must be enabled by the operator or that external accounts are
 managed by the configured identity provider. This menu does not enable account
@@ -2246,7 +2255,7 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 
 **Cause:** Your account does not have the required administrator capability, or its status could not be confirmed.
 
-**Action:** Open **Settings (⚙)** and check whether the administrator entry is available. If it is missing, contact your operator; do not use a separate administrator password.
+**Action:** Open **Tools** and check whether the administrator entry is available. If it is missing, contact your operator; do not use a separate administrator password.
 
 ### The Graph Explorer shows a "Failure Impact" result — is that an error?
 

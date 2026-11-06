@@ -1,10 +1,10 @@
 :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-body { margin: 0; background: #f4f6fa; color: #162338; }
+body { margin: 0; background: var(--taxonomy-surface-background, #f4f6fa); color: var(--taxonomy-surface-foreground, #162338); }
 h1 { font-size: 1.5rem; }
 main { max-width: 1400px; margin: auto; padding: 1.5rem; }
-main section { background: white; border: 1px solid #b6c5d5; border-radius: .5rem; padding: 1.3rem; margin-bottom: 1.5rem; }
+main section { background: var(--taxonomy-panel-background, white); border: 1px solid #b6c5d5; border-radius: .5rem; padding: 1.3rem; margin-bottom: 1.5rem; }
 form { margin: 1rem 0; } label { display: block; margin: .7rem 0 .25rem; }
-input, select, textarea, button { font: inherit; padding: .55rem; border: 1px solid #64788e; border-radius: .3rem; background: white; color: #162338; max-width: 100%; box-sizing: border-box; }
+input, select, textarea, button { font: inherit; padding: .55rem; border: 1px solid #64788e; border-radius: .3rem; background: var(--taxonomy-panel-background, white); color: var(--taxonomy-surface-foreground, #162338); max-width: 100%; box-sizing: border-box; }
 input:not([type=checkbox]), textarea { width: min(100%, 45rem); box-sizing: border-box; } button, summary { cursor: pointer; } button:disabled { opacity: .5; cursor: default; }
 button { margin: .3rem .3rem .3rem 0; overflow-wrap: anywhere; white-space: normal; } pre { white-space: pre-wrap; overflow-wrap: anywhere; font: .85rem/1.5 ui-monospace, monospace; }
 li, p, summary, a { overflow-wrap: anywhere; }
@@ -22,7 +22,8 @@ td { max-width: 28rem; overflow-wrap: anywhere; } td pre { max-height: 14rem; ov
 #integrationError { border-left: .3rem solid #b42318; padding: 1rem; background: #fff2f0; color: #821a14; white-space: pre-wrap; }
 .conflict { background: #fff1dd; } :focus-visible { outline: 3px solid #1167bb; outline-offset: 3px; }
 .skip { position: absolute; left: -10000px; } .skip:focus { left: 1rem; top: 1rem; background: white; color: #162338; padding: 1rem; z-index: 1100; }
-@media (prefers-color-scheme: dark) { body { background: #111d2c; color: #e6edf6; } main section, input, select, textarea, button { background: #1a2b40; color: #e6edf6; } .conflict { background: #473723; } a { color: #a7d5ff; } }
+[data-bs-theme="dark"] .conflict { background: #473723; }
+[data-bs-theme="dark"] main a { color: #a7d5ff; }
 
 #integrationPublication { border: 1px solid #64788e; border-radius: .3rem; padding: 1rem; margin-top: 1rem; }
 #integrationPublicationReason, #integrationPublicationCounts { font-weight: 600; }

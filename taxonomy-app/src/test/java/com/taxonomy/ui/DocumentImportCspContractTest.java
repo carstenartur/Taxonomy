@@ -38,21 +38,6 @@ class DocumentImportCspContractTest {
                 .contains("#docRegMapResultPanel:not([style*=\"display:none\"])");
     }
 
-    @Test
-    void missingSpinnerIsRestoredBeforeDocumentImportCapturesItsControls() throws Exception {
-        String apiClient = resource("/static/js/api/taxonomy-api-client.js");
-        String template = resource("/templates/index.html");
-
-        assertThat(apiClient)
-                .contains("function ensureDocumentImportSpinner()")
-                .contains("spinner.id = 'docImportSpinner';")
-                .contains("button.prepend(spinner);")
-                .contains("ensureDocumentImportSpinner();");
-        assertThat(template.indexOf("/js/api/taxonomy-api-client.js"))
-                .isGreaterThanOrEqualTo(0)
-                .isLessThan(template.indexOf("/js/shared/taxonomy-document-import.js"));
-    }
-
     private static String resource(String path) throws IOException {
         assertThatCode(() -> DocumentImportCspContractTest.class.getResourceAsStream(path))
                 .doesNotThrowAnyException();

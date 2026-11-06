@@ -47,7 +47,7 @@ Entscheidung serverseitig als `setup.database.dismissed` für die Installation;
 sie gilt auch in einer neuen Browsersitzung. Bei In-Memory-HSQLDB gilt sie nur,
 solange diese Datenbank besteht. Ein Zurücksetzen oder Neuerstellen der Daten
 entfernt auch die gespeicherte Entscheidung. Administratoren können den
-Assistenten unter **Einstellungen > Datenbank einrichten** erneut öffnen.
+Assistenten unter **Werkzeuge > Datenbank einrichten** erneut öffnen.
 
 **Voraussetzung für Host/Service:** Der gewählte Endpunkt muss zu einer logisch
 zusammengehörigen, beschreibbaren Datenbank führen. Verteilen Sie Verbindungen

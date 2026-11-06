@@ -124,7 +124,8 @@ class AnalysisSessionFrontendContractTest {
     @Test
     void fileMenuAndAnalysisActionsExposeNewSaveCancelAndPromotionCommands()
             throws IOException {
-        String template = resource("/templates/index.html");
+        String template = resource("/templates/index.html")
+                + resource("/templates/fragments/application-chrome.html");
         String session = sessionSources();
 
         assertThat(template)

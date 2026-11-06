@@ -10,7 +10,7 @@ All groups below are in [`index.html`](../../taxonomy-app/src/main/resources/tem
 
 | View / control group | Explanation | Existing test owner and scope | Capture / remaining evidence |
 |---|---|---|---|
-| Navigation; Analyze, Architecture, Graph, Versions, DSL, Settings and Help; keyboard tab movement | User Guide [EN](../en/USER_GUIDE.md#3-understanding-the-interface) / [DE](../de/USER_GUIDE.md#3-understanding-the-interface) | [CoreUiAcceptanceIT][core] (browser); [navigation keyboard contract][navigation] | Historical [#01](../images/01-full-page-layout.png); individual transitions require assertions |
+| Commands (File/Edit/View/Tools/Help); work navigation (Projects/Requirement/Architecture); keyboard and touch | User Guide [EN](../en/USER_GUIDE.md#3-understanding-the-interface) / [DE](../de/USER_GUIDE.md#3-understanding-the-interface) | [CoreUiAcceptanceIT][core] (browser); [native navigation checks][navigation] | [Current command/navigation captures and verification](../qa/2026-11-05-workbench-command-structure.md); historical [#01](../images/01-full-page-layout.png) |
 | Analyze: requirement, scope, provider/language, analyze/cancel/continue, draft save/load | User Guide [EN](../en/USER_GUIDE.md#4-analyzing-a-business-requirement) / [DE](../de/USER_GUIDE.md#4-analyzing-a-business-requirement) | [primary session workflow][session] (browser); [AnalysisContinuationUiIT][continuation] | Historical [#15](../images/15-scored-taxonomy-tree.png); provider fixtures do not establish live-model quality |
 | Catalogue: six views, expand/collapse, search/similar, node rationale and Graph action | User Guide [EN](../en/USER_GUIDE.md#5-exploring-the-taxonomy) / [DE](../de/USER_GUIDE.md#5-exploring-the-taxonomy) | [TaxonomyBrowseDecisionUiIT][browse]; [diagram keyboard workflow][diagram]; [UX state recovery][ux] | Historical [#35](../images/35-scored-bp-tree-expanded.png); graph entry has a dedicated regression owner. Graph-semantic search capture #32 is retired; no current supported-workspace search capture is linked |
 | Analyze: gap, pattern and recommendation panels (`gapAnalyzeBtn`, `patternDetectBtn`, `recommendBtn`) | User Guide [EN](../en/USER_GUIDE.md#11d-architecture-gap-analysis) / [DE](../de/USER_GUIDE.md#11d-architecture-gap-analysis) | [CompleteCopilotSessionIT][copilot] covers the separate persisted full-run result, not every main-page panel button | No dedicated current capture linked; #26/27 are coverage dashboards |
@@ -75,7 +75,7 @@ Capture #32 is separately retired: graph-semantic search requires a supported re
 - Source inspection does not establish a passed test run. Record revision, owner, environment, scenario outcome and unmodified capture digest when adding acceptance evidence.
 
 [core]: ../../taxonomy-app/src/test/java/com/taxonomy/CoreUiAcceptanceIT.java
-[navigation]: ../../taxonomy-app/src/test/java/com/taxonomy/ui/TaxonomyMainNavigationKeyboardContractTest.java
+[navigation]: ../../.github/scripts/analysis-navigation.browser.test.mjs
 [session]: ../../.github/scripts/ui-primary-session-workflow.mjs
 [continuation]: ../../taxonomy-app/src/test/java/com/taxonomy/AnalysisContinuationUiIT.java
 [browse]: ../../taxonomy-app/src/test/java/com/taxonomy/TaxonomyBrowseDecisionUiIT.java

@@ -37,69 +37,7 @@
      role="alert" aria-live="assertive" aria-atomic="true"></div>
 
 <header th:replace="~{fragments/application-chrome :: navigation('analysis', ~{:: localActions}, 'USER_GUIDE', 'guide-section-4')}">
-    <th:block th:fragment="localActions">
-    <div class="container-fluid application-shell">
-        
-        <div class="application-file-menus">
-            <div class="dropdown">
-                <button id="fileMenuButton" class="btn btn-sm btn-outline-light dropdown-toggle"
-                        type="button" data-bs-toggle="dropdown" aria-expanded="false"
-                        th:text="#{navbar.file.menu}">File</button>
-                <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="fileMenuButton">
-                    <li>
-                        <button id="fileNewAnalysisAction" class="dropdown-item" type="button"
-                                th:text="#{navbar.file.new_analysis}">New analysis</button>
-                    </li>
-                    <li>
-                        <button id="fileCancelAnalysisAction" class="dropdown-item" type="button"
-                                disabled aria-disabled="true"
-                                th:text="#{navbar.file.cancel_analysis}">Cancel running analysis</button>
-                    </li>
-                    <li><hr class="dropdown-divider"/></li>
-                    <li>
-                        <button id="fileSaveDraftAction" class="dropdown-item" type="button"
-                                th:text="#{navbar.file.save_draft}">Save draft now</button>
-                    </li>
-                    <li th:if="${portableBackupAvailable}"><a class="dropdown-item" th:href="@{/backup-jobs(lang=${#locale.language})}" th:text="#{backup.export.title}">Create a portable export</a></li>
-                </ul>
-            </div>
-        </div>
-        <div class="application-utilities">
-            <details id="applicationSettings" class="application-menu">
-                <summary th:aria-label="#{navbar.settings.menu}" th:title="#{navbar.settings.menu}">
-                    <span aria-hidden="true">⚙</span><span class="visually-hidden" th:text="#{navbar.settings.menu}">Settings</span>
-                </summary>
-                <div class="application-menu-content">
-                    <label for="langSelector" th:text="#{lang.selector.label}">Language</label>
-                    <select id="langSelector" class="form-select form-select-sm"
-                onchange="TaxonomyI18n.setLocale(this.value)"
-                th:title="#{lang.selector.label}" th:attr="aria-label=#{ui.aria.language}" aria-label="Language">
-            <option value="en" th:selected="${#locale.language == 'en'}">🇬🇧 English</option>
-            <option value="de" th:selected="${#locale.language == 'de'}">🇩🇪 Deutsch</option>
-        </select>
-                    <div class="d-flex align-items-center gap-2"><button id="darkModeToggle" class="btn btn-sm btn-outline-secondary" th:title="#{navbar.darkmode}" th:attr="aria-label=#{ui.aria.toggle_theme}" aria-label="Toggle theme">&#127769;</button><span th:text="#{navbar.darkmode}">Theme</span></div>
-                    <a class="application-utility-link" id="userManagementMenuAction" data-page="admin" href="#admin"
-                       data-required-roles="ADMIN" hidden th:text="#{users.title}">User management</a>
-                    <a class="application-utility-link admin-only" id="adminNavTab" data-page="admin" href="#admin"
-                       data-required-roles="ADMIN" hidden th:text="#{navbar.administration}">Administration</a>
-                    <a class="application-utility-link admin-only" id="preferencesNavTab" data-page="preferences" href="#preferences"
-                       data-required-roles="ADMIN" hidden th:text="#{navbar.server.settings}">Server settings</a>
-                    <button type="button" class="btn btn-link text-start p-0 application-utility-link"
-                            id="databaseSetupMenuAction" data-required-roles="ADMIN" hidden
-                            th:text="#{database.setup.menu}">Database setup</button>
-                    <span id="analysisStatusMenuSlot"></span>
-                </div>
-            </details>
-            <span id="operationalStatusMenuSlot"></span>
-            <div class="application-support">
-                <a id="main-tab-help" class="btn btn-sm btn-outline-light application-utility-link" data-page="help" href="#help"
-                   th:text="#{nav.help}">Help</a>
-                <button id="aboutBtn" type="button" class="btn btn-sm btn-outline-light" th:text="#{navbar.about.label}"
-                        th:aria-label="#{ui.aria.about}">About</button>
-            </div>
-        </div>
-    </div>
-</th:block>
+    <th:block th:fragment="localActions"></th:block>
 </header>
 <div id="databaseSetupNotice" class="alert alert-warning m-3" role="status" hidden></div>
 <!-- Status widgets are moved into the single on-demand Status menu. -->
@@ -131,12 +69,12 @@
                     <div class="taxonomy-view-controls">
                         <!-- Stable first row; variable tools belong in the second row. -->
                         <div class="btn-group taxonomy-view-selector" id="diagramViewSelector" role="group" th:attr="aria-label=#{ui.aria.view_mode}" aria-label="View mode">
-                            <button id="viewList"     data-view="list"     class="btn btn-sm btn-primary"          th:title="#{view.list.title}" title="Indented list view" th:text="#{view.list.label}">&#128203; List</button>
-                            <button id="viewTabs"     data-view="tabs"     class="btn btn-sm btn-outline-secondary" th:title="#{view.tabs.title}" title="Tabbed list view" th:text="#{view.tabs.label}">&#128209; Tabs</button>
-                            <button id="viewSunburst" data-view="sunburst" class="btn btn-sm btn-outline-secondary" th:title="#{view.sunburst.title}" title="Zoomable sunburst chart" th:text="#{view.sunburst.label}">&#128262; Sunburst</button>
-                            <button id="viewTree"     data-view="tree"     class="btn btn-sm btn-outline-secondary" th:title="#{view.tree.title}" title="Bottom-up tree diagram" th:text="#{view.tree.label}">&#127795; Tree</button>
-                            <button id="viewDecision" data-view="decision" class="btn btn-sm btn-outline-secondary" th:title="#{view.decision.title}" title="Decision overview map" th:text="#{view.decision.label}">&#127942; Decision</button>
-                            <button id="viewSummary"  data-view="summary"  class="btn btn-sm btn-outline-secondary" th:title="#{view.summary.title}" title="Architecture summary after analysis" style="display:none;" th:text="#{view.summary.label}">&#128203; Summary</button>
+                            <button id="viewList" aria-pressed="true"     data-view="list"     class="btn btn-sm btn-primary"          th:title="#{view.list.title}" title="Indented list view" th:text="#{view.list.label}">&#128203; List</button>
+                            <button id="viewTabs" aria-pressed="false"     data-view="tabs"     class="btn btn-sm btn-outline-secondary" th:title="#{view.tabs.title}" title="Tabbed list view" th:text="#{view.tabs.label}">&#128209; Tabs</button>
+                            <button id="viewSunburst" aria-pressed="false" data-view="sunburst" class="btn btn-sm btn-outline-secondary" th:title="#{view.sunburst.title}" title="Zoomable sunburst chart" th:text="#{view.sunburst.label}">&#128262; Sunburst</button>
+                            <button id="viewTree" aria-pressed="false"     data-view="tree"     class="btn btn-sm btn-outline-secondary" th:title="#{view.tree.title}" title="Bottom-up tree diagram" th:text="#{view.tree.label}">&#127795; Tree</button>
+                            <button id="viewDecision" aria-pressed="false" data-view="decision" class="btn btn-sm btn-outline-secondary" th:title="#{view.decision.title}" title="Decision overview map" th:text="#{view.decision.label}">&#127942; Decision</button>
+                            <button id="viewSummary" aria-pressed="false"  data-view="summary"  class="btn btn-sm btn-outline-secondary" th:title="#{view.summary.title}" title="Architecture summary after analysis" style="display:none;" th:text="#{view.summary.label}">&#128203; Summary</button>
                         </div>
                         <div class="taxonomy-view-tools">
                         <div id="taxonomyBrowserHelp" class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'taxonomy-view-list')}"></a></div>
@@ -172,14 +110,15 @@
                         <div class="row g-2 mx-0 mb-2">
                             <div class="col d-flex gap-1">
                                 <input type="text" id="searchInput" class="form-control form-control-sm"
-                                       th:placeholder="#{search.placeholder}" placeholder="Search taxonomy nodes…" th:attr="aria-label=#{ui.aria.search_query}" aria-label="Search query"/>
+                                       th:placeholder="#{search.input.fulltext.placeholder}" placeholder="e.g. time recording or BP-1000"
+                                       th:attr="aria-label=#{ui.aria.search_query}" aria-label="Search query" aria-describedby="searchInputHelp"/>
                                 <button id="searchClearBtn" class="btn btn-sm btn-outline-secondary" type="button" hidden
                                         th:title="#{search.clear}" th:aria-label="#{search.clear}" aria-label="Clear search">×</button>
                             </div>
                         </div>
                         <div class="row g-2 mx-0 mb-2">
                             <div class="col-6">
-                                <select id="searchModeSelect" class="form-select form-select-sm" th:attr="aria-label=#{ui.aria.search_mode}" aria-label="Search mode">
+                                <select id="searchModeSelect" class="form-select form-select-sm" th:attr="aria-label=#{ui.aria.search_mode}" aria-label="Search mode" aria-describedby="searchInputHelp">
                                     <option value="fulltext" th:text="#{search.mode.fulltext}">Full-text</option>
                                     <option value="semantic" th:text="#{search.mode.semantic}">Semantic</option>
                                     <option value="hybrid" th:text="#{search.mode.hybrid}">Hybrid</option>
@@ -197,6 +136,8 @@
                                 <button id="searchBtn" class="btn btn-sm btn-primary w-100" th:text="#{browse.search.btn}">&#128269; Search</button>
                             </div>
                         </div>
+                        <p id="searchInputHelp" class="small text-body-secondary mb-2" role="status"
+                           th:text="#{search.input.fulltext.help}">Enter keywords or a node code / prefix, e.g. time recording or BP-1000. Searches names, descriptions and identifiers.</p>
                         <div id="searchResultsArea" style="display:none; max-height:300px; overflow-y:auto;"></div>
                     </div>
                 </details>
@@ -218,7 +159,7 @@
             <!-- ============================================================
                  TAB: ANALYZE
                  ============================================================ -->
-            <div id="tab-analyze" class="tab-pane-content">
+            <div id="tab-analyze" role="region" aria-labelledby="applicationRequirementLink" class="tab-pane-content">
                 <!-- ViewContext: shows Git provenance for analysis data -->
                 <div id="analyzeViewContext" class="view-context-bar d-none"></div>
 
@@ -338,6 +279,7 @@
 
                 <!-- Status / error messages -->
                 <div id="analysisRecoveryHost"></div>
+                <div id="analysisStatusActions"></div>
                 <div id="statusArea"></div>
                 <section id="relationSearchReportPanel" hidden aria-label="Relation search report"
                          th:aria-label="#{relation.search.title}"></section>
@@ -443,9 +385,9 @@
                                 </select>
                             </div>
                         </div>
-                        <button id="docImportUploadBtn" class="btn btn-sm btn-outline-primary" th:text="#{docimport.btn.upload}">
+                        <button id="docImportUploadBtn" class="btn btn-sm btn-outline-primary">
                             <span id="docImportSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
-                            &#128196; Upload &amp; Extract
+                            <span th:text="#{docimport.btn.upload}">&#128196; Upload &amp; Extract</span>
                         </button>
                         <div id="docImportStatus" class="mt-2 small"></div>
                     </div>
@@ -527,7 +469,7 @@
             <!-- ============================================================
                  TAB: ARCHITECTURE
                  ============================================================ -->
-            <div id="tab-architecture" class="tab-pane-content d-none">
+            <div id="tab-architecture" role="region" aria-labelledby="applicationArchitectureLink" class="tab-pane-content d-none">
                 <section id="architectureWorkspace" aria-labelledby="architectureWorkspaceTitle">
                     <div class="architecture-source-toolbar">
                         <h2 id="architectureWorkspaceTitle" th:text="#{nav.architecture}">Architecture</h2>
@@ -815,7 +757,7 @@
             <!-- ============================================================
                  TAB: GRAPH
                  ============================================================ -->
-            <div id="tab-graph" class="tab-pane-content d-none">
+            <div id="tab-graph" role="region" aria-labelledby="applicationGraphLink" class="tab-pane-content d-none">
                 <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-8')}"></a></div>
 
                 <!-- ViewContext: shows Git provenance for graph data -->
@@ -888,7 +830,7 @@
             <!-- ============================================================
                  TAB: VERSIONS
                  ============================================================ -->
-            <div id="tab-versions" class="tab-pane-content d-none">
+            <div id="tab-versions" role="region" aria-labelledby="applicationHistoryLink" class="tab-pane-content d-none">
                 <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-19')}"></a></div>
 
                 <!-- Context Navigation History -->
@@ -1084,7 +1026,7 @@
             <!-- ============================================================
                  TAB: DSL EDITOR
                  ============================================================ -->
-            <div id="tab-dsl-editor" class="tab-pane-content d-none">
+            <div id="tab-dsl-editor" role="region" aria-labelledby="applicationSourceLink" class="tab-pane-content d-none">
                 <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-18')}"></a></div>
 
                 <!-- ViewContext: shows Git provenance for DSL data -->
@@ -1187,7 +1129,7 @@
             <!-- ============================================================
                  TAB: ADMIN
                  ============================================================ -->
-            <div id="tab-admin" class="tab-pane-content d-none">
+            <div id="tab-admin" role="region" aria-labelledby="adminNavTab" class="tab-pane-content d-none">
                 <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-21')}"></a></div>
 
                 <!-- Health Overview Dashboard -->
@@ -1434,7 +1376,7 @@
             <!-- ============================================================
                  TAB: PREFERENCES
                  ============================================================ -->
-            <div id="tab-preferences" class="tab-pane-content d-none">
+            <div id="tab-preferences" role="region" aria-labelledby="preferencesNavTab" class="tab-pane-content d-none">
                 <div class="view-help"><a th:replace="~{fragments/context-help :: button('PREFERENCES', '')}"></a></div>
 
                 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -1612,7 +1554,7 @@
             <!-- ============================================================
                  TAB: HELP
                  ============================================================ -->
-            <div id="tab-help" class="tab-pane-content d-none">
+            <div id="tab-help" role="region" aria-labelledby="main-tab-help" class="tab-pane-content d-none">
                 <div class="help-layout">
                     <!-- Sidebar: search + TOC -->
                     <div class="help-sidebar">
@@ -1650,7 +1592,6 @@
 <script th:src="@{/webjars/svg2pdf.js/2.2.0/dist/svg2pdf.umd.min.js}" src="/webjars/svg2pdf.js/2.2.0/dist/svg2pdf.umd.min.js"></script>
 <script th:src="@{/js/shared/taxonomy-utils.js}"></script>
 <script th:src="@{/js/shared/architecture-workflow.js}" src="/js/shared/architecture-workflow.js"></script>
-<script th:src="@{/js/api/taxonomy-api-client.js}"></script>
 <th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/api/import-api.js}"></script>
 <script th:src="@{/js/api/analysis-api.js}"></script>
@@ -1915,40 +1856,31 @@
     function activatePage(pageName, permissionChecked) {
         if (!permissionChecked && pageName !== 'architecture' && window.TaxonomyArchitectureWorkspace?.isActive()) {
             return Promise.resolve(window.TaxonomyArchitectureWorkspace.canLeave()).then(function (allowed) {
-                if (allowed) activatePage(pageName, true);
-                else window.TaxonomyArchitectureWorkspace.restoreUrl();
+                if (allowed) return activatePage(pageName, true);
+                window.TaxonomyArchitectureWorkspace.restoreUrl();
+                return false;
             });
         }
         // Backward compatibility: map removed pages to architecture sub-tabs
         if (subTabMapping[pageName]) {
-            activatePage('architecture');
-            activateArchSubTab(subTabMapping[pageName]);
-            return;
+            return Promise.resolve(activatePage('architecture', permissionChecked)).then(function (allowed) {
+                if (allowed) activateArchSubTab(subTabMapping[pageName]);
+                return allowed;
+            });
         }
 
         if (PAGES.indexOf(pageName) === -1) { pageName = 'analyze'; }
 
-        // Update nav-tab active state
-        var navLinks = document.querySelectorAll('#mainNavTabs .nav-link, #applicationNavigation .application-utility-link[data-page]');
-        navLinks.forEach(function (link) {
-            var active = link.getAttribute('data-page') === pageName;
-            link.classList.toggle('active', active);
-            if (active) link.setAttribute('aria-current', 'page');
+        var workArea = pageName === 'analyze' ? 'analyze'
+            : ['architecture', 'graph', 'versions', 'dsl-editor'].includes(pageName) ? 'architecture' : null;
+        document.querySelectorAll('#applicationWorkspaces [data-page]').forEach(function (link) {
+            if (link.dataset.page === workArea) link.setAttribute('aria-current', 'page');
             else link.removeAttribute('aria-current');
-            if (!link.closest('#mainNavTabs')) {
-                link.setAttribute('aria-controls', 'tab-' + link.getAttribute('data-page'));
-            }
         });
-
-        ['help', 'admin', 'preferences'].forEach(function (page) {
-            var pane = document.getElementById('tab-' + page);
-            var link = document.querySelector('#applicationNavigation [data-page="' + page + '"]');
-            if (pane && link) {
-                pane.setAttribute('role', 'region');
-                pane.setAttribute('aria-labelledby', link.id);
-            }
+        document.querySelectorAll('#applicationMenuGroups [data-page]').forEach(function (link) {
+            if (link.dataset.page === pageName) link.setAttribute('aria-current', 'page');
+            else link.removeAttribute('aria-current');
         });
-
         // Show / hide tab pane content
         PAGES.forEach(function (page) {
             var pane = document.getElementById('tab-' + page);
@@ -2031,12 +1963,11 @@
             }
         }
 
-        // One navigation lifecycle for desktop tabs, responsive selection and
-        // programmatic navigation. Feature modules must not depend on a
-        // particular control having been clicked.
+        // Menus, work navigation and programmatic navigation share this lifecycle.
         document.dispatchEvent(new CustomEvent('taxonomy:page-activated', {
             detail: { page: pageName }
         }));
+        return true;
     }
 
     // Architecture sub-tab click handlers
@@ -2047,39 +1978,13 @@
         });
     });
 
-    // Click handlers on nav links
-    document.querySelectorAll('#mainNavTabs .nav-link').forEach(function (link) {
-        link.addEventListener('click', function (e) {
-            if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-            e.preventDefault();
-            activatePage(this.getAttribute('data-page'));
-        });
-    });
-
-    // Also allow deep-linking via data-page attribute on any element
-    document.addEventListener('click', function (e) {
-        var el = e.target.closest('[data-page]');
-        if (el && el.closest('#mainNavTabs') === null && e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
-            var page = el.getAttribute('data-page');
-            if (PAGES.indexOf(page) !== -1 || subTabMapping[page]) {
-                e.preventDefault();
-                activatePage(page);
-            }
-        }
-    });
-
+    // A single route adapter serves menus, work navigation and contextual links.
     document.addEventListener('click', function (event) {
-        document.querySelectorAll('#applicationNavigation details.application-menu[open]').forEach(function (menu) {
-            if (!menu.contains(event.target) || event.target.closest('a[href]')) menu.open = false;
-        });
-    });
-    document.addEventListener('keydown', function (event) {
-        if (event.key !== 'Escape') return;
-        var menu = event.target.closest('#applicationNavigation details.application-menu[open]');
-        if (menu) {
-            event.preventDefault();
-            menu.open = false;
-            menu.querySelector('summary').focus();
+        var link = event.target.closest('[data-page]');
+        if (!link || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        var page = link.getAttribute('data-page');
+        if (PAGES.indexOf(page) !== -1 || subTabMapping[page]) {
+            event.preventDefault(); activatePage(page);
         }
     });
 

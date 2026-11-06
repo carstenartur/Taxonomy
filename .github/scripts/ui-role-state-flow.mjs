@@ -223,8 +223,8 @@ export async function runRoleStateFlow({
     tasks: []
   };
 
-  const settingsMenu = page.locator('#applicationSettings');
-  const settingsLauncher = page.locator('#applicationSettings > summary');
+  const settingsMenu = page.locator('#applicationTools');
+  const settingsLauncher = page.locator('#applicationTools > summary');
   const adminLink = page.locator('#adminNavTab');
   const preferencesLink = page.locator('#preferencesNavTab');
   await openSharedNavigation(page);
@@ -232,7 +232,7 @@ export async function runRoleStateFlow({
     if (await settingsMenu.getAttribute('open') === null) await settingsLauncher.click();
     await adminLink.waitFor({ state: 'visible', timeout: 20_000 });
     assert(await adminLink.isVisible(),
-      'ADMIN cannot discover Administration in Settings after role authorization');
+      'ADMIN cannot discover Administration in Tools after role authorization');
     await adminLink.click();
     await waitForSharedNavigationToClose(page);
     await page.locator('#tab-admin').waitFor({ state: 'visible', timeout: 20_000 });
@@ -240,20 +240,20 @@ export async function runRoleStateFlow({
     if (await settingsMenu.getAttribute('open') === null) await settingsLauncher.click();
     await preferencesLink.waitFor({ state: 'visible', timeout: 20_000 });
     assert(await preferencesLink.isVisible(),
-      'ADMIN cannot discover Preferences in Settings after role authorization');
+      'ADMIN cannot discover Preferences in Tools after role authorization');
     await preferencesLink.click();
     await waitForSharedNavigationToClose(page);
     await page.locator('#tab-preferences').waitFor({ state: 'visible', timeout: 20_000 });
-    passed('admin Settings navigation');
+    passed('admin Tools navigation');
   } else {
     if (await settingsMenu.getAttribute('open') === null) await settingsLauncher.click();
     assert(!(await adminLink.isVisible().catch(() => false))
       && !(await preferencesLink.isVisible().catch(() => false)),
-    `${role} must not see Administration or Preferences in Settings`);
+    `${role} must not see Administration or Preferences in Tools`);
     const userManagementLink = page.locator('#userManagementMenuAction');
     assert(!(await userManagementLink.isVisible().catch(() => false)),
-      `${role} must not see user management in Settings`);
-    passed('role-specific Settings denial');
+      `${role} must not see user management in Tools`);
+    passed('role-specific Tools denial');
     await settingsLauncher.click();
   }
 
@@ -268,16 +268,11 @@ export async function runRoleStateFlow({
     const secondary = document.getElementById('analysisSecondaryTools');
     const progressRect = progress?.getBoundingClientRect();
     const primaryRect = primary?.getBoundingClientRect();
-    const navigation = document.querySelector('.taxonomy-app-primary');
-    const menuToggle = document.querySelector('#applicationNavigationMenu > summary');
-    const navigationRect = (menuToggle?.offsetParent ? menuToggle : navigation)?.getBoundingClientRect();
-    const authorizedPages = Array.from(
-      document.querySelectorAll('#mainNavTabs .nav-link[data-page]'))
-      .filter(link => {
-        const item = link.closest('.nav-item');
-        return item && getComputedStyle(item).display !== 'none';
-      })
-      .map(link => link.dataset.page);
+    const navigation = document.querySelector('#applicationWorkspaces');
+    const navigationRect = navigation?.getBoundingClientRect();
+    const authorizedPages = [...new Set(Array.from(document.querySelectorAll(
+      '#applicationWorkspaces [data-page], #applicationView [data-page], #applicationTools [data-page="graph"]'))
+      .map(link => link.dataset.page))].sort();
     const primaryRoutes = Array.from(navigation?.querySelectorAll('[data-app-route]') || [])
       .map(link => link.dataset.appRoute);
     const focusable = Boolean(primary && !primary.disabled
@@ -321,13 +316,13 @@ export async function runRoleStateFlow({
     'Primary Analyze action is not visible, enabled and focusable');
   if (taskSurface.viewportWidth < 992) {
     assert(taskSurface.navigationVisible && taskSurface.navigationInsideViewport,
-      'Shared primary navigation is not discoverable before any automatic scroll');
+      `Work-area navigation is not discoverable before any automatic scroll: ${JSON.stringify(taskSurface)}`);
     assert(taskSurface.taskReachable,
       'Neither task progression nor the primary action is initially reachable');
     assert(JSON.stringify(taskSurface.primaryRoutes)
-      === JSON.stringify(['projects', 'analysis', 'architecture', 'graph', 'versions', 'dsl-editor'])
+      === JSON.stringify(['projects', 'analysis', 'architecture'])
       && JSON.stringify(taskSurface.authorizedPages)
-      === JSON.stringify(['analyze', 'architecture', 'graph', 'versions', 'dsl-editor']),
+      === JSON.stringify(['analyze', 'architecture', 'dsl-editor', 'graph', 'versions']),
     `Shared navigation lost a primary destination: ${JSON.stringify(taskSurface)}`);
     assert(taskSurface.progressTop <= taskSurface.viewportHeight
       || taskSurface.primaryInsideViewport,
@@ -727,13 +722,10 @@ export async function runRoleStateFlow({
     const left = document.getElementById('leftPanel');
     const right = document.getElementById('rightPanel');
     const row = left?.parentElement;
-    const navigation = document.getElementById('mainNavTabs');
-    const authorizedPages = Array.from(navigation?.querySelectorAll('.nav-link[data-page]') || [])
-      .filter(link => {
-        const item = link.closest('.nav-item');
-        return item && getComputedStyle(item).display !== 'none';
-      })
-      .map(link => link.dataset.page);
+    const navigation = document.getElementById('applicationWorkspaces');
+    const authorizedPages = [...new Set(Array.from(document.querySelectorAll(
+      '#applicationWorkspaces [data-page], #applicationView [data-page], #applicationTools [data-page="graph"]'))
+      .map(link => link.dataset.page))].sort();
     return {
       viewportWidth: window.innerWidth,
       leftTop: left?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
@@ -757,33 +749,29 @@ export async function runRoleStateFlow({
     assert(taskHierarchy.sharedNavigationDisplayed,
       'Narrow viewport must retain the shared primary navigation after task interactions');
     assert(JSON.stringify(taskHierarchy.authorizedPages)
-      === JSON.stringify(['analyze', 'architecture', 'graph', 'versions', 'dsl-editor']),
+      === JSON.stringify(['analyze', 'architecture', 'dsl-editor', 'graph', 'versions']),
     `Shared navigation lost authorized destinations: ${JSON.stringify(taskHierarchy)}`);
     assert(await page.locator('.mobile-main-navigation:visible, #mobileMainNavigationSelect:visible').count() === 0,
       'The application exposes a second visible primary navigation');
-    await navigateToPage(page, 'analyze');
-    await openSharedNavigation(page);
-    await page.locator('#mainNavTabs [data-page="analyze"]').focus();
-    for (const [index, destination] of taskHierarchy.authorizedPages.entries()) {
-      if (index) await page.keyboard.press('ArrowDown');
-      await page.waitForFunction(destination => document.querySelector(
-        `#mainNavTabs [data-page="${destination}"]`)?.getAttribute('aria-selected') === 'true', destination);
-      const link = page.locator(`#mainNavTabs [data-page="${destination}"]`);
-      assert(await link.evaluate(element => document.activeElement === element),
-        `Arrow-key navigation lost focus at ${destination}`);
-      const bounds = await link.boundingBox();
-      assert(bounds && bounds.height >= 44 && bounds.x >= 0
-        && bounds.x + bounds.width <= taskHierarchy.viewportWidth + 1,
-      `The focused ${destination} destination is not visible with its 44px touch target: ${JSON.stringify(bounds)}`);
+    for (const destination of taskHierarchy.authorizedPages) {
+      await navigateToPage(page, destination);
       assert(await page.locator(`#tab-${destination}`).isVisible(),
-        `Keyboard navigation did not reveal ${destination}`);
+        `Work navigation did not reveal ${destination}`);
     }
-    await page.keyboard.press('Home');
-    await page.locator('#tab-analyze').waitFor({ state: 'visible' });
-    const projects = page.locator('.taxonomy-app-primary [data-app-route="projects"]');
+    await navigateToPage(page, 'analyze');
+    const requirement = page.locator('#applicationRequirementLink');
+    await requirement.focus(); await page.keyboard.press('Enter');
+    assert(await page.locator('#tab-analyze').isVisible(), 'Requirement link is not keyboard operable');
+    const projects = page.locator('#applicationProjectsLink');
     await projects.focus();
-    assert(await projects.isVisible() && await projects.evaluate(element => document.activeElement === element),
-      'The Projects destination is not keyboard reachable');
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+    const bounds = await projects.boundingBox();
+    // Firefox can report a CSS 44px target as 43.999996185302734px.
+    assert(bounds && bounds.height >= 44 - 1e-4 && bounds.x >= 0
+      && bounds.x + bounds.width <= taskHierarchy.viewportWidth + 1
+      && await projects.evaluate(element => document.activeElement === element),
+      `The Projects destination must remain a visible keyboard and touch target: ${JSON.stringify({bounds,
+        viewportWidth:taskHierarchy.viewportWidth,focused:await projects.evaluate(element => document.activeElement === element)})}`);
     passed('shared navigation retains every destination and keyboard access after task interactions');
   } else {
     assert(taskHierarchy.leftPrecedesRightInDom && taskHierarchy.taskOrder === 'reference-first',

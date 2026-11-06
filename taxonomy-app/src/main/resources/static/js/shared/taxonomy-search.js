@@ -84,6 +84,8 @@
             if (!searchInput.value.trim()) clearSearch();
             updateClearControl();
         });
+        searchMode.addEventListener('change', updateSearchInputHelp);
+        updateSearchInputHelp();
         const clearButton = document.getElementById('searchClearBtn');
         if (clearButton) clearButton.addEventListener('click', function () {
             clearSearch();
@@ -96,6 +98,7 @@
 
         checkEmbeddingStatus();
     });
+    document.addEventListener('taxonomy-i18n-loaded', updateSearchInputHelp);
 
     function emptyResultState() {
         return {
@@ -219,6 +222,18 @@
                 }
             }
         });
+        updateSearchInputHelp();
+    }
+
+    function updateSearchInputHelp() {
+        var select = document.getElementById('searchModeSelect');
+        var input = document.getElementById('searchInput');
+        var help = document.getElementById('searchInputHelp');
+        if (!select || !input || !help) return;
+        var mode = ['semantic', 'hybrid', 'graph'].includes(select.value)
+            ? select.value : 'fulltext';
+        input.placeholder = t('search.input.' + mode + '.placeholder');
+        help.textContent = t('search.input.' + mode + '.help');
     }
 
     function performSearch(query, mode, maxResults) {
@@ -348,7 +363,7 @@
             resultState.query,
             resultState.mode === 'similar'
                 ? orientationText('similar')
-                : resultState.mode);
+                : t('search.mode.' + resultState.mode));
         var path = resultState.currentPath
             ? orientationText('path', resultState.currentPath)
             : orientationText('pathNone');
@@ -490,6 +505,7 @@
         }
 
         var node = resultState.nodes[index];
+        window.TaxonomyGraph?.selectNode?.(node.code);
         announceResultPosition(index);
         highlightNodeInTree(node.code, function (treeNode) {
             updateCurrentPath(treeNode, node.code);

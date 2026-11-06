@@ -170,27 +170,18 @@ export async function waitForSharedNavigationToClose(page) {
 }
 
 export async function navigateToPage(page, pageId) {
-  await openSharedNavigation(page);
-  const settingsDestination = {
-    admin: 'adminNavTab',
-    preferences: 'preferencesNavTab'
-  }[pageId];
-  if (settingsDestination) {
-    const settings = page.locator('#applicationSettings');
-    if (await settings.getAttribute('open') === null) {
-      await page.locator('#applicationSettings > summary').click();
-    }
-    const control = page.locator(`#applicationSettings #${settingsDestination}`);
-    await control.waitFor({ state: 'visible', timeout: 20_000 });
-    await control.click();
-    await waitForSharedNavigationToClose(page);
-    await page.locator(`#tab-${pageId}`).waitFor({ state: 'visible', timeout: 20_000 });
-    return;
+  const category = { help: 'Help', graph: 'Tools', admin: 'Tools', preferences: 'Tools',
+    versions: 'View', 'dsl-editor': 'View' }[pageId];
+  if (category) {
+    await openSharedNavigation(page);
+    const menu = page.locator(`#application${category}`);
+    if (await menu.getAttribute('open') === null) await menu.locator(':scope > summary').click();
   }
-
-  const control = page.locator(`#mainNavTabs [data-page="${pageId}"]`);
-  await control.click();
-  await waitForSharedNavigationToClose(page);
+  const selector = { analyze: '#applicationRequirementLink', architecture: '#applicationArchitectureLink',
+    help: '#main-tab-help', admin: '#adminNavTab', preferences: '#preferencesNavTab' }[pageId]
+    || `#applicationMenuGroups [data-page="${pageId}"]`;
+  await page.locator(selector).click();
+  if (category) await waitForSharedNavigationToClose(page);
   await page.locator(`#tab-${pageId}`).waitFor({ state: 'visible', timeout: 20_000 });
 }
 

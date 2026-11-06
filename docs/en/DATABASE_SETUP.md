@@ -46,7 +46,7 @@ application data intact and is stored on the server through `PreferencesService`
 as `setup.database.dismissed`. It applies to the installation and survives a new
 browser session. With in-memory HSQLDB it lasts only as long as that database;
 resetting or recreating the data also removes the saved choice. Administrators
-can reopen the assistant under **Settings > Database setup**.
+can reopen the assistant under **Tools > Database setup**.
 
 **Host/Service prerequisite:** The selected endpoint must route to one logical,
 writable database target. Do not load-balance independently initialized databases

@@ -217,28 +217,6 @@
             });
         }
 
-        // Dark mode toggle
-        const darkModeBtn = document.getElementById('darkModeToggle');
-        if (darkModeBtn) {
-            const savedTheme = localStorage.getItem('taxonomy-theme');
-            if (savedTheme === 'dark') {
-                document.documentElement.setAttribute('data-bs-theme', 'dark');
-                darkModeBtn.textContent = '☀️';
-            }
-            darkModeBtn.addEventListener('click', function () {
-                const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
-                if (isDark) {
-                    document.documentElement.removeAttribute('data-bs-theme');
-                    darkModeBtn.textContent = '🌙';
-                    localStorage.setItem('taxonomy-theme', 'light');
-                } else {
-                    document.documentElement.setAttribute('data-bs-theme', 'dark');
-                    darkModeBtn.textContent = '☀️';
-                    localStorage.setItem('taxonomy-theme', 'dark');
-                }
-            });
-        }
-
         // Diagnostics panel
         checkAdminStatus();
         const refreshDiagBtn = document.getElementById('refreshDiagnostics');
@@ -753,6 +731,7 @@
             if (!btn) { return; }
             btn.classList.toggle('btn-primary', v === view);
             btn.classList.toggle('btn-outline-secondary', v !== view);
+            btn.setAttribute('aria-pressed', String(v === view));
         });
 
         // Show/hide Expand All / Collapse All only for list & tabs views
