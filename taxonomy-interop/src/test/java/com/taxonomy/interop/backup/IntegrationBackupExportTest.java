@@ -21,8 +21,15 @@ import org.springframework.orm.jpa.JpaTransactionManager;
 import tools.jackson.databind.json.JsonMapper;
 import javax.sql.DataSource;
 import java.io.*;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
@@ -92,6 +99,28 @@ class IntegrationBackupExportTest {
                     () -> assertThat(result.get("losses")).isEqualTo(fixture.json.read(fixture.json.write(finalLosses), List.class)),
                     () -> assertThat(result.get("createdAt")).isEqualTo(createdAt));
             assertThat(result.get("targetExecutionPolicy")).isEqualTo("MANUAL_REVIEW_REQUIRED");
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings={"CURRENT_STATE", "REPOSITORY_HISTORY"})
+    void binaryBackupFetchesOneFileAtATimeWithoutLoadingPayloadsForMetadata(String profileName) throws Exception {
+        try (var fixture = new Fixture()) {
+            byte[] firstBytes = {1, 2, (byte) 255}, secondBytes = {3, 4, 0, 5};
+            var first = retainedBase(fixture, firstBytes);
+            var second = retainedBase(fixture, secondBytes);
+            var database = new BinaryReadAudit(fixture.database);
+            var output = new BinaryContents();
+            var contributor = new IntegrationBackupContributor(database,
+                    (ignored, checkpoint) -> List.of(scope(OWN)));
+            contributor.write(snapshot(BackupProfile.valueOf(profileName), OWN), database.observe(output));
+
+            assertThat(output.entries.get("data/interop/files/" + first.base().id() + ".bin")).containsExactly(firstBytes);
+            assertThat(output.entries.get("data/interop/files/" + second.base().id() + ".bin")).containsExactly(secondBytes);
+            org.junit.jupiter.api.Assertions.assertAll(
+                    () -> assertThat(database.maximumBinaryRows).as("each binary result set contains at most one bounded file").isEqualTo(1),
+                    () -> assertThat(database.metadataPayloadQueries).as("NDJSON capture never selects binary content").isZero(),
+                    () -> assertThat(database.maximumOpenBinaryResults).as("binary result sets do not overlap").isEqualTo(1),
+                    () -> assertThat(database.openBinaryResults).as("binary result sets are closed").isZero());
         }
     }
 
@@ -501,6 +530,68 @@ class IntegrationBackupExportTest {
         @Override public Connection getConnection() { throw new AssertionError("Database must not be read"); }
         @Override public Connection getConnection(String user, String password) { return getConnection(); }
     }; }
+    /** Observe real JDBC query results without replacing SQL execution or allocating large test BLOBs. */
+    private static final class BinaryReadAudit extends AbstractDataSource {
+        private final DataSource delegate;
+        private String outputPath;
+        int maximumBinaryRows, metadataPayloadQueries, maximumOpenBinaryResults, openBinaryResults;
+        BinaryReadAudit(DataSource delegate) { this.delegate = delegate; }
+        ComponentSink observe(ComponentSink sink) {
+            return new ComponentSink() {
+                @Override public BackupEntry write(String path, InputStream input) throws IOException {
+                    outputPath = path;
+                    try { return sink.write(path, input); }
+                    finally { outputPath = null; }
+                }
+            };
+        }
+        @Override public Connection getConnection() throws SQLException { return connection(delegate.getConnection()); }
+        @Override public Connection getConnection(String user, String password) throws SQLException {
+            return connection(delegate.getConnection(user, password));
+        }
+        private Connection connection(Connection target) {
+            return proxy(Connection.class, (ignored, method, arguments) -> {
+                Object result = call(target, method, arguments);
+                return method.getName().equals("prepareStatement") ? statement((PreparedStatement) result) : result;
+            });
+        }
+        private PreparedStatement statement(PreparedStatement target) {
+            return proxy(PreparedStatement.class, (ignored, method, arguments) -> {
+                Object result = call(target, method, arguments);
+                return method.getName().equals("executeQuery") ? result((ResultSet) result) : result;
+            });
+        }
+        private ResultSet result(ResultSet target) throws SQLException {
+            var columns = target.getMetaData();
+            boolean binary = false;
+            for (int column = 1; column <= columns.getColumnCount(); column++)
+                binary |= "content".equalsIgnoreCase(columns.getColumnLabel(column));
+            if (!binary) return target;
+            if (outputPath != null && outputPath.endsWith(".ndjson")) metadataPayloadQueries++;
+            maximumOpenBinaryResults = Math.max(maximumOpenBinaryResults, ++openBinaryResults);
+            return proxy(ResultSet.class, new InvocationHandler() {
+                private int rows;
+                private boolean closed;
+                @Override public Object invoke(Object ignored, Method method, Object[] arguments) throws Throwable {
+                    try {
+                        Object result = call(target, method, arguments);
+                        if (method.getName().equals("next") && Boolean.TRUE.equals(result))
+                            maximumBinaryRows = Math.max(maximumBinaryRows, ++rows);
+                        return result;
+                    } finally {
+                        if (method.getName().equals("close") && !closed) { closed = true; openBinaryResults--; }
+                    }
+                }
+            });
+        }
+        private static <T> T proxy(Class<T> type, InvocationHandler handler) {
+            return type.cast(Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, handler));
+        }
+        private static Object call(Object target, Method method, Object[] arguments) throws Throwable {
+            try { return method.invoke(target, arguments); }
+            catch (InvocationTargetException failure) { throw failure.getCause(); }
+        }
+    }
     private static final class BinaryContents implements ComponentSink {
         final Map<String, byte[]> entries = new LinkedHashMap<>();
         @Override public BackupEntry write(String path, InputStream input) throws IOException {

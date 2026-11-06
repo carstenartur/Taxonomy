@@ -20,7 +20,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.URI;
 import java.util.List;
 
 @RestController
@@ -44,7 +43,7 @@ public class ProductCatalogController {
         RequestScope scope = scope();
         ProductView product = productService.createProduct(
                 request, scope.username(), scope.context());
-        return ResponseEntity.created(URI.create("/api/products/" + product.id())).body(product);
+        return ResponseEntity.created(PortfolioResourceLocation.forPath("/api/products/" + product.id())).body(product);
     }
 
     @GetMapping("/products")

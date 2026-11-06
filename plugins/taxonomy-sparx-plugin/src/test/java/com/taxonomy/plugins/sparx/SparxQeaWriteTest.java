@@ -205,6 +205,54 @@ class SparxQeaWriteTest {
         assertEquals(List.of("71|" + NEW_ELEMENT), query(result, "SELECT Object_ID,ea_guid FROM t_object WHERE Object_Type='Component'"));
     }
 
+    @ParameterizedTest(name = "frozen instance {0} leaves automatic instances {1} and {2}")
+    @CsvSource({"13,12,14", "12,13,14"})
+    void mixedDiagramInstancesReserveFrozenIdsBeforeAllocatingAutomaticOccurrences(int frozen, int firstAutomatic,
+                                                                                   int lastAutomatic) throws Exception {
+        try (var fixture = new QeaFixture(directory)) {
+            fixture.sql("ALTER TABLE t_diagramobjects ADD COLUMN Instance_ID INTEGER");
+            fixture.sql("UPDATE t_diagramobjects SET Instance_ID=Object_ID");
+            fixture.sql("CREATE UNIQUE INDEX unique_diagram_instance ON t_diagramobjects(Instance_ID)");
+            byte[] basis = fixture.bytes();
+            var placements = List.of(
+                    new Placement("new:1-automatic", VIEW, null, A, 2, Map.of("placementKind", "diagram")),
+                    new Placement("new:2-frozen", VIEW, null, B, 3,
+                            Map.of("placementKind", "diagram", "ea:t_diagramobjects:instance_id", Integer.toString(frozen))),
+                    new Placement("new:3-automatic", VIEW, null, A, 4, Map.of("placementKind", "diagram")));
+            byte[] result = assertDoesNotThrow(() -> write(basis, FileExportMode.UPDATE_COPY,
+                    document(MODEL, List.of(), List.of(), placements)).content(),
+                    "A free automatic ID must not collide with an earlier or later frozen occurrence");
+            assertEquals(List.of(firstAutomatic + "|10|2", frozen + "|11|3", lastAutomatic + "|10|4"), query(result,
+                    "SELECT Instance_ID,Object_ID,Sequence FROM t_diagramobjects WHERE Instance_ID NOT IN (10,11) ORDER BY Sequence"));
+            assertEquals(query(basis, "SELECT * FROM t_diagramobjects ORDER BY Instance_ID"),
+                    query(result, "SELECT * FROM t_diagramobjects WHERE Instance_ID IN (10,11) ORDER BY Instance_ID"));
+            assertEquals(List.of("5|5"), query(result, "SELECT count(*),count(DISTINCT Instance_ID) FROM t_diagramobjects"));
+            assertEquals(5, read(result).placements().stream().filter(p -> p.containerId().equals(VIEW)).count());
+            assertArrayEquals(result, write(basis, FileExportMode.UPDATE_COPY,
+                    document(MODEL, List.of(), List.of(), placements.reversed())).content(),
+                    "Input list order must not change the deterministic native occurrence assignment");
+            assertArrayEquals(basis, fixture.bytes());
+        }
+    }
+
+    @Test void mixedDiagramInstancesStillRejectTwoNewOccurrencesWithTheSameFrozenId() throws Exception {
+        try (var fixture = new QeaFixture(directory)) {
+            fixture.sql("ALTER TABLE t_diagramobjects ADD COLUMN Instance_ID INTEGER");
+            fixture.sql("UPDATE t_diagramobjects SET Instance_ID=Object_ID");
+            byte[] basis = fixture.bytes();
+            var placements = List.of(
+                    new Placement("new:1-automatic", VIEW, null, A, 2, Map.of("placementKind", "diagram")),
+                    new Placement("new:2-frozen", VIEW, null, B, 3,
+                            Map.of("placementKind", "diagram", "ea:t_diagramobjects:instance_id", "13")),
+                    new Placement("new:3-frozen", VIEW, null, A, 4,
+                            Map.of("placementKind", "diagram", "ea:t_diagramobjects:instance_id", "13")));
+            var failure = assertThrows(IllegalArgumentException.class, () -> write(basis, FileExportMode.UPDATE_COPY,
+                    document(MODEL, List.of(), List.of(), placements)));
+            assertTrue(failure.getMessage().startsWith("QEA_DUPLICATE_IDENTITY:"));
+            assertArrayEquals(basis, fixture.bytes());
+        }
+    }
+
     @Test void canonicalPropertiesAreVisibleTagsAndRoundTripThroughVersionTwo() throws Exception {
         var selected = new Artifact(NEW_ELEMENT, ArtifactKind.ELEMENT, "Component", "Tagged", "", Map.of(),
                 Map.of("canonicalType", "Component", "taxonomy:owner", "Architecture team", "taxonomy:status", "planned"));

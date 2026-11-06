@@ -249,6 +249,8 @@ final class PortfolioClientTestPage implements AutoCloseable {
         byte[] body;
         try (var stream = resource.getInputStream()) { body = stream.readAllBytes(); }
         exchange.getResponseHeaders().set("Content-Type", contentType(path));
+        // Request assertions across page loads must not depend on the browser cache.
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
         exchange.sendResponseHeaders(200, body.length);
         exchange.getResponseBody().write(body);
         return true;

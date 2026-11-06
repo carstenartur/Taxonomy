@@ -19,8 +19,9 @@ import static com.taxonomy.exchange.backup.PortableRows.*;
 
 /** Binary evidence is streamed as archive entries; only typed references enter portable JSON records. */
 final class IntegrationBackupFiles {
+    // PostgreSQL buffers selected BYTEA values, even when a mapper only reads metadata.
     private static final String COLUMNS = "e.id,e.scope_id,e.connection_id,e.operation_id,e.actor,e.kind,e.profile,e.profile_version,e.binding_json,"
-            + "e.sha256,e.byte_count,e.media_type,e.filename,e.model_identifier,e.review_fingerprint,e.losses_json,e.content,e.created_at,"
+            + "e.sha256,e.byte_count,e.media_type,e.filename,e.model_identifier,e.review_fingerprint,e.losses_json,e.created_at,"
             + "o.actor as source_actor,o.context_json,o.document_json,o.direction,o.base_file_id,o.result_file_id,o.review_fingerprint as source_review";
     private final PortableRows rows;
     private final IntegrationBackupSelection selection;
@@ -36,20 +37,37 @@ final class IntegrationBackupFiles {
     }
     void verify() throws IOException {
         for (var query : queries) rows.visit(query, row -> {
-            sink.checkpoint(); var metadata = metadata(row); verifyContent(row, metadata); return metadata;
-        }, ignored -> { });
+            sink.checkpoint(); return metadata(row);
+        }, metadata -> transfer(metadata, false));
     }
     void write() throws IOException {
         rows.writeBatches(sink, "interop", "files", profile, queries, this::metadata);
         for (var query : queries) rows.visit(query, row -> {
-            sink.checkpoint(); var metadata = metadata(row);
-            try (InputStream content = row.getBinaryStream("content")) {
-                if (content == null) throw invalid();
-                BackupEntry written = sink.write(metadata.path(), new BoundedInput(content, metadata.bytes()));
-                if (written.length() != metadata.bytes() || !written.sha256().equals(metadata.sha256())) throw invalid();
+            sink.checkpoint(); return metadata(row);
+        }, metadata -> transfer(metadata, true));
+    }
+    private void transfer(FileData expected, boolean write) throws IOException {
+        // The primary key bounds eager JDBC buffering to one file, independently of the row fetch size.
+        var query = new Query("select " + COLUMNS + ",e.content from interop_file e join interop_operation o on o.id=e.operation_id"
+                + " where e.id=? and e.scope_id=? and e.connection_id=?",
+                List.of(expected.sourceId().value(), expected.scope().scopeId(), expected.connection().value()));
+        boolean[] found = {false};
+        rows.visit(query, row -> {
+            sink.checkpoint();
+            if (found[0] || !expected.equals(metadata(row))) throw invalid();
+            found[0] = true;
+            if (write) {
+                try (InputStream content = row.getBinaryStream("content")) {
+                    if (content == null) throw invalid();
+                    BackupEntry written = sink.write(expected.path(), new BoundedInput(content, expected.bytes()));
+                    if (written.length() != expected.bytes() || !written.sha256().equals(expected.sha256())) throw invalid();
+                }
+            } else {
+                verifyContent(row, expected);
             }
-            return metadata;
+            return expected;
         }, ignored -> { });
+        if (!found[0]) throw invalid();
     }
     private FileData metadata(ResultSet row) throws SQLException, IOException {
         try {

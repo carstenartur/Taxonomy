@@ -58,4 +58,40 @@ class BasedFileExportContractsTest {
         assertThrows(IllegalArgumentException.class, () -> new FileExportProfile(Set.of(FileExportMode.NEW_PROJECT),
                 ExternalIdentityFormat.UUID_BRACED_UPPER, Map.of("System", ""), Map.of(), "Requirement", "Package", "Diagram"));
     }
+
+    @Test void retainedChangeFieldsHaveCanonicalOrderIndependentOfInputSetOrder() {
+        var expected = List.of("attribute:alias", "attribute:notes", "attribute:priority", "attribute:status",
+                "extension:canonicalType", "extension:container", "extension:diagramStyle", "extension:documentation",
+                "extension:nativeId", "extension:source", "extension:stereotype", "extension:target", "kind", "text", "title", "type");
+        var descending = new TreeSet<String>(Comparator.reverseOrder()); descending.addAll(expected);
+        for (Set<String> fields : List.of(new HashSet<>(expected), new LinkedHashSet<>(expected.reversed()), descending))
+            assertEquals(expected, new ArrayList<>(reviewedChange(fields).fields()),
+                    "Retained HTTP field arrays must have the same order across construction and JVM restarts");
+    }
+
+    @Test void retainedChangeFieldsRemainADefensiveImmutableSet() {
+        var fields = new HashSet<>(List.of("title", "text", "extension:canonicalType"));
+        var change = reviewedChange(fields);
+        fields.clear(); fields.add("type");
+        assertEquals(Set.of("title", "text", "extension:canonicalType"), change.fields());
+        assertEquals(reviewedChange(new LinkedHashSet<>(List.of("text", "extension:canonicalType", "title"))), change);
+        assertEquals(Set.of(), reviewedChange(Set.of()).fields());
+        assertThrows(UnsupportedOperationException.class, () -> change.fields().add("type"));
+        assertThrows(UnsupportedOperationException.class, () -> change.fields().remove("title"));
+        var iterator = change.fields().iterator(); iterator.next();
+        assertThrows(UnsupportedOperationException.class, iterator::remove);
+    }
+
+    @Test void retainedChangeFieldsStillRejectNullSetsAndNullMembers() {
+        assertThrows(NullPointerException.class, () -> reviewedChange(null));
+        assertThrows(NullPointerException.class, () -> reviewedChange(new HashSet<>(Arrays.asList("title", null))));
+        var nullFriendly = new TreeSet<String>(Comparator.nullsFirst(Comparator.naturalOrder()));
+        nullFriendly.add(null); nullFriendly.add("title");
+        assertThrows(NullPointerException.class, () -> reviewedChange(nullFriendly));
+    }
+
+    private static IntegrationChange reviewedChange(Set<String> fields) {
+        return new IntegrationChange("change", "ELEMENT:reviewed", ChangeKind.UPDATE, fields,
+                "local-fingerprint", "external-fingerprint", null, null, List.of());
+    }
 }

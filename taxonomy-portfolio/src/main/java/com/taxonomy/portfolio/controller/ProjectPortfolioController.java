@@ -29,7 +29,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.URI;
 import java.util.List;
 
 /** Project and stable requirement identities with immutable text versions. */
@@ -64,7 +63,7 @@ public class ProjectPortfolioController {
     public ResponseEntity<ProjectView> createProject(@RequestBody CreateProjectRequest request) {
         RequestScope scope = scope();
         ProjectView project = projectService.createProject(request, scope.username(), scope.context());
-        return ResponseEntity.created(URI.create("/api/projects/" + project.id())).body(project);
+        return ResponseEntity.created(PortfolioResourceLocation.forPath("/api/projects/" + project.id())).body(project);
     }
 
     @GetMapping
@@ -101,7 +100,7 @@ public class ProjectPortfolioController {
         RequestScope scope = scope();
         RequirementView requirement = projectService.createRequirement(
                 projectId, request, scope.username(), scope.context());
-        return ResponseEntity.created(URI.create(
+        return ResponseEntity.created(PortfolioResourceLocation.forPath(
                 "/api/projects/" + projectId + "/requirements/" + requirement.id()))
                 .body(requirement);
     }
@@ -170,7 +169,7 @@ public class ProjectPortfolioController {
         RequestScope scope = scope();
         RequirementVersionView version = projectService.addRequirementVersion(
                 projectId, requirementId, request, scope.username(), scope.context());
-        return ResponseEntity.created(URI.create(
+        return ResponseEntity.created(PortfolioResourceLocation.forPath(
                 "/api/projects/" + projectId + "/requirements/" + requirementId
                         + "/versions/" + version.id()))
                 .body(version);

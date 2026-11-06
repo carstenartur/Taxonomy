@@ -10,12 +10,20 @@ import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.filter.ForwardedHeaderFilter;
 
 import java.time.Instant;
 import java.util.List;
@@ -25,6 +33,10 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
 @ExtendWith(MockitoExtension.class)
 class ProjectAnalysisControllerAsyncContractTest {
@@ -38,10 +50,42 @@ class ProjectAnalysisControllerAsyncContractTest {
 
     @BeforeEach
     void setUp() {
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest()));
         controller = new ProjectAnalysisController(
                 analysisService, persistenceService, workspaceResolver);
         when(workspaceResolver.resolveCurrentUsername()).thenReturn(context.username());
         when(workspaceResolver.resolveCurrentContext()).thenReturn(context);
+    }
+
+    @AfterEach
+    void clearRequest() {
+        RequestContextHolder.resetRequestAttributes();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "'', '', /api/projects/41/analysis-jobs/job-1",
+            "/taxonomy, '', /taxonomy/api/projects/41/analysis-jobs/job-1",
+            "/tenant/taxonomy, '', /tenant/taxonomy/api/projects/41/analysis-jobs/job-1",
+            "/internal, /edge/taxonomy, /edge/taxonomy/api/projects/41/analysis-jobs/job-1"
+    })
+    void acceptedLocationRetainsTheEffectiveApplicationPrefix(
+            String contextPath, String forwardedPrefix, String expectedLocation) throws Exception {
+        var body = new AnalyzeProjectRequest(List.of(7L), false, "MOCK", 25, "client-key");
+        when(analysisService.enqueueProject(41L, body, context.username(), context)).thenReturn(pendingJob());
+        var request = post(contextPath + "/api/projects/41/analyses")
+                .contextPath(contextPath)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"requirementIds":[7],"all":false,"provider":"MOCK","maxArchitectureNodes":25,
+                         "idempotencyKey":"client-key"}
+                        """);
+        if (!forwardedPrefix.isEmpty()) request.header("X-Forwarded-Prefix", forwardedPrefix);
+
+        standaloneSetup(controller).addFilters(new ForwardedHeaderFilter()).build()
+                .perform(request)
+                .andExpect(status().isAccepted())
+                .andExpect(header().string("Location", expectedLocation));
     }
 
     @Test

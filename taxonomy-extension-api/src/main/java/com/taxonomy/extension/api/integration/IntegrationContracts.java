@@ -1,10 +1,12 @@
 package com.taxonomy.extension.api.integration;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 
 /** Framework-neutral exchange values. These are transport/evidence values, never a second authoring model. */
@@ -141,7 +143,11 @@ public final class IntegrationContracts {
     public record IntegrationChange(String id, String externalId, ChangeKind kind, Set<String> fields,
                                     String expectedInternalFingerprint, String expectedExternalFingerprint,
                                     Artifact before, Artifact after, List<String> conflicts) {
-        public IntegrationChange { fields = Set.copyOf(fields); conflicts = List.copyOf(conflicts); }
+        public IntegrationChange {
+            // This set is an HTTP array too; retained reviews need the same order after a JVM restart.
+            fields = Collections.unmodifiableSet(new TreeSet<>(fields));
+            conflicts = List.copyOf(conflicts);
+        }
     }
 
     public record IntegrationChangeSet(UUID operationId, IntegrationContext context, String fingerprint,

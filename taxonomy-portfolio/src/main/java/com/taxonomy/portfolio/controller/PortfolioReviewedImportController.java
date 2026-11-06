@@ -19,8 +19,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.URI;
-
 /** Atomic adapter for mixed new-requirement and new-version import decisions. */
 @RestController
 @RequestMapping("/api/projects/{projectId}/requirements")
@@ -72,7 +70,7 @@ public class PortfolioReviewedImportController {
                 persisted.newRequirements(), persisted.versionedRequirements(), job);
         if (job != null) {
             return ResponseEntity.accepted()
-                    .location(URI.create("/api/projects/" + projectId + "/analysis-jobs/" + job.id()))
+                    .location(PortfolioResourceLocation.forPath("/api/projects/" + projectId + "/analysis-jobs/" + job.id()))
                     .body(result);
         }
         return ResponseEntity.status(201).body(result);

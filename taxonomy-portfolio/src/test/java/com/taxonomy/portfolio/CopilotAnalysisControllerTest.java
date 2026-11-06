@@ -9,12 +9,19 @@ import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.service.CopilotAutomationService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.filter.ForwardedHeaderFilter;
 
 import java.util.List;
 import java.util.Optional;
@@ -22,6 +29,10 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
 @ExtendWith(MockitoExtension.class)
 class CopilotAnalysisControllerTest {
@@ -35,11 +46,38 @@ class CopilotAnalysisControllerTest {
 
     @BeforeEach
     void setUp() {
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest()));
         controller = new CopilotAnalysisController(
                 automationService,
                 workspaceResolver);
         when(workspaceResolver.resolveCurrentUsername()).thenReturn(context.username());
         when(workspaceResolver.resolveCurrentContext()).thenReturn(context);
+    }
+
+    @AfterEach
+    void clearRequest() {
+        RequestContextHolder.resetRequestAttributes();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "'', '', /api/projects/41/copilot-operations/",
+            "/taxonomy, '', /taxonomy/api/projects/41/copilot-operations/",
+            "/tenant/taxonomy, '', /tenant/taxonomy/api/projects/41/copilot-operations/",
+            "/internal, /edge/taxonomy, /edge/taxonomy/api/projects/41/copilot-operations/"
+    })
+    void acceptedLocationRetainsTheEffectiveApplicationPrefix(
+            String contextPath, String forwardedPrefix, String expectedLocation) throws Exception {
+        when(automationService.enqueueManual(41L, 7L, null, context.username(), context))
+                .thenReturn(operation(AnalysisStatus.PENDING, "queued"));
+        var request = post(contextPath + "/api/projects/41/requirements/7/copilot")
+                .contextPath(contextPath);
+        if (!forwardedPrefix.isEmpty()) request.header("X-Forwarded-Prefix", forwardedPrefix);
+
+        standaloneSetup(controller).addFilters(new ForwardedHeaderFilter()).build()
+                .perform(request)
+                .andExpect(status().isAccepted())
+                .andExpect(header().string("Location", expectedLocation + "a".repeat(64)));
     }
 
     @Test

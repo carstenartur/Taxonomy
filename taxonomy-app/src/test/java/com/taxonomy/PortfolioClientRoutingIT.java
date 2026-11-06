@@ -193,11 +193,26 @@ class PortfolioClientRoutingIT {
         }
     }
 
+    @ParameterizedTest(name = "About resource links stay under [{0}]")
+    @MethodSource("prefixes")
+    void aboutResourceLinksStayWithinTheirMountedContext(String prefix) {
+        installRoutes(prefix);
+        open("index", prefix, "/", "localStorage.setItem('taxonomy_onboarded', 'true');");
+        assertThat(driver.findElements(By.cssSelector("#aboutModal a[href^='/']")))
+                .extracting(link -> link.getDomAttribute("href"))
+                .containsExactly(prefix + "/LICENSE", prefix + "/swagger-ui.html",
+                        prefix + "/THIRD-PARTY-NOTICES.md", prefix + "/NOTICE",
+                        prefix + "/LICENSE", prefix + "/THIRD-PARTY-NOTICES.md");
+    }
+
     @ParameterizedTest(name = "{1} initializes its project under [{0}]")
     @MethodSource("prefixesAndPages")
     void standalonePagesInitializeUnderTheirMountedContext(String prefix, PageContract contract) {
         installRoutes(prefix);
-        open(contract.template(), prefix, "/projects/42" + contract.suffix(), "");
+        open(contract.template(), prefix, "/projects/42" + contract.suffix(), """
+                window.renderedErgonomicsStylesheet = document.querySelector(
+                    'link[rel~="stylesheet"][href$="/css/taxonomy-ergonomics.css"]');
+                """);
         if (contract.template().equals("requirement-detail")) {
             wait.until(ignored -> text("requirementKey").equals("REQ-7")
                     && text(contract.heading()).equals(requirement().get("title")) && hidden("detailBusy"));
@@ -205,6 +220,21 @@ class PortfolioClientRoutingIT {
             wait.until(ignored -> text(contract.heading()).contains("P-42"));
         }
         assertThat(text(contract.error())).as("The initializer completes without a hidden page error").isEmpty();
+        var stylesheets = driver.findElements(By.cssSelector(
+                "link[rel~='stylesheet'][href$='/css/taxonomy-ergonomics.css']"));
+        assertThat(stylesheets).as("Shared utilities reuse the rendered ergonomics stylesheet").hasSize(1);
+        WebElement stylesheet = stylesheets.getFirst();
+        assertThat(stylesheet.getDomAttribute("href")).isEqualTo(prefix + "/css/taxonomy-ergonomics.css");
+        assertThat(driver.executeScript("return arguments[0] === window.renderedErgonomicsStylesheet;", stylesheet))
+                .as("The original Thymeleaf stylesheet remains in the document").isEqualTo(true);
+        assertThat(driver.executeScript("return arguments[0].sheet !== null && arguments[0].sheet.cssRules.length > 0;", stylesheet))
+                .as("The context-aware stylesheet loaded successfully in the native browser").isEqualTo(true);
+        assertThat(requests("GET", prefix + "/css/taxonomy-ergonomics.css"))
+                .as("The stylesheet is fetched once from the mounted application").hasSize(1);
+        if (!prefix.isEmpty()) {
+            assertThat(requests("GET", "/css/taxonomy-ergonomics.css"))
+                    .as("A prefixed deployment never requests the stylesheet from the server root").isEmpty();
+        }
         assertThat(requests("GET", prefix + "/api/projects/42")).hasSize(1);
         if (List.of("portfolio-import", "portfolio-matrices", "portfolio-reports").contains(contract.template())) {
             assertThat(requests("GET", prefix + "/api/architecture/lifecycle"))
@@ -999,8 +1029,13 @@ class PortfolioClientRoutingIT {
                 1, 1, 0, 0, null, List.of(item));
     }
 
+    private static Stream<String> prefixes() {
+        return PREFIXES.stream();
+    }
+
     private static Stream<Arguments> prefixesAndPages() {
-        return PREFIXES.stream().flatMap(prefix -> PAGES.stream().map(contract -> Arguments.of(prefix, contract)));
+        return Stream.concat(PREFIXES.stream(), Stream.of("/css"))
+                .flatMap(prefix -> PAGES.stream().map(contract -> Arguments.of(prefix, contract)));
     }
 
     private static Stream<Arguments> prefixesAndWorkspaces() {

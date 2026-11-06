@@ -187,7 +187,7 @@ public class ProjectAnalysisController {
     }
 
     private static ResponseEntity<AnalysisJobView> accepted(Long projectId, AnalysisJobView job) {
-        URI location = URI.create(
+        URI location = PortfolioResourceLocation.forPath(
                 "/api/projects/" + projectId + "/analysis-jobs/" + job.id());
         return ResponseEntity.accepted().location(location).body(job);
     }

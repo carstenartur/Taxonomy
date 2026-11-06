@@ -29,6 +29,13 @@ final class QeaWritePlacements {
     }
 
     void write(List<Placement> selected) throws SQLException {
+        // Reserve the whole selection before automatic allocation can consume a later frozen identity.
+        Set<Long> frozenInstances = new HashSet<>();
+        if (database.hasColumn("t_diagramobjects", "instance_id")) for (Placement placement : selected) {
+            if (placement.containerId().equals(model.model) || before.containsKey(placement.id())) continue;
+            String frozen = placement.attributes().get("ea:t_diagramobjects:instance_id");
+            if (frozen != null && !frozen.isBlank()) frozenInstances.add(number(frozen, true));
+        }
         for (Placement placement : selected.stream().sorted(Comparator.comparing(Placement::id)).toList()) {
             if (placement.containerId().equals(model.model)) continue;
             String view = QeaWriteModel.reference(placement.containerId()), member = QeaWriteModel.reference(placement.artifactId());
@@ -46,7 +53,7 @@ final class QeaWritePlacements {
             var values = new LinkedHashMap<String, Object>(); values.put("diagram_id", diagramId); values.put("object_id", objectId);
             String frozenInstance = placement.attributes().get("ea:t_diagramobjects:instance_id");
             if (database.hasColumn("t_diagramobjects", "instance_id")) {
-                long instance = frozenInstance == null || frozenInstance.isBlank() ? database.next("t_diagramobjects", "instance_id") : number(frozenInstance, true);
+                long instance = frozenInstance == null || frozenInstance.isBlank() ? automaticInstance(frozenInstances) : number(frozenInstance, true);
                 if (!allocated.add(instance)) {
                     Row existing = basis.rows("t_diagramobjects").stream().filter(r -> !r.text("instance_id").isBlank() && r.id("instance_id") == instance).findFirst().orElse(null);
                     if (existing == null || existing.number("diagram_id") != diagramId || existing.number("object_id") != objectId)
@@ -70,6 +77,12 @@ final class QeaWritePlacements {
             losses.add(new MappingLoss(placement.id(), "layout", "QEA_NEW_DIAGRAM_LAYOUT", LossDisposition.TRANSFORMED,
                     "The new occurrence uses its frozen native rectangle or a simple deterministic grid; existing geometry and routing are unchanged"));
         }
+    }
+    private long automaticInstance(Set<Long> frozenInstances) throws SQLException {
+        long instance;
+        do { instance = database.next("t_diagramobjects", "instance_id"); }
+        while (allocated.contains(instance) || frozenInstances.contains(instance));
+        return instance;
     }
     private static void checkExistingLayout(Placement placement, Map<String, String> prior) {
         for (String field : LAYOUT) {
