@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import vm from 'node:vm';
 import { classifyWebKitPollCancellation, createConsoleErrorLedger, createNavigationPollEvidence } from './ui-navigation-poll-evidence.mjs';
 
 test('the passive request observer captures the application workspace-routing header', async () => {
@@ -12,6 +13,96 @@ test('the passive request observer captures the application workspace-routing he
   handlers.request({ url: () => baseUrl + 'api/context/current', method: () => 'GET',
     headers: () => ({ 'x-taxonomy-workspace-id': 'workspace-1' }), redirectedFrom: () => null });
   assert.equal(observer.snapshot().reads[0].workspaceId, 'workspace-1');
+});
+
+test('the passive observer retains original project job and snapshot response evidence', async () => {
+  const handlers = {};
+  const page = { on: (name, fn) => { handlers[name] = fn; }, url: () => reloadUrl,
+    evaluate: async () => ({ epoch: oldEpoch, url: reloadUrl }) };
+  const context = { exposeBinding: async () => {}, addInitScript: async () => {} };
+  const observer = createNavigationPollEvidence({ browserName: 'webkit', baseUrl });
+  await observer.attach(page, context);
+  for (const endpoint of ['analysis-jobs', 'analysis-jobs/job-1', 'architecture-workbench/snapshot-1']) {
+    const url = `${baseUrl}api/projects/1/${endpoint}?repositoryId=repo-1&workspaceId=workspace-1&workspaceScopeKey=workspace-1&branch=draft`;
+    const payload = { endpoint };
+    const request = { url: () => url, method: () => 'GET',
+      headers: () => ({ 'x-taxonomy-workspace-id': 'workspace-1' }), redirectedFrom: () => null,
+      response: async () => response };
+    const response = { request: () => request, status: () => 200,
+      headers: () => ({ 'content-type': 'application/json' }), json: async () => payload };
+    handlers.request(request);
+    handlers.response(response);
+    handlers.requestfinished(request);
+  }
+  await new Promise(resolve => setImmediate(resolve));
+  const reads = observer.snapshot().reads;
+  assert.equal(reads.length, 3, 'The existing observer must capture the original transports without replacement requests');
+  for (const read of reads) {
+    assert.equal(read.documentEpoch, oldEpoch);
+    assert.equal(read.workspaceId, 'workspace-1');
+    assert.equal(read.finished, true);
+    assert.equal(read.jsonParsed, true);
+    assert.ok(read.sequence < read.finishedSequence && read.finishedSequence < read.parsedSequence,
+      'A source proof must distinguish a started read from its completed original response body');
+    assert.equal(new URL(read.url).pathname.endsWith(read.payload.endpoint), true);
+  }
+});
+
+test('an explicitly declared snapshot transition retains its two document observations', async () => {
+  const declaration = { locale: 'en', projectId: 1, jobId: 'job-1', snapshotId: 'snapshot-1' };
+  const oldDocument = { epoch: oldEpoch, url: baseUrl + 'projects?projectId=1' };
+  const newDocument = { epoch: newEpoch, url: baseUrl + '?architectureSource=snapshot&snapshotId=snapshot-1#architecture' };
+  const sourceObservation = { documentEpoch: oldEpoch, url: oldDocument.url, job: { heading: 'Completed job' } };
+  const observation = { documentEpoch: newEpoch, url: newDocument.url, snapshot: { rendered: true } };
+  const results = [oldDocument, oldDocument, sourceObservation, newDocument, observation];
+  const page = { on() {}, url: () => oldDocument.url, evaluate: async () => results.shift() };
+  const observer = createNavigationPollEvidence({ browserName: 'webkit', baseUrl });
+  await observer.attach(page, { exposeBinding: async () => {}, addInitScript: async () => {} });
+  await observer.begin('en', 'portfolio-snapshot', declaration);
+  await observer.end('en', true, 'portfolio-snapshot');
+  await observer.verifyDestination('en', 'portfolio-snapshot');
+  const navigation = observer.snapshot().navigations[0];
+  assert.deepEqual(navigation.declaration, declaration);
+  assert.deepEqual(navigation.sourceObservation, sourceObservation);
+  assert.deepEqual(navigation.newDocument, newDocument);
+  assert.deepEqual(navigation.observation, observation);
+  assert.equal(navigation.completed, true);
+  assert.equal(results.length, 0, 'Both observations must come from the actual selected document');
+});
+
+test('snapshot render evidence follows the visible canvas inside its display-contents wrapper', async () => {
+  let epoch = oldEpoch, url = baseUrl + 'projects?projectId=1';
+  const canvas = { getClientRects: () => [{}] };
+  const surface = { hidden: false, getClientRects: () => [],
+    querySelector: selector => selector === '#architectureCanvas' ? canvas : null,
+    querySelectorAll: () => [{}] };
+  const nodes = { architectureSnapshotSource: surface, requirementText: { textContent: 'Frozen source' },
+    workflowState: { textContent: 'Saved analysis snapshot-1' } };
+  const page = { on() {}, url: () => url, evaluate: async (fn, input) => {
+    if (fn.name === 'installDocumentObserver') return { epoch, url };
+    return vm.runInNewContext('(' + fn.toString() + ')(input)', {
+      input, performance: { timeOrigin: epoch }, location: { href: url },
+      document: { getElementById: id => nodes[id] },
+      window: { localStorage: { getItem: () => '1' },
+        TaxonomyArchitectureWorkflow: { getScope: () => ({}) },
+        TaxonomyArchitectureWorkspace: { isActive: () => true,
+          getSource: () => ({ kind: 'snapshot' }), getData: () => ({ snapshotId: 'snapshot-1' }) } }
+    });
+  } };
+  const observer = createNavigationPollEvidence({ browserName: 'webkit', baseUrl });
+  await observer.attach(page, { exposeBinding: async () => {}, addInitScript: async () => {} });
+  await observer.begin('en', 'portfolio-snapshot', { jobId: 'job-1', requirementKey: 'REQ-1' });
+  epoch = newEpoch; url = baseUrl + '?architectureSource=snapshot&snapshotId=snapshot-1#architecture';
+  await observer.end('en', true, 'portfolio-snapshot');
+  await observer.verifyDestination('en', 'portfolio-snapshot');
+  const snapshot = observer.snapshot().navigations[0].observation.snapshot;
+  assert.equal(snapshot.rendered, true, 'The production display:contents wrapper has no box even while its snapshot is rendered');
+  assert.equal(snapshot.nodeCount, 1);
+  assert.equal(snapshot.data.snapshotId, 'snapshot-1');
+  canvas.getClientRects = () => [];
+  await observer.verifyDestination('en', 'portfolio-snapshot');
+  assert.equal(observer.snapshot().navigations[0].observation.snapshot.rendered, false,
+    'A hidden canvas cannot supply rendered-snapshot evidence');
 });
 
 test('a consumed reload proof cannot remove a later identical unproved error', () => {

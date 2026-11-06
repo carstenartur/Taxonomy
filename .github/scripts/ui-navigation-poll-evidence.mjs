@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
+import { classifyPortfolioSnapshotPollCancellation } from './ui-portfolio-snapshot-poll-evidence.mjs';
 
 /** A proof can remove only the particular recorded error that produced it. */
 export function createConsoleErrorLedger(messages, reconciled) {
@@ -216,7 +217,9 @@ export function createNavigationPollEvidence({ browserName, baseUrl }) {
       currentDocument = await page.evaluate(installDocumentObserver);
       page.on('request', request => {
         const url = new URL(request.url());
-        if (url.origin !== base.origin || !endpoints.includes(url.pathname)) return;
+        const projectRead = url.pathname.startsWith(prefix + '/')
+          && /^\/api\/projects\/[1-9]\d*\/(?:analysis-jobs(?:\/[A-Za-z0-9._-]+)?|architecture-workbench\/[A-Za-z0-9._-]+)$/.test(url.pathname.slice(prefix.length));
+        if (url.origin !== base.origin || !endpoints.includes(url.pathname) && !projectRead) return;
         const read = { id: ++nextRead, url: request.url(), method: request.method(),
           documentEpoch: currentDocument?.epoch, pageUrl: page.url(),
           workspaceId: request.headers()['x-taxonomy-workspace-id'] || null,
@@ -242,14 +245,16 @@ export function createNavigationPollEvidence({ browserName, baseUrl }) {
         const read = requests.get(request);
         if (!read) return;
         read.finished = true;
-        record({ type: 'poll-request-finished', requestId: read.id, documentEpoch: read.documentEpoch, url: read.url });
+        read.finishedSequence = record({ type: 'poll-request-finished', requestId: read.id,
+          documentEpoch: read.documentEpoch, url: read.url }).sequence;
         const task = (async () => {
           try {
             const response = await request.response();
             if (response?.status() !== 200 || !/\bapplication\/json\b/i.test(response.headers()['content-type'] || '')) return;
             read.payload = await response.json();
             read.jsonParsed = true;
-            record({ type: 'poll-json-consumed', requestId: read.id, documentEpoch: read.documentEpoch, url: read.url });
+            read.parsedSequence = record({ type: 'poll-json-consumed', requestId: read.id,
+              documentEpoch: read.documentEpoch, url: read.url }).sequence;
           } catch {
             read.jsonParsed = false;
           }
@@ -258,11 +263,29 @@ export function createNavigationPollEvidence({ browserName, baseUrl }) {
         task.finally(() => bodyTasks.delete(task));
       });
     },
-    async begin(locale, kind = 'locale') {
+    async begin(locale, kind = 'locale', declaration) {
       if (browserName !== 'webkit') return;
       const oldDocument = await page.evaluate(documentIdentity);
       currentDocument = oldDocument;
       activeNavigation = { kind, locale, oldDocument, completed: false };
+      if (kind === 'portfolio-snapshot') {
+        await Promise.all([...bodyTasks]);
+        activeNavigation.declaration = structuredClone(declaration);
+        activeNavigation.sourceObservation = await page.evaluate(expected => {
+          const title = document.getElementById('job-' + expected.jobId);
+          const card = title?.closest('.portfolio-job');
+          const row = [...(card?.querySelectorAll('tbody tr') || [])]
+            .find(item => item.querySelector('td')?.textContent.trim() === expected.requirementKey);
+          const cells = row?.querySelectorAll('td');
+          return { documentEpoch: performance.timeOrigin, url: location.href,
+            scope: window.TaxonomyArchitectureWorkflow?.getScope?.(),
+            projectId: window.localStorage.getItem('taxonomy.portfolio.projectId'),
+            job: { url: card?.getAttribute('data-job-url'), heading: title?.textContent.trim(),
+              item: { key: cells?.[0]?.textContent.trim(), status: cells?.[1]?.textContent.trim(),
+                snapshot: cells?.[3]?.querySelector(':scope > code')?.textContent.trim() },
+              warnings: card?.querySelectorAll('.text-warning').length } };
+        }, declaration);
+      }
       activeNavigation.startSequence = record({ type: `${kind}-navigation-start`, locale, ...oldDocument }).sequence;
       navigations.push(activeNavigation);
     },
@@ -296,6 +319,21 @@ export function createNavigationPollEvidence({ browserName, baseUrl }) {
       // Only already finished original requests can contribute proof. An open
       // response/body is never turned into a successful read by a new GET.
       await Promise.all([...bodyTasks]);
+      if (kind === 'portfolio-snapshot') {
+        navigation.observation = await page.evaluate(() => {
+          const workspace = window.TaxonomyArchitectureWorkspace;
+          const surface = document.getElementById('architectureSnapshotSource');
+          const canvas = surface?.querySelector('#architectureCanvas');
+          return { documentEpoch: performance.timeOrigin, url: location.href,
+            snapshot: { source: workspace?.getSource?.(), data: workspace?.getData?.(),
+              rendered: workspace?.isActive?.() === true && surface?.hidden === false
+                && (canvas?.getClientRects().length || 0) > 0,
+              nodeCount: surface?.querySelectorAll('#architectureCanvas [data-node-id]').length || 0,
+              requirementText: document.getElementById('requirementText')?.textContent,
+              workflowState: document.getElementById('workflowState')?.textContent } };
+        });
+        return;
+      }
       const fresh = reads.filter(read => read.documentEpoch === navigation.newDocument.epoch
         && read.finished && read.jsonParsed && !read.failed);
       navigation.observation = await page.evaluate(freshReads => {
@@ -345,7 +383,9 @@ export function createNavigationPollEvidence({ browserName, baseUrl }) {
     },
     reconciliations() {
       return errors.flatMap(item => {
-        const proof = classifyWebKitPollCancellation({ browserName, baseUrl, error: item.error,
+        const classify = item.navigation?.kind === 'portfolio-snapshot'
+          ? classifyPortfolioSnapshotPollCancellation : classifyWebKitPollCancellation;
+        const proof = classify({ browserName, baseUrl, error: item.error,
           navigation: item.navigation, events, reads, observation: item.navigation?.observation });
         return proof ? [{ ...proof, errorId: item.errorId, message: item.error.message }] : [];
       });
