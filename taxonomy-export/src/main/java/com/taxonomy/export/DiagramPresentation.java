@@ -14,15 +14,30 @@ public final class DiagramPresentation {
     private DiagramPresentation() { }
 
     public static String fill(String type) {
-        if (type == null) return "#F1F5F9";
-        return switch (type) {
-            case "Capabilities", "CP", "Capability" -> "#DBEAFE";
-            case "Business Processes", "Business Roles", "BP", "BR", "Process", "BusinessRole" -> "#DCFCE7";
-            case "Core Services", "COI Services", "Services", "CR", "CI", "CoreService", "COIService" -> "#FEF3C7";
-            case "User Applications", "Applications", "UA", "UserApplication" -> "#F3E8FF";
-            case "Information Products", "IP", "InformationProduct" -> "#FFE4E6";
-            case "Communications Services", "CO", "CommunicationsService" -> "#CFFAFE";
+        return switch (layer(type)) {
+            case "cap" -> "#DBEAFE";
+            case "proc" -> "#DCFCE7";
+            case "svc" -> "#FEF3C7";
+            case "app" -> "#F3E8FF";
+            case "info" -> "#FFE4E6";
+            case "comm" -> "#CFFAFE";
             default -> "#F1F5F9";
+        };
+    }
+
+    /** Presentation family only; never infers catalogue identity from an element identifier. */
+    public static String layer(String type) {
+        if (type == null) return "default";
+        return switch (type) {
+            case "Capabilities", "CP", "Capability" -> "cap";
+            case "Business Processes", "Business Roles", "BP", "BR", "Process", "BusinessRole" -> "proc";
+            case "Core Services", "COI Services", "Services", "CR", "CI", "CoreService", "COIService" -> "svc";
+            case "User Applications", "Applications", "UA", "UserApplication" -> "app";
+            case "Information Products", "IP", "InformationProduct" -> "info";
+            case "Communications Services", "CO", "CommunicationsService" -> "comm";
+            case "Systems", "SY", "System" -> "system";
+            case "Components", "CM", "Component" -> "component";
+            default -> "default";
         };
     }
 

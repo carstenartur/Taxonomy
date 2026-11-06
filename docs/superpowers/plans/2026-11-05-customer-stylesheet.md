@@ -9,3 +9,8 @@ Verify default behavior, updates, missing and invalid files with the existing
 JUnit tooling. Extend the existing browser acceptance to apply a custom style
 on the analysis and projects pages under a mounted context path. Server-rendered
 exports remain outside this step and are documented as such.
+
+The authorized 2026-11-06 follow-up extends the same bounded stylesheet source
+with validated shared color tokens for SVG, vector architecture PDF, native
+Visio and HTML report surfaces. The precise portable subset and native/template
+boundaries are documented in [customer styling](../../en/CUSTOM_STYLES.md).
