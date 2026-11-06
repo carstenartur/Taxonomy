@@ -39,9 +39,9 @@ final class IntegrationPackageProjection {
         selected.values().stream().filter(a -> a.kind() == ArtifactKind.VIEW).map(Artifact::id).forEach(viewContainers::add);
         selected.values().stream().filter(a -> isPackagePlacement(a, viewContainers)).forEach(a -> occurrences.put(a.id(), a));
         Map<String, Integer> nativePositions = nativePositions(occurrences.values(), nativeIds.keySet());
-        Map<String, PackagePlacement> deltas = new LinkedHashMap<>();
+        Map<String, PackagePlacement> desired = new LinkedHashMap<>();
+        Set<String> changed = new LinkedHashSet<>();
         for (Artifact a : occurrences.values()) {
-            if (ExchangeItems.fields(a).equals(ExchangeItems.fields(current.get(ExchangeItems.key(a))))) continue;
             String nativeId = nativeIds.get(a.extensions().get("artifact"));
             if (nativeId == null) continue; // Requirement membership remains exchange evidence.
             Artifact artifact = selected.values().stream().filter(v -> v.id().equals(a.extensions().get("artifact")) && v.kind() != ArtifactKind.PLACEMENT).findFirst().orElseThrow();
@@ -54,31 +54,46 @@ final class IntegrationPackageProjection {
                 parent = nativeIds.get(occurrence.extensions().get("artifact"));
                 if (parent == null) throw new IntegrationProblem("SPARX_ENDPOINT_KIND_UNMAPPED", 422, "Package parent is not native");
             }
-            deltas.put(kind + ":" + nativeId, new PackagePlacement(kind, nativeId, parent, nativePositions.get(a.id())));
+            String key = kind + ":" + nativeId;
+            desired.put(key, new PackagePlacement(kind, nativeId, parent, nativePositions.get(a.id())));
+            if (!ExchangeItems.fields(a).equals(ExchangeItems.fields(current.get(ExchangeItems.key(a))))) changed.add(key);
         }
         for (var entry : current.entrySet()) if (isPackagePlacement(entry.getValue(), viewContainers) && !selected.containsKey(entry.getKey())) {
             String external = entry.getValue().extensions().get("artifact");
             Identity prior = known.values().stream().filter(m -> m.internal() != null && m.internal().id().equals(external)).findFirst().orElse(null);
-            if (prior != null && prior.internal().kind() == ArtifactKind.ELEMENT)
-                deltas.put("ELEMENT:" + prior.businessIdentity(), new PackagePlacement(PackageMemberKind.ELEMENT, prior.businessIdentity(), null, -1));
+            if (prior != null && prior.internal().kind() == ArtifactKind.ELEMENT) {
+                String key = "ELEMENT:" + prior.businessIdentity();
+                desired.put(key, new PackagePlacement(PackageMemberKind.ELEMENT, prior.businessIdentity(), null, -1));
+                changed.add(key);
+            }
         }
         Set<String> touched = new LinkedHashSet<>();
-        for (var entry : deltas.entrySet()) {
-            PackagePlacement old = members.get(entry.getKey()); if (old != null) touched.add(old.parentPackageId());
-            if (entry.getValue().parentPackageId() != null) touched.add(entry.getValue().parentPackageId());
+        for (String key : changed) {
+            PackagePlacement old = members.get(key); if (old != null) touched.add(old.parentPackageId());
+            String parent = desired.get(key).parentPackageId(); if (parent != null) touched.add(parent);
         }
-        if (!deltas.isEmpty()) {
-            Map<String, List<PackagePlacement>> scopes = new LinkedHashMap<>();
-            for (String parent : touched) scopes.put(parent, new ArrayList<>(members.entrySet().stream()
-                    .filter(e -> parent.equals(e.getValue().parentPackageId()) && !deltas.containsKey(e.getKey()))
-                    .map(Map.Entry::getValue).sorted(Comparator.comparingInt(PackagePlacement::position)).toList()));
-            deltas.values().stream().filter(p -> p.parentPackageId() != null).sorted(Comparator.comparingInt(PackagePlacement::position).thenComparing(PackagePlacement::memberId))
-                    .forEach(p -> { var siblings = scopes.get(p.parentPackageId()); siblings.add(Math.min(p.position(), siblings.size()), p); });
+        if (!touched.isEmpty()) {
             List<PackagePlacement> finalState = new ArrayList<>();
-            scopes.forEach((parent, siblings) -> { for (int i = 0; i < siblings.size(); i++) {
-                var p = siblings.get(i); finalState.add(new PackagePlacement(p.kind(), p.memberId(), parent, i));
-            }});
-            deltas.values().stream().filter(p -> p.parentPackageId() == null).forEach(finalState::add);
+            Comparator<PackagePlacement> order = Comparator.comparingInt(PackagePlacement::position).thenComparing(PackagePlacement::memberId);
+            for (String parent : touched) {
+                Iterator<PackagePlacement> projected = desired.values().stream().filter(p -> parent.equals(p.parentPackageId()))
+                        .sorted(order).iterator();
+                List<PackagePlacement> siblings = new ArrayList<>();
+                // A changed source rank can also move a sibling whose own source fields are unchanged.
+                // Refill all surviving mapped slots, retain local siblings, and discard departures first.
+                for (PackagePlacement member : members.values().stream().filter(p -> parent.equals(p.parentPackageId())).sorted(order).toList()) {
+                    PackagePlacement target = desired.get(member.kind() + ":" + member.memberId());
+                    if (target == null) siblings.add(member);
+                    else if (parent.equals(target.parentPackageId())) siblings.add(projected.next());
+                }
+                // New or incoming members can exceed the surviving slots; preserve their source order.
+                projected.forEachRemaining(siblings::add);
+                for (int i = 0; i < siblings.size(); i++) {
+                    PackagePlacement member = siblings.get(i);
+                    finalState.add(new PackagePlacement(member.kind(), member.memberId(), parent, i));
+                }
+            }
+            desired.values().stream().filter(p -> p.parentPackageId() == null).forEach(finalState::add);
             commands.add(new SetArchitecturePackagePlacements(finalState, touched));
         }
         List<ArchitecturePackage> removed = model.getPackages().stream().filter(p -> mappings.stream().anyMatch(m -> p.id().equals(m.businessIdentity())
@@ -160,25 +175,29 @@ final class IntegrationPackageProjection {
     /** Expand native ordering into the original source slots without rewriting opaque membership evidence. */
     private static Map<String, Integer> sourcePositions(List<PackagePlacement> members, Collection<Artifact> occurrences,
             Map<String, String> external, Map<String, String> placementIds, String modelId) {
-        Set<String> nativeIds = new HashSet<>(external.values());
         Map<String, Artifact> prior = new HashMap<>();
-        Map<OccurrenceScope, SortedSet<Integer>> slots = new HashMap<>();
-        Map<OccurrenceScope, Integer> next = new HashMap<>();
-        for (Artifact a : occurrences) {
-            prior.put(a.extensions().get("artifact"), a);
-            OccurrenceScope scope = OccurrenceScope.of(a);
-            next.merge(scope, position(a) + 1, Math::max);
-            if (nativeIds.contains(a.extensions().get("artifact")))
-                slots.computeIfAbsent(scope, ignored -> new TreeSet<>()).add(position(a));
-        }
+        for (Artifact a : occurrences) prior.put(a.extensions().get("artifact"), a);
         Map<OccurrenceScope, List<PackagePlacement>> scopes = new HashMap<>();
+        Map<String, OccurrenceScope> targetScopes = new HashMap<>();
         for (PackagePlacement member : members) {
             String id = external.get(member.memberId()); if (id == null) continue;
             Artifact a = prior.get(id);
             String container = a == null ? modelId : a.extensions().get("container");
             String parent = member.parentPackageId().isEmpty() ? "" : placementIds.get(member.parentPackageId());
-            if (container != null && parent != null)
-                scopes.computeIfAbsent(new OccurrenceScope(container, parent), ignored -> new ArrayList<>()).add(member);
+            if (container != null && parent != null) {
+                OccurrenceScope scope = new OccurrenceScope(container, parent);
+                scopes.computeIfAbsent(scope, ignored -> new ArrayList<>()).add(member);
+                targetScopes.put(id, scope);
+            }
+        }
+        Map<OccurrenceScope, SortedSet<Integer>> slots = new HashMap<>();
+        Map<OccurrenceScope, Integer> next = new HashMap<>();
+        for (Artifact a : occurrences) {
+            OccurrenceScope scope = OccurrenceScope.of(a);
+            next.merge(scope, position(a) + 1, Math::max);
+            // Removed or moved members do not donate slots across retained requirement evidence.
+            if (scope.equals(targetScopes.get(a.extensions().get("artifact"))))
+                slots.computeIfAbsent(scope, ignored -> new TreeSet<>()).add(position(a));
         }
         Map<String, Integer> positions = new HashMap<>();
         scopes.forEach((scope, siblings) -> {

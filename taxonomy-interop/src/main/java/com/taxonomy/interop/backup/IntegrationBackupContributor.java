@@ -10,6 +10,7 @@ import com.taxonomy.exchange.backup.PortableRows;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.extension.api.integration.PublicationContracts.*;
 import com.taxonomy.interop.publication.PublicationEvidence.*;
+import com.taxonomy.interop.persistence.IntegrationStore.FileExportPlan;
 import com.taxonomy.model.WorkspaceOverlayScope;
 import java.io.IOException;
 import java.sql.ResultSet;
@@ -23,7 +24,7 @@ import static com.taxonomy.exchange.backup.PortableRows.*;
 /** Module-owned typed journal capture. No source mutation, worker claims, target authority or automatic dispatch. */
 public final class IntegrationBackupContributor implements BackupDataContributor {
     private static final List<String> DATASETS = List.of("connections", "identities", "checkpoints", "operations", "events",
-            "publications", "publish-items", "publish-attempts", "inventory-comparisons", "inventory-assertions", "inventory-observations", "inventory-reviews", "inventory-mappings");
+            "publications", "publish-items", "publish-attempts", "inventory-comparisons", "inventory-assertions", "inventory-observations", "inventory-reviews", "inventory-mappings", "files");
     private static final String PENDING = "e.status not in ('COMPLETED','CANCELLED')";
     private static final String PENDING_PARENT = "exists (select 1 from interop_operation o where o.id=e.operation_id and o.status not in ('COMPLETED','CANCELLED'))";
     private final PortableRows rows;
@@ -36,7 +37,7 @@ public final class IntegrationBackupContributor implements BackupDataContributor
     @Override public Set<String> categories() {
         var result = new HashSet<String>();
         for (String name : List.of("IntegrationConnectionEntity", "ExternalIdentityMappingEntity", "IntegrationCheckpointEntity",
-                "IntegrationOperationEntity", "IntegrationEventEntity", "IntegrationPublicationEntity", "IntegrationPublishItemEntity", "IntegrationPublishAttemptEntity"))
+                "IntegrationOperationEntity", "IntegrationEventEntity", "IntegrationPublicationEntity", "IntegrationPublishItemEntity", "IntegrationPublishAttemptEntity", "IntegrationFileEntity"))
             result.add("com.taxonomy.interop.persistence." + name);
         for(String name:List.of("InventoryComparisonEntity","InventoryAssertionEntity","InventoryObservationEntity","InventoryReviewEntity","InventoryMappingEntity")) result.add("com.taxonomy.interop.inventory."+name);
         return Set.copyOf(result);
@@ -47,7 +48,7 @@ public final class IntegrationBackupContributor implements BackupDataContributor
         if (profile.includesHistory())
             return List.of("interop: runtime leases and worker claims are excluded; source identities and dispatch evidence require target mapping and manual review");
         return List.of("interop: completed/cancelled operations, removed mappings, checkpoints, events and attempts require history",
-                "interop: original transport input, before/baseline payloads, frozen dispatch requests, receipts and free-text mapping diagnostics require history; saved pending candidates remain",
+                "interop: original transport input except bases required by pending file previews, before/baseline payloads, frozen dispatch requests, receipts and free-text mapping diagnostics require history; saved pending candidates remain",
                 "interop: source journal references and fingerprints are provenance, not target keys or projected-payload digests; recompute baselines and review all outgoing work after restore");
     }
     @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
@@ -58,6 +59,8 @@ public final class IntegrationBackupContributor implements BackupDataContributor
         try {
             var selection = new IntegrationBackupSelection(snapshot, scopes, rows, sink);
             selection.verify();
+            var files = new IntegrationBackupFiles(rows, selection, sink, profile);
+            files.verify();
             var datasets = new Capture(selection, sink, profile);
             var publications = new IntegrationBackupPublicationChecks(rows, sink::checkpoint);
             boolean history = profile.includesHistory();
@@ -81,7 +84,7 @@ public final class IntegrationBackupContributor implements BackupDataContributor
                         text(r, "git_commit"), text(r, "external_version"), text(r, "fingerprint"), state, date(r, "created_at"), text(r, "kind"),
                         baseline, completion);
             }); else datasets.header("checkpoints");
-            datasets.add("operations", "interop_operation", "id,scope_id,connection_id,actor,status,direction,fingerprint,review_fingerprint,connection_revision,context_json,document_json,changes_json,review_json,result_json,result_state_json,result_file_json,result_commit,result_revision,failure_code,created_at,updated_at",
+            datasets.add("operations", "interop_operation", "id,scope_id,connection_id,actor,status,direction,fingerprint,review_fingerprint,connection_revision,context_json,document_json,changes_json,review_json,result_json,result_state_json,result_file_json,result_commit,result_revision,failure_code,created_at,updated_at,file_export_json,base_file_id,result_file_id",
                     history ? "1=1" : PENDING, r -> {
                 var scope = selection.scope(r); String op = text(r, "id"); var context = json(r, "context_json", IntegrationContext.class, true);
                 context(context, scope, text(r, "connection_id"));
@@ -89,6 +92,10 @@ public final class IntegrationBackupContributor implements BackupDataContributor
                 var state = json(r, "result_state_json", InternalState.class, false); state(state, scope);
                 var status = OperationStatus.valueOf(text(r, "status"));
                 String direction = text(r, "direction");
+                var fileExport = json(r, "file_export_json", FileExportPlan.class, false);
+                if (fileExport != null && (!fileExport.identityNamespace().equals(context.connectionId())
+                        || !fileExport.base().id().toString().equals(text(r, "base_file_id"))))
+                    throw new IOException("Invalid integration file export binding");
                 // publicationPreview duplicates its remote-before snapshot into operation.document_json.
                 // Saved publication work is captured from its preview/plan/items; the operation is only provenance here.
                 boolean payload = history || !Set.of("PUSH", "SYNCHRONIZE").contains(direction);
@@ -98,7 +105,8 @@ public final class IntegrationBackupContributor implements BackupDataContributor
                         payload ? Arrays.stream(json(r, "changes_json", IntegrationChange[].class, true)).map(c -> IntegrationBackupPayloads.change(c, history)).toList() : List.of(), review,
                         payload ? IntegrationBackupPayloads.document(json(r, "result_json", ExchangeDocument.class, false), history) : null, state,
                         history ? json(r, "result_file_json", ExchangeFile.class, false) : null, text(r, "result_commit"), number(r, "result_revision"),
-                        text(r, "failure_code"), date(r, "created_at"), date(r, "updated_at"));
+                        text(r, "failure_code"), date(r, "created_at"), date(r, "updated_at"), fileExport,
+                        reference(r, "interop.file", "base_file_id"), reference(r, "interop.file", "result_file_id"));
             });
             if (history) datasets.add("events", "interop_event", "id,scope_id,connection_id,operation_id,event_type,actor,occurred_at,rationale,failure_code", "1=1",
                     r -> new EventData(id(r, "event", "id"), selection.scope(r), id(r, "connection", "connection_id"), id(r, "operation", "operation_id"), text(r, "event_type"),
@@ -107,6 +115,7 @@ public final class IntegrationBackupContributor implements BackupDataContributor
             publications(selection, sink, profile, datasets, publications);
             inventory(snapshot,datasets);
             datasets.write();
+            files.write();
             policy(sink, profile, "CAPTURED");
         } catch (IllegalArgumentException | NullPointerException | DateTimeException failure) {
             throw new IOException("Invalid or unsupported integration backup evidence");
@@ -318,7 +327,8 @@ public final class IntegrationBackupContributor implements BackupDataContributor
                                 String targetExecutionPolicy, String direction, String sourceFingerprint, String sourceReviewFingerprint, long sourceConnectionRevision,
                                 IntegrationContext sourceContext, Record document, List<Record> changes, ReviewedChangeSet sourceReview, Record resultDocument,
                                 InternalState sourceResultState, ExchangeFile historicalResultFile, String sourceResultCommit, Long sourceResultRevision,
-                                String failureCode, String createdAt, String updatedAt) { }
+                                String failureCode, String createdAt, String updatedAt, FileExportPlan sourceFileExport,
+                                SourceRecordId sourceBaseFileId, SourceRecordId sourceResultFileId) { }
     public record EventData(SourceRecordId sourceId, BackupIntegrationScope scope, SourceRecordId connection, SourceRecordId operation, String eventType,
                             String sourceActor, String occurredAt, String rationale, String failureCode) { }
     public record PublicationData(SourceRecordId sourceId, BackupIntegrationScope scope, SourceRecordId connection, PublicationPreviewRequest sourceRequest,

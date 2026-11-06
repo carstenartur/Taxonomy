@@ -31,6 +31,58 @@
             return type === 'application/octet-stream' ? [] : (extensions[type] || []).concat(type);
         }))).join(',');
     }
+    function basedFileExport(profile) { return !!profile && profile.capabilities.includes('BASED_FILE_EXPORT_V1'); }
+    function fileExportModes() {
+        var allowed = overview && Array.isArray(overview.fileExportModes) ? overview.fileExportModes : [];
+        return ['NEW_PROJECT', 'UPDATE_COPY'].filter(function (mode) { return allowed.includes(mode); });
+    }
+    function fileBases() { return overview && Array.isArray(overview.fileBases) ? overview.fileBases : []; }
+    function selectedFileBase() { return fileBases().find(function (base) { return base.id === el('integrationExportBase').value; }); }
+    function invalidateExport() { pendingExport = null; }
+    function resetFileExport() {
+        invalidateExport();
+        ['integrationExportMode', 'integrationExportBase'].forEach(function (id) { el(id).replaceChildren(); el(id).value = ''; });
+        el('integrationExportBaseFile').value = ''; el('integrationExportModeHint').textContent = '';
+    }
+    function configureFileExport() {
+        if (!basedFileExport(selectedProfile())) { resetFileExport(); return; }
+        var mode = el('integrationExportMode'), base = el('integrationExportBase'), priorMode = mode.value, priorBase = base.value;
+        var modes = fileExportModes(), preferred = overview.checkpoint || overview.connection.checkpointId ? 'UPDATE_COPY' : 'NEW_PROJECT';
+        mode.replaceChildren(); modes.forEach(function (value) { option(mode, value, t('exportMode.' + value)); });
+        mode.value = modes.includes(priorMode) ? priorMode : modes.includes(preferred) ? preferred : modes[0] || '';
+        el('integrationExportModeHint').textContent = modes.length ? '' : t('exportModeUnavailable');
+        base.replaceChildren(); option(base, 'upload', t('exportBaseUpload'));
+        fileBases().forEach(function (value) {
+            var label = 'SHA-256 ' + value.sha256 + ' · ' + value.bytes + ' ' + t('bytes');
+            if (value.modelIdentifier) label += ' · ' + value.modelIdentifier;
+            label += ' · ' + t('sourceOperation') + ': ' + value.sourceOperationId;
+            option(base, value.id, label);
+        });
+        base.value = priorBase && fileBases().some(function (value) { return value.id === priorBase; }) ? priorBase : 'upload';
+        if (priorBase && priorBase !== 'upload' && base.value === 'upload') el('integrationExportBaseFile').value = '';
+        if (mode.value !== priorMode || base.value !== priorBase) invalidateExport();
+    }
+    function canPreviewExport() {
+        var profile = selectedProfile();
+        if (initializing || busy || !mayWrite || !connection() || !profile || !profile.capabilities.includes('FILE_EXPORT')) return false;
+        if (!basedFileExport(profile)) return true;
+        return fileExportModes().includes(el('integrationExportMode').value)
+            && (el('integrationExportBase').value === 'upload' ? !!el('integrationExportBaseFile').files[0] : !!selectedFileBase());
+    }
+    function showFileExport(value) {
+        var summary = el('integrationFileExportSummary'); summary.replaceChildren(); summary.hidden = !value;
+        if (!value) return;
+        var title = document.createElement('h3'), details = document.createElement('dl');
+        title.textContent = t('fileExportReview'); details.className = 'integration-context-summary';
+        var fields = [['exportMode', t('exportMode.' + value.mode)], ['baseFileId', value.baseFileId], ['baseSha256', value.baseSha256],
+            ['baseMediaType', value.baseMediaType], ['baseBytes', value.baseBytes], ['modelIdentifier', value.modelIdentifier], ['identityNamespace', value.identityNamespace]];
+        ['outputFileId', 'outputSha256', 'outputBytes'].forEach(function (key) { if (value[key] != null) fields.push([key, value[key]]); });
+        fields.forEach(function (field) {
+            var row = document.createElement('div'), label = document.createElement('dt'), text = document.createElement('dd');
+            label.textContent = t(field[0]); text.textContent = field[1] == null ? '—' : String(field[1]); row.append(label, text); details.append(row);
+        });
+        summary.append(title, details);
+    }
     function report(error) { var body = error.responseBody || {}; el('integrationError').textContent = (body.code ? body.code + ': ' : '') + (body.message || error.message); el('integrationError').hidden = false; }
     async function run(action) {
         if (initializing || busy) return; busy = true; el('integrationError').hidden = true; controls();
@@ -77,7 +129,12 @@
         el('integrationFile').accept = acceptedFiles(profile);
         el('integrationRemote').hidden = !capabilities.includes('READ_LINK');
         el('integrationImport').hidden = overview && !capabilities.includes('FILE_IMPORT');
-        el('integrationExport').disabled = busy || !mayWrite || !capabilities.includes('FILE_EXPORT');
+        var based = basedFileExport(profile), exportDisabled = busy || !mayWrite || !based || !capabilities.includes('FILE_EXPORT') || !fileExportModes().length;
+        el('integrationFileExport').hidden = !based; el('integrationFileExport').disabled = exportDisabled;
+        el('integrationExportMode').disabled = exportDisabled; el('integrationExportBase').disabled = exportDisabled;
+        el('integrationExportBaseFile').accept = acceptedFiles(profile);
+        el('integrationExportBaseFile').disabled = exportDisabled || el('integrationExportBase').value !== 'upload';
+        el('integrationExport').disabled = !canPreviewExport();
         el('integrationSparxNotice').hidden = !overview || overview.connection.connectorId !== 'sparx-xmi-2.1';
         el('integrationPcsNotice').hidden = !overview || overview.connection.connectorId !== 'sparx-oslc-am-2.0';
         var creating = profiles.find(function (candidate) { return candidate.id + '@' + candidate.version === el('connectionProfile').value; });
@@ -264,6 +321,7 @@
         if (['REQUIREMENT', 'RELATION'].includes(artifact.kind)) decision.append(advanced);
     }
     function showPublication(value, generic, authoritative) {
+        showFileExport(null);
         var key = reviewKey(value.operationId), pending = pendingReviews[key];
         var matches = pending && pending.requestFingerprint === value.requestFingerprint && value.preview
             && pending.body.review.previewFingerprint === value.preview.fingerprint;
@@ -324,6 +382,7 @@
         el('integrationOperation').textContent = value.id + ' · ' + t('status.' + value.status) + (value.failureCode ? ' · ' + value.failureCode : '');
         el('integrationProvenance').textContent = JSON.stringify(value.context, null, 2);
         el('integrationProvenanceDetails').hidden = false;
+        showFileExport(value.fileExport);
         el('integrationLosses').replaceChildren(); value.document.losses.forEach(function (loss) {
             var item = document.createElement('li'); item.textContent = (loss.artifactId || '') + ' · ' + loss.disposition + ' · ' + loss.code + ': ' + loss.detail; el('integrationLosses').append(item);
         });
@@ -343,7 +402,7 @@
     async function refresh() {
         if (!connection()) { overview = null; controls(); return; }
         var version = ++generation; var scopeQuery = el('integrationPublicationRoot').value.trim() && el('integrationPublicationSelector').value.trim() ? '?rootResource=' + encodeURIComponent(el('integrationPublicationRoot').value.trim()) + '&selectorFingerprint=' + encodeURIComponent(el('integrationPublicationSelector').value.trim()) : ''; var value = await api.read(prefix() + scopeQuery); if (version !== generation) return;
-        overview = value; el('integrationContext').textContent = JSON.stringify({ current: value.current, authority: value.connection.authority, external: value.connection.externalScope, observationCheckpoint: value.checkpoint, commonCheckpointId: value.connection.commonCheckpointId }, null, 2);
+        overview = value; configureFileExport(); el('integrationContext').textContent = JSON.stringify({ current: value.current, authority: value.connection.authority, external: value.connection.externalScope, observationCheckpoint: value.checkpoint, commonCheckpointId: value.connection.commonCheckpointId }, null, 2);
         var external = value.connection.externalScope || {}, current = value.current || {};
         el('integrationSystemSummary').textContent = external.systemType || '—';
         el('integrationRepositorySummary').textContent = external.repository || '—';
@@ -361,6 +420,7 @@
     function clearConnectionContext() {
         ++generation;
         overview = null;
+        resetFileExport(); showFileExport(null);
         el('integrationContext').textContent = '';
         ['integrationSystemSummary', 'integrationRepositorySummary', 'integrationBranchSummary', 'integrationRevisionSummary', 'integrationAuthoritySummary'].forEach(function (id) { el(id).textContent = ''; });
         el('integrationContextSummary').hidden = true; el('integrationContextDetails').hidden = true; el('integrationContextDetails').open = false;
@@ -405,10 +465,37 @@
         if (!pendingUpload) pendingUpload = { operationId: crypto.randomUUID(), expected: overview.current, mediaType: profile.mediaTypes.includes('application/xml') ? 'application/xml' : profile.mediaTypes[0], completeScope: el('integrationComplete').checked };
         show(await api.upload(prefix() + '/previews', pendingUpload, file)); pendingUpload = null; await refresh(); el('integrationReview').focus();
     }); });
-    el('integrationExport').addEventListener('click', function () { run(async function () {
-        if (!pendingExport) pendingExport = { operationId: crypto.randomUUID(), expected: overview.current, expectedExternalVersion: overview.checkpoint ? overview.checkpoint.externalVersion : null };
-        show(await api.write(prefix() + '/export-previews', pendingExport)); pendingExport = null; await refresh(); el('integrationReview').focus();
-    }); });
+    ['integrationExportMode', 'integrationExportBase', 'integrationExportBaseFile'].forEach(function (id) {
+        el(id).addEventListener('change', function () {
+            invalidateExport(); if (id === 'integrationExportBase') el('integrationExportBaseFile').value = ''; controls();
+        });
+    });
+    el('integrationExport').addEventListener('click', function () {
+        if (!canPreviewExport()) return;
+        run(async function () {
+            if (!pendingExport) {
+                var profile = selectedProfile(), based = basedFileExport(profile), file = null;
+                var request = { operationId: crypto.randomUUID(), expected: overview.current, expectedExternalVersion: overview.checkpoint ? overview.checkpoint.externalVersion : null };
+                if (based) {
+                    var base = el('integrationExportBase').value === 'upload' ? null : selectedFileBase();
+                    file = base ? null : el('integrationExportBaseFile').files[0];
+                    var mediaTypes = Array.isArray(profile.mediaTypes) ? profile.mediaTypes : [];
+                    request.mode = el('integrationExportMode').value; request.baseFileId = base ? base.id : null;
+                    request.mediaType = base ? base.mediaType : mediaTypes.includes(file.type) ? file.type
+                        : mediaTypes.find(function (type) { return type !== 'application/octet-stream'; }) || mediaTypes[0] || null;
+                }
+                // Retrying sends the identical reviewed state and the original binary object.
+                pendingExport = { request: JSON.parse(JSON.stringify(request)), file: file, based: based, connectionId: connection() };
+            }
+            var attempt = pendingExport, result;
+            var current = function () { return pendingExport === attempt && connection() === attempt.connectionId; };
+            try { result = await (attempt.based ? api.upload(prefix() + '/export-previews', attempt.request, attempt.file)
+                : api.write(prefix() + '/export-previews', attempt.request)); }
+            catch (error) { if (current()) throw error; return; }
+            if (!current()) return;
+            show(result); pendingExport = null; await refresh(); el('integrationReview').focus();
+        });
+    });
     el('integrationFilter').addEventListener('input', function () { page = 0; renderChanges(); });
     el('integrationPrevious').addEventListener('click', function () { page = Math.max(0, page - 1); renderChanges(); }); el('integrationNext').addEventListener('click', function () { page++; renderChanges(); });
     el('integrationAccept').addEventListener('click', function () { if (publication) { if (!editablePublication()) return; visible().forEach(function (c) { if (!c.conflicts.length && c.local && c.remote) resolutions[c.id] = 'MERGE'; }); renderChanges(); return; } visible().forEach(function (c) { if (c.kind !== 'CONFLICT' && c.kind !== 'REMOVE_CANDIDATE') decisions[c.id] = 'ACCEPT'; }); renderChanges(); });

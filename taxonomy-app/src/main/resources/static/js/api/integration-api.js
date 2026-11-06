@@ -10,7 +10,8 @@ window.IntegrationApi = (function () {
         read: function (path) { return window.TaxonomyApiClient.getJson(url(path)); },
         write: function (path, body) { return window.TaxonomyApiClient.sendJson(url(path), body, 'POST', { retries: 0 }); },
         upload: function (path, request, file) {
-            var form = new FormData(); form.append('request', new Blob([JSON.stringify(request)], { type: 'application/json' })); form.append('file', file);
+            var form = new FormData(); form.append('request', new Blob([JSON.stringify(request)], { type: 'application/json' }));
+            if (file != null) form.append('file', file);
             return window.TaxonomyApiClient.sendFormData(url(path), form, 'POST', { retries: 0 });
         },
         downloadUrl: function (path) { return window.TaxonomyI18n.resolveUrl(url(path)); }

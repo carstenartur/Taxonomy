@@ -62,6 +62,13 @@
             <label><input id="integrationComplete" type="checkbox"/><span data-i18n="integration.complete">This file is the complete external scope. Missing objects may be proposed for deletion.</span></label>
             <button type="submit" data-i18n="integration.preview" disabled>Preview import</button>
         </form>
+        <fieldset id="integrationFileExport" hidden disabled><legend data-i18n="integration.fileExport">Export using a file basis</legend>
+            <p data-i18n="integration.fileExportHint">Choose a template for a new project, or the file to update as a copy. The source file remains unchanged.</p>
+            <label for="integrationExportMode" data-i18n="integration.exportMode">Export mode</label><select id="integrationExportMode" disabled></select>
+            <p id="integrationExportModeHint" role="status"></p>
+            <label for="integrationExportBase" data-i18n="integration.exportBase">File basis</label><select id="integrationExportBase" disabled></select>
+            <label for="integrationExportBaseFile" data-i18n="integration.exportBaseFile">Template or base file (maximum 16 MiB)</label><input id="integrationExportBaseFile" type="file" disabled/>
+        </fieldset>
         <button id="integrationExport" type="button" data-i18n="integration.export" disabled>Preview export of this exact state</button>
         <fieldset id="integrationPublication"><legend data-i18n="integration.publication">Conditional publication</legend>
             <p data-i18n="integration.publicationScopeHint">Select the model or package and the subset defined by the configured provider. Only a server-verified provider can accept publication.</p>
@@ -81,6 +88,7 @@
             <summary data-i18n="integration.context.operationDetails">Technical operation details</summary>
             <pre id="integrationProvenance" tabindex="0"></pre>
         </details>
+        <div id="integrationFileExportSummary" hidden></div>
         <label for="integrationFilter" data-i18n="integration.filter">Filter by identity, title, kind or conflict</label><input id="integrationFilter" type="search"/>
         <div class="toolbar"><button id="integrationAccept" type="button" data-i18n="integration.acceptVisible" disabled>Accept visible nonconflicting changes</button><button id="integrationReject" type="button" data-i18n="integration.rejectVisible" disabled>Reject visible changes</button></div>
         <div class="table-scroll" tabindex="0" role="region" aria-labelledby="reviewTitle"><table><thead><tr><th data-i18n="integration.object">Object</th><th data-i18n="integration.change">Change</th><th data-i18n="integration.values">Current → proposed</th><th data-i18n="integration.decision">Decision</th></tr></thead><tbody id="integrationChanges"></tbody></table></div>

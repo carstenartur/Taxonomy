@@ -25,7 +25,8 @@ td { max-width: 28rem; overflow-wrap: anywhere; } td pre { max-height: 14rem; ov
 [data-bs-theme="dark"] .conflict { background: #473723; }
 [data-bs-theme="dark"] main a { color: #a7d5ff; }
 
-#integrationPublication { border: 1px solid #64788e; border-radius: .3rem; padding: 1rem; margin-top: 1rem; }
+#integrationPublication, #integrationFileExport { border: 1px solid #64788e; border-radius: .3rem; padding: 1rem; margin-top: 1rem; min-width: 0; }
+#integrationFileExport select { width: min(100%, 45rem); }
 #integrationPublicationReason, #integrationPublicationCounts { font-weight: 600; }
 #integrationPublicationItems { line-height: 1.7; }
 .integration-context-summary:not([hidden]) { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: .8rem 1.2rem; margin: 1rem 0; }

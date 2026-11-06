@@ -51,6 +51,25 @@ final class PluginExchangeConnector implements LifecycleIntegrationConnector {
         return invoke(connector -> connector.previewOutbound(request));
     }
 
+    @Override public FileExportProfile fileExportProfile() {
+        requireBasedExport();
+        return invoke(IntegrationConnectorExtension::fileExportProfile);
+    }
+
+    @Override public ExchangeFile previewOutbound(BasedOutboundRequest request) {
+        requireBasedExport();
+        requireContext(request.outbound().context());
+        requireCompatible(request.outbound().document());
+        if (!request.identityNamespace().equals(request.outbound().context().connectionId()))
+            throw new IntegrationProblem("INVALID_CONNECTOR_CONTEXT", 422, "File identities require the exact connection namespace");
+        return invoke(connector -> connector.previewOutbound(request));
+    }
+
+    private void requireBasedExport() {
+        if (!descriptor.capabilities().containsAll(Set.of(Capability.FILE_EXPORT, Capability.BASED_FILE_EXPORT_V1)))
+            throw new IntegrationProblem("CAPABILITY_UNAVAILABLE", 409, "Connector does not support based file export");
+    }
+
     @Override public DiscoveryResult discover(IntegrationContext context) {
         requireContext(context);
         return invoke(connector -> connector.discover(context));
