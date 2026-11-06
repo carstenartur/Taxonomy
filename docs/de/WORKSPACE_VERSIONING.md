@@ -34,13 +34,9 @@ Die **Arbeitsbereich-Kontextleiste** wird unterhalb der Navigationsleiste angeze
 | **Ungespeicherte Änderungen** | Ein pulsierendes rotes Badge bei noch nicht gespeicherten Änderungen |
 | **Sync-Status** | Inline-Badge mit ausstehenden Veröffentlichungen oder verfügbaren Aktualisierungen |
 
-Beim Anzeigen einer Variante oder historischen Version enthält die Kontextleiste einen Herkunftsindikator:
+Beim Anzeigen einer Variante oder historischen Version enthält die Kontextleiste einen Herkunftsindikator.
 
-![Kontextleiste mit Herkunftsanzeige](../images/51-context-bar-with-origin.png)
-
-Im Nur-Lesen-Modus ändert sich das Badge, um anzuzeigen, dass der Arbeitsbereich nicht bearbeitbar ist:
-
-![Nur-Lesen-Modus-Badge](../images/50-read-only-mode-badge.png)
+Im Nur-Lesen-Modus ändert sich das Badge, um anzuzeigen, dass der Arbeitsbereich nicht bearbeitbar ist.
 
 ### Aktionen in der Kontextleiste
 
@@ -105,33 +101,21 @@ Klicken Sie auf **🌿 Neue Variante** entweder in der Kontextleiste oder im Var
 
 Beim Integrieren einer Variante zeigt das System eine Vorschau der Änderungen an, die übernommen werden, einschließlich der Anzahl hinzugefügter, geänderter und entfernter Elemente. Sie müssen die Integration in einem modalen Dialog bestätigen, bevor sie ausgeführt wird.
 
-![Vorschau der Zusammenführung](../images/60-merge-preview-modal.png)
+Bei Fast-Forward-Merges (ohne Konflikte) ist die Vorschau einfacher.
 
-Bei Fast-Forward-Merges (ohne Konflikte) ist die Vorschau einfacher:
+Nach einer erfolgreichen Zusammenführung wird ein Bestätigungs-Toast angezeigt.
 
-![Fast-Forward-Merge-Vorschau](../images/61-merge-preview-fast-forward.png)
-
-Nach einer erfolgreichen Zusammenführung wird ein Bestätigungs-Toast angezeigt:
-
-![Erfolgreiche Zusammenführung](../images/58-merge-success-toast.png)
-
-Bei einem Merge-Konflikt wird der Konfliktlösungs-Dialog angezeigt (siehe auch [Benutzerhandbuch §12](USER_GUIDE.md#12-versions-tab)):
-
-![Gelöster Merge-Konflikt](../images/53-merge-conflict-resolved.png)
+Bei einem Merge-Konflikt wird der Konfliktlösungs-Dialog angezeigt (siehe auch [Benutzerhandbuch §12](USER_GUIDE.md#12-versions-tab)).
 
 ### Variante löschen
 
-Durch Klicken auf **🗑 Löschen** bei einer Variantenkarte wird ein Bestätigungsdialog angezeigt:
-
-![Bestätigung zum Löschen einer Variante](../images/57-variant-delete-confirm.png)
+Durch Klicken auf **🗑 Löschen** bei einer Variantenkarte wird ein Bestätigungsdialog angezeigt.
 
 ---
 
 ## 4. Versionen vergleichen
 
 Navigieren Sie zu **Versionen → Verlauf** und klicken Sie auf **🔍 Vergleichen**, oder verwenden Sie die Vergleichsschaltfläche der Kontextleiste, um den Vergleichsdialog zu öffnen.
-
-![Vergleichsdialog — Zweigauswahl](../images/48-compare-modal-branches.png)
 
 Die Vergleichsansicht hat drei Ebenen:
 
@@ -154,8 +138,6 @@ Ein aufklappbarer Bereich, der den rohen DSL-Textunterschied mit farbcodierten Z
 - Rote Zeilen für Entfernungen
 - Blaue Zeilen für Diff-Header
 
-![DSL-Diff-Ansicht](../images/68-diff-view.png)
-
 ---
 
 ## 5. Wiederherstellen & Rückgängig
@@ -166,8 +148,6 @@ Das Wiederherstellen einer Version erstellt einen neuen Commit mit dem Inhalt de
 Vor der Bestätigung zeigt das System eine **Vorschau** der Änderungen an:
 - Anzahl der hinzugefügten, entfernten und geänderten Elemente
 - Einen Bestätigungsdialog mit detaillierten Informationen
-
-![Bestätigung der Wiederherstellung](../images/67-version-restore-confirm.png)
 
 ### Rückgängig machen
 Das Rückgängigmachen macht die Änderungen eines bestimmten Commits rückgängig. Anders als beim Wiederherstellen werden nur die Änderungen dieses einen Commits zurückgenommen, nicht alle nachfolgenden Änderungen.
@@ -218,21 +198,11 @@ Der Synchronisierungsstatus wird an mehreren Stellen angezeigt:
 | **Unveröffentlichte Änderungen** | Sie haben lokale Änderungen, die noch nicht mit dem Team geteilt wurden |
 | **Abweichend** | Sowohl Sie als auch das Team haben Änderungen vorgenommen |
 
-Der Synchronisieren-Reiter zeigt den aktuellen Status mit visuellen Indikatoren:
+Der Synchronisieren-Reiter zeigt den aktuellen Status mit visuellen Indikatoren.
 
-![Sync-Tab — auf dem neuesten Stand](../images/63-sync-tab-up-to-date.png)
+Wenn sowohl Sie als auch das Team Änderungen vorgenommen haben, zeigt der Status „Abweichend“.
 
-![Sync-Tab — voraus (unveröffentlichte Änderungen)](../images/64-sync-tab-ahead.png)
-
-![Sync-Tab — hinterher (Aktualisierungen verfügbar)](../images/65-sync-tab-behind.png)
-
-Wenn sowohl Sie als auch das Team Änderungen vorgenommen haben, zeigt der Status „Abweichend":
-
-![Abweichender Sync-Zustand](../images/55-sync-diverged-state.png)
-
-Bei einem Sync-Konflikt wird ein Lösungsdialog angezeigt:
-
-![Sync-Lösungsdialog](../images/56-sync-resolve-modal.png)
+Bei einem Sync-Konflikt wird ein Lösungsdialog angezeigt.
 
 ### Sync-Aktionen
 

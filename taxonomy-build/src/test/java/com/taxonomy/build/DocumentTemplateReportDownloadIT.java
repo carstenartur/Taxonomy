@@ -159,6 +159,9 @@ class DocumentTemplateReportDownloadIT {
         builder.environment().put("TAXONOMY_UI_OUTPUT_DIR", output.toString());
         builder.environment().put("TAXONOMY_UI_DISPOSABLE_INSTANCE", "true");
         builder.environment().put("TAXONOMY_RENDER_DOCX_PREVIEW", Boolean.toString(renderPreviewEnabled()));
+        String screenshots = System.getenv("TAXONOMY_DOCS_IMAGE_DIR");
+        if (screenshots == null || screenshots.isBlank()) screenshots = System.getProperty("taxonomy.docs.image.dir");
+        if (screenshots != null && !screenshots.isBlank()) builder.environment().put("TAXONOMY_DOCS_IMAGE_DIR", screenshots);
 
         Process process = builder.start();
         boolean finished = process.waitFor(10, TimeUnit.MINUTES);

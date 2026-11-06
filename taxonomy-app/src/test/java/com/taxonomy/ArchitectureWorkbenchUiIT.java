@@ -11,6 +11,7 @@ import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
@@ -216,6 +217,7 @@ class ArchitectureWorkbenchUiIT {
 
         if (Boolean.getBoolean("generateScreenshots")) {
             saveDocumentationScreenshot();
+            saveEditorDocumentationScreenshots();
         }
     }
 
@@ -328,26 +330,102 @@ class ArchitectureWorkbenchUiIT {
                     .isEmpty());
             fitAndWait();
             assertDiagramFitsCanvas();
-            java.nio.file.Path output = documentationScreenshotPath();
-            java.nio.file.Files.createDirectories(output.getParent());
-            java.io.File capture = ((org.openqa.selenium.TakesScreenshot) driver)
-                    .getScreenshotAs(org.openqa.selenium.OutputType.FILE);
-            java.nio.file.Files.copy(
-                    capture.toPath(),
-                    output,
-                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-        } catch (java.io.IOException exception) {
-            throw new AssertionError("Could not save Copilot workbench screenshot", exception);
+            saveDocumentationCapture("71-copilot-architecture-workbench.png", null);
+            String snapshotUrl = driver.getCurrentUrl();
+            for (String language : List.of("de", "en")) {
+                openDocumentationLanguage(snapshotUrl, language, By.id("architectureWorkbench"));
+                wait.until(browser -> !browser.findElements(By.cssSelector(".architecture-node")).isEmpty());
+                fitAndWait();
+                assertDiagramFitsCanvas();
+                saveDocumentationCapture("architecture-workbench-current-" + language + ".png", null);
+            }
         } finally {
             driver.manage().window().setSize(previousSize);
             fitAndWait();
         }
     }
 
-    private static java.nio.file.Path documentationScreenshotPath() {
+    private static void saveEditorDocumentationScreenshots() {
+        open("/architecture/editor?lang=en", By.id("architectureEditor"));
+        waitForEditor();
+        List<WebElement> createWorkspace = driver.findElements(By.id("editorWorkspace"));
+        if (!createWorkspace.isEmpty() && createWorkspace.getFirst().isDisplayed()) {
+            createWorkspace.getFirst().click();
+            wait.until(ExpectedConditions.elementToBeClickable(By.id("editorNew")));
+        }
+        createDocumentationElement("Clinical identity service");
+        createDocumentationElement("Hospital communication platform");
+        String editorUrl = driver.getCurrentUrl();
+        for (String language : List.of("de", "en")) {
+            openDocumentationLanguage(editorUrl, language, By.id("architectureEditor"));
+            waitForEditor();
+            assertThat(driver.findElement(By.id("editorTitle")).getDomProperty("value"))
+                    .isEqualTo("Hospital communication platform");
+            assertThat(driver.findElement(By.id("editorNew")).isEnabled()).isTrue();
+            driver.findElement(By.id("editorFocus")).click();
+            wait.until(browser -> !browser.findElements(By.cssSelector("#editorGraph .editor-node")).isEmpty());
+            saveDocumentationCapture("architecture-editor-current-" + language + ".png",
+                    driver.findElement(By.id("architectureEditor")));
+
+            WebElement useAi = driver.findElement(By.id("editorLensUseAi"));
+            if (useAi.isSelected()) useAi.click();
+            WebElement enableLens = wait.until(ExpectedConditions.elementToBeClickable(By.id("editorLensEnabled")));
+            if (!enableLens.isSelected()) enableLens.click();
+            assertThat(enableLens.isSelected()).isTrue();
+            assertThat(useAi.isSelected()).isFalse();
+            saveDocumentationCapture("architecture-editor-focus-" + language + ".png",
+                    driver.findElement(By.cssSelector(".editor-lens-panel")));
+        }
+    }
+
+    private static void createDocumentationElement(String title) {
+        wait.until(ExpectedConditions.elementToBeClickable(By.id("editorNew"))).click();
+        new Select(driver.findElement(By.id("editorType"))).selectByValue("System");
+        driver.findElement(By.id("editorTitle")).sendKeys(title);
+        WebElement rationale = driver.findElement(By.id("editorRationale"));
+        rationale.clear();
+        rationale.sendKeys("Document the hospital communication example");
+        driver.findElement(By.id("editorPreviewElement")).click();
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#editorPreviewDialog[open]")));
+        wait.until(ExpectedConditions.elementToBeClickable(By.id("editorAccept"))).click();
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("editorPreviewDialog")));
+        waitForEditor();
+        assertThat(driver.findElement(By.id("editorTitle")).getDomProperty("value")).isEqualTo(title);
+    }
+
+    private static void waitForEditor() {
+        wait.until(browser -> "false".equals(browser.findElement(
+                By.id("architectureEditor")).getDomAttribute("aria-busy")));
+    }
+
+    private static void openDocumentationLanguage(String sourceUrl, String language, By readyElement) {
+        String translatedUrl = String.valueOf(javascript().executeScript("""
+                const url = new URL(arguments[0]);
+                url.searchParams.set('lang', arguments[1]);
+                return url.href;
+                """, sourceUrl, language));
+        driver.get(translatedUrl);
+        wait.until(ExpectedConditions.visibilityOfElementLocated(readyElement));
+        assertThat(javascript().executeScript("return document.documentElement.lang")).isEqualTo(language);
+    }
+
+    private static void saveDocumentationCapture(String filename, WebElement element) {
+        try {
+            java.nio.file.Path output = documentationScreenshotDirectory().resolve(filename);
+            java.nio.file.Files.createDirectories(output.getParent());
+            byte[] bytes = element == null ? driver.getScreenshotAs(org.openqa.selenium.OutputType.BYTES)
+                    : element.getScreenshotAs(org.openqa.selenium.OutputType.BYTES);
+            java.nio.file.Files.write(output, bytes);
+        } catch (java.io.IOException exception) {
+            throw new AssertionError("Could not save architecture screenshot " + filename, exception);
+        }
+    }
+
+    private static java.nio.file.Path documentationScreenshotDirectory() {
         String configured = System.getenv("TAXONOMY_DOCS_IMAGE_DIR");
+        if (configured == null || configured.isBlank()) configured = System.getProperty("taxonomy.docs.image.dir");
         if (configured != null && !configured.isBlank()) {
-            return java.nio.file.Path.of(configured).resolve("71-copilot-architecture-workbench.png");
+            return java.nio.file.Path.of(configured);
         }
         java.nio.file.Path module = java.nio.file.Path.of(
                 System.getProperty("project.basedir", "."))
@@ -357,7 +435,7 @@ class ArchitectureWorkbenchUiIT {
         if (repository == null) {
             repository = module;
         }
-        return repository.resolve("docs/images/71-copilot-architecture-workbench.png");
+        return repository.resolve("docs/images");
     }
 
     private static void login() {

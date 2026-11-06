@@ -4,73 +4,77 @@
 
 ---
 
-## Maven entry point and activation
+## Maven entry point and output
 
 Run from the repository root through the existing `screenshots` profile:
 
 ```bash
-./mvnw -B verify -Pscreenshots -DgenerateScreenshots=true
+./mvnw -B verify -Pscreenshots
 ```
 
-The root POM selects `ScreenshotGeneratorIT`, `ArchitectureWorkbenchUiIT` and
-`CompleteCopilotSessionIT` and enables Failsafe. The normal lifecycle packages the
-application before the container tests and checks their results at `verify`.
-Do not replace it with a direct `failsafe:integration-test` goal.
+The root POM selects `ScreenshotGeneratorIT`, `ArchitectureWorkbenchUiIT`,
+`CompleteCopilotSessionIT`, `DocumentTemplateReportDownloadIT` and
+`ScreenshotDocumentationIT`. The profile supplies `generateScreenshots=true` to
+Failsafe; no separate activation property is needed. The normal lifecycle packages
+the application before the container tests and checks their results at `verify`.
+Do not replace it with a direct `failsafe:integration-test` goal or separate npm
+capture commands. Omit the profile when documentation captures are not requested.
 
-Pass the explicit JVM activation value `true`: `ScreenshotGeneratorIT` checks for
-the presence of the `generateScreenshots` system property, while the two persisted
-acceptances guard their PNG writes with `Boolean.getBoolean("generateScreenshots")`.
-Omit the screenshot profile/property when captures are not requested; setting the
-property to `false` does not disable `ScreenshotGeneratorIT`'s presence condition.
+Java 25, Docker and the document-rendering tools are prerequisites. The workflow
+installs the native document renderers; Maven provisions the pinned Node/Chromium
+tools and model assets. `ContainerTestUtils` owns the packaged application and
+Selenium containers; `CompleteCopilotSessionIT` also starts PostgreSQL. Initial
+provisioning needs download access. Application captures use deterministic mock
+or authored product-demo data; no provider key or live model call is required.
 
-These three owners require Java 25, the Maven Wrapper's dependencies and Docker.
-`CompleteCopilotSessionIT` also starts PostgreSQL in Docker. The checked-in POMs,
-`ContainerTestUtils` and documentation workflow own the pinned runtime, Selenium
-and model assets; initial provisioning needs their download access. All three
-owners use `LLM_MOCK=true`; no provider key or live model call is required.
+The profile's `taxonomy.docs.image.dir` defaults to the repository's
+`target/generated-screenshots/`. `TAXONOMY_DOCS_IMAGE_DIR` overrides it for every
+owner. Use an absolute override so module working directories cannot change the
+destination. Retained `docs/images/` files remain available for link checks and
+application packaging while new output is generated separately.
 
-Review the generated `docs/images/` files before retaining selected illustrations.
+The application-module owners run before the build-module owners. Alphabetical
+Failsafe order puts `ScreenshotDocumentationIT` after the document-template
+report owner. This final JUnit owner invokes the existing decision-export browser
+contract, then checks every PNG referenced by the DE/EN guides and every PNG in
+the output directory. Missing files, files older than this Maven run, invalid or
+unreadable PNGs and invalid dimensions fail verification. It records dimensions
+and SHA-256 hashes in `documentation-screenshots.json`, together with the run
+timestamps, Git HEAD commit/tree and working-tree change flag (`sourceDirty`). A failed
+validation removes that manifest rather than leaving an earlier success record.
+
+Review the PNGs, JUnit outcomes and manifest before retaining the generated images.
+The file checks do not inspect clipping, label accuracy or every interactive state.
 Keep raw logs and complete capture evidence under `target/` or in CI artifacts.
-A successful command does not establish that every intended image was rewritten:
-check JUnit results, skipped tests and the actual output files.
-
-All three Java owners and the document-template browser/report owner honor
-`TAXONOMY_DOCS_IMAGE_DIR` when set. Use an absolute path to keep Maven module
-working directories from changing the destination. The default remains
-`docs/images/`; CI uses a fresh `target/generated-screenshots/` directory.
 
 ## Capture owners and evidence boundaries
 
-The named `*-current-{de,en}.png` captures added on 25 October 2026 have a
-[separate application capture record](../docs/images/ui-documentation-2026-10-25.json).
-They use the recorded packaged application with current checkout resource
-overlays, a real in-memory database and the deterministic example provider.
-The recorded journey opens Graph through the node action dialog, enters the
-database assistant's connection step, creates two editor elements through
-preview/accept, and opens a snapshot persisted through the analysis API.
-No page result or API response was substituted. The database image does not
-establish an external connection, and the example provider does not establish
-live-model quality. Image and overlaid-source hashes identify these captures;
-the numbered Java-owner outputs below are separate runs.
+The table describes the current reproduction recipes. Updating an owner does not
+prove that an existing PNG was captured from that source. In particular, a
+`*-current-*` filename is not a freshness guarantee. New retained captures need the
+matching output and actual `documentation-screenshots.json` from a successful run;
+these instructions do not record such a run.
 
-The dedicated `architecture-editor-focus-{de,en}.png` images show the focus-lens
-panel below the editor graph and arrangement controls, with **Enable focus lens**
-checked and the AI option unchecked in a current editable example workspace.
-Their [separate capture record](../docs/images/architecture-editor-focus-capture.json)
-identifies the running source, environment and unmodified image hashes. Keep the
-original overview images and their provenance; their viewport does not show this
-switch. The existing [editor browser owner](scripts/architecture-editor-acceptance.mjs)
-owns the real editor interaction. These focused illustrations do not establish
-coverage of every editor control or live-provider quality.
+The [October 25 application record](../docs/images/ui-documentation-2026-10-25.json),
+[focus-lens record](../docs/images/architecture-editor-focus-capture.json),
+[diagram-control record](../docs/images/diagram-print-controls-2026-10-27.json) and
+[root-clarification record](../docs/images/root-relevance-clarification-capture.json)
+remain historical records of their own images, sources and boundaries. They do
+not establish the source of later regenerated bytes. Do not rewrite their hashes
+to attribute new images to those old runs.
 
-All Java owners below are under `taxonomy-app/src/test/java/com/taxonomy/`.
-Use the complete filename to identify ownership: numeric prefixes are shared.
+The first three owners below are under
+`taxonomy-app/src/test/java/com/taxonomy/`; the final two documentation owners are
+under `taxonomy-build/src/test/java/com/taxonomy/build/`. Use the complete filename
+to identify ownership: numeric prefixes are shared.
 
 | Owner | Output | Source boundary |
 |---|---|---|
-| `ScreenshotGeneratorIT` | `01`–`19`, `21`–`31`, `33`–`36`, `39`–`47`, `66-versions-timeline.png`, `69-decision-map-scored.png`, `70-swagger-ui.png`, `71-rich-version-timeline.png`, `72-rich-variants-browser.png`, `73-cherry-pick-before.png`, `74-cherry-pick-after.png`, `75-preferences-diagram-policy.png` | General UI illustrations using the real catalogue, deterministic mock model and authored fixtures persisted through the APIs. Search/graph/editor captures require actual rendered output; Git operations require successful API responses. Status badges retain the application's real state. These images do not establish live-provider quality. |
-| `ArchitectureWorkbenchUiIT` | `71-copilot-architecture-workbench.png` | Creates and opens a real immutable analysis snapshot with deterministic mock scores; checks browser controls and SVG/PDF model exports from that snapshot. |
+| `ScreenshotGeneratorIT` | `01`–`19`, `21`–`31`, `33`–`36`, `39`–`47`, `66-versions-timeline.png`, `69-decision-map-scored.png`, `70-swagger-ui.png`, `71-rich-version-timeline.png`, `72-rich-variants-browser.png`, `73-cherry-pick-before.png`, `74-cherry-pick-after.png`, `75-preferences-diagram-policy.png`; `graph-entry-current-de.png`, `database-setup-current-{de,en}.png`, `diagram-print-controls-{de,en}.png`, `root-relevance-clarification-{de,en}.png` | General UI illustrations using the real catalogue, deterministic mock model and authored fixtures persisted through the APIs. Graph entry retains the actual catalogue response, including an empty result. Database captures stop at connection entry. Diagram controls use an actual mock analysis; root clarification uses the persisted product-demo R0 result and production export/import path. Git operations require successful API responses; badges retain real state. These images do not establish live-provider quality. |
+| `ArchitectureWorkbenchUiIT` | `71-copilot-architecture-workbench.png`; `architecture-workbench-current-{de,en}.png`, `architecture-editor-current-{de,en}.png`, `architecture-editor-focus-{de,en}.png` | Creates and opens a real immutable analysis snapshot with deterministic mock scores; checks browser controls and SVG/PDF model exports. Editor illustrations create two elements through real preview/accept controls in an editable workspace; focus crops show the enabled lens with AI disabled. They do not cover every editor control. |
 | `CompleteCopilotSessionIT` | `72-complete-copilot-run-result.png` | Packaged application, PostgreSQL and real persisted operations with deterministic mock model; checks cancellation, recovery, selected snapshot and result/export behavior. |
+| `DocumentTemplateReportDownloadIT` | `document-template-management.png`, `decision-rationale-template-test-report.png` | Runs the existing document-template browser/report driver against the packaged application; captures the management page and renders the actually downloaded DOCX report. Native Word/WebDAV acceptance remains separate. |
+| `ScreenshotDocumentationIT` | `decision-export-{dialog,options,mobile}-{de,en}.png`, `decision-export-screenshots.json`, `documentation-screenshots.json` | Invokes the existing production decision-export component contract with labelled example input, then validates all retained localized-guide PNG references and output files. Component captures do not establish a full persisted application session or live-provider quality. |
 | `ScenarioArchitectureAcceptanceTest` with `ScenarioBrowserWalkthrough` | `73-scenario-requirement.png` through `77-scenario-mobile.png`, plus native-package/publication captures `78`–`85` | Real Spring application, catalogue, provider pipeline, persistence and browser; only remote model HTTP responses are replaced by authored Spring playback. These are not recorded live-model outputs. |
 
 Keep persisted-workbench changes in `ArchitectureWorkbenchUiIT` and complete-run
@@ -90,7 +94,8 @@ availability or administrative diagnostics for catalogue readiness.
 Workspace proposal acceptance and catalogue graph traversal use distinct relation
 scopes; a committed workspace relation does not establish catalogue graph output.
 
-The separate scenario profile enables browser capture with no provider secrets:
+The scenario owner in the last row is separate from the documentation screenshot
+profile. Its profile enables browser capture with no provider secrets:
 
 ```bash
 # Docker/Selenium browser
@@ -112,14 +117,16 @@ fixture identity, source revision and image hashes with the actual capture run.
 
 Check each retained image against its owning template and JavaScript before
 reusing it. For example, older `01`, `03`, `41` and `45` illustrations show the
-previous navigation/status layout. Current `index.html` uses File/Project menus,
-Settings and an on-demand Status menu; `taxonomy-onboarding.js` moves Git, context
-and workspace indicators into `#operationalContextDetails`. The retained `71`
+previous navigation/status layout. The shared `fragments/application-chrome.html`
+now provides File/Edit/View/Tools/Help commands, Projects/Requirement/Architecture
+work areas, `#applicationSystemStatus` and `#applicationContextDisclosure`.
+Administration, appearance and language entries belong to Tools. The retained `71`
 workbench image predates the Print view and grouped Export controls, and the `72`
 result image predates the shared decision-report dialog action. Capture replacements
 from their owners; do not edit an old image's version text or present it as a new run.
-The general generator now writes `14-navbar-settings.png`; a retained
-`14-navbar-admin-lock.png` is not evidence for the current Settings menu.
+The general generator writes `14-navbar-settings.png` for the shared navigation;
+the retained filename does not imply a separate Settings menu. A retained
+`14-navbar-admin-lock.png` is not evidence for the current administration path.
 A current test-owner path is a reproduction recipe, not proof of an older PNG's
 source revision. Without matching capture metadata, describe the image as an
 illustration and leave its exact source version unverified.
@@ -163,25 +170,23 @@ Do not replace manifest hashes merely to make the retained images appear verifie
 ### Focused decision-export component illustrations
 
 The six unnumbered `decision-export-{dialog,options,mobile}-{de,en}.png` images
-belong to the existing `.github/scripts/decision-export-browser.mjs` contract.
+belong to the existing `.github/scripts/decision-export-browser.mjs` contract,
+invoked by `ScreenshotDocumentationIT` inside the same `screenshots` profile.
 It renders the production shared dialog with explicitly labelled example input,
 then captures basic choices, expanded options and a narrow-screen view in both
 languages. These images illustrate the component; they are not full-application,
-persisted-snapshot or live-provider acceptance evidence. The image/source hashes
-and capture environment are recorded in `docs/images/decision-export-screenshots.json`.
+persisted-snapshot or live-provider acceptance evidence. The component driver
+records its image/source hashes and capture environment in
+`decision-export-screenshots.json`; the final owner includes those PNG hashes in
+the common `documentation-screenshots.json`. The JUnit owner supplies the driver's
+`TAXONOMY_DOC_SCREENSHOTS` destination; it is not a separate documentation command.
 
-Regenerate from the repository root with the project's Playwright browser installed:
-
-```bash
-TAXONOMY_DOC_SCREENSHOTS="$PWD/docs/images" npm --prefix .github run verify:decision-export-dialog
-```
-
-The ordinary contract does not write documentation images unless that variable is
-set. Inspect and commit all six images with the manifest and the relevant guide
-changes. See [contextual exports](../docs/testing/contextual-exports.md) for the
-illustrated guide links and environment overrides. This opt-in component capture
-does not change the full-application screenshot owners described above or their
-Maven/CI workflows.
+Use the Maven entry point above to regenerate them with the other retained guide
+images. Inspect all six and retain both generated manifests with the PNGs and
+relevant guide changes. The existing
+[contextual-export guide](../docs/testing/contextual-exports.md) explains the
+component's illustrated choices and evidence boundary; a historical component
+manifest establishes only the images whose hashes it actually matches.
 
 ### Full-application screenshots
 
@@ -201,30 +206,37 @@ Maven/CI workflows.
    Image paths from those guides start with `../images/`; use the actual captured
    filename and alt text describing its state.
 
-3. **Run the owning Maven profile** using the commands above. Inspect the resulting
+3. **Run the screenshot Maven profile** using the single entry point above. Inspect the resulting
    PNG, current labels, clipping, responsive layout and test report. Preserve the
    real captured state and disclose any fixture boundary; do not fabricate healthy
    readiness or successful operation evidence.
 
-4. **Retain selected PNGs** in `docs/images/` alongside the documentation change
-   and concise provenance. Keep full capture series and raw evidence in `target/`
+4. **Retain the verified guide PNGs** in `docs/images/` alongside the documentation
+   change, `documentation-screenshots.json` and the component manifest when applicable.
+   Match the retained bytes to the actual run's hashes. Keep raw evidence in `target/`
    or CI artifacts. If prerequisites prevent regeneration, report the gap and
    remove or clearly qualify the stale illustration instead of claiming it passed.
 
 ## Automatic regeneration via GitHub Actions
 
-The manual `.github/workflows/documentation-screenshots.yml` workflow accepts
-trusted `main` invocations. It provisions Java, Docker/model assets and document
-renderers, runs `install -Pscreenshots`, then runs the separate
-`document-template-report-e2e` profile. A dependent publication job downloads the
-artifact and commits changed PNGs to `main` after generation succeeds.
+The `.github/workflows/documentation-screenshots.yml` workflow runs for relevant
+pull requests and manual invocations. After provisioning Java, Docker/model assets
+and native document renderers, it runs the same `./mvnw -B verify -Pscreenshots`
+entry point. Maven owns Node/Chromium provisioning, application captures,
+document-template reports, component captures and final completeness validation.
 
-The workflow clears only the dedicated output directory before generation. All
-four owners write there through `TAXONOMY_DOCS_IMAGE_DIR`, and the artifact includes
-only its PNGs. Retained `docs/images/` assets stay available for documentation link
-checks and application packaging. Failed generation blocks publication and uploads
-the available failure captures and Failsafe reports separately. Check each owning
-JUnit result and capture provenance before claiming a particular view was verified.
+The workflow clears only its dedicated output directory before generation and
+uploads the resulting PNGs and JSON capture records. Retained `docs/images/`
+assets stay available for link checks and application packaging. Failed generation
+blocks publication and uploads available failure captures, driver logs and
+Failsafe reports separately. Check JUnit outcomes and the manifest before claiming
+a particular view was verified.
+
+Pull requests and manual branch runs upload artifacts only. A dependent publication
+job is limited to manual `main` runs: it verifies that main still matches the
+workflow's source SHA and that the manifest names that SHA with `sourceDirty=false`,
+then commits PNGs and generated provenance. A concurrent main change prevents that
+publication rather than attributing captures to a newer source.
 
 To trigger it manually from the GitHub UI: **Actions → Documentation Screenshots → Run workflow**.
 Select a repair branch to verify generation before merging. Branch runs upload
@@ -232,8 +244,9 @@ capture artifacts only; the separate publication job still requires `main`.
 
 ## Current selectors (verify in the owning surface)
 
-General selectors come from `taxonomy-app/src/main/resources/templates/index.html`
-and its JavaScript; persisted-workbench selectors come from
+Shared navigation selectors come from
+`taxonomy-app/src/main/resources/templates/fragments/application-chrome.html`;
+main-page selectors come from `templates/index.html` and its JavaScript, and persisted-workbench selectors come from
 `templates/architecture-workbench.html`. Visibility depends on the active tab,
 role, menu and loaded data. Open the relevant menu before capturing its contents.
 The previous `adminLockBtn`, `adminModal` and `adminPasswordInput` IDs are absent;
@@ -258,10 +271,12 @@ administration now follows authenticated role-based navigation.
 | Copilot workbench search | `#architectureSearch` |
 | Copilot workbench true fit | `#fitArchitecture` |
 | Relation Proposals panel | `#proposalsPanel` |
-| File / Project menus | `#fileMenuButton`, `#projectMenuButton` |
-| Settings menu | `#applicationSettings` |
+| File / Edit / View / Tools / Help command menus | `#applicationFile`, `#applicationEdit`, `#applicationView`, `#applicationTools`, `#applicationHelp` |
+| Mobile command disclosure | `#applicationNavigationMenu`, `#applicationMenuGroups` |
+| Projects / Requirement / Architecture work areas | `#applicationProjectsLink`, `#applicationRequirementLink`, `#applicationArchitectureLink` |
 | Administration / server settings links | `#adminNavTab`, `#preferencesNavTab` |
-| On-demand Status menu | `#operationalContextDetails` |
+| System status | `#applicationSystemStatus` |
+| Selected context disclosure | `#applicationContextDisclosure`, `#applicationContextSummary` |
 | LLM Diagnostics panel | `#diagnosticsPanel` |
 | Prompt Template editor | `#promptEditor` |
 | Leaf Justification modal | `#leafJustificationModal` |

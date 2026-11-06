@@ -369,6 +369,7 @@ class CompleteCopilotSessionIT {
                     .normalize();
             Path repository = module.getParent() == null ? module : module.getParent();
             String configured = System.getenv("TAXONOMY_DOCS_IMAGE_DIR");
+            if (configured == null || configured.isBlank()) configured = System.getProperty("taxonomy.docs.image.dir");
             Path outputDirectory = configured == null || configured.isBlank()
                     ? repository.resolve("docs/images") : Path.of(configured);
             Path output = outputDirectory.resolve("72-complete-copilot-run-result.png");

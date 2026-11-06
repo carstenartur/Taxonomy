@@ -38,6 +38,7 @@ class WorkflowTestAuthorityPolicyTest {
         Files.writeString(images.resolve("provenance.json"), "retained metadata");
         Path artifact = Files.createDirectories(root.resolve("target/generated-screenshots"));
         Files.writeString(artifact.resolve("old-artifact.png"), "previous staging attempt");
+        Files.writeString(artifact.resolve("old-capture.json"), "previous staging metadata");
 
         runScreenshotStep(root, workflow, "Prepare fresh screenshot output");
         // All producers use the dedicated TAXONOMY_DOCS_IMAGE_DIR in this workflow.
@@ -46,6 +47,7 @@ class WorkflowTestAuthorityPolicyTest {
                 "document-template-report.png")) {
             Files.writeString(artifact.resolve(filename), "captured in this run");
         }
+        Files.writeString(artifact.resolve("documentation-screenshots.json"), "current JUnit inventory");
         runScreenshotStep(root, workflow, "Stage screenshot artifact");
 
         assertThat(Files.readString(images.resolve("old-retained.png")))
@@ -55,7 +57,7 @@ class WorkflowTestAuthorityPolicyTest {
             assertThat(generated.map(path -> path.getFileName().toString()).toList())
                     .containsExactlyInAnyOrder("01-full-page-layout.png",
                             "71-copilot-architecture-workbench.png", "72-complete-copilot-run-result.png",
-                            "document-template-report.png");
+                            "document-template-report.png", "documentation-screenshots.json");
         }
         assertThat(Files.readString(images.resolve("provenance.json")))
                 .isEqualTo("retained metadata");

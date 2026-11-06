@@ -1,38 +1,31 @@
-# LLM & Gemini API Reference
+# LLM Test Reference
 
-> **Read this when**: You are working with LLM integration, the Gemini API, rate-limit related issues, or any endpoint that calls the language model.
+> **Read this when**: You are working with provider integration, diagnostics, rate limits or analysis tests.
 
----
+## Documentation screenshots
 
-## GEMINI_API_KEY — Availability and Rate-Limit Guidance
+Use the existing JUnit integration-test entry point:
 
-`GEMINI_API_KEY` is configured as a **repository secret** and is injected into the `Generate Documentation Screenshots` workflow automatically. It is also available to Copilot agents running in GitHub Actions via `secrets.GEMINI_API_KEY`.
+```bash
+./mvnw -B verify -Pscreenshots
+```
 
-### Free-tier limits (Gemini 2.0 Flash / Gemini 1.5 Flash)
+The screenshot owners run with `LLM_MOCK=true` or deterministic product-demo
+playback. Semantic search uses the pinned local ONNX model. No external provider
+key or live LLM request is needed, including for scored analyses and leaf reasons.
+The workflow delegates to this same command. Do not add provider secrets, rate-limit
+sleeps or retries to hide failures in deterministic documentation captures.
 
-The key uses the **Google AI Studio free tier**, which has hard rate limits:
+See [capture owners and prerequisites](copilot-ref-screenshots.md) for output,
+provenance and the distinction between application and component examples.
 
-| Limit | Value |
-|---|---|
-| Requests per minute (RPM) | 15 |
-| Requests per day (RPD) | 1 500 |
-| Tokens per minute (TPM) | 1 000 000 |
+## Live provider verification
 
-> These limits are shared across **all** uses of the key — the running application, CI workflows, and any agent-triggered calls all draw from the same quota.
+Keep live-provider calls in the explicitly selected real-LLM profiles/tests.
+Never hardcode or log provider credentials. Do not infer secret availability or
+current provider quotas from old workflow configuration. Mock diagnostics and
+local ONNX readiness do not establish that a remote provider can be reached.
 
-### Rules for agents
-
-- **Do not call the LLM unnecessarily.** Never invoke `/api/analyze`, `/api/analyze-stream`, `/api/analyze-node`, `/api/justify-leaf`, or any other LLM-backed endpoint in unit tests or exploratory scripts.
-- **Prefer screenshots 1–14 for local iteration.** They require no API key and run in under 2 minutes. Only add LLM-dependent tests (15+) when the screenshot genuinely requires a scored/analysed UI state.
-- **Do not trigger the `documentation-screenshots.yml` workflow repeatedly** in quick succession. Each full run with the key uses up to ~12 LLM calls (one per analysis request). Wait for a run to finish before triggering another.
-- **Do not hardcode or log the key.** The secret is masked in CI logs; keep it that way.
-- If a task only needs to verify that the LLM integration compiles or that the API wiring is correct, use the existing `DiagnosticsWithApiKeyContainerIT` tests, which make at most 1–2 LLM calls per run.
-
-## Gemini API Rate Limits in Tests
-
-The Gemini Free Tier has a rate limit of approximately 15 requests per minute. This affects:
-- `ScreenshotGeneratorIT.java`: Tests 15–26 make LLM calls and need `rateLimitDelay()` (10s pause) between them.
-- The `documentation-screenshots.yml` workflow: Must account for total runtime of ~3–4 minutes for LLM-dependent screenshots.
-- Any new test that triggers LLM analysis must include a rate-limit delay.
-
-The `LlmService` throws `LlmRateLimitException` on HTTP 429 or `RESOURCE_EXHAUSTED`. The screenshot tests do NOT have automatic retry — they rely on delays to stay within limits, plus `failsafe.rerunFailingTestsCount=1` in the workflow as a safety net.
+HTTP 429 and `RESOURCE_EXHAUSTED` are handled by `LlmRateLimitException` and the
+provider/job retry policies. Preserve those errors and their evidence; do not add
+arbitrary delays to unrelated UI tests.

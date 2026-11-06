@@ -198,10 +198,6 @@ Zwei Diff-Modi stehen zur Verfügung:
 
 Klicken Sie auf **🔍 Vergleichen** in der Kontextleiste oder im Verlauf. Die Vergleichsansicht zeigt drei Ebenen: Zusammenfassung, Drei-Spalten-Raster und DSL-Diff.
 
-![Vergleichsdialog](../images/48-compare-modal-branches.png)
-
-![Diff-Ansicht](../images/68-diff-view.png)
-
 <details>
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
@@ -232,9 +228,7 @@ Im **Versionsverlauf** wählen Sie den gewünschten Commit und klicken Sie auf d
 
 ![Zeitleiste vor Cherry-Pick](../images/73-cherry-pick-before.png)
 
-**2. Vorschau** — Klicken Sie auf die Übertragen-Aktion beim gewünschten Commit. Das Vorschau-Modal zeigt, was sich ändert:
-
-![Cherry-Pick-Vorschau](../images/62-cherry-pick-preview-modal.png)
+**2. Vorschau** — Klicken Sie auf die Übertragen-Aktion beim gewünschten Commit. Das Vorschau-Modal zeigt, was sich ändert.
 
 **3. Nachher** — Nach Bestätigung erscheint der cherry-gepickte Commit als neuer Commit auf dem draft-Branch:
 
@@ -259,13 +253,7 @@ Zwei Branches mittels Drei-Wege-Merge zusammenführen:
 
 Im **Varianten-Panel** klicken Sie auf **🔀 Integrieren** bei der gewünschten Variante. Ein Vorschau-Modal zeigt die Zusammenfassung der Änderungen.
 
-![Merge-Vorschau](../images/60-merge-preview-modal.png)
-
-![Fast-Forward-Merge](../images/61-merge-preview-fast-forward.png)
-
-Nach einer erfolgreichen Zusammenführung wird ein Bestätigungs-Toast angezeigt:
-
-![Erfolgreiche Zusammenführung](../images/58-merge-success-toast.png)
+Nach einer erfolgreichen Zusammenführung wird ein Bestätigungs-Toast angezeigt.
 
 <details>
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
@@ -285,10 +273,6 @@ Die Merge-Strategie ist RECURSIVE (Standard-Git-Verhalten). Fast-Forward-Merges 
 Vor der Ausführung eines Merge oder Cherry-Pick können Sie die Operation in der Vorschau betrachten, um auf Konflikte zu prüfen:
 
 Bei der Zusammenführung prüft das System automatisch auf Konflikte. Bei Konflikten öffnet sich der Konfliktlösungs-Dialog mit einer Seite-an-Seite-Ansicht der divergierenden Inhalte.
-
-![Konflikt-Dialog](../images/52-merge-conflict-modal.png)
-
-![Konflikt gelöst](../images/53-merge-conflict-resolved.png)
 
 ### Merge-Vorschau
 
@@ -415,8 +399,6 @@ relation CO-1011 USES CR-1047 {
 Ein Reviewer akzeptiert eine vorgeschlagene Beziehung auf dem `review`-Branch. Die Änderung wird per Cherry-Pick auf `draft` übertragen:
 
 Der Reviewer öffnet den **Versionsverlauf** des review-Branches, findet den Commit `a3f8c2d` und überträgt ihn per Klick auf die Übertragen-Aktion in den `draft`-Branch.
-
-![Cherry-Pick-Erfolg](../images/59-cherry-pick-success-toast.png)
 
 Der Cherry-Pick-Commit ändert nur den Beziehungsstatus:
 ```diff

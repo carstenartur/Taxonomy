@@ -14,10 +14,13 @@ final class ExternalDriverSupport {
         return root;
     }
     static String run(String script, List<String> arguments, String logName, int minutes) throws Exception {
+        return run(script, arguments, logName, minutes, Map.of());
+    }
+    static String run(String script, List<String> arguments, String logName, int minutes, Map<String,String> environment) throws Exception {
         String node=System.getenv().getOrDefault("TAXONOMY_NODE_EXECUTABLE",System.getProperty("taxonomy.node.executable","node"));
         if(node.contains("/") && !Files.isExecutable(Path.of(node))) node="node";
         List<String> command=new ArrayList<>(List.of(node,root().resolve(".github/scripts/"+script).toString())); command.addAll(arguments);
-        return command(command,logName,minutes);
+        return command(command,logName,minutes,environment);
     }
     static void assertObserved(java.util.Map<String,tools.jackson.databind.JsonNode> outcomes,String name,String field,Throwable failure,Result execution) {
         if(outcomes==null || !outcomes.containsKey(name)) {
@@ -33,14 +36,21 @@ final class ExternalDriverSupport {
         return observeCommand(List.of(node,root().resolve(".github/scripts/"+script).toString()),logName,minutes);
     }
     static String command(List<String> command,String logName,int minutes) throws Exception {
-        Result result=observeCommand(command,logName,minutes);
+        return command(command,logName,minutes,Map.of());
+    }
+    private static String command(List<String> command,String logName,int minutes,Map<String,String> environment) throws Exception {
+        Result result=observeCommand(command,logName,minutes,environment);
         assertEquals(0,result.exitCode(),"Driver failed: "+logName+"\n"+result.output().substring(Math.max(0,result.output().length()-12000)));
         return result.output();
     }
     private static Result observeCommand(List<String> command,String logName,int minutes) throws Exception {
+        return observeCommand(command,logName,minutes,Map.of());
+    }
+    private static Result observeCommand(List<String> command,String logName,int minutes,Map<String,String> environment) throws Exception {
         Path root=root(), log=root.resolve("target/junit-drivers/"+logName);
         Files.createDirectories(log.getParent());
         var builder=new ProcessBuilder(command).directory(root.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
+        builder.environment().putAll(environment);
         if(!builder.environment().containsKey("GITHUB_SHA")) {
             var revision=new ProcessBuilder("git","rev-parse","HEAD").directory(root.toFile()).start();
             assertTrue(revision.waitFor(10,TimeUnit.SECONDS),"Cannot resolve source commit");
