@@ -104,6 +104,7 @@ class OnnxSeleniumIT {
 
         driver.get(ContainerTestUtils.APP_ORIGIN + "/");
         new WebDriverWait(driver, Duration.ofSeconds(30))
+                .withMessage(this::browserBootstrapState)
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         new WebDriverWait(driver, Duration.ofSeconds(120))
                 .until(currentDriver -> {
@@ -126,6 +127,26 @@ class OnnxSeleniumIT {
                     .until(ExpectedConditions.invisibilityOfElementLocated(
                             By.id("onboardingOverlay")));
         }
+    }
+
+    private String browserBootstrapState() {
+        String applicationErrors = appContainer.getLogs().lines()
+                .filter(line -> line.contains("ERROR") || line.contains("Exception")
+                        || line.contains("Caused by:"))
+                .limit(20)
+                .map(line -> line.replace(ContainerTestUtils.TEST_ADMIN_PASSWORD, "[redacted]"))
+                .collect(java.util.stream.Collectors.joining("\n"));
+        String body = driver.findElement(By.tagName("body")).getText();
+        if (body.length() > 1200) {
+            body = body.substring(0, 1200);
+        }
+        return "ONNX workbench bootstrap: path=" + URI.create(driver.getCurrentUrl()).getPath()
+                + "; title=" + driver.getTitle()
+                + "; loginForm=" + !driver.findElements(By.name("username")).isEmpty()
+                + "; documentState=" + ((JavascriptExecutor) driver)
+                        .executeScript("return document.readyState")
+                + "; visiblePage=" + body.replace(ContainerTestUtils.TEST_ADMIN_PASSWORD, "[redacted]")
+                + "; applicationErrors=" + applicationErrors;
     }
 
     private static Path resolvePinnedModelDirectory() {
