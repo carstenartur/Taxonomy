@@ -89,6 +89,9 @@ class ScreenshotGeneratorIT {
     /** Guard flag: {@link #buildGitHistory()} runs at most once per test class execution. */
     private static boolean gitHistoryBuilt;
 
+    /** Actual persisted example version used by the DSL history capture. */
+    private static String draftFixtureCommitId;
+
     /** Guard flag: {@link #buildRichGitHistory()} runs at most once per test class execution. */
     private static boolean richGitHistoryBuilt;
 
@@ -427,10 +430,14 @@ class ScreenshotGeneratorIT {
     private void saveScoredUaScreenshot(String filename, boolean expanded) throws IOException {
         org.openqa.selenium.Dimension originalSize = driver.manage().window().getSize();
         boolean descriptions = driver.findElement(By.id("showDescriptions")).isSelected();
+        String originalFilter = new org.openqa.selenium.support.ui.Select(
+                driver.findElement(By.id("diagramRelevanceFilter"))).getFirstSelectedOption().getAttribute("value");
         boolean completed = false;
         try {
             driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 1800));
             closeSearchPanel();
+            new org.openqa.selenium.support.ui.Select(driver.findElement(By.id("diagramRelevanceFilter")))
+                    .selectByValue("positive");
             clickVisible(driver.findElement(By.id("viewList")));
             if (descriptions) clickVisible(driver.findElement(By.id("showDescriptions")));
             clickVisible(driver.findElement(By.id("collapseAll")));
@@ -483,6 +490,8 @@ class ScreenshotGeneratorIT {
         } finally {
             if (completed) {
                 if (descriptions) clickVisible(driver.findElement(By.id("showDescriptions")));
+                new org.openqa.selenium.support.ui.Select(driver.findElement(By.id("diagramRelevanceFilter")))
+                        .selectByValue(originalFilter);
                 driver.manage().window().setSize(originalSize);
             }
         }
@@ -503,18 +512,28 @@ class ScreenshotGeneratorIT {
     private void loadCurrentDsl(String expectedBlock) {
         wait(15).until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d)
                 .executeScript("return !!window.dslCmView;")));
-        safeClick(By.id("dslLoadCurrentBtn"));
+        js("window.__screenshotPreviousDslDocument = window.dslCmView.state.doc;");
+        clickVisible(driver.findElement(By.id("dslLoadCurrentBtn")));
         wait(15).withMessage(() -> "DSL load failed: "
-                + driver.findElement(By.id("dslStatusArea")).getText()).until(d -> {
+                + driver.findElement(By.id("dslStatusArea")).getText() + "; " + dslCaptureDiagnostic()).until(d -> {
             WebElement status = d.findElement(By.id("dslStatusArea"));
             String classes = status.getAttribute("class");
-            Assertions.assertFalse(classes.contains("alert-danger"), status.getText());
-            return classes.contains("alert-success");
+            Assertions.assertFalse(classes.contains("alert-danger"), () -> status.getText() + "; " + dslCaptureDiagnostic());
+            return classes.contains("alert-success") && Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript("""
+                    const view=window.dslCmView;
+                    return view.state.doc!==window.__screenshotPreviousDslDocument
+                        && view.state.doc.toString().split('\\n').some(line=>line.startsWith(arguments[0]+' '));
+                    """, expectedBlock));
         });
-        String content = (String) ((JavascriptExecutor) driver).executeScript(
-                "return window.dslCmView.state.doc.toString();");
-        Assertions.assertTrue(content.contains(expectedBlock + " "),
-                "Loaded DSL must include a real " + expectedBlock + " block");
+    }
+
+    private String dslCaptureDiagnostic() {
+        return String.valueOf(((JavascriptExecutor) driver).executeScript("""
+                const text=window.dslCmView?.state.doc.toString()||'';
+                return JSON.stringify({beginning:text.slice(0,1400),
+                    relationLines:text.split('\\n').filter(line=>line.includes('relation')).slice(0,8)
+                        .map(line=>line.slice(0,240))});
+                """));
     }
 
     private void openOperationalStatus() {
@@ -717,7 +736,7 @@ class ScreenshotGeneratorIT {
      */
     private void buildGitHistory() {
         if (gitHistoryBuilt) return;
-        commitAndWait("draft", "Initial+architecture+definition", DRAFT_DSL);
+        draftFixtureCommitId = commitAndWait("draft", "Initial+architecture+definition", DRAFT_DSL);
         createBranch("feature-voice", "draft");
         commitAndWait("feature-voice", "Add+Voice+Gateway+component", FEATURE_VOICE_DSL);
         gitHistoryBuilt = true;
@@ -1616,16 +1635,49 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(40)
     void captureDslWithRelations() throws IOException {
+        buildGitHistory();
+        Assertions.assertNotNull(draftFixtureCommitId, "The authored draft version must have been persisted");
+        Map<?, ?> version = requestFixture("/api/dsl/git/commit/" + draftFixtureCommitId, "GET", null, null);
+        Assertions.assertEquals(draftFixtureCommitId, version.get("commitId"));
+        Assertions.assertInstanceOf(String.class, version.get("dslText"));
+        String savedDsl = (String) version.get("dslText");
+        Assertions.assertEquals(DRAFT_DSL, savedDsl, "The example version must retain the committed DSL text");
         navigateToTab("dsl-editor");
-        loadCurrentDsl("relation");
+        wait(15).until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d)
+                .executeScript("return !!window.dslCmView;")));
+        // Load the retained version through its existing history action. Load Current exports
+        // materialized catalogue state and does not promise to contain this workspace example.
+        org.openqa.selenium.support.ui.Select branches =
+                new org.openqa.selenium.support.ui.Select(driver.findElement(By.id("dslBranchSelect")));
+        branches.selectByValue("feature-voice");
+        wait(15).until(d -> d.findElements(By.cssSelector("#dslHistoryBody tr td:nth-child(2)"))
+                .stream().anyMatch(cell -> "feature-voice".equals(cell.getText())));
+        branches.selectByValue("draft");
+        By loadVersion = By.cssSelector("#dslHistoryBody .dsl-load-commit[data-commit-id='" + draftFixtureCommitId + "']");
+        WebElement load = wait(15).withMessage(() -> "Persisted draft version is absent from history: "
+                + driver.findElement(By.id("dslHistoryBody")).getText()).until(ExpectedConditions.elementToBeClickable(loadVersion));
+        js("window.__screenshotPreviousDslDocument = window.dslCmView.state.doc;");
+        clickVisible(load);
+        wait(20).withMessage(() -> "Saved DSL version did not load its relation block: "
+                + driver.findElement(By.id("dslStatusArea")).getText() + "; " + dslCaptureDiagnostic()).until(d -> {
+            WebElement status = d.findElement(By.id("dslStatusArea"));
+            Assertions.assertFalse(status.getAttribute("class").contains("alert-danger"),
+                    () -> status.getText() + "; " + dslCaptureDiagnostic());
+            return status.getAttribute("class").contains("alert-success")
+                    && Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript("""
+                        const view=window.dslCmView;
+                        return view.state.doc!==window.__screenshotPreviousDslDocument
+                            && view.state.doc.toString()===arguments[0]
+                            && /^relation\\s/m.test(view.state.doc.toString());
+                        """, savedDsl));
+        });
         js("""
                 const view=window.dslCmView;
                 const match=/^relation\\s/m.exec(view.state.doc.toString());
-                if (!match) throw new Error('The current DSL contains no relation block');
                 view.dispatch({selection:{anchor:match.index},
                     effects:view.constructor.scrollIntoView(match.index,{y:'center'})});
                 """);
-        wait(10).until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript("""
+        wait(10).withMessage(this::dslCaptureDiagnostic).until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript("""
                 const view=window.dslCmView, port=view.scrollDOM.getBoundingClientRect();
                 return Array.from(view.contentDOM.querySelectorAll('.cm-line')).some(line=>{
                     const box=line.getBoundingClientRect();
