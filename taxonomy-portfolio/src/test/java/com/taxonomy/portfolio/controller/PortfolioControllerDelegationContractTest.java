@@ -2,10 +2,15 @@ package com.taxonomy.portfolio.controller;
 
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.invocation.Invocation;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -58,8 +63,22 @@ class PortfolioControllerDelegationContractTest {
             new Route(ProjectAnalysisController.class,"reviewRelationMapping","reviewRelationMapping",200,null)
         );
     }
-    @ParameterizedTest(name="{0}") @MethodSource("routes")
-    void forwardsOnlyToTheDeclaredServiceWithExactScopedArguments(Route route) throws Exception {
+    static Stream<Arguments> routesWithContextPaths() {
+        return routes().flatMap(route -> (route.location() == null
+                ? Stream.of("") : Stream.of("", "/taxonomy", "/tenant/taxonomy", "/team%20blue/taxonomy"))
+                .map(contextPath -> Arguments.of(route, contextPath)));
+    }
+
+    @AfterEach
+    void clearRequest() {
+        RequestContextHolder.resetRequestAttributes();
+    }
+
+    @ParameterizedTest(name="{0} at {1}") @MethodSource("routesWithContextPaths")
+    void forwardsOnlyToTheDeclaredServiceWithExactScopedArguments(Route route, String contextPath) throws Exception {
+        var request = new MockHttpServletRequest();
+        request.setContextPath(contextPath);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
         var context=new WorkspaceContext("alice","workspace-a","review","repository-a");
         var resolver=mock(WorkspaceResolver.class);
         when(resolver.resolveCurrentUsername()).thenReturn("alice");
@@ -100,7 +119,7 @@ class PortfolioControllerDelegationContractTest {
         if(response instanceof ResponseEntity<?> entity) {
             assertThat(entity.getStatusCode().value()).isEqualTo(route.status());
             assertThat(entity.getBody()).isSameAs(returned.get());
-            if(route.location()!=null) assertThat(entity.getHeaders().getLocation()).hasToString(route.location());
+            if(route.location()!=null) assertThat(entity.getHeaders().getLocation()).hasToString(contextPath + route.location());
         } else assertThat(response).isSameAs(returned.get());
         verify(resolver,times(1)).resolveCurrentUsername();
         verify(resolver,times(1)).resolveCurrentContext();
