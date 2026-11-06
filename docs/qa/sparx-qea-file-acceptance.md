@@ -35,6 +35,19 @@ records `realProductStatus: NOT_EXECUTED`. Its `harnessStatus` can become `PASSE
 only after the entire HTTP lifecycle succeeds. Its hashes describe the actual
 basis and downloaded bytes, not a reconstructed JSON approximation.
 
+### Browser controls
+
+The browser fixture exercises the production template, translations, CSS, API
+wrapper and controls in Chromium. It checks uploaded and retained bases, review
+before download, and the German mobile layout. Its transport is a fixture; the
+installed-host lifecycle above checks the real HTTP behavior separately.
+
+```bash
+./mvnw -B -pl taxonomy-tooling -am test -Dtest=JavascriptContractTest \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dtaxonomy.javascript.mode=browser \
+  -Dtaxonomy.javascript.sources=.github/scripts/integrations.browser.test.mjs
+```
+
 ## 2. Use an operator-supplied real template
 
 Use an empty, consistent QEA project from your authorized EA installation, or

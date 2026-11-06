@@ -59,6 +59,12 @@ final class SparxQeaFilePackagedChecks {
         Delivery updated = deliver(app, scope, updateRoute, updatePreview);
         unchangedCheckpoint(app, scope, updateRoute, before);
         var updateRead = readDelivered(app, scope, updateRoute, updated, output.resolve("update-return.qea"));
+        var importedDocument = imported.path("document");
+        assertThat(rows(updateRead.path("artifacts")).stream().map(a -> a.path("id").asText()).toList())
+                .as("Update-copy preserves package, element and diagram GUIDs")
+                .containsExactlyInAnyOrderElementsOf(rows(importedDocument.path("artifacts")).stream().map(a -> a.path("id").asText()).toList());
+        assertThat(updateRead.path("placements")).as("A title-only update preserves package ownership and native diagram occurrences")
+                .isEqualTo(importedDocument.path("placements"));
         assertThat(matching(updateRead.path("artifacts"), "id", A).path("title").asText()).isEqualTo(LOCAL_TITLE);
         assertThat(matching(updateRead.path("artifacts"), "id", B).path("title").asText()).isEqualTo("Same name");
         var relation = matching(updateRead.path("relations"), "id", RELATION);
@@ -81,6 +87,10 @@ final class SparxQeaFilePackagedChecks {
         var newElement = matching(createdRead.path("artifacts"), "title", LOCAL_TITLE);
         assertThat(newElement.path("id").asText()).matches("\\{[0-9A-F-]{36}\\}").isNotEqualTo(A).isNotEqualTo(B);
         assertThat(rows(createdRead.path("relations"))).isNotEmpty();
+        Set<String> importedIds = rows(importedDocument.path("artifacts")).stream().map(a -> a.path("id").asText())
+                .collect(java.util.stream.Collectors.toSet());
+        assertThat(rows(createdRead.path("artifacts"))).allSatisfy(a -> assertThat(a.path("id").asText())
+                .as("Independent projects reserve fresh package, element and diagram GUIDs").isNotIn(importedIds));
 
         String retainedBase = updatePreview.path("fileExport").path("baseFileId").asText();
         var basis = matching(get(app, scope, updateRoute).path("fileBases"), "id", retainedBase);
