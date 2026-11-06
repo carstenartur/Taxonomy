@@ -15,6 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -83,4 +84,64 @@ class DslWorkspacePreResolutionInterceptorTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("different workspace identities");
     }
+    @Test
+    void supportedUnpinnedReaderUsesCentralContextWithoutAllocatingWorkspaceState() {
+        interceptor.setWorkspaceProvisionPermission(actor -> false);
+        when(request.getMethod()).thenReturn("GET");
+        when(request.getRequestURI()).thenReturn("/api/search/graph");
+        var central = RepositoryContext.centralRead("repository-a", "draft", WORKSPACE.username());
+        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(central);
+        when(workspaceResolver.resolveCurrentContext()).thenReturn(
+                new WorkspaceContext(WORKSPACE.username(), null, "draft", "repository-a"));
+
+        assertThat(interceptor.preHandle(request, response, new Object())).isTrue();
+        verifyNoInteractions(repositoryStateService);
+    }
+
+    @Test
+    void readerWithExistingWorkspaceRetainsItsSelectedContext() {
+        interceptor.setWorkspaceProvisionPermission(actor -> false);
+        when(request.getMethod()).thenReturn("GET");
+        when(request.getRequestURI()).thenReturn("/api/search/graph");
+        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(REPOSITORY);
+        when(workspaceResolver.resolveCurrentContext()).thenReturn(WORKSPACE);
+
+        assertThat(interceptor.preHandle(request, response, new Object())).isTrue();
+        verify(repositoryStateService).ensureWorkspaceState(WORKSPACE.username());
+    }
+
+    @Test
+    void implicitCentralReadStillRejectsMismatchedActorBeforeAllocatingState() {
+        interceptor.setWorkspaceProvisionPermission(actor -> false);
+        when(request.getMethod()).thenReturn("GET");
+        when(request.getRequestURI()).thenReturn("/api/search/graph");
+        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(
+                RepositoryContext.centralRead("repository-a", "draft", "someone-else"));
+        when(workspaceResolver.resolveCurrentContext()).thenReturn(
+                new WorkspaceContext("someone-else", null, "draft", "repository-a"));
+
+        assertThatThrownBy(() -> interceptor.preHandle(request, response, new Object()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("matching repository, branch and actor");
+        verifyNoInteractions(repositoryStateService);
+    }
+
+    @Test
+    void deniedProvisioningDoesNotAllowCentralWritesOrUnlistedReads() {
+        interceptor.setWorkspaceProvisionPermission(actor -> false);
+        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(
+                RepositoryContext.centralRead("repository-a", "draft", WORKSPACE.username()));
+        when(workspaceResolver.resolveCurrentContext()).thenReturn(
+                new WorkspaceContext(WORKSPACE.username(), null, "draft", "repository-a"));
+        when(request.getMethod()).thenReturn("POST");
+        assertThatThrownBy(() -> interceptor.preHandle(request, response, new Object()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("isolated workspace");
+        when(request.getMethod()).thenReturn("GET");
+        when(request.getRequestURI()).thenReturn("/api/projects/1/copilot-operations/operation-3");
+        assertThatThrownBy(() -> interceptor.preHandle(request, response, new Object()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("isolated workspace");
+    }
+
 }

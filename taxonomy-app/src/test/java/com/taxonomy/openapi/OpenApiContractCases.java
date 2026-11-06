@@ -59,11 +59,42 @@ public final class OpenApiContractCases {
     public static void verify() throws Exception {
         var current = document();
         checkDocument(current);
+        checkAccessDocumentation(current, false);
         verifyContractMutations(current);
         for (String setting : List.of("--taxonomy.security.change-password-enabled=false",
                 "--spring.profiles.active=keycloak")) {
-            require(!document(setting).path("paths").has("/api/account/change-password"),
+            var configured = document(setting);
+            require(!configured.path("paths").has("/api/account/change-password"),
                     "Disabled local-account API must not be advertised: " + setting);
+            checkAccessDocumentation(configured, setting.contains("keycloak"));
+        }
+    }
+
+    private static void checkAccessDocumentation(JsonNode document, boolean keycloak) {
+        for (var path : document.path("paths").properties()) {
+            for (var entry : path.getValue().properties()) {
+                if (!HTTP_METHODS.contains(entry.getKey())) continue;
+                var operation = entry.getValue();
+                require(operation.path("description").asText("").contains("### Access requirements"),
+                        "Missing visible access requirements: " + path.getKey());
+                require(operation.has("security"), "Operation security is missing: " + path.getKey());
+                require(operation.path("responses").has("401") && operation.path("responses").has("403"),
+                        "Authentication/authorization responses are missing: " + path.getKey());
+                for (var requirement : operation.path("security")) {
+                    for (var scheme : requirement.properties()) {
+                        require(document.path("components").path("securitySchemes").has(scheme.getKey()),
+                                "Undefined operation security scheme: " + scheme.getKey());
+                    }
+                }
+            }
+        }
+        var editor = document.path("paths").path("/api/architecture/editor/commands").path("post");
+        require(contains(editor.path("x-required-roles"), "ARCHITECT")
+                        && !contains(editor.path("x-required-roles"), "ADMIN"),
+                "Architecture editing must require the architect role explicitly");
+        if (keycloak) {
+            require(contains(editor.path("security").get(0).path("keycloak"), "architecture:write"),
+                    "Editor OAuth scope is missing");
         }
     }
 
@@ -456,7 +487,7 @@ public final class OpenApiContractCases {
             WebMvcAutoConfiguration.class, SpringDocConfiguration.class, SpringDocWebMvcConfiguration.class
     })
     @org.springframework.boot.context.properties.EnableConfigurationProperties(org.springdoc.core.properties.SpringDocConfigProperties.class)
-    @Import({OpenApiConfig.class, AccountApiController.class})
+    @Import({OpenApiConfig.class, AccountApiController.class, com.taxonomy.security.keycloak.SwaggerKeycloakConfig.class})
     static class ApiFixture {
         // Import the real controller so its profile/property conditions remain effective.
         @Bean PasswordChangeService passwordChangeService() {

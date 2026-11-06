@@ -40,7 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-@WithMockUser(username = "provisioning-boundary-user", roles = "ADMIN")
+@WithMockUser(username = "provisioning-boundary-user", roles = {"USER", "ARCHITECT", "ADMIN"})
 @TestPropertySource(properties = {
         "gemini.api.key=", "openai.api.key=", "deepseek.api.key=",
         "qwen.api.key=", "llama.api.key=", "mistral.api.key=",

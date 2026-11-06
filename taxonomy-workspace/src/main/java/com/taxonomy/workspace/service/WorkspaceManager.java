@@ -53,6 +53,17 @@ public class WorkspaceManager {
     private final DslGitRepository gitRepository;
     private final DslGitRepositoryFactory repositoryFactory;
     private TransactionTemplate provisioningOutsideReadOnlyTransaction;
+    private WorkspaceProvisionPermission provisionPermission = actor -> true;
+
+    @Autowired(required = false)
+    void setWorkspaceProvisionPermission(WorkspaceProvisionPermission provisionPermission) {
+        this.provisionPermission = java.util.Objects.requireNonNull(provisionPermission);
+    }
+
+    /** Only automatic read/default paths use this policy; explicit system provisioning stays separate. */
+    public boolean mayProvisionDefaultWorkspace(String username) {
+        return provisionPermission.mayProvision(username);
+    }
 
     @Autowired
     void configureProvisioningTransactions(PlatformTransactionManager transactions) {
@@ -165,6 +176,16 @@ public class WorkspaceManager {
 
     /** Return the current workspace summary for a user. */
     public WorkspaceInfo getWorkspaceInfo(String username) {
+        if (!mayProvisionDefaultWorkspace(username)) {
+            UserWorkspace workspace = findUserWorkspace(username);
+            if (workspace == null || workspace.isArchived() || workspace.isShared()
+                    || (workspace.isDefault()
+                    && (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED
+                    || workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING))) {
+                return null;
+            }
+            return getWorkspaceMetadataInfo(workspace);
+        }
         return toWorkspaceInfo(getOrCreateWorkspace(username));
     }
 

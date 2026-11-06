@@ -37,7 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Tests for the relation proposal pipeline and REST API. */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(username = "proposal-admin", roles = "ADMIN")
+@WithMockUser(username = "proposal-admin", roles = {"USER", "ARCHITECT", "ADMIN"})
 class RelationProposalTests {
 
     @Autowired private MockMvc mockMvc;

@@ -281,12 +281,15 @@ Wirksame Richtlinie: `GET /api/ai-automation`. Verbindliche Zuordnungen, Zustän
 | `TAXONOMY_DIRECT_WORD_ENABLED` | `taxonomy.document-templates.direct-word-enabled` | Basis `true`; Keycloak `false` | `ms-word:`-Links nur mit passender WebDAV-Authentifizierung. |
 | `KEYCLOAK_CLIENT_ID` | OAuth2-Client / Resource-Server-Audience | `taxonomy-app` | OIDC-Browser-Client-ID und standardmäßig erforderliche API-Access-Token-Audience. Dieselbe Audience im Keycloak-Access-Token-Mapper konfigurieren. Für eine separate API-Audience `spring.security.oauth2.resourceserver.jwt.audiences` überschreiben. |
 | `KEYCLOAK_CLIENT_SECRET` | OAuth2-Client | leer | Vertrauliches Client-Secret. |
+| `KEYCLOAK_SWAGGER_CLIENT_ID` | `springdoc.swagger-ui.oauth.client-id` | `taxonomy-swagger` | Separater öffentlicher Client für Swagger Authorization Code mit PKCE; das Server-Client-Secret wird nicht an Swagger ausgeliefert. |
+| `TAXONOMY_KEYCLOAK_SWAGGER_AUTHORIZATION_URL` | `taxonomy.keycloak.swagger.authorization-url` | Issuer + `/protocol/openid-connect/auth` | Öffentlicher OAuth-Autorisierungsendpunkt; für andere OIDC-Anbieter überschreibbar. |
+| `TAXONOMY_KEYCLOAK_SWAGGER_TOKEN_URL` | `taxonomy.keycloak.swagger.token-url` | Issuer + `/protocol/openid-connect/token` | Öffentlicher Token-Endpunkt für die dokumentierten Authorization-Code- und Client-Credentials-Verfahren. |
 | `KEYCLOAK_ISSUER_URI` | Client und Resource Server | lokale Realm-URL | Issuer für Discovery und Tokenprüfung. |
 | `KEYCLOAK_JWK_SET_URI` | Resource Server | lokale Zertifikats-URL | Expliziter JWK-Endpunkt. |
 | `KEYCLOAK_ADMIN_URL` | `taxonomy.keycloak.admin-console-url` | `http://localhost:8180` | Basis der Kontoverwaltungsweiterleitung. |
 | `KEYCLOAK_REALM` | `taxonomy.keycloak.realm` | `taxonomy` | Realm der Kontoverwaltung. |
 | `TAXONOMY_KEYCLOAK_PRINCIPAL_MODE` | `taxonomy.keycloak.principal-mode` | `LEGACY` | `LEGACY` erhält bisherige OIDC-Eigentumszuordnungen; `STABLE` aktiviert ausdrücklich Issuer/Subject-Identitäten und ist für portable Backups erforderlich. Bestehende Installationen müssen bis zur Umsetzung einer verifizierten Eigentümermigration in `LEGACY` bleiben; den Modus nach dem Anlegen von Daten nicht wechseln. |
-| `TAXONOMY_KEYCLOAK_ROLE_CLAIM_PATH` | `taxonomy.keycloak.role-claim-path` | `realm_access.roles` | JWT-Pfad für die festen Rollen `ROLE_USER`, `ROLE_ARCHITECT`, `ROLE_ADMIN`; kein konfigurierbares Präfix. |
+| `TAXONOMY_KEYCLOAK_ROLE_CLAIM_PATH` | `taxonomy.keycloak.role-claim-path` | `realm_access.roles` | JWT-/OIDC-Pfad für die festen Rollen `ROLE_READER`, `ROLE_USER` (Analyst), `ROLE_ARCHITECT`, `ROLE_ADMIN`; kein konfigurierbares Präfix. Bearer-Aufrufe benötigen zusätzlich die Scopes der jeweiligen Operation. |
 
 ## DSL und externe Repositories
 

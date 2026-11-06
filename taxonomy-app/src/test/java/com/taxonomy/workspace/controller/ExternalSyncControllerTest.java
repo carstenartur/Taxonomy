@@ -1,6 +1,8 @@
 package com.taxonomy.workspace.controller;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -8,6 +10,8 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -49,6 +53,7 @@ class ExternalSyncControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "testuser", roles = {"ARCHITECT", "ADMIN"})
     void pushReturns400WhenTopologyIsInternal() throws Exception {
         mockMvc.perform(post(BASE + "/push"))
                 .andExpect(status().isBadRequest())
@@ -57,6 +62,7 @@ class ExternalSyncControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "testuser", roles = {"ARCHITECT", "ADMIN"})
     void pushReturns400WhenTopologyIsInternalWithExplicitBranch() throws Exception {
         mockMvc.perform(post(BASE + "/push").param("branch", "main"))
                 .andExpect(status().isBadRequest())
@@ -65,6 +71,7 @@ class ExternalSyncControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "testuser", roles = {"ARCHITECT", "ADMIN"})
     void pushReturns400WithMeaningfulMessage() throws Exception {
         mockMvc.perform(post(BASE + "/push"))
                 .andExpect(status().isBadRequest())
@@ -73,6 +80,7 @@ class ExternalSyncControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "testuser", roles = {"ARCHITECT", "ADMIN"})
     void fullSyncReturns400WhenTopologyIsInternal() throws Exception {
         mockMvc.perform(post(BASE + "/full-sync"))
                 .andExpect(status().isBadRequest())
@@ -81,11 +89,21 @@ class ExternalSyncControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "testuser", roles = {"ARCHITECT", "ADMIN"})
     void fullSyncReturns400WithMeaningfulMessage() throws Exception {
         mockMvc.perform(post(BASE + "/full-sync"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").isString())
                 .andExpect(jsonPath("$.message").isNotEmpty());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ARCHITECT", "ADMIN"})
+    void publishingRequiresBothBusinessAndAdministrationRoles(String role) throws Exception {
+        for (String operation : new String[]{"/push", "/full-sync"}) {
+            mockMvc.perform(post(BASE + operation).with(user("testuser").roles(role)).with(csrf()))
+                    .andExpect(status().isForbidden());
+        }
     }
 
     @Test

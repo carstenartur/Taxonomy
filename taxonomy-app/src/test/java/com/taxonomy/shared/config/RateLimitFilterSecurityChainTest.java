@@ -119,10 +119,21 @@ class RateLimitFilterSecurityChainTest {
     @Test
     void invalidCsrfMutationDoesNotConsumeOrAllocateQuota() throws Exception {
         mockMvc.perform(post("/api/analyze")
-                        .with(user("alice").roles("ADMIN"))
+                        .with(user("alice").roles("USER"))
                         .with(csrf().useInvalidToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"businessText\":\"resilient communications\"}"))
+                .andExpect(status().isForbidden());
+
+        assertThat(rateLimitFilter.trackedPrincipalCount()).isZero();
+    }
+
+    @Test
+    void administratorWithoutAnalysisPermissionDoesNotConsumeOrAllocateQuota() throws Exception {
+        mockMvc.perform(get("/api/analyze-node")
+                        .with(user("operator").roles("ADMIN"))
+                        .param("parentCode", "BP")
+                        .param("businessText", "resilient communications"))
                 .andExpect(status().isForbidden());
 
         assertThat(rateLimitFilter.trackedPrincipalCount()).isZero();
@@ -160,7 +171,7 @@ class RateLimitFilterSecurityChainTest {
             String forwardedFor) throws Exception {
         String requestPath = contextPath + "/api/analyze-node";
         var request = get(requestPath)
-                .with(user(username).roles("ADMIN"))
+                .with(user(username).roles("USER"))
                 .header("X-Forwarded-For", forwardedFor)
                 .param("parentCode", "BP")
                 .param("businessText", "resilient communications");

@@ -8,6 +8,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 import com.taxonomy.security.config.LocalUserManagementAccess;
+import com.taxonomy.security.access.ApiAccessPolicy;
+import com.taxonomy.security.access.ApiPermission;
 import org.springframework.core.env.Environment;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -51,11 +53,13 @@ public class AccountContextController {
         }
 
         boolean administrator = roles.contains("ADMIN");
-        boolean architectureMutationAllowed = administrator || roles.contains("ARCHITECT");
+        boolean architectureMutationAllowed = ApiAccessPolicy.hasPermission(authentication, ApiPermission.ARCHITECTURE_WRITE);
         return ResponseEntity.ok(Map.of(
                 "username", authentication.getName(),
                 "roles", roles,
                 "architectureMutationAllowed", architectureMutationAllowed,
+                "analysisExecutionAllowed", ApiAccessPolicy.hasPermission(authentication, ApiPermission.ANALYSIS_RUN),
+                "dataReadAllowed", ApiAccessPolicy.hasPermission(authentication, ApiPermission.ARCHITECTURE_READ),
                 "administrator", administrator,
                 "localUserManagementAllowed", administrator && LocalUserManagementAccess.isEnabled(environment)));
     }

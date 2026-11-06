@@ -26,7 +26,7 @@ import com.taxonomy.dto.ViewContext;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(roles = "ADMIN")
+@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class DslApiControllerTest {
 
     @Autowired
@@ -835,7 +835,7 @@ class DslApiControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "hypothesis-apply-user", roles = "ADMIN")
+    @WithMockUser(username = "hypothesis-apply-user", roles = {"USER", "ARCHITECT", "ADMIN"})
     void applyHypothesisForSession() throws Exception {
         // Create a hypothesis
         RelationHypothesis h = new RelationHypothesis();

@@ -6,6 +6,8 @@ import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
+import com.taxonomy.workspace.service.WorkspaceProvisionPermission;
+import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
@@ -29,8 +31,9 @@ import java.util.regex.Pattern;
  * by analysis and graph-search endpoints whose results carry workspace-scoped
  * hypotheses or relation visibility.</p>
  *
- * <p>An explicit central selection may read historical portfolio records or the
- * supported central graph source through GET/HEAD. Its repository, branch and
+ * <p>An explicit central selection, or a reader without provisioning capability,
+ * may read historical portfolio records or the supported central graph source
+ * through GET/HEAD. Its repository, branch and
  * actor must still match the request-bound context; writes, analysis and Git
  * operations require an isolated workspace.</p>
  */
@@ -50,6 +53,12 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
 
     private final WorkspaceResolver workspaceResolver;
     private final RepositoryStateService repositoryStateService;
+    private WorkspaceProvisionPermission provisionPermission = actor -> true;
+
+    @Autowired(required = false)
+    void setWorkspaceProvisionPermission(WorkspaceProvisionPermission provisionPermission) {
+        this.provisionPermission = Objects.requireNonNull(provisionPermission);
+    }
 
     public DslWorkspacePreResolutionInterceptor(WorkspaceResolver workspaceResolver,
                                                 RepositoryStateService repositoryStateService) {
@@ -66,20 +75,27 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
         // An explicit central selection may read them without creating workspace
         // state or turning historical data into a personal workspace.
         // Git operations and every mutation retain the isolation contract below.
-        if (isExplicitCentralRead(request)) {
-            RepositoryContext repository = workspaceResolver.resolveCurrentRepositoryContext();
-            WorkspaceContext workspace = workspaceResolver.resolveCurrentContext();
-            if (repository == null || workspace == null
-                    || repository.scope() != RepositoryScope.CENTRAL_READ
-                    || workspace.workspaceId() != null
-                    || !Objects.equals(repository.repositoryId(), workspace.repositoryId())
-                    || !Objects.equals(repository.branch(), workspace.currentBranch())
-                    || !Objects.equals(repository.username(), workspace.username())
-                    || !Objects.equals(repository.username(), username)) {
-                throw new IllegalStateException(
-                        "Central read did not resolve one matching repository, branch and actor");
+        if (isSupportedCentralRead(request)) {
+            boolean explicitCentral = "".equals(WorkspaceContextResolver.requestedWorkspaceId(request));
+            if (explicitCentral || !provisionPermission.mayProvision(username)) {
+                RepositoryContext repository = workspaceResolver.resolveCurrentRepositoryContext();
+                WorkspaceContext workspace = workspaceResolver.resolveCurrentContext();
+                // A reader's existing working copy remains selected. Only an actual
+                // central context can take the path that avoids workspace allocation.
+                if (explicitCentral || repository == null || repository.scope() != RepositoryScope.WORKSPACE) {
+                    if (repository == null || workspace == null
+                            || repository.scope() != RepositoryScope.CENTRAL_READ
+                            || workspace.workspaceId() != null
+                            || !Objects.equals(repository.repositoryId(), workspace.repositoryId())
+                            || !Objects.equals(repository.branch(), workspace.currentBranch())
+                            || !Objects.equals(repository.username(), workspace.username())
+                            || !Objects.equals(repository.username(), username)) {
+                        throw new IllegalStateException(
+                                "Central read did not resolve one matching repository, branch and actor");
+                    }
+                    return true;
+                }
             }
-            return true;
         }
         repositoryStateService.ensureWorkspaceState(username);
 
@@ -123,7 +139,7 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
         return true;
     }
 
-    private static boolean isExplicitCentralRead(HttpServletRequest request) {
+    private static boolean isSupportedCentralRead(HttpServletRequest request) {
         if (!"GET".equals(request.getMethod()) && !"HEAD".equals(request.getMethod())) {
             return false;
         }
@@ -135,8 +151,7 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
             path = path.substring(context.length());
         }
         String requestPath = path;
-        return "".equals(WorkspaceContextResolver.requestedWorkspaceId(request))
-                && CENTRAL_READ_PATHS.stream()
-                        .anyMatch(pattern -> pattern.matcher(requestPath).matches());
+        return CENTRAL_READ_PATHS.stream()
+                .anyMatch(pattern -> pattern.matcher(requestPath).matches());
     }
 }

@@ -109,6 +109,8 @@ public class KeycloakSecurityConfig {
             .oauth2ResourceServer(oauth2 -> oauth2
                 .authenticationEntryPoint(authenticationEntryPoint)
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthConverter)))
+            .exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
+                    authenticationEntryPoint, SecurityConfig::isRestClient))
             .logout(logout -> logout.logoutSuccessHandler(logoutHandler));
 
         if (webDavCredentialFilter != null) {

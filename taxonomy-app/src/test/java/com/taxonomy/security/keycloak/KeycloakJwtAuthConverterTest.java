@@ -133,6 +133,52 @@ class KeycloakJwtAuthConverterTest {
         assertEquals(Set.of("ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN"), authorities);
     }
 
+    @Test
+    void retainsScopesAlongsideOnlyTheExplicitKnownRoles() {
+        Jwt jwt = Jwt.withTokenValue("token").header("alg", "RS256")
+                .issuer("https://idp.example").subject("account-id")
+                .claim("realm_access", Map.of("roles", List.of("ROLE_READER", "ROLE_ADMIN", "ROLE_ROOT", 42)))
+                .claim("scope", "taxonomy.read taxonomy.admin")
+                .build();
+
+        assertEquals(Set.of("ROLE_READER", "ROLE_ADMIN", "SCOPE_taxonomy.read", "SCOPE_taxonomy.admin"),
+                converter.convert(jwt).getAuthorities().stream()
+                        .map(GrantedAuthority::getAuthority).collect(Collectors.toSet()));
+    }
+
+    @Test
+    void retainsStandardScopeAndScpAuthoritiesWithoutValidRoles() {
+        for (Object roles : List.of(Map.of(), Map.of("roles", "ROLE_ADMIN"), "invalid")) {
+            for (String scopeClaim : List.of("scope", "scp")) {
+                Object scopes = scopeClaim.equals("scope") ? "taxonomy.read taxonomy.export"
+                        : List.of("taxonomy.read", "taxonomy.export");
+                Jwt jwt = Jwt.withTokenValue("token").header("alg", "RS256")
+                        .issuer("https://idp.example").subject("account-id")
+                        .claim("realm_access", roles).claim(scopeClaim, scopes).build();
+                assertEquals(Set.of("SCOPE_taxonomy.read", "SCOPE_taxonomy.export"),
+                        converter.convert(jwt).getAuthorities().stream()
+                                .map(GrantedAuthority::getAuthority).collect(Collectors.toSet()));
+            }
+        }
+        Jwt jwt = Jwt.withTokenValue("token").header("alg", "RS256")
+                .issuer("https://idp.example").subject("account-id")
+                .claim("scope", "taxonomy.read").build();
+        assertEquals(Set.of("SCOPE_taxonomy.read"), converter.convert(jwt).getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority).collect(Collectors.toSet()));
+    }
+
+    @Test
+    void readsKnownRolesFromConfiguredNestedPathWithoutImplicitBusinessRoles() {
+        converter.setRoleClaimPath("resource_access.taxonomy.roles");
+        Jwt jwt = Jwt.withTokenValue("token").header("alg", "RS256")
+                .issuer("https://idp.example").subject("account-id")
+                .claim("resource_access", Map.of("taxonomy", Map.of("roles", List.of("ROLE_ADMIN"))))
+                .claim("realm_access", Map.of("roles", List.of("ROLE_USER", "ROLE_ARCHITECT")))
+                .build();
+        assertEquals(Set.of("ROLE_ADMIN"), converter.convert(jwt).getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority).collect(Collectors.toSet()));
+    }
+
     private Jwt buildJwt(String preferredUsername, List<String> roles) {
         return Jwt.withTokenValue("token")
                 .header("alg", "RS256").issuer("https://idp.example")

@@ -35,7 +35,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 @SpringBootTest(properties = {
         "llm.mock=true", "taxonomy.analysis.relations.hierarchical.enabled=false"})
 @AutoConfigureMockMvc
-@WithMockUser(roles = "ADMIN")
+@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class AnalysisRelationGeneratorTests {
 
     @Autowired

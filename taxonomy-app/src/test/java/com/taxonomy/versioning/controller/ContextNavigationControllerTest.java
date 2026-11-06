@@ -21,7 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(roles = "ADMIN")
+@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class ContextNavigationControllerTest {
 
     @Autowired

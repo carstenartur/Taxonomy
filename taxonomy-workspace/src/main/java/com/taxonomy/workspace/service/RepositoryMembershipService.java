@@ -7,6 +7,7 @@ import com.taxonomy.workspace.model.RepositoryRole;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.RepositoryMembershipRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,9 +21,17 @@ import java.util.Optional;
 public class RepositoryMembershipService {
 
     private final RepositoryMembershipRepository membershipRepository;
+    private final Optional<RepositoryRoleGrantProvider> grantProvider;
 
     public RepositoryMembershipService(RepositoryMembershipRepository membershipRepository) {
+        this(membershipRepository, Optional.empty());
+    }
+
+    @Autowired
+    public RepositoryMembershipService(RepositoryMembershipRepository membershipRepository,
+            Optional<RepositoryRoleGrantProvider> grantProvider) {
         this.membershipRepository = membershipRepository;
+        this.grantProvider = grantProvider;
     }
 
     /** Assign the repository creator as its explicit owner, idempotently. */
@@ -70,7 +79,7 @@ public class RepositoryMembershipService {
 
         List<RepositoryMembership> lockedMemberships = membershipRepository
                 .findByRepositoryIdForUpdate(repositoryId);
-        requireOwner(repository, changedBy, lockedMemberships);
+        requireOwner(repository, actor, lockedMemberships);
         if (isUserCatalogOwner(repository, member) && role != RepositoryRole.OWNER) {
             throw new IllegalArgumentException(
                     "The repository catalog owner must retain the OWNER role");
@@ -95,11 +104,11 @@ public class RepositoryMembershipService {
             String actor) {
         String repositoryId = requireRepositoryId(repository);
         String member = requireText(username, "username");
-        String changedBy = requireText(actor, "actor");
+        requireText(actor, "actor");
 
         List<RepositoryMembership> lockedMemberships = membershipRepository
                 .findByRepositoryIdForUpdate(repositoryId);
-        requireOwner(repository, changedBy, lockedMemberships);
+        requireOwner(repository, actor, lockedMemberships);
         if (isUserCatalogOwner(repository, member)) {
             throw new IllegalArgumentException(
                     "The repository catalog owner membership cannot be removed");
@@ -124,9 +133,12 @@ public class RepositoryMembershipService {
         if (isUserCatalogOwner(repository, member)) {
             return Optional.of(RepositoryRole.OWNER);
         }
-        return membershipRepository.findByRepositoryIdAndUsername(
+        Optional<RepositoryRole> stored = membershipRepository.findByRepositoryIdAndUsername(
                         repository.getRepositoryId(), member)
                 .map(RepositoryMembership::getRole);
+        Optional<RepositoryRole> granted = trustedRole(repository, username);
+        return granted.filter(role -> stored.map(role::grants).orElse(true))
+                .or(() -> stored);
     }
 
     /**
@@ -182,7 +194,7 @@ public class RepositoryMembershipService {
                 requireText(repositoryId, "repositoryId"));
     }
 
-    /** List memberships only for an explicit repository owner. */
+    /** List memberships only for an effective repository owner. */
     public List<RepositoryMembership> listMemberships(
             SystemRepository repository, String actor) {
         requireOwner(repository, actor);
@@ -226,10 +238,17 @@ public class RepositoryMembershipService {
                 || findMembership(lockedMemberships, username)
                         .map(RepositoryMembership::getRole)
                         .filter(role -> role.grants(RepositoryRole.OWNER))
+                        .isPresent()
+                || trustedRole(repository, actor)
+                        .filter(role -> role.grants(RepositoryRole.OWNER))
                         .isPresent();
         if (!owner) {
             throw new AccessDeniedException("Repository OWNER role required");
         }
+    }
+
+    private Optional<RepositoryRole> trustedRole(SystemRepository repository, String actor) {
+        return grantProvider.flatMap(provider -> provider.findRole(repository.getRepositoryId(), actor));
     }
 
     private void requireOwner(SystemRepository repository, String actor) {

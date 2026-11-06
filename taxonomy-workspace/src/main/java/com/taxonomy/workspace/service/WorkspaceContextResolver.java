@@ -188,6 +188,9 @@ public class WorkspaceContextResolver {
         if (workspace != null && workspace.isDefault() && requestedWorkspaceId() == null
                 && (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED
                 || workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING)) {
+            if (!workspaceManager.mayProvisionDefaultWorkspace(username)) {
+                return null;
+            }
             workspace = workspaceManager.provisionDefaultWorkspaceRepository(
                     username, workspace.getWorkspaceId());
         }

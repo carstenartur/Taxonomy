@@ -276,12 +276,15 @@ Effective policy and readiness can be inspected at `GET /api/ai-automation`. Gen
 | `TAXONOMY_DIRECT_WORD_ENABLED` | `taxonomy.document-templates.direct-word-enabled` | base `true`; Keycloak `false` | Shows `ms-word:` direct-edit links. Enable only when Word can authenticate to the WebDAV endpoint. |
 | `KEYCLOAK_CLIENT_ID` | OAuth2 client registration / resource-server audience | `taxonomy-app` | OIDC browser client ID and default required API access-token audience. Configure the same audience in the Keycloak access-token mapper. Override `spring.security.oauth2.resourceserver.jwt.audiences` for a distinct API audience. |
 | `KEYCLOAK_CLIENT_SECRET` | OAuth2 client registration | empty | Confidential-client secret; provide through a secret store. |
+| `KEYCLOAK_SWAGGER_CLIENT_ID` | `springdoc.swagger-ui.oauth.client-id` | `taxonomy-swagger` | Separate public client for Swagger Authorization Code with PKCE; the server client secret is not exposed to Swagger. |
+| `TAXONOMY_KEYCLOAK_SWAGGER_AUTHORIZATION_URL` | `taxonomy.keycloak.swagger.authorization-url` | Issuer + `/protocol/openid-connect/auth` | Public OAuth authorization endpoint; override for other OIDC providers. |
+| `TAXONOMY_KEYCLOAK_SWAGGER_TOKEN_URL` | `taxonomy.keycloak.swagger.token-url` | Issuer + `/protocol/openid-connect/token` | Public token endpoint for the documented Authorization Code and Client Credentials flows. |
 | `KEYCLOAK_ISSUER_URI` | OAuth2 client and resource-server issuer | local realm URI | Public issuer URI used for discovery and token validation. |
 | `KEYCLOAK_JWK_SET_URI` | resource-server JWK endpoint | local realm certificates URI | Explicit key endpoint, useful when internal and public Keycloak routes differ. |
 | `KEYCLOAK_ADMIN_URL` | `taxonomy.keycloak.admin-console-url` | `http://localhost:8180` | Base URL used for account-console redirects. |
 | `KEYCLOAK_REALM` | `taxonomy.keycloak.realm` | `taxonomy` | Realm segment used by account-console redirects. |
 | `TAXONOMY_KEYCLOAK_PRINCIPAL_MODE` | `taxonomy.keycloak.principal-mode` | `LEGACY` | `LEGACY` preserves existing OIDC ownership; `STABLE` explicitly enables issuer/subject identities and is required for portable backups. Existing installations must keep `LEGACY` until verified owner migration is delivered; do not toggle modes after data is created. |
-| `TAXONOMY_KEYCLOAK_ROLE_CLAIM_PATH` | `taxonomy.keycloak.role-claim-path` | `realm_access.roles` | Dot-separated JWT claim path. Values are filtered to the fixed application roles `ROLE_USER`, `ROLE_ARCHITECT` and `ROLE_ADMIN`; no configurable prefix transformation exists. |
+| `TAXONOMY_KEYCLOAK_ROLE_CLAIM_PATH` | `taxonomy.keycloak.role-claim-path` | `realm_access.roles` | Dot-separated JWT/OIDC claim path. Values are filtered to `ROLE_READER`, `ROLE_USER` (analyst), `ROLE_ARCHITECT` and `ROLE_ADMIN`; no configurable prefix transformation exists. Bearer calls additionally require the operation's scopes. |
 
 ## DSL, repositories and external Git
 

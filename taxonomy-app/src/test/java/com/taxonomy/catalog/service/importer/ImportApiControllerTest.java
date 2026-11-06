@@ -29,7 +29,7 @@ import com.taxonomy.catalog.controller.ImportApiController;
     "spring.ai.llama.api-key=",
     "spring.ai.mistral.api-key="
 })
-@WithMockUser(roles = "ADMIN")
+@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class ImportApiControllerTest {
 
     @Autowired

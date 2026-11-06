@@ -25,6 +25,7 @@ class ModuleOwnedTestPlacementTest {
             "workspace/controller/WorkspaceAccessSecurityIT.java",
             "workspace/controller/WorkspaceControllerTest.java",
             "workspace/controller/WorkspaceProvisioningBoundaryIT.java",
+            "workspace/controller/WorkspaceReadOnlyProvisioningTest.java",
             "workspace/controller/WorkspaceScopedEndpointIsolationTest.java",
             "workspace/service/WorkspaceDataIsolationTest.java",
             "workspace/service/WorkspaceProvisioningClaimIT.java",

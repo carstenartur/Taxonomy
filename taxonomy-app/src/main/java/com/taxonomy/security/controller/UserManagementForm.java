@@ -15,8 +15,8 @@ public record UserManagementForm(
         @NotBlank @Size(max = 255) String username,
         @Size(max = 255) String displayName,
         @Email @Size(max = 255) String email,
-        @NotEmpty @Size(max = 3)
-        List<@Pattern(regexp = "ROLE_(USER|ARCHITECT|ADMIN)") String> roles) {
+        @NotEmpty @Size(max = 4)
+        List<@Pattern(regexp = "ROLE_(READER|USER|ARCHITECT|ADMIN)") String> roles) {
 
     public UserManagementForm {
         username = clean(username);

@@ -40,11 +40,17 @@ record KeycloakJwtTestIssuer(HttpServer server, RSAKey key, String origin) imple
 
     String token(String issuer, List<String> audiences, RSAKey signingKey,
                  Instant expiresAt, String authorizedParty) throws Exception {
+        return token(issuer, audiences, signingKey, expiresAt, authorizedParty, List.of("ROLE_USER"), null);
+    }
+
+    private String token(String issuer, List<String> audiences, RSAKey signingKey,
+                 Instant expiresAt, String authorizedParty, List<String> roles, String scope) throws Exception {
         var claims = new JWTClaimsSet.Builder().issuer(issuer).subject("audience-proof-person")
                 .issueTime(Date.from(Instant.now().minusSeconds(600)))
                 .expirationTime(Date.from(expiresAt))
                 .claim("preferred_username", "audience-proof")
-                .claim("realm_access", Map.of("roles", List.of("ROLE_USER")));
+                .claim("realm_access", Map.of("roles", roles));
+        if (scope != null) { claims.claim("scope", scope); }
         if (audiences != null) { claims.audience(audiences); }
         if (authorizedParty != null) { claims.claim("azp", authorizedParty); }
         var jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.RS256)
@@ -55,6 +61,10 @@ record KeycloakJwtTestIssuer(HttpServer server, RSAKey key, String origin) imple
 
     String token(List<String> audiences) throws Exception {
         return token(origin, audiences, key, Instant.now().plusSeconds(300), null);
+    }
+
+    String scopedToken(String audience, List<String> roles, String scope) throws Exception {
+        return token(origin, List.of(audience), key, Instant.now().plusSeconds(300), null, roles, scope);
     }
 
     @Override public void close() { server.stop(0); }

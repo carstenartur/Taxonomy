@@ -225,8 +225,18 @@ must not name Java tests or invoke Playwright/axe scripts directly.
 2. If the endpoint returns a new DTO, add it to `taxonomy-domain/src/main/java/com/taxonomy/dto/`.
 3. Put the service and its owned tests in the same feature context; cross-context access uses its public API or an explicit port.
 4. Keep service tests at the lowest useful JUnit layer; use HTTP/security integration tests for endpoint behavior and the relevant roles.
-5. If the endpoint is admin-only, add it under `/api/admin/` (protected by `ROLE_ADMIN` in `SecurityConfig`).
-6. If the endpoint modifies architecture data (relations, DSL), place it under `/api/relations/`, `/api/dsl/`, or `/api/git/` — write operations on these paths require `ROLE_ARCHITECT` or `ROLE_ADMIN`.
+5. Classify the operation in the ordered `taxonomy-app` security catalogue (`ApiAccessPolicy`) using a named `ApiPermission`. Put specific matches before broader ones. Select the effect and resource restriction deliberately: read-only POST, analysis execution, architecture changes/deletion/publication, import/export and technical administration differ. Unclassified writes are denied, including for ADMIN.
+6. Use the shared permission for both authorization and OpenAPI; do not maintain a second role/scope map or replace the shared rules with controller-only checks. Architecture writes require ARCHITECT; ADMIN alone is technical administration. The four roles are READER, USER (stored Analyst), ARCHITECT and ADMIN. Existing explicit multi-role assignments remain valid.
+7. For permission-protected Bearer operations require an allowed application role in **each** required permission group **and all** listed scopes; test denial when any group or scope is missing. Local Basic and browser-session authorization uses roles with existing CSRF rules. Keep project/repository visibility, membership and workspace-ownership checks in the owning service.
+8. Verify Swagger retains the functional tag and shows the policy-derived operation access table, active authentication schemes (including `sessionCookie` in OIDC mode), all permission groups and their role alternatives, all scopes, effect, resource restrictions and 401/403 responses. See [Security](SECURITY.md#roles-and-permissions) for the exact permission matrix.
+
+Classify effects rather than HTTP methods: `GET /api/analyze-stream` and `/api/analyze-node` execute new LLM work and require ANALYSIS_RUN (`analysis:run` for JWTs). Lazy/default working-copy creation in `GET /api/workspace/current` is guarded by the same permission. Readers without a ready working copy receive 204 and keep the central read-only context; existing ready copies remain readable under resource checks. External `POST /api/workspace/external/push` and `/api/workspace/external/full-sync` require both ARCHITECT + `architecture:publish` and ADMIN + `admin:configuration`; groups are conjunctive. OIDC sessions require the roles and CSRF for browser writes, while JWTs also require all scopes.
+
+`architecture:delete` protects dedicated REST DELETE endpoints. `architecture:write` authorizes a complete command/DSL operation, which can remove or replace content; endpoint scopes are not a semantic-diff policy. Read-only scopes permit no business edits.
+
+Organizational groups are managed by the identity provider and mapped to explicit known roles; there is no local group database. Trusted `taxonomy_repository_roles` claims map exact repository IDs to one `READER`, `CONTRIBUTOR`, `MAINTAINER` or `OWNER` string for the current authenticated actor. Do not accept grants or alternate actors from request parameters. Claims supplement stored memberships and do not replace application roles, Bearer scopes or personal-workspace ownership. See [claim validation](SECURITY.md#organizational-groups-and-repository-grants).
+
+Swagger uses a public `taxonomy-swagger` client for Authorization Code with PKCE; the confidential `taxonomy-app` client serves server-side sessions. Automation uses a separate confidential Client Credentials client. Configure explicit roles/scopes and resource grants rather than granting ADMIN as a shortcut. See [Keycloak setup](KEYCLOAK_SETUP.md).
 
 ---
 
@@ -363,13 +373,13 @@ Spring Boot 4 does **not** auto-apply `SecurityMockMvcConfigurers.springSecurity
 1. Apply the Spring Security filter chain to all MockMvc requests.
 2. Auto-apply CSRF tokens to test requests.
 
-All MockMvc test classes must use `@WithMockUser(roles = "ADMIN")` (or a more restrictive role) to simulate an authenticated user. Without this annotation, requests will return HTTP 401/403.
+Choose authentication appropriate to the endpoint: `@WithMockUser` for local/session role checks, and the existing JWT fixtures for Bearer role-plus-scope checks. ADMIN does not imply ARCHITECT or USER. Exercise allowed roles, missing/wrong roles, missing/wrong scopes, anonymous access, and repository/workspace isolation as applicable. Supply CSRF tokens for browser-session writes; also test rejection without them. A read-only example uses READER:
 
 ```java
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(roles = "ADMIN")
-class MyControllerTest {
+@WithMockUser(roles = "READER")
+class MyReadControllerTest {
     @Autowired
     private MockMvc mockMvc;
     // tests here

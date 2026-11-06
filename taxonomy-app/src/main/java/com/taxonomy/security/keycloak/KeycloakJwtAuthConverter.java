@@ -11,13 +11,13 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
-import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Converts Keycloak JWT claims to Spring Security authorities.
@@ -29,7 +29,8 @@ import java.util.stream.Collectors;
  * <p>
  * This converter extracts those roles and maps them to Spring
  * {@link GrantedAuthority} instances, preserving the existing
- * three-role model (ROLE_USER, ROLE_ARCHITECT, ROLE_ADMIN).
+ * four-role model (ROLE_READER, ROLE_USER, ROLE_ARCHITECT, ROLE_ADMIN).
+ * Standard OAuth scopes are retained as SCOPE_* authorities.
  * Stable mode resolves issuer and subject to a persisted scope key. The default
  * legacy mode preserves existing username-based ownership until verified migration
  * is available; its tokens cannot be used as stable backup identities.
@@ -39,7 +40,8 @@ import java.util.stream.Collectors;
 public class KeycloakJwtAuthConverter implements Converter<Jwt, AbstractAuthenticationToken> {
 
     /** The recognized application roles. */
-    private static final Set<String> KNOWN_ROLES = Set.of("ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN");
+    private static final Set<String> KNOWN_ROLES = Set.of("ROLE_READER", "ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN");
+    private final JwtGrantedAuthoritiesConverter scopeAuthorities = new JwtGrantedAuthoritiesConverter();
     private final PrincipalIdentityService identities;
     private final KeycloakPrincipalMode mode;
 
@@ -49,7 +51,7 @@ public class KeycloakJwtAuthConverter implements Converter<Jwt, AbstractAuthenti
     }
 
     @Value("${taxonomy.keycloak.role-claim-path:realm_access.roles}")
-    private String roleClaimPath;
+    private String roleClaimPath = "realm_access.roles";
 
     /** Visible for testing — sets the role claim path. */
     void setRoleClaimPath(String roleClaimPath) {
@@ -71,32 +73,25 @@ public class KeycloakJwtAuthConverter implements Converter<Jwt, AbstractAuthenti
         return new PrincipalJwtAuthenticationToken(jwt, authorities, principal);
     }
 
-    /**
-     * Extracts realm roles from the JWT and filters to known application roles.
-     */
-    @SuppressWarnings("unchecked")
+    /** Extracts explicit known roles alongside standard scope/scp authorities. */
     Collection<GrantedAuthority> extractAuthorities(Jwt jwt) {
-        // Navigate the claim path: "realm_access.roles"
-        String[] pathParts = roleClaimPath.split("\\.");
+        Set<GrantedAuthority> authorities = new LinkedHashSet<>(scopeAuthorities.convert(jwt));
         Object current = jwt.getClaims();
-
-        for (String part : pathParts) {
+        for (String part : roleClaimPath.split("\\.")) {
             if (current instanceof Map<?, ?> map) {
                 current = map.get(part);
             } else {
-                return Collections.emptyList();
+                return authorities;
             }
         }
-
         if (current instanceof Collection<?> roles) {
-            return roles.stream()
+            roles.stream()
                     .filter(String.class::isInstance)
                     .map(String.class::cast)
                     .filter(KNOWN_ROLES::contains)
                     .map(SimpleGrantedAuthority::new)
-                    .collect(Collectors.toList());
+                    .forEach(authorities::add);
         }
-
-        return Collections.emptyList();
+        return authorities;
     }
 }

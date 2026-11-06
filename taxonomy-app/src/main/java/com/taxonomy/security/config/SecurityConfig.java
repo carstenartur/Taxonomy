@@ -17,6 +17,7 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.ui.DefaultLogoutPageGeneratingFilter;
 import org.springframework.security.web.authentication.ui.DefaultResourcesFilter;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
+import org.springframework.security.web.authentication.www.BasicAuthenticationEntryPoint;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.security.web.header.HeaderWriterFilter;
@@ -87,6 +88,8 @@ public class SecurityConfig {
     /** Existing security rules, also used by focused protocol/filter configuration tests. */
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         RequestMatcher statelessProtocolClient = SecurityConfig::isStatelessProtocolClient;
+        var apiEntryPoint = new BasicAuthenticationEntryPoint();
+        apiEntryPoint.setRealmName("Taxonomy");
 
         http
             .authorizeHttpRequests(auth -> authRules.configure(auth))
@@ -102,6 +105,8 @@ public class SecurityConfig {
                     .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))
             .formLogin(form -> form.loginPage("/login").permitAll())
             .httpBasic(Customizer.withDefaults())
+            .exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
+                    apiEntryPoint, SecurityConfig::isRestClient))
             .logout(Customizer.withDefaults());
 
         // A custom login page disables Spring's generated logout page and its CSS too.
@@ -160,5 +165,10 @@ public class SecurityConfig {
         String context = request.getContextPath();
         return context == null || context.isBlank() || !uri.startsWith(context)
                 ? uri : uri.substring(context.length());
+    }
+
+    static boolean isRestClient(HttpServletRequest request) {
+        String path = protocolPath(request);
+        return path.startsWith("/api/") || path.startsWith("/oslc/");
     }
 }

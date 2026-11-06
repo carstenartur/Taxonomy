@@ -137,6 +137,27 @@ class SecurityDataInitializerTest {
         verifyNoInteractions(bootstrapCredentialStore);
     }
 
+    @Test
+    void seedsReaderIdempotentlyAlongsideTheExistingRoles() {
+        var stored = new java.util.HashMap<String, AppRole>();
+        when(roleRepository.findByName(anyString()))
+                .thenAnswer(invocation -> Optional.ofNullable(stored.get(invocation.<String>getArgument(0))));
+        when(roleRepository.save(any(AppRole.class))).thenAnswer(invocation -> {
+            AppRole role = invocation.getArgument(0);
+            assertThat(stored.putIfAbsent(role.getName(), role)).isNull();
+            return role;
+        });
+        var existing = new AppUser();
+        existing.setPasswordHash(passwordEncoder.encode("existing-secure-password"));
+        when(userRepository.findByUsername("admin")).thenReturn(Optional.of(existing));
+
+        initializer("configured-secret", false).run(NO_ARGS);
+        initializer("configured-secret", false).run(NO_ARGS);
+
+        assertThat(stored.keySet()).containsExactlyInAnyOrder(
+                "ROLE_READER", "ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN");
+    }
+
     private SecurityDataInitializer initializer(String configuredPassword,
                                                 boolean requirePasswordChange) {
         return new SecurityDataInitializer(

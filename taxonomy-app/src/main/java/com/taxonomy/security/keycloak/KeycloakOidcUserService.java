@@ -2,6 +2,7 @@ package com.taxonomy.security.keycloak;
 
 import com.taxonomy.security.service.PrincipalIdentityService;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -25,7 +26,7 @@ import java.util.Set;
  * After a successful OIDC login, this service:
  * <ol>
  *   <li>Loads the standard OidcUser from the UserInfo endpoint</li>
- *   <li>Extracts realm roles from the OIDC user's claims (Keycloak {@code realm_access})</li>
+ *   <li>Extracts application roles from the configured OIDC role claim path</li>
  *   <li>Returns an OidcUser with the correct ROLE_* authorities</li>
  * </ol>
  */
@@ -34,7 +35,10 @@ import java.util.Set;
 public class KeycloakOidcUserService extends OidcUserService {
 
     /** The recognized application roles. */
-    private static final Set<String> KNOWN_ROLES = Set.of("ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN");
+    private static final Set<String> KNOWN_ROLES = Set.of("ROLE_READER", "ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN");
+    @Value("${taxonomy.keycloak.role-claim-path:realm_access.roles}")
+    private String roleClaimPath = "realm_access.roles";
+
     private final PrincipalIdentityService identities;
     private final KeycloakPrincipalMode mode;
 
@@ -49,7 +53,7 @@ public class KeycloakOidcUserService extends OidcUserService {
 
         // Extract realm roles from the ID token claims
         Set<GrantedAuthority> authorities = new HashSet<>(oidcUser.getAuthorities());
-        authorities.addAll(extractRealmRoles(oidcUser));
+        authorities.addAll(extractRoles(oidcUser));
 
         if (mode == KeycloakPrincipalMode.LEGACY) {
             return new DefaultOidcUser(authorities, oidcUser.getIdToken(), oidcUser.getUserInfo(), "preferred_username");
@@ -60,27 +64,25 @@ public class KeycloakOidcUserService extends OidcUserService {
         return new PrincipalOidcUser(authorities, oidcUser, principal);
     }
 
-    /**
-     * Extracts realm roles from the OIDC user's claims.
-     * Keycloak stores roles under {@code realm_access.roles}.
-     */
-    @SuppressWarnings("unchecked")
-    private Collection<GrantedAuthority> extractRealmRoles(OidcUser oidcUser) {
+    /** Extracts only explicit known application roles from the configured claim path. */
+    private Collection<GrantedAuthority> extractRoles(OidcUser oidcUser) {
         Set<GrantedAuthority> roles = new HashSet<>();
-
-        Map<String, Object> realmAccess = oidcUser.getAttribute("realm_access");
-        if (realmAccess != null) {
-            Object rolesObj = realmAccess.get("roles");
-            if (rolesObj instanceof Collection<?> roleList) {
-                roleList.stream()
-                        .filter(String.class::isInstance)
-                        .map(String.class::cast)
-                        .filter(KNOWN_ROLES::contains)
-                        .map(SimpleGrantedAuthority::new)
-                        .forEach(roles::add);
+        Object current = oidcUser.getClaims();
+        for (String part : roleClaimPath.split("\\.")) {
+            if (current instanceof Map<?, ?> map) {
+                current = map.get(part);
+            } else {
+                return roles;
             }
         }
-
+        if (current instanceof Collection<?> roleList) {
+            roleList.stream()
+                    .filter(String.class::isInstance)
+                    .map(String.class::cast)
+                    .filter(KNOWN_ROLES::contains)
+                    .map(SimpleGrantedAuthority::new)
+                    .forEach(roles::add);
+        }
         return roles;
     }
 }
