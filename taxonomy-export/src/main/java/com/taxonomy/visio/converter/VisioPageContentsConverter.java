@@ -17,6 +17,7 @@ import com.thoughtworks.xstream.io.HierarchicalStreamWriter;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import com.taxonomy.export.ExportTheme;
 
 /**
  * Marshals native master instances with cached geometry and explicit point-glue
@@ -30,12 +31,18 @@ public class VisioPageContentsConverter implements Converter {
             "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     private static final String LINE_COLOR = "#44546A";
     private final VisioNativeShape masterDefinition;
+    private final ExportTheme theme;
 
-    public VisioPageContentsConverter() { this(null); }
+    public VisioPageContentsConverter() { this(null, ExportTheme.defaults()); }
 
     /** Uses the same geometry policy to emit an original document master. */
     public VisioPageContentsConverter(VisioNativeShape masterDefinition) {
+        this(masterDefinition, ExportTheme.defaults());
+    }
+
+    public VisioPageContentsConverter(VisioNativeShape masterDefinition, ExportTheme theme) {
         this.masterDefinition = masterDefinition;
+        this.theme = java.util.Objects.requireNonNull(theme, "theme");
     }
 
     @Override
@@ -141,10 +148,12 @@ public class VisioPageContentsConverter implements Converter {
         writeCell(writer, "LocPinX", decimal(shape.getWidth() / 2.0), "Width*0.5");
         writeCell(writer, "LocPinY", decimal(shape.getHeight() / 2.0), "Height*0.5");
         writeCell(writer, "Angle", "0");
-        writeCell(writer, "FillForegnd", com.taxonomy.export.DiagramPresentation.fill(shape.getType()));
         boolean container = kind == VisioNativeShape.CONTAINER;
+        boolean nativePresentation = container || VisioNativeShape.isPresentationOnly(shape);
+        String fill = nativePresentation ? com.taxonomy.export.DiagramPresentation.fill(shape.getType()) : theme.nodeFill(shape.getType());
+        writeCell(writer, "FillForegnd", fill);
         writeCell(writer, "FillPattern", container ? "0" : "1");
-        writeCell(writer, "LineColor", LINE_COLOR);
+        writeCell(writer, "LineColor", nativePresentation ? LINE_COLOR : theme.nodeBorder(shape.getType(), shape.isAnchor(), LINE_COLOR, fill));
         writeCell(writer, "LinePattern", "1");
         writeCell(writer, "LineWeight", shape.isAnchor() ? "0.02777777777777778" : "0.01388888888888889");
         if (kind == VisioNativeShape.SERVICE) writeCell(writer, "Rounding", decimal(Math.min(shape.getWidth(), shape.getHeight()) * .15), "MIN(Width,Height)*0.15");
@@ -174,7 +183,8 @@ public class VisioPageContentsConverter implements Converter {
             writeCell(writer, "TopMargin", "0.1");
             writeCell(writer, "BottomMargin", "0.1");
         }
-        writeCharacterStyle(writer, evidence || container ? 10 : shape.getHeight() >= 1 ? 12 : 10);
+        writeCharacterStyle(writer, evidence || container ? 10 : shape.getHeight() >= 1 ? 12 : 10,
+                nativePresentation ? "#172B4D" : theme.nodeText(shape.getType(), "#172B4D"));
         if (evidence) {
             writer.startNode("Section"); writer.addAttribute("N", "Paragraph");
             writer.startNode("Row"); writer.addAttribute("IX", "0");
@@ -245,7 +255,7 @@ public class VisioPageContentsConverter implements Converter {
                 "ATAN2(EndY-BeginY,EndX-BeginX)");
         boolean proposed = connect.getProperties().containsKey("taxonomy.proposed")
                 && "true".equals(connect.getProperties().get("taxonomy.proposed").value());
-        writeCell(writer, "LineColor", proposed ? "#9333EA" : LINE_COLOR);
+        writeCell(writer, "LineColor", theme.relationshipStroke(connect.getRelationType(), proposed ? "#9333EA" : LINE_COLOR, "#FFFFFF"));
         writeCell(writer, "LinePattern", proposed ? "2" : "1");
         writeCell(writer, "LineWeight", "0.01388888888888889");
         writeCell(writer, "EndArrow", "13");
@@ -269,7 +279,7 @@ public class VisioPageContentsConverter implements Converter {
         writeCell(writer, "TextBkgnd", "#FFFFFF");
         writeCell(writer, "TextBkgndTrans", "0");
         writeCell(writer, "VerticalAlign", "1");
-        writeCharacterStyle(writer, box.height() >= 1 ? 12 : 10);
+        writeCharacterStyle(writer, box.height() >= 1 ? 12 : 10, "#172B4D");
         writeLineGeometry(writer, width);
         writeProperties(writer, connect.getProperties());
 
@@ -279,13 +289,13 @@ public class VisioPageContentsConverter implements Converter {
         writer.endNode();
     }
 
-    private static void writeCharacterStyle(HierarchicalStreamWriter writer, int points) {
+    private static void writeCharacterStyle(HierarchicalStreamWriter writer, int points, String color) {
         writer.startNode("Section");
         writer.addAttribute("N", "Character");
         writer.startNode("Row");
         writer.addAttribute("IX", "0");
         writeCell(writer, "Size", decimal(points / 72.0)); // Fixed readable size; never shrink to fit.
-        writeCell(writer, "Color", "#172B4D");
+        writeCell(writer, "Color", color);
         writer.endNode();
         writer.endNode();
     }

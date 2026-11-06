@@ -19,6 +19,48 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 
 class DecisionCompactReportTest {
+    @Test void darkCustomerPaperKeepsMutedTableTextReadableOnLightAndSemanticRows() {
+        var base = DecisionRationaleTemplateRendererTest.report();
+        var children = List.of(
+                new DecisionRationaleReport.ChildDecision("fixture-leading", "Saved leading title", "", 75d, 75d, 1,
+                        true, Disposition.LEAF_CANDIDATE, "Saved leading reason", DecisionRationaleReport.ReasonSource.AI_SCORING, true),
+                new DecisionRationaleReport.ChildDecision("fixture-rejected", "Saved rejected title", "", 0d, 0d, 2,
+                        false, Disposition.REJECTED, "Saved rejected reason", DecisionRationaleReport.ReasonSource.AI_SCORING, true));
+        var chapter = new DecisionRationaleReport.DecisionChapter(1, "fixture-parent", "Saved parent", "", 100d, 0,
+                true, "Saved decision", "Saved comparison", children, List.of());
+        var report = new DecisionRationaleReport(base.title(), base.languageTag(), base.requirement(), base.status(),
+                base.metadata(), base.executiveSummary(), List.of(chapter), List.of(), List.of(), List.of(), List.of(), null);
+        var theme = com.taxonomy.export.ExportTheme.fromStylesheet("""
+                :root{--taxonomy-surface-background:#102030;--taxonomy-panel-background:#fff}
+                """);
+        String html = new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer(), () -> theme).render(report);
+        assertThat(html).contains("html,body{background:#102030;color:#FFFFFF}", "class=\"row-leading\"",
+                "class=\"row-rejected\"", "<span class=\"muted\">Saved leading title</span>",
+                "<span class=\"muted\">Saved rejected title</span>",
+                ".muted,.row-rejected,.row-missing{color:inherit}",
+                ".row-leading,.row-leading td{color:#0B1F33}");
+    }
+
+    @Test void customerHtmlSurfacesKeepTheSavedTreeAndItsSemanticScorePalette() {
+        var report = report(DecisionReportOptions.TreeLayout.AUTO, 4);
+        try (var context = new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+            context.registerBean(com.taxonomy.export.ExportThemeProvider.class, () -> () ->
+                    com.taxonomy.export.ExportTheme.fromStylesheet("""
+                            :root { --taxonomy-surface-background:#f0f4f8;
+                              --taxonomy-surface-foreground:#102030;
+                              --taxonomy-navigation-background:#17406f;
+                              --taxonomy-layer-cap-surface:#123456; }
+                            """));
+            context.register(DecisionChapterDiagramRenderer.class, DecisionRationaleHtmlRenderer.class);
+            context.refresh();
+            String html = context.getBean(DecisionRationaleHtmlRenderer.class).render(report);
+            assertThat(html).contains("background:#F0F4F8", "color:#102030", "#17406F", report.requirement(),
+                    "fill=\"#fff4d6\"", "fill=\"#f0f3f6\"", "fill=\"#e1f4f3\"", "fill=\"#007a78\"",
+                    "CP-1", "CP-2", "CP-3").doesNotContain("fill=\"#123456\"");
+            assertThat(report.scope().decisionTree().rows()).hasSize(4);
+        }
+    }
+
     @Test void compactTreeKeepsTheCompleteSavedReasonInVisibleLinkedEvidence() throws Exception {
         var base = report(DecisionReportOptions.TreeLayout.AUTO, 4);
         String reason = "Die vollständige Begründung erläutert den fachlichen Zusammenhang. ".repeat(70)

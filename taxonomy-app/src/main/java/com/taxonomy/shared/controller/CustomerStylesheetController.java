@@ -24,7 +24,7 @@ import java.nio.file.Path;
 /** An operator-owned stylesheet supplements the application's bundled styles. */
 @Controller
 @ControllerAdvice
-public class CustomerStylesheetController {
+public class CustomerStylesheetController implements com.taxonomy.export.ExportThemeProvider {
     static final int MAX_STYLESHEET_BYTES = 512 * 1024;
     private static final Logger log = LoggerFactory.getLogger(CustomerStylesheetController.class);
     private static final MediaType CSS = new MediaType("text", "css", StandardCharsets.UTF_8);
@@ -37,6 +37,15 @@ public class CustomerStylesheetController {
     @ModelAttribute("customerStylesheetEnabled")
     public boolean customerStylesheetEnabled() {
         return !configuredFile.isEmpty();
+    }
+
+    /** Reuses the bounded UTF-8 read and failure policy used by application pages. */
+    @Override
+    public com.taxonomy.export.ExportTheme current() {
+        var response = stylesheet();
+        return response.getStatusCode().is2xxSuccessful()
+                ? com.taxonomy.export.ExportTheme.fromStylesheet(response.getBody())
+                : com.taxonomy.export.ExportTheme.defaults();
     }
 
     @GetMapping(value = "/css/customer-theme.css", produces = "text/css")

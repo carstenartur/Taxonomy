@@ -14,6 +14,24 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ArchitectureReportLanguageTest {
+    @Test void boldTableEvidenceInheritsItsPanelForegroundWhenCustomerPaperIsDark() {
+        var report = new ArchitectureReport();
+        report.setBusinessText("""
+                Original requirement.
+
+                | Name | Evidence |
+                |---|---|
+                | First | Original evidence |
+                | Second | **BOLD-CONTEXT-END** |
+                """);
+        var theme = com.taxonomy.export.ExportTheme.fromStylesheet("""
+                :root{--taxonomy-surface-background:#102030;--taxonomy-panel-background:#fff}
+                """);
+        String html = new ArchitectureReportTextRenderer(() -> theme).renderHtml(report);
+        assertThat(html).contains("html,body{background:#102030;color:#FFFFFF}",
+                "<td><strong>BOLD-CONTEXT-END</strong></td>", "td strong{color:inherit}");
+    }
+
     @Test void liveWordAndTextUseGermanLabelsWithoutTranslatingRecordedReasons() throws Exception {
         var report = new ArchitectureReport();
         report.setBusinessText("A recorded requirement in its original language.");

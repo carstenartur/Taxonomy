@@ -22,6 +22,14 @@ import java.util.function.Consumer;
 /** Draws a vector PDF directly from the same deterministic scene returned to other export adapters. */
 public final class ArchitecturePdfRenderer {
 
+    private final ExportThemeProvider themes;
+
+    public ArchitecturePdfRenderer() { this(ExportThemeProvider.defaults()); }
+
+    public ArchitecturePdfRenderer(ExportThemeProvider themes) {
+        this.themes = java.util.Objects.requireNonNull(themes, "themes");
+    }
+
     private static final float PAGE_MARGIN = 32.0f;
     private static final float HEADER_HEIGHT = 54.0f;
     private static final float MAX_PAGE_SIZE = 14_400.0f;
@@ -60,8 +68,8 @@ public final class ArchitecturePdfRenderer {
             throw new IllegalArgumentException("Architecture snapshot metadata is required");
         }
         return renderScene(scene, document -> configureMetadata(document, scene, metadata),
-                (stream, height) -> drawHeader(stream, scene, metadata, height),
-                stream -> drawFooter(stream, metadata), nodeReasons, relationReasons);
+                (stream, height, theme) -> drawHeader(stream, scene, metadata, height, theme),
+                (stream, theme) -> drawFooter(stream, metadata, theme), nodeReasons, relationReasons);
     }
 
     /** Live editor export uses the same vector geometry without masquerading as an analysis snapshot. */
@@ -74,13 +82,13 @@ public final class ArchitecturePdfRenderer {
             information.setSubject(provenance);
             information.setCreator("Taxonomy server-side vector renderer");
             document.setDocumentInformation(information);
-        }, (stream, height) -> {
-            text(stream, BOLD, 16, PAGE_MARGIN, height - PAGE_MARGIN - 16, scene.title());
+        }, (stream, height, theme) -> {
+            text(stream, theme, BOLD, 16, PAGE_MARGIN, height - PAGE_MARGIN - 16, scene.title());
             List<String> lines = Arrays.asList(displayProvenance.split("\n"));
             for (int i = 0; i < Math.min(2, lines.size()); i++) {
-                text(stream, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 33 - i * 12, lines.get(i));
+                text(stream, theme, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 33 - i * 12, lines.get(i));
             }
-        }, stream -> text(stream, REGULAR, 8, PAGE_MARGIN, 16,
+        }, (stream, theme) -> text(stream, theme, REGULAR, 8, PAGE_MARGIN, 16,
                 "Derived server layout · Git-authoritative architecture"), Map.of(), Map.of());
     }
 
@@ -102,15 +110,15 @@ public final class ArchitecturePdfRenderer {
             information.setSubject("Client-provided working view");
             information.setCreator("Taxonomy server-side vector renderer");
             document.setDocumentInformation(information);
-        }, (stream, height) -> {
-            text(stream, BOLD, 16, PAGE_MARGIN, height - PAGE_MARGIN - 16,
+        }, (stream, height, theme) -> {
+            text(stream, theme, BOLD, 16, PAGE_MARGIN, height - PAGE_MARGIN - 16,
                     "Requirement architecture - working view");
-            text(stream, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 33,
+            text(stream, theme, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 33,
                     "Client-provided working view; source authority has not been verified.");
-            text(stream, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 45,
+            text(stream, theme, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 45,
                     PdfDiagramText.wrap(scene.title(), REGULAR, 8,
                             PDRectangle.A3.getHeight() - 2 * PAGE_MARGIN, 1).getFirst());
-        }, stream -> text(stream, REGULAR, 8, PAGE_MARGIN, 16,
+        }, (stream, theme) -> text(stream, theme, REGULAR, 8, PAGE_MARGIN, 16,
                 "Generated server layout | Client-provided working view | No re-analysis or persistence"), nodeReasons, relationReasons);
     }
 
@@ -122,17 +130,18 @@ public final class ArchitecturePdfRenderer {
 
     @FunctionalInterface
     private interface HeaderWriter {
-        void write(PDPageContentStream stream, float height) throws IOException;
+        void write(PDPageContentStream stream, float height, ExportTheme theme) throws IOException;
     }
 
     @FunctionalInterface
     private interface FooterWriter {
-        void write(PDPageContentStream stream) throws IOException;
+        void write(PDPageContentStream stream, ExportTheme theme) throws IOException;
     }
 
     private byte[] renderScene(DiagramScene scene, Consumer<PDDocument> metadata,
                                HeaderWriter header, FooterWriter footer, Map<String, String> nodeReasons,
                                Map<String, Map<String, String>> relationReasons) {
+        ExportTheme theme = java.util.Objects.requireNonNull(themes.current(), "export theme");
         try (PDDocument document = new PDDocument();
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             PdfDiagramPages.Plan plan = PdfDiagramPages.plan(scene);
@@ -152,15 +161,15 @@ public final class ArchitecturePdfRenderer {
                 if (scale < 0.8f) throw new IllegalArgumentException("PDF panel is not readable");
                 float diagramTop = pageHeight - PAGE_MARGIN - HEADER_HEIGHT;
                 try (PDPageContentStream stream = new PDPageContentStream(document, page)) {
-                    stream.setNonStrokingColor(Color.WHITE);
+                    stream.setNonStrokingColor(Color.decode(theme.canvasBackground()));
                     stream.addRect(0, 0, pageWidth, pageHeight);
                     stream.fill();
-                    header.write(stream, pageHeight);
-                    drawEdges(stream, part, PAGE_MARGIN, diagramTop, scale);
-                    drawNodes(stream, part, PAGE_MARGIN, diagramTop, scale);
-                    footer.write(stream);
+                    header.write(stream, pageHeight, theme);
+                    drawEdges(stream, part, PAGE_MARGIN, diagramTop, scale, theme);
+                    drawNodes(stream, part, PAGE_MARGIN, diagramTop, scale, theme);
+                    footer.write(stream, theme);
                     if (plan.panels().size() > 1) {
-                        text(stream, REGULAR, 8, PAGE_MARGIN, 30,
+                        text(stream, theme, REGULAR, 8, PAGE_MARGIN, 30,
                                 "Diagram D" + (index + 1) + "/" + plan.panels().size()
                                         + " | Cross-page relationships: " + panel.crossPageRelationships()
                                         + " | Complete endpoints and diagram references: see export inventory.");
@@ -168,7 +177,7 @@ public final class ArchitecturePdfRenderer {
                 }
             }
             drawInventory(document, scene, plan.nodePages(), nodeReasons == null ? Map.of() : nodeReasons,
-                    relationReasons == null ? Map.of() : relationReasons);
+                    relationReasons == null ? Map.of() : relationReasons, theme);
             document.save(output);
             return output.toByteArray();
         } catch (IOException error) {
@@ -189,14 +198,14 @@ public final class ArchitecturePdfRenderer {
     private static void drawHeader(PDPageContentStream stream,
                                    DiagramScene scene,
                                    SnapshotMetadata metadata,
-                                   float pageHeight) throws IOException {
+                                   float pageHeight, ExportTheme theme) throws IOException {
         float y = pageHeight - PAGE_MARGIN - 16;
-        text(stream, BOLD, 16, PAGE_MARGIN, y, scene.title());
-        text(stream, REGULAR, 9, PAGE_MARGIN, y - 19,
+        text(stream, theme, BOLD, 16, PAGE_MARGIN, y, scene.title());
+        text(stream, theme, REGULAR, 9, PAGE_MARGIN, y - 19,
                 "Project " + metadata.projectKey()
                         + " · Requirement " + metadata.requirementKey()
                         + " · Snapshot " + metadata.snapshotId());
-        text(stream, REGULAR, 8, PAGE_MARGIN, y - 33,
+        text(stream, theme, REGULAR, 8, PAGE_MARGIN, y - 33,
                 "Provider " + safe(metadata.provider())
                         + " · Branch " + safe(metadata.branchName())
                         + " · Commit " + abbreviated(metadata.commitSha()));
@@ -206,7 +215,7 @@ public final class ArchitecturePdfRenderer {
                                   DiagramScene scene,
                                   float diagramX,
                                   float diagramTop,
-                                  float scale) throws IOException {
+                                  float scale, ExportTheme theme) throws IOException {
         stream.setStrokingColor(new Color(88, 97, 116));
         for (DiagramSceneEdge edge : scene.edges()) {
             float x1 = diagramX + (float) edge.sourceX() * scale;
@@ -214,7 +223,7 @@ public final class ArchitecturePdfRenderer {
             float x2 = diagramX + (float) edge.targetX() * scale;
             float y2 = diagramTop - (float) edge.targetY() * scale;
             boolean proposed = edge.metadata() != null && edge.metadata().proposed();
-            stream.setStrokingColor(proposed ? new Color(147, 51, 234) : new Color(88, 97, 116));
+            stream.setStrokingColor(Color.decode(theme.relationshipStroke(edge.relationType(), proposed)));
             stream.setLineDashPattern(proposed ? new float[]{6, 4} : new float[]{}, 0);
             stream.setLineWidth(Math.max(0.55f, (float) (0.8 + edge.relevance()) * scale));
             stream.moveTo(x1, y1);
@@ -226,9 +235,9 @@ public final class ArchitecturePdfRenderer {
                 float captionWidth = Math.max(12, Math.min(210 * scale, Math.abs(x2 - x1) - 12 * scale));
                 String relation = PdfDiagramText.wrap(edge.relationType(), REGULAR, size, captionWidth, 1).getFirst();
                 String status = PdfDiagramText.wrap(DiagramPresentation.relationshipStatus(edge.metadata()), REGULAR, size, captionWidth, 1).getFirst();
-                text(stream, REGULAR, size, (x1 + x2 - PdfDiagramText.width(REGULAR, size, relation)) / 2,
+                text(stream, theme, REGULAR, size, (x1 + x2 - PdfDiagramText.width(REGULAR, size, relation)) / 2,
                         (y1 + y2) / 2 + 6, relation);
-                text(stream, REGULAR, size, (x1 + x2 - PdfDiagramText.width(REGULAR, size, status)) / 2,
+                text(stream, theme, REGULAR, size, (x1 + x2 - PdfDiagramText.width(REGULAR, size, status)) / 2,
                         (y1 + y2) / 2 - 6, status);
             }
         }
@@ -239,7 +248,7 @@ public final class ArchitecturePdfRenderer {
                                   DiagramScene scene,
                                   float diagramX,
                                   float diagramTop,
-                                  float scale) throws IOException {
+                                  float scale, ExportTheme theme) throws IOException {
         for (DiagramSceneNode node : scene.nodes()) {
             float x = diagramX + (float) node.x() * scale;
             float top = diagramTop - (float) node.y() * scale;
@@ -247,12 +256,10 @@ public final class ArchitecturePdfRenderer {
             float height = (float) node.height() * scale;
             float y = top - height;
 
-            stream.setNonStrokingColor(Color.decode(DiagramPresentation.fill(node.type())));
+            stream.setNonStrokingColor(Color.decode(theme.nodeFill(node.type())));
             stream.addRect(x, y, width, height);
             stream.fill();
-            stream.setStrokingColor(node.anchor()
-                    ? new Color(23, 37, 84)
-                    : new Color(100, 116, 139));
+            stream.setStrokingColor(Color.decode(theme.nodeBorder(node.type(), node.anchor())));
             stream.setLineWidth(node.anchor() ? Math.max(1.4f, 2.2f * scale) : Math.max(0.7f, scale));
             stream.addRect(x, y, width, height);
             stream.stroke();
@@ -262,28 +269,28 @@ public final class ArchitecturePdfRenderer {
             float scoreWidth = PdfDiagramText.width(REGULAR, small, score);
             String id = PdfDiagramText.wrap(node.id(), BOLD, small,
                     width - 3 * inset - scoreWidth, 1).getFirst();
-            text(stream, BOLD, small, x + inset, top - 15 * scale, id);
-            text(stream, REGULAR, small, x + width - inset - scoreWidth, top - 15 * scale, score);
+            text(stream, theme.nodeText(node.type(), "#0f172a"), BOLD, small, x + inset, top - 15 * scale, id);
+            text(stream, theme.nodeText(node.type(), "#0f172a"), REGULAR, small, x + width - inset - scoreWidth, top - 15 * scale, score);
             List<String> labelLines = PdfDiagramText.wrap(node.label(), REGULAR, 10 * scale,
                     width - 2 * inset, 2);
             for (int index = 0; index < labelLines.size(); index++) {
-                text(stream, REGULAR, 10 * scale, x + inset,
+                text(stream, theme.nodeText(node.type(), "#0f172a"), REGULAR, 10 * scale, x + inset,
                         top - (34 + index * 13) * scale, labelLines.get(index));
             }
             // Two separate footer lines leave the complete taxonomy name room to wrap safely.
             String type = PdfDiagramText.wrap(node.type(), REGULAR, small, width - 2 * inset, 1).getFirst();
-            text(stream, REGULAR, small, x + inset, y + 21 * scale, type);
+            text(stream, theme.nodeText(node.type(), "#0f172a"), REGULAR, small, x + inset, y + 21 * scale, type);
             String depth = "Depth " + node.depth() + (node.container() ? " | Container" : "");
-            text(stream, REGULAR, small, x + inset, y + 9 * scale,
+            text(stream, theme.nodeText(node.type(), "#0f172a"), REGULAR, small, x + inset, y + 9 * scale,
                     PdfDiagramText.wrap(depth, REGULAR, small, width - 2 * inset, 1).getFirst());
         }
     }
 
-    private static void drawFooter(PDPageContentStream stream, SnapshotMetadata metadata) throws IOException {
-        text(stream, REGULAR, 7, PAGE_MARGIN, 17,
+    private static void drawFooter(PDPageContentStream stream, SnapshotMetadata metadata, ExportTheme theme) throws IOException {
+        text(stream, theme, REGULAR, 7, PAGE_MARGIN, 17,
                 "Generated from persisted architecture snapshot; no page screenshot and no LLM re-analysis.");
         if (!metadata.warnings().isEmpty()) {
-            text(stream, REGULAR, 7, PAGE_MARGIN, 8,
+            text(stream, theme, REGULAR, 7, PAGE_MARGIN, 8,
                     "Warnings: " + String.join(" | ", metadata.warnings()));
         }
     }
@@ -306,7 +313,12 @@ public final class ArchitecturePdfRenderer {
         stream.stroke();
     }
 
-    private static void text(PDPageContentStream stream,
+    private static void text(PDPageContentStream stream, ExportTheme theme,
+                             PDType1Font font, float size, float x, float y, String value) throws IOException {
+        text(stream, theme.canvasText("#0f172a"), font, size, x, y, value);
+    }
+
+    private static void text(PDPageContentStream stream, String color,
                              PDType1Font font,
                              float size,
                              float x,
@@ -315,7 +327,7 @@ public final class ArchitecturePdfRenderer {
         String printable = ascii(value);
         if (printable.isBlank()) return;
         stream.beginText();
-        stream.setNonStrokingColor(new Color(15, 23, 42));
+        stream.setNonStrokingColor(Color.decode(color));
         stream.setFont(font, Math.max(5.0f, size));
         stream.newLineAtOffset(x, y);
         stream.showText(printable);
@@ -325,7 +337,7 @@ public final class ArchitecturePdfRenderer {
     /** A complete, paginated inventory is the accessible counterpart of bounded diagram labels. */
     private static void drawInventory(PDDocument document, DiagramScene scene, Map<String, Integer> nodePages,
                                       Map<String, String> nodeReasons,
-                                      Map<String, Map<String, String>> relationReasons) throws IOException {
+                                      Map<String, Map<String, String>> relationReasons, ExportTheme theme) throws IOException {
         var lines = new java.util.ArrayList<String>(DiagramPresentation.inventorySummary(scene));
         lines.add("Element inventory | diagram ellipses do not remove saved labels below");
         var seenNodes = new java.util.HashSet<String>();
@@ -354,10 +366,13 @@ public final class ArchitecturePdfRenderer {
         for (int start = 0; start < wrapped.size(); start += perPage) {
             var page = new PDPage(PDRectangle.A4); document.addPage(page);
             try (var stream = new PDPageContentStream(document, page)) {
+                stream.setNonStrokingColor(Color.decode(theme.canvasBackground()));
+                stream.addRect(0, 0, page.getMediaBox().getWidth(), page.getMediaBox().getHeight());
+                stream.fill();
                 float top = PDRectangle.A4.getHeight() - PAGE_MARGIN;
-                text(stream, BOLD, 13, PAGE_MARGIN, top - 13, "Export inventory - " + (start / perPage + 1));
+                text(stream, theme, BOLD, 13, PAGE_MARGIN, top - 13, "Export inventory - " + (start / perPage + 1));
                 for (int i = start; i < Math.min(start + perPage, wrapped.size()); i++)
-                    text(stream, REGULAR, 9, PAGE_MARGIN, top - 36 - (i - start) * 13, wrapped.get(i));
+                    text(stream, theme, REGULAR, 9, PAGE_MARGIN, top - 36 - (i - start) * 13, wrapped.get(i));
             }
         }
     }

@@ -54,5 +54,48 @@ erlaubt Kubernetes, aktualisierte ConfigMap-Dateien zu ersetzen; bei einem
 
 Ist die konfigurierte Datei nicht lesbar, zu groß oder kein gültiges UTF-8, meldet
 der Stylesheet-Aufruf einen Fehler und Taxonomy protokolliert die Ursache. Die
-mitgelieferten Styles bleiben verfügbar. Serverseitig erzeugte PDF-, Word- und
-Diagrammexporte übernehmen diese CSS-Datei noch nicht.
+mitgelieferten Styles bleiben verfügbar. Exporte verwenden bei einem solchen
+Lesefehler ihre mitgelieferte Gestaltung.
+
+## Exportgestaltung
+
+Serverexporte lesen dieselbe begrenzte Datei einmal pro Dokument und übernehmen
+ein unveränderliches Farbschema. Dateiänderungen gelten für den nächsten Export.
+Die Gestaltung verändert weder ausgewählte Elemente, Relevanzwerte,
+Originalbegründungen, Herkunftsnachweise noch die Autorität eines Snapshots.
+
+| Ausgabe | Unterstützte Kundengestaltung |
+| --- | --- |
+| Eigenständige Architektur-SVGs und vektorbasierte Architektur-PDFs einschließlich Arbeitsansichten und gespeicherter Snapshots | Flächen über `--taxonomy-layer-<Ebene>-surface`, Beziehungen über `--taxonomy-relation-<Beziehung>`, Hintergrund und Schrift über `--taxonomy-canvas-background` und `--taxonomy-canvas-foreground`; Navigationshintergrund und Panelrahmen färben Elementumrandungen. PDF-Evidenzseiten verwenden dasselbe Canvas-Farbschema. |
+| Native Visio-VSDX-Dateien und Übergabepakete | Taxonomieflächen, lesbare Elementschrift, Navigations-/Panelumrandungen und typisierte Beziehungslinien. Transparente Container, native weiße Seiten, Beziehungsbeschriftungen und reine Evidenzdarstellungen behalten ihre nativen Styles. Vorschläge bleiben gestrichelt. |
+| Architektur- und Entscheidungsberichte als HTML | Hintergrund/Schrift der Oberfläche, Panelhintergrund/-rahmen sowie Navigationshintergrund/-schrift gestalten Berichtsseite, Überschriften, Tabellen und Panels. Das erzeugte HTML ist eigenständig. |
+| Word-/DOTX-Berichte und eingebettete Architekturbilder | Das unterstützte Dokumenttemplate steuert die Gestaltung. Die CSS-Datei der Oberfläche wird nicht angewendet. |
+| Eingebettete Entscheidungsbaum- und Kapitelbilder | Relevanz-, Entscheidungs- und führende Pfadfarben behalten ihre fachliche Berichtspalette. |
+| ArchiMate, Sparx, Structurizr, Mermaid und Datenexporte | Es gilt die native Austausch- oder Quelldarstellung; Oberflächen-CSS wird nicht exportiert. |
+
+Der portable Teil unterstützt deckende, wörtliche Werte im Format `#rgb` oder
+`#rrggbb` in nicht qualifizierten `:root { ... }`-Blöcken auf oberster Ebene.
+Wiederholte Deklarationen folgen der Quellreihenfolge; `!important` hat Vorrang.
+Kommentare sind erlaubt. Ebenennamen sind `cap`, `proc`, `svc`, `app`, `info`,
+`comm`, `system`, `component` und `default`. Beziehungsnamen sind `supports`,
+`realizes`, `realized-by`, `uses`, `requires`, `depends-on`, `fulfills`, `consumes`,
+`assigned-to`, `produces`, `communicates-with`, `contains` und `related-to`.
+Ein kompletter `:root`-Block mit verschachtelten Regeln liegt außerhalb dieses
+Teilumfangs und wird ignoriert.
+
+Andere Deklarationen werden für Exporte ignoriert: beliebige, gruppierte oder
+designabhängige Selektoren, verschachtelte Regeln, `@media`, `@import`, `var()`,
+benannte/RGB/Alpha-Farben, Schriften, Bilder und Layoutänderungen bleiben
+Browser-CSS. Auf Anwendungsseiten gelten dafür weiterhin die CSS-Regeln des
+Browsers. Ein unterstütztes Token ohne portablen Wert behält seinen
+mitgelieferten Exportwert.
+
+Für die gemeinsamen SVG-/PDF-Diagramme und gestaltete Visio-Elemente passt die
+Farbauflösung Schrift bei Bedarf auf mindestens 4,5:1 Kontrast zur Fläche an.
+Kundenspezifische Beziehungs- und Elementumrandungen verwenden mindestens 3:1
+zum Canvas beziehungsweise zur Elementfläche. HTML-Berichte bestimmen ihre
+Schriftfarbe ebenfalls passend zur jeweiligen Seite oder Panelfläche.
+Ein schlecht lesbarer Kundenwert kann dadurch im Export abweichen.
+Prüfen Sie fertige Dateien im vorgesehenen
+Anzeigeprogramm, bevor Sie ein Farbschema bereitstellen; automatisierte
+XML-/PDF-Prüfungen zertifizieren keine Microsoft-Visio- oder Office-Kompatibilität.
