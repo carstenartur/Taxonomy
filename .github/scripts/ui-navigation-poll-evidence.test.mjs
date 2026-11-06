@@ -826,6 +826,89 @@ test('a later unadopted body does not displace the actual freshly adopted respon
     assertProven(input);
   });
 
+  for (const [boundary, read] of [
+    ['a pending original list GET', { sequence: 9 }],
+    ['HTTP 200 headers without the list body', { sequence: 9, status: 200, finished: false, jsonParsed: false }],
+    ['a list body not consumed as JSON', { sequence: 9, status: 200, finished: true, finishedSequence: 15, jsonParsed: false }],
+    ['a missing list completion timestamp', { sequence: 9, status: 200, finished: true, jsonParsed: true, parsedSequence: 16 }],
+    ['a missing list JSON-consumption timestamp', { sequence: 9, status: 200, finished: true, finishedSequence: 15, jsonParsed: true }]
+  ]) test(`${boundary} preserves the console ledger before any delayed failure arrives`, () => {
+    const input = fixture(), messages = [], reconciled = [];
+    const ledger = createConsoleErrorLedger(messages, reconciled), errorId = ledger.record(input.error.message);
+    input.reads.push({ id: 'original-list', url: discoveryUrl, method: 'GET', documentEpoch: oldEpoch,
+      redirected: false, payload: [], ...read });
+    const proof = classifyPortfolioSnapshotPollCancellation(input);
+    ledger.reconcile(proof ? [{ ...proof, errorId, message: input.error.message }] : []);
+    assert.deepEqual(messages, [input.error.message], 'A pending original request can still report a real failure after this proof attempt');
+    assert.deepEqual(reconciled, []);
+  });
+
+  for (const [label, url, documentEpoch] of [
+    ['another source job read', sourceReadUrl, oldEpoch],
+    ['another destination snapshot read', destinationReadUrl, newEpoch]
+  ]) test(`pending ${label} cannot be hidden by the earlier adopted bodies`, () => {
+    const input = fixture();
+    input.reads.push({ id: 'pending-read', url, method: 'GET', documentEpoch, sequence: 70, finished: false, jsonParsed: false });
+    assert.equal(classifyPortfolioSnapshotPollCancellation(input), null);
+  });
+
+  for (const payload of [[], [fixture().reads[0].payload]]) test(`a fully consumed original list array with ${payload.length} jobs is settled`, () => {
+    const input = fixture();
+    input.reads.push({ ...structuredClone(input.reads[0]), id: 'settled-list', url: discoveryUrl, payload,
+      sequence: 9, finishedSequence: 70, parsedSequence: 71 });
+    assertProven(input);
+  });
+
+  test('an old requestfailed callback after navigation completion still preserves the console ledger', () => {
+    const input = fixture(), messages = [], reconciled = [];
+    const ledger = createConsoleErrorLedger(messages, reconciled), errorId = ledger.record(input.error.message);
+    input.reads.push({ id: 'failed-original', url: discoveryUrl, method: 'GET', documentEpoch: oldEpoch,
+      sequence: 9, failed: 'access denied' });
+    input.events.push({ type: 'poll-request-failed', requestId: 'failed-original', documentEpoch: oldEpoch,
+      url: discoveryUrl, sequence: 70, failure: 'access denied' });
+    const proof = classifyPortfolioSnapshotPollCancellation(input);
+    ledger.reconcile(proof ? [{ ...proof, errorId, message: input.error.message }] : []);
+    assert.deepEqual(messages, [input.error.message]);
+    assert.deepEqual(reconciled, []);
+  });
+
+  test('the passive producer keeps the ledger blocked before and after a delayed original requestfailed callback', async () => {
+    const input = fixture(), handlers = {}, frame = {}, bindings = {}, messages = [], reconciled = [];
+    const ledger = createConsoleErrorLedger(messages, reconciled), errorId = ledger.record(input.error.message);
+    let document = input.navigation.oldDocument;
+    const page = { on: (name, fn) => { handlers[name] = fn; }, mainFrame: () => frame, url: () => document.url,
+      evaluate: async (fn, argument) => {
+        if (fn.name === 'documentIdentity' || fn.name === 'installDocumentObserver') return document;
+        return argument?.jobId ? input.navigation.sourceObservation : input.observation;
+      } };
+    const context = { exposeBinding: async (name, fn) => { bindings[name] = fn; }, addInitScript: async () => {} };
+    const observer = createNavigationPollEvidence({ browserName: 'webkit', baseUrl });
+    await observer.attach(page, context);
+    function response(read) {
+      const reply = { status: () => 200, headers: () => ({ 'content-type': 'application/json' }), json: async () => read.payload };
+      const request = { url: () => read.url, method: () => 'GET', headers: () => read.workspaceId ? { 'x-taxonomy-workspace-id': read.workspaceId } : {},
+        redirectedFrom: () => null, response: async () => reply };
+      reply.request = () => request;
+      handlers.request(request); handlers.response(reply); handlers.requestfinished(request);
+    }
+    const lifecycle = type => bindings.__taxonomyQaPollLifecycle({ page, frame }, { type, documentEpoch: document.epoch, url: document.url });
+    response(input.reads[0]);
+    const original = { url: () => discoveryUrl, method: () => 'GET', headers: () => ({}), redirectedFrom: () => null,
+      failure: () => ({ errorText: 'access denied' }) };
+    handlers.request(original);
+    await observer.begin('en', 'portfolio-snapshot', input.navigation.declaration);
+    await lifecycle('beforeunload'); observer.recordError(input.error, errorId); await lifecycle('pagehide');
+    document = input.navigation.newDocument; await lifecycle('document-start'); response(input.reads[1]);
+    await observer.end('en', true, 'portfolio-snapshot'); await observer.verifyDestination('en', 'portfolio-snapshot');
+    ledger.reconcile(observer.reconciliations());
+    assert.deepEqual(messages, [input.error.message], 'The first reconciliation must retain a still-open original GET');
+    handlers.requestfailed(original);
+    const snapshot = observer.snapshot(), failed = snapshot.events.find(event => event.type === 'poll-request-failed');
+    assert.ok(failed.sequence > snapshot.navigations[0].endSequence, 'This is an actual late observer event');
+    ledger.reconcile(observer.reconciliations());
+    assert.deepEqual(messages, [input.error.message]); assert.deepEqual(reconciled, []);
+  });
+
   test('absent or malformed evidence fails closed without throwing', () => {
     for (const input of [undefined, null, {}, { browserName: 'webkit' }, { ...fixture(), events: null },
       { ...fixture(), reads: null }, { ...fixture(), baseUrl: 'not a URL' }]) {

@@ -439,11 +439,16 @@ export const classifyPortfolioSnapshotPollCancellation = (() => {
     return url;
   }
 
-  function completedJson(read) {
+  function completedJsonBody(read) {
     return (sequence(read.id) || nonempty(read.id)) && read.method === 'GET' && read.status === 200
       && read.finished === true && read.jsonParsed === true && !read.failed && read.redirected === false
       && sequence(read.sequence) && sequence(read.finishedSequence) && sequence(read.parsedSequence)
-      && read.sequence < read.finishedSequence && read.finishedSequence < read.parsedSequence && record(read.payload);
+      && read.sequence < read.finishedSequence && read.finishedSequence < read.parsedSequence
+      && (record(read.payload) || Array.isArray(read.payload));
+  }
+
+  function completedJson(read) {
+    return completedJsonBody(read) && record(read.payload);
   }
 
   function sourceJobMatches(data, declaration, version) {
@@ -537,14 +542,14 @@ export const classifyPortfolioSnapshotPollCancellation = (() => {
         ['error', 'unhandledrejection', 'securitypolicyviolation'].includes(event.type)
         && [oldDocument.epoch, newDocument.epoch].includes(event.documentEpoch))) return null;
 
-      // Veto failures throughout either affected document. A successful body later
-      // in that document must not erase an earlier real discovery or snapshot error.
+      // Veto failures throughout either affected document. An original GET still
+      // open at the first reconciliation can report its real failure later.
       if (reads.some(read => {
-        if (!read.failed && !(read.status >= 400)) return false;
         const url = new URL(read.url);
-        return url.origin === base.origin && (read.documentEpoch === oldDocument.epoch
+        const relevant = url.origin === base.origin && (read.documentEpoch === oldDocument.epoch
           && [listPath, jobPath].includes(url.pathname)
           || read.documentEpoch === newDocument.epoch && url.pathname === snapshotPath);
+        return relevant && (read.failed || read.status >= 400 || read.method === 'GET' && !completedJsonBody(read));
       })) return null;
 
       const sourceRequest = reads.find(read => completedJson(read) && read.documentEpoch === oldDocument.epoch

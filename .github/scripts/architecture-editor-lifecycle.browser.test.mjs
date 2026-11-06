@@ -3,10 +3,87 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {chromium} from 'playwright';
+import {createNavigationPollEvidence} from './ui-navigation-poll-evidence.mjs';
 const resources=process.env.TAXONOMY_TEST_RESOURCE_ROOT||path.resolve('taxonomy-app/src/main/resources');
 let browser;
 before(async()=>{browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE?{executablePath:process.env.CHROMIUM_EXECUTABLE}:{}),args:['--no-sandbox','--disable-dev-shm-usage']});});
 after(async()=>{await browser?.close();});
+
+for(const canonicalization of ['stable','after-response','workspace-before-response'])test(`passive snapshot proof observes production scope and history changes (${canonicalization})`,async()=>{
+    const context=await browser.newContext(),page=await context.newPage();
+    const baseUrl='http://snapshot.test/',scope={repositoryId:'repository-1',workspaceId:'workspace-1',workspaceScopeKey:'workspace-1',branch:'draft'};
+    const pins=new URLSearchParams(scope),sourcePins=new URLSearchParams({repositoryId:scope.repositoryId,workspaceId:scope.workspaceId,branch:scope.branch});
+    const declaration={projectId:1,requirementId:2,requirementKey:'REQ-1',requirementText:'Frozen evidence',jobId:'job-1',jobStatus:'SUCCESS',itemStatus:'SUCCESS',snapshotId:'snapshot-1',repositoryId:scope.repositoryId,workspaceId:scope.workspaceId,branch:scope.branch,locale:'en'};
+    const job={id:'job-1',projectId:1,workspaceId:'workspace-1',status:'SUCCESS',items:[{requirementId:2,requirementKey:'REQ-1',requirementVersionId:3,status:'SUCCESS',snapshotId:'snapshot-1',attempt:1}]};
+    const data={projectId:1,requirementId:2,requirementKey:'REQ-1',snapshotId:'snapshot-1',snapshotStatus:'SUCCESS',workspaceId:'workspace-1',branchName:'draft',requirementText:'Frozen evidence',exportProvenance:{repositoryId:'repository-1',requirementVersionId:3}};
+    const endpoint='/api/projects/1/analysis-jobs?'+pins,observer=createNavigationPollEvidence({browserName:'webkit',baseUrl});
+    try{
+        await observer.attach(page,context);
+        // Inject only the native signature at a real lifecycle boundary. This
+        // verifies passive proof collection, not WebKit engine reproduction.
+        await context.exposeBinding('__fixtureDiscoveryCancellation',()=>observer.recordError({name:'Fetch API cannot load http',
+            message:'/snapshot.test'+endpoint+' due to access control checks.',
+            stack:'Fetch API cannot load '+baseUrl.slice(0,-1)+endpoint+' due to access control checks.\n'
+                +'    at portfolioAwareFetch ('+baseUrl+'js/portfolio/taxonomy-portfolio-async.js:167:49)\n'
+                +'    at getResponse ('+baseUrl+'js/api/portfolio-api.js:59:37)\n'
+                +'    at getJson ('+baseUrl+'js/api/portfolio-api.js:68:49)\n'
+                +'    at synchronizeCurrentProjectJobs ('+baseUrl+'js/portfolio/portfolio-analysis-job-synchronizer.js:77:52)'},17));
+        await page.route(baseUrl+'**',route=>{
+            const url=new URL(route.request().url());
+            if(url.pathname.startsWith('/api/'))return route.fulfill({contentType:'application/json',body:JSON.stringify(
+                url.pathname.includes('analysis-jobs')?job:url.pathname.includes('architecture-workbench')?data:{architectureMutationAllowed:true})});
+            return route.fulfill({contentType:'text/html',body:url.pathname==='/projects'
+                ?'<html lang="en"><style>.d-none{display:none}</style><section aria-labelledby="portfolioMetricsHeading"></section></html>'
+                :'<html><section id="architectureSnapshotSource"><div id="requirementText"></div><div id="architectureCanvas"><span data-node-id="fixture">Node</span></div></section><span id="workflowState"></span></html>'});
+        });
+        await page.goto(baseUrl+'projects?projectId=1&'+sourcePins+'&lang=en');
+        await page.evaluate(()=>{
+            localStorage.setItem('taxonomy.portfolio.projectId','1');
+            window.TaxonomyI18n={getBasePath:()=>'',resolveUrl:value=>value,getLocale:()=>'en'};
+        });
+        await page.addScriptTag({path:path.join(resources,'static/js/shared/architecture-workflow.js')});
+        await page.addScriptTag({path:path.join(resources,'static/js/api/portfolio-api.js')});
+        await page.addScriptTag({path:path.join(resources,'static/js/portfolio/taxonomy-portfolio-async.js')});
+        await page.evaluate(async pins=>{
+            document.dispatchEvent(new Event('DOMContentLoaded'));
+            const response=await fetch('/api/projects/1/analysis-jobs/job-1?'+pins);
+            window.taxonomyPortfolioRegisterJob('/api/projects/1/analysis-jobs/job-1',await response.json());
+        },sourcePins.toString());
+        await page.locator('.job-toggle').click();
+        await page.evaluate(()=>window.addEventListener('beforeunload',()=>window.__fixtureDiscoveryCancellation()));
+        await observer.begin('en','portfolio-snapshot',declaration);
+        const destinationPins=new URLSearchParams(scope);
+        if(canonicalization!=='stable')destinationPins.delete('workspaceScopeKey');
+        const initialUrl=baseUrl+'?architectureSource=snapshot&projectId=1&snapshotId=snapshot-1&'+destinationPins+'&lang=en#architecture';
+        await page.goto(initialUrl);
+        await page.evaluate(()=>{window.TaxonomyI18n={resolveUrl:value=>value};});
+        await page.addScriptTag({path:path.join(resources,'static/js/shared/architecture-workspace.js')});
+        await page.addScriptTag({path:path.join(resources,'static/js/api/architecture-workbench-api.js')});
+        const navigation=await page.evaluate(async({scope,canonicalization})=>{
+            const controller=window.TaxonomyArchitectureWorkspaceController,current=new URL(location.href);
+            if(canonicalization==='workspace-before-response')history.replaceState(null,'',controller.urlFor(current,controller.parseSource(current)));
+            const requestedAt={url:location.href,epoch:performance.timeOrigin};
+            const data=await ArchitectureWorkbenchApi.load(1,'snapshot-1',controller.parseSource(new URL(location.href)));
+            window.TaxonomyArchitectureWorkspace={isActive:()=>true,getSource:()=>({kind:'snapshot',...scope,projectId:'1',requirementId:2,requirementVersionId:3,snapshotId:'snapshot-1'}),getData:()=>data};
+            document.getElementById('requirementText').textContent=data.requirementText;
+            document.getElementById('workflowState').textContent='Saved analysis '+data.snapshotId;
+            if(canonicalization!=='stable')history.replaceState(null,'',controller.urlFor(new URL(location.href),window.TaxonomyArchitectureWorkspace.getSource()));
+            return{requestedAt,final:{url:location.href,epoch:performance.timeOrigin}};
+        },{scope,canonicalization});
+        assert.equal(navigation.requestedAt.epoch,navigation.final.epoch);
+        if(canonicalization!=='stable')assert.notEqual(navigation.requestedAt.url,navigation.final.url);
+        await observer.end('en',true,'portfolio-snapshot');await observer.verifyDestination('en','portfolio-snapshot');
+        const proofs=observer.reconciliations();
+        assert.equal(proofs.length,1,'The existing peer classifier must accept real original HTTP and canonical history evidence');
+        assert.equal(proofs[0].sourceRender.job.heading,'job-1 · Successful');
+        assert.equal(new URL(proofs[0].sourceRequest.url).searchParams.get('workspaceScopeKey'),scope.workspaceId,'The production scopedFetch adds the fourth source pin');
+        assert.equal(sourcePins.has('workspaceScopeKey'),false,'The caller supplied only the three original scope pins');
+        assert.equal(proofs[0].request.pageUrl,navigation.requestedAt.url);
+        assert.equal(proofs[0].newDocument.url,navigation.final.url);
+        assert.equal(proofs[0].lifecycle.documentStart.url,initialUrl);
+    }finally{await context.close();}
+});
+
 async function fixture(standaloneUrl=null){
     const page=await browser.newPage();
     if(standaloneUrl){
