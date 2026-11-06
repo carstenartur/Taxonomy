@@ -86,6 +86,15 @@ class OptionalFeaturePackagedIT {
         try (var app = PackagedPluginSupport.start(host, plugins, features, temporary.resolve("state"))) {
             assertThat(app.request("GET", "/api/taxonomy", null).statusCode()).isEqualTo(200);
             assertThat(app.request("GET", "/api/status/startup", null).statusCode()).isEqualTo(200);
+            var exports = app.request("GET", "/api/extensions/EXPORT_FORMAT", null);
+            String exportDiagnostics = "Installed features: %s%nHTTP response: %s%nApplication log:%n%s"
+                    .formatted(selected, exports.body(), Files.readString(app.log()));
+            assertThat(exports.statusCode()).as(exportDiagnostics).isEqualTo(200);
+            var formats = new tools.jackson.databind.json.JsonMapper().readTree(exports.body());
+            assertThat(formats.isArray()).as(exportDiagnostics).isTrue();
+            var formatIds = new ArrayList<String>();
+            formats.forEach(format -> formatIds.add(format.path("id").asText()));
+            assertThat(formatIds).as(exportDiagnostics).contains("svg");
             assertThat(app.request("GET", "/api/admin/document-templates", null).statusCode()).isEqualTo(selected.contains("templates") ? 200 : 404);
             assertThat(app.request("GET", "/api/graph/apqc-hierarchy", null).statusCode()).isEqualTo(selected.contains("architecture") ? 200 : 404);
             var workspace = app.request("GET", "/api/workspace/current", null);
@@ -101,7 +110,10 @@ class OptionalFeaturePackagedIT {
                         .isEqualTo("INVALID_COMMAND");
             }
             var profiles = app.request("GET", "/api/integrations/profiles", null, Map.of("X-Taxonomy-Workspace-Id", workspaceId));
-            assertThat(profiles.statusCode()).as(profiles.body()).isEqualTo(selected.contains("interop") ? 200 : 404);
+            assertThat(profiles.statusCode())
+                    .as("Installed features: %s%nHTTP response: %s%nApplication log:%n%s",
+                            selected, profiles.body(), Files.readString(app.log()))
+                    .isEqualTo(selected.contains("interop") ? 200 : 404);
             if (selected.contains("templates")) {
                 var dav = app.request("OPTIONS", "/dav/templates/", null);
                 assertThat(dav.statusCode()).as(dav.body()).isEqualTo(200);

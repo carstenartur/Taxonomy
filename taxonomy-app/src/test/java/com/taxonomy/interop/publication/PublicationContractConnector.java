@@ -31,7 +31,9 @@ public final class PublicationContractConnector implements ConditionalPublicatio
     final HttpClient http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).connectTimeout(Duration.ofSeconds(2)).build();
 
     public IntegrationDescriptor descriptor() {
-        return new IntegrationDescriptor(PublicationContractProvider.PROFILE, "1", "HTTP contract test", Set.of(Capability.ARCHITECTURE_MODEL, Capability.READ_LINK), Set.of("application/json"));
+        return new IntegrationDescriptor(PublicationContractProvider.PROFILE, "1", "HTTP contract test",
+                Set.of(Capability.ARCHITECTURE_MODEL, Capability.READ_LINK, Capability.CONDITIONAL_PUBLISH),
+                Set.of("application/json"));
     }
 
     public ExchangeDocument previewInbound(InboundRequest r) {
