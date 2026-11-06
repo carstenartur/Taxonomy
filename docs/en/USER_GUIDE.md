@@ -726,6 +726,9 @@ explicit reviewed preview-and-accept action. Inputs and retained drafts survive
 view changes. Existing editor and workbench links open this shared workspace with
 their exact source coordinates. See [Architecture editor and focus lens](ARCHITECTURE_EDITOR.md).
 
+Working copies start private. Their owner can enable [shared editing](ARCHITECTURE_EDITOR.md#shared-editing)
+and share the exact link with authorized contributors.
+
 **Current analysis** shows the selected elements and relationships for the analysed requirement. Inspect whether a relationship is inferred, imported or human-confirmed; displaying it does not make it an accepted decision. It provides a **Requirement Impact Map** — a layered visualization of the architecture elements that are relevant to your requirement.
 
 ### Enabling the Architecture View Checkbox

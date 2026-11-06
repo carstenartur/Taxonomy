@@ -42,6 +42,30 @@ SVG und Vektor-PDF verwenden das vollständige deterministische Serverlayout der
 
 Technische Entscheidung: [ADR 0005](../adr/0005-private-architecture-editor.md). [English guide](../en/ARCHITECTURE_EDITOR.md).
 
+<a id="shared-editing"></a>
+## Eine Arbeitskopie gemeinsam bearbeiten
+
+Arbeitskopien sind zunächst privat. Als Eigentümerin oder Eigentümer wählen Sie
+im Abschnitt **Gemeinsam bearbeiten** die Aktion **Gemeinsames Bearbeiten freigeben**, damit
+berechtigte Mitwirkende dieselbe Arbeitskopie bearbeiten können. Sie benötigen
+eine aktive, ausdrücklich zugewiesene Mitgliedschaft als Mitwirkende im
+Quell-Repository, die erforderliche Bearbeitungsrolle und ein aktives lokales Konto
+oder eine zugeordnete stabile SSO-Identität.
+
+Kopieren Sie die vollständige Adresse aus dem schreibgeschützten Feld
+**Link für berechtigte Mitwirkende** und teilen Sie genau diesen Link. Er öffnet diese
+Arbeitskopie für Personen, die bereits die erforderliche Berechtigung besitzen.
+
+**Branch neu laden** lädt die angenommenen Änderungen anderer Mitwirkender. Ihr
+ungespeicherter Formularentwurf bleibt erhalten. Nach einem Revisionskonflikt
+aktualisieren Sie den Stand, vergleichen ihn mit Ihrem Entwurf und erstellen vor
+der Annahme eine neue Vorschau. Rückgängig betrifft eigene angenommene Operationen;
+spätere abhängige Änderungen können die Rücknahme verhindern.
+
+Als Eigentümerin oder Eigentümer wählen Sie **Arbeitskopie wieder privat machen**,
+um den weiteren Zugriff durch Mitwirkende zu beenden. Bereits angenommene Änderungen
+und ihre Operationshistorie bleiben in der Arbeitskopie erhalten.
+
 <a id="editor-version-reconciliation"></a>
 ## Geänderten Git-Stand mit lokaler Arbeit abgleichen
 

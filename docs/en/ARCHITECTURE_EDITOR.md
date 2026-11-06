@@ -39,6 +39,26 @@ SVG and vector PDF use the complete deterministic server layout at the displayed
 
 Implementation decision: [ADR 0005](../adr/0005-private-architecture-editor.md). [Deutsche Anleitung](../de/ARCHITECTURE_EDITOR.md).
 
+<a id="shared-editing"></a>
+## Share a working copy
+
+Working copies start private. As the owner, choose **Enable shared editing** in
+the **Shared editing** section to let authorized contributors work in this same copy.
+Contributors need active, explicit contributor membership in the source repository,
+the required editing role, and an active local account or mapped stable SSO identity.
+
+Copy the complete address from the read-only **Link for authorized contributors**
+field and share that exact link. It opens this working copy for people who already
+have the required access.
+
+Choose **Refresh from branch** to see other contributors' accepted changes. Your unsaved form
+draft remains in place. After a revision conflict, refresh, compare the new state
+with your draft and preview again before accepting. Undo applies to your own
+accepted operations; later dependent changes can prevent it.
+
+As the owner, choose **Make this working copy private** to stop further contributor
+access. Previously accepted changes and their operation history remain in the copy.
+
 <a id="editor-version-reconciliation"></a>
 ## Reconcile a changed Git stand with local work
 

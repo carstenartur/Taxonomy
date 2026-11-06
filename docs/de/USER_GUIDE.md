@@ -743,6 +743,10 @@ Entwürfe bleiben beim Wechsel der Ansicht erhalten. Bestehende Editor- und
 Workbench-Links öffnen diesen gemeinsamen Bereich mit ihren exakten Quellenangaben.
 Siehe [Architektureditor und Lupe](ARCHITECTURE_EDITOR.md).
 
+Arbeitskopien sind zunächst privat. Ihre Eigentümerin oder ihr Eigentümer kann
+[gemeinsames Bearbeiten freigeben](ARCHITECTURE_EDITOR.md#shared-editing) und den
+genauen Link mit berechtigten Mitwirkenden teilen.
+
 Die **Aktuelle Analyse** zeigt ausgewählte Elemente und Beziehungen für die
 analysierte Anforderung. Prüfen Sie, ob eine Beziehung abgeleitet, importiert oder
 menschlich bestätigt ist; ihre Anzeige allein bedeutet keine angenommene
