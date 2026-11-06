@@ -1034,7 +1034,8 @@ class PortfolioClientRoutingIT {
     }
 
     private static Stream<Arguments> prefixesAndPages() {
-        return PREFIXES.stream().flatMap(prefix -> PAGES.stream().map(contract -> Arguments.of(prefix, contract)));
+        return Stream.concat(PREFIXES.stream(), Stream.of("/css"))
+                .flatMap(prefix -> PAGES.stream().map(contract -> Arguments.of(prefix, contract)));
     }
 
     private static Stream<Arguments> prefixesAndWorkspaces() {

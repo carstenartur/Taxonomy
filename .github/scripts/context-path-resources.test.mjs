@@ -114,6 +114,7 @@ async function boot({ prefix = '', page = '/', stylesheet, withI18n = true, resp
 
 for (const { prefix, stylesheet } of [
     { prefix: '', stylesheet: '/css/taxonomy-ergonomics.css' },
+    { prefix: '/css', stylesheet: '/css/css/taxonomy-ergonomics.css' },
     { prefix: '/taxonomy', stylesheet: '/taxonomy/css/taxonomy-ergonomics.css' },
     { prefix: '/team/taxonomy', stylesheet: '/team/taxonomy/css/taxonomy-ergonomics.css' }
 ]) {

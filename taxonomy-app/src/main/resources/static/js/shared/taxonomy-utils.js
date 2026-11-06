@@ -77,8 +77,9 @@ window.TaxonomyUtils = (function () {
 
     function loadErgonomicsStyles() {
         if (document.querySelector('link[data-taxonomy-ergonomics]')) return;
-        var href = '/css/taxonomy-ergonomics.css';
-        if (window.TaxonomyI18n?.resolveUrl) href = window.TaxonomyI18n.resolveUrl(href);
+        // This known application path needs a prefix even when the context path is /css.
+        var basePath = window.TaxonomyI18n?.getBasePath?.() || '';
+        var href = basePath + '/css/taxonomy-ergonomics.css';
         // Thymeleaf pages already include the context-aware stylesheet in their head.
         var existing = document.querySelector('link[rel~="stylesheet"][href="' + href + '"]');
         if (existing) {
