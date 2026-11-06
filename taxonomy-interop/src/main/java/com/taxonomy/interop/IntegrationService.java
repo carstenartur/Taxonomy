@@ -79,6 +79,10 @@ public class IntegrationService {
         if (request.name() == null || request.name().isBlank() || request.name().length() > 160)
             throw new IllegalArgumentException("Connection name must have 1–160 characters");
         var descriptor = connectors.require(request.connectorId(), request.profileVersion()).descriptor();
+        if (Set.of(AuthorityMode.BIDIRECTIONAL, AuthorityMode.PUBLISH_TARGET).contains(request.authority())
+                && !descriptor.capabilities().contains(Capability.FILE_EXPORT)
+                && !descriptor.capabilities().contains(Capability.CONDITIONAL_PUBLISH))
+            throw new IntegrationProblem("AUTHORITY_MODE", 409, "Profile supports read and reviewed import only");
         if (!Set.of(AuthorityMode.LINK_ONLY, AuthorityMode.PUBLISH_TARGET).contains(request.authority())
                 && !descriptor.capabilities().contains(Capability.FILE_IMPORT) && !descriptor.capabilities().contains(Capability.READ_LINK))
             throw new IllegalArgumentException("Profile has no inbound capability");
@@ -161,6 +165,7 @@ public class IntegrationService {
         Connection connection = store.read(context, connectionId);
         Operation operation = store.operation(context, connectionId, operationId);
         requireActor(context, operation); requireProfile(connection);
+        connectors.requireCompatible(operation.document());
         return store.locked(context, connectionId, session -> workspace(context, before -> {
             var mappings = session.identities();
             var current = domain.snapshot(context, connection, mappings, before);
@@ -193,6 +198,7 @@ public class IntegrationService {
                 if (!operation.reviewFingerprint().equals(json.fingerprint(review))) throw IntegrationProblem.conflict("REVIEW_ID_REUSED");
                 return operation;
             }
+            connectors.requireCompatible(operation.document());
             if (!"INBOUND".equals(operation.direction())) throw IntegrationProblem.conflict("OPERATION_DIRECTION");
             return workspace(context, before -> {
             domain.lockProject(context, connection.projectId());
@@ -385,7 +391,7 @@ public class IntegrationService {
             ExchangeDocument previous = connection.checkpointId() == null ? null : session.operation(connection.checkpointId()).resultDocument();
             if (!Objects.equals(request.expectedExternalVersion(), previous == null ? null : previous.externalVersion())) throw IntegrationProblem.conflict("EXTERNAL_STATE_CHANGED");
             var authority = authority(context, connection, current.state());
-            ExchangeDocument outgoing = domain.exportDocument(connection, current, document, mappings, previous);
+            ExchangeDocument outgoing = connectors.bind(domain.exportDocument(connection, current, document, mappings, previous));
             if (outgoing.losses().stream().noneMatch(loss -> loss.disposition() == LossDisposition.UNSUPPORTED)) {
             ExchangeFile file = connector.previewOutbound(new OutboundRequest(authority, outgoing, request.expectedExternalVersion()));
             // Normalize generated types and hierarchy now. The downloaded file is derived solely from this durable snapshot.
@@ -412,6 +418,7 @@ public class IntegrationService {
                 if (!operation.reviewFingerprint().equals(json.fingerprint(review))) throw IntegrationProblem.conflict("REVIEW_ID_REUSED");
                 return operation;
             }
+            connectors.requireCompatible(operation.document());
             return workspace(context, before -> {
             domain.lockProject(context, session.connection().projectId());
             List<Identity> known = session.identities();
@@ -447,8 +454,14 @@ public class IntegrationService {
         if (!ids.containsAll(review.decisions().keySet())) throw new IllegalArgumentException("Review contains unknown change identities");
         if (!review.decisions().keySet().containsAll(review.endpoints().keySet())) throw new IllegalArgumentException("Endpoint mappings require an explicit item decision");
         boolean sparxV3 = SparxMappingProfile.PROFILE.equals(operation.context().profile()) && "3".equals(operation.context().profileVersion());
-        if (!review.endpoints().isEmpty() && (!"2".equals(operation.context().profileVersion()) && !sparxV3 || !SparxSnapshots.isSparx(operation.context().profile())))
-            throw new IllegalArgumentException("Typed endpoint review requires Sparx version 2 or XMI version 3");
+        if (!review.endpoints().isEmpty()) {
+            boolean legacyEndpoints = SparxSnapshots.isSparx(operation.context().profile())
+                    && ("2".equals(operation.context().profileVersion()) || sparxV3);
+            boolean canonicalEndpoints = !legacyEndpoints && connectors.require(operation.context().profile(), operation.context().profileVersion())
+                    .descriptor().capabilities().contains(Capability.CANONICAL_PROJECTION_V1);
+            if (!legacyEndpoints && !canonicalEndpoints)
+                throw new IllegalArgumentException("Profile does not support typed endpoint review");
+        }
         if (!review.decisions().keySet().containsAll(review.mappings().keySet())) throw new IllegalArgumentException("Mappings require an explicit item decision");
         if (operation.context().authority() != AuthorityMode.LINK_ONLY && review.mappings().values().stream().anyMatch(m -> m.internalIdentity() != null))
             throw new IllegalArgumentException("Internal trace targets require LINK_ONLY authority");

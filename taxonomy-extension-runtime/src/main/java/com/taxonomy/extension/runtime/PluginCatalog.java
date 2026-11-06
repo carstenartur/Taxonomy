@@ -190,6 +190,15 @@ public final class PluginCatalog implements ExtensionCatalog {
 
     private static Entry entry(TaxonomyExtension extension, Generation owner) {
         Objects.requireNonNull(extension, "TaxonomyExtension must not be null");
+        if (extension instanceof com.taxonomy.extension.api.integration.IntegrationConnectorExtension connector) {
+            var descriptor = connector.descriptor();
+            if (descriptor == null || !(descriptor.id() + "@" + descriptor.version()).equals(connector.id())
+                    || connector.kind() != ExtensionKind.INTEGRATION_CONNECTOR)
+                throw new IllegalStateException("Integration contribution must identify its exact profile and version");
+            if (descriptor.capabilities().contains(com.taxonomy.extension.api.integration.IntegrationContracts.Capability.CANONICAL_PROJECTION_V1)
+                    && !descriptor.capabilities().contains(com.taxonomy.extension.api.integration.IntegrationContracts.Capability.ARCHITECTURE_MODEL))
+                throw new IllegalStateException("Canonical projection requires architecture-model capability");
+        }
         if (extension instanceof com.taxonomy.extension.api.importer.ImportProfileExtension importer
                 && importer.descriptor() == null)
             throw new IllegalStateException("Import profile extension must declare a descriptor");

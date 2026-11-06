@@ -44,15 +44,29 @@ public class IntegrationDomainAdapter {
         public ProjectionProfile { if (connectorId == null || connectorId.isBlank() || profileVersion == null || profileVersion.isBlank()) throw new IllegalArgumentException("Exact projection profile required"); }
     }
     private final Set<ProjectionProfile> nativeProfiles;
+    private final ExchangeConnectorRegistry connectors;
     @org.springframework.beans.factory.annotation.Autowired
-    public IntegrationDomainAdapter(IntegrationPortfolioPort projects, IntegrationJson json) { this(projects, json, List.of()); }
+    public IntegrationDomainAdapter(IntegrationPortfolioPort projects, IntegrationJson json, ExchangeConnectorRegistry connectors) {
+        this(projects, json, List.of(), Objects.requireNonNull(connectors));
+    }
+    public IntegrationDomainAdapter(IntegrationPortfolioPort projects, IntegrationJson json) { this(projects, json, List.of(), null); }
     public IntegrationDomainAdapter(IntegrationPortfolioPort projects, IntegrationJson json, List<ProjectionProfile> profiles) {
-        this.projects = projects; this.json = json;
+        this(projects, json, profiles, null);
+    }
+    private IntegrationDomainAdapter(IntegrationPortfolioPort projects, IntegrationJson json, List<ProjectionProfile> profiles,
+                                     ExchangeConnectorRegistry connectors) {
+        this.projects = projects; this.json = json; this.connectors = connectors;
         this.nativeProfiles = Set.copyOf(profiles);
         if (nativeProfiles.size() != profiles.size()) throw new IllegalArgumentException("Duplicate projection profile");
         if (profiles.stream().anyMatch(p -> SparxSnapshots.isSparx(p.connectorId()))) throw new IllegalArgumentException("Built-in projection profiles cannot be overridden");
     }
-    public boolean supportsNativePackages(Connection connection) { return nativePackages(connection) || nativeProfiles.contains(new ProjectionProfile(connection.connectorId(), connection.profileVersion())); }
+    public boolean supportsCanonicalProjection(Connection connection) {
+        if (nativeProfiles.contains(new ProjectionProfile(connection.connectorId(), connection.profileVersion()))) return true;
+        return connectors != null && connectors.descriptors().stream().anyMatch(profile -> profile.id().equals(connection.connectorId())
+                && profile.version().equals(connection.profileVersion())
+                && profile.capabilities().containsAll(Set.of(Capability.ARCHITECTURE_MODEL, Capability.CANONICAL_PROJECTION_V1)));
+    }
+    public boolean supportsNativePackages(Connection connection) { return nativePackages(connection) || supportsCanonicalProjection(connection); }
     public boolean supportsArchitecture(Connection connection) { return architectureProfile(connection) || supportsNativePackages(connection); }
 
     public void refreshIntegrationRequirements(RepositoryContext context, Long projectId) {
@@ -125,7 +139,9 @@ public class IntegrationDomainAdapter {
                 String type = baseline.type();
                 if (baseline.kind() == ArtifactKind.ELEMENT) {
                     String canonical = block.getHeaderTokens().get(2);
-                    if (!canonical.equals(baseline.extensions().get("canonicalType"))) type = elementType(connection, canonical);
+                    // A neutral projection carries the source type as evidence, not as a writable vendor encoding.
+                    if (!canonical.equals(baseline.extensions().get("canonicalType")) && !supportsCanonicalProjection(connection))
+                        type = elementType(connection, canonical);
                     extensions.put("canonicalType", canonical);
                     if (extensions.containsKey("taxonomy:ElementType")) extensions.put("taxonomy:ElementType", canonical);
                     ArchitectureDslCommands.ELEMENT_PROPERTIES.stream().filter(p -> !Set.of("title", "description").contains(p))
@@ -154,20 +170,22 @@ public class IntegrationDomainAdapter {
             }
             items.put(mapping.externalId(), current);
         }
-        if (connection.connectorId().equals(ArchiMateExchangeCodec.PROFILE) && connection.authority() != AuthorityMode.LINK_ONLY) {
+        if ((connection.connectorId().equals(ArchiMateExchangeCodec.PROFILE) || supportsCanonicalProjection(connection))
+                && connection.authority() != AuthorityMode.LINK_ONLY) {
             Map<String, String> elements = new TreeMap<>(), views = new TreeMap<>();
             for (Identity mapping : mappings) if (!mapping.removed() && mapping.internal() != null) {
                 if (mapping.internal().kind() == ArtifactKind.ELEMENT) elements.put(mapping.businessIdentity(), mapping.internal().id());
                 if (mapping.internal().kind() == ArtifactKind.VIEW) views.put(mapping.businessIdentity(), mapping.internal().id());
             }
             synchronizeViews(connection, blocks, elements, views, items, losses);
-            pruneConnections(items, losses);
+            if (connection.connectorId().equals(ArchiMateExchangeCodec.PROFILE)) pruneConnections(items, losses);
         }
         if (supportsNativePackages(connection) && connection.authority() != AuthorityMode.LINK_ONLY) {
-            String modelId = items.values().stream().filter(a -> a.kind() == ArtifactKind.PLACEMENT)
-                    .map(a -> a.extensions().get("container")).filter(Objects::nonNull).findFirst().orElse(null);
+            String modelId = IntegrationPackageProjection.modelContainer(items, mappings);
             IntegrationPackageProjection.synchronize(connection, document.dsl(), mappings, items, modelId, false);
-            for (Artifact a : items.values()) if (a.kind() == ArtifactKind.PLACEMENT && items.containsKey("REQUIREMENT:" + a.extensions().get("artifact")))
+            Set<String> viewContainers = IntegrationPackageProjection.viewContainers(items, mappings);
+            for (Artifact a : items.values()) if (a.kind() == ArtifactKind.PLACEMENT && !viewContainers.contains(a.extensions().get("container"))
+                    && items.containsKey("REQUIREMENT:" + a.extensions().get("artifact")))
                 losses.add(new MappingLoss(a.id(), "package", "SPARX_REQUIREMENT_PACKAGE_PRESERVED_ONLY", LossDisposition.PRESERVED_EXTENSION,
                         "Requirement package membership remains exchange evidence"));
         }

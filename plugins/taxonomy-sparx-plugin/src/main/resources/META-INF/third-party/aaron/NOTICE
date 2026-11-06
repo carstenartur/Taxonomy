@@ -1,0 +1,11 @@
+Taxonomy Sparx QEA read plugin
+
+Selected Enterprise Architect table and implicit-reference mapping rules were
+informed by AAroN (https://github.com/schmitze87/AAroN), commit
+490c8538c6bf94bd78a9c90cc53c0163f23dd1a4, distributed under Apache License 2.0.
+Credit is retained for the AAroN authors and contributors. See the accompanying
+LICENSE. No AAroN binary or Neo4j implementation is included.
+
+The Taxonomy implementation uses its own bounded SQLite reader and exchange
+contracts. Changes include deterministic reference IDs, explicit losses,
+reviewed-selection validation and distinct package/diagram placements.

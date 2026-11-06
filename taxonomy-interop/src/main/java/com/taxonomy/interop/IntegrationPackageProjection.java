@@ -8,7 +8,7 @@ import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.interop.persistence.IntegrationStore.*;
 import java.util.*;
 
-/** V2 neutral package projection. Incomplete external scopes retain unmentioned native siblings. */
+/** Neutral package projection. Diagram occurrences never assign package membership. */
 final class IntegrationPackageProjection {
     private IntegrationPackageProjection() {}
     static List<ArchitectureCommand> commands(Connection connection, String dsl, Map<String, Artifact> current,
@@ -35,7 +35,9 @@ final class IntegrationPackageProjection {
         model.getPackages().forEach(p -> members.put("PACKAGE:" + p.id(), new PackagePlacement(PackageMemberKind.PACKAGE, p.id(), p.parentId(), p.position())));
         model.getElements().stream().filter(e -> e.getPackageId() != null).forEach(e -> members.put("ELEMENT:" + e.getId(), new PackagePlacement(PackageMemberKind.ELEMENT, e.getId(), e.getPackageId(), e.getPackagePosition())));
         Map<String, Artifact> occurrences = new HashMap<>();
-        selected.values().stream().filter(a -> a.kind() == ArtifactKind.PLACEMENT).forEach(a -> occurrences.put(a.id(), a));
+        Set<String> viewContainers = viewContainers(current, mappings);
+        selected.values().stream().filter(a -> a.kind() == ArtifactKind.VIEW).map(Artifact::id).forEach(viewContainers::add);
+        selected.values().stream().filter(a -> isPackagePlacement(a, viewContainers)).forEach(a -> occurrences.put(a.id(), a));
         Map<String, PackagePlacement> deltas = new LinkedHashMap<>();
         for (Artifact a : occurrences.values()) {
             if (ExchangeItems.fields(a).equals(ExchangeItems.fields(current.get(ExchangeItems.key(a))))) continue;
@@ -53,7 +55,7 @@ final class IntegrationPackageProjection {
             }
             deltas.put(kind + ":" + nativeId, new PackagePlacement(kind, nativeId, parent, Integer.parseInt(a.extensions().get("position"))));
         }
-        for (var entry : current.entrySet()) if (entry.getValue().kind() == ArtifactKind.PLACEMENT && !selected.containsKey(entry.getKey())) {
+        for (var entry : current.entrySet()) if (isPackagePlacement(entry.getValue(), viewContainers) && !selected.containsKey(entry.getKey())) {
             String external = entry.getValue().extensions().get("artifact");
             Identity prior = known.values().stream().filter(m -> m.internal() != null && m.internal().id().equals(external)).findFirst().orElse(null);
             if (prior != null && prior.internal().kind() == ArtifactKind.ELEMENT)
@@ -105,7 +107,8 @@ final class IntegrationPackageProjection {
                     previous == null ? Map.of() : previous.attributes(), previous == null ? Map.of() : previous.extensions()));
         }
         Map<String, Artifact> occurrences = new HashMap<>();
-        for (Artifact a : items.values()) if (a.kind() == ArtifactKind.PLACEMENT) occurrences.put(a.extensions().get("artifact"), a);
+        Set<String> viewContainers = viewContainers(items, mappings);
+        for (Artifact a : items.values()) if (isPackagePlacement(a, viewContainers)) occurrences.put(a.extensions().get("artifact"), a);
         Map<String, String> placementIds = new HashMap<>();
         external.forEach((nativeId, id) -> placementIds.put(nativeId, occurrences.containsKey(id) ? occurrences.get(id).id() : (com.taxonomy.interop.sparx.SparxSnapshots.isSparx(connection.connectorId()) ? "placement:" + id : IntegrationDomainAdapter.externalId(connection, "export-placement:" + nativeId))));
         List<PackagePlacement> members = new ArrayList<>();
@@ -131,6 +134,28 @@ final class IntegrationPackageProjection {
                     prior == null ? Map.of() : prior.attributes(), extension);
             items.put(ExchangeItems.key(placement), placement);
         }
+    }
+
+    static Set<String> viewContainers(Map<String, Artifact> items, List<Identity> mappings) {
+        Set<String> views = new HashSet<>();
+        items.values().stream().filter(a -> a.kind() == ArtifactKind.VIEW).map(Artifact::id).forEach(views::add);
+        // A locally removed view still identifies its retained source occurrences as diagram evidence.
+        for (Identity mapping : mappings) for (Artifact a : new Artifact[]{mapping.internal(), mapping.external()})
+            if (a != null && a.kind() == ArtifactKind.VIEW) views.add(a.id());
+        return views;
+    }
+
+    static String modelContainer(Map<String, Artifact> items, List<Identity> mappings) {
+        Set<String> views = viewContainers(items, mappings);
+        Artifact metadata = items.get("METADATA:package");
+        String identifier = metadata == null ? null : metadata.attributes().get("identifier");
+        if (identifier != null && !identifier.isBlank() && !views.contains(identifier)) return identifier;
+        return items.values().stream().filter(a -> isPackagePlacement(a, views))
+                .map(a -> a.extensions().get("container")).filter(Objects::nonNull).findFirst().orElse(null);
+    }
+
+    private static boolean isPackagePlacement(Artifact artifact, Set<String> views) {
+        return artifact.kind() == ArtifactKind.PLACEMENT && !views.contains(artifact.extensions().get("container"));
     }
 
     private static int depth(ArchitecturePackage p, CanonicalArchitectureModel model) {

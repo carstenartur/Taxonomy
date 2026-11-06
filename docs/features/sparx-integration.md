@@ -1,10 +1,46 @@
 # Sparx Enterprise Architect exchange
 
-Status: **experimental XMI implementation; real-product compatibility unverified**.
+Status: **experimental XMI and optional QEA implementations; real-product compatibility unverified**.
 This is a delivery slice of [#1075](https://github.com/carstenartur/Taxonomy/issues/1075),
 which remains open. Neither Enterprise Architect nor Pro Cloud Server was available
 for product acceptance. The fixture is synthetic and does not establish support
 for any EA release.
+
+## Optional QEA import plugin
+
+The independent [Sparx QEA plugin](../../plugins/taxonomy-sparx-plugin/README.md)
+adds the **Sparx EA QEA** profile (`sparx-qea@1`) to the same integrations UI.
+It reads SQLite-based QEA snapshots and requires Java 25 and host SPI 1.3.0 or
+later. Build and install it separately:
+
+```bash
+./mvnw -B -pl taxonomy-extension-api -am install
+./mvnw -B -f plugins/taxonomy-sparx-plugin/pom.xml verify
+```
+
+Stop the host, copy the finished plugin JAR from the plugin's `target` directory
+to `taxonomy.plugins.directory`, and restart. This trusted operator extension
+runs in the host process, using the same STARTUP lifecycle as Alfabet and LeanIX.
+
+1. In **Tool integrations**, create a `sparx-qea@1` connection using a stable
+   external model identifier and **Import copy** authority.
+2. Upload a consistent, closed QEA snapshot (at most 16 MiB through the host).
+   Parsing is read-only. This profile always treats its projection as incomplete
+   and does not infer deletions from missing objects.
+3. Review types, relations, package moves and mapping losses. Unknown types need
+   an explicit mapping or rejection. Diagram membership is independent of package
+   membership.
+4. Apply the selected changes with a rationale. Subsequent snapshots reuse the
+   original external GUIDs; renaming an object does not create a new identity.
+
+This first profile supports inbound reading. Diagram geometry and other EA details
+may be retained as evidence without full native representation; consult the loss
+report. Synthetic JUnit tests exercise the declared contract. Compatibility with
+a real EA release remains unverified.
+
+After replacing the plugin JAR, create a new preview for any outstanding review
+(`INTEGRATION_PLUGIN_CHANGED`). Uninstalling the plugin retains previously applied
+data and history. See the plugin README for schema, mapping, limits and provenance.
 
 ## Use the reviewed XMI workflow
 

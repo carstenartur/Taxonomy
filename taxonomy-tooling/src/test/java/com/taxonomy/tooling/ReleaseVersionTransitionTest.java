@@ -79,7 +79,7 @@ class ReleaseVersionTransitionTest {
                 .isEqualTo(version);
         assertThat(XmlSupport.childText(child, "version")).isEmpty();
 
-        for (String artifact : List.of("taxonomy-mermaid-plugin", "taxonomy-leanix-plugin", "taxonomy-alfabet-plugin")) {
+        for (String artifact : List.of("taxonomy-mermaid-plugin", "taxonomy-leanix-plugin", "taxonomy-alfabet-plugin", "taxonomy-sparx-plugin")) {
             Element plugin = XmlSupport.parse(
                     fixture.resolve("plugins/" + artifact + "/pom.xml"))
                     .getDocumentElement();
@@ -158,7 +158,7 @@ class ReleaseVersionTransitionTest {
                 </project>
                 """);
         // Mermaid is aggregated without inheritance; the inventory plugins are outside the reactor.
-        for (String artifact : List.of("taxonomy-mermaid-plugin", "taxonomy-leanix-plugin", "taxonomy-alfabet-plugin")) {
+        for (String artifact : List.of("taxonomy-mermaid-plugin", "taxonomy-leanix-plugin", "taxonomy-alfabet-plugin", "taxonomy-sparx-plugin")) {
             write(fixture.resolve("plugins/" + artifact + "/pom.xml"), """
                     <project xmlns="http://maven.apache.org/POM/4.0.0">
                       <modelVersion>4.0.0</modelVersion>

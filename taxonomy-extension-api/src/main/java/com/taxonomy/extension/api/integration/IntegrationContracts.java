@@ -12,7 +12,18 @@ public final class IntegrationContracts {
     private IntegrationContracts() {}
 
     public enum AuthorityMode { LINK_ONLY, IMPORT_COPY, MIRROR_READ, PUBLISH_TARGET, BIDIRECTIONAL }
-    public enum Capability { FILE_IMPORT, FILE_EXPORT, DISCOVERY, READ_LINK, CONDITIONAL_PUBLISH, ARCHITECTURE_MODEL }
+    public enum Capability {
+        FILE_IMPORT, FILE_EXPORT, DISCOVERY, READ_LINK, CONDITIONAL_PUBLISH, ARCHITECTURE_MODEL,
+        /**
+         * Version 1 of the neutral canonical projection: ELEMENT/RELATION
+         * extensions.canonicalType, SPECIFICATION packages, hierarchical package
+         * placements and VIEW-container diagram placements. Missing types and
+         * typed relation endpoints are resolved by explicit host review. Native
+         * approval metadata is never an authorization grant from the source.
+         * Raw artifact type and attributes remain external evidence.
+         */
+        CANONICAL_PROJECTION_V1
+    }
     public enum ArtifactKind { REQUIREMENT, ELEMENT, VIEW, SPECIFICATION, FEATURE, RELATION, PLACEMENT, METADATA }
     public enum ChangeKind { ADD, UPDATE, MOVE, REMOVE_CANDIDATE, RELATION, CONFLICT, UNCHANGED }
     public enum Decision { ACCEPT, REJECT, TAKE_EXTERNAL, KEEP_INTERNAL }
