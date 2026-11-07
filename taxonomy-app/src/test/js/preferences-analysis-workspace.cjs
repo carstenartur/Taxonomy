@@ -188,9 +188,19 @@ function fixture({deferDraftRead = false, checkboxPreference = false, reasonLeng
         console: window.console};
     vm.runInNewContext(draftScript, context, {filename: 'taxonomy-analysis-session-draft.js'});
     context.Headers = Headers;
-    window.TaxonomyApiClient = {request: (url, init) => fetch(url.split('?')[0], init).then(response => {
-        if (!response.ok) throw new Error('HTTP ' + response.status); return response;
-    })};
+    window.TaxonomyApiClient = {
+        ApiError: class extends Error {
+            constructor(message, status, url, body, options) {
+                super(message);
+                this.status = status;
+                this.code = options.code;
+            }
+        },
+        request: (url, init) => fetch(url.split('?')[0], init).then(response => {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response;
+        })
+    };
     vm.runInNewContext(readFileSync(path.join(resources, 'static/js/api/workspace-api.js'), 'utf8'), context);
     vm.runInNewContext(preferencesScript, context, {filename: 'index.html Preferences script'});
     document.dispatchEvent({type: 'DOMContentLoaded'});
@@ -385,6 +395,23 @@ test('Preferences save failure leaves draft, local state and preference value un
     assert.match(f.nodes.get('prefStatusMsg').textContent, /preferences.save.failed/);
     assertWorkPreserved(f, expected);
     assert.equal(f.storedDraft.version, 4);
+});
+
+test('Preferences does not show a save error from a previous workspace', async () => {
+    const f = fixture();
+    f.activate('preferences');
+    await settled();
+    const pending = f.delayPreferences('PUT');
+    const status = f.nodes.get('prefStatusMsg');
+    const initialMessage = status.textContent;
+    const save = f.nodes.get('prefSaveBtn');
+    f.maxNodes.value = '150';
+    save.click();
+    f.runtime.workspaceId = 'ws-2';
+    pending.reject(new Error('Previous workspace is unavailable'));
+    await settled();
+    assert.equal(status.textContent, initialMessage);
+    assert.equal(save.getAttribute('aria-busy'), 'false');
 });
 
 test('Preferences change while initial draft restore is pending does not turn saved work into an empty draft', async () => {

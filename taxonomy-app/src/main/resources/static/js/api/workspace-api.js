@@ -25,7 +25,11 @@
         }
         return client.request(path, Object.assign({}, init || {}, { headers: headers }), policy)
             .then(function (response) { current(); return response.json(); })
-            .then(function (body) { current(); return body; });
+            .then(function (body) { current(); return body; })
+            .catch(function (error) {
+                if (error?.code !== 'ABORTED') current();
+                throw error;
+            });
     }
 
     function get(path, options) { return request(path, { method: 'GET' }, options); }

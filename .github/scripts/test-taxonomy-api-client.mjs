@@ -139,7 +139,7 @@ test('context reads cancel through canonical transport and reject a body from a 
   const app = await loadWorkspaceFeatures(abortingFetch()), controller = new AbortController();
   const read = app.context.window.TaxonomyContextApi.current({signal: controller.signal});
   controller.abort();
-  await assert.rejects(read, error => error.code === 'ABORTED');
+  await assert.rejects(read, error => error.code === 'ABORTED' && error.requestId === 'client-request-id');
   let release;
   const late = await loadWorkspaceFeatures(async () => ({ok: true, status: 200,
     json: () => new Promise(resolve => { release = resolve; })}));
@@ -148,6 +148,18 @@ test('context reads cancel through canonical transport and reject a body from a 
   late.context.window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'different-workspace';
   release({branch: 'old-branch'});
   await assert.rejects(result, error => error.code === 'ABORTED');
+});
+
+test('a late publish HTTP error is cancelled after the workspace changes', async () => {
+  let respond;
+  const started = new Promise(resolve => { respond = resolve; });
+  const app = await loadWorkspaceFeatures(() => new Promise(resolve => respond(resolve)));
+  const w = app.context.window;
+  const result = w.TaxonomyWorkspaceApi.publish('draft/a');
+  const finish = await started;
+  w.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'workspace B';
+  finish(new Response('{"detail":"Previous workspace is unavailable"}', {status: 503}));
+  await assert.rejects(result, error => error.code === 'ABORTED' && error.status === 0);
 });
 
 test('the live context-bar back action handles canonical authorization failure without adopting an error body', async () => {
