@@ -32,7 +32,8 @@ export async function runWorkspaceSyncWorkflows({ page, evidence }) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   };
 
-  await page.route('**/api/workspace/sync-state', syncStateRoute);
+  const syncStateEndpoint = url => url.pathname.endsWith('/api/workspace/sync-state');
+  await page.route(syncStateEndpoint, syncStateRoute);
   try {
     await navigateToPage(page, 'versions');
     await page.locator('#versionsSubTabs [data-versions-tab="sync"]').click();
@@ -63,7 +64,7 @@ export async function runWorkspaceSyncWorkflows({ page, evidence }) {
     await axeState('workspace-publish-success', '#operationToast');
     passed('workspace publish success');
   } finally {
-    await page.unroute('**/api/workspace/sync-state', syncStateRoute);
+    await page.unroute(syncStateEndpoint, syncStateRoute);
     await page.unroute('**/api/workspace/sync-from-shared?*', syncFromSharedRoute);
     await page.unroute('**/api/workspace/publish?*', publishRoute);
   }

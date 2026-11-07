@@ -46,11 +46,7 @@ window.TaxonomyWorkspaceSync = (function () {
         function current() {
             return pageActive && pendingRead === controller && !controller.signal.aborted;
         }
-        fetch('/api/workspace/sync-state', { signal: controller.signal })
-            .then(function (r) {
-                if (!current() || !r.ok) return null;
-                return r.json();
-            })
+        window.TaxonomyWorkspaceApi.syncState({ signal: controller.signal })
             .then(function (state) {
                 if (!current() || !state) return;
                 syncState = state;
@@ -187,8 +183,7 @@ window.TaxonomyWorkspaceSync = (function () {
         var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
         var branch = (ctx && ctx.branch) ? ctx.branch : 'draft';
 
-        fetch('/api/workspace/local-changes?branch=' + encodeURIComponent(branch))
-            .then(function (r) { return r.json(); })
+        window.TaxonomyWorkspaceApi.localChanges(branch)
             .then(function (data) {
                 var html = '<div class="card shadow-sm mb-3">';
                 html += '<div class="card-header fw-semibold d-flex justify-content-between align-items-center">';
@@ -215,7 +210,7 @@ window.TaxonomyWorkspaceSync = (function () {
                     container.innerHTML = html;
                     container.classList.remove('d-none');
                 }
-            });
+            }).catch(showError);
     }
 
     // ── Sync Actions ────────────────────────────────────────────────
@@ -224,8 +219,7 @@ window.TaxonomyWorkspaceSync = (function () {
         var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
         var branch = (ctx && ctx.branch) ? ctx.branch : 'draft';
 
-        fetch('/api/workspace/sync-from-shared?userBranch=' + encodeURIComponent(branch), { method: 'POST' })
-            .then(function (r) { return r.json(); })
+        window.TaxonomyWorkspaceApi.syncFromShared(branch)
             .then(function (result) {
                 if (result.error) {
                     if (window.TaxonomyOperationResult) {
@@ -242,15 +236,14 @@ window.TaxonomyWorkspaceSync = (function () {
                     if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
                     showLocalChangesPanel();
                 }
-            });
+            }).catch(showError);
     }
 
     function publish() {
         var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
         var branch = (ctx && ctx.branch) ? ctx.branch : 'draft';
 
-        fetch('/api/workspace/publish?userBranch=' + encodeURIComponent(branch), { method: 'POST' })
-            .then(function (r) { return r.json(); })
+        window.TaxonomyWorkspaceApi.publish(branch)
             .then(function (result) {
                 if (result.error) {
                     if (window.TaxonomyOperationResult) {
@@ -267,7 +260,16 @@ window.TaxonomyWorkspaceSync = (function () {
                     if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
                     showLocalChangesPanel();
                 }
-            });
+            }).catch(showError);
+    }
+
+    function showError(error) {
+        if (error.code === 'ABORTED') return;
+        if (window.TaxonomyOperationResult) {
+            window.TaxonomyOperationResult.showError(t('operation.failed', error.message), error.detail || '');
+        } else {
+            alert(t('operation.failed', error.message));
+        }
     }
 
     // ── Helpers ──────────────────────────────────────────────────────

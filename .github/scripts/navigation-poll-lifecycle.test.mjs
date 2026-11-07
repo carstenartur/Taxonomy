@@ -10,6 +10,7 @@ assert.ok(statusBar >= 0);
 const statusStart = index.indexOf('<script>', statusBar) + '<script>'.length;
 const statusEnd = index.indexOf('</script>', statusStart);
 assert.ok(statusStart >= '<script>'.length && statusEnd > statusStart);
+const workspaceApi = readFileSync(new URL('static/js/api/workspace-api.js', resources), 'utf8');
 const sources = {
     system: index.slice(statusStart, statusEnd),
     sync: readFileSync(new URL('static/js/workspace/taxonomy-workspace-sync.js', resources), 'utf8'),
@@ -87,9 +88,13 @@ function harness(kind, { translationsPending = false } = {}) {
         };
         reads.push(read); return response.promise;
     };
-    vm.runInNewContext(sources[kind], { window, document, fetch, ...clock, AbortController,
+    window.TaxonomyApiClient = {request: (url, init, policy) => fetch(url, {...init, signal: policy.signal})
+        .then(response => { if (!response.ok) throw new Error('HTTP ' + response.status); return response; })};
+    const scope = { window, document, fetch, ...clock, AbortController, Headers,
         TaxonomyI18n: { t: key => key, ready: () => translations.promise },
-        TaxonomyUtils: { escapeHtml: String }, console }, { filename: `production-${kind}-poll.js` });
+        TaxonomyUtils: { escapeHtml: String }, console };
+    vm.runInNewContext(workspaceApi, scope, {filename: 'workspace-api.js'});
+    vm.runInNewContext(sources[kind], scope, { filename: `production-${kind}-poll.js` });
     if (!translationsPending) translations.resolve();
     return { window, nodes, reads, state, timers, translations,
         start() { dom.dispatchEvent(new Event('DOMContentLoaded')); },

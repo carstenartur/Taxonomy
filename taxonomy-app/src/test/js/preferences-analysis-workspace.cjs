@@ -187,6 +187,11 @@ function fixture({deferDraftRead = false, checkboxPreference = false, reasonLeng
         CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options.detail;}},
         console: window.console};
     vm.runInNewContext(draftScript, context, {filename: 'taxonomy-analysis-session-draft.js'});
+    context.Headers = Headers;
+    window.TaxonomyApiClient = {request: (url, init) => fetch(url.split('?')[0], init).then(response => {
+        if (!response.ok) throw new Error('HTTP ' + response.status); return response;
+    })};
+    vm.runInNewContext(readFileSync(path.join(resources, 'static/js/api/workspace-api.js'), 'utf8'), context);
     vm.runInNewContext(preferencesScript, context, {filename: 'index.html Preferences script'});
     document.dispatchEvent({type: 'DOMContentLoaded'});
     return {C, state, runtime, nodes, maxNodes, checkbox, reasonLength, relationControls,

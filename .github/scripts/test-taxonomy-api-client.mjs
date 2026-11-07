@@ -79,6 +79,152 @@ function loadClient(fetchImpl) {
   return { client: window.TaxonomyApiClient, events, context };
 }
 
+async function loadWorkspaceFeatures(fetchImpl) {
+  const app = loadClient(fetchImpl);
+  const feature = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/api/workspace-api.js', import.meta.url), 'utf8')
+    .catch(() => null);
+  assert.ok(feature, 'workspace and context features must use the named API boundary');
+  app.context.window.__TaxonomyAnalysisSessionContext = { runtime: { workspaceId: 'workspace A/1' } };
+  app.context.URLSearchParams = URLSearchParams;
+  vm.runInContext(feature, app.context, { filename: 'workspace-api.js' });
+  return app;
+}
+
+test('workspace/context/preferences feature writes retain CSRF, source, request IDs and structured auth errors without retry', async () => {
+  const calls = [];
+  const app = await loadWorkspaceFeatures(async (url, init) => {
+    calls.push({url, init});
+    return new Response(JSON.stringify({title: 'Forbidden', detail: 'Source permission revoked'}), {status: 403});
+  });
+  const w = app.context.window;
+  const actions = [() => w.TaxonomyWorkspaceApi.archive('other/id'),
+    () => w.TaxonomyWorkspaceApi.create('Example'), () => w.TaxonomyWorkspaceApi.syncFromShared('draft/a'),
+    () => w.TaxonomyWorkspaceApi.publish('draft/a'), () => w.TaxonomyContextApi.back(),
+    () => w.TaxonomyContextApi.returnToOrigin(), () => w.TaxonomyContextApi.createVariant('my variant'),
+    () => w.TaxonomyPreferencesApi.save({limit: 3}), () => w.TaxonomyPreferencesApi.reset()];
+  for (const action of actions) await assert.rejects(action(), error => error.status === 403
+    && error.detail === 'Source permission revoked' && error.requestId === 'client-request-id');
+  assert.equal(calls.length, actions.length, 'non-idempotent feature writes are never retried');
+  for (const {url, init} of calls) {
+    assert.equal(new URL(url, w.location.href).searchParams.get('workspaceId'), 'workspace A/1');
+    assert.equal(init.headers.get('X-Taxonomy-Workspace-Id'), 'workspace A/1');
+    assert.equal(init.headers.get('X-CSRF-TOKEN'), 'csrf-token');
+    assert.equal(init.headers.get('X-Request-ID'), 'client-request-id');
+    assert.equal(init.credentials, 'same-origin');
+  }
+  assert.equal(app.events.length, actions.length);
+});
+
+test('named workspace switch persists and reloads only after an acknowledged successful mutation', async () => {
+  let status = 403;
+  const app = await loadWorkspaceFeatures(async () => new Response(JSON.stringify({workspaceId: 'next/workspace'}), {status}));
+  const w = app.context.window, stored = new Map([['taxonomy-analysis-workspace-id', 'workspace A/1']]), timers = [];
+  delete w.__TaxonomyAnalysisSessionContext;
+  w.TaxonomyState = {};
+  w.sessionStorage = {setItem: (key, value) => stored.set(key, value)};
+  vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-core.js', import.meta.url), 'utf8'), app.context);
+  w.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'workspace A/1';
+  w.setTimeout = callback => timers.push(callback);
+  let reloads = 0; w.location.reload = () => reloads++;
+  await assert.rejects(w.TaxonomyWorkspaceApi.switchWorkspace('next/workspace'), error => error.status === 403);
+  assert.equal(stored.get('taxonomy-analysis-workspace-id'), 'workspace A/1'); assert.equal(timers.length, 0);
+  status = 200;
+  await w.TaxonomyWorkspaceApi.switchWorkspace('next/workspace');
+  assert.equal(stored.get('taxonomy-analysis-workspace-id'), 'next/workspace');
+  assert.equal(reloads, 0); assert.equal(timers.length, 1);
+  timers[0](); assert.equal(reloads, 1);
+});
+
+test('context reads cancel through canonical transport and reject a body from a previous workspace', async () => {
+  const app = await loadWorkspaceFeatures(abortingFetch()), controller = new AbortController();
+  const read = app.context.window.TaxonomyContextApi.current({signal: controller.signal});
+  controller.abort();
+  await assert.rejects(read, error => error.code === 'ABORTED');
+  let release;
+  const late = await loadWorkspaceFeatures(async () => ({ok: true, status: 200,
+    json: () => new Promise(resolve => { release = resolve; })}));
+  const result = late.context.window.TaxonomyContextApi.current();
+  while (!release) await new Promise(resolve => setImmediate(resolve));
+  late.context.window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'different-workspace';
+  release({branch: 'old-branch'});
+  await assert.rejects(result, error => error.code === 'ABORTED');
+});
+
+test('the live context-bar back action handles canonical authorization failure without adopting an error body', async () => {
+  const calls = [];
+  const app = await loadWorkspaceFeatures(async (url, init) => {
+    calls.push({url, init});
+    return new Response('{"detail":"Permission revoked"}', {status: 403});
+  });
+  const w = app.context.window, errors = [];
+  w.addEventListener = () => {};
+  w.TaxonomyOperationResult = {showError: (...args) => errors.push(args)};
+  app.context.TaxonomyI18n = {t: (key, value) => value || key};
+  app.context.TaxonomyUtils = {escapeHtml: String};
+  app.context.document.getElementById = () => null;
+  app.context.fetch = () => { throw new Error('legacy fetch bypass'); };
+  vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/versioning/taxonomy-context-bar.js', import.meta.url), 'utf8'), app.context);
+  await w.TaxonomyContextBar.back();
+  assert.equal(calls.length, 1); assert.equal(app.events[0].detail.status, 403);
+  assert.equal(w.TaxonomyContextBar.getCurrentContext(), null);
+  assert.equal(errors.length, 1);
+});
+
+for (const [initialWorkspace, hydratedWorkspace] of [[null, 'workspace-A'], [null, 'workspace-B'], ['workspace-A', 'workspace-B']]) {
+  test(`the live workspace badge reconciles ${initialWorkspace || 'unresolved'} into ${hydratedWorkspace}`, async () => {
+    const calls = [];
+    const app = await loadWorkspaceFeatures((url, init) => new Promise(resolve => calls.push({url, init, resolve})));
+    const w = app.context.window, listeners = [], writes = [], classes = new Set(['d-none']);
+    w.__TaxonomyAnalysisSessionContext.runtime.workspaceId = initialWorkspace;
+    const badge = {title: '', classList: {remove: name => classes.delete(name)},
+      set textContent(value) { writes.push(value); }};
+    app.context.document.getElementById = id => id === 'workspaceUserBadge' ? badge : null;
+    app.context.document.addEventListener = (type, listener) => { if (type === 'DOMContentLoaded') listeners.push(listener); };
+    app.context.TaxonomyI18n = {ready: () => Promise.resolve(), t: key => key, formatBranch: branch => branch};
+    const index = await readFile(new URL('../../taxonomy-app/src/main/resources/templates/index.html', import.meta.url), 'utf8');
+    const marker = index.indexOf('// Load workspace info for the user badge');
+    const start = index.lastIndexOf('<script>', marker) + '<script>'.length;
+    vm.runInContext(index.slice(start, index.indexOf('</script>', marker)), app.context);
+    for (const listener of listeners) listener();
+    const settle = async () => { for (let turn = 0; turn < 5; turn++) await new Promise(resolve => setImmediate(resolve)); };
+    await settle(); assert.equal(calls.length, 1);
+    w.__TaxonomyAnalysisSessionContext.runtime.workspaceId = hydratedWorkspace;
+    calls[0].resolve(new Response(JSON.stringify({workspaceId: 'workspace-A', username: 'initial', displayName: 'Initial A'})));
+    await settle();
+    assert.equal(classes.has('d-none'), true); assert.equal(writes.length, 0, 'Never repaint the superseded workspace');
+    if (initialWorkspace !== null) {
+      assert.equal(calls.length, 1, 'A genuine workspace departure must remain cancelled without bootstrap retry');
+      return;
+    }
+    assert.equal(calls.length, 2, 'Hydration supersedes the one-shot badge read and starts a source-pinned replacement');
+    assert.equal(new URL(calls[1].url, w.location.href).searchParams.get('workspaceId'), hydratedWorkspace);
+    assert.equal(calls[1].init.headers.get('X-Taxonomy-Workspace-Id'), hydratedWorkspace);
+    calls[1].resolve(new Response(JSON.stringify({workspaceId: hydratedWorkspace, username: 'current', displayName: hydratedWorkspace, currentBranch: 'draft/current'})));
+    await settle();
+    assert.equal(classes.has('d-none'), false, 'The reconciled badge becomes visible');
+    assert.deepEqual(writes, ['👤 current']);
+    assert.ok(badge.title.includes(hydratedWorkspace));
+    assert.ok(badge.title.includes('draft/current'));
+  });
+}
+
+test('workspace current still rejects a resolved workspace departure and an aborted hydration read', async () => {
+  for (const aborted of [false, true]) {
+    let releaseBody;
+    const app = await loadWorkspaceFeatures(async () => ({ok: true,
+      json: () => new Promise(resolve => { releaseBody = resolve; })}));
+    const runtime = app.context.window.__TaxonomyAnalysisSessionContext.runtime;
+    runtime.workspaceId = aborted ? null : 'workspace-A';
+    const controller = new AbortController();
+    const result = app.context.window.TaxonomyWorkspaceApi.current({signal: controller.signal});
+    while (!releaseBody) await new Promise(resolve => setImmediate(resolve));
+    runtime.workspaceId = 'workspace-B';
+    if (aborted) controller.abort();
+    releaseBody({workspaceId: 'workspace-B'});
+    await assert.rejects(result, error => error.code === 'ABORTED');
+  }
+});
+
 {
   const calls = [];
   const { client } = loadClient(async (input, init) => {
