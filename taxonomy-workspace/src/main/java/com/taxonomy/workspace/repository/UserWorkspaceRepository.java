@@ -24,6 +24,15 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
 
     Optional<UserWorkspace> findByWorkspaceId(String workspaceId);
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select w from UserWorkspace w where w.workspaceId = :workspaceId")
+    Optional<UserWorkspace> findByWorkspaceIdForUpdate(@Param("workspaceId") String workspaceId);
+
+    /** Called only by the owner-authorized sharing service while holding the workspace row lock. */
+    @Modifying
+    @Query("update UserWorkspace w set w.collaborative = :enabled where w.workspaceId = :workspaceId")
+    int updateCollaborationFlag(@Param("workspaceId") String workspaceId, @Param("enabled") boolean enabled);
+
     /**
      * Compatibility entry point for implicit private-workspace selection.
      * Multiple workspaces are valid: prefer a non-archived default, then the
@@ -100,4 +109,15 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
               and w.shared=false and w.archived=false
             """)
     long countOwnedPrivateWorkspace(@Param("workspace") String workspace, @Param("actor") String actor, @Param("repository") String repository);
+
+    /** Scalar preflight keeps metadata out of the persistence context before the journal lock. */
+    @Query("""
+            select count(w) from UserWorkspace w
+            where w.workspaceId=:workspace and w.username=:actor and w.sourceRepositoryId=:repository
+              and w.currentBranch=:branch and w.provisioningStatus=:status
+              and w.shared=false and w.archived=false
+            """)
+    long countReadyOwnedWorkspace(@Param("workspace") String workspace, @Param("actor") String actor,
+                                 @Param("repository") String repository, @Param("branch") String branch,
+                                 @Param("status") WorkspaceProvisioningStatus status);
 }

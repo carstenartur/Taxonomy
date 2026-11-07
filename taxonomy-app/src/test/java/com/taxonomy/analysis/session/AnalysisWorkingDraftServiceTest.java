@@ -68,6 +68,52 @@ class AnalysisWorkingDraftServiceTest {
     }
 
     @Test
+    void collaborativeContributorsUseOnlyTheirOwnAnalysisDraftAndRevocationBlocksThem() {
+        var membership = org.mockito.Mockito.mock(com.taxonomy.workspace.service.RepositoryMembershipService.class);
+        service = new AnalysisWorkingDraftService(repository, workspaceManager, systemRepositoryService, objectMapper, 50_000, membership);
+        service.setActorAccess(username -> {});
+        workspace.setCollaborative(true);
+        var source = repository("repo-1", "main");
+        when(systemRepositoryService.getRepository("repo-1")).thenReturn(source);
+        when(membership.canCollaborate(source, "Bob")).thenReturn(true, false);
+        when(repository.findByScopeKeyAndUsername(any(), org.mockito.ArgumentMatchers.eq("bob")))
+                .thenReturn(Optional.empty());
+        assertThat(service.read("Bob", "ws-1")).isEmpty();
+        verify(repository, never()).findByScopeKeyAndUsername(any(), org.mockito.ArgumentMatchers.eq("alice"));
+        assertThatThrownBy(() -> service.read("Bob", "ws-1")).isInstanceOf(AccessDeniedException.class);
+        workspace.setCollaborative(false);
+        assertThatThrownBy(() -> service.read("Bob", "ws-1")).isInstanceOf(AccessDeniedException.class);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"read", "status", "save", "reset", "delete"})
+    void collaborativeOwnersCannotAccessDraftsAfterTheirSourceIsArchived(String operation) {
+        workspace.setCollaborative(true); service.setActorAccess(username -> {});
+        var source=repository("repo-1", "main");
+        source.setLifecycleState(com.taxonomy.workspace.model.RepositoryLifecycleState.ARCHIVED);
+        when(systemRepositoryService.getRepository("repo-1")).thenReturn(source);
+        lenient().when(repository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        assertThatThrownBy(() -> {
+            switch (operation) {
+                case "read" -> service.read("Alice", "ws-1");
+                case "status" -> service.status("Alice", "ws-1");
+                case "save" -> service.save("Alice", "ws-1", new SaveAnalysisDraftRequest(objectMapper.createObjectNode(), null));
+                case "reset" -> service.reset("Alice", "ws-1", null);
+                case "delete" -> service.delete("Alice", "ws-1", null);
+                default -> throw new AssertionError(operation);
+            }
+        }).isInstanceOf(AccessDeniedException.class);
+        org.mockito.Mockito.verifyNoInteractions(repository);
+    }
+
+    @Test void privateOwnerDraftAccessRetainsItsExistingArchivedSourceBehavior() {
+        var source=repository("repo-1", "main");
+        source.setLifecycleState(com.taxonomy.workspace.model.RepositoryLifecycleState.ARCHIVED);
+        when(systemRepositoryService.getRepository("repo-1")).thenReturn(source);
+        assertThat(service.read("Alice", "ws-1")).isEmpty();
+    }
+
+    @Test
     void createsOneExactTenantScopedDraft() {
         when(repository.findByScopeKeyAndUsername(any(), any())).thenReturn(Optional.empty());
         when(repository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));

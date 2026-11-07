@@ -74,6 +74,10 @@ window.TaxonomyCopilotApi = (function () {
             return getJson(projectPath(projectId) + '/copilot-operations/'
                 + encodeURIComponent(String(operationId)));
         },
+        resume: function (projectId, operationId) {
+            return postJson(projectPath(projectId) + '/copilot-operations/'
+                + encodeURIComponent(String(operationId)) + '/resume', {});
+        },
         cancel: function (projectId, operationId) {
             return postJson(projectPath(projectId) + '/copilot-operations/'
                 + encodeURIComponent(String(operationId)) + '/cancel', {});

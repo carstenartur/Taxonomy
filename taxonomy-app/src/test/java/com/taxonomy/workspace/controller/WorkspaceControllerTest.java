@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(username = "testuser", roles = "ADMIN")
+@WithMockUser(username = "testuser", roles = {"USER", "ARCHITECT", "ADMIN"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 @Tag("ci-app-shard-domain-integration")
 class WorkspaceControllerTest {

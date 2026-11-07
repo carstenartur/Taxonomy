@@ -207,8 +207,10 @@ public class ArchitectureLifecycleService {
             throw problem("NOT_FOUND","The selected architecture is unavailable");
         if(context.scope()==RepositoryScope.WORKSPACE) {
             var workspace=workspaces.findByWorkspaceId(context.workspaceId()).orElseThrow(()->problem("NOT_FOUND","Workspace unavailable"));
-            if(workspace.isArchived() || workspace.isShared() || !context.username().equals(workspace.getUsername())
-                    || !context.repositoryId().equals(workspace.getSourceRepositoryId())) throw problem("NOT_FOUND","Workspace unavailable");
+            if (!membership.canUseWorkspace(repository, workspace, context.username()))
+                throw problem("NOT_FOUND","Workspace unavailable");
+            if (context.collaborative() != workspace.isCollaborative())
+                throw problem("CONTEXT_CHANGED","The working-copy sharing mode changed; refresh before editing");
             if(workspace.getProvisioningStatus()!=WorkspaceProvisioningStatus.READY) throw problem("READ_ONLY","Workspace is not ready");
             if(!context.branch().equals(workspace.getCurrentBranch())) throw problem("CONTEXT_CHANGED","Select the exact workspace branch");
         } else if(write) throw problem("READ_ONLY","Create a private working copy before editing");

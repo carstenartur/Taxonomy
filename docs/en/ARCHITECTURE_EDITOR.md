@@ -1,6 +1,6 @@
 # Architecture editor
 
-Open **Architecture** in the shared main navigation and choose **Working architecture** under **Displayed architecture**. Links from Projects or saved analyses open the same workspace with their selected context. The shared context shows the architecture, project, requirement and selected stand. **Technical details** exposes the exact repository/workspace identities, full commit and available snapshot/version identifiers. Historical revisions/versions and central read contexts are read-only. Use **Create private workspace** when repository membership allows it; editing also requires the ARCHITECT or ADMIN role.
+Open **Architecture** in the shared main navigation and choose **Working architecture** under **Displayed architecture**. Links from Projects or saved analyses open the same workspace with their selected context. The shared context shows the architecture, project, requirement and selected stand. **Technical details** exposes the exact repository/workspace identities, full commit and available snapshot/version identifiers. Historical revisions/versions and central read contexts are read-only. Use **Create private workspace** when repository membership allows it; editing also requires the **ARCHITECT** role.
 
 **Current analysis**, **Saved analysis snapshot** and **Working architecture** are
 three sources within this architecture workspace. Switching retains analysis text
@@ -12,7 +12,7 @@ into this workspace with their source and version coordinates.
 
 ![Architecture editor — selected workspace and element](../images/architecture-editor-current-en.png)
 
-*Application capture of a private example workspace after creating two System elements through **Preview change → Accept operation**. The selected element is “Arbeitszeiterfassung”; saved example names remain German in the English interface. [Source revision and capture record](../images/ui-documentation-2026-10-25.json); this single state does not establish acceptance of every editor action.*
+*Application capture of a private example workspace after creating two System elements through **Preview change → Accept operation**. The selected element is “Hospital communication platform”. [Source revision and capture record](../images/documentation-screenshots.json); this single state does not establish acceptance of every editor action.*
 
 1. Search the element list or select an object in the graph. Selection also updates properties, relations, evidence and the read-only DSL view. Copy the page URL to retain the exact context and selection.
 2. Choose **New element**, or edit an existing element's properties. New identities are assigned by the server and remain stable when the display name changes. Taxonomy references and imported provenance remain read-only.
@@ -38,6 +38,28 @@ Graph and element list share the server model. The list shows 50 searchable entr
 SVG and vector PDF use the complete deterministic server layout at the displayed workspace revision or Git checkpoint. They are independent of local pan/zoom. The editor currently uses derived layout and a read-only synchronized DSL view; editable DSL translation, saved layouts, shared undo, richer evidence decisions and extended history remain tracked in [#814](https://github.com/carstenartur/Taxonomy/issues/814). Existing analysis snapshots remain immutable.
 
 Implementation decision: [ADR 0005](../adr/0005-private-architecture-editor.md). [Deutsche Anleitung](../de/ARCHITECTURE_EDITOR.md).
+
+<a id="shared-editing"></a>
+## Share a working copy
+
+Working copies start private. As the owner, choose **Enable shared editing** in
+the **Shared editing** section to let authorized contributors work in this same copy.
+Contributors need active, explicit contributor membership in the source repository,
+the **ARCHITECT** role, and an active local account or mapped stable SSO identity.
+Editing and changing sharing require **ARCHITECT**; Bearer API calls also require
+the `architecture:write` scope.
+
+Copy the complete address from the read-only **Link for authorized contributors**
+field and share that exact link. It opens this working copy for people who already
+have the required access.
+
+Choose **Refresh from branch** to see other contributors' accepted changes. Your unsaved form
+draft remains in place. After a revision conflict, refresh, compare the new state
+with your draft and preview again before accepting. Undo applies to your own
+accepted operations; later dependent changes can prevent it.
+
+As the owner, choose **Make this working copy private** to stop further contributor
+access. Previously accepted changes and their operation history remain in the copy.
 
 <a id="editor-version-reconciliation"></a>
 ## Reconcile a changed Git stand with local work
@@ -121,10 +143,9 @@ A draft that has not been saved as a requirement must be saved first.
 
 ![Architecture focus lens with Enable focus lens checked and the AI option unchecked](../images/architecture-editor-focus-en.png)
 
-*Earlier application capture of the focus-lens panel in an editable example
-workspace, before the shared navigation was consolidated:
+*Application capture of the focus-lens panel in an editable example workspace:
 **Enable focus lens** is checked and the AI option is unchecked.
-[Source revision and capture record](../images/architecture-editor-focus-capture.json).*
+[Source revision and capture record](../images/documentation-screenshots.json).*
 
 Slowly sweep over elements, or select an element and choose **Investigate selection**. A touch
 hold works as well. The lens chooses starting elements; possible endpoints can be

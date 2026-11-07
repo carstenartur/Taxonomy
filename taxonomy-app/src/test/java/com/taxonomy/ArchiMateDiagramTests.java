@@ -28,7 +28,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(roles = "ADMIN")
+@WithMockUser(roles = "USER")
 class ArchiMateDiagramTests {
 
     @Autowired

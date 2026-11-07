@@ -62,11 +62,11 @@ Manual Copilot requires a ready provider but does **not** require `TAXONOMY_AI_C
 Every successful Copilot full analysis stores an immutable architecture snapshot. Open **Architecture** from the completed run to investigate that exact result in a read-only workbench with search, overview and focus modes, context filtering, zoom, true fit-to-content, fullscreen display, provenance, review state and evidence details.
 
 
-The toolbar contains **Architecture editor**, **Print view** and an expandable **Export** menu. SVG/PDF and the available report/model exports are grouped in that menu.
+The workbench controls contain **Displayed architecture**, **Print view** and an expandable **Export** menu. SVG/PDF and the available report/model exports are grouped in that menu. Choose **Working architecture** to open the working model; adopting this frozen snapshot remains an explicit preview-and-accept operation.
 
 ![Persisted architecture workbench — selected example snapshot](../images/architecture-workbench-current-en.png)
 
-*Application capture of a persisted example snapshot generated with the `MOCK` provider. Search, focus and zoom explore this selected result; editing starts through **Architecture editor**. [Source revision, snapshot and capture record](../images/ui-documentation-2026-10-25.json). This image is not a live-provider quality assessment or an acceptance of every export format.*
+*Application capture of a persisted example snapshot generated with the `MOCK` provider. Search, focus and zoom explore this selected result; **Displayed architecture** selects its source. [Source revision and image hashes](../images/documentation-screenshots.json). This image is not a live-provider quality assessment or an acceptance of every export format.*
 
 The browser, SVG download and PDF download use the same deterministic server-side scene and coordinates. The interactive browser controls change only visibility, selection and viewport; they do not silently recalculate or mutate the persisted architecture.
 
@@ -77,7 +77,9 @@ After a full analysis reaches an authoritative terminal state, Taxonomy reloads 
 The normal reading flow presents six provider-neutral indicators, the highest-priority architecture gaps, detected patterns and recommendation reasoning. Complete technical payloads remain available in the collapsed diagnostics section and the JSON report instead of being dumped into the result page.
 
 
-The existing `CompleteCopilotSessionIT` owns complete-result screenshot generation from the persisted terminal state. Use the [screenshot instructions](https://github.com/carstenartur/Taxonomy/blob/main/.github/copilot-ref-screenshots.md) when refreshing this evidence. Earlier images with separate Word/HTML/JSON buttons are no longer used as current UI guidance; the result now opens the shared decision-report dialog.
+![Selected immutable full-run snapshot with result indicators and the shared decision-report action](../images/72-complete-copilot-run-result.png)
+
+*Persisted full-run result with deterministic `MOCK` responses. The **Decision rationale report …** action opens the shared export dialog. [Source revision and image hashes](../images/documentation-screenshots.json). The capture shows the selected result; operation status remains above this section on the same page.*
 
 ## Architecture-node limits
 

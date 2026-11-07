@@ -63,11 +63,11 @@ Der manuelle Copilot benötigt einen bereiten Anbieter, aber **kein** `TAXONOMY_
 Jede erfolgreiche Copilot-Vollanalyse speichert einen unveränderlichen Architektursnapshot. Über **Architektur** im abgeschlossenen Lauf lässt sich genau dieses Ergebnis in einer schreibgeschützten Workbench untersuchen: mit Suche, Übersicht und Fokusmodus, Kontextfilter, Zoom, echtem Einpassen, Vollbild, Provenienz sowie Review- und Evidenzdetails.
 
 
-Die Werkzeugleiste bietet den Architektureditor, eine Druckansicht und ein aufklappbares Exportmenü. SVG/PDF und verfügbare Berichts-/Modellexporte sind dort zusammengefasst.
+Die Workbench-Bedienung bietet **Angezeigte Architektur**, eine Druckansicht und ein aufklappbares Exportmenü. SVG/PDF und verfügbare Berichts-/Modellexporte sind dort zusammengefasst. **Arbeitsarchitektur** öffnet das Arbeitsmodell; die Übernahme dieses unveränderlichen Snapshots bleibt ein ausdrücklicher Vorgang mit Vorschau und Annahme.
 
 ![Persistierte Architektur-Workbench — ausgewählter Beispiel-Snapshot](../images/architecture-workbench-current-de.png)
 
-*Anwendungsaufnahme eines persistierten Beispiel-Snapshots mit dem Anbieter `MOCK`. Suche, Fokus und Zoom untersuchen diesen ausgewählten Stand; die Bearbeitung beginnt über **Architektureditor**. [Quellstand, Snapshot und Bildnachweis](../images/ui-documentation-2026-10-25.json). Das Bild ist keine Qualitätsprüfung eines realen KI-Anbieters und keine Abnahme aller Exportformate.*
+*Anwendungsaufnahme eines persistierten Beispiel-Snapshots mit dem Anbieter `MOCK`. Suche, Fokus und Zoom untersuchen diesen ausgewählten Stand; **Angezeigte Architektur** wählt dessen Quelle. [Quellstand und Bildprüfsummen](../images/documentation-screenshots.json). Das Bild ist keine Qualitätsprüfung eines realen KI-Anbieters und keine Abnahme aller Exportformate.*
 
 Browseransicht, SVG-Download und PDF-Download verwenden dieselbe deterministische serverseitige Szene mit denselben Koordinaten. Die interaktiven Browserwerkzeuge verändern nur Sichtbarkeit, Auswahl und Bildausschnitt; sie berechnen oder verändern die persistierte Architektur nicht stillschweigend neu.
 
@@ -78,11 +78,9 @@ Nach einem autoritativ abgeschlossenen vollständigen Lauf lädt Taxonomy die An
 Der normale Lesefluss zeigt sechs anbieterneutrale Kennzahlen, die wichtigsten Architekturlücken, erkannte Muster und die Begründung der Empfehlung. Vollständige technische Nutzdaten bleiben im eingeklappten Diagnosebereich und im JSON-Bericht verfügbar, statt unformatiert in der Ergebnisansicht zu erscheinen.
 
 
-Der vorhandene `CompleteCopilotSessionIT` besitzt die Aufnahme des persistierten
-Endzustands; die [Screenshot-Anleitung](https://github.com/carstenartur/Taxonomy/blob/main/.github/copilot-ref-screenshots.md)
-beschreibt die Aktualisierung. Frühere Bilder mit getrennten Word-/HTML-/JSON-Buttons
-werden nicht mehr als aktuelle Bedienungsanleitung verwendet. Das Ergebnis öffnet
-jetzt den gemeinsamen Dialog für den Entscheidungsbericht.
+![Ausgewählter unveränderlicher Snapshot einer Vollanalyse mit Ergebniskennzahlen und gemeinsamer Berichtsaktion](../images/72-complete-copilot-run-result.png)
+
+*Persistiertes Ergebnis mit deterministischen `MOCK`-Antworten und englischer Oberfläche. **Decision rationale report …** öffnet den gemeinsamen Exportdialog. [Quellstand und Bildprüfsummen](../images/documentation-screenshots.json). Die Aufnahme zeigt das ausgewählte Ergebnis; der Operationsstatus steht weiter oben auf derselben Seite.*
 
 ## Grenzen der Architekturknoten
 

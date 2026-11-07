@@ -35,6 +35,10 @@ public class ArchitectureSourceFocusService {
     private final SystemRepositoryService repositories;
     private final RepositoryMembershipService membership;
     private final ObjectMapper json;
+    private WorkspaceActorAccess actorAccess = WorkspaceActorAccess.unavailable();
+
+    @Autowired(required = false)
+    public void setActorAccess(WorkspaceActorAccess actorAccess) { this.actorAccess = Objects.requireNonNull(actorAccess); }
 
     @Autowired
     public ArchitectureSourceFocusService(ArchitectureFocusSuggestionService engine, AnalysisWorkingDraftService drafts,
@@ -66,7 +70,7 @@ public class ArchitectureSourceFocusService {
         var scope = new WorkspaceContext(selected.username(),workspace,source.branch(),source.repositoryId());
         Retained retained;
         if ("ANALYSIS_DRAFT".equals(source.kind())) {
-            if (owned == null) throw problem("NOT_FOUND","Analysis drafts require a private owned workspace");
+            if (owned == null) throw problem("NOT_FOUND","Analysis drafts require an accessible working copy");
             if (!source.branch().equals(owned.getCurrentBranch())) throw problem("SOURCE_IDENTITY_MISMATCH","The source workspace branch changed");
             retained = draft(source,scope);
         } else retained = snapshot(source,scope);
@@ -181,8 +185,11 @@ public class ArchitectureSourceFocusService {
     }
     private UserWorkspace owned(String id,String username,String repositoryId) {
         var workspace = workspaces.findByWorkspaceId(id).orElseThrow(() -> problem("NOT_FOUND","Workspace is not accessible"));
-        if (!username.equals(workspace.getUsername()) || workspace.isShared() || workspace.isArchived() || !repositoryId.equals(workspace.getSourceRepositoryId()))
+        if (workspace.isShared() || workspace.isArchived() || !repositoryId.equals(workspace.getSourceRepositoryId())
+                || (!username.equals(workspace.getUsername()) && !(workspace.isCollaborative()
+                && membership.canCollaborate(repositories.getRepository(repositoryId), username))))
             throw problem("NOT_FOUND","Workspace is not accessible");
+        if (workspace.isCollaborative()) actorAccess.requireActive(username);
         return workspace;
     }
     private JsonNode canonical(JsonNode value) {

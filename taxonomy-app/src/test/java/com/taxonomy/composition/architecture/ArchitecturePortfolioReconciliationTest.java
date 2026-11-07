@@ -40,7 +40,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Actual editor, portfolio transaction and JGit publication boundary, reconstructed after checkout loss. */
 @SpringBootTest
-@WithMockUser(username = "alice", roles = "ADMIN")
+@WithMockUser(username = "alice", roles = {"USER", "ARCHITECT", "ADMIN"})
 class ArchitecturePortfolioReconciliationTest {
     private static final String MODEL = """
             element recorder type Component {

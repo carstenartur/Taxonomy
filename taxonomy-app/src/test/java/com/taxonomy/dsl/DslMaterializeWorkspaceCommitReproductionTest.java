@@ -76,7 +76,7 @@ class DslMaterializeWorkspaceCommitReproductionTest {
 
         log.info("Backend materialization reproduction: creating workspace");
         var created = mvc.perform(post("/api/workspace/create")
-                        .with(user(OWNER).roles("ADMIN")).with(csrf())
+                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"displayName":"QA Preferences hypothesis restore",
@@ -91,15 +91,15 @@ class DslMaterializeWorkspaceCommitReproductionTest {
 
         log.info("Backend materialization reproduction: provisioning selected workspace");
         mvc.perform(post("/api/workspace/provision").header(HEADER, workspaceId)
-                        .with(user(OWNER).roles("ADMIN")).with(csrf()))
+                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")).with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("READY"));
         mvc.perform(post("/api/workspace/{id}/switch", workspaceId).header(HEADER, workspaceId)
-                        .with(user(OWNER).roles("ADMIN")).with(csrf()))
+                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")).with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workspaceId").value(workspaceId));
         mvc.perform(get("/api/workspace/current").header(HEADER, workspaceId)
-                        .with(user(OWNER).roles("ADMIN")))
+                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workspaceId").value(workspaceId))
                 .andExpect(jsonPath("$.currentBranch").value("main"))
@@ -109,7 +109,7 @@ class DslMaterializeWorkspaceCommitReproductionTest {
 
         log.info("Backend materialization reproduction: fetching real catalogue endpoints");
         var catalogue = mvc.perform(get("/api/taxonomy").header(HEADER, workspaceId)
-                        .with(user(OWNER).roles("ADMIN")))
+                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")))
                 .andExpect(status().isOk()).andReturn();
         List<CatalogueElement> all = new ArrayList<>();
         collectCatalogue(JSON.readTree(catalogue.getResponse().getContentAsString()), all);
@@ -125,7 +125,7 @@ class DslMaterializeWorkspaceCommitReproductionTest {
         String dsl = browserFixture(fixture, processes, capability);
 
         var before = mvc.perform(get("/api/dsl/hypotheses").header(HEADER, workspaceId)
-                        .with(user(OWNER).roles("ADMIN")))
+                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")))
                 .andExpect(status().isOk()).andReturn();
         JsonNode initialHypotheses = JSON.readTree(before.getResponse().getContentAsString());
         assertThat(initialHypotheses.isArray()).isTrue();
@@ -134,7 +134,7 @@ class DslMaterializeWorkspaceCommitReproductionTest {
         log.info("Backend materialization reproduction: POST materialize (3 elements, 2 provisional hypotheses)");
         var materialized = mvc.perform(post("/api/dsl/materialize")
                         .param("path", PATH).header(HEADER, workspaceId)
-                        .with(user(OWNER).roles("ADMIN")).with(csrf())
+                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")).with(csrf())
                         .contentType(MediaType.TEXT_PLAIN).content(dsl))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(true))
@@ -169,7 +169,7 @@ class DslMaterializeWorkspaceCommitReproductionTest {
         // observe merely uncommitted entities from the preceding write request.
         log.info("Backend materialization reproduction: reading committed hypotheses in a fresh request");
         var after = mvc.perform(get("/api/dsl/hypotheses").header(HEADER, workspaceId)
-                        .with(user(OWNER).roles("ADMIN")))
+                        .with(user(OWNER).roles("USER", "ARCHITECT", "ADMIN")))
                 .andExpect(status().isOk()).andReturn();
         JsonNode rows = JSON.readTree(after.getResponse().getContentAsString());
         assertThat(rows.isArray()).isTrue();

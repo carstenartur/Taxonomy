@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.controller;
 
 import com.taxonomy.analysis.service.AnalysisProgressRegistry;
+import com.taxonomy.analysis.service.AnalysisMemoryGuard;
 import com.taxonomy.analysis.usecase.*;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisCoverage;
@@ -9,11 +10,13 @@ import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.MockedStatic;
 import org.springframework.context.MessageSource;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -49,8 +52,13 @@ class AnalysisCompletionContractTest {
     private final ObjectMapper json = spy(new ObjectMapper());
     private final AtomicReference<Runnable> queued = new AtomicReference<>();
     private MockMvc mvc;
+    private MockedStatic<AnalysisMemoryGuard> heapMetrics;
 
     @BeforeEach void setup() {
+        // Completion races must not depend on unrelated JVM heap peaks. Workers run on this thread.
+        heapMetrics = mockStatic(AnalysisMemoryGuard.class);
+        heapMetrics.when(AnalysisMemoryGuard::heapSample)
+                .thenReturn(new AnalysisMemoryGuard.Sample(64L * 1024 * 1024, 1024L * 1024 * 1024));
         when(taxonomy.isInitialized()).thenReturn(true);
         when(resolver.resolveCurrentUsername()).thenReturn("alice");
         when(resolver.resolveCurrentContext()).thenReturn(scope);
@@ -61,6 +69,10 @@ class AnalysisCompletionContractTest {
                 mock(RepositoryStateService.class), resolver, mock(MessageSource.class));
         ReflectionTestUtils.setField(controller, "analysisProgressRegistry", registry);
         mvc = MockMvcBuilders.standaloneSetup(controller).build();
+    }
+
+    @AfterEach void closeHeapMetrics() {
+        heapMetrics.close();
     }
 
     private AnalysisResult result(String status) {

@@ -3,9 +3,22 @@
   "enabled": true,
   "roles": {
     "realm": [
-      { "name": "ROLE_USER", "description": "Read-only user" },
-      { "name": "ROLE_ARCHITECT", "description": "Can create/edit architecture" },
-      { "name": "ROLE_ADMIN", "description": "Full admin access" }
+      {
+        "name": "ROLE_READER",
+        "description": "Read permitted data and existing results"
+      },
+      {
+        "name": "ROLE_USER",
+        "description": "Analyst: execute analyses and manage personal drafts"
+      },
+      {
+        "name": "ROLE_ARCHITECT",
+        "description": "Can create/edit architecture"
+      },
+      {
+        "name": "ROLE_ADMIN",
+        "description": "Technical administration; business editing requires ROLE_ARCHITECT explicitly"
+      }
     ]
   },
   "clients": [
@@ -14,12 +27,91 @@
       "enabled": true,
       "publicClient": false,
       "secret": "taxonomy-dev-secret",
-      "redirectUris": ["http://localhost:8080/*"],
-      "webOrigins": ["http://localhost:8080"],
+      "redirectUris": [
+        "http://localhost:8080/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8080"
+      ],
       "protocol": "openid-connect",
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": true,
-      "defaultClientScopes": ["openid", "profile", "email", "roles"],
+      "directAccessGrantsEnabled": false,
+      "defaultClientScopes": [
+        "basic",
+        "profile",
+        "email",
+        "roles"
+      ],
+      "protocolMappers": [
+        {
+          "name": "taxonomy API audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "taxonomy-app",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ],
+      "optionalClientScopes": [
+        "architecture:read",
+        "architecture:write",
+        "architecture:delete",
+        "architecture:publish",
+        "analysis:read",
+        "analysis:run",
+        "integration:import",
+        "integration:export",
+        "repository:manage",
+        "backup:read",
+        "backup:create",
+        "admin:users",
+        "admin:configuration",
+        "admin:diagnostics"
+      ]
+    },
+    {
+      "clientId": "taxonomy-swagger",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8080/swagger-ui/oauth2-redirect.html"
+      ],
+      "webOrigins": [
+        "http://localhost:8080"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": [
+        "basic",
+        "profile",
+        "email",
+        "roles"
+      ],
+      "optionalClientScopes": [
+        "architecture:read",
+        "architecture:write",
+        "architecture:delete",
+        "architecture:publish",
+        "analysis:read",
+        "analysis:run",
+        "integration:import",
+        "integration:export",
+        "repository:manage",
+        "backup:read",
+        "backup:create",
+        "admin:users",
+        "admin:configuration",
+        "admin:diagnostics"
+      ],
       "protocolMappers": [
         {
           "name": "taxonomy API audience",
@@ -41,22 +133,49 @@
       "username": "admin",
       "email": "admin@taxonomy.local",
       "enabled": true,
-      "credentials": [{ "type": "password", "value": "admin", "temporary": false }],
-      "realmRoles": ["ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ROLE_USER",
+        "ROLE_ARCHITECT",
+        "ROLE_ADMIN"
+      ]
     },
     {
       "username": "architect",
       "email": "architect@taxonomy.local",
       "enabled": true,
-      "credentials": [{ "type": "password", "value": "architect", "temporary": false }],
-      "realmRoles": ["ROLE_USER", "ROLE_ARCHITECT"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "architect",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ROLE_USER",
+        "ROLE_ARCHITECT"
+      ]
     },
     {
       "username": "user",
       "email": "user@taxonomy.local",
       "enabled": true,
-      "credentials": [{ "type": "password", "value": "user", "temporary": false }],
-      "realmRoles": ["ROLE_USER"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "user",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ROLE_USER"
+      ]
     }
   ],
   "clientScopes": [
@@ -78,6 +197,175 @@
           }
         }
       ]
+    },
+    {
+      "name": "architecture:read",
+      "description": "Read architecture and taxonomy data",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": []
+    },
+    {
+      "name": "architecture:write",
+      "description": "Create or change business data",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": []
+    },
+    {
+      "name": "architecture:delete",
+      "description": "Call dedicated DELETE endpoints; command and DSL edits use architecture:write",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": []
+    },
+    {
+      "name": "architecture:publish",
+      "description": "Publish or synchronize architecture changes",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": []
+    },
+    {
+      "name": "analysis:read",
+      "description": "Read existing analysis results",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": []
+    },
+    {
+      "name": "analysis:run",
+      "description": "Execute analyses and manage personal analysis drafts",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": []
+    },
+    {
+      "name": "integration:import",
+      "description": "Import or apply integration changes",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": []
+    },
+    {
+      "name": "integration:export",
+      "description": "Generate or download permitted exports",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": []
+    },
+    {
+      "name": "repository:manage",
+      "description": "Manage repository memberships as an authorized owner",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": []
+    },
+    {
+      "name": "backup:read",
+      "description": "Read or download an authorized backup",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": []
+    },
+    {
+      "name": "backup:create",
+      "description": "Create or cancel an authorized backup job",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": []
+    },
+    {
+      "name": "admin:users",
+      "description": "Manage users, access and browser sessions",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": []
+    },
+    {
+      "name": "admin:configuration",
+      "description": "Manage technical configuration",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": []
+    },
+    {
+      "name": "admin:diagnostics",
+      "description": "Read administrative diagnostics",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": []
     }
-  ]
+  ],
+  "groups": [
+    {
+      "name": "taxonomy-readers",
+      "realmRoles": [
+        "ROLE_READER"
+      ]
+    },
+    {
+      "name": "taxonomy-analysts",
+      "realmRoles": [
+        "ROLE_USER"
+      ]
+    },
+    {
+      "name": "taxonomy-architects",
+      "realmRoles": [
+        "ROLE_ARCHITECT"
+      ]
+    },
+    {
+      "name": "taxonomy-administrators",
+      "realmRoles": [
+        "ROLE_ADMIN"
+      ]
+    }
+  ],
+  "attributes": {
+    "CreateDefaultClientScopes": "true"
+  }
 }

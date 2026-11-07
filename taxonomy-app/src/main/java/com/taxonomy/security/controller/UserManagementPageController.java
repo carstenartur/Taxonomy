@@ -51,7 +51,7 @@ public class UserManagementPageController {
     @ModelAttribute
     public void pageContext(Model model, HttpServletResponse response, Authentication authentication) {
         response.setHeader("Cache-Control", "no-store");
-        model.addAttribute("availableRoles", List.of("ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN"));
+        model.addAttribute("availableRoles", List.of("ROLE_READER", "ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN"));
         model.addAttribute("minimumPasswordLength", MIN_PASSWORD_LENGTH);
         model.addAttribute("temporaryPasswords", temporaryPasswords);
         model.addAttribute("currentUsername", authentication == null ? "" : authentication.getName());

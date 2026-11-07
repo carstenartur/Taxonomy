@@ -11,6 +11,142 @@ class NativeInstallationSnapshotTest {
     @TempDir Path temporary;
     private static final String VERSION = "recovery-fixture-1";
 
+    @Test void filesOnlyProofRestoresExternalBytesWithoutClaimingADatabaseBackup() throws Exception {
+        Path source = filesSource(), snapshot = temporary.resolve("files-snapshot"), target = temporary.resolve("files-target");
+        var receipt = NativeInstallationSnapshot.captureFiles(source, snapshot, VERSION, () -> {});
+        assertThat(receipt.fileCount()).isEqualTo(2);
+        assertThat(Files.readString(snapshot.resolve("manifest.json")))
+                .contains("taxonomy-native-files-only-v1", "FILES_ONLY", VERSION).doesNotContain("databaseFamily");
+        assertThat(NativeInstallationSnapshot.verifyFiles(snapshot, VERSION, () -> {})).isEqualTo(receipt);
+        assertThat(NativeInstallationSnapshot.restoreFiles(snapshot, source, target, VERSION, () -> {})).isEqualTo(receipt);
+        assertThat(target.resolve("source-content/requirements.txt")).hasContent("Retain Ünicode and original\nbytes\n");
+        assertThat(target.resolve("search-index/segment")).hasBinaryContent(new byte[]{0, 1, 2, -1});
+        assertThat(target.resolve("empty")).isDirectory();
+        Files.writeString(target.resolve("source-content/requirements.txt"), "target edit");
+        assertThat(source.resolve("source-content/requirements.txt")).hasContent("Retain Ünicode and original\nbytes\n");
+        if (Files.getFileStore(target).supportsFileAttributeView("posix")) {
+            assertThat(Files.getPosixFilePermissions(target)).isEqualTo(java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
+            assertThat(Files.getPosixFilePermissions(target.resolve("search-index/segment"))).isEqualTo(java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
+        }
+    }
+
+    @Test void databaseApisAndGenericCliRejectFilesOnlyProofsAndCannotInventANewDatabaseFamily() throws Exception {
+        Path source = filesSource(), snapshot = temporary.resolve("files-snapshot"), target = temporary.resolve("target");
+        NativeInstallationSnapshot.captureFiles(source, snapshot, VERSION, () -> {});
+        assertThatThrownBy(() -> NativeInstallationSnapshot.verify(snapshot, VERSION, () -> {})).isInstanceOf(IOException.class);
+        for (var family : NativeInstallationSnapshot.DatabaseFamily.values()) {
+            assertThatThrownBy(() -> NativeInstallationSnapshot.verify(snapshot, VERSION, family, () -> {})).isInstanceOf(IOException.class);
+            assertThatThrownBy(() -> NativeInstallationSnapshot.capture(source, temporary.resolve(family.name()), VERSION, family, () -> {}))
+                    .isInstanceOf(IOException.class);
+        }
+        assertThat(NativeInstallationSnapshot.DatabaseFamily.values()).containsExactly(
+                NativeInstallationSnapshot.DatabaseFamily.HSQLDB, NativeInstallationSnapshot.DatabaseFamily.POSTGRESQL);
+        assertThatThrownBy(() -> NativeInstallationSnapshot.plan(snapshot, source, target, VERSION, () -> {})).isInstanceOf(IOException.class);
+        assertThatThrownBy(() -> NativeInstallationSnapshot.restore(snapshot, source, target, VERSION, () -> {})).isInstanceOf(IOException.class);
+        assertThatThrownBy(() -> NativeInstallationSnapshot.resume(snapshot, source, target, VERSION, () -> {})).isInstanceOf(IOException.class);
+        for (String operation : List.of("verify", "plan", "restore", "resume")) assertThat(command(operation, source, snapshot, target)).isNotZero();
+        var output = new java.io.ByteArrayOutputStream(); var stream = new java.io.PrintStream(output);
+        Path invalid = temporary.resolve("invented-family");
+        assertThat(TaxonomyTooling.run(new String[]{"native-installation", "capture", "--source", source.toString(),
+                "--snapshot", invalid.toString(), "--version", VERSION, "--writers-stopped", "true", "--database-family", "FILES_ONLY"},
+                temporary, stream, stream)).isNotZero();
+        assertThat(invalid).doesNotExist(); assertThat(target).doesNotExist();
+        Path filesTarget = temporary.resolve("existing-files-target");
+        NativeInstallationSnapshot.restoreFiles(snapshot, source, filesTarget, VERSION, () -> {});
+        assertThatThrownBy(() -> NativeInstallationSnapshot.resume(snapshot, source, filesTarget, VERSION, () -> {})).isInstanceOf(IOException.class);
+        assertThat(command("resume", source, snapshot, filesTarget)).isNotZero();
+
+        Path databaseSnapshot = temporary.resolve("hsql-snapshot");
+        NativeInstallationSnapshot.capture(source(), databaseSnapshot, VERSION, () -> {});
+        assertThatThrownBy(() -> NativeInstallationSnapshot.verifyFiles(databaseSnapshot, VERSION, () -> {})).isInstanceOf(IOException.class);
+        assertThatThrownBy(() -> NativeInstallationSnapshot.restoreFiles(databaseSnapshot, source, target, VERSION, () -> {})).isInstanceOf(IOException.class);
+    }
+
+    @Test void filesOnlyProofRejectsTamperingAndWrongVersionsBeforePublishingAnyTarget() throws Exception {
+        for (String fault : List.of("changed", "missing", "extra", "traversal", "version")) {
+            Path source = filesSource(), snapshot = temporary.resolve(fault + "-snapshot"), target = temporary.resolve(fault + "-target");
+            NativeInstallationSnapshot.captureFiles(source, snapshot, VERSION, () -> {});
+            Path bytes = snapshot.resolve("data/search-index/segment");
+            switch (fault) {
+                case "changed" -> Files.write(bytes, new byte[]{0, 1, 2, 3});
+                case "missing" -> Files.delete(bytes);
+                case "extra" -> Files.writeString(snapshot.resolve("data/unlisted"), "unexpected");
+                case "traversal" -> Files.writeString(snapshot.resolve("manifest.json"), Files.readString(snapshot.resolve("manifest.json")).replace("search-index/segment", "../escape"));
+            }
+            String version = fault.equals("version") ? "different-version" : VERSION;
+            assertThatThrownBy(() -> NativeInstallationSnapshot.verifyFiles(snapshot, version, () -> {})).isInstanceOf(IOException.class);
+            assertThatThrownBy(() -> NativeInstallationSnapshot.restoreFiles(snapshot, source, target, version, () -> {})).isInstanceOf(IOException.class);
+            assertThat(target).doesNotExist();
+            assertThat(source.resolve("search-index/segment")).hasBinaryContent(new byte[]{0, 1, 2, -1});
+        }
+    }
+
+    @Test void filesOnlyProofPreservesIsolationSymlinkAndNewDestinationGuards() throws Exception {
+        Path source = filesSource(), snapshot = temporary.resolve("files-snapshot");
+        NativeInstallationSnapshot.captureFiles(source, snapshot, VERSION, () -> {});
+        Path occupied = Files.createDirectory(temporary.resolve("occupied")); Files.writeString(occupied.resolve("keep"), "unchanged");
+        for (Path target : List.of(source, source.resolve("child"), snapshot.resolve("nested"), temporary, occupied)) {
+            assertThatThrownBy(() -> NativeInstallationSnapshot.restoreFiles(snapshot, source, target, VERSION, () -> {})).isInstanceOf(IOException.class);
+        }
+        Path alias = temporary.resolve("alias"); Files.createSymbolicLink(alias, source);
+        assertThatThrownBy(() -> NativeInstallationSnapshot.captureFiles(alias, temporary.resolve("alias-snapshot"), VERSION, () -> {})).isInstanceOf(IOException.class);
+        assertThatThrownBy(() -> NativeInstallationSnapshot.restoreFiles(snapshot, source, alias.resolve("child"), VERSION, () -> {})).isInstanceOf(IOException.class);
+        assertThatThrownBy(() -> NativeInstallationSnapshot.restoreFiles(snapshot, source, alias.resolve("../target"), VERSION, () -> {})).isInstanceOf(IOException.class);
+        Files.createSymbolicLink(snapshot.resolve("data/link"), source.resolve("search-index/segment"));
+        assertThatThrownBy(() -> NativeInstallationSnapshot.verifyFiles(snapshot, VERSION, () -> {})).isInstanceOf(IOException.class);
+        assertThat(occupied.resolve("keep")).hasContent("unchanged");
+        assertThat(temporary.resolve("target")).doesNotExist();
+    }
+
+    @Test void filesOnlyOperationsRefuseLiveSourceLocksEvenAfterCapture() throws Exception {
+        Path source = filesSource(), snapshot = temporary.resolve("files-snapshot"), target = temporary.resolve("target");
+        NativeInstallationSnapshot.captureFiles(source, snapshot, VERSION, () -> {});
+        Path locks = Files.createDirectory(source.resolve("locks")); Files.writeString(locks.resolve("database.lck"), "writer");
+        assertThatThrownBy(() -> NativeInstallationSnapshot.captureFiles(source, temporary.resolve("live-snapshot"), VERSION, () -> {}))
+                .isInstanceOf(IOException.class).hasMessageContaining("lock");
+        assertThatThrownBy(() -> NativeInstallationSnapshot.restoreFiles(snapshot, source, target, VERSION, () -> {}))
+                .isInstanceOf(IOException.class).hasMessageContaining("lock");
+        assertThat(NativeInstallationSnapshot.verifyFiles(snapshot, VERSION, () -> {}).fileCount()).isEqualTo(2);
+        assertThat(temporary.resolve("live-snapshot")).doesNotExist(); assertThat(target).doesNotExist();
+    }
+
+    @Test void filesOnlyCancellationRemovesCaptureAndRestoreStagesWithoutPublishing() throws Exception {
+        Path source = filesSource(), snapshot = temporary.resolve("files-snapshot"), target = temporary.resolve("target");
+        NativeInstallationSnapshot.Checkpoint cancel = () -> {
+            try (var paths = Files.list(temporary)) {
+                if (paths.anyMatch(path -> path.getFileName().toString().startsWith(".native-recovery-")))
+                    throw new java.io.InterruptedIOException("cancelled during staged copy");
+            }
+        };
+        assertThatThrownBy(() -> NativeInstallationSnapshot.captureFiles(source, snapshot, VERSION, cancel))
+                .isInstanceOf(java.io.InterruptedIOException.class);
+        assertThat(snapshot).doesNotExist();
+        assertNoStages();
+        NativeInstallationSnapshot.captureFiles(source, snapshot, VERSION, () -> {});
+        assertThatThrownBy(() -> NativeInstallationSnapshot.restoreFiles(snapshot, source, target, VERSION, cancel))
+                .isInstanceOf(java.io.InterruptedIOException.class);
+        assertThat(target).doesNotExist();
+        assertNoStages();
+        assertThat(NativeInstallationSnapshot.verifyFiles(snapshot, VERSION, () -> {}).fileCount()).isEqualTo(2);
+        assertThat(source.resolve("search-index/segment")).hasBinaryContent(new byte[]{0, 1, 2, -1});
+    }
+
+    private void assertNoStages() throws IOException {
+        try (var paths = Files.list(temporary)) {
+            assertThat(paths.map(path -> path.getFileName().toString())).noneMatch(name -> name.startsWith(".native-recovery-"));
+        }
+    }
+
+    private Path filesSource() throws IOException {
+        Path root = Files.createDirectory(temporary.resolve(UUID.randomUUID().toString()));
+        Files.createDirectory(root.resolve("source-content"));
+        Files.writeString(root.resolve("source-content/requirements.txt"), "Retain Ünicode and original\nbytes\n");
+        Files.createDirectory(root.resolve("search-index"));
+        Files.write(root.resolve("search-index/segment"), new byte[]{0, 1, 2, -1});
+        Files.createDirectory(root.resolve("empty"));
+        return root;
+    }
+
     @Test void capturesEveryByteAndRestoresIndependentFilesWithAnExactManifest() throws Exception {
         Path source = source(), snapshot = temporary.resolve("snapshot"), target = temporary.resolve("restored");
         var captured = NativeInstallationSnapshot.capture(source, snapshot, VERSION, () -> {});

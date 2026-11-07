@@ -13,6 +13,7 @@ import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.eclipse.jgit.lib.ObjectId;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 @Controller
@@ -32,12 +34,26 @@ public class ArchitectureEditorController {
     private final ArchitectureEditorService service;
     private final ArchitectureEditorProjection projection;
     private final WorkspaceResolver resolver;
+    private final Optional<ArchitectureEditPermission> editPermission;
+    private WorkspaceCollaborationService collaboration;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setCollaboration(WorkspaceCollaborationService collaboration) {
+        this.collaboration = collaboration;
+    }
 
     public ArchitectureEditorController(ArchitectureEditorService service, ArchitectureEditorProjection projection,
                                         WorkspaceResolver resolver) {
+        this(service, projection, resolver, Optional.empty());
+    }
+
+    @Autowired
+    public ArchitectureEditorController(ArchitectureEditorService service, ArchitectureEditorProjection projection,
+                                        WorkspaceResolver resolver, Optional<ArchitectureEditPermission> editPermission) {
         this.service = service;
         this.projection = projection;
         this.resolver = resolver;
+        this.editPermission = editPermission;
     }
 
     @GetMapping("/architecture/editor")
@@ -74,7 +90,28 @@ public class ArchitectureEditorController {
         var document = service.read(context, commit, revision);
         ArchitectureEditorProjection.requireLayoutRevision(document, strategy, layoutRevision);
         var reference = layoutRevision == null ? null : service.read(context, null, layoutRevision);
-        return documentResponse(document).body(projection.project(document, mayEdit(), strategy, reference, viewId));
+        var result = projection.project(document, mayEdit(), strategy, reference, viewId);
+        if (collaboration != null) result = result.withCollaboration(collaboration.status(context));
+        return documentResponse(document).body(result);
+    }
+
+    public record SharingRequest(Context context, Boolean enabled) {
+        public SharingRequest {
+            if (context == null || enabled == null) throw new IllegalArgumentException("Context and an explicit sharing choice are required");
+        }
+    }
+
+    @PostMapping("/api/architecture/editor/collaboration")
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Enable or disable shared editing of this working copy",
+            description = "Only the working-copy owner may opt in. Active explicit source-repository contributors can then join the exact workspace link. Private workspaces remain the default; disabling sharing retains all accepted operations.")
+    public ResponseEntity<WorkspaceCollaborationService.Status> share(
+            @RequestBody SharingRequest request,
+            @Parameter(description = "Required ETag of the exact semantic revision, in the form \"workspace-revision-N\"", required = true, schema = @Schema(type = "string", pattern = "\"workspace-revision-[0-9]+\""))
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) throws IOException {
+        requireRevision(request.context(), ifMatch, null);
+        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(collaboration.setEnabled(resolver.resolveCurrentRepositoryContext(), request.context(), request.enabled()));
     }
 
     public ResponseEntity<ArchitectureEditorProjection.View> read(String repositoryId, String workspaceScopeKey,
@@ -236,10 +273,12 @@ public class ArchitectureEditorController {
         return context;
     }
 
-    private static boolean mayEdit() {
+    private boolean mayEdit() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication != null && authentication.getAuthorities().stream()
-                .anyMatch(authority -> List.of("ROLE_ARCHITECT", "ROLE_ADMIN").contains(authority.getAuthority()));
+        return authentication != null && authentication.isAuthenticated()
+                && authentication.getAuthorities().stream()
+                        .anyMatch(authority -> "ROLE_ARCHITECT".equals(authority.getAuthority()))
+                && editPermission.map(permission -> permission.mayEdit(authentication)).orElse(true);
     }
 
     private static ResponseEntity.BodyBuilder documentResponse(ArchitectureEditorService.Document document) {

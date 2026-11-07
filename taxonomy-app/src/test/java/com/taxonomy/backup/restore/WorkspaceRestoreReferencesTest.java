@@ -18,6 +18,13 @@ class WorkspaceRestoreReferencesTest {
     private final String editor=RepositoryContext.workspace(workspace.repositoryId(),workspace.workspaceId(),"main","source-owner").repositoryWorkspaceScopeKey();
     private final String interrupted="00000000-0000-0000-0000-000000000019";
 
+    @Test void oldWorkspaceArchivesRemainPrivateWhenNoCollaborationFieldWasRecorded() throws Exception {
+        var json = com.taxonomy.exchange.backup.PortableRows.json();
+        var value = json.valueToTree(rows().workspaces().getFirst());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) value).remove("collaborative");
+        assertThat(json.treeToValue(value, WorkspaceRecord.class).collaborative()).isFalse();
+    }
+
     @Test void allFourteenTypedFieldsRequireExactSourceRecordValueAndAllowedRepository()throws Exception {
         var rows=rows();var references=references();var resolved=WorkspaceRestoreReferences.resolve(rows,references,working(),Set.of(central,workspace),allocations(),proof(),()->{});
         assertThat(resolved).hasSize(14);assertThat(resolved.values()).containsOnly(COMMIT);

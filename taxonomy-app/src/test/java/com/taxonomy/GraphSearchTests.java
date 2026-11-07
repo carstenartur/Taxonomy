@@ -5,6 +5,17 @@ import com.taxonomy.relations.service.GraphSearchService;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
+import com.taxonomy.workspace.service.WorkspaceManager;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.Instant;
+import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,6 +49,17 @@ class GraphSearchTests {
 
     @Autowired
     private LocalEmbeddingService embeddingService;
+
+    @Autowired private UserWorkspaceRepository workspaceRows;
+    @Autowired private WorkspaceManager workspaceManager;
+    @Autowired private SystemRepositoryService repositories;
+    @Autowired private WorkspaceContextResolver contexts;
+
+    @AfterEach
+    void evictGraphReadNavigation() {
+        List.of("graph-reader-central", "graph-admin-central", "graph-reader-ready")
+                .forEach(workspaceManager::evictWorkspace);
+    }
 
     @Test
     void graphSearchDoesNotFabricateCompletedResultsWhenModelIsUnavailable() {
@@ -109,4 +131,52 @@ class GraphSearchTests {
         mockMvc.perform(get("/api/search/graph").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest());
     }
+    @Test
+    @WithMockUser(username = "graph-reader-central", roles = "READER")
+    void readerCanSearchCentralSourceWithoutWorkspaceAllocation() throws Exception {
+        mockMvc.perform(get("/api/search/graph").param("q", "communications").param("maxResults", "0"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.matchedNodes").isEmpty());
+        assertNoWorkspaceAllocation("graph-reader-central");
+    }
+
+    @Test
+    @WithMockUser(username = "graph-admin-central", roles = "ADMIN")
+    void administratorAloneCanSearchCentralSourceWithoutWorkspaceAllocation() throws Exception {
+        mockMvc.perform(get("/api/search/graph").param("q", "communications").param("maxResults", "0"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.matchedNodes").isEmpty());
+        assertNoWorkspaceAllocation("graph-admin-central");
+    }
+
+    @Test
+    @Transactional
+    @WithMockUser(username = "graph-reader-ready", roles = "READER")
+    void readerRetainsExistingReadyWorkingCopyForSearch() throws Exception {
+        var workspace = new UserWorkspace();
+        workspace.setUsername("graph-reader-ready");
+        workspace.setWorkspaceId("graph-reader-ready-existing");
+        workspace.setDisplayName("Existing graph workspace");
+        workspace.setSourceRepositoryId(repositories.getPrimaryRepository().getRepositoryId());
+        workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
+        workspace.setCreatedAt(Instant.now());
+        workspaceRows.saveAndFlush(workspace);
+
+        mockMvc.perform(get("/api/search/graph").param("q", "communications"))
+                .andExpect(status().isServiceUnavailable());
+        assertThat(contexts.resolveRepositoryContextForUser("graph-reader-ready").scope())
+                .isEqualTo(RepositoryScope.WORKSPACE);
+        assertThat(workspaceRows.findByUsernameAndSharedFalse("graph-reader-ready").orElseThrow().getWorkspaceId())
+                .isEqualTo(workspace.getWorkspaceId());
+        assertThat(workspace.getProvisioningStatus()).isEqualTo(WorkspaceProvisioningStatus.READY);
+        assertThat(workspace.getCurrentCommit()).isNull();
+    }
+
+    private void assertNoWorkspaceAllocation(String username) {
+        assertThat(workspaceRows.findByUsernameAndSharedFalse(username)).isEmpty();
+        assertThat(workspaceManager.getWorkspace(username)).isNull();
+        assertThat(contexts.resolveRepositoryContextForUser(username).scope())
+                .isEqualTo(RepositoryScope.CENTRAL_READ);
+    }
+
 }

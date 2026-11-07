@@ -31,6 +31,10 @@ public class AnalysisSnapshotAdoptionService {
     private final UserWorkspaceRepository workspaces;
     private final SystemRepositoryService repositories;
     private final RepositoryMembershipService membership;
+    private WorkspaceActorAccess actorAccess = WorkspaceActorAccess.unavailable();
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setActorAccess(WorkspaceActorAccess actorAccess) { this.actorAccess = Objects.requireNonNull(actorAccess); }
 
     public AnalysisSnapshotAdoptionService(ArchitectureEditorService editor, PortfolioAnalysisPersistenceService snapshots,
             ProjectPortfolioService projects, UserWorkspaceRepository workspaces, SystemRepositoryService repositories,
@@ -94,7 +98,7 @@ public class AnalysisSnapshotAdoptionService {
 
     private Prepared prepare(RepositoryContext target, Request request) throws IOException {
         SourceRef source = request.source();
-        if (target.scope() != RepositoryScope.WORKSPACE) throw problem("READ_ONLY", "Adoption requires a private editable workspace");
+        if (target.scope() != RepositoryScope.WORKSPACE) throw problem("READ_ONLY", "Adoption requires an editable working copy");
         var targetWorkspace = owned(target.workspaceId(), target.username(), target.repositoryId());
         if (targetWorkspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY)
             throw problem("READ_ONLY", "Target workspace is not ready");
@@ -181,8 +185,11 @@ public class AnalysisSnapshotAdoptionService {
     }
     private UserWorkspace owned(String workspaceId,String username,String repositoryId) {
         var workspace = workspaces.findByWorkspaceId(workspaceId).orElseThrow(() -> problem("NOT_FOUND","Workspace is not accessible"));
-        if (!username.equals(workspace.getUsername()) || workspace.isShared() || workspace.isArchived() || !repositoryId.equals(workspace.getSourceRepositoryId()))
+        if (workspace.isShared() || workspace.isArchived() || !repositoryId.equals(workspace.getSourceRepositoryId())
+                || (!username.equals(workspace.getUsername()) && !(workspace.isCollaborative()
+                && membership.canCollaborate(repositories.getRepository(repositoryId), username))))
             throw problem("NOT_FOUND","Workspace is not accessible");
+        if (workspace.isCollaborative()) actorAccess.requireActive(username);
         return workspace;
     }
     private static void put(Map<String,String> map,String key,String value) { if (value != null) map.put(key,value); }

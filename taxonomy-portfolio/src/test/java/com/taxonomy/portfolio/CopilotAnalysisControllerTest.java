@@ -80,6 +80,30 @@ class CopilotAnalysisControllerTest {
                 .andExpect(header().string("Location", expectedLocation + "a".repeat(64)));
     }
 
+    @ParameterizedTest
+    @CsvSource({
+            "'', '', /api/projects/41/copilot-operations/",
+            "/taxonomy, '', /taxonomy/api/projects/41/copilot-operations/",
+            "/tenant/taxonomy, '', /tenant/taxonomy/api/projects/41/copilot-operations/",
+            "/internal, /edge/taxonomy, /edge/taxonomy/api/projects/41/copilot-operations/"
+    })
+    void explicitResumeReturnsAcceptedOperationLocationWithinTheApplicationPrefix(
+            String contextPath, String forwardedPrefix, String expectedLocation) throws Exception {
+        String operationId = "a".repeat(64);
+        when(automationService.resumeOperation(41L, operationId, context.username(), context))
+                .thenReturn(operation(AnalysisStatus.PENDING, "queued"));
+        var request = post(contextPath + "/api/projects/41/copilot-operations/" + operationId + "/resume")
+                .contextPath(contextPath);
+        if (!forwardedPrefix.isEmpty()) request.header("X-Forwarded-Prefix", forwardedPrefix);
+
+        standaloneSetup(controller).addFilters(new ForwardedHeaderFilter()).build()
+                .perform(request)
+                .andExpect(status().isAccepted())
+                .andExpect(header().string("Location", expectedLocation + operationId));
+
+        verify(automationService).resumeOperation(41L, operationId, context.username(), context);
+    }
+
     @Test
     void explicitRunReturnsAcceptedPersistentOperationLocation() {
         CopilotRunRequest request = new CopilotRunRequest(

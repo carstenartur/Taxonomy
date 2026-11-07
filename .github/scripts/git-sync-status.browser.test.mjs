@@ -3,6 +3,8 @@ import test, {before, after} from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import path from 'node:path';
+import {readFile, writeFile} from 'node:fs/promises';
+import {createNavigationPollEvidence, createConsoleErrorLedger} from './ui-navigation-poll-evidence.mjs';
 
 const {chromium} = createRequire(import.meta.url)('playwright');
 const resources = process.env.TAXONOMY_TEST_RESOURCE_ROOT || path.resolve('taxonomy-app/src/main/resources');
@@ -13,6 +15,97 @@ before(async () => {
         args: ['--no-sandbox', '--disable-dev-shm-usage']});
 });
 after(async () => { await browser?.close(); });
+
+for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original status reads before analysis hydration (${prefix || '/'})`, async () => {
+    const context = await browser.newContext({viewport:{width:390, height:844}}), page = await context.newPage();
+    const baseUrl = 'http://status.test' + prefix + '/', workspaceId = 'workspace-1';
+    const query = new URLSearchParams({architectureSource:'working', lang:'en', repositoryId:'repository-1',
+        workspaceId, workspaceScopeKey:workspaceId, branch:'draft', revision:'6', element:'CR-1000', layout:'stable'});
+    const url = baseUrl + '?' + query + '#architecture';
+    const errors = [], reconciled = [], ledger = createConsoleErrorLedger(errors, reconciled);
+    const observer = createNavigationPollEvidence({browserName:'webkit', baseUrl});
+    const headers = [], headerTasks = [], pageErrors = [];
+    const git = {currentBranch:'draft', headCommit:'a'.repeat(40), projectionStale:false, indexStale:false,
+        branches:['draft'], totalCommits:1, operationInProgress:false};
+    const current = {contextId:'context-1', branch:'draft', commitId:null, mode:'EDITABLE',
+        timestamp:'2026-11-06T22:12:09Z', dirty:false};
+    const paths = ['shared/taxonomy-utils.js', 'shared/architecture-workflow.js',
+        'api/taxonomy-api-client.js', 'core/taxonomy-state.js', 'core/taxonomy-analysis-session-core.js',
+        'core/taxonomy-analysis-session-api-routing.js'];
+    const messages = Object.fromEntries((await readFile(path.join(resources, 'i18n/messages.properties'), 'utf8'))
+        .split('\n').map(line => line.match(/^([^#!\s][^=]*)=(.*)$/)).filter(Boolean).map(match => [match[1], match[2]]));
+    const template = await readFile(path.join(resources, 'templates/index.html'), 'utf8');
+    const statusMarkup = ['gitStatusBar', 'contextBar'].map(id => {
+        const markup = template.match(new RegExp('<div id="' + id + '"[^>]*><\\/div>'))?.[0];
+        assert.ok(markup, 'Retain the actual root-shell status container: ' + id);
+        return markup;
+    }).join('');
+    try {
+        page.on('pageerror', error => pageErrors.push(error.message));
+        page.on('request', request => {
+            if (!/\/api\/(?:git\/state|context\/current)$/.test(new URL(request.url()).pathname)) return;
+            const item = {url:request.url(), pageUrl:page.url(), immediate:request.headers()['x-taxonomy-workspace-id'] || null};
+            headers.push(item);
+            headerTasks.push(request.allHeaders().then(all => { item.all = all['x-taxonomy-workspace-id'] || null; }));
+        });
+        await observer.attach(page, context);
+        // The engine signature is a controlled fixture at a real beforeunload.
+        // Original HTTP, routing, DTO adoption and document epochs are native Chromium evidence.
+        await context.exposeBinding('__fixtureStatusCancellation', () => {
+            for (const endpoint of ['/api/git/state?branch=draft', '/api/context/current']) {
+                const endpointUrl = baseUrl.slice(0, -1) + endpoint;
+                const message = '/status.test' + prefix + endpoint + ' due to access control checks.';
+                observer.recordError({name:'Fetch API cannot load http', message,
+                    stack:'Fetch API cannot load ' + endpointUrl + ' due to access control checks.\n'
+                        + '    at routedFetch (' + baseUrl + 'js/core/taxonomy-analysis-session-core.js:273:39)'}, ledger.record(message));
+            }
+        });
+        await page.route('http://status.test/**', async route => {
+            const target = new URL(route.request().url()), relative = target.pathname.slice(prefix.length);
+            if (relative.startsWith('/js/')) return route.fulfill({contentType:'text/javascript',
+                body:await readFile(path.join(resources, 'static', relative), 'utf8')});
+            if (relative.startsWith('/api/')) return route.fulfill({contentType:'application/json', body:JSON.stringify(
+                relative === '/api/i18n/en' ? messages : relative === '/api/git/state' ? git : relative === '/api/context/current' ? current : {})});
+            return route.fulfill({contentType:'text/html', body:'<!doctype html><html lang="en"><head><meta charset="UTF-8">'
+                + '<script src="' + prefix + '/js/taxonomy-i18n.js"></script></head><body>' + statusMarkup
+                + paths.map(file => '<script src="' + prefix + '/js/' + file + '"></script>').join('')
+                + '<script>__TaxonomyAnalysisSessionContext.installWorkspaceFetchRouting();</script>'
+                + '<script src="' + prefix + '/js/workspace/taxonomy-git-status.js"></script>'
+                + '<script src="' + prefix + '/js/versioning/taxonomy-context-bar.js"></script>'
+                + '<script>document.addEventListener("DOMContentLoaded",()=>TaxonomyContextBar.init("contextBar"));</script>'
+                + '</body></html>'});
+        });
+        await page.goto(url);
+        await page.waitForFunction(() => document.querySelector('.git-sha')?.textContent === 'aaaaaaa'
+            && window.TaxonomyContextBar?.getCurrentContext()?.contextId === 'context-1');
+        const initialEpoch = await page.evaluate(() => performance.timeOrigin);
+        assert.equal(await page.evaluate(() => __TaxonomyAnalysisSessionContext.runtime.workspaceId), null);
+        await page.evaluate(() => window.addEventListener('beforeunload', () => window.__fixtureStatusCancellation()));
+        await observer.begin(null, 'reload');
+        await page.reload();
+        await page.waitForFunction(() => document.querySelector('.git-sha')?.textContent === 'aaaaaaa'
+            && window.TaxonomyContextBar?.getCurrentContext()?.contextId === 'context-1');
+        await observer.end(null, true, 'reload');
+        await observer.verifyDestination(null, 'reload');
+        await Promise.all(headerTasks);
+        assert.equal(page.url(), url, 'Status reads must not rewrite any URL, scope or selection pin');
+        assert.notEqual(await page.evaluate(() => performance.timeOrigin), initialEpoch);
+        assert.deepEqual(headers.map(item => [item.immediate, item.all]),
+            Array.from({length:4}, () => [workspaceId, workspaceId]),
+            'Immediate passive headers and allHeaders must both prove the exact original workspace: ' + JSON.stringify(headers));
+        const observed = observer.snapshot();
+        assert.deepEqual(observed.reads.map(read => read.workspaceId), headers.map(item => item.all));
+        assert.ok(observed.reads.every(read => read.finished && read.jsonParsed && read.status === 200));
+        assert.equal(observed.navigations[0].oldDocument.url, observed.navigations[0].newDocument.url);
+        const proofs = observer.reconciliations();
+        await writeFile(path.resolve('target/native-status-reload-' + (prefix ? 'mounted' : 'root') + '.json'),
+            JSON.stringify({browser:'chromium', nativeEngineCancellationReproduced:false, headers, observed, proofs, pageErrors}, null, 2) + '\n');
+        assert.deepEqual(pageErrors, [], 'Actual renderer and script errors remain blocking');
+        ledger.reconcile(proofs);
+        assert.deepEqual(errors, []);
+        assert.deepEqual(reconciled.map(proof => proof.request.payload), [git, current]);
+    } finally { await context.close(); }
+});
 
 const initial = {syncStatus: 'UP_TO_DATE', unpublishedCommitCount: 0};
 async function fixture() {

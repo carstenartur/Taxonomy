@@ -9,6 +9,7 @@ import com.taxonomy.dto.ViewContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -113,13 +114,13 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
                     headInfo != null ? headInfo.author() : null,
                     headInfo != null ? headInfo.message() : null,
                     branches,
-                    ws.isOperationInProgress(),
-                    ws.getOperationKind(),
-                    ws.getLastProjectionCommit(),
-                    ws.getLastProjectionBranch(),
-                    ws.getLastProjectionTimestamp(),
+                    ws != null && ws.isOperationInProgress(),
+                    ws == null ? null : ws.getOperationKind(),
+                    ws == null ? null : ws.getLastProjectionCommit(),
+                    ws == null ? null : ws.getLastProjectionBranch(),
+                    ws == null ? null : ws.getLastProjectionTimestamp(),
                     projStale,
-                    ws.getLastIndexCommit(),
+                    ws == null ? null : ws.getLastIndexCommit(),
                     idxStale,
                     commitCount,
                     repo.isDatabaseBacked()
@@ -186,6 +187,7 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      */
     public void recordProjection(String username, String commitId, String branch) {
         UserWorkspaceState ws = resolveState(username);
+        if (ws == null) return;
         ws.recordProjection(commitId, branch);
         log.info("User '{}': recorded projection: branch='{}', commit='{}'",
                 username, branch, abbreviateSha(commitId));
@@ -199,6 +201,7 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      */
     public void recordIndexBuild(String username, String commitId) {
         UserWorkspaceState ws = resolveState(username);
+        if (ws == null) return;
         ws.recordIndexBuild(commitId);
         log.info("User '{}': recorded index build: commit='{}'",
                 username, abbreviateSha(commitId));
@@ -265,11 +268,11 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
         try {
             String headCommit = resolveRepository(ctx).getHeadCommit(branch);
             return new ProjectionState(
-                    ws.getLastProjectionCommit(),
-                    ws.getLastProjectionBranch(),
-                    ws.getLastProjectionTimestamp(),
-                    ws.getLastIndexCommit(),
-                    ws.getLastIndexTimestamp(),
+                    ws == null ? null : ws.getLastProjectionCommit(),
+                    ws == null ? null : ws.getLastProjectionBranch(),
+                    ws == null ? null : ws.getLastProjectionTimestamp(),
+                    ws == null ? null : ws.getLastIndexCommit(),
+                    ws == null ? null : ws.getLastIndexTimestamp(),
                     isProjectionStaleForCommit(ws, headCommit),
                     isIndexStale(ws, headCommit)
             );
@@ -277,9 +280,11 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
             log.error("Failed to get projection state for user '{}', branch '{}'",
                     username, branch, e);
             return new ProjectionState(
-                    ws.getLastProjectionCommit(), ws.getLastProjectionBranch(),
-                    ws.getLastProjectionTimestamp(),
-                    ws.getLastIndexCommit(), ws.getLastIndexTimestamp(), false, false
+                    ws == null ? null : ws.getLastProjectionCommit(),
+                    ws == null ? null : ws.getLastProjectionBranch(),
+                    ws == null ? null : ws.getLastProjectionTimestamp(),
+                    ws == null ? null : ws.getLastIndexCommit(),
+                    ws == null ? null : ws.getLastIndexTimestamp(), false, false
             );
         }
     }
@@ -291,7 +296,7 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      * @param kind     the operation kind ("merge", "cherry-pick", "revert")
      */
     public void beginOperation(String username, String kind) {
-        resolveState(username).beginOperation(kind);
+        requireState(username).beginOperation(kind);
         log.info("User '{}': operation started: {}", username, kind);
     }
 
@@ -301,7 +306,7 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
      * @param username the user whose operation ended
      */
     public void endOperation(String username) {
-        UserWorkspaceState ws = resolveState(username);
+        UserWorkspaceState ws = requireState(username);
         log.info("User '{}': operation ended: {}", username, ws.getOperationKind());
         ws.endOperation();
     }
@@ -328,15 +333,24 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
         return workspaceManager.getOrCreateWorkspace(username);
     }
 
+    private UserWorkspaceState requireState(String username) {
+        UserWorkspaceState state = resolveState(username);
+        if (state == null) {
+            throw new AccessDeniedException("An existing workspace or provisioning permission is required");
+        }
+        return state;
+    }
+
     /**
-     * Ensure that the workspace state for the given user is provisioned.
+     * Initialize workspace state when an existing READY copy or provisioning permission permits it.
      *
      * <p>This triggers lazy workspace creation (via
      * {@link com.taxonomy.workspace.service.WorkspaceManager#getOrCreateWorkspace})
      * so that subsequent calls to
      * {@link com.taxonomy.workspace.service.WorkspaceContextResolver#resolveForUser}
      * find the workspace and return a workspace-scoped context instead of
-     * {@link com.taxonomy.workspace.service.WorkspaceContext#SHARED}.
+     * {@link com.taxonomy.workspace.service.WorkspaceContext#SHARED}. Without
+     * permission and an existing READY copy, state stays absent for central reads.
      *
      * @param username the authenticated user's username
      */
@@ -345,6 +359,7 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
     }
 
     private boolean isProjectionStaleForCommit(UserWorkspaceState ws, String headCommit) {
+        if (ws == null) return false;
         String projCommit = ws.getLastProjectionCommit();
         if (headCommit == null || projCommit == null) {
             return false;
@@ -353,6 +368,7 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
     }
 
     private boolean isIndexStale(UserWorkspaceState ws, String headCommit) {
+        if (ws == null) return false;
         String idxCommit = ws.getLastIndexCommit();
         if (headCommit == null || idxCommit == null) {
             return false;

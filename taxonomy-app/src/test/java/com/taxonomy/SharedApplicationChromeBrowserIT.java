@@ -147,11 +147,50 @@ class SharedApplicationChromeBrowserIT {
         assertThat(page.driver().findElement(By.cssSelector("#applicationHelp > summary")).getAccessibleName()).isNotBlank();
     }
 
+    @ParameterizedTest @ValueSource(strings = {"en", "de"})
+    void scoreLegendStaysVisibleAndCompactAfterTaskInitialization(String locale) {
+        open(new View("index", "/", "analysis", "fileMenuButton"), locale, 1440);
+        var legend = page.driver().findElement(By.id("analysisScoreLegend"));
+        var swatches = legend.findElements(By.className("legend-box"));
+        assertThat(legend.getAriaRole()).isEqualTo("group");
+        assertThat(legend.getAccessibleName()).isNotBlank();
+        assertThat(swatches).hasSize(5).allMatch(swatch -> swatch.isDisplayed(),
+                "all scores are readable without expanding a disclosure");
+        assertThat(swatches).extracting(swatch -> swatch.getText())
+                .containsExactly("0%", "25%", "50%", "75%", "100%");
+        assertThat(swatches).allSatisfy(swatch -> assertThat(swatch.getDomAttribute("title")).isNotBlank());
+        assertThat(legend.getRect().getHeight()).as("single-row legend height").isLessThanOrEqualTo(40);
+        var cdp = (HasCdp) new Augmenter().augment(page.driver());
+        try {
+            viewport(320, 1000);
+            for (String theme : List.of("light", "dark", "forced-colors")) {
+                page.driver().executeScript("document.documentElement.dataset.bsTheme = arguments[0]", theme);
+                cdp.executeCdpCommand("Emulation.setEmulatedMedia", Map.of("features", List.of(
+                        Map.of("name", "forced-colors", "value", theme.equals("forced-colors") ? "active" : "none"))));
+                assertThat(page.driver().executeScript("return matchMedia('(forced-colors: active)').matches"))
+                        .isEqualTo(theme.equals("forced-colors"));
+                assertThat(swatches).allMatch(swatch -> swatch.isDisplayed());
+                assertThat(page.driver().executeScript("""
+                        const legend = arguments[0], bounds = legend.getBoundingClientRect();
+                        return bounds.left >= 0 && bounds.right <= innerWidth
+                            && [...legend.querySelectorAll('.legend-box')].every(swatch => {
+                                const rect = swatch.getBoundingClientRect();
+                                return rect.left >= bounds.left && rect.right <= bounds.right
+                                    && rect.top >= bounds.top && rect.bottom <= bounds.bottom;
+                            }) && document.documentElement.scrollWidth <= innerWidth;
+                        """, legend)).as("score labels reflow without overflow in %s/%s", locale, theme).isEqualTo(true);
+            }
+        } finally {
+            cdp.executeCdpCommand("Emulation.setEmulatedMedia", Map.of("features", List.of()));
+            page.driver().executeScript("document.documentElement.dataset.bsTheme = 'light'");
+        }
+    }
+
     @ParameterizedTest @ValueSource(ints = {700, 900, 992, 1024})
     void workNavigationStaysVisibleWithResponsiveCommands(int width) {
         open(new View("index", "/", "analysis", "fileMenuButton"), "de", width);
         var menu = page.driver().findElement(By.id("applicationNavigationMenu"));
-        assertThat(menu.getDomProperty("open")).isEqualTo(width < 768 ? "false" : "true");
+        assertThat(menu.getDomProperty("open")).isEqualTo(width < 1024 ? "false" : "true");
         assertThat(page.driver().findElement(By.id("applicationNavigation")).getRect().getHeight()).isLessThanOrEqualTo(64);
         assertThat(page.driver().findElement(By.id("applicationArchitectureLink")).isDisplayed()).isTrue();
     }

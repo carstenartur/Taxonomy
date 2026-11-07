@@ -226,8 +226,18 @@ Skripte direkt aufrufen.
 2. Falls der Endpunkt ein neues DTO zurückgibt, fügen Sie es unter `taxonomy-domain/src/main/java/com/taxonomy/dto/` hinzu.
 3. Legen Sie Service und zugehörige Tests im selben Fachkontext an; kontextübergreifende Zugriffe verwenden dessen öffentliche API oder einen expliziten Port.
 4. Prüfen Sie Services auf der niedrigsten sinnvollen JUnit-Ebene; Endpunktverhalten und Rollen benötigen HTTP-/Sicherheitsintegrationstests.
-5. Falls der Endpunkt nur für Administratoren bestimmt ist, platzieren Sie ihn unter `/api/admin/` (geschützt durch `ROLE_ADMIN` in `SecurityConfig`).
-6. Falls der Endpunkt Architekturdaten ändert (Relationen, DSL), platzieren Sie ihn unter `/api/relations/`, `/api/dsl/` oder `/api/git/` — Schreiboperationen auf diesen Pfaden erfordern `ROLE_ARCHITECT` oder `ROLE_ADMIN`.
+5. Klassifizieren Sie die Operation im geordneten Security-Katalog von `taxonomy-app` (`ApiAccessPolicy`) mit einer benannten `ApiPermission`. Spezifische Treffer stehen vor allgemeineren. Wählen Sie Wirkung und Ressourcenbeschränkung bewusst: lesende POST-Aufrufe, Analyseausführung, Architekturänderungen/Löschen/Veröffentlichen, Import/Export und technische Administration unterscheiden sich. Nicht klassifizierte Schreibaufrufe werden auch für ADMIN abgewiesen.
+6. Verwenden Sie die gemeinsame Berechtigung für Autorisierung und OpenAPI; führen Sie keine zweite Rollen-/Scope-Abbildung und ersetzen Sie gemeinsame Regeln nicht durch reine Controller-Prüfungen. Fachliche Architekturänderungen benötigen ARCHITECT; ADMIN allein ist technische Administration. Die vier Rollen heißen READER, USER (gespeichert für Analyst), ARCHITECT und ADMIN. Bestehende explizite Mehrfachzuweisungen bleiben gültig.
+7. Verlangen Sie bei berechtigungsgeschützten Bearer-Operationen eine erlaubte Anwendungsrolle in **jeder** erforderlichen Berechtigungsgruppe **und alle** aufgeführten Scopes; testen Sie die Abweisung, sobald eine Gruppe oder ein Scope fehlt. Lokales Basic und Browser-Sitzungen verwenden Rollen mit bestehenden CSRF-Regeln. Projekt-/Repository-Sichtbarkeit, Mitgliedschaften und Workspace-Eigentum bleiben im zuständigen Service geprüft.
+8. Prüfen Sie, dass Swagger fachliche Tags und eine aus der Policy abgeleitete Zugriffstabelle mit aktiven Authentifizierungsschemata (einschließlich `sessionCookie` im OIDC-Modus), allen Berechtigungsgruppen und ihren Rollenalternativen, allen Scopes, Wirkung, Ressourcenbeschränkungen und 401-/403-Antworten zeigt. Die exakte Berechtigungsmatrix steht unter [Sicherheit](SECURITY.md#rollen-und-berechtigungen).
+
+Klassifizieren Sie Wirkungen statt HTTP-Methoden: `GET /api/analyze-stream` und `/api/analyze-node` führen neue LLM-Arbeit aus und benötigen ANALYSIS_RUN (`analysis:run` für JWTs). Dieselbe Berechtigung schützt das verzögerte Anlegen der Standard-Arbeitskopie bei `GET /api/workspace/current`. Leser ohne bereite Arbeitskopie erhalten 204 und behalten den zentralen Lesekontext; vorhandene bereite Kopien bleiben unter Ressourcenprüfungen lesbar. Externes `POST /api/workspace/external/push` und `/api/workspace/external/full-sync` benötigt sowohl ARCHITECT + `architecture:publish` als auch ADMIN + `admin:configuration`; die Gruppen sind gemeinsam erforderlich. OIDC-Sitzungen benötigen die Rollen und CSRF für Browser-Schreibaufrufe, JWTs zusätzlich alle Scopes.
+
+`architecture:delete` schützt dedizierte REST-DELETE-Endpunkte. `architecture:write` autorisiert eine vollständige Befehls-/DSL-Operation, die Inhalte entfernen oder ersetzen kann; Endpunkt-Scopes sind keine Policy für semantische Differenzen. Lesende Scopes erlauben keine fachlichen Änderungen.
+
+Organisationsgruppen werden beim Identitätsanbieter verwaltet und expliziten bekannten Rollen zugeordnet; es gibt keine lokale Gruppendatenbank. Vertrauenswürdige `taxonomy_repository_roles`-Claims bilden exakte Repository-IDs auf einen einzelnen String `READER`, `CONTRIBUTOR`, `MAINTAINER` oder `OWNER` für den aktuellen authentifizierten Akteur ab. Akzeptieren Sie keine Grants oder fremden Akteure aus Anfrageparametern. Claims ergänzen gespeicherte Mitgliedschaften und ersetzen weder Anwendungsrollen, Bearer-Scopes noch Eigentum am persönlichen Workspace. Siehe [Claim-Validierung](SECURITY.md#organisationsgruppen-und-repository-berechtigungen).
+
+Swagger verwendet den öffentlichen Client `taxonomy-swagger` für Authorization Code mit PKCE; der vertrauliche Client `taxonomy-app` dient serverseitigen Sitzungen. Automatisierung verwendet einen separaten vertraulichen Client-Credentials-Client. Konfigurieren Sie explizite Rollen/Scopes und Ressourcenrechte statt ADMIN als Abkürzung zu vergeben. Siehe [Keycloak-Einrichtung](KEYCLOAK_SETUP.md).
 
 ---
 
@@ -369,13 +379,13 @@ Spring Boot 4 wendet `SecurityMockMvcConfigurers.springSecurity()` **nicht** aut
 1. Die Spring-Security-Filterkette auf alle MockMvc-Anfragen anzuwenden.
 2. CSRF-Tokens automatisch auf Testanfragen anzuwenden.
 
-Alle MockMvc-Testklassen müssen `@WithMockUser(roles = "ADMIN")` (oder eine restriktivere Rolle) verwenden, um einen authentifizierten Benutzer zu simulieren. Ohne diese Annotation geben Anfragen HTTP 401/403 zurück.
+Wählen Sie die Authentifizierung passend zum Endpunkt: `@WithMockUser` für lokale/Sitzungs-Rollenprüfungen und vorhandene JWT-Fixtures für Bearer-Rollen-plus-Scope-Prüfungen. ADMIN impliziert weder ARCHITECT noch USER. Prüfen Sie je nach Operation erlaubte Rollen, fehlende/falsche Rollen, fehlende/falsche Scopes, anonymen Zugriff und Repository-/Workspace-Isolation. Verwenden Sie CSRF-Tokens für Browser-Schreibaufrufe und testen Sie deren Abweisung ohne Token. Ein lesendes Beispiel verwendet READER:
 
 ```java
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(roles = "ADMIN")
-class MyControllerTest {
+@WithMockUser(roles = "READER")
+class MyReadControllerTest {
     @Autowired
     private MockMvc mockMvc;
     // tests here

@@ -24,7 +24,8 @@ public interface ArchitectureCommandPort {
         public static Context of(RepositoryContext context, String commit, long revision) {
             return new Context(context.repositoryId(), WorkspaceOverlayScope.keyFor(context.workspaceId()),
                     context.branch(), commit, revision, context.username(),
-                    context.scope() == RepositoryScope.WORKSPACE ? "PRIVATE_WORKSPACE" : "READ_ONLY");
+                    context.scope() == RepositoryScope.WORKSPACE
+                            ? context.collaborative() ? "SHARED_WORKSPACE" : "PRIVATE_WORKSPACE" : "READ_ONLY");
         }
     }
 

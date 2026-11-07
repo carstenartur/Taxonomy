@@ -48,11 +48,11 @@ class ProtocolClientSecurityConfigTest {
     private KeycloakAuthenticationEntryPoint authenticationEntryPoint;
 
     @Test
-    void formLoginTreatsOnlyExplicitlyAuthenticatedApiAndWebDavCallsAsStateless() {
+    void formLoginOnlyExemptsSupportedBasicApiAndWebDavCalls() {
         assertThat(SecurityConfig.isStatelessProtocolClient(
                 request("/api/projects", "Basic dGVzdDp0ZXN0"))).isTrue();
         assertThat(SecurityConfig.isStatelessProtocolClient(
-                request("/dav/templates", "Bearer token"))).isTrue();
+                request("/dav/templates", "Bearer token"))).isFalse();
         assertThat(SecurityConfig.isStatelessProtocolClient(
                 request("/dav/templates/decision-rationale-report.dotx", "Basic dGVzdDp0ZXN0")))
                 .isTrue();

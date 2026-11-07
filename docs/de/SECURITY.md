@@ -16,7 +16,7 @@ Dieser Modus ist aktiv, solange das Spring-Profil `keycloak` nicht verwendet wir
 - REST-Clients können HTTP Basic verwenden.
 - Passwörter werden als BCrypt-Hashes in der Anwendungsdatenbank gespeichert.
 - Zustandsändernde Browser-Anfragen bleiben durch CSRF-Tokens geschützt.
-- Eine Anfrage unter `/api/**` ist nur dann von CSRF ausgenommen, wenn sie einen expliziten Basic- oder Bearer-`Authorization`-Header enthält und damit als zustandsloser API-Aufruf behandelt wird.
+- Nur durch unterstützte zustandslose HTTP-Basic- oder Keycloak-Bearer-Zugangsdaten authentifizierte Anfragen kommen für eine CSRF-Ausnahme infrage. Wiederhergestellte Browser-Sitzungen behalten den CSRF-Schutz; ein ignorierter `Authorization`-Header begründet keine Ausnahme.
 
 ### Keycloak/OIDC
 
@@ -24,7 +24,7 @@ Mit dem Spring-Profil `keycloak` wird die Authentifizierung an Keycloak delegier
 
 - Browser-Anmeldung erfolgt über OAuth 2.0/OIDC.
 - REST-Clients verwenden Bearer-JWTs.
-- Realm-Rollen werden auf die Anwendungsrollen USER, ARCHITECT und ADMIN abgebildet.
+- Vertrauenswürdige Rollen-Claims werden auf READER, USER (Analyst), ARCHITECT und ADMIN abgebildet. Bearer-Tokens behalten zusätzlich explizite OAuth-Authorities aus `scope`/`scp`.
 - Die lokale Passwortverwaltung ist in diesem Profil nicht das führende Identitätsmanagement.
 
 Details stehen in der [Keycloak-Anleitung](KEYCLOAK_SETUP.md).
@@ -51,13 +51,85 @@ Lesen Sie eine automatisch erzeugte Zugangsdaten-Datei ausschließlich mit dem v
 
 ## Rollen und Berechtigungen
 
-| Rolle | Vorgesehene Berechtigungen |
-|---|---|
-| `USER` | Taxonomie durchsuchen, analysieren, Graphen ansehen und erlaubte Exporte verwenden. |
-| `ARCHITECT` | USER-Berechtigungen plus Änderungen an Architektur, Relationen, DSL und Versionierung. |
-| `ADMIN` | ARCHITECT-Berechtigungen plus Administration, Diagnose und Benutzerverwaltung. |
+| Fähigkeit | Gespeicherte Rolle / Spring Authority | Vorgesehene Berechtigungen |
+|---|---|---|
+| Leser | `READER` / `ROLE_READER` | Architektur und bestehende Analysen lesen; erlaubte Exporte und autorisierte Backup-Downloads nutzen. |
+| Analyst | `USER` / `ROLE_USER` | Lesen und exportieren; Analysen ausführen und persönliche Analyseentwürfe verwalten. Aus Kompatibilitätsgründen bleibt `USER` der gespeicherte Rollenname. |
+| Architekt | `ARCHITECT` / `ROLE_ARCHITECT` | Lesen, analysieren, Fachdaten anlegen/ändern/löschen sowie Architekturänderungen importieren und veröffentlichen. |
+| Administrator | `ADMIN` / `ROLE_ADMIN` | Lesen/exportieren sowie technische Administration, Benutzer-/Sitzungsverwaltung und Diagnose. Administration allein gewährt weder Analyseausführung noch fachliche Bearbeitung. |
 
-Die Autorisierung wird serverseitig durch Spring Security und Methodensicherheit durchgesetzt. Das Ausblenden eines Bedienelements ist keine Sicherheitsgrenze.
+Rollen werden unabhängig vergeben. Ein Administrator benötigt zur Architekturbearbeitung ausdrücklich `ROLE_ARCHITECT`, zur Analyseausführung `ROLE_USER` oder `ROLE_ARCHITECT`. Bestehende Konten behalten ihre expliziten Mehrfachzuweisungen. Der lokale Bootstrap-Administrator erhält ausdrücklich `ROLE_USER`, `ROLE_ARCHITECT` und `ROLE_ADMIN`; daraus ergibt sich keine ADMIN-Rollenhierarchie. Der lokale Start legt `ROLE_READER` idempotent an; die Benutzerverwaltung bietet alle vier Rollen an.
+
+Spring Security verlangt für jede berechtigungsgeschützte REST-Operation eine erlaubte Anwendungsrolle in **jeder erforderlichen Berechtigungsgruppe**. Ein Bearer-JWT benötigt zusätzlich **alle aufgeführten OAuth-Scopes**: erlaubte Rolle innerhalb jeder Gruppe UND alle expliziten Scopes. Rollen-Tokens ohne Scope erhalten keinen Fallback; ein Scope ersetzt keine fehlende Rolle. Lokales HTTP Basic und Browser-Sitzungen verwenden Rollen mit den bestehenden CSRF-Regeln. Sind Fähigkeitsalternativen angegeben, muss eine vollständige Alternative passen; innerhalb dieser Alternative sind alle Rollengruppen und Scopes erforderlich. Bedingte Anforderungen gelten, sobald ihre Bedingung zutrifft. Eigene Authentifizierungs-/Passwort-Endpunkte und Preflight folgen den jeweiligen authentifizierten/öffentlichen Regeln des gemeinsamen Katalogs.
+
+| OAuth-Scope | Erlaubte Anwendungsrollen |
+|---|---|
+| `architecture:read` | READER, USER, ARCHITECT, ADMIN |
+| `architecture:write`, `architecture:delete`, `architecture:publish` | ARCHITECT |
+| `analysis:read` | READER, USER, ARCHITECT, ADMIN |
+| `analysis:run` | USER, ARCHITECT |
+| `integration:import` | ARCHITECT |
+| `integration:export` | READER, USER, ARCHITECT, ADMIN |
+| `repository:manage` | ARCHITECT, ADMIN, zusätzlich OWNER im exakten Repository |
+| `backup:read` | READER, USER, ARCHITECT, ADMIN |
+| `backup:create` | USER, ARCHITECT, ADMIN |
+| `admin:users`, `admin:configuration`, `admin:diagnostics` | ADMIN |
+
+Scopes klassifizieren vollständige Endpunktoperationen, nicht einzelne Änderungen innerhalb einer Bearbeitung. `architecture:delete` schützt dedizierte REST-DELETE-Endpunkte. `architecture:write` autorisiert die vollständige Befehls-/DSL-Bearbeitung, die Inhalte entfernen oder ersetzen kann; dies ist keine Policy für semantische Differenzen. Lesende Scopes erlauben weiterhin keine fachlichen Änderungen.
+
+Berechtigungsgruppen können gemeinsam erforderlich sein: `POST /api/workspace/external/push` und `/api/workspace/external/full-sync` benötigen bei Bearer-Aufrufen sowohl ARCHITECT mit `architecture:publish` **als auch** ADMIN mit `admin:configuration`. Sitzungen benötigen beide Rollen. Keine der Gruppen allein genügt.
+
+Die HTTP-Methode allein bestimmt nicht die Wirkung. `GET /api/analyze-stream` und `GET /api/analyze-node` starten neue LLM-Arbeit und benötigen ANALYSIS_RUN (USER oder ARCHITECT; Bearer-Scope `analysis:run`). Auch das verzögerte Anlegen der Standard-Arbeitskopie bei `GET /api/workspace/current` benötigt ANALYSIS_RUN. Leser ohne bereite Arbeitskopie erhalten HTTP 204 und bleiben im zentralen Lesekontext; vorhandene bereite Arbeitskopien bleiben unter den Ressourcenprüfungen lesbar.
+
+Workspace-Lebenszyklusoperationen verwenden explizite Berechtigungen; bestehende Eigentums- und Ressourcenprüfungen gelten weiter:
+
+| Operation | Erforderliche Berechtigung (Bearer-Scope) |
+|---|---|
+| Eigenen Workspace anlegen, archivieren, umbenennen oder dessen Beschreibung ändern; eigenen Navigationsverlauf leeren | `ANALYSIS_RUN` (`analysis:run`; USER oder ARCHITECT) |
+| Kontexte vergleichen, eigenen Workspace wechseln oder zu einem eigenen Navigationseintrag zurückkehren | `ARCHITECTURE_READ` (`architecture:read`) |
+| Eigenen Workspace löschen | `ARCHITECTURE_DELETE` (`architecture:delete`; ARCHITECT) |
+| Workspace-Zustand administrativ aus dem Arbeitsspeicher entfernen | `ADMIN_CONFIGURATION` (`admin:configuration`; ADMIN) |
+
+Nicht klassifizierte Workspace-Schreibaufrufe werden abgewiesen.
+
+Gespeicherte Projektanalyse-Jobs, Snapshots, Copilot-Status und noch nicht übernommene Neuformulierungsentwürfe verwenden `analysis:read`. Das Fortsetzen eines Jobs und die Verwaltung von Analyseentwürfen verwenden `analysis:run`. Copilot-/Autopilot-Start und ausdrückliches Copilot-Fortsetzen können auch Fachdaten ergänzen und benötigen deshalb sowohl `architecture:write` als auch `analysis:run`. Status-GETs beobachten gespeicherte Arbeit; sie starten weder Modellaufrufe erneut noch übernehmen sie Ergebnisse.
+
+Ein Import mit `analyzeAfterImport=true` benötigt zusätzlich zur fachlichen Schreibberechtigung `analysis:run`; die Prüfung erfolgt vor dem Speichern des Imports. Bei false darf ein auf Schreiben begrenztes Token ohne Analyseberechtigung importieren. Eine konfigurierte automatische Analyse nach dem Speichern von Anforderungen wird ohne Ausführungsberechtigung übersprungen.
+
+Dateidownloads wie Editor-SVG/PDF, Portfolio-DSL, gespeicherte Berichte und Neuformulierungsexporte benötigen `integration:export`; Format- und Fähigkeitsinformationen bleiben eigene Lesezugriffe. Die fachliche Veröffentlichung einer Integration benötigt `architecture:publish`. Ein Integrations-Retry verwendet die gespeicherte Vorgangsrichtung: INBOUND benötigt `integration:import`, OUTBOUND `integration:export`, PUSH/SYNCHRONIZE `architecture:publish`. Ein anderer erlaubter Retry-Scope berechtigt nicht zur Wiederholung einer anderen Vorgangsart. Swagger zeigt diese Alternativen und bedingten Anforderungen ausdrücklich.
+
+Neue Leser und auf Lesen begrenzte Tokens können Git-, Kontext- und Projektionsinformationen abrufen, ohne Workspace-Metadaten, Navigationszustand oder Projektionsdatensätze anzulegen. Benötigt ein Lesezugriff eine isolierte Arbeitskopie, liefert er ohne fertige Kopie 403. Die bestehenden ausdrücklichen Wege für systemseitige Einrichtung bleiben verfügbar.
+
+Die Veröffentlichung über einen konfigurierten Connector ist eine geprüfte fachliche Aktion mit serverseitig konfigurierten Profilen und Zugangsdaten sowie Prüfungen für Repository-Mitgliedschaft, Workspace-Eigentum und den exakten Branch. Sie ändert keine technische Transportkonfiguration. Externes Workspace-Push/Full-Sync behält die separate UND-Verknüpfung aus Veröffentlichung und Administration.
+
+Dokument-KI-Extraktion/Regulierungszuordnung und Quell-/Editor-Fokusvorschläge benötigen `analysis:run`. Fokus-Endpunkte akzeptieren optional `useAi`; die vollständige Operation benötigt deshalb auch bei deterministischen Anfragen die Ausführungsberechtigung. Gewöhnlicher Dokumentupload und Bestätigung bleiben fachliche Schreibvorgänge. Diagrammrouten mit erneuter Analyse (`/api/diagram/visio`, `/archimate`, `/mermaid`, `/structurizr` und `/export/{formatId}` unter diesem Präfix) benötigen `analysis:run` UND `integration:export`; `/api/diagram/current/**` und Score-Downloads benötigen nur `integration:export`.
+
+Eine angenommene explizite Pass-Fortsetzung autorisiert zugleich die Finalisierung ihrer gespeicherten Copilot-Operation, wenn fachliche Schreib- und Analyseausführungsberechtigung gemeinsam vorliegen. Eine reine Analysefortsetzung erhält keine fachliche Ergänzungsberechtigung. Laden, Polling und Wiederherstellung nach ungewissen Befehlsantworten bleiben beobachtend und wiederholen keinen Befehl automatisch.
+
+`ApiPermission` und die geordnete `ApiAccessPolicy` sind die gemeinsame Grundlage für serverseitige Autorisierung und OpenAPI. Die Policy unterscheidet Lesen (einschließlich lesender POST-Aufrufe), Analyseausführung, Änderungen/Löschen/Veröffentlichen, Import/Export und Administration. Nicht klassifizierte Schreibaufrufe werden auch für Administratoren abgewiesen. Bestehende Prüfungen für Projekt-/Repository-Sichtbarkeit, Mitgliedschaften, Lebenszyklus und Eigentum am persönlichen Workspace gelten weiter. Globale Rollen und Scopes gewähren keinen Zugriff auf fremde private Ressourcen. Ein ausgeblendetes Bedienelement ist keine Autorisierungsgrenze.
+
+## Organisationsgruppen und Repository-Berechtigungen
+
+Organisationsgruppen sowie LDAP-/AD- und SAML-Federation werden beim Identitätsanbieter verwaltet. Ordnen Sie dort vertrauenswürdige Gruppenmitgliedschaften expliziten Anwendungsrollen zu. Taxonomy führt keine zusätzliche lokale Gruppendatenbank und interpretiert beliebige Gruppennamen nicht als Berechtigungen.
+
+Ein validierter OIDC-/JWT-Claim kann dem **aktuell authentifizierten Akteur** zusätzlich Repository-Rollen gewähren:
+
+```json
+{
+  "taxonomy_repository_roles": {
+    "repository-a": "READER",
+    "repository-b": "CONTRIBUTOR"
+  }
+}
+```
+
+Der Claim muss exakte Repository-IDs auf jeweils eine einzelne Rolle abbilden. Werte lauten exakt `READER`, `CONTRIBUTOR`, `MAINTAINER` oder `OWNER` (ohne `ROLE_`-Präfix oder Arrays); Schlüssel dürfen weder leer sein noch umgebende Leerzeichen haben. Schlüssel werden wörtlich abgeglichen; Wildcards werden nicht aufgelöst. Ein fehlerhafter Eintrag bewirkt, dass die gesamte Claim-Abbildung ignoriert wird. Grants werden neben gespeicherten Mitgliedschaften ausgewertet, nur für das exakte Repository und nur wenn der geprüfte Akteur dem Namen des authentifizierten Principals entspricht. Anfrageparameter und Attribute lokaler Anmeldungen liefern keine solchen Grants. Ein Repository-Grant ersetzt weder Anwendungsrolle noch OAuth-Scope oder Eigentum an einem fremden Workspace. Bestehende Kompatibilitätsregeln für öffentliche/primäre Repositorys bleiben erhalten.
+
+## Swagger und API-Zugriffsbeschreibungen
+
+Swagger gruppiert Operationen nach ihren fachlichen Tags und zeigt pro Operation eine Zugriffstabelle mit allen erforderlichen Berechtigungsgruppen, erlaubten Rollen innerhalb jeder Gruppe, allen benötigten Bearer-Scopes, Wirkung, Ressourcenbeschränkungen sowie dokumentierten HTTP-401-/403-Antworten. Die Angaben stammen aus der gemeinsamen Zugriffs-Policy. OpenAPI bietet nur die im Deployment aktiven Authentifizierungsschemata an: lokales Basic/Sitzung oder OIDC-OAuth/Bearer mit `sessionCookie` auch im OIDC-Profil als Alternative. Bestehende OIDC-Sitzungen verwenden Anwendungsrollen und CSRF-Schutz für Browser-Schreibaufrufe; JWT-Aufrufe benötigen Rollen und alle aufgeführten Scopes. Fehlende oder ungültige Zugangsdaten ergeben 401; fehlen einem authentifizierten Aufrufer Fähigkeit, Scope oder Ressourcenrecht, erhält er 403.
+
+Im Keycloak-Modus verwendet Swagger einen separaten öffentlichen Client `taxonomy-swagger` mit Authorization Code und PKCE. Ein Client-Secret wird nicht im Browser verwendet. Der vertrauliche Client `taxonomy-app` bleibt für die serverseitige Sitzungsanmeldung zuständig. Dienstkonten verwenden einen separaten vertraulichen Client mit Client Credentials und expliziten Rollen, Scopes und Ressourcenrechten. Beachten Sie vor der Bereitstellung die [Keycloak-Einrichtung](KEYCLOAK_SETUP.md) und [Upgrade-Schritte](KEYCLOAK_MIGRATION.md).
 
 ## CSRF und API-Clients
 

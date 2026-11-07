@@ -51,4 +51,19 @@ class UserManagementFormTest {
             assertThat(errors.hasFieldErrors("roles[0]")).isTrue();
         }
     }
+    @Test
+    void acceptsReaderAloneAndAllFourExplicitRoles() {
+        try (var validator = new LocalValidatorFactoryBean()) {
+            validator.afterPropertiesSet();
+            for (List<String> roles : List.of(List.of("ROLE_READER"),
+                    List.of("ROLE_READER", "ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN"))) {
+                var form = new UserManagementForm("reader", "Reader", "", roles);
+                var errors = new BeanPropertyBindingResult(form, "form");
+                validator.validate(form, errors);
+                assertThat(errors.getAllErrors()).isEmpty();
+                assertThat(form.profile().get("roles")).isEqualTo(roles);
+            }
+        }
+    }
+
 }

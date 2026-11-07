@@ -639,6 +639,13 @@ Für Oracle-Instanzen, die eine **SID** verwenden, nutzen Sie: `jdbc:oracle:thin
 ./mvnw -B verify -Pdatabase-oracle
 ```
 
+Die bestehende Oracle-Lane enthält auch die [native Oracle-Wiederherstellungsprobe](../testing/native-oracle-recovery.md):
+freigegebene Core-SQL für neue Schemas, Ablehnung ungeprüfter Legacy-Adoption,
+originale Git-Historie, vollständiger Anwendungsneustart und nativer Data-Pump-Import
+in ein getrenntes, eingeschränktes Schema. Dafür sind echte Container-Ergebnisse
+erforderlich; Kompilieren allein qualifiziert keine Altinstallation und aktiviert
+keine verwalteten Oracle-Migrationen.
+
 ---
 
 ## Neue Datenbank hinzufügen

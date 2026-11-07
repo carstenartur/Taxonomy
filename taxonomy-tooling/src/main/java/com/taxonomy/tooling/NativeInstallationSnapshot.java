@@ -14,15 +14,32 @@ import static java.nio.file.StandardOpenOption.*;
 public final class NativeInstallationSnapshot {
     private static final String FORMAT = "taxonomy-native-cold-hsql-v1";
     private static final String POSTGRES_FORMAT = "taxonomy-native-postgres-bundle-v1";
+    private static final String FILES_FORMAT = "taxonomy-native-files-only-v1";
     public enum DatabaseFamily { HSQLDB, POSTGRESQL }
+    private enum SnapshotKind { HSQLDB, POSTGRESQL, FILES_ONLY }
     private static final int MAX_ENTRIES = 100_000, MAX_MANIFEST_BYTES = 16 * 1024 * 1024;
     private static final long MAX_BYTES = 64L * 1024 * 1024 * 1024;
     @FunctionalInterface public interface Checkpoint { void check() throws IOException; }
     public record Receipt(int fileCount, long bytes, String sha256) { }
     private record Entry(String path, long bytes, String sha256) { }
     private record Inventory(List<String> directories, List<Entry> files) { }
-    private record Verified(Path root, Inventory inventory, Receipt receipt, DatabaseFamily family) { }
+    private record Verified(Path root, Inventory inventory, Receipt receipt, SnapshotKind kind) { }
     private NativeInstallationSnapshot() { }
+
+    /** Filesystem component only. An external database requires its own backup and recovery authority. */
+    public static Receipt captureFiles(Path source, Path snapshot, String version, Checkpoint checkpoint) throws IOException {
+        return capturePrepared(source, snapshot, version, SnapshotKind.FILES_ONLY, ignored -> {}, checkpoint);
+    }
+
+    /** Verifies a files-only component; ordinary database snapshots are a separate contract. */
+    public static Receipt verifyFiles(Path snapshot, String version, Checkpoint checkpoint) throws IOException {
+        return verified(snapshot, version, true, checkpoint).receipt();
+    }
+
+    /** Restores only a filesystem component into an absent isolated target, without restoring a database. */
+    public static Receipt restoreFiles(Path snapshot, Path active, Path target, String version, Checkpoint checkpoint) throws IOException {
+        return restore(snapshot, active, target, version, true, checkpoint);
+    }
 
     public static Receipt capture(Path source, Path snapshot, String version, Checkpoint checkpoint) throws IOException {
         return capture(source, snapshot, version, DatabaseFamily.HSQLDB, checkpoint);
@@ -36,7 +53,12 @@ public final class NativeInstallationSnapshot {
     @FunctionalInterface interface Preparation { void prepare(Path data) throws IOException; }
     static Receipt capturePrepared(Path source, Path snapshot, String version, DatabaseFamily family,
                                    Preparation preparation, Checkpoint checkpoint) throws IOException {
-        requireVersion(version); Objects.requireNonNull(family); source = directory(source); snapshot = newDestination(snapshot);
+        return capturePrepared(source, snapshot, version, SnapshotKind.valueOf(Objects.requireNonNull(family).name()), preparation, checkpoint);
+    }
+
+    private static Receipt capturePrepared(Path source, Path snapshot, String version, SnapshotKind kind,
+                                           Preparation preparation, Checkpoint checkpoint) throws IOException {
+        requireVersion(version); source = directory(source); snapshot = newDestination(snapshot);
         separate(source, snapshot); checkpoint.check();
         Inventory expected = inventory(source, checkpoint);
         Path stage = Files.createTempDirectory(snapshot.getParent(), ".native-recovery-");
@@ -45,15 +67,16 @@ public final class NativeInstallationSnapshot {
             preparation.prepare(stage.resolve("data"));
             if (!expected.equals(inventory(source, checkpoint))) throw new IOException("Stopped source changed during capture");
             expected = inventory(stage.resolve("data"), checkpoint);
-            requireDatabasePayload(stage.resolve("data"), expected, family);
+            requireDatabasePayload(stage.resolve("data"), expected, kind);
             var manifest = new LinkedHashMap<String, Object>();
-            manifest.put("format", family == DatabaseFamily.HSQLDB ? FORMAT : POSTGRES_FORMAT); manifest.put("databaseFamily", family.name()); manifest.put("applicationVersion", version);
+            manifest.put("format", switch (kind) { case HSQLDB -> FORMAT; case POSTGRESQL -> POSTGRES_FORMAT; case FILES_ONLY -> FILES_FORMAT; });
+            manifest.put(kind == SnapshotKind.FILES_ONLY ? "scope" : "databaseFamily", kind.name()); manifest.put("applicationVersion", version);
             manifest.put("directories", expected.directories());
             manifest.put("files", expected.files().stream().map(entry -> Map.of("path", entry.path(), "bytes", entry.bytes(), "sha256", entry.sha256())).toList());
             byte[] bytes = FlatJson.pretty(manifest).getBytes(java.nio.charset.StandardCharsets.UTF_8);
             if (bytes.length > MAX_MANIFEST_BYTES) throw new IOException("Native snapshot manifest exceeds its bound");
             privateFile(stage.resolve("manifest.json")); Files.write(stage.resolve("manifest.json"), bytes, WRITE); force(stage.resolve("manifest.json"));
-            Receipt receipt = verify(stage, version, checkpoint);
+            Receipt receipt = verified(stage, version, kind == SnapshotKind.FILES_ONLY, checkpoint).receipt();
             publish(stage, snapshot, checkpoint); return receipt;
         } finally { removeStage(stage); }
     }
@@ -67,10 +90,15 @@ public final class NativeInstallationSnapshot {
     }
 
     public static Receipt restore(Path snapshot, Path active, Path target, String version, Checkpoint checkpoint) throws IOException {
+        return restore(snapshot, active, target, version, false, checkpoint);
+    }
+
+    private static Receipt restore(Path snapshot, Path active, Path target, String version, boolean filesOnly,
+                                   Checkpoint checkpoint) throws IOException {
         snapshot = directory(snapshot); active = originalSource(active); target = newDestination(target);
         separate(active, target); separate(snapshot, target); separate(active, snapshot);
         requireStoppedSource(active, checkpoint);
-        Verified verified = verified(snapshot, version, checkpoint);
+        Verified verified = verified(snapshot, version, filesOnly, checkpoint);
         Path stage = Files.createTempDirectory(target.getParent(), ".native-recovery-");
         try {
             Path data = stage.resolve("data"); copy(verified.root().resolve("data"), data, verified.inventory(), checkpoint);
@@ -92,7 +120,7 @@ public final class NativeInstallationSnapshot {
     }
 
     private static void requireFamily(Verified verified, DatabaseFamily expected) throws IOException {
-        if (expected != null && verified.family() != expected) throw new IOException("Native snapshot database family differs from the requested operation");
+        if (expected != null && verified.kind() != SnapshotKind.valueOf(expected.name())) throw new IOException("Native snapshot database family differs from the requested operation");
     }
 
     /** A publication retry never merges files: only an exactly matching, still-cold target is accepted. */
@@ -108,11 +136,11 @@ public final class NativeInstallationSnapshot {
         return expected.receipt();
     }
 
-    private static void requireDatabasePayload(Path root, Inventory expected, DatabaseFamily family) throws IOException {
-        if (family == DatabaseFamily.HSQLDB) {
+    private static void requireDatabasePayload(Path root, Inventory expected, SnapshotKind kind) throws IOException {
+        if (kind == SnapshotKind.HSQLDB) {
             if (expected.files().stream().noneMatch(entry -> entry.path().endsWith(".properties")))
                 throw new IOException("No HSQL properties file in the configured data root");
-        } else {
+        } else if (kind == SnapshotKind.POSTGRESQL) {
             if (expected.files().stream().anyMatch(entry -> entry.path().equals("PG_VERSION") || entry.path().endsWith("/PG_VERSION")))
                 throw new IOException("Raw PostgreSQL cluster directories are not supported; supply a custom-format logical dump");
             Path dump = root.resolve("database.dump");
@@ -125,6 +153,10 @@ public final class NativeInstallationSnapshot {
     }
 
     private static Verified verified(Path snapshot, String version, Checkpoint checkpoint) throws IOException {
+        return verified(snapshot, version, false, checkpoint);
+    }
+
+    private static Verified verified(Path snapshot, String version, boolean filesOnly, Checkpoint checkpoint) throws IOException {
         requireVersion(version); Path root = directory(snapshot); checkpoint.check();
         try (var children = Files.list(root)) {
             if (!children.map(path -> path.getFileName().toString()).collect(java.util.stream.Collectors.toSet()).equals(Set.of("data", "manifest.json")))
@@ -141,11 +173,21 @@ public final class NativeInstallationSnapshot {
         try {
             String text = new String(bytes, java.nio.charset.StandardCharsets.UTF_8); requireBoundedJson(text);
             var manifest = FlatJson.parseObject(text);
-            if (!manifest.keySet().equals(Set.of("format", "databaseFamily", "applicationVersion", "directories", "files"))
-                    || !(FORMAT.equals(manifest.get("format")) && "HSQLDB".equals(manifest.get("databaseFamily"))
-                         || POSTGRES_FORMAT.equals(manifest.get("format")) && "POSTGRESQL".equals(manifest.get("databaseFamily")))
-                    || !version.equals(manifest.get("applicationVersion")))
-                throw new IOException("Snapshot format or application version differs");
+            SnapshotKind kind;
+            if (filesOnly) {
+                if (!manifest.keySet().equals(Set.of("format", "scope", "applicationVersion", "directories", "files"))
+                        || !FILES_FORMAT.equals(manifest.get("format")) || !"FILES_ONLY".equals(manifest.get("scope"))
+                        || !version.equals(manifest.get("applicationVersion")))
+                    throw new IOException("Files-only snapshot format or application version differs");
+                kind = SnapshotKind.FILES_ONLY;
+            } else {
+                if (!manifest.keySet().equals(Set.of("format", "databaseFamily", "applicationVersion", "directories", "files"))
+                        || !(FORMAT.equals(manifest.get("format")) && "HSQLDB".equals(manifest.get("databaseFamily"))
+                             || POSTGRES_FORMAT.equals(manifest.get("format")) && "POSTGRESQL".equals(manifest.get("databaseFamily")))
+                        || !version.equals(manifest.get("applicationVersion")))
+                    throw new IOException("Snapshot format or application version differs");
+                kind = SnapshotKind.valueOf((String) manifest.get("databaseFamily"));
+            }
             if (!(manifest.get("directories") instanceof List<?> directories) || !(manifest.get("files") instanceof List<?> files)
                     || directories.size() + files.size() > MAX_ENTRIES) throw new IOException("Invalid snapshot inventory");
             var seen = new HashSet<String>(); var directoryNames = new ArrayList<String>(); var entries = new ArrayList<Entry>(); long total = 0;
@@ -163,8 +205,8 @@ public final class NativeInstallationSnapshot {
             directoryNames.sort(String::compareTo); entries.sort(Comparator.comparing(Entry::path));
             Inventory expected = new Inventory(List.copyOf(directoryNames), List.copyOf(entries));
             if (!expected.equals(inventory(directory(root.resolve("data")), checkpoint))) throw new IOException("Snapshot bytes or inventory differ from manifest");
-            requireDatabasePayload(root.resolve("data"), expected, DatabaseFamily.valueOf((String) manifest.get("databaseFamily")));
-            return new Verified(root, expected, new Receipt(entries.size(), total, hash(bytes)), DatabaseFamily.valueOf((String) manifest.get("databaseFamily")));
+            requireDatabasePayload(root.resolve("data"), expected, kind);
+            return new Verified(root, expected, new Receipt(entries.size(), total, hash(bytes)), kind);
         } catch (IllegalArgumentException | ArithmeticException failure) { throw new IOException("Invalid native snapshot manifest", failure); }
     }
 

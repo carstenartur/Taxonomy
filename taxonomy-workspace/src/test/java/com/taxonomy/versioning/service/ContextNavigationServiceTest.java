@@ -76,6 +76,21 @@ class ContextNavigationServiceTest {
         assertFalse(ctx.contextId().isBlank());
     }
 
+    @Test
+    void absentWorkspaceContextKeepsStableIdentityAcrossReads() {
+        var emptyWorkspaces = mock(WorkspaceManager.class);
+        var repositoryState = mock(RepositoryStateService.class);
+        org.mockito.Mockito.when(repositoryState.resolveWorkspaceBranch("reader")).thenReturn("draft");
+        var readOnlyNavigation = new ContextNavigationService(null, repositoryState, emptyWorkspaces, 50);
+
+        ContextRef first = readOnlyNavigation.getCurrentContext("reader");
+        ContextRef next = readOnlyNavigation.getCurrentContext("reader");
+
+        assertEquals(first.contextId(), next.contextId());
+        assertEquals("draft", next.branch());
+        assertEquals(ContextMode.READ_ONLY, next.mode());
+    }
+
     // ── openReadOnly ────────────────────────────────────────────────
 
     @Test

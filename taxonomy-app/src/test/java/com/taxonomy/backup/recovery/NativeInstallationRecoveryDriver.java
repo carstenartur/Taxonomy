@@ -26,6 +26,10 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.info.BuildProperties;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -33,7 +37,7 @@ import java.time.Instant;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 
-/** Three normal application JVMs share only recovered on-disk data and an external assertion oracle. */
+/** Normal application JVMs share only recovered data and an external assertion oracle. */
 public final class NativeInstallationRecoveryDriver {
     private static final String ACTOR = "cold-recovery";
     private static final String TEXT = "Retain original source evidence and review every deployment decision. Ünicode.\n";
@@ -42,14 +46,18 @@ public final class NativeInstallationRecoveryDriver {
 
     public static void main(String[] args) throws Exception {
         Path data = Path.of(args[0]), oracle = Path.of(args[1]); String phase = args[2];
-        String postgresUrl = System.getenv("TAXONOMY_RECOVERY_JDBC_URL");
-        boolean postgres = postgresUrl != null;
+        var database = NativeRecoveryDatabaseSettings.from(System.getenv(), data, phase);
+        String loginPassword = System.getenv("TAXONOMY_RECOVERY_LOGIN_PASSWORD");
+        if (loginPassword == null || loginPassword.isBlank()) {
+            throw new IllegalArgumentException("Native recovery requires an explicit fixture login password");
+        }
         try (var app = new SpringApplicationBuilder(TaxonomyApplication.class).run(
-                "--spring.profiles.active=" + (postgres ? "postgres,kubernetes" : "hsqldb-file"), "--server.address=127.0.0.1", "--server.port=0",
-                "--spring.datasource.url=" + (postgres ? postgresUrl : "jdbc:hsqldb:file:" + data.resolve("taxonomydb") + ";hsqldb.default_table_type=cached;hsqldb.write_delay_millis=0;shutdown=true"),
-                "--spring.datasource.username=" + (postgres ? System.getenv("TAXONOMY_RECOVERY_DB_USER") : "sa"),
-                "--spring.datasource.password=" + (postgres ? System.getenv("TAXONOMY_RECOVERY_DB_PASSWORD") : ""),
-                "--spring.jpa.hibernate.ddl-auto=" + (postgres ? "validate" : "update"),
+                "--spring.profiles.active=" + database.profiles(), "--server.address=127.0.0.1", "--server.port=0",
+                "--spring.datasource.url=" + database.url(),
+                "--spring.datasource.username=" + database.username(),
+                "--spring.datasource.password=" + database.password(),
+                "--spring.jpa.hibernate.ddl-auto=" + database.schemaAction(),
+                "--spring.jpa.properties.hibernate.hbm2ddl.schema_filter_provider=" + JgitStorageHibernateSchemaFilterProvider.class.getName(),
                 "--spring.jpa.properties.hibernate.search.backend.directory.type=local-filesystem",
                 "--spring.jpa.properties.hibernate.search.backend.directory.root=" + data.resolve("lucene-index"),
                 "--taxonomy.backup.source-content-directory=" + data.resolve("source-content"),
@@ -58,15 +66,25 @@ public final class NativeInstallationRecoveryDriver {
                 "--llm.mock=true", "--llm.provider=GEMINI", "--llm.replay=false", "--llm.record=false",
                 "--gemini.api.key=", "--openai.api.key=", "--deepseek.api.key=", "--qwen.api.key=", "--llama.api.key=", "--mistral.api.key=",
                 "--custom.llm.url=", "--custom.llm.api.key=", "--taxonomy.analysis.transport.mode=local", "--taxonomy.analysis.artemis.broker-url=",
-                "--taxonomy.admin-password=" + UUID.randomUUID())) {
+                "--taxonomy.require-password-change=false",
+                "--taxonomy.admin-password=" + (phase.equals("seed") ? loginPassword : UUID.randomUUID()))) {
             assertThat(app.getBean(LlmProviderConfig.class).isMockMode()).isTrue();
-            Properties expected = new Properties();
             if (phase.equals("seed")) {
-                seed(app, data, expected);
-                try (var output = Files.newOutputStream(oracle, StandardOpenOption.CREATE_NEW)) { expected.store(output, "Native recovery assertion oracle; no credentials"); }
-            } else {
-                try (var input = Files.newInputStream(oracle)) { expected.load(input); }
-                verify(app, data, expected, phase);
+                try (var administrator = AuthContext.open(app, "admin", loginPassword)) {
+                    app.getBean(com.taxonomy.security.service.UserManagementService.class).createUser(
+                            Map.of("username", ACTOR, "displayName", "Native recovery actor"), loginPassword, "admin");
+                }
+            }
+            try (var actor = AuthContext.open(app, ACTOR, loginPassword)) {
+                Properties expected = new Properties();
+                if (phase.equals("seed")) {
+                    seed(app, data, expected);
+                    try (var output = Files.newOutputStream(oracle, StandardOpenOption.CREATE_NEW)) { expected.store(output, "Native recovery assertion oracle; no credentials"); }
+                } else {
+                    try (var input = Files.newInputStream(oracle)) { expected.load(input); }
+                    verify(app, data, expected, phase);
+                }
+                verifyAuthenticationAndConnection(app, database, loginPassword);
             }
             var jdbc = app.getBean(JdbcTemplate.class);
             assertThat(jdbc.queryForObject("select count(*) from req_analysis_job where status <> 'SUCCESS'", Long.class)).isZero();
@@ -81,6 +99,14 @@ public final class NativeInstallationRecoveryDriver {
         var workspace = app.getBean(RepositoryWorkspaceService.class).createWorkingCopy(ACTOR, repository.getRepositoryId(), "draft", "Cold recovery", "");
         expected.setProperty("repository", repository.getRepositoryId()); expected.setProperty("workspace", workspace.getWorkspaceId());
         expected.setProperty("applicationVersion", app.getBean(BuildProperties.class).getVersion());
+        expected.setProperty("actorPrincipal", currentPrincipal(app));
+        var privateScope = app.getBean(WorkspaceContextResolver.class).resolveCurrentRepositoryContext();
+        assertThat(privateScope).isEqualTo(RepositoryContext.workspace(repository.getRepositoryId(), workspace.getWorkspaceId(), "draft", ACTOR));
+        var sharing = app.getBean(WorkspaceCollaborationService.class).setEnabled(privateScope,
+                app.getBean(ArchitectureEditorService.class).read(privateScope, null).context(), true);
+        assertThat(sharing.enabled()).isTrue();
+        assertThat(sharing.mayManage()).isTrue();
+        assertSharedWorkingCopy(app, expected);
         var context = context(expected); var scope = scope(expected);
         assertThat(app.getBean(TaxonomyService.class).getRootCodes()).contains("CP");
         var source = app.getBean(SourceProvenanceService.class);
@@ -142,6 +168,8 @@ public final class NativeInstallationRecoveryDriver {
 
     private static void verify(ConfigurableApplicationContext app, Path data, Properties expected, String phase) throws Exception {
         assertThat(app.getBean(BuildProperties.class).getVersion()).isEqualTo(expected.getProperty("applicationVersion"));
+        assertThat(currentPrincipal(app)).isEqualTo(expected.getProperty("actorPrincipal"));
+        assertSharedWorkingCopy(app, expected);
         var context = context(expected); var scope = scope(expected); long project = Long.parseLong(expected.getProperty("project")), requirement = Long.parseLong(expected.getProperty("requirement"));
         var projects = app.getBean(ProjectPortfolioService.class);
         assertThat(projects.getProject(project, ACTOR, context).title()).isEqualTo("Recovery portfolio");
@@ -179,11 +207,14 @@ public final class NativeInstallationRecoveryDriver {
         assertThat(git.getDslAtCommit(expected.getProperty("firstCommit"))).contains("Original");
         assertThat(git.getDslAtCommit(expected.getProperty("secondCommit"))).contains("Checkpointed");
         var editor = app.getBean(ArchitectureEditorService.class); var current = editor.read(scope, null);
+        if (phase.equals("restart")) {
+            assertThat(current.dsl()).isEqualTo(expected.getProperty("draftDsl"));
+        }
         if (phase.equals("undo")) {
             assertThat(current.dsl()).isEqualTo(expected.getProperty("draftDsl"));
             editor.execute(scope, new Command(current.context(), metadata(UNDO), new UndoArchitectureCommand(UUID.fromString(DRAFT))));
             assertThat(editor.read(scope, null).dsl()).contains("Checkpointed").doesNotContain("Uncheckpointed");
-        } else {
+        } else if (phase.equals("redo")) {
             assertThat(current.dsl()).contains("Checkpointed").doesNotContain("Uncheckpointed");
             editor.execute(scope, new Command(current.context(), metadata(REDO), new RedoArchitectureCommand(UUID.fromString(UNDO))));
             var restored = editor.read(scope, null); assertThat(restored.dsl()).isEqualTo(expected.getProperty("draftDsl"));
@@ -194,11 +225,82 @@ public final class NativeInstallationRecoveryDriver {
         assertThat(app.getBean(EditorJournal.class).read(scope).state().pendingCheckpoint()).isNull(); assertSearch(app);
     }
 
+    private static void verifyAuthenticationAndConnection(ConfigurableApplicationContext app,
+                                                          NativeRecoveryDatabaseSettings database,
+                                                          String password) throws Exception {
+        var user = app.getBean(com.taxonomy.security.repository.UserRepository.class)
+                .findByUsername("admin").orElseThrow();
+        assertThat(app.getBean(org.springframework.security.crypto.password.PasswordEncoder.class)
+                .matches(password, user.getPasswordHash())).isTrue();
+        assertThat(user.isEnabled()).isTrue();
+        var server = (org.springframework.boot.web.server.context.WebServerApplicationContext) app;
+        var endpoint = java.net.URI.create("http://127.0.0.1:" + server.getWebServer().getPort()
+                + "/api/admin/system-information");
+        var client = java.net.http.HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(10)).build();
+        var request = java.net.http.HttpRequest.newBuilder(endpoint).timeout(java.time.Duration.ofSeconds(20));
+        var response = client.send(request.header("Authorization", basic(password)).GET().build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(200);
+        var json = tools.jackson.databind.json.JsonMapper.builder().build().readTree(response.body());
+        assertThat(json.path("database").path("schemaAction").asText())
+                .isEqualToIgnoringCase(database.schemaAction());
+        assertThat(json.path("database").path("identity").path("status").asText()).isEqualTo("AVAILABLE");
+        assertThat(json.path("database").path("identity").path("user").asText())
+                .isEqualToIgnoringCase(database.username());
+        assertThat(json.path("database").path("identity").path("sessionUser").asText())
+                .isEqualToIgnoringCase(database.username());
+        assertThat(json.path("database").path("identity").path("schema").asText())
+                .isEqualToIgnoringCase(database.expectedSchema());
+        assertThat(response.body().contains(password) || (!database.password().isEmpty() && response.body().contains(database.password()))
+                || response.body().contains(database.url())).as("Diagnostics must redact credentials and JDBC URLs").isFalse();
+        var denied = client.send(java.net.http.HttpRequest.newBuilder(endpoint)
+                        .timeout(java.time.Duration.ofSeconds(20))
+                        .header("Authorization", basic(UUID.randomUUID().toString())).GET().build(),
+                java.net.http.HttpResponse.BodyHandlers.discarding());
+        assertThat(denied.statusCode()).isEqualTo(401);
+    }
+
+    private static String basic(String password) {
+        return "Basic " + Base64.getEncoder().encodeToString(("admin:" + password).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void assertSharedWorkingCopy(ConfigurableApplicationContext app, Properties expected) {
+        assertThat(app.getBean(com.taxonomy.workspace.repository.UserWorkspaceRepository.class)
+                .findByWorkspaceId(expected.getProperty("workspace")).orElseThrow().isCollaborative())
+                .as("The owner-authorized opt-in survives native recovery and application restarts").isTrue();
+        assertThat(app.getBean(WorkspaceContextResolver.class).resolveCurrentRepositoryContext()).isEqualTo(scope(expected));
+    }
+
+    private static String currentPrincipal(ConfigurableApplicationContext app) {
+        return app.getBean(com.taxonomy.security.service.PrincipalIdentityService.class)
+                .require(SecurityContextHolder.getContext().getAuthentication()).value().toString();
+    }
+
+    /** Uses the application's credential verifier and stable principal, including after native restore. */
+    private static final class AuthContext implements AutoCloseable {
+        private final SecurityContext previous;
+
+        private AuthContext(SecurityContext previous) { this.previous = previous; }
+
+        static AuthContext open(ConfigurableApplicationContext app, String username, String password) throws Exception {
+            var authentication = app.getBean(AuthenticationConfiguration.class).getAuthenticationManager()
+                    .authenticate(UsernamePasswordAuthenticationToken.unauthenticated(username, password));
+            assertThat(authentication.getName()).isEqualTo(username);
+            var previous = SecurityContextHolder.getContext();
+            var current = SecurityContextHolder.createEmptyContext();
+            current.setAuthentication(authentication);
+            SecurityContextHolder.setContext(current);
+            return new AuthContext(previous);
+        }
+
+        @Override public void close() { SecurityContextHolder.setContext(previous); }
+    }
+
     private static void assertSearch(ConfigurableApplicationContext app) {
         assertThat(app.getBean(SearchFacade.class).fullTextSearch("Capabilities", 20)).extracting(TaxonomyNodeDto::getCode).contains("CP");
     }
     private static WorkspaceContext context(Properties values) { return new WorkspaceContext(ACTOR, values.getProperty("workspace"), "draft", values.getProperty("repository")); }
-    private static RepositoryContext scope(Properties values) { return RepositoryContext.workspace(values.getProperty("repository"), values.getProperty("workspace"), "draft", ACTOR); }
+    private static RepositoryContext scope(Properties values) { return RepositoryContext.collaborativeWorkspace(values.getProperty("repository"), values.getProperty("workspace"), "draft", ACTOR); }
     private static Metadata metadata(String id) { return new Metadata(id, id, id, "Native recovery evidence"); }
     private static String hash(byte[] bytes) throws Exception { return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes)); }
 }

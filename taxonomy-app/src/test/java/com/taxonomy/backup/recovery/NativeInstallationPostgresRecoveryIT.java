@@ -27,7 +27,8 @@ class NativeInstallationPostgresRecoveryIT {
         try (var database = database()) {
             Path source = Files.createDirectory(temporary.resolve("source")), snapshot = temporary.resolve("snapshot"), target = temporary.resolve("restored");
             Path oracle = temporary.resolve("oracle.properties");
-            application(database, database.sourceUrl, source, oracle, "seed", evidence);
+            String loginPassword = UUID.randomUUID().toString();
+            application(database, database.sourceUrl, source, oracle, "seed", evidence, loginPassword);
             Properties expected = new Properties(); try (var input = Files.newInputStream(oracle)) { expected.load(input); }
             String version = expected.getProperty("applicationVersion");
             long largeObject = Long.parseLong(database.query(database.sourceUrl, "select lo_from_bytea(0, decode('000102ff', 'hex'))"));
@@ -70,8 +71,8 @@ class NativeInstallationPostgresRecoveryIT {
             assertThat(replay).doesNotExist();
             assertThat(database.query(database.targetUrl, "select value from recovery_after_commit")).isEqualTo("41");
             database.sql(database.targetUrl, "drop table recovery_after_commit");
-            application(database, database.targetUrl, target, oracle, "undo", evidence);
-            application(database, database.targetUrl, target, oracle, "redo", evidence);
+            application(database, database.targetUrl, target, oracle, "undo", evidence, loginPassword);
+            application(database, database.targetUrl, target, oracle, "redo", evidence, loginPassword);
             assertThat(digests(source)).isEqualTo(original);
             assertThat(database.rows(database.sourceUrl)).as("Every source public table stays unchanged after target edits/restarts").isEqualTo(originalRows);
             assertThat(database.query(database.sourceUrl, "select encode(lo_get(" + largeObject + "), 'hex')")).isEqualTo("000102ff");
@@ -84,6 +85,7 @@ class NativeInstallationPostgresRecoveryIT {
             result.put("filesystemBinding", "snapshot of stopped source root; restored to a new isolated root; original relative source paths retained");
             result.put("sourcePublicTablesUnchanged", true); result.put("preservedPublicTableCount", originalRows.size());
             result.put("sourceFilesUnchanged", true); result.put("targetRestartCount", 2); result.put("sourceAliasRejected", true); result.put("nonemptyTargetRejected", true);
+            result.put("sharedWorkingCopyOptInPreserved", true); result.put("authenticatedActorPrincipalPreserved", true);
             result.put("largeObjectBytesPreserved", true);
             result.put("lateSqlFailureRollsBackDataAndReceipt", true); result.put("changedCommittedTargetRejectsReplay", true);
             result.put("coveredData", List.of("portfolio and requirement history", "immutable saved analysis and source provenance", "reviewed solution/product decisions",
@@ -197,11 +199,13 @@ class NativeInstallationPostgresRecoveryIT {
         var builder = new ProcessBuilder(command); builder.environment().put("PGSERVICEFILE", db.serviceFile.toString()); builder.environment().put("PGPASSFILE", db.passFile.toString());
         return process(builder, evidence.resolve(String.format("%02d-%s-%s.log", ++db.toolInvocation, operation, service)));
     }
-    private static void application(Database db, String url, Path data, Path oracle, String phase, Path evidence) throws Exception {
+    private static void application(Database db, String url, Path data, Path oracle, String phase, Path evidence, String loginPassword) throws Exception {
         var builder = new ProcessBuilder(java(), "-Xmx768m", "-cp", classpath(), NativeInstallationRecoveryDriver.class.getName(), data.toString(), oracle.toString(), phase);
         builder.environment().put("TAXONOMY_RECOVERY_JDBC_URL", url); builder.environment().put("TAXONOMY_RECOVERY_DB_USER", db.user); builder.environment().put("TAXONOMY_RECOVERY_DB_PASSWORD", db.password);
+        builder.environment().put("TAXONOMY_RECOVERY_LOGIN_PASSWORD", loginPassword);
         Path log = evidence.resolve(phase + ".log");
         ProcessTestDiagnostics.assertCompleted(process(builder, log), log, "NATIVE_INSTALLATION_RECOVERY_OK " + phase);
+        assertThat(Files.readString(log).contains(loginPassword)).as("Application logs redact the fixture login password").isFalse();
     }
     private static int process(ProcessBuilder builder, Path log) throws Exception {
         var process = builder.redirectErrorStream(true).redirectOutput(log.toFile()).start(); boolean done = process.waitFor(150, TimeUnit.SECONDS);

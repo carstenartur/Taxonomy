@@ -1,9 +1,10 @@
 # Taxonomy 1.5.3
 
 Taxonomy 1.5.3 develops the path from retained requirements and analysis results
-to reviewed, editable architecture. It adds scoped inventory comparison,
-explicit snapshot adoption, stronger recovery and exchange evidence, and fixes
-analysis, navigation and export behavior. These notes describe the source for
+to reviewed, editable architecture. It adds shared working copies, optional
+native Sparx file exchange, scoped inventory comparison, explicit snapshot
+adoption, stronger recovery and consistent navigation and export styling.
+These notes describe the source for
 this release; publication is established by the published release assets and
 their matching source and digest evidence.
 
@@ -15,12 +16,37 @@ snapshot and provenance, checks the current workspace, and uses the existing
 semantic command, undo and history mechanisms. Reopening the result does not
 require rerunning the model. Snapshot adoption remains an explicit user action.
 
+An owner can explicitly share an architecture working copy with authorized
+contributors to its source repository. Participants use the same durable
+revision and operation history; stale writes conflict explicitly, and personal
+undo does not silently reverse another participant's work. Refresh preserves
+unsaved form input, including an edited element that another participant has
+deleted. Shared editor, history and export operations check active stable
+identity and current membership. Private working copies remain the default. Recovery
+retains the sharing setting and historical operation actors without restoring
+revoked memberships or granting authority from historical evidence.
+
 The requirement and architecture views now carry their project, repository and
 working-copy context through the workflow. Next-step controls expose
 reformulation, the focus lens and architecture editing where those actions are
 available. Tree and graph selection stay synchronized, while navigation and
 filter changes preserve diagram position. Printing supports A0 and A1 output.
 Contextual help is available from the application views.
+
+One compact toolbar combines the File/Edit/View/Tools/Help commands and work-area
+navigation. The score legend remains visible in one compact row. Search
+explains its modes with localized examples; semantic search accepts natural
+language. Selecting a hit or moving to the previous/next hit selects it in Graph
+Explorer while retaining architecture focus, filters and drafts. Application
+resources and returned operation links retain the configured servlet context
+path, including nested deployments.
+
+Configured customer colors also reach the shared SVG, vector PDF, editable
+Visio shape and HTML report exports. Each export uses one validated snapshot of
+supported literal hex-color tokens; unsupported rules retain bundled defaults.
+Semantic score and disposition colors, saved evidence and Word/DOTX template
+authority remain intact. See [customer styles](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/en/CUSTOM_STYLES.md)
+for the exact format and token contract.
 
 Rule weights and conflict scores are presented as heuristic evaluation inputs.
 Missing evidence and unresolved root relevance remain visible. They do not
@@ -48,6 +74,36 @@ retrieval; the second-tab correction belongs to this release. Remaining adapter
 identity, stored-event/status retention and expired-recovery work is tracked in
 [#1354](https://github.com/carstenartur/Taxonomy/issues/1354). This closure does not
 claim that every lifecycle adapter or retention case is complete.
+
+## REST access and Swagger
+
+Reader, analyst (`USER`), architect and administrator are independent application
+roles. Bearer integrations additionally require the named OAuth scopes for the
+complete operation. Repository visibility, current membership, workspace
+ownership and source restrictions remain additional checks. Technical
+administration alone grants no business-data editing permission; existing
+administrators who edit architectures need an explicit `ARCHITECT` assignment.
+
+Swagger documents each operation's roles, scopes, alternatives, conditional
+requirements and resource restrictions from the same ordered policy used for
+request authorization. The Keycloak configuration supports Authorization Code
+with PKCE and service-account Client Credentials, including a separate public
+Swagger client. Active Basic and browser-session mechanisms remain supported.
+Live identity-provider federation and deployment acceptance require the
+operator's actual identity-provider environment.
+
+Copilot status reads observe retained operations without resuming provider work.
+An explicit authorized resume action uses the stored operation identity and
+settings. Read-only callers do not implicitly create workspaces or Git storage.
+Integration retries recheck the retained operation's direction and current
+authority. Business publication through a configured connector requires its
+publication permission; external Git push and full synchronization additionally
+require technical administration. Browser sessions retain CSRF protection even
+when a request supplies an ignored protocol-credential header.
+
+See [security](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/en/SECURITY.md)
+and [Keycloak setup](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/en/KEYCLOAK_SETUP.md)
+for the role, scope and migration contracts.
 
 ## Scoped inventory evidence
 
@@ -79,6 +135,18 @@ See [inventory comparison](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/
 supported evidence and review contracts.
 
 ## Recovery and exchange
+
+The independently installable Sparx plugin reads native QEA snapshots and
+offers reviewed file delivery in two modes: create a new project from a supplied
+empty template, or update a copy of the exact retained import basis. It preserves
+native identities, distinct package and diagram occurrences, and unselected
+source data within its documented profile. Unknown semantics and representation
+losses remain visible for review. Incomplete snapshots do not imply deletions.
+Basis/result bytes and review provenance are retained; completed downloads and
+history survive restart or plugin removal. File delivery does not advance a
+remote PCS synchronization checkpoint. The automated harness uses synthetic
+fixtures; actual Enterprise Architect/PCS execution remains unverified, and no
+official Sparx template is redistributed. See [Sparx integration](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/features/sparx-integration.md).
 
 Native cold installation recovery captures a stopped, file-backed HSQL
 installation and restores it to a distinct data root for the same application
@@ -152,13 +220,40 @@ update their JDK; packaged images and their runtime metadata use the same
 version. Local ONNX search initialization works with generative LLM provider
 configurations. Deployment documentation includes the Artemis Kubernetes setup.
 
+Custom OpenAI-compatible server status now uses an actual bounded connectivity
+check. Unreachable servers and rejected credentials appear unavailable; an
+unsupported or inconclusive check is distinguished from confirmed reachability.
+A reachable server is not presented as proof that its selected model can
+generate a response.
+
+The Git storage dependency is `jgit-storage-hibernate` **0.12.0**, including its
+qualified Oracle Free 23.26.3 support. Oracle acceptance now covers the released
+fresh Core schema, retained Git identities and history, validate-only restarts
+and same-version native schema recovery. An unknown legacy Oracle schema is
+rejected without changing its data; automatic adoption of copied pre-library
+Oracle tables is not provided by that library release.
+
 PostgreSQL remains the external production database profile with its managed
-migration contract. SQL Server and Oracle retain their documented evaluation
-and compatibility scope. Database migration, native recovery and portable
+application migration contract. SQL Server and Oracle compatibility profiles
+retain their separately documented schema and startup contracts. Database
+migration, native recovery and portable
 cross-database restoration are separate operations; changing a Spring profile
 does not migrate stored data.
 
 ## Build verification
+
+Documentation capture is owned by the existing JUnit integration tests and
+started with `./mvnw -B verify -Pscreenshots`. The common inventory verifies every
+retained guide PNG against fresh output and records its actual source/tree and
+image hashes. Captions describe the captured application state and fixture
+boundaries. The selected Copilot result capture includes its result overview
+and report control in the viewport.
+
+Release verification explicitly enables the same ONNX owners as canonical CI.
+The ONNX browser setup waits for the login response instead of cancelling it
+with a competing navigation. A real-template browser regression exercises that
+sequence; failure diagnostics preserve the original timeout, redact complete
+values before truncation and retain other evidence when a diagnostic read fails.
 
 CI distributes 10 measured runtime suites and 45 domain-integration suites into
 explicit Maven groups while retaining the complete test inventory, ONNX and
@@ -196,7 +291,7 @@ traceability alongside the new synchronization and second-tab work above.
 | [#638](https://github.com/carstenartur/Taxonomy/issues/638) | Constrained Kubernetes/Artemis recovery foundation; merged #815/#1201/#1273 | Selected workload/resource, provider-HTTP/TLS failure and deployment evidence: [#1351](https://github.com/carstenartur/Taxonomy/issues/1351) |
 | [#793](https://github.com/carstenartur/Taxonomy/issues/793) | Branch-scoped hypotheses/evidence and data-retaining migrations; merged #1296 before v1.5.2 | Broader indexing, recovery and identity keep their existing owners |
 | [#836](https://github.com/carstenartur/Taxonomy/issues/836) | Revision-pinned browser editing and immutable template comparison; merged #1012/#1022 in September | Rich layouts and staged candidate preflight: [#832](https://github.com/carstenartur/Taxonomy/issues/832) |
-| [#1179](https://github.com/carstenartur/Taxonomy/issues/1179) | German/English server-rendered local login with framework security; merged #1244 on 17 October | Focused bilingual anonymous-login browser acceptance: [#1355](https://github.com/carstenartur/Taxonomy/issues/1355) |
+| [#1179](https://github.com/carstenartur/Taxonomy/issues/1179) | German/English server-rendered local login with framework security; merged #1244 on 17 October | Bilingual anonymous-login acceptance [#1355](https://github.com/carstenartur/Taxonomy/issues/1355) is complete in #1358; broader enabled-mode authentication remains [#786](https://github.com/carstenartur/Taxonomy/issues/786) |
 | [#1184](https://github.com/carstenartur/Taxonomy/issues/1184) | Guided replay demo inside the application, explicit review/adoption and labelled Markdown report; merged #1203/#1269 | Transport-wide isolation, offered exports at both iterations and remaining integrated acceptance: [#1352](https://github.com/carstenartur/Taxonomy/issues/1352) |
 
 The product-gap analysis and frozen-report foundation is implemented, while

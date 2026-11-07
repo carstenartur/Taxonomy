@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 
 /** Real Hibernate Git refs and portfolio transactions expose failures that ORM rollback cannot repair. */
 @SpringBootTest
-@WithMockUser(username = "alice", roles = "ADMIN")
+@WithMockUser(username = "alice", roles = {"USER", "ARCHITECT", "ADMIN"})
 class GitNativeSyncPortfolioAtomicityTest {
     private static final String MODEL = """
             element recorder type Component {

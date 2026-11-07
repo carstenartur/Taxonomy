@@ -188,14 +188,14 @@
       "fromPackage": "com.taxonomy.analysis.session",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
-      "classDependencyCount": 2
+      "classDependencyCount": 3
     },
     {
       "fromContext": "analysis",
       "fromPackage": "com.taxonomy.analysis.session",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 5
+      "classDependencyCount": 7
     },
     {
       "fromContext": "analysis",
@@ -496,7 +496,7 @@
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 31
+      "classDependencyCount": 34
     },
     {
       "fromContext": "app-composition",
@@ -945,6 +945,41 @@
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
       "classDependencyCount": 4
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.security.access",
+      "toContext": "interop",
+      "toPackage": "com.taxonomy.interop",
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.security.access",
+      "toContext": "portfolio",
+      "toPackage": "com.taxonomy.portfolio.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.security.access",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.editor",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.security.access",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.model",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.security.access",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 2
     },
     {
       "fromContext": "app-composition",

@@ -193,7 +193,7 @@ for(const width of [1366,390])test(`closing About returns focus to a visible nav
         await openCategory(page,'Help');await page.locator('#aboutBtn').click();
         await page.waitForFunction(()=>document.getElementById('aboutModal').contains(document.activeElement));
         await page.keyboard.press('Escape');await page.locator('#aboutModal').waitFor({state:'hidden'});
-        assert.equal(await page.locator(width<768?'#applicationNavigationMenu > summary':'#applicationHelp > summary').evaluate(node=>node===document.activeElement),true);
+        assert.equal(await page.locator(width<1024?'#applicationNavigationMenu > summary':'#applicationHelp > summary').evaluate(node=>node===document.activeElement),true);
     }finally{await finish(page);}
 });
 
@@ -223,7 +223,7 @@ for(const delayed of [false,true])test(`mobile database dialog restores visible 
 for(const locale of ['de','en'])for(const width of [320,390,700,768,900,1100,1366])test(`${locale}: commands and work areas remain reachable at ${width}px`,async()=>{
     const page=await fixture(locale,width);try{
         const toggle=page.locator('#applicationNavigationMenu > summary');
-        assert.equal(await toggle.isVisible(),width<768);
+        assert.equal(await toggle.isVisible(),width<1024);
         assert.ok((await page.locator('#applicationNavigation').boundingBox()).height<=64);
         for(const link of await page.locator('#applicationWorkspaces a').all()){
             assert.equal(await link.isVisible(),true);const box=await link.boundingBox();assert.ok(box.height>=44&&box.width>=44);
@@ -231,7 +231,7 @@ for(const locale of ['de','en'])for(const width of [320,390,700,768,900,1100,136
         await page.locator('#businessText').fill('Retained requirement draft');
         for(const destination of ['architecture','versions','dsl-editor','graph','help','analyze']){
             await navigateToPage(page,destination);assert.equal(await page.locator('#tab-'+destination).isVisible(),true);
-            if(width<768)assert.equal(await page.locator('#applicationNavigationMenu').getAttribute('open'),null);
+            if(width<1024)assert.equal(await page.locator('#applicationNavigationMenu').getAttribute('open'),null);
         }
         assert.equal(await page.locator('#businessText').inputValue(),'Retained requirement draft');
         for(const category of ['File','Edit','View','Tools','Help']){

@@ -41,7 +41,7 @@ import org.springframework.security.test.context.support.WithMockUser;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(roles = "ADMIN")
+@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class ArchitectureIntelligenceTests {
 
     @Autowired private MockMvc mockMvc;
@@ -239,7 +239,7 @@ class ArchitectureIntelligenceTests {
     }
 
     @Test
-    @WithMockUser(username = "architecture-intelligence-import", roles = "ADMIN")
+    @WithMockUser(username = "architecture-intelligence-import", roles = {"USER", "ARCHITECT", "ADMIN"})
     void archiMateImportEndpointReturnsOkInWorkingCopy() throws Exception {
         var repository = repositoryProvisioning.createRepository(
                 "ArchiMate endpoint", "archimate-endpoint-" + java.util.UUID.randomUUID(),

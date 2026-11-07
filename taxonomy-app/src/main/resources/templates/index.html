@@ -237,17 +237,14 @@
                 </div>
 
                 <!-- Match Legend -->
-                <div class="card shadow-sm mb-3">
-                    <div class="card-body py-2">
-                        <div class="d-flex align-items-center gap-2 flex-wrap" th:title="#{legend.title}" title="Score colour coding: green intensity indicates the match percentage. 0% = no match (transparent), 100% = perfect match (solid green). Text turns white above 60%.">
-                            <small class="text-muted" th:text="#{legend.label}">Match legend:</small>
-                            <span class="legend-box" style="background:rgba(0,128,0,0);" th:title="#{legend.0}" title="0% — No match detected">0%</span>
-                            <span class="legend-box" style="background:rgba(0,128,0,0.25);" th:title="#{legend.25}" title="25% — Weak match">25%</span>
-                            <span class="legend-box" style="background:rgba(0,128,0,0.50);" th:title="#{legend.50}" title="50% — Moderate match">50%</span>
-                            <span class="legend-box" style="background:rgba(0,128,0,0.75); color:#fff;" th:title="#{legend.75}" title="75% — Strong match">75%</span>
-                            <span class="legend-box" style="background:rgba(0,128,0,1.00); color:#fff;" th:title="#{legend.100}" title="100% — Perfect match">100%</span>
-                        </div>
-                    </div>
+                <div id="analysisScoreLegend" class="score-legend mb-3" role="group"
+                     aria-labelledby="analysisScoreLegendLabel" th:title="#{legend.title}" title="Score colour coding: green intensity indicates the match percentage. 0% = no match (transparent), 100% = perfect match (solid green). Text turns white above 60%.">
+                    <small id="analysisScoreLegendLabel" class="text-muted" th:text="#{legend.label}">Match legend:</small>
+                    <span class="legend-box" style="background:rgba(0,128,0,0);" th:title="#{legend.0}" title="0% — No match detected">0%</span>
+                    <span class="legend-box" style="background:rgba(0,128,0,0.25);" th:title="#{legend.25}" title="25% — Weak match">25%</span>
+                    <span class="legend-box" style="background:rgba(0,128,0,0.50);" th:title="#{legend.50}" title="50% — Moderate match">50%</span>
+                    <span class="legend-box" style="background:rgba(0,128,0,0.75); color:#fff;" th:title="#{legend.75}" title="75% — Strong match">75%</span>
+                    <span class="legend-box" style="background:rgba(0,128,0,1.00); color:#fff;" th:title="#{legend.100}" title="100% — Perfect match">100%</span>
                 </div>
 
                 <section id="analysisNextSteps" class="card shadow-sm mb-3" aria-labelledby="analysisNextStepsHeading">

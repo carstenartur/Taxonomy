@@ -53,6 +53,17 @@ public class WorkspaceManager {
     private final DslGitRepository gitRepository;
     private final DslGitRepositoryFactory repositoryFactory;
     private TransactionTemplate provisioningOutsideReadOnlyTransaction;
+    private WorkspaceProvisionPermission provisionPermission = actor -> true;
+
+    @Autowired(required = false)
+    void setWorkspaceProvisionPermission(WorkspaceProvisionPermission provisionPermission) {
+        this.provisionPermission = java.util.Objects.requireNonNull(provisionPermission);
+    }
+
+    /** Only automatic read/default paths use this policy; explicit system provisioning stays separate. */
+    public boolean mayProvisionDefaultWorkspace(String username) {
+        return provisionPermission.mayProvision(username);
+    }
 
     @Autowired
     void configureProvisioningTransactions(PlatformTransactionManager transactions) {
@@ -95,7 +106,10 @@ public class WorkspaceManager {
         this.repositoryFactory = null;
     }
 
-    /** Return or create the user's default workspace state. */
+    /**
+     * Return or create the user's default workspace state.
+     * Returns {@code null} when automatic creation is denied and no READY copy exists.
+     */
     public UserWorkspaceState getOrCreateWorkspace(String username) {
         if (username == null || username.isBlank()) {
             username = DEFAULT_USER;
@@ -108,6 +122,18 @@ public class WorkspaceManager {
             if (existing != null) {
                 return existing;
             }
+        }
+
+        if (!mayProvisionDefaultWorkspace(user)) {
+            UserWorkspace workspace = findUserWorkspace(user);
+            if (workspace == null || !user.equals(workspace.getUsername())
+                    || workspace.isArchived() || workspace.isShared()
+                    || workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY) {
+                return null;
+            }
+            // An existing working copy may gain navigation state without writing
+            // metadata or allocating a repository through an implicit read.
+            return getOrCreateWorkspace(user, workspace.getWorkspaceId());
         }
 
         ensurePersistentWorkspace(user);
@@ -165,6 +191,16 @@ public class WorkspaceManager {
 
     /** Return the current workspace summary for a user. */
     public WorkspaceInfo getWorkspaceInfo(String username) {
+        if (!mayProvisionDefaultWorkspace(username)) {
+            UserWorkspace workspace = findUserWorkspace(username);
+            if (workspace == null || workspace.isArchived() || workspace.isShared()
+                    || (workspace.isDefault()
+                    && (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED
+                    || workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING))) {
+                return null;
+            }
+            return getWorkspaceMetadataInfo(workspace);
+        }
         return toWorkspaceInfo(getOrCreateWorkspace(username));
     }
 

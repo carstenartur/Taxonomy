@@ -4,9 +4,10 @@
 > verwenden Sie die grafische Oberfläche (siehe [Benutzerhandbuch](USER_GUIDE.md)).
 
 Geschützte API-Operationen verwenden die für die Bereitstellung konfigurierte
-Authentifizierung. Browser-Sitzungen behalten CSRF-Schutz für Schreibzugriffe.
-Explizite HTTP-Basic- oder Bearer-Protokollclients gelten als zustandslos;
-`/api/**` ist keine pauschale CSRF-Ausnahme. Konfigurierte Zugangsdaten verwenden;
+Authentifizierung. Nur durch unterstützte HTTP-Basic- oder Keycloak-Bearer-Zugangsdaten
+authentifizierte Anfragen gelten als zustandslose Protokollaufrufe. Eine wiederhergestellte
+Browser-Sitzung behält den CSRF-Schutz für Schreibzugriffe, auch mit einem ignorierten
+`Authorization`-Header. `/api/**` ist keine pauschale CSRF-Ausnahme. Konfigurierte Zugangsdaten verwenden;
 ein wiederverwendbares Standard-Administratorkennwort existiert nicht.
 Profile und Berechtigungen beschreibt [Sicherheit](SECURITY.md).
 
@@ -45,7 +46,10 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" http://localhost:8080/api/taxonomy
 
 Verwenden Sie das über `TAXONOMY_ADMIN_PASSWORD` konfigurierte Passwort. Bleibt die Variable bei einem lokalen Nicht-Produktionsstart bewusst leer, verwenden Sie das einmalige Passwort aus der eigentümergeschützten Datei, deren Pfad beim Start protokolliert wird. Ein wiederverwendbares Standardpasswort gibt es nicht.
 
-Details zur rollenbasierten Zugriffskontrolle finden Sie unter [SECURITY.md](SECURITY.md).
+`READER`, `USER` (Analyst), `ARCHITECT` und `ADMIN` werden unabhängig vergeben.
+Ein Bearer-Token muss die erforderlichen Rollengruppen **und** alle aufgeführten
+OAuth-Scopes der Operation erfüllen. [Sicherheit](SECURITY.md) und
+[Swagger UI](http://localhost:8080/swagger-ui.html) beschreiben Berechtigungen und Endpunktanforderungen.
 
 ---
 
@@ -237,7 +241,7 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/relations?
 curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/node/CP-1023/relations"
 ```
 
-### Beziehung erstellen (erfordert ARCHITECT- oder ADMIN-Rolle)
+### Beziehung erstellen (erfordert ARCHITECT-Rolle)
 
 ```bash
 curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/relations \
@@ -245,7 +249,7 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/rel
   -d '{"sourceCode": "CP-1023", "targetCode": "CR-1047", "relationType": "REALIZES"}'
 ```
 
-### Beziehung löschen (erfordert ARCHITECT- oder ADMIN-Rolle)
+### Beziehung löschen (erfordert ARCHITECT-Rolle)
 
 ```bash
 curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X DELETE http://localhost:8080/api/relations/42
@@ -399,7 +403,7 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/pat
 curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/dsl/export"
 ```
 
-### DSL-Text committen (erfordert ARCHITECT- oder ADMIN-Rolle)
+### DSL-Text committen (erfordert ARCHITECT-Rolle)
 
 ```bash
 curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/dsl/commit?branch=draft&message=initial+architecture" \

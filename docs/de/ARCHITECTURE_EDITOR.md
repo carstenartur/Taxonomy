@@ -1,6 +1,6 @@
 # Architektureditor
 
-**Architektur** in der gemeinsamen Hauptnavigation öffnen und unter **Angezeigte Architektur** die **Arbeitsarchitektur** wählen. Links aus Projekten oder gespeicherten Analysen öffnen denselben Arbeitsbereich mit dem jeweiligen Kontext. Der gemeinsame Kontext zeigt Architektur, Projekt, Anforderung und gewählten Stand. **Technische Details** enthält die exakten Repository-/Workspace-Kennungen, den vollständigen Commit und vorhandene Snapshot-/Versionskennungen. Historische Revisionen/Versionen und zentrale Lesekontexte sind schreibgeschützt. **Privaten Workspace anlegen** erstellt bei passender Repository-Mitgliedschaft eine Arbeitskopie. Zum Bearbeiten ist außerdem die Rolle ARCHITECT oder ADMIN nötig.
+**Architektur** in der gemeinsamen Hauptnavigation öffnen und unter **Angezeigte Architektur** die **Arbeitsarchitektur** wählen. Links aus Projekten oder gespeicherten Analysen öffnen denselben Arbeitsbereich mit dem jeweiligen Kontext. Der gemeinsame Kontext zeigt Architektur, Projekt, Anforderung und gewählten Stand. **Technische Details** enthält die exakten Repository-/Workspace-Kennungen, den vollständigen Commit und vorhandene Snapshot-/Versionskennungen. Historische Revisionen/Versionen und zentrale Lesekontexte sind schreibgeschützt. **Privaten Workspace anlegen** erstellt bei passender Repository-Mitgliedschaft eine Arbeitskopie. Zum Bearbeiten ist außerdem die Rolle **ARCHITECT** nötig.
 
 **Aktuelle Analyse**, **Gespeicherter Analysezustand** und **Arbeitsarchitektur**
 bezeichnen drei Quellen innerhalb desselben Architekturbereichs. Beim Wechsel
@@ -13,7 +13,7 @@ mit ihren Quellen- und Versionsangaben in diesen Bereich.
 
 ![Architektureditor — ausgewählter Workspace und Element](../images/architecture-editor-current-de.png)
 
-*Anwendungsaufnahme eines privaten Beispiel-Workspaces nach dem Anlegen zweier Systemelemente über **Änderung vorschauen → Operation annehmen**. Ausgewählt ist „Arbeitszeiterfassung“. [Quellstand und Bildnachweis](../images/ui-documentation-2026-10-25.json); dieser einzelne Zustand ist keine Abnahme aller Editoraktionen.*
+*Anwendungsaufnahme eines privaten Beispiel-Workspaces nach dem Anlegen zweier Systemelemente über **Änderung vorschauen → Operation annehmen**. Ausgewählt ist „Hospital communication platform“; gespeicherte Beispielnamen bleiben in beiden Oberflächensprachen gleich. [Quellstand und Bildnachweis](../images/documentation-screenshots.json); dieser einzelne Zustand ist keine Abnahme aller Editoraktionen.*
 
 1. Die Elementliste durchsuchen oder ein Objekt im Graph auswählen. Eigenschaften, Relationen, Belege und DSL-Leseansicht folgen derselben Auswahl. Die Seitenadresse enthält den exakten Kontext und das ausgewählte Element.
 2. **Neues Element** wählen oder bestehende Eigenschaften bearbeiten. Der Server vergibt neue Identitäten; eine Umbenennung ändert diese nicht. Taxonomiereferenzen und importierte Herkunftsangaben bleiben schreibgeschützt.
@@ -41,6 +41,32 @@ Graph und Elementliste verwenden dasselbe Servermodell. Die Liste zeigt 50 durch
 SVG und Vektor-PDF verwenden das vollständige deterministische Serverlayout der angezeigten Workspace-Revision oder des Git-Checkpoints, unabhängig von lokalem Zoom und Ausschnitt. Der Editor verwendet derzeit abgeleitetes Layout und eine synchronisierte DSL-Leseansicht. Bearbeitbare DSL-Übersetzung, gespeicherte Layouts, gemeinsames Undo, weitergehende Belegentscheidungen und erweiterte Historie bleiben in [#814](https://github.com/carstenartur/Taxonomy/issues/814) verfolgt. Bestehende Analysesnapshots bleiben unveränderlich.
 
 Technische Entscheidung: [ADR 0005](../adr/0005-private-architecture-editor.md). [English guide](../en/ARCHITECTURE_EDITOR.md).
+
+<a id="shared-editing"></a>
+## Eine Arbeitskopie gemeinsam bearbeiten
+
+Arbeitskopien sind zunächst privat. Als Eigentümerin oder Eigentümer wählen Sie
+im Abschnitt **Gemeinsam bearbeiten** die Aktion **Gemeinsames Bearbeiten freigeben**, damit
+berechtigte Mitwirkende dieselbe Arbeitskopie bearbeiten können. Sie benötigen
+eine aktive, ausdrücklich zugewiesene Mitgliedschaft als Mitwirkende im
+Quell-Repository, die Rolle **ARCHITECT** und ein aktives lokales Konto
+oder eine zugeordnete stabile SSO-Identität. Bearbeiten und Ändern der Freigabe
+erfordern **ARCHITECT**; Bearer-API-Aufrufe benötigen zusätzlich den Scope
+`architecture:write`.
+
+Kopieren Sie die vollständige Adresse aus dem schreibgeschützten Feld
+**Link für berechtigte Mitwirkende** und teilen Sie genau diesen Link. Er öffnet diese
+Arbeitskopie für Personen, die bereits die erforderliche Berechtigung besitzen.
+
+**Branch neu laden** lädt die angenommenen Änderungen anderer Mitwirkender. Ihr
+ungespeicherter Formularentwurf bleibt erhalten. Nach einem Revisionskonflikt
+aktualisieren Sie den Stand, vergleichen ihn mit Ihrem Entwurf und erstellen vor
+der Annahme eine neue Vorschau. Rückgängig betrifft eigene angenommene Operationen;
+spätere abhängige Änderungen können die Rücknahme verhindern.
+
+Als Eigentümerin oder Eigentümer wählen Sie **Arbeitskopie wieder privat machen**,
+um den weiteren Zugriff durch Mitwirkende zu beenden. Bereits angenommene Änderungen
+und ihre Operationshistorie bleiben in der Arbeitskopie erhalten.
 
 <a id="editor-version-reconciliation"></a>
 ## Geänderten Git-Stand mit lokaler Arbeit abgleichen
@@ -129,12 +155,11 @@ untersucht und verworfen werden; **Übernahme in die Arbeitsarchitektur prüfen*
 führt zur gesonderten Übernahme mit Quellenprüfung, Vorschau und Annahme. Ein noch
 nicht als Anforderung gespeicherter Analyseentwurf muss zuerst gespeichert werden.
 
-![Architektur-Brennglas mit aktiviertem Schalter „Brennglas einschalten“ und ausgeschalteter KI-Option](../images/architecture-editor-focus-de.png)
+![Architektur-Lupe mit aktiviertem Schalter „Lupe einschalten“ und ausgeschalteter KI-Option](../images/architecture-editor-focus-de.png)
 
-*Frühere Aufnahme des Brennglas-Bedienfelds in einem bearbeitbaren Beispiel-Workspace;
-die gemeinsame Navigation und die Bezeichnung „Lupe“ wurden danach vereinheitlicht:
-**Brennglas einschalten** ist aktiviert, die KI-Option ist ausgeschaltet.
-[Quellstand und Bildnachweis](../images/architecture-editor-focus-capture.json).*
+*Anwendungsaufnahme des Lupen-Bedienfelds in einem bearbeitbaren Beispiel-Workspace:
+**Lupe einschalten** ist aktiviert, die KI-Option ist ausgeschaltet.
+[Quellstand und Bildnachweis](../images/documentation-screenshots.json).*
 
 Langsam über Elemente fahren oder ein Element auswählen und **Auswahl untersuchen**
 wählen. Bei Touch den Finger kurz über einem Element halten. Der Fokus bestimmt

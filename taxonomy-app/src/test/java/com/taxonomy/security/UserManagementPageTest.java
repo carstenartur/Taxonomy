@@ -313,6 +313,31 @@ class UserManagementPageTest {
                 .andExpect(redirectedUrl("/taxonomy/admin/users?lang=de"));
     }
 
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void newAccountFormOffersTheReaderRoleWithALocalizedLabel() throws Exception {
+        mvc.perform(get("/admin/users/new").locale(java.util.Locale.ENGLISH))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("value=\"ROLE_READER\"")))
+                .andExpect(content().string(containsString("Reader")));
+        mvc.perform(get("/admin/users/new").locale(java.util.Locale.GERMAN))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("value=\"ROLE_READER\"")))
+                .andExpect(content().string(containsString("Leser")));
+    }
+
+    @Test
+    @WithMockUser(username = "operator", roles = "ADMIN")
+    void acceptsReaderAccountCreationWithoutAddingBusinessRoles() throws Exception {
+        when(service.createUser(any(), eq(PASSWORD), eq("operator"))).thenReturn(ACCOUNT);
+        mvc.perform(post("/admin/users").with(csrf()).param("username", "reader")
+                        .param("roles", "ROLE_READER").param("newPassword", PASSWORD)
+                        .param("confirmPassword", PASSWORD))
+                .andExpect(status().is3xxRedirection());
+        verify(service).createUser(Map.of("username", "reader", "displayName", "", "email", "",
+                "roles", List.of("ROLE_READER")), PASSWORD, "operator");
+    }
+
     @Configuration(proxyBeanMethods = false)
     @EnableWebSecurity
     @EnableMethodSecurity

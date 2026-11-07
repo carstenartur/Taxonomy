@@ -611,6 +611,12 @@ For Oracle instances using a **SID**, use: `jdbc:oracle:thin:@localhost:1521:ORC
 ./mvnw -B verify -Pdatabase-oracle
 ```
 
+The existing Oracle lane also owns the [native Oracle recovery rehearsal](../testing/native-oracle-recovery.md):
+released fresh Core SQL, rejected unreviewed legacy adoption, original Git history,
+full application restart and native Data Pump restore into a separate restricted
+schema. Container-backed results are required; compilation alone does not qualify
+an old installation or enable managed Oracle migrations.
+
 ---
 
 ## Adding a New Database

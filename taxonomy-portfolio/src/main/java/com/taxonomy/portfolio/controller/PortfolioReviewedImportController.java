@@ -7,11 +7,13 @@ import com.taxonomy.portfolio.dto.PortfolioImportReviewDtos.ReviewedImportResult
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioReviewedImportService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
+import com.taxonomy.portfolio.service.AnalysisExecutionPermission;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,6 +32,12 @@ public class PortfolioReviewedImportController {
     private final WorkspaceResolver workspaceResolver;
     private final int maximumItems;
     private final long maximumCharacters;
+    private AnalysisExecutionPermission analysisExecutionPermission = actor -> true;
+
+    @Autowired(required = false)
+    void analysisExecutionPermission(AnalysisExecutionPermission permission) {
+        this.analysisExecutionPermission = permission;
+    }
 
     public PortfolioReviewedImportController(
             PortfolioReviewedImportService importService,
@@ -52,6 +60,9 @@ public class PortfolioReviewedImportController {
             @RequestBody ReviewedImportRequest request) {
         validate(request);
         String username = workspaceResolver.resolveCurrentUsername();
+        if (request.analyzeAfterImport() && !analysisExecutionPermission.mayExecute(username)) {
+            return ResponseEntity.status(403).build();
+        }
         WorkspaceContext context = workspaceResolver.resolveCurrentContext();
         var persisted = importService.persist(projectId, request.items(), username, context);
         var job = request.analyzeAfterImport() && !persisted.affectedRequirementIds().isEmpty()

@@ -44,6 +44,7 @@ public class IntegrationService {
     private final SparxOslcAmReader sparxRemote;
     private final WorkspaceAccessService workspaceAccess;
     @org.springframework.beans.factory.annotation.Autowired private IntegrationPublicationService publicationService;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private IntegrationOperationPermission operationPermission;
 
     public IntegrationService(IntegrationStore store, ExchangeConnectorRegistry connectors, IntegrationDomainAdapter domain,
                               WorkspaceArchitectureIntegrationPort editor, IntegrationDiff diff, IntegrationJson json,
@@ -127,10 +128,24 @@ public class IntegrationService {
                 store.bases(context, connectionId), fileExportModes(connection, identities));
     }
     public PublicationOperation previewPublication(RepositoryContext context, UUID connection, PublicationPreviewRequest request) { return publicationService.previewPublication(context, connection, request); }
-    public PublicationOperation publish(RepositoryContext context, UUID connection, PublicationReview review) { return publicationService.publish(context, connection, review); }
+    public PublicationOperation publish(RepositoryContext context, UUID connection, PublicationReview review) {
+        requireOperationPermission(context, IntegrationOperationPermission.Action.PUBLISH);
+        return publicationService.publish(context, connection, review);
+    }
     public PublicationOperation publication(RepositoryContext context, UUID connection, UUID operation) { return publicationService.publication(context, connection, operation); }
     public PublicationOperation reconcilePublication(RepositoryContext context, UUID connection, UUID operation, ReconciliationPreviewRequest request) { return publicationService.previewPublicationReconciliation(context, connection, operation, request); }
-    public Object retryOperation(RepositoryContext context, UUID connection, UUID operation) { return isPublication(context, connection, operation) ? publicationService.retryPublication(context, connection, operation) : retry(context, connection, operation); }
+    public Object retryOperation(RepositoryContext context, UUID connection, UUID operation) {
+        var retained = operation(context, connection, operation);
+        var action = switch (retained.direction() == null ? "" : retained.direction()) {
+            case "INBOUND" -> IntegrationOperationPermission.Action.IMPORT;
+            case "OUTBOUND" -> IntegrationOperationPermission.Action.EXPORT;
+            case "PUSH", "SYNCHRONIZE" -> IntegrationOperationPermission.Action.PUBLISH;
+            default -> throw operationPermissionRequired();
+        };
+        requireOperationPermission(context, action);
+        return action == IntegrationOperationPermission.Action.PUBLISH
+                ? publicationService.retryPublication(context, connection, operation) : retry(context, connection, operation);
+    }
     public Object cancelOperation(RepositoryContext context, UUID connection, UUID operation, String rationale) { boolean publication = isPublication(context, connection, operation); var cancelled = cancel(context, connection, operation, rationale); return publication ? publicationService.publication(context, connection, operation) : cancelled; }
     public IntegrationDomainAdapter.EndpointIndex operationEndpointOptions(RepositoryContext context, UUID connection, UUID operation) { return isPublication(context, connection, operation) ? publicationService.endpointOptions(context, connection, operation) : endpointOptions(context, connection, operation); }
     private boolean isPublication(RepositoryContext context, UUID connection, UUID id) { return Set.of("PUSH", "SYNCHRONIZE").contains(operation(context, connection, id).direction()); }
@@ -755,6 +770,13 @@ public class IntegrationService {
         if (!workspaceAccess.canUsePrivateWorkspace(context)) throw IntegrationProblem.missing();
         var repository = repositories.getRepository(context.repositoryId());
         if (!(write ? memberships.canContribute(repository, context.username()) : memberships.canRead(repository, context.username()))) throw IntegrationProblem.missing();
+    }
+    private void requireOperationPermission(RepositoryContext context, IntegrationOperationPermission.Action action) {
+        if (operationPermission != null && (context == null || !operationPermission.permits(context.username(), action)))
+            throw operationPermissionRequired();
+    }
+    private static IntegrationProblem operationPermissionRequired() {
+        return new IntegrationProblem("OPERATION_PERMISSION_REQUIRED", 403, "The integration operation requires its matching execution capability");
     }
     private static void expect(InternalState expected, InternalState actual) {
         if (expected == null) throw precondition();

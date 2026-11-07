@@ -101,6 +101,10 @@ class CopilotOperationConsistencyTest {
                 41L, operationId, context.username(), context))
                 .isInstanceOf(PortfolioException.class)
                 .hasMessageContaining("duplicate pass 1");
+        assertThatThrownBy(() -> service.resumeOperation(
+                41L, operationId, context.username(), context))
+                .isInstanceOf(PortfolioException.class)
+                .hasMessageContaining("duplicate pass 1");
 
         verifyNoInteractions(
                 resultSelector, resultPersistenceService, completionService, coordinator);
@@ -290,7 +294,7 @@ class CopilotOperationConsistencyTest {
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
-    void terminalStatusFinalizesTheSameJobsItExposesExactlyOnce(boolean initiallyRunning) {
+    void explicitResumeFinalizesTheSameJobsItExposesExactlyOnce(boolean initiallyRunning) {
         String operationId = "9".repeat(64);
         var first = job("job-1", operationId, 1, 2, 7L, AnalysisStatus.SUCCESS);
         var running = job("job-2", operationId, 2, 2, 7L, AnalysisStatus.RUNNING);
@@ -299,7 +303,7 @@ class CopilotOperationConsistencyTest {
         when(analysisService.listJobs(41L, context.username(), context))
                 .thenReturn(List.of(first, initiallyRunning ? running : second), List.of(first, second));
 
-        var result = service.getOperation(41L, operationId, context.username(), context);
+        var result = service.resumeOperation(41L, operationId, context.username(), context);
 
         assertThat(result.status()).isEqualTo(AnalysisStatus.SUCCESS);
         assertThat(result.selectedSnapshotId()).as("Expose the promoted winner, not the last completed pass").isEqualTo("snapshot-1");

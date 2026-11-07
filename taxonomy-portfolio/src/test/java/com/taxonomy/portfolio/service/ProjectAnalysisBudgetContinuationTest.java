@@ -513,14 +513,14 @@ class ProjectAnalysisBudgetContinuationTest {
             assertThat(firstRecovery.continuationId()).isNotEqualTo(secondRecovery.continuationId());
             assertThat(f.prompts.subList(24, 48)).isEqualTo(firstQueries);
             assertThat(f.classifications.get()).isEqualTo(2);
-            var partial = f.copilot.getOperation(f.projectId, operationId, "owner", f.scope);
+            var partial = f.copilot.resumeOperation(f.projectId, operationId, "owner", f.scope);
             assertThat(partial.status()).isEqualTo(AnalysisStatus.PARTIAL);
             assertThat(partial.jobs()).hasSize(2);
 
             f.continueWith(first, new ContinueAnalysisRequest(firstRecovery.snapshotId(), firstRecovery.continuationVersion()));
             assertThat(f.copilot.getOperation(f.projectId, operationId, "owner", f.scope).status()).isEqualTo(AnalysisStatus.PENDING);
             f.runQueued();
-            var once = f.copilot.getOperation(f.projectId, operationId, "owner", f.scope);
+            var once = f.copilot.resumeOperation(f.projectId, operationId, "owner", f.scope);
             assertThat(once.status()).isEqualTo(AnalysisStatus.PARTIAL);
             assertThat(once.selectedSnapshotId()).isEqualTo(f.current(first).items().getFirst().snapshotId());
             assertThat(once.jobs()).extracting(AnalysisJobView::status)
@@ -532,7 +532,7 @@ class ProjectAnalysisBudgetContinuationTest {
             f.continueWith(second, new ContinueAnalysisRequest(secondRecovery.snapshotId(), secondRecovery.continuationVersion()));
             int beforeLast = f.prompts.size();
             f.runQueued();
-            var completed = f.copilot.getOperation(f.projectId, operationId, "owner", f.scope);
+            var completed = f.copilot.resumeOperation(f.projectId, operationId, "owner", f.scope);
             assertThat(completed.status()).isEqualTo(AnalysisStatus.SUCCESS);
             assertThat(completed.verificationPasses()).isEqualTo(2);
             assertThat(completed.jobs()).hasSize(2);

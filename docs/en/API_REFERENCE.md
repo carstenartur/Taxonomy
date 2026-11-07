@@ -12,8 +12,10 @@
 > API documentation. This static reference provides an overview and usage examples.
 
 Authenticated API operations use the authentication configured for the deployment.
-Browser sessions retain CSRF protection for writes. Explicit HTTP Basic or Bearer
-protocol clients are treated as stateless; `/api/**` is not a blanket CSRF exemption.
+Only requests authenticated through supported HTTP Basic or Keycloak Bearer
+credentials qualify as stateless protocol calls. A restored browser session retains
+CSRF protection for writes, even when an ignored `Authorization` header is present;
+`/api/**` is not a blanket CSRF exemption.
 Use configured credentials; no reusable default administrator password exists.
 See [Security](SECURITY.md) for profiles and permissions.
 
@@ -52,7 +54,10 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" http://localhost:8080/api/taxonomy
 
 Use the password configured through `TAXONOMY_ADMIN_PASSWORD`. When it is intentionally empty for a non-production local run, use the one-time credential from the owner-only file whose path is written to the startup log. No reusable default password exists.
 
-For role-based access details, see [SECURITY.md](SECURITY.md).
+`READER`, `USER` (Analyst), `ARCHITECT` and `ADMIN` are independent role assignments.
+A Bearer token must satisfy the operation's required role groups **and** all listed
+OAuth scopes. See [Security](SECURITY.md) and [Swagger UI](http://localhost:8080/swagger-ui.html)
+for permissions and endpoint requirements.
 
 ---
 
@@ -242,7 +247,7 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/relations?
 curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/node/CP-1023/relations"
 ```
 
-### Create a relation (requires ARCHITECT or ADMIN role)
+### Create a relation (requires ARCHITECT role)
 
 ```bash
 curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/relations \
@@ -250,7 +255,7 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/rel
   -d '{"sourceCode": "CP-1023", "targetCode": "CR-1047", "relationType": "REALIZES"}'
 ```
 
-### Delete a relation (requires ARCHITECT or ADMIN role)
+### Delete a relation (requires ARCHITECT role)
 
 ```bash
 curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X DELETE http://localhost:8080/api/relations/42
@@ -436,7 +441,7 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/pat
 curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/dsl/export"
 ```
 
-### Commit DSL text (requires ARCHITECT or ADMIN role)
+### Commit DSL text (requires ARCHITECT role)
 
 ```bash
 curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/dsl/commit?branch=draft&message=initial+architecture" \

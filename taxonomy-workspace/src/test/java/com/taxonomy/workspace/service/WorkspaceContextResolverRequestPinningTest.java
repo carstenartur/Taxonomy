@@ -31,9 +31,56 @@ class WorkspaceContextResolverRequestPinningTest {
     @Mock
     private UserWorkspaceRepository workspaceRepository;
 
+    @Mock
+    private RepositoryMembershipService membership;
+
     @AfterEach
     void clearRequest() {
         RequestContextHolder.resetRequestAttributes();
+    }
+
+    @Test
+    void explicitCollaborativePinJoinsOneDurableWorkspaceAndRechecksRevocation() {
+        var shared = workspace("owner", "team-working-copy", "feature/team", "repo-team");
+        shared.setCollaborative(true);
+        var repository = repository("repo-team", "main");
+        when(workspaceManager.getWorkspaceById("team-working-copy")).thenReturn(shared);
+        when(systemRepositoryService.getRepository("repo-team")).thenReturn(repository);
+        when(membership.canCollaborate(repository, "contributor")).thenReturn(true, false);
+        requestWithWorkspaceHeader("team-working-copy");
+        var resolver = new WorkspaceContextResolver(workspaceManager, systemRepositoryService, workspaceRepository, membership);
+        resolver.setActorAccess(username -> {});
+
+        var context = resolver.resolveRepositoryContextForUser("contributor");
+        assertThat(context.workspaceId()).isEqualTo("team-working-copy");
+        assertThat(context.username()).isEqualTo("contributor");
+        assertThat(context.collaborative()).isTrue();
+        assertThat(com.taxonomy.editor.ArchitectureCommandPort.Context.of(context, null).writeMode()).isEqualTo("SHARED_WORKSPACE");
+        assertThatThrownBy(() -> resolver.resolveRepositoryContextForUser("contributor"))
+                .isInstanceOf(AccessDeniedException.class);
+        shared.setCollaborative(false);
+        assertThatThrownBy(() -> resolver.resolveRepositoryContextForUser("contributor"))
+                .isInstanceOf(AccessDeniedException.class);
+        verify(workspaceManager, never()).findActiveWorkspace("contributor");
+    }
+
+    @Test void aPreviouslyAuthenticatedOwnerOfAnUnpinnedSharedCopyMustStillBeActive() {
+        var shared=workspace("owner","team-working-copy","feature/team","repo-team"); shared.setCollaborative(true);
+        when(workspaceManager.findActiveWorkspace("owner")).thenReturn(shared);
+        var resolver = new WorkspaceContextResolver(workspaceManager,systemRepositoryService,workspaceRepository,membership);
+        // A missing application adapter is closed too, including the owner and default selection.
+        assertThatThrownBy(()->resolver.resolveWorkspaceMetadataForUser("owner")).isInstanceOf(AccessDeniedException.class);
+        resolver.setActorAccess(username -> { throw new AccessDeniedException("Verified active principal required"); });
+        assertThatThrownBy(()->resolver.resolveWorkspaceMetadataForUser("owner")).isInstanceOf(AccessDeniedException.class);
+        resolver.setActorAccess(username -> {});
+        var repository=repository("repo-team","main");
+        when(systemRepositoryService.getRepository("repo-team")).thenReturn(repository);
+        assertThat(resolver.resolveWorkspaceMetadataForUser("owner")).isSameAs(shared);
+        repository.setLifecycleState(com.taxonomy.workspace.model.RepositoryLifecycleState.ARCHIVED);
+        assertThatThrownBy(()->resolver.resolveWorkspaceMetadataForUser("owner")).isInstanceOf(AccessDeniedException.class);
+        shared.setCollaborative(false);
+        resolver.setActorAccess(username -> { throw new AssertionError("Private legacy access must be unchanged"); });
+        assertThat(resolver.resolveWorkspaceMetadataForUser("owner")).isSameAs(shared);
     }
 
     @Test

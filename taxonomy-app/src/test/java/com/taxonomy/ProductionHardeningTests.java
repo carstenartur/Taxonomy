@@ -39,7 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "mistral.api.key=",
     "taxonomy.rate-limit.per-minute=3"
 })
-@WithMockUser(roles = "ADMIN")
+@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class ProductionHardeningTests {
 
     @Autowired

@@ -57,6 +57,7 @@ public class SecurityDataInitializer implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
+        findOrCreateRole("ROLE_READER");
         AppRole roleUser = findOrCreateRole("ROLE_USER");
         AppRole roleArchitect = findOrCreateRole("ROLE_ARCHITECT");
         AppRole roleAdmin = findOrCreateRole("ROLE_ADMIN");

@@ -1,5 +1,7 @@
 # Taxonomy Architecture Analyzer — Benutzerhandbuch
 
+Die Screenshots verwenden deterministische Mock- oder ausdrücklich gekennzeichnete Demodaten. Der [Bildnachweis](../images/documentation-screenshots.json) nennt den exakten Quellstand und die Bildprüfsummen; Beispielbewertungen belegen keine Qualität eines realen KI-Anbieters.
+
 ## Schnellster Weg — Ihre erste Analyse in 5 Schritten
 
 | Schritt | Aktion | Wo |
@@ -16,7 +18,7 @@
 
 Das System untersucht den ausgewählten Taxonomieumfang hierarchisch und erhält Teilergebnisse, Begründungen und Fortschritt. Bewertete, ausgeschlossene, offene und nicht ausgewählte Knoten sind zu unterscheiden; nicht jeder Katalogknoten erhält eine eigene Modellbewertung. Ein vollständiger Lauf kann typisierte Architekturbeziehungen zur Prüfung und zum Export vorschlagen.
 
-![Frühere Illustration eines bewerteten Baums mit Beispieldaten](../images/15-scored-taxonomy-tree.png)
+![Bewerteter Zweig User Applications mit deterministischen Mock-Werten](../images/15-scored-taxonomy-tree.png)
 
 **Bereit für mehr?** Lesen Sie weiter für die vollständige Anleitung, oder springen Sie zu [Architekturansicht](#7-architecture-view), um zu erfahren, wie die Architektur generiert wird.
 
@@ -160,6 +162,10 @@ Antwort bei einer späteren Modellabfrage. Die gespeicherten Arbeitsabläufe erl
 [Projektportfolio](PROJECT_REQUIREMENT_PORTFOLIO.md) und
 [Architektureditor](ARCHITECTURE_EDITOR.md).
 
+### Gespeicherte Projekt-Copilot-Arbeit fortsetzen
+
+Das Öffnen einer Anforderung, Aktualisieren des Status und Wiederherstellen der Seite liest nur den gespeicherten Vorgang. Für unterbrochene Verarbeitung wählen Sie im Projekt-Copilot **Verarbeitung fortsetzen**. Dabei gelten die gespeicherten Einstellungen dieses Vorgangs auch nach einer Änderung der Vorgaben; ausstehende Ergebnisverarbeitung kann abgeschlossen werden. Erforderlich sind sowohl die Berechtigung zum Bearbeiten von Fachdaten als auch zur Analyseausführung. Abgebrochene Vorgänge lassen sich nicht fortsetzen. Bei ungewisser Antwort aktualisieren Sie vor einer erneuten Entscheidung den gespeicherten Status; der Browser wiederholt den POST nicht automatisch.
+
 <a id="analysis-scope-and-progress"></a>
 ## Umfang auswählen und Fortschritt verstehen
 
@@ -298,7 +304,7 @@ Klicken Sie auf **Got it — let's start!**, um das Overlay zu schließen. Das O
 
 ### KI-Verfügbarkeit prüfen
 
-Öffnen Sie **Status** in der Navigationsleiste, um die Anbieterbereitschaft zu prüfen:
+Klappen Sie den **Systemstatus** unter der Arbeitsbereichsnavigation auf, um die Anbieterbereitschaft zu prüfen:
 
 - 🟢 **Grünes Badge** — die Anbieterbereitschaft wird angezeigt. Prüfen Sie den Funktionsumfang: Lokale Embeddings ermöglichen keine generative Relationsbewertung oder Textsynthese.
 - 🔴 **Rotes Badge** — kein LLM-Anbieter ist konfiguriert; die Analyse ist nicht verfügbar. Kontaktieren Sie Ihren Administrator.
@@ -310,6 +316,8 @@ Klicken Sie auf **Got it — let's start!**, um das Overlay zu schließen. Das O
 ## 3. Die Benutzeroberfläche verstehen
 
 Die Anwendung ist in zwei nebeneinander liegende Hauptpanels unterteilt.
+
+![Englischer Analysearbeitsbereich vor dem ersten Lauf mit Befehlen, Arbeitsbereichen und eingeklappten Status-/Kontextdetails](../images/01-full-page-layout.png)
 
 ### Linkes Panel — Taxonomiebaum
 
@@ -336,12 +344,12 @@ Exporte und das Laden gespeicherter Analysen befinden sich unter **Architektur �
 Das rechte Panel (schmalere Spalte) enthält alle interaktiven Werkzeuge:
 
 - **Business Requirement Analysis Karte** — der Haupttextbereich, in dem Sie eine Anforderung eingeben und die Analyse ausführen.
-- **Match Legend** — Farbskala von 0 % bis 100 %, die zeigt, was jeder Grünton bedeutet.
+- **Trefferlegende** — kompakte, stets sichtbare Farbskala unterhalb der Analysebedienung mit Farbfeldern bei 0 %, 25 %, 50 %, 75 % und 100 %.
 
-![Match Legend](../images/10-match-legend.png)
+![Kompakte, stets sichtbare Trefferlegende in der englischen Oberfläche](../images/10-match-legend.png)
 
 - **Analyse-Status** — Fortschritt und Warnungen direkt im Analysebereich; Ausblenden bricht den Lauf nicht ab. Mit dem Knopf **Analyse-Status** im Anforderungsarbeitsbereich lässt er sich wieder öffnen.
-- **Statusmenü** — Betriebs- und Anbieterstatusdetails öffnen; Warnungen öffnen das Menü nicht selbsttätig.
+- **Systemstatus** — Betriebs- und Anbieterstatusdetails aufklappen; Warnungen öffnen die Anzeige nicht selbsttätig.
 - **Analyseprotokoll** (einklappbar) — Schritt-für-Schritt-Protokoll des Bewertungsprozesses.
 - **Architekturansicht-Panel** — erscheint nach der Analyse, wenn das Architecture View-Kontrollkästchen aktiviert ist.
 - **Register Graph** — öffnet den Graph Explorer; geben Sie einen Knotencode ein und führen Sie Upstream-, Downstream- oder Ausfallauswirkungs-Abfragen durch.
@@ -353,7 +361,7 @@ Das rechte Panel (schmalere Spalte) enthält alle interaktiven Werkzeuge:
 
 ### Navigationsleiste
 
-Die Kopfzeile trennt Befehle und Arbeitsbereiche. Die Befehlszeile enthält fünf gleich gestaltete Menüs:
+Die Kopfzeile vereint Befehle und Arbeitsbereiche in einer kompakten Werkzeugleiste. Sie enthält fünf Befehlsmenüs:
 
 | Menü | Befehle |
 |---|---|
@@ -363,11 +371,13 @@ Die Kopfzeile trennt Befehle und Arbeitsbereiche. Die Befehlszeile enthält fün
 | **Werkzeuge** | Graph Explorer, Integrationen, Darstellung, Oberflächensprache sowie freigegebene Administration und Servereinstellungen |
 | **Hilfe** | Hilfe zur aktuellen Sicht, Handbuch und auf der Analyse-/Workspace-Seite Über |
 
-Darunter wählen **Projekte**, **Anforderung** und **Architektur** den Arbeitsbereich. Projekte öffnet die vorhandene Projektübersicht; Anforderung öffnet den aktuellen Analysearbeitsbereich. Historie und Quelltext sind Ansichten der Architektur. Kontextbezogene Aktionen stehen bei ihrer Anforderung oder ihrem Diagramm. Nicht verfügbare Befehle sind deaktiviert. Menü und Werkzeugknopf führen dieselbe Fachoperation aus.
+Auf derselben Werkzeugleiste wählen **Projekte**, **Anforderung** und **Architektur** den Arbeitsbereich. Projekte öffnet die vorhandene Projektübersicht; Anforderung öffnet den aktuellen Analysearbeitsbereich. Historie und Quelltext sind Ansichten der Architektur. Kontextbezogene Aktionen stehen bei ihrer Anforderung oder ihrem Diagramm. Nicht verfügbare Befehle sind deaktiviert. Menü und Werkzeugknopf führen dieselbe Fachoperation aus.
 
-Unter 768 CSS-Pixeln enthält **Menü** dieselben fünf Befehlsgruppen. Die drei Arbeitsbereiche bleiben direkt sichtbar. Escape schließt die aktive Gruppe und setzt den Fokus auf deren Auslöser zurück; ein zweites Escape schließt das kompakte Menü. Links/rechts wechselt zwischen Befehlsgruppen, oben/unten zwischen verfügbaren Befehlen. Die Arbeitsbereichslinks sind mit Tab und Eingabe bedienbar.
+Unter 1024 CSS-Pixeln enthält **Menü** dieselben fünf Befehlsgruppen; auf den schmalsten Bildschirmen zeigt der Knopf **☰**. Die drei Arbeitsbereiche bleiben auf derselben Werkzeugleiste erreichbar. Escape schließt die aktive Gruppe und setzt den Fokus auf deren Auslöser zurück; ein zweites Escape schließt das kompakte Menü. Links/rechts wechselt zwischen Befehlsgruppen, oben/unten zwischen verfügbaren Befehlen. Die Arbeitsbereichslinks sind mit Tab und Eingabe bedienbar.
 
 **Systemstatus** und dessen Warn- und Bereitschaftshinweise stehen außerhalb der Befehlsmenüs. Analysefortschritt und der Knopf **Analyse-Status** gehören zum Anforderungsarbeitsbereich.
+
+![Englisches Tools-Menü mit Darstellung, Sprache und berechtigten Administrationseinträgen](../images/14-navbar-settings.png)
 
 ### Dunkelmodus
 
@@ -410,7 +420,7 @@ Die Dokumentsprache steuert generierte Überschriften und Beschriftungen in Word
 4. Der Fortschritt erscheint im Analyse-Status direkt im Analysebereich. Sobald Ergebnisse eintreffen, zeigt der Taxonomiebaum im linken Panel farbcodierte Bewertungsbalken.
 5. Nach Abschluss zeigt der Analyse-Status eine Zusammenfassung; die Export-Schaltflächen werden verfügbar.
 
-![Frühere Illustration eines bewerteten Baums mit Beispieldaten](../images/15-scored-taxonomy-tree.png)
+![Bewerteter Zweig User Applications mit deterministischen Mock-Werten](../images/15-scored-taxonomy-tree.png)
 
 ### Neu beginnen, abbrechen und den Arbeitsentwurf speichern
 
@@ -469,13 +479,13 @@ Produktdemo wurde exportiert und unverändert über den normalen Dateiimport
 geladen. CO zeigt eine Rückfrage ohne Zahlenwert; BP 40 %, CR 45 % und UA 70 %
 bleiben erhalten. Die Werte sind deklarierte Demoantworten.
 [Screenshot direkt öffnen](../images/root-relevance-clarification-de.png) ·
-[Quellstand und Bildnachweis](../images/root-relevance-clarification-capture.json).*
+[Quellstand und Bildnachweis](../images/documentation-screenshots.json).*
 
-Der vollständig aufgeklappte Baum zeigt Bewertungen auf jeder Ebene und macht es leicht zu erkennen, welche Zweige am relevantesten sind:
+Beim Aufklappen eines bewerteten Zweigs werden die gespeicherten Bewertungen jeder dargestellten Ebene sichtbar:
 
-> **Detailansicht** — Das Bild unten zeigt den vollständig aufgeklappten BP-Baum auf allen Ebenen. Klicken Sie auf einen beliebigen Knoten, um seine Bewertung und Begründung zu sehen.
+> **Detailansicht** — Diese Mock-Analyse zeigt den Zweig User Applications bis Unified Communication Applications. Öffnen Sie die Erläuterung eines Knotens, um die gespeicherte Begründung zu prüfen.
 
-![Bewerteter Taxonomiebaum — vollständig aufgeklappt](../images/35-scored-bp-tree-expanded.png)
+![Aufgeklappter Zweig User Applications mit deterministischen Mock-Bewertungen](../images/35-scored-bp-tree-expanded.png)
 
 ### Interaktiver Modus
 
@@ -502,7 +512,7 @@ Aktivieren Sie das **Architecture View**-Kontrollkästchen, bevor Sie die Analys
 
 ### Bewertungen und die Farblegende verstehen
 
-Die **Match Legend** (unterhalb der Analysekarte) zeigt die Farbskala:
+Die **Trefferlegende** bleibt als kompakte Zeile unterhalb der Analysebedienung sichtbar, auch nach der Analyse. Ihre Farbfelder zeigen die Farbskala:
 
 | Farbe | Bewertungsbereich | Bedeutung | Textfarbe |
 |---|---|---|---|
@@ -517,7 +527,7 @@ Die Farbe wird berechnet als `rgba(0, 128, 0, score/100)` — ein reines Grün, 
 
 Knoten mit einer Bewertung von 0 % haben keine Hervorhebung. Fahren Sie mit der Maus über ein beliebiges Legendenfeld, um einen Tooltip mit der Beschreibung der Übereinstimmungsstufe zu sehen.
 
-![Match Legend mit Bewertungen](../images/17-match-legend-with-scores.png)
+![Kompakte Trefferlegende neben bewerteten Ergebnissen in der englischen Oberfläche](../images/17-match-legend-with-scores.png)
 
 ### Das Analyseprotokoll
 
@@ -638,7 +648,7 @@ Für die beiden Ganzblattlayouts wählen Sie unter **Papierformat** A4, A3, A2, 
 
 ![Diagrammoptionen mit positivem Relevanzfilter, einem Blatt je Teiltaxonomie und Papierformat A0](../images/diagram-print-controls-de.png)
 
-*Bedienelemente der produktiven Diagrammkomponente mit einer deterministischen Testvorgabe. [Aufnahmequelle](../images/diagram-print-controls-2026-10-27.json); [Prüfumfang](../testing/stable-diagrams-and-print.md).*
+*Anwendungsaufnahme nach einer deterministischen Mock-Analyse in der Entscheidungsansicht. [Aufnahmequelle](../images/documentation-screenshots.json); [Prüfumfang](../testing/stable-diagrams-and-print.md).*
 
 Wählen Sie im Browser einen Drucker mit passendem Papierformat oder **Als PDF speichern**. Die Druckansicht legt die tatsächlichen Blattabmessungen fest, beispielsweise 594 × 841 mm für A1 und 841 × 1189 mm für A0; der Druckdialog darf diese Vorgabe nicht auf A4 überschreiben. Die Bildschirmansicht und gespeicherten Ergebnisse werden durch den Druck nicht verändert. Falls der Browser das Druckfenster blockiert, erlauben Sie Pop-ups für diese Anwendung und wählen Sie **Diagramm drucken** erneut.
 
@@ -743,6 +753,10 @@ Entwürfe bleiben beim Wechsel der Ansicht erhalten. Bestehende Editor- und
 Workbench-Links öffnen diesen gemeinsamen Bereich mit ihren exakten Quellenangaben.
 Siehe [Architektureditor und Lupe](ARCHITECTURE_EDITOR.md).
 
+Arbeitskopien sind zunächst privat. Ihre Eigentümerin oder ihr Eigentümer kann
+[gemeinsames Bearbeiten freigeben](ARCHITECTURE_EDITOR.md#shared-editing) und den
+genauen Link mit berechtigten Mitwirkenden teilen.
+
 Die **Aktuelle Analyse** zeigt ausgewählte Elemente und Beziehungen für die
 analysierte Anforderung. Prüfen Sie, ob eine Beziehung abgeleitet, importiert oder
 menschlich bestätigt ist; ihre Anzeige allein bedeutet keine angenommene
@@ -806,7 +820,7 @@ Eine neue Abfrage ersetzt das vorherige Ergebnis. Eine verspätete Antwort auf e
 
 ![Graph-Einstieg — sichtbares Upstream-Ergebnis für BP-1000](../images/graph-entry-current-de.png)
 
-*Nach **Graph** am Knoten `BP-1000` ist dessen Upstream-Ergebnis sichtbar. In diesem Beispiel wurden keine verbundenen Elemente zurückgegeben. [Quellstand und Bildnachweis](../images/ui-documentation-2026-10-25.json).*
+*Nach **Graph** am Knoten `BP-1000` ist dessen Upstream-Ergebnis sichtbar. In diesem Beispiel wurden keine verbundenen Elemente zurückgegeben. [Quellstand und Bildnachweis](../images/documentation-screenshots.json).*
 
 ### Upstream-Abfrage — „Was speist diesen Knoten?"
 
@@ -849,11 +863,11 @@ Die Tabelle/der Graph zeigt:
 | Hops | Entfernung vom Ausgangsknoten |
 | Relevanz | Auswirkungs-Score oder Ähnlichkeitsindikator |
 
-![Graph Explorer Upstream-Ergebnisse](../images/21-graph-explorer-upstream.png)
+![Upstream-Abfrage für BP-1327 ohne verbundene Katalogelemente](../images/21-graph-explorer-upstream.png)
 
-> **Ausfallauswirkung-Beispiel:** Der folgende Screenshot zeigt das Ergebnis einer *Failure Impact*-Abfrage (⚠️-Schaltfläche). Er hebt alle Knoten hervor, die bei einem Ausfall des ausgewählten Knotens betroffen wären.
+> **Ausfallauswirkung-Beispiel:** Diese Abfrage für `BP-1327` lieferte keine verbundenen Katalogelemente. Das leere Ergebnis gilt für den gewählten Abfrageumfang; es belegt nicht, dass die Architektur der aktuellen Analyse keine Abhängigkeiten hat.
 
-![Graph Explorer Ausfallauswirkung](../images/22-graph-explorer-failure.png)
+![Ausfallauswirkungsabfrage für BP-1327 mit leerem Katalogergebnis](../images/22-graph-explorer-failure.png)
 
 Angenommene Vorschläge gehören zur Relationsprojektion des ausgewählten Workspaces. Der Graph Explorer fragt den primären Katalog ab; das Annehmen eines Workspace-Vorschlags fügt dieser Katalogabfrage nicht automatisch eine Kante hinzu. Prüfen Sie die Entscheidung in der Relationsansicht des ausgewählten Workspaces (siehe [Abschnitt 9](#9-working-with-relation-proposals)).
 
@@ -935,17 +949,17 @@ Die Spalte **Confidence** zeigt, wie stark die KI davon überzeugt ist, dass die
 <a id="guide-section-10"></a>
 ## 10. Ergebnisse exportieren
 
-Nach einer erfolgreichen Analyse erscheinen Export-Schaltflächen am oberen Rand des linken Bereichs. Diese Schaltflächen sind nur sichtbar, wenn Analyse-Bewertungen vorhanden sind.
+Öffnen Sie **Architektur → Export** für Diagramme, Baumdarstellungen, Daten und Berichte. Bewertungsabhängige Formate werden mit vorhandenen Analysebewertungen verfügbar; installierte Fähigkeiten und das ausgewählte Ergebnis bestimmen die angebotenen Formate.
 
-![Frühere Komponentenillustration der Exportgruppen](../images/23-export-buttons.png)
+![Exportgruppen mit im aufgenommenen Zustand gesperrten bewertungsabhängigen Aktionen](../images/23-export-buttons.png)
 
-Diese ältere Illustration zeigt die Gruppierung, nicht die heutige vollständige Formatliste oder Unterstützungskennzeichnung. Die installierten Fähigkeiten stehen unter **Architektur → Export**.
+Die Aufnahme zeigt die installierten Gruppen und ihre Unterstützungskennzeichnung. Bewertungsabhängige Aktionen sind gesperrt, weil diese Ansicht keine geladenen Analysebewertungen enthält. Unter **Architektur → Export** stehen die Fähigkeiten Ihrer Installation.
 
 Der Export-Tab bietet ein dediziertes Panel mit allen verfügbaren Exportformaten, gegliedert nach Kategorie (Diagramme, Daten, Berichte) sowie Importoptionen:
 
 ![Export-Tab — Gesamtansicht](../images/33-export-tab.png)
 
-Diese ältere Übersicht zeigt die allgemeinen Exportgruppen. Die aktuelle Auswahl für Entscheidungsberichte ist unten unter [Entscheidungsbericht konfigurieren](#configurable-decision-report) mit neuen Abbildungen beschrieben.
+Die Übersicht enthält Importoptionen und Exportgruppen. Der gemeinsame Berichtsdialog ist unten unter [Entscheidungsbericht konfigurieren](#configurable-decision-report) beschrieben.
 
 Der [Referenzablauf](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/scenario-acceptance.md) erklärt die Copilot- und Workbench-Bedienelemente an einer nachvollziehbaren Hochwasseranforderung und beschreibt die zugehörige Export-QA.
 
@@ -1166,7 +1180,7 @@ Der Graph-Modus prüft bei jeder Anfrage das ausgewählte Repository, den Geltun
 
 ### Embedding-Status
 
-Das Badge **🧠 Embeddings** im Menü **Status** zeigt an, ob semantische Embeddings verfügbar sind:
+Das Badge **🧠 Embeddings** im aufgeklappten **Systemstatus** zeigt an, ob semantische Embeddings verfügbar sind:
 
 - **🧠 Embeddings: N nodes** (blau) — Embeddings sind geladen; die Modusverfügbarkeit hängt zusätzlich vom Indexstatus ab, und Graph prüft bei jeder Anfrage den ausgewählten Geltungsbereich.
 - **🧠 Embeddings: unavailable** (grau) — Embeddings nicht geladen; nur die Volltextsuche ist verfügbar.
@@ -1740,7 +1754,7 @@ Siehe [§12 Versionen-Tab](#12-versions-tab) für die Verwendung der Suche in de
 <a id="guide-section-19"></a>
 ## 12. Versionen-Tab
 
-Der **🕓 Versions**-Tab bietet eine visuelle Oberfläche zum Durchsuchen, Verwalten und Zurücksetzen von Architekturversionen. Klicken Sie auf **🕓 Versions** in der oberen Navigationsleiste, um ihn zu öffnen.
+Die Versionsansicht bietet eine visuelle Oberfläche zum Durchsuchen, Verwalten und Zurücksetzen von Architekturversionen. Öffnen Sie **Ansicht → Versionsverlauf**.
 
 
 ### Branch-Auswahl
@@ -1888,9 +1902,9 @@ Die Toast-Benachrichtigung verschwindet automatisch nach 5 Sekunden.
 
 ### Arbeitsbereich-Benutzer-Badge
 
-Öffnen Sie **Status** in der Navigationsleiste, um das Workspace-/Benutzerbadge
+Klappen Sie **Systemstatus** unter der Arbeitsbereichsnavigation auf, um das Workspace-/Benutzerbadge
 anzuzeigen. Sein Text nennt den Benutzer; der Tooltip enthält Workspace und aktuellen
-Branch. Git- und Kontextdetails im selben Menü zeigen Version und Bearbeitungskontext.
+Branch. Git- und Kontextdetails im selben Bereich zeigen Version und Bearbeitungskontext.
 
 ---
 
@@ -1898,11 +1912,11 @@ Branch. Git- und Kontextdetails im selben Menü zeigen Version und Bearbeitungsk
 <a id="guide-section-20"></a>
 ## 13. Git-Status und Kontextleiste
 
-Öffnen Sie **Status** in der Navigationsleiste, um Git- und Kontextdetails zum aktuellen Architekturzustand bei Bedarf anzuzeigen.
+Klappen Sie **Systemstatus** unter der Arbeitsbereichsnavigation auf, um Git- und Kontextdetails zum aktuellen Architekturzustand bei Bedarf anzuzeigen.
 
 ### Git-Statusleiste
 
-Die **Git-Statusleiste** befindet sich im Menü **Status**. Sie zeigt:
+Die **Git-Statusleiste** befindet sich im **Systemstatus**. Sie zeigt:
 
 
 | Indikator | Bedeutung |
@@ -1919,14 +1933,14 @@ Wenn die Projektion **STALE** anzeigt, bedeutet dies, dass die DSL geändert, ab
 
 ### Kontext-Navigationsleiste
 
-Die **Kontextleiste** gehört zum Menü **Status** und beschreibt den ausgewählten Architekturkontext, etwa eine historische Version, Variante oder einen Vergleich. Die folgende ältere Komponentenillustration erklärt ihre Felder; die damalige Seitenposition entspricht nicht der aktuellen Navigation.
+Die **Kontextleiste** steht auf der Analyse-/Workspace-Seite im aufgeklappten **Systemstatus**. Dieser Ausschnitt zeigt eine bearbeitbare Arbeitsversion, deren Branch und Speicherzeit sowie **Neue Variante** und **Vergleichen**. Historische Stände und Herkunftskontexte können weitere Angaben und Navigationsaktionen anzeigen.
 
-![Kontext-Navigationsleiste](../images/44-context-bar.png)
+![Kontextleiste mit bearbeitbarem Entwurf, Speicherzeit, New Variant und Compare](../images/44-context-bar.png)
 
 Die Kontextleiste zeigt:
 
-- **Modus-Badge** — `EDITABLE` (grün), `READ-ONLY` (gelb) oder `TEMPORARY` (grau)
-- **Branch-Name** und **Commit-ID** — Welche Version Sie gerade anzeigen
+- **Modus-Badge** — Arbeitsversion (grün), schreibgeschützt (gelb) oder temporär (grau)
+- **Branch-Name** und Speicherzeit oder Commit-ID — Welche Version Sie gerade anzeigen
 - **Herkunftsindikator** — Wenn Sie von einem anderen Kontext navigiert sind, wird angezeigt, woher Sie kamen
 
 Navigationsschaltflächen in der Kontextleiste:
@@ -1949,9 +1963,9 @@ Administrationsfunktionen erfordern die passende serverseitige Rolle. Standardbe
 > 📖 Für eine umfassende Anleitung zu allen KI-Anbietern, anbieterspezifischer Überschreibung pro Anfrage, Mock-Modus, Diagnose-API und Ratenbegrenzung siehe **[AI Providers](AI_PROVIDERS.md)**.
 > Für die Verwaltung von Laufzeiteinstellungen (LLM-Einstellungen, DSL-Konfiguration, Größenbeschränkungen) siehe **[Preferences](PREFERENCES.md)**.
 
-### KI-Statusanzeige (im Menü Status)
+### KI-Statusanzeige (Systemstatus)
 
-Das Badge im Menü **Status** zeigt die gemeldete Anbieterbereitschaft an:
+Das Badge im aufgeklappten **Systemstatus** zeigt die gemeldete Anbieterbereitschaft an:
 
 | Badge | Zustand | Bedeutung |
 |---|---|---|
@@ -2206,7 +2220,7 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 
 ### Die Schaltfläche „Analyze with AI" ist deaktiviert oder ausgegraut
 
-**Ursache:** Kein LLM-Anbieter ist konfiguriert oder verfügbar. Prüfen Sie das KI-Status-Badge im Menü **Status**.
+**Ursache:** Kein LLM-Anbieter ist konfiguriert oder verfügbar. Prüfen Sie das KI-Status-Badge im aufgeklappten **Systemstatus**.
 
 **Maßnahme:** Kontaktieren Sie Ihren Administrator, um die LLM-Anbieterkonfiguration zu überprüfen (`GEMINI_API_KEY`, `OPENAI_API_KEY` oder `LLM_PROVIDER=LOCAL_ONNX`).
 
@@ -2257,7 +2271,7 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 
 **Nein.** Die Ausfallauswirkungsansicht (⚠️-Schaltfläche) ist eine bewusste Funktion, kein Fehlerzustand. Sie hebt alle Knoten hervor, die betroffen wären, wenn der ausgewählte Knoten ausfällt oder entfernt wird. Verwenden Sie sie für Änderungsauswirkungs-Analysen und Risikobewertungen. Siehe [Abschnitt 8 — Graph Explorer](#8-den-graph-explorer-verwenden) für alle Details.
 
-![Graph Explorer Ausfallauswirkung](../images/22-graph-explorer-failure.png)
+![Ausfallauswirkungsbeispiel ohne verbundene Katalogelemente](../images/22-graph-explorer-failure.png)
 
 <a id="guide-section-27"></a>
 ## Gespeicherte Neuformulierungsangebote und Entscheidungsfragen

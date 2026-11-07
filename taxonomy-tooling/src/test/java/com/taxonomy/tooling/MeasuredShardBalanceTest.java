@@ -74,6 +74,7 @@ class MeasuredShardBalanceTest {
     "com.taxonomy.portfolio.reformulation.ReformulationTargetedSynthesisTest",
     "com.taxonomy.portfolio.PortfolioPageRoutesTest",
     "com.taxonomy.interop.publication.IntegrationPublicationApiTest",
+    "com.taxonomy.interop.publication.IntegrationPublicationPermissionApiTest",
     "com.taxonomy.interop.publication.IntegrationPublicationSecurityTest",
     "com.taxonomy.portfolio.PortfolioAnalysisWorkQueueClaimTest",
     "com.taxonomy.portfolio.PortfolioAnalysisClaimPersistenceServiceTest",

@@ -35,6 +35,13 @@ class ApiWriteDenyByDefaultSecurityTest {
     @Autowired private com.taxonomy.workspace.service.RepositoryWorkspaceService workspaces;
 
     @Test
+    void unauthenticatedRestCallsReturn401EvenWhenAcceptingHtml() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/projects")
+                        .accept(MediaType.TEXT_HTML))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     @WithMockUser(roles = "USER")
     void headUsesTheSameScopedReadAuthorityForIntegrationsAndOslc() throws Exception {
         var repository = repositories.createRepository("HTTP read methods", "user", "", com.taxonomy.workspace.model.RepositoryVisibility.PRIVATE, "user", "draft");

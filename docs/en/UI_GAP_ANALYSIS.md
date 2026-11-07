@@ -43,20 +43,20 @@ Implementation notes for the listed GUI dialogs. The phase labels below describe
 
 ---
 
-## Evidence review (25 October 2026)
+## Evidence review (6 November 2026)
 
-The earlier statement that all gaps were closed was too broad. Implemented dialogs, a screenshot file and a passing test of another entry path are different evidence. The [feature matrix](FEATURE_MATRIX.md) now records those limits; the [view and control inventory](../testing/ui-view-control-inventory.md) retains the remaining follow-up work.
+The refreshed images have an [exact-source capture manifest](../images/documentation-screenshots.json) and a [visual review](../qa/2026-11-07-documentation-screenshots.md). Implemented dialogs, a screenshot file and a passing test of another entry path are different evidence. The [feature matrix](FEATURE_MATRIX.md) records those limits; the [view and control inventory](../testing/ui-view-control-inventory.md) retains the remaining follow-up work.
 
 ### Features with GUI entry points
 
 | Feature | GUI element | User guide | Screenshot evidence |
 |---|---|---|---|
-| Leaf justification | `leafJustificationModal` | §6 | Historical #18 |
-| Requirement coverage | `coverageDashboard` + `coverageRecordBtn` | §11c | Historical #26, 27 show this dashboard |
+| Leaf justification | `leafJustificationModal` | §6 | Refreshed mock-analysis capture #18 |
+| Requirement coverage | `coverageDashboard` + `coverageRecordBtn` | §11c | Refreshed #26, 27 show this dashboard with example records |
 | Gap analysis | `gapAnalysisPanel` + `gapAnalyzeBtn` | §11d | No dedicated current capture linked; #26/27 do not show gap analysis |
 | Recommendations | `recommendationPanel` + `recommendBtn` | §11e | No dedicated current capture linked |
 | Pattern detection | `patternDetectionPanel` + `patternDetectBtn` | §11f | No dedicated current capture linked |
-| Reports (MD/HTML/DOCX) | `exportReportMd/Html/Docx` buttons | §10a | Historical #23 shows export controls, not successful downloads |
+| Reports (MD/HTML/DOCX) | `exportReportMd/Html/Docx` buttons | §10a | Refreshed #23 shows locked score-dependent export controls before analysis |
 | Requirement impact analysis | `requirementImpactBtn` in Graph | §11b | No dedicated current capture linked; behavioral owner: `ux-state-recovery.cjs` |
 | Graph entry from tree/impact map | Node action or element details → Graph | §8 | [Current DE capture](../images/graph-entry-current-de.png); real-server owner: `verifyGraphEntry` in `ui-primary-basic-workflows.mjs`; component regressions: `ux-state-recovery.cjs` / `analysis-ux.browser.test.mjs` |
 
@@ -67,7 +67,7 @@ Workspace, history, branch comparison, transfer, variants, DSL and merge workflo
 - #20, #37 and #38 depended on unsupported catalogue-relation seeding and are retired. Accepted workspace proposals belong to the workspace relation projection; catalogue Graph queries read a different scope. The current persisted-workbench captures remain valid for their selected example snapshots.
 - #32 is a historical graph-semantic search illustration. Its owner did not establish the required workspace relation projection; a fresh workspace can return `409 NOT_BUILT`. The current Graph-entry capture tests a different operation and does not fill this search-evidence gap.
 - #48–65 and #67–68 used injected presentation state. Their generators are retired; retained images are historical fixtures, not proof that a merge, transfer, sync, delete or restore succeeded.
-- #41–47 and #66 remain historical history/workspace illustrations. A file's presence does not bind it to the current source revision.
+- #41–47 and #66 were regenerated through the maintained owner using persisted example histories and real API responses. The manifest binds their bytes to the recorded source; the images do not cover every history, comparison or synchronization outcome.
 - The database assistant, architecture editor and persisted workbench have separate guides and test owners. Capture provenance and scope are recorded in the [inventory](../testing/ui-view-control-inventory.md).
 - Empty/error outcomes, permissions, keyboard interaction and changes made concurrently require behavioral assertions. A static count of buttons or screenshots is not such an assertion.
 

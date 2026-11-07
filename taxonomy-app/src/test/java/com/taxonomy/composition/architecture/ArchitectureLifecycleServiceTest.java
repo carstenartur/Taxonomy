@@ -35,9 +35,26 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 
 /** Persistent application contracts; no remote analysis, shell Git, or container prerequisites. */
 @SpringBootTest
-@WithMockUser(username = "alice", roles = "ADMIN")
+@WithMockUser(username = "alice", roles = {"USER", "ARCHITECT", "ADMIN"})
 class ArchitectureLifecycleServiceTest extends LifecycleTestSupport {
     @Autowired ObjectMapper json;
+
+    @Test
+    void aSharedContributorExtendsTheSameRequirementLifecycleAndRevocationClosesAccess() throws Exception {
+        var owner = workspace("shared-contribution");
+        var first = create(owner, null, "SHARED-LIFECYCLE", "REQ-1", "Retained requirement before sharing");
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status ->
+                assertThat(workspaces.updateCollaborationFlag(owner.workspaceId(), true)).isEqualTo(1));
+        membership.assignRole(owner.repositoryId(), "bob", com.taxonomy.workspace.model.RepositoryRole.CONTRIBUTOR, "fixture");
+        var contributor = RepositoryContext.collaborativeWorkspace(owner.repositoryId(), owner.workspaceId(), owner.branch(), "bob");
+        assertThat(requirement(lifecycle.overview(contributor, null, null), "SHARED-LIFECYCLE", "REQ-1").text())
+                .isEqualTo("Retained requirement before sharing");
+        var second = create(contributor, first.projectId(), null, "REQ-2", "Contributor requirement in the same architecture");
+        assertThat(second.projectId()).isEqualTo(first.projectId());
+        assertThat(lifecycle.overview(contributor, null, null).requirements()).hasSize(2);
+        membership.assignRole(owner.repositoryId(), "bob", com.taxonomy.workspace.model.RepositoryRole.READER, "fixture");
+        rejected("NOT_FOUND", () -> lifecycle.overview(contributor, null, null));
+    }
 
     @Test
     void previewIsReadOnlyAndAcceptanceRequiresItsExactRequirementVersionAndFingerprint() throws Exception {

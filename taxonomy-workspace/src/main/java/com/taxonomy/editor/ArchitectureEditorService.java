@@ -137,7 +137,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 : state.pendingCheckpoint() != null ? "CHECKPOINT_PENDING"
                 : !Objects.equals(head, state.checkpointCommit()) ? "VERSION_CHANGED" : "READY";
         return new Document(Context.of(context, state.checkpointCommit(), selected), dsl, status,
-                snapshot.operations().stream().filter(e -> e.revision() <= selected && e.actor().equals(context.username()))
+                snapshot.operations().stream().filter(e -> e.revision() <= selected && (context.collaborative() || e.actor().equals(context.username())))
                         .limit(50).map(ArchitectureEditorService::history).toList(), versions,
                 state.checkpointRevision(), state.pendingCheckpoint(), "WORKSPACE_REVISION",
                 selected == state.revision() ? historyTargets(snapshot.operations(), context.username()) : new HistoryTargets(null, null));
@@ -226,6 +226,25 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 return action.apply(new Document(Context.of(context, state.checkpointCommit(), state.revision()), state.dsl(),
                         state.pendingCheckpoint() == null ? "READY" : "CHECKPOINT_PENDING", List.of(), List.of(), state.checkpointRevision(), state.pendingCheckpoint(), "WORKSPACE_REVISION"));
             });
+        }
+    }
+
+    /** Sharing and the exact journal stand commit together; journal precedes workspace metadata. */
+    public <T> T collaborationBoundary(RepositoryContext context, java.util.function.Function<Document, T> action) throws IOException {
+        try (var write = writeBarrier.enter(backupScope(context))) {
+            requireWritable(context);
+            try {
+                return journal.joinedControlLocked(context, seed(context), session -> {
+                    State state = session.state();
+                    String actualHead;
+                    try { actualHead = head(repositories.resolveRepository(context), context.branch()); }
+                    catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
+                    String status = state.pendingCheckpoint() != null ? "CHECKPOINT_PENDING"
+                            : !Objects.equals(actualHead, state.checkpointCommit()) ? "VERSION_CHANGED" : "READY";
+                    return action.apply(new Document(Context.of(context, state.checkpointCommit(), state.revision()), state.dsl(),
+                            status, List.of(), List.of(), state.checkpointRevision(), state.pendingCheckpoint(), "WORKSPACE_REVISION"));
+                });
+            } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }
         }
     }
 

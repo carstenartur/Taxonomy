@@ -7,6 +7,10 @@ import com.taxonomy.export.LayeredDiagramLayoutService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.http.MediaType;
 
 import java.util.Map;
@@ -109,6 +113,51 @@ class ArchitectureEditorControllerTest {
         verify(service).preview(eq(scope), argument.capture());
         assertThat(((SemanticCommand) argument.getValue().operation()).command())
                 .isInstanceOf(com.taxonomy.dsl.command.ArchitectureCommand.CreateArchitecturePackage.class);
+    }
+
+
+    @AfterEach
+    void clearAuthentication() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void administratorAloneCannotEditPrivateWorkspace() throws Exception {
+        authenticate("ROLE_ADMIN");
+        prepareDocument(Context.of(scope, null));
+        assertThat(controller.read("repo-a", "workspace-a", "draft", null, null).getBody().mayEdit()).isFalse();
+    }
+
+    @Test
+    void readerCannotEditPrivateWorkspace() throws Exception {
+        authenticate("ROLE_READER");
+        prepareDocument(Context.of(scope, null));
+        assertThat(controller.read("repo-a", "workspace-a", "draft", null, null).getBody().mayEdit()).isFalse();
+    }
+
+    @Test
+    void architectCanEditPrivateWorkspace() throws Exception {
+        authenticate("ROLE_ARCHITECT");
+        prepareDocument(Context.of(scope, null));
+        assertThat(controller.read("repo-a", "workspace-a", "draft", null, null).getBody().mayEdit()).isTrue();
+    }
+
+    @Test
+    void architectCannotEditReadOnlyDocument() throws Exception {
+        authenticate("ROLE_ARCHITECT");
+        prepareDocument(Context.version(scope, null));
+        assertThat(controller.read("repo-a", "workspace-a", "draft", null, null).getBody().mayEdit()).isFalse();
+    }
+
+    private void prepareDocument(Context context) throws Exception {
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
+        when(service.read(scope, null, null)).thenReturn(new ArchitectureEditorService.Document(
+                context, "", "READY", java.util.List.of(), java.util.List.of(), 0, null, "WORKSPACE_REVISION"));
+    }
+
+    private static void authenticate(String... authorities) {
+        SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
+                "alice", "unused", AuthorityUtils.createAuthorityList(authorities)));
     }
 
     private ArchitectureEditorController.WireCommand wire() {

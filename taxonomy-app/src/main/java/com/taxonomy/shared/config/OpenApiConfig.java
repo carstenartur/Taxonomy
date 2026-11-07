@@ -1,5 +1,6 @@
 package com.taxonomy.shared.config;
 
+import com.taxonomy.security.access.ApiSecurityOpenApiCustomizer;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;
 import io.swagger.v3.oas.models.info.Info;
@@ -9,6 +10,7 @@ import io.swagger.v3.oas.models.tags.Tag;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 
 import java.util.List;
 
@@ -22,6 +24,11 @@ public class OpenApiConfig {
 
     @Value("${app.display-version:unknown}")
     private String appVersion;
+
+    @Bean
+    public ApiSecurityOpenApiCustomizer apiSecurityOpenApiCustomizer(Environment environment) {
+        return new ApiSecurityOpenApiCustomizer(environment);
+    }
 
     @Bean
     public OpenAPI taxonomyOpenAPI() {

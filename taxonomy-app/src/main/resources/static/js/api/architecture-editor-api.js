@@ -36,6 +36,7 @@ window.ArchitectureEditorApi = (function () {
         previewAdoption: function (request) { return write('/snapshot-adoptions/preview', request, request.context); },
         adoptSnapshot: function (request) { return write('/snapshot-adoptions', request, request.context); },
         preview: function (command) { return write('/preview', command, command.context); },
+        setSharing: function (context, enabled) { return write('/collaboration', {context:context, enabled:enabled}, context); },
         execute: function (command) { return write('/commands', command, command.context); },
         checkpoint: function (command) { return write('/checkpoints', command, command.context); },
         resumeCheckpoint: function (context) { return write('/checkpoints/resume', {}, context); },

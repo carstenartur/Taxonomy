@@ -420,19 +420,6 @@
             }
         });
         analyzePane.appendChild(details);
-
-        var legend = Array.from(analyzePane.querySelectorAll('.card')).find(function (card) {
-            return card.querySelector('.legend-box');
-        });
-        if (legend) {
-            var legendDetails = document.createElement('details');
-            legendDetails.id = 'analysisScoreLegend';
-            legendDetails.className = 'score-legend-details mb-3';
-            var legendSummary = document.createElement('summary');
-            legendSummary.textContent = t('analysis.task.legend.summary');
-            legend.parentElement.insertBefore(legendDetails, legend);
-            legendDetails.append(legendSummary, legend);
-        }
     }
 
     function setTaskState(activeIndex, state) {
