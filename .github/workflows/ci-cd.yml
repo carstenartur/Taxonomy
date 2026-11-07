@@ -781,22 +781,25 @@ jobs:
             ~/.npm
             .cache/ui-frontend
           key: ${{ runner.os }}-taxonomy-ui-node-${{ hashFiles('.github/package-lock.json', '.github/ui-verification-pom.xml') }}
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      - name: Identify the exact runner image
+        id: cache-key
+        env:
+          BROWSER_KEY_PREFIX: ${{ runner.os }}-taxonomy-playwright-${{ hashFiles('.github/package-lock.json', '.github/scripts/install-playwright-github.sh') }}-webkit-${{ matrix.requiresWebKit }}
+          PACKAGE_KEY_PREFIX: ${{ runner.os }}-taxonomy-ui-playwright-packages-v1-${{ hashFiles('.github/scripts/install-playwright-github.sh', '.github/scripts/apt-packages.sh', '.github/package-lock.json') }}
+        run: |
+          : "${ImageOS:?Missing hosted runner ImageOS}" "${ImageVersion:?Missing hosted runner ImageVersion}" "${RUNNER_ARCH:?Missing hosted runner architecture}"
+          echo "browser-key=${BROWSER_KEY_PREFIX}-${ImageOS}-${RUNNER_ARCH}" >> "$GITHUB_OUTPUT"
+          echo "key=${PACKAGE_KEY_PREFIX}-${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
+      # The same Playwright revision can have different native binaries on each Ubuntu version.
+      - name: Cache Playwright browser binaries
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-taxonomy-playwright-${{ hashFiles('.github/package-lock.json', '.github/scripts/install-playwright-github.sh') }}-webkit-${{ matrix.requiresWebKit }}
+          key: ${{ steps.cache-key.outputs.browser-key }}
       - name: Prepare pinned Node and Playwright CLI through Maven
         run: ./mvnw -B -f .github/ui-verification-pom.xml process-resources -Pshard
       # Only one shard needs WebKit. Prepare and consume its package cache on
       # the same runner: independent hosted jobs can receive different images.
-      - name: Identify the exact runner image
-        if: matrix.requiresWebKit == true
-        id: cache-key
-        env:
-          PACKAGE_KEY_PREFIX: ${{ runner.os }}-taxonomy-ui-playwright-packages-v1-${{ hashFiles('.github/scripts/install-playwright-github.sh', '.github/scripts/apt-packages.sh', '.github/package-lock.json') }}
-        run: |
-          : "${ImageOS:?Missing hosted runner ImageOS}" "${ImageVersion:?Missing hosted runner ImageVersion}"
-          echo "key=${PACKAGE_KEY_PREFIX}-${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
       - name: Restore UI system packages (exact runner image)
         if: matrix.requiresWebKit == true
         id: packages

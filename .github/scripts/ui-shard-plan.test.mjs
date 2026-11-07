@@ -172,7 +172,10 @@ test('CI prepares packages once, restores an exact image cache and bounds offlin
   const download = step('UI system packages / Paketinstallation (download only)');
   const offline = step('UI system packages / Paketinstallation (offline)');
   const save = step('Save UI system packages (exact runner image)');
-  for (const phase of [identify, cache, check, download, offline, save]) {
+  assert.match(consumers, /path: ~\/\.cache\/ms-playwright\n\s+key: \$\{\{ steps\.cache-key\.outputs\.browser-key \}\}/);
+  assert.doesNotMatch(identify, /\bif:/,
+    'Every shard needs the runner platform before restoring native browser binaries');
+  for (const phase of [cache, check, download, offline, save]) {
     assert.match(phase, /if: matrix\.requiresWebKit == true/,
       'The other five shards must not restore, prepare or install system packages');
     assert.doesNotMatch(phase, /continue-on-error:/);
@@ -203,8 +206,8 @@ test('CI prepares packages once, restores an exact image cache and bounds offlin
   assert.match(consumers, /TAXONOMY_PLAYWRIGHT_SKIP_WEBKIT: \$\{\{ !matrix\.requiresWebKit \}\}/);
   assert.match(consumers, /-webkit-\$\{\{ matrix\.requiresWebKit \}\}/);
   assert.match(workflow, /\{include:\[\.shards\[\] \| \{shard:\.id, requiresWebKit\}\]\}/);
-  const phases = ['Prepare pinned Node and Playwright CLI through Maven',
-    'Identify the exact runner image', 'Restore UI system packages (exact runner image)',
+  const phases = ['Identify the exact runner image', 'Cache Playwright browser binaries',
+    'Prepare pinned Node and Playwright CLI through Maven', 'Restore UI system packages (exact runner image)',
     'Check package cache runner compatibility', 'UI system packages / Paketinstallation (download only)',
     'UI system packages / Paketinstallation (offline)', 'Save UI system packages (exact runner image)',
     'Run Maven-owned authoritative UI shard'];
@@ -216,14 +219,22 @@ test('CI prepares packages once, restores an exact image cache and bounds offlin
   t.after(() => rm(directory, { recursive: true, force: true }));
   const output = path.join(directory, 'output');
   const compatibility = check.split('run: |')[1];
-  for (const imageVersion of ['20261012.334.1', '20261023.334.3']) {
+  for (const [image, imageVersion, architecture] of [
+    ['ubuntu24', '20261012.334.1', 'X64'],
+    ['ubuntu24', '20261023.334.3', 'X64'],
+    ['ubuntu26', '20261023.334.3', 'X64'],
+    ['ubuntu26', '20261023.334.3', 'ARM64']
+  ]) {
     await writeFile(output, '');
-    const env = { ...process.env, ImageOS: 'ubuntu24', ImageVersion: imageVersion,
+    const env = { ...process.env, ImageOS: image, ImageVersion: imageVersion, RUNNER_ARCH: architecture,
+      BROWSER_KEY_PREFIX: 'Linux-taxonomy-playwright-hash-webkit-true',
       PACKAGE_KEY_PREFIX: 'Linux-taxonomy-ui-playwright-packages-v1-hash', GITHUB_OUTPUT: output };
     const keyResult = spawnSync('bash', ['-ec', identify.split('run: |')[1]], { env, encoding: 'utf8' });
     assert.equal(keyResult.status, 0, keyResult.stderr);
-    const key = (await readFile(output, 'utf8')).trim().replace(/^key=/, '');
-    assert.equal(key, `${env.PACKAGE_KEY_PREFIX}-ubuntu24-${imageVersion}`);
+    const keys = Object.fromEntries((await readFile(output, 'utf8')).trim().split('\n').map(line => line.split('=')));
+    const key = keys.key;
+    assert.equal(keys['browser-key'], `${env.BROWSER_KEY_PREFIX}-${image}-${architecture}`);
+    assert.equal(key, `${env.PACKAGE_KEY_PREFIX}-${image}-${imageVersion}`);
     // A cold miss prepares locally; an exact hit skips downloads. A partial hit is never consumed.
     for (const [hit, matchedKey, status] of [
       ['', '', 0], ['false', '', 0], ['true', key, 0],
@@ -236,7 +247,7 @@ test('CI prepares packages once, restores an exact image cache and bounds offlin
     }
     const otherImage = imageVersion === '20261012.334.1' ? '20261023.334.3' : '20261012.334.1';
     const mismatch = spawnSync('bash', ['-ec', compatibility], {
-      encoding: 'utf8', env: { ...env, PACKAGE_KEY: `${env.PACKAGE_KEY_PREFIX}-ubuntu24-${otherImage}`,
+      encoding: 'utf8', env: { ...env, PACKAGE_KEY: `${env.PACKAGE_KEY_PREFIX}-${image}-${otherImage}`,
         PACKAGE_CACHE_HIT: 'true', PACKAGE_CACHE_MATCHED_KEY: key }
     });
     assert.equal(mismatch.status, 1, mismatch.stderr);
