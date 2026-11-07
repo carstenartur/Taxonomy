@@ -7,6 +7,9 @@ import com.taxonomy.backup.PrincipalId;
 import com.taxonomy.security.model.AppPrincipal;
 import com.taxonomy.security.model.PrincipalBinding;
 import com.taxonomy.security.model.StablePrincipal;
+import com.taxonomy.security.model.PrincipalUserDetails;
+import com.taxonomy.security.keycloak.PrincipalJwtAuthenticationToken;
+import com.taxonomy.security.keycloak.PrincipalOidcUser;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -109,6 +112,72 @@ public final class PrincipalIdentityService {
                 : authentication.getPrincipal() instanceof StablePrincipal identity ? identity : null;
         if (stable == null || !isEnabled(stable.principalId())) throw denied();
         return stable.principalId();
+    }
+
+    /**
+     * Validate the exact login behind a protected request against current committed authority.
+     * Unlike isEnabled, a different enabled binding cannot rescue this login after unlinking.
+     * Each decision uses one registry read, without a cross-request or per-instance cache.
+     */
+    public PrincipalId requireCurrent(org.springframework.security.core.Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) throw denied();
+        if (authentication instanceof org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+                && authentication.getPrincipal() instanceof PrincipalUserDetails local) {
+            PrincipalId principal = local.principalId();
+            String id = principal.value().toString();
+            var matches = jdbc.query("""
+                    select p.principal_id, p.scope_key, p.enabled, b.binding_key, b.principal_id,
+                           b.binding_kind, b.issuer, b.subject_id, b.enabled, i.installation_id,
+                           u.principal_id, u.enabled
+                    from app_principal p
+                    join principal_binding b on b.principal_id=p.principal_id and b.binding_kind='LOCAL'
+                    join principal_installation i on i.registry_key='local'
+                         and b.issuer=i.installation_id and b.subject_id=p.principal_id
+                    join app_user u on u.principal_id=p.principal_id
+                    where p.principal_id=?
+                    """, (row, number) -> {
+                String installation = row.getString(10);
+                var binding = new IdentityBinding(IdentityBinding.Kind.LOCAL, installation, id);
+                return id.equals(row.getString(1)) && authentication.getName().equals(row.getString(2))
+                        && row.getInt(3) == 1 && PrincipalBinding.key(binding).equals(row.getString(4))
+                        && id.equals(row.getString(5)) && "LOCAL".equals(row.getString(6))
+                        && installation.equals(row.getString(7)) && id.equals(row.getString(8))
+                        && row.getInt(9) == 1 && id.equals(row.getString(11)) && row.getBoolean(12);
+            }, id);
+            if (matches.size() != 1 || !matches.getFirst()) throw denied();
+            return principal;
+        }
+        if (authentication instanceof PrincipalJwtAuthenticationToken jwt) {
+            if (jwt.getToken().getIssuer() == null) throw denied();
+            return requireCurrentOidc(jwt.principalId(), jwt.getName(),
+                    jwt.getToken().getIssuer().toString(), jwt.getToken().getSubject());
+        }
+        if (authentication instanceof org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken
+                && authentication.getPrincipal() instanceof PrincipalOidcUser oidc) {
+            if (oidc.getIssuer() == null) throw denied();
+            return requireCurrentOidc(oidc.principalId(), authentication.getName(),
+                    oidc.getIssuer().toString(), oidc.getSubject());
+        }
+        throw denied();
+    }
+
+    private PrincipalId requireCurrentOidc(PrincipalId principal, String scope, String issuer, String subject) {
+        if (issuer == null || issuer.isBlank() || issuer.length() > 2048
+                || subject == null || subject.isBlank() || subject.length() > 1024) throw denied();
+        var binding = new IdentityBinding(IdentityBinding.Kind.OIDC, issuer, subject);
+        String id = principal.value().toString();
+        String key = PrincipalBinding.key(binding);
+        var matches = jdbc.query("""
+                select p.principal_id, p.scope_key, p.enabled, b.binding_key, b.principal_id,
+                       b.binding_kind, b.issuer, b.subject_id, b.enabled
+                from app_principal p join principal_binding b on b.principal_id=p.principal_id
+                where b.binding_key=?
+                """, (row, number) -> id.equals(row.getString(1)) && scope.equals(row.getString(2))
+                        && row.getInt(3) == 1 && key.equals(row.getString(4)) && id.equals(row.getString(5))
+                        && "OIDC".equals(row.getString(6)) && issuer.equals(row.getString(7))
+                        && subject.equals(row.getString(8)) && row.getInt(9) == 1, key);
+        if (matches.size() != 1 || !matches.getFirst()) throw denied();
+        return principal;
     }
 
     private static org.springframework.security.access.AccessDeniedException denied() {

@@ -1,5 +1,6 @@
 package com.taxonomy.security;
 
+import com.taxonomy.security.service.DatabaseUserDetailsService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -8,7 +9,6 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
@@ -37,6 +37,9 @@ class AdminAuthorizationRegressionTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private DatabaseUserDetailsService users;
 
     @Test
     @WithMockUser(username = "reader", roles = "USER")
@@ -89,8 +92,9 @@ class AdminAuthorizationRegressionTest {
     void formLoginSessionRequiresCsrfForStateChangingApiCalls() throws Exception {
         MockHttpSession session = new MockHttpSession();
         SecurityContext securityContext = SecurityContextHolder.createEmptyContext();
+        var admin = users.loadUserByUsername("admin");
         securityContext.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
-                "admin", "n/a", java.util.List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+                admin, null, admin.getAuthorities()));
         session.setAttribute(
                 HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
                 securityContext);
