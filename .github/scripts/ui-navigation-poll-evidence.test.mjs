@@ -215,6 +215,50 @@ for (const endpoint of endpoints) {
   });
 }
 
+const retainedWorkspace = destination.searchParams.get('workspaceId');
+const scopedSync = `${endpoints[1]}?workspaceId=${retainedWorkspace}`;
+
+function scopedSyncFixture() {
+  const input = fixture(endpoints[1]);
+  input.error.message = input.error.message.replace(endpoints[1], scopedSync);
+  input.error.stack = input.error.stack.replace(endpoints[1], scopedSync);
+  return input;
+}
+
+test('a cancelled scoped sync poll reconciles after the new document adopts its bootstrap read', () => {
+  assertReconciled(scopedSyncFixture(), scopedSync);
+});
+
+test('a scoped sync replacement must carry the retained workspace pin in both URL and header', () => {
+  const input = scopedSyncFixture();
+  input.reads[0].url = new URL(scopedSync, baseUrl).href;
+  input.reads[0].workspaceId = retainedWorkspace;
+  assertReconciled(input, scopedSync);
+  input.reads[0].workspaceId = 'other-workspace';
+  assert.equal(classifyWebKitPollCancellation(input), null);
+});
+
+test('a foreign workspace or extra query in the native error cannot reconcile', () => {
+  for (const badEndpoint of [
+    `${endpoints[1]}?workspaceId=other-workspace`,
+    `${scopedSync}&workspaceId=${retainedWorkspace}`,
+    `${scopedSync}&other=1`
+  ]) {
+    const input = scopedSyncFixture();
+    input.error.message = input.error.message.replace(scopedSync, badEndpoint);
+    input.error.stack = input.error.stack.replace(scopedSync, badEndpoint);
+    assert.equal(classifyWebKitPollCancellation(input), null);
+  }
+});
+
+test('an actual HTTP denial on either sync URL remains an audit failure', () => {
+  for (const endpoint of [endpoints[1], scopedSync]) {
+    const input = scopedSyncFixture();
+    input.reads.push({ ...input.reads[0], url: new URL(endpoint, baseUrl).href, status: 403 });
+    assert.equal(classifyWebKitPollCancellation(input), null);
+  }
+});
+
 const rejectedBoundaries = [
   ['another browser', x => { x.browserName = 'chromium'; }],
   ['console text instead of a native page-error', x => { x.error.kind = 'console-error'; }],
