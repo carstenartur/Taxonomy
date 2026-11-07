@@ -13,7 +13,7 @@ The release-candidate floor is the single-replica constrained/evaluation profile
 | `values-small.yaml` | evaluation and functional validation | 100 mCPU / 768 MiB | 500 mCPU / 1536 MiB | disabled | operator-supplied | chart-verified; constrained envelope, not throughput capacity |
 | `values-rancher-rke2.yaml` | Rancher/RKE2 evaluation behind `/taxonomy/` | 100 mCPU / 512 MiB | 500 mCPU / 1536 MiB | disabled by default | operator-supplied | chart-verified; ingress selectors and restricted egress tested |
 | default values | starting point for a standard single replica | 250 mCPU / 768 MiB | 2 CPU / 2 GiB | disabled by default | operator-supplied | declaration only; not yet a measured standard workload envelope |
-| large | import/analysis/optional local-model workload | not fixed | not fixed | workload-dependent | operator-supplied | unsupported until the remaining #638 benchmark matrix is complete |
+| large | import/analysis/optional local-model workload | not fixed | not fixed | workload-dependent | operator-supplied | unmeasured; wider profiles are a later follow-up to [#1351](https://github.com/carstenartur/Taxonomy/issues/1351) |
 
 Do not advertise the default or a locally invented large override as a measured production capacity envelope. The remaining work must measure startup, import, search, standard analysis and optional ONNX workloads before those profiles receive supported throughput or concurrency claims.
 
@@ -170,7 +170,7 @@ The automated evidence archive retains the same diagnostics without copying cred
 
 ## Remaining benchmark work
 
-Issue #638 remains open until all of the following are measured and reproducible for named standard and large profiles:
+[#1351](https://github.com/carstenartur/Taxonomy/issues/1351) owns the next bounded workload and failure measurements for a declared small/Rancher profile. The shipped smoke fixture remains evidence for its named configuration. A standard or large profile needs its own reproducible measurements before it can claim the following:
 
 - startup and readiness distribution;
 - representative taxonomy import;
