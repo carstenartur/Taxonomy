@@ -236,9 +236,16 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
                             throw new TemplateConflictException(ifNoneMatch, latest.commitId());
                         }
                     }
-                    String expected = conditional
-                            ? templates.resolveExpectedVersion(resource.templateId(), ifMatch)
-                            : expectedCommit;
+                    String expected = expectedCommit;
+                    if (conditional) {
+                        String matchedCommit = templates.resolveExpectedVersion(resource.templateId(), ifMatch);
+                        if (suppliedToken == null || suppliedToken.isBlank()) {
+                            expected = matchedCommit;
+                        } else if (!matchedCommit.equals(expectedCommit)) {
+                            // A matching HTTP condition cannot advance a stale lease.
+                            throw new TemplateConflictException(expectedCommit, matchedCommit);
+                        }
+                    }
                     TemplateDescriptor committed = templates.upload(
                             resource.templateId(),
                             displayName,

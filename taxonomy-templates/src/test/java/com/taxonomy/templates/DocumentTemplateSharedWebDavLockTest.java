@@ -134,8 +134,8 @@ class DocumentTemplateSharedWebDavLockTest {
     @Test
     void leaseExpiryCannotAdmitASecondWriterDuringTheGitCommit() throws Exception {
         var database = database();
-        try (var first = application(database); var second = application(database);
-             var workers = Executors.newFixedThreadPool(2)) {
+        var workers = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
+        try (var first = application(database); var second = application(database)) {
             var one = first.getBean(DocumentTemplateWebDavLockManager.class);
             var two = second.getBean(DocumentTemplateWebDavLockManager.class);
             var lock = one.acquire("alpha", "alice", "version-a", Duration.ofSeconds(1), null);
@@ -171,6 +171,8 @@ class DocumentTemplateSharedWebDavLockTest {
             assertThatThrownBy(() -> contender.get(3, TimeUnit.SECONDS))
                     .hasCauseInstanceOf(DocumentTemplateWebDavLockManager.LockConflictException.class);
             assertThat(two.require("alpha", lock.token(), "alice").currentCommit()).isEqualTo("version-b");
+        } finally {
+            workers.shutdownNow();
         }
     }
 
