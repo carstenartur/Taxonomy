@@ -5,6 +5,7 @@ import com.taxonomy.editor.ArchitectureCommandPort.Context;
 import com.taxonomy.editor.ArchitectureEditorController;
 import com.taxonomy.editor.ArchitectureEditorProjection;
 import com.taxonomy.editor.ArchitectureEditorService;
+import com.taxonomy.editor.WorkspaceCollaborationService;
 import com.taxonomy.export.LayeredDiagramLayoutService;
 import com.taxonomy.security.access.ArchitectureEditPermissionAdapter;
 import com.taxonomy.workspace.service.RepositoryContext;
@@ -106,13 +107,16 @@ class AccountContextControllerTest {
     void editorReceivesAppPermissionAdapterAndHonorsBearerScope() throws Exception {
         var service = mock(ArchitectureEditorService.class);
         var resolver = mock(WorkspaceResolver.class);
+        var collaboration = mock(WorkspaceCollaborationService.class);
         var selected = RepositoryContext.workspace("repo-a", "workspace-a", "draft", "alice");
+        when(collaboration.status(selected)).thenReturn(new WorkspaceCollaborationService.Status(false, true));
         when(resolver.resolveCurrentRepositoryContext()).thenReturn(selected);
         when(service.read(selected, null, null)).thenReturn(new ArchitectureEditorService.Document(
                 Context.of(selected, null), "", "READY", List.of(), List.of(), 0, null, "WORKSPACE_REVISION"));
         try (var context = new AnnotationConfigApplicationContext()) {
             context.getBeanFactory().registerSingleton("architectureEditorService", service);
             context.getBeanFactory().registerSingleton("workspaceResolver", resolver);
+            context.getBeanFactory().registerSingleton("workspaceCollaborationService", collaboration);
             context.registerBean(ArchitectureEditorProjection.class,
                     () -> new ArchitectureEditorProjection(new LayeredDiagramLayoutService()));
             context.register(ArchitectureEditorController.class, ArchitectureEditPermissionAdapter.class);

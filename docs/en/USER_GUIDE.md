@@ -4,6 +4,8 @@
 > Browser workflows come first. Explicitly labelled API operations do not imply that a corresponding GUI control exists.
 > For automation and scripting, see the [API Reference](API_REFERENCE.md).
 
+The screenshots use deterministic mock or declared demo data. The [capture record](../images/documentation-screenshots.json) identifies their exact source revision and image hashes; example scores do not assess a live provider's quality.
+
 ## Fastest Path — Your First Analysis in 5 Steps
 
 | Step | Action | Where |
@@ -20,7 +22,7 @@
 
 The system evaluates the selected taxonomy scope hierarchically and preserves partial results, explanations and progress. Assessed, excluded, open and unselected nodes are distinct; not every catalogue node receives an independent model assessment. A full run can propose typed architecture relationships for review and export.
 
-![Earlier illustrative scored tree; values are example data](../images/15-scored-taxonomy-tree.png)
+![Scored User Applications branch with deterministic mock values](../images/15-scored-taxonomy-tree.png)
 
 **Ready for more?** Continue reading for the full guide, or jump to [Architecture View](#7-architecture-view) to understand how the architecture is generated.
 
@@ -292,7 +294,7 @@ Click **Got it — let's start!** to dismiss the overlay. The overlay will not a
 
 ### Checking AI Availability
 
-Open **Status** in the navigation bar to inspect provider readiness:
+Expand **System status** below the work-area navigation to inspect provider readiness:
 
 - 🟢 **Green badge** — provider readiness is reported. Check capability support: local embeddings do not enable generative relationships or wording synthesis.
 - 🔴 **Red badge** — no LLM provider is configured; analysis is unavailable. Contact your administrator.
@@ -303,6 +305,8 @@ Open **Status** in the navigation bar to inspect provider readiness:
 ## 3. Understanding the Interface
 
 The application is divided into two main panels side by side.
+
+![Analysis workspace before the first run, with commands, work areas and collapsed status/context details](../images/01-full-page-layout.png)
 
 ### Left Panel — Taxonomy Tree
 
@@ -329,12 +333,12 @@ Exports and saved-analysis import are in **Architecture → Export**. **Load Sco
 The right panel (narrower column) contains all interactive tools:
 
 - **Business Requirement Analysis card** — the main textarea where you type a requirement and run the analysis.
-- **Match Legend** — colour scale from 0 % to 100 % showing what each green shade means.
+- **Match legend** — a compact, always-visible colour scale below the analysis controls, with swatches at 0 %, 25 %, 50 %, 75 % and 100 %.
 
-![Match Legend](../images/10-match-legend.png)
+![Compact, always-visible match legend](../images/10-match-legend.png)
 
 - **Analysis status** — inline progress and warnings; hide it without cancelling the run, then reopen it from the **Analysis status** button in the requirement workspace.
-- **Status menu** — open operational and provider status details; warnings do not open the menu automatically.
+- **System status** — expand operational and provider status details; warnings do not open the disclosure automatically.
 - **Analysis Log** (collapsible) — step-by-step log of the scoring process.
 - **Architecture View Panel** — appears after analysis when the Architecture View checkbox is enabled.
 - **Graph tab** — opens Graph Explorer; enter a node code and run upstream, downstream, or failure-impact queries.
@@ -346,7 +350,7 @@ The right panel (narrower column) contains all interactive tools:
 
 ### Navigation Bar
 
-The header separates commands from work navigation. The command row contains five equally styled menus:
+The header combines commands and work navigation in one compact toolbar. Its five command menus are:
 
 | Menu | Commands |
 |---|---|
@@ -356,11 +360,13 @@ The header separates commands from work navigation. The command row contains fiv
 | **Tools** | Graph Explorer, integrations, appearance, interface language and authorized administration/server settings |
 | **Help** | Help for the current view, the user manual and About on the analysis/workspace page |
 
-Under that row, **Projects**, **Requirement** and **Architecture** select the work area. Projects opens the existing project overview; Requirement opens the current analysis workspace. History and source are views of the architecture. Contextual actions remain beside their requirement or diagram. Unavailable commands are disabled and invoke the same feature operation as their toolbar counterparts when enabled.
+On the same toolbar, **Projects**, **Requirement** and **Architecture** select the work area. Projects opens the existing project overview; Requirement opens the current analysis workspace. History and source are views of the architecture. Contextual actions remain beside their requirement or diagram. Unavailable commands are disabled and invoke the same feature operation as their toolbar counterparts when enabled.
 
-Below 768 CSS pixels, **Menu** contains the same five command groups. The three work areas stay directly visible. Escape closes the active group and returns focus to its launcher; a second Escape closes the compact Menu. Left/right arrows move between command groups, up/down arrows traverse enabled commands. Work navigation uses ordinary links with Tab and Enter.
+Below 1024 CSS pixels, **Menu** contains the same five command groups; on the narrowest screens its button shows **☰**. The three work areas remain available on the same toolbar. Escape closes the active group and returns focus to its launcher; a second Escape closes the compact Menu. Left/right arrows move between command groups, up/down arrows traverse enabled commands. Work navigation uses ordinary links with Tab and Enter.
 
 **System status** and its warning/readiness text remain outside the command menus. Analysis progress and the **Analysis status** button belong to the requirement workspace.
+
+![Tools menu with appearance, language and authorized administration entries](../images/14-navbar-settings.png)
 
 ### Dark Mode
 
@@ -402,7 +408,7 @@ Document language controls generated headings and labels in Word, HTML and Markd
 4. Progress appears in the inline analysis status. The taxonomy tree in the left panel starts showing colour-coded score bars as results arrive.
 5. When analysis is complete, the inline analysis status shows a summary and the export buttons become available.
 
-![Earlier illustrative scored tree; values are example data](../images/15-scored-taxonomy-tree.png)
+![Scored User Applications branch with deterministic mock values](../images/15-scored-taxonomy-tree.png)
 
 ### Starting over, cancelling, and saving the working draft
 
@@ -459,13 +465,13 @@ and loaded unchanged through the normal file import. CO shows a question without
 a numeric score; BP 40%, CR 45% and UA 70% remain available. These are declared
 demo replies. The English interface preserves the original German explanation.
 [Open the screenshot directly](../images/root-relevance-clarification-en.png) ·
-[Source and capture evidence](../images/root-relevance-clarification-capture.json).*
+[Source and capture evidence](../images/documentation-screenshots.json).*
 
-The fully expanded tree shows scores at every level, making it easy to identify which branches are most relevant:
+Expanding a scored branch shows its retained scores at each displayed level:
 
-> **Detail view** — the image below shows the full BP tree expanded to all levels. Click any node to see its score and justification.
+> **Detail view** — this mock analysis shows the User Applications branch through Unified Communication Applications. Open a node's explanation to inspect the saved justification.
 
-![Scored taxonomy tree — fully expanded](../images/35-scored-bp-tree-expanded.png)
+![Expanded User Applications branch with deterministic mock scores](../images/35-scored-bp-tree-expanded.png)
 
 ### Interactive Mode
 
@@ -492,7 +498,7 @@ Tick the **Architecture View** checkbox before running analysis to also build an
 
 ### Understanding Scores and the Colour Legend
 
-The **Match Legend** (below the analysis card) shows the colour scale:
+The **Match legend** stays visible in a compact row below the analysis controls, including after analysis. Its swatches show the colour scale:
 
 | Colour | Score range | Meaning | Text Colour |
 |---|---|---|---|
@@ -507,7 +513,7 @@ The colour is computed as `rgba(0, 128, 0, score/100)` — a pure green whose **
 
 Nodes with a score of 0 % have no highlight at all. Hover over any legend box to see a tooltip describing its match level.
 
-![Match Legend with scores](../images/17-match-legend-with-scores.png)
+![Compact match legend remains visible beside scored results](../images/17-match-legend-with-scores.png)
 
 ### The Analysis Log
 
@@ -627,7 +633,7 @@ For the two full-sheet layouts, **Paper size** offers A4, A3, A2, **A1** and **A
 
 ![Diagram options with the positive relevance filter, one sheet per subtaxonomy and A0 paper](../images/diagram-print-controls-en.png)
 
-*Production diagram controls shown with a deterministic component fixture. [Capture source](../images/diagram-print-controls-2026-10-27.json); [verification scope](../testing/stable-diagrams-and-print.md).*
+*Application capture after a deterministic mock analysis in Decision view. [Capture source](../images/documentation-screenshots.json); [verification scope](../testing/stable-diagrams-and-print.md).*
 
 Choose a printer supporting the selected paper size or **Save as PDF** in the browser. The print view specifies physical sheet dimensions, such as 594 × 841 mm for A1 and 841 × 1189 mm for A0; the print dialog must not override them with A4. Printing leaves the screen view and stored results intact. If the browser blocks the print window, allow pop-ups for this application and select **Print diagram** again.
 
@@ -791,7 +797,7 @@ A new query replaces the previous result. A response arriving late from an older
 
 ![Graph entry — visible upstream result for BP-1000 in the German interface](../images/graph-entry-current-de.png)
 
-*German interface: choosing **Graph** at node `BP-1000` opens its upstream result. This example returned no connected elements. [Source revision and capture record](../images/ui-documentation-2026-10-25.json).*
+*German interface: choosing **Graph** at node `BP-1000` opens its upstream result. This example returned no connected elements. [Source revision and capture record](../images/documentation-screenshots.json).*
 
 ### Upstream Query — "What feeds into this?"
 
@@ -834,11 +840,11 @@ The table/graph shows:
 | Hops | Distance from the starting node |
 | Relevance | Impact score or similarity indicator |
 
-![Graph Explorer upstream results](../images/21-graph-explorer-upstream.png)
+![Graph Explorer upstream query for BP-1327 returning no connected catalogue elements](../images/21-graph-explorer-upstream.png)
 
-> **Failure Impact example:** The screenshot below shows the result of a *Failure Impact* query (⚠️ button). It highlights all nodes that would be affected if the selected node failed.
+> **Failure Impact example:** This query for `BP-1327` returned no connected catalogue elements. It is an empty result within the selected query scope; it does not establish that the current analysis architecture has no dependencies.
 
-![Graph Explorer failure impact](../images/22-graph-explorer-failure.png)
+![Graph Explorer failure-impact query for BP-1327 with an empty catalogue result](../images/22-graph-explorer-failure.png)
 
 Accepted proposals belong to the selected workspace's relation projection. The Graph Explorer queries the primary catalogue; accepting a workspace proposal does not automatically add an edge to this catalogue query. Review the decision in the selected workspace's relation view (see [Section 9](#9-working-with-relation-proposals)).
 
@@ -920,15 +926,15 @@ The **Confidence** column shows how strongly the AI believes the proposed relati
 
 Open **Architecture → Export** for diagram, tree, data and report outputs. Score-dependent formats become available when analysis scores are present; installed capabilities and the selected result determine the available formats.
 
-![Earlier component illustration of export groups](../images/23-export-buttons.png)
+![Export groups with score-dependent controls locked in the captured state](../images/23-export-buttons.png)
 
-This older illustration shows the grouping, not the current complete format list or support labels. Open **Architecture → Export** for the installed capabilities.
+This capture shows the installed groups and support labels. Score-dependent controls are locked because this view has no loaded analysis scores. Open **Architecture → Export** to inspect the capabilities of your installation.
 
 The Export tab provides a dedicated panel with all available export formats organised by category (diagrams, data, reports) and import options:
 
 ![Export tab — full view](../images/33-export-tab.png)
 
-This earlier overview shows the general export groups. See [Configure a decision report](#configurable-decision-report) below for the current decision-report controls and new illustrations.
+The overview includes import options as well as export groups. See [Configure a decision report](#configurable-decision-report) below for the shared decision-report dialog.
 
 The [scenario reference workflow](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/scenario-acceptance.md) explains Copilot and Workbench controls using a sourced flood-information requirement and describes the corresponding export QA (German guide).
 
@@ -1147,7 +1153,7 @@ Graph mode checks the selected repository, scope and exact branch head on each r
 
 ### Embedding Status
 
-The **🧠 Embeddings** badge in the navigation bar shows whether semantic embeddings are available:
+The **🧠 Embeddings** badge in the expanded **System status** shows whether semantic embeddings are available:
 
 - **🧠 Embeddings: N nodes** (blue) — embeddings are loaded; mode availability also depends on index readiness, and Graph checks the selected scope on each request.
 - **🧠 Embeddings: unavailable** (grey) — embeddings not loaded; only Full-text search is available.
@@ -1726,7 +1732,7 @@ See [§12 Versions Tab](#12-versions-tab) for how to use the search in the GUI.
 <a id="guide-section-19"></a>
 ## 12. Versions Tab
 
-The **🕓 Versions** tab provides a visual interface for browsing, managing, and reverting architecture versions. Click **🕓 Versions** in the top navigation bar to open it.
+The versions view provides a visual interface for browsing, managing, and reverting architecture versions. Choose **View → Version history** to open it.
 
 
 ### Branch Selector
@@ -1874,20 +1880,20 @@ The toast automatically disappears after 5 seconds.
 
 ### Workspace User Badge
 
-Open **Status** in the navigation bar to see the workspace/user badge. Its text
+Expand **System status** below the work-area navigation to see the workspace/user badge. Its text
 identifies the user; its tooltip names the workspace and current branch. The Git
-and context details in the same menu identify the selected version and editing scope.
+and context details in the same disclosure identify the selected version and editing scope.
 
 ---
 
 <a id="guide-section-20"></a>
 ## 13. Git Status and Context Bar
 
-Open **Status** in the navigation bar to inspect the Git and context details for the current architecture state. These details are shown on demand.
+Expand **System status** below the work-area navigation to inspect the Git and context details for the current architecture state. These details are shown on demand.
 
 ### Git Status Bar
 
-The **Git Status Bar** is inside the **Status** menu. It displays:
+The **Git Status Bar** is inside **System status**. It displays:
 
 
 | Indicator | Meaning |
@@ -1904,14 +1910,14 @@ When the projection shows **STALE**, it means the DSL has been changed but not y
 
 ### Context Navigation Bar
 
-The **Context Bar** is part of the **Status** menu. It identifies the selected architecture context, such as a historical version, variant or comparison. The following older component illustration explains its fields; its page position is not the current navigation layout.
+The **Context Bar** appears inside expanded **System status** on the analysis/workspace page. This crop shows an editable working version, its branch and save time, plus **New Variant** and **Compare**. Historical or originating contexts can expose additional details and navigation actions.
 
-![Context Navigation Bar](../images/44-context-bar.png)
+![Context Bar showing an editable draft, save time, New Variant and Compare](../images/44-context-bar.png)
 
 The Context Bar shows:
 
-- **Mode badge** — `EDITABLE` (green), `READ-ONLY` (yellow), or `TEMPORARY` (grey)
-- **Branch name** and **commit ID** — Which version you are currently viewing
+- **Mode badge** — Working version (green), read-only (yellow), or temporary (grey)
+- **Branch name** and save time or commit ID — Which version you are currently viewing
 - **Origin indicator** — If you navigated from another context, shows where you came from
 
 Navigation buttons in the Context Bar:
@@ -1934,9 +1940,9 @@ Administration features require the appropriate server-side role. Standard users
 > 📖 For a comprehensive guide to all AI providers, per-request provider override, mock mode, diagnostics API, and rate limiting, see **[AI Providers](AI_PROVIDERS.md)**.
 > For runtime preference management (LLM settings, DSL config, size limits), see **[Preferences](PREFERENCES.md)**.
 
-### AI Status Indicator (🟢 / 🔴 in Navbar)
+### AI Status Indicator (System status)
 
-The badge in the navigation bar shows whether an LLM provider is connected:
+The badge in the expanded **System status** shows the reported provider readiness:
 
 | Badge | State | Meaning |
 |---|---|---|
@@ -2189,7 +2195,7 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 
 ### The "Analyze with AI" button is disabled or greyed out
 
-**Cause:** No LLM provider is configured or available. The AI Status badge in the navigation bar will be 🔴 red.
+**Cause:** No LLM provider is configured or available. Expand **System status** to inspect the AI status badge and reported readiness.
 
 **Action:** Contact your administrator to verify the LLM provider configuration (`GEMINI_API_KEY`, `OPENAI_API_KEY`, or `LLM_PROVIDER=LOCAL_ONNX`).
 
@@ -2240,7 +2246,7 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 
 **No.** The Failure Impact view (⚠️ button) is a deliberate feature, not an error state. It highlights all nodes that would be affected if the selected node failed or was removed. Use it for change-impact analysis and risk assessment. See [Section 8 — Graph Explorer](#8-using-the-graph-explorer) for full details.
 
-![Graph Explorer failure impact](../images/22-graph-explorer-failure.png)
+![Failure Impact example returning no connected catalogue elements](../images/22-graph-explorer-failure.png)
 
 <a id="guide-section-27"></a>
 ## Saved reformulation offers and decision questions

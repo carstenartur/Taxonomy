@@ -43,20 +43,20 @@ Implementierungsnotizen zu den aufgeführten GUI-Dialogen. Die Phasenangaben bes
 
 ---
 
-## Nachweisprüfung (25. Oktober 2026)
+## Nachweisprüfung (6. November 2026)
 
-Die frühere Aussage, alle Lücken seien geschlossen, ging zu weit. Implementierte Dialoge, eine Screenshot-Datei und ein erfolgreicher Test eines anderen Einstiegswegs sind unterschiedliche Nachweise. Die [Funktionsmatrix](FEATURE_MATRIX.md) benennt diese Grenzen; das [Ansichts- und Bedienelementinventar](../testing/ui-view-control-inventory.md) hält offene Nacharbeiten fest.
+Die erneuerten Bilder haben ein [Aufnahmemanifest mit genauem Quellstand](../images/documentation-screenshots.json) und eine [visuelle Prüfung](../qa/2026-11-07-documentation-screenshots.md). Implementierte Dialoge, eine Screenshot-Datei und ein erfolgreicher Test eines anderen Einstiegswegs sind unterschiedliche Nachweise. Die [Funktionsmatrix](FEATURE_MATRIX.md) benennt diese Grenzen; das [Ansichts- und Bedienelementinventar](../testing/ui-view-control-inventory.md) hält offene Nacharbeiten fest.
 
 ### Funktionen mit GUI-Einstieg
 
 | Funktion | GUI-Element | Benutzerhandbuch | Screenshot-Nachweis |
 |---|---|---|---|
-| Blatt-Begründung | `leafJustificationModal` | §6 | Historisches Bild #18 |
-| Anforderungsabdeckung | `coverageDashboard` + `coverageRecordBtn` | §11c | Historische Bilder #26, 27 zeigen dieses Dashboard |
+| Blatt-Begründung | `leafJustificationModal` | §6 | Erneuerte Mock-Analyseaufnahme #18 |
+| Anforderungsabdeckung | `coverageDashboard` + `coverageRecordBtn` | §11c | Erneuerte Bilder #26, 27 zeigen dieses Dashboard mit Beispieldatensätzen |
 | Lückenanalyse | `gapAnalysisPanel` + `gapAnalyzeBtn` | §11d | Keine eigene aktuelle Aufnahme verknüpft; #26/27 zeigen keine Lückenanalyse |
 | Empfehlungen | `recommendationPanel` + `recommendBtn` | §11e | Keine eigene aktuelle Aufnahme verknüpft |
 | Mustererkennung | `patternDetectionPanel` + `patternDetectBtn` | §11f | Keine eigene aktuelle Aufnahme verknüpft |
-| Berichte (MD/HTML/DOCX) | Schaltflächen `exportReportMd/Html/Docx` | §10a | Historisches Bild #23 zeigt Exportaktionen, keine erfolgreichen Downloads |
+| Berichte (MD/HTML/DOCX) | Schaltflächen `exportReportMd/Html/Docx` | §10a | Erneuertes Bild #23 zeigt vor der Analyse gesperrte, bewertungsabhängige Exportaktionen |
 | Anforderungs-Auswirkungsanalyse | `requirementImpactBtn` im Register Graph | §11b | Keine eigene aktuelle Aufnahme verknüpft; Verhaltenstest in `ux-state-recovery.cjs` |
 | Graph-Einstieg aus Baum/Auswirkungsansicht | Knotenaktion oder Elementdetails → Graph | §8 | [Aktuelle DE-Aufnahme](../images/graph-entry-current-de.png); Serverprüfung: `verifyGraphEntry` in `ui-primary-basic-workflows.mjs`; Komponentenregressionen: `ux-state-recovery.cjs` / `analysis-ux.browser.test.mjs` |
 
@@ -67,7 +67,7 @@ Workspace, Historie, Branch-Vergleich, Transfer, Varianten, DSL und Merge sind i
 - #20, #37 und #38 verwendeten einen nicht mehr unterstützten Schreibweg für Katalog-Testbeziehungen und sind zurückgezogen. Angenommene Workspace-Vorschläge gehören zur Workspace-Relationsprojektion; Katalog-Graphabfragen lesen einen anderen Umfang. Die aktuellen Workbench-Aufnahmen bleiben Nachweise ihrer ausgewählten persistierten Beispiel-Snapshots.
 - #32 ist eine historische Darstellung der graph-semantischen Suche. Der Test stellte die erforderliche Workspace-Relationsprojektion nicht sicher; ein neuer Workspace kann `409 NOT_BUILT` liefern. Die aktuelle Graph-Einstiegsaufnahme prüft eine andere Operation und schließt diese Such-Nachweislücke nicht.
 - #48–65 und #67–68 verwendeten eingesetzten Darstellungszustand. Ihre Generatoren sind zurückgezogen; erhaltene Bilder sind historische Beispiele und kein Beleg für erfolgreiche Merge-, Transfer-, Sync-, Lösch- oder Restore-Aktionen.
-- #41–47 und #66 bleiben historische Darstellungen von Historie und Workspace. Eine vorhandene Datei bindet sich nicht automatisch an den aktuellen Quellstand.
+- #41–47 und #66 wurden durch den bestehenden Testverantwortlichen mit persistierten Beispielhistorien und echten API-Antworten neu aufgenommen. Das Manifest bindet ihre Bytes an den aufgezeichneten Quellstand; die Bilder decken nicht jeden Historien-, Vergleichs- oder Synchronisationsausgang ab.
 - Datenbankassistent, Architektureditor und persistierte Workbench haben eigene Anleitungen und Testverantwortliche. Herkunft und Umfang ihrer Aufnahmen stehen im [Inventar](../testing/ui-view-control-inventory.md).
 - Leer-/Fehlerzustände, Berechtigungen, Tastaturbedienung und gleichzeitige Änderungen benötigen Verhaltensprüfungen. Das statische Zählen von Schaltflächen oder Screenshots ersetzt sie nicht.
 

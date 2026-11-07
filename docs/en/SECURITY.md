@@ -16,7 +16,7 @@ This is the default when the `keycloak` Spring profile is not active.
 - REST clients may authenticate with HTTP Basic.
 - Passwords are stored as BCrypt hashes in the application database.
 - Browser state-changing requests remain protected by CSRF tokens.
-- An `/api/**` request is exempt from CSRF only when it carries an explicit Basic or Bearer `Authorization` header and is therefore treated as a stateless API request.
+- Only requests authenticated through supported stateless HTTP Basic or Keycloak Bearer credentials qualify for a CSRF exemption. Restored browser sessions retain CSRF protection; an ignored `Authorization` header does not grant an exemption.
 
 ### Keycloak/OIDC mode
 

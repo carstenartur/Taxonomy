@@ -51,7 +51,7 @@ Das [Ansichts- und Bedienelementinventar](../testing/ui-view-control-inventory.m
 | Semantische/Hybridsuche | ✅ | ✅ | ✅ §11 | #30, 31 | ✅ | ✅ | Implementiert |
 | Graphexploration (Upstream/Downstream) | ✅ | ✅ | ✅ §8 | [Graph-Einstieg](../images/graph-entry-current-de.png) | ✅ | ✅ | Implementiert |
 | Ausfallauswirkungsanalyse | ✅ | ✅ | ✅ §8 | #22 | ✅ | ✅ | Implementiert |
-| Anforderungsabdeckung | ✅ | ✅ | ✅ §11c | #26, 27 | ✅ | ✅ | Implementiert; historische Aufnahmen des Abdeckungs-Dashboards |
+| Anforderungsabdeckung | ✅ | ✅ | ✅ §11c | #26, 27 | ✅ | ✅ | Implementiert; Abdeckungs-Dashboard mit deterministischen Mock-Daten |
 | Lückenanalyse | ✅ | ✅ | ✅ §11d | — | ✅ | ✅ | ⚠️ Implementiert; #26/27 zeigen Abdeckung, nicht Lückenanalyse |
 | Mustererkennung | ✅ | ✅ | ✅ §11f | — | ✅ | ✅ | ⚠️ Implementiert; Screenshot nicht verknüpft |
 | Empfehlungen (Copilot) | ✅ | ✅ | ✅ §11e | — | ✅ | ✅ | ⚠️ Implementiert; Screenshot nicht verknüpft |
@@ -135,6 +135,6 @@ verantwortet die gemeinsame Artefakthülle und Autoritätsnachweise.
 
 ## Screenshot-Index
 
-Nummerierte Bilder in `docs/images/` sind historische Verweise, sofern eine Aufnahme nicht ausdrücklich an einen Lauf und Quellstand gebunden ist. Sie haben mehrere Testverantwortliche; `ScreenshotGeneratorIT` erzeugt nicht jedes Bild. Die Aufnahmen #20, #37 und #38 verwendeten einen nicht mehr unterstützten Schreibweg für Katalog-Testbeziehungen und sind zurückgezogen; sie belegen nicht, dass Katalog-Graphabfragen angenommene Workspace-Vorschläge enthalten. Auch #32 ist zurückgezogen: Die Fixture für die graph-semantische Suche stellte keine unterstützte Workspace-Relationsprojektion sicher und kann `409 NOT_BUILT` liefern. Die zurückgezogenen Darstellungsbeispiele #48–65 und #67–68 sind ebenfalls keine Anwendungsabnahme. Siehe [Aufnahme-Anleitung und Herkunft](../../.github/copilot-ref-screenshots.md) sowie [Ansichtsinventar](../testing/ui-view-control-inventory.md).
+Die erneuerten Handbuchbilder sind im [Maven-Aufnahmemanifest](../images/documentation-screenshots.json) an ihren genauen Quellstand, ihre Abmessungen und Prüfsummen gebunden; die [Prüfung vom 7. November](../qa/2026-11-07-documentation-screenshots.md) enthält die visuellen Befunde. Sie verwenden mehrere bestehende Testverantwortliche und deterministische Mock- oder verfasste Beispieldaten. Die Aufnahmen #20, #37 und #38 verwendeten einen nicht mehr unterstützten Schreibweg für Katalog-Testbeziehungen und sind zurückgezogen; sie belegen nicht, dass Katalog-Graphabfragen angenommene Workspace-Vorschläge enthalten. Auch #32 ist zurückgezogen: Die Fixture für die graph-semantische Suche stellte keine unterstützte Workspace-Relationsprojektion sicher und kann `409 NOT_BUILT` liefern. Die zurückgezogenen Darstellungsbeispiele #48–65 und #67–68 bleiben historische Beispiele. Siehe [Aufnahme-Anleitung und Herkunft](../../.github/copilot-ref-screenshots.md) sowie [Ansichtsinventar](../testing/ui-view-control-inventory.md).
 
 Referenzformat: `#NN` = `docs/images/NN-*.png`. Benutzerhandbuch-Abschnittsreferenzen: `§N` = USER_GUIDE.md Abschnitt N.

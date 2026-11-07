@@ -1,9 +1,9 @@
 {
-  "capturedAt": "2026-10-25T19:15:29.514Z",
-  "sourceCommit": "5d4a0aaa39caf0f18aaf907e172c14cb2869f307",
+  "capturedAt": "2026-11-07T01:21:02.046Z",
+  "sourceCommit": "131e8e29b4ce2e89275f8eb3bc6cf6e8686f03dd",
   "sourceFile": "taxonomy-app/src/main/resources/static/js/shared/decision-export-dialog.js",
-  "sourceSha256": "5858d69339724a2bfad205717c87d66c4172efa0c92dc39ebc1f1624c36e204d",
-  "browser": "153.0.8010.0",
+  "sourceSha256": "92dd70ba2b53e5827e398233d320f5195370da9fcc309fae01adeea2b050a3bb",
+  "browser": "149.0.7827.55",
   "kind": "production-component-with-authored-example-input",
   "fullApplication": false,
   "providerCalls": false,
@@ -15,7 +15,7 @@
         "width": 1280,
         "height": 1250
       },
-      "sha256": "485ccf8af7dff404f2909fad32d8aff20881f59d1fca08c0287affe059e97094"
+      "sha256": "8f3a69c61c900b5930f4d48be085f06b63437c830b611b30ac297be78f00668b"
     },
     {
       "file": "decision-export-options-de.png",
@@ -24,7 +24,7 @@
         "width": 1280,
         "height": 1250
       },
-      "sha256": "ebe85d7ce534987e12b5e908fac222eecdcc8b2198c08b29d2d0898eb05c4171"
+      "sha256": "644fd0aa9d37f35d00a4fee28ca8de97b985a0047defc83c407d7ab613a0ee60"
     },
     {
       "file": "decision-export-mobile-de.png",
@@ -33,7 +33,7 @@
         "width": 390,
         "height": 1000
       },
-      "sha256": "34b71b30069f2055d5bd3f11df1f5fd0b7d0e043c7a4ca17b55179a7c057257b"
+      "sha256": "aaa1f47e97d9780bafbd1f910a1f36966bd16825461281ac1485f5700eef5b76"
     },
     {
       "file": "decision-export-dialog-en.png",
@@ -42,7 +42,7 @@
         "width": 1280,
         "height": 1250
       },
-      "sha256": "84d24b19193e933a5a40a12b5f13dad44d8425644552b9252e77bfe0e49034d6"
+      "sha256": "9e954ca0c00c938c0ef95d3084de60678698a57e8411300505b39f140d5047ff"
     },
     {
       "file": "decision-export-options-en.png",
@@ -51,7 +51,7 @@
         "width": 1280,
         "height": 1250
       },
-      "sha256": "351fcaa1f94c4f0e1ab5beaa5027f3cdc27d21c3291029671083d0cd2afc3308"
+      "sha256": "82ee01bd8d810e9c873b6339af7ca7237605ba8f4c76214d7a5658c05699354c"
     },
     {
       "file": "decision-export-mobile-en.png",
@@ -60,7 +60,7 @@
         "width": 390,
         "height": 1000
       },
-      "sha256": "3cb45f59292312c50debff788019d4a5c303b8df3bfe1d29815d08467bd57b5f"
+      "sha256": "260bd6ac01d814160b99081fa0586e4eb00df5249aee08a9dacbd17bb67f26e4"
     }
   ]
 }

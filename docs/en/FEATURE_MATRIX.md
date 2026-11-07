@@ -50,7 +50,7 @@ The [view and control inventory](../testing/ui-view-control-inventory.md) maps c
 | Semantic/Hybrid search | ✅ | ✅ | ✅ §11 | #30, 31 | ✅ | ✅ | Implemented |
 | Graph exploration (upstream/downstream) | ✅ | ✅ | ✅ §8 | [Graph entry, DE](../images/graph-entry-current-de.png) | ✅ | ✅ | Implemented |
 | Failure impact analysis | ✅ | ✅ | ✅ §8 | #22 | ✅ | ✅ | Implemented |
-| Requirement coverage | ✅ | ✅ | ✅ §11c | #26, 27 | ✅ | ✅ | Implemented; historical coverage-dashboard captures |
+| Requirement coverage | ✅ | ✅ | ✅ §11c | #26, 27 | ✅ | ✅ | Implemented; deterministic mock coverage-dashboard captures |
 | Gap analysis | ✅ | ✅ | ✅ §11d | — | ✅ | ✅ | ⚠️ Implemented; #26/27 show coverage, not gap analysis |
 | Pattern detection | ✅ | ✅ | ✅ §11f | — | ✅ | ✅ | ⚠️ Implemented; screenshot not linked |
 | Recommendations (Copilot) | ✅ | ✅ | ✅ §11e | — | ✅ | ✅ | ⚠️ Implemented; screenshot not linked |
@@ -131,6 +131,6 @@ reconciliation; #966 owns the common artifact-envelope and authority work.
 
 ## Screenshot Index
 
-Numbered images in `docs/images/` are historical references unless a capture is explicitly bound to a run and source revision. They have several test owners; `ScreenshotGeneratorIT` does not own every image. Captures #20, #37 and #38 relied on unsupported catalogue-relation seeding and are retired; they do not prove that catalogue Graph queries include accepted workspace proposals. Capture #32 is also retired: its graph-semantic search fixture did not establish a supported workspace relation projection and can return `409 NOT_BUILT`. Retired presentation fixtures #48–65 and #67–68 are also not application acceptance evidence. See the [capture instructions and provenance](../../.github/copilot-ref-screenshots.md) and [view inventory](../testing/ui-view-control-inventory.md).
+The refreshed guide images are bound to their exact source, dimensions and hashes in the [Maven capture manifest](../images/documentation-screenshots.json), with visual findings in the [7 November review](../qa/2026-11-07-documentation-screenshots.md). They use several existing test owners and deterministic mock or authored example data. Captures #20, #37 and #38 relied on unsupported catalogue-relation seeding and are retired; they do not prove that catalogue Graph queries include accepted workspace proposals. Capture #32 is also retired: its graph-semantic search fixture did not establish a supported workspace relation projection and can return `409 NOT_BUILT`. Retired presentation fixtures #48–65 and #67–68 remain historical illustrations. See the [capture instructions and provenance](../../.github/copilot-ref-screenshots.md) and [view inventory](../testing/ui-view-control-inventory.md).
 
 Reference format: `#NN` = `docs/images/NN-*.png`. User Guide section references: `§N` = USER_GUIDE.md section N.

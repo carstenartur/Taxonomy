@@ -52,8 +52,9 @@ Keep raw logs and complete capture evidence under `target/` or in CI artifacts.
 The table describes the current reproduction recipes. Updating an owner does not
 prove that an existing PNG was captured from that source. In particular, a
 `*-current-*` filename is not a freshness guarantee. New retained captures need the
-matching output and actual `documentation-screenshots.json` from a successful run;
-these instructions do not record such a run.
+matching output and actual `documentation-screenshots.json` from a successful run.
+The retained guide refresh is documented in the [7 November visual review](../docs/qa/2026-11-07-documentation-screenshots.md)
+and its [unaltered generated manifest](../docs/images/documentation-screenshots.json).
 
 The [October 25 application record](../docs/images/ui-documentation-2026-10-25.json),
 [focus-lens record](../docs/images/architecture-editor-focus-capture.json),
@@ -70,9 +71,9 @@ to identify ownership: numeric prefixes are shared.
 
 | Owner | Output | Source boundary |
 |---|---|---|
-| `ScreenshotGeneratorIT` | `01`–`19`, `21`–`31`, `33`–`36`, `39`–`47`, `66-versions-timeline.png`, `69-decision-map-scored.png`, `70-swagger-ui.png`, `71-rich-version-timeline.png`, `72-rich-variants-browser.png`, `73-cherry-pick-before.png`, `74-cherry-pick-after.png`, `75-preferences-diagram-policy.png`; `graph-entry-current-de.png`, `database-setup-current-{de,en}.png`, `diagram-print-controls-{de,en}.png`, `root-relevance-clarification-{de,en}.png` | General UI illustrations using the real catalogue, deterministic mock model and authored fixtures persisted through the APIs. Graph entry retains the actual catalogue response, including an empty result. Database captures stop at connection entry. Diagram controls use an actual mock analysis; root clarification uses the persisted product-demo R0 result and production export/import path. Git operations require successful API responses; badges retain real state. These images do not establish live-provider quality. |
-| `ArchitectureWorkbenchUiIT` | `71-copilot-architecture-workbench.png`; `architecture-workbench-current-{de,en}.png`, `architecture-editor-current-{de,en}.png`, `architecture-editor-focus-{de,en}.png` | Creates and opens a real immutable analysis snapshot with deterministic mock scores; checks browser controls and SVG/PDF model exports. Editor illustrations create two elements through real preview/accept controls in an editable workspace; focus crops show the enabled lens with AI disabled. They do not cover every editor control. |
-| `CompleteCopilotSessionIT` | `72-complete-copilot-run-result.png` | Packaged application, PostgreSQL and real persisted operations with deterministic mock model; checks cancellation, recovery, selected snapshot and result/export behavior. |
+| `ScreenshotGeneratorIT` | `01`–`19`, `21`–`31`, `33`–`36`, `39`–`47`, `66-versions-timeline.png`, `69-decision-map-scored.png`, `70-swagger-ui.png`, `71-rich-version-timeline.png`, `72-rich-variants-browser.png`, `73-cherry-pick-before.png`, `74-cherry-pick-after.png`, `75-preferences-diagram-policy.png`; `graph-entry-current-de.png`, `database-setup-current-{de,en}.png`, `diagram-print-controls-{de,en}.png`, `root-relevance-clarification-{de,en}.png`, `hospital-requirement-{onboarding,analysis,architecture-graph}.png` | General UI illustrations using the real catalogue, deterministic mock model and authored fixtures persisted through the APIs. Graph entry retains the actual catalogue response, including an empty result. Database captures stop at connection entry. Diagram controls use an actual mock analysis; root clarification uses the persisted product-demo R0 result and production export/import path. Git operations require successful API responses; badges retain real state. These images do not establish live-provider quality. |
+| `ArchitectureWorkbenchUiIT` | `71-copilot-architecture-workbench.png`; `architecture-workbench-current-{de,en}.png`, `architecture-editor-current-{de,en}.png`, `architecture-editor-focus-{de,en}.png` | Creates and opens a real immutable analysis snapshot with deterministic mock scores; checks browser controls and SVG/PDF model exports. Editor illustrations create two elements through real preview/accept controls in an editable workspace; focus crops show the enabled lens with AI disabled. Editor overviews require the loaded private sharing card, both example nodes, complete canvas and properties form to fit and pass hit-testing before and after capture. They do not cover every editor control. |
+| `CompleteCopilotSessionIT` | `72-complete-copilot-run-result.png` | Packaged application, PostgreSQL and real persisted operations with deterministic mock model; checks cancellation, recovery, selected snapshot and result/export behavior. The capture scrolls to the selected snapshot and requires its heading, overview and decision-report action to fit the viewport and remain unobscured. |
 | `DocumentTemplateReportDownloadIT` | `document-template-management.png`, `decision-rationale-template-test-report.png` | Runs the existing document-template browser/report driver against the packaged application; captures the management page and renders the actually downloaded DOCX report. Native Word/WebDAV acceptance remains separate. |
 | `ScreenshotDocumentationIT` | `decision-export-{dialog,options,mobile}-{de,en}.png`, `decision-export-screenshots.json`, `documentation-screenshots.json` | Invokes the existing production decision-export component contract with labelled example input, then validates all retained localized-guide PNG references and output files. Component captures do not establish a full persisted application session or live-provider quality. |
 | `ScenarioArchitectureAcceptanceTest` with `ScenarioBrowserWalkthrough` | `73-scenario-requirement.png` through `77-scenario-mobile.png`, plus native-package/publication captures `78`–`85` | Real Spring application, catalogue, provider pipeline, persistence and browser; only remote model HTTP responses are replaced by authored Spring playback. These are not recorded live-model outputs. |
@@ -106,8 +107,10 @@ profile. Its profile enables browser capture with no provider secrets:
 ```
 
 The local profile writes scenario images below
-`taxonomy-app/target/scenario-acceptance/screenshots/`; it does not make the three
-Docker-required screenshot ITs local. See the
+`taxonomy-app/target/scenario-acceptance/screenshots/`. `CompleteCopilotSessionIT`
+also supports an explicit `test-local` run with real Spring/HSQLDB and the local
+browser adapter, while the general generator and persisted-workbench capture owner
+require Docker. This does not replace the complete `screenshots` profile. See the
 [scenario guide](../docs/testing/scenario-acceptance.md),
 [local-browser prerequisites](../docs/testing/docker-free-tests.md) and
 `.github/workflows/scenario-acceptance.yml`. Preserve `run.json`, `browser.json`,
@@ -116,20 +119,26 @@ fixture identity, source revision and image hashes with the actual capture run.
 ## Existing images are not automatically current evidence
 
 Check each retained image against its owning template and JavaScript before
-reusing it. For example, older `01`, `03`, `41` and `45` illustrations show the
-previous navigation/status layout. The shared `fragments/application-chrome.html`
-now provides File/Edit/View/Tools/Help commands, Projects/Requirement/Architecture
-work areas, `#applicationSystemStatus` and `#applicationContextDisclosure`.
-Administration, appearance and language entries belong to Tools. The retained `71`
-workbench image predates the Print view and grouped Export controls, and the `72`
-result image predates the shared decision-report dialog action. Capture replacements
-from their owners; do not edit an old image's version text or present it as a new run.
-The general generator writes `14-navbar-settings.png` for the shared navigation;
-the retained filename does not imply a separate Settings menu. A retained
+reusing it. The refreshed guide captures combine File/Edit/View/Tools/Help
+commands and Projects/Requirement/Architecture work areas in one compact toolbar,
+with `#applicationSystemStatus` and `#applicationContextDisclosure` below it.
+Navigation is visible in `01` and the Tools
+capture `14`; history and status crops retain their own illustrated states. Administration,
+appearance and language entries belong to Tools. The refreshed workbench captures
+show Print view and grouped Export controls, while `72-complete-copilot-run-result.png`
+frames the selected snapshot, result overview and shared decision-report action.
+Captures `10` and `17` show the compact, always-visible `#analysisScoreLegend`,
+including all five swatches. Their existing `visibleMatchLegend()` owner checks
+visibility and the desktop height before capturing; no disclosure needs opening.
+The general generator retains the filename `14-navbar-settings.png` for its Tools
+capture; it does not imply a separate Settings menu. The retired
 `14-navbar-admin-lock.png` is not evidence for the current administration path.
-A current test-owner path is a reproduction recipe, not proof of an older PNG's
-source revision. Without matching capture metadata, describe the image as an
-illustration and leave its exact source version unverified.
+
+Bind these claims to the exact hashes and source recorded in the generated
+manifest, not the filenames. The visual review records the mock/example boundary
+and deliberately empty or locked states. Future replacements must come from their
+existing owners and retain their own generated metadata. Do not edit an old image's
+version text or rewrite historical hashes to present it as a new run.
 
 The following general-generator captures were retired because they built the
 displayed workflow result directly in the DOM or relied on an unsupported relation
@@ -237,6 +246,15 @@ job is limited to manual `main` runs: it verifies that main still matches the
 workflow's source SHA and that the manifest names that SHA with `sourceDirty=false`,
 then commits PNGs and generated provenance. A concurrent main change prevents that
 publication rather than attributing captures to a newer source.
+
+For protected-branch integration, download `generated-documentation-screenshots`
+from a successful pull-request run, review every PNG and verify its dimensions and
+SHA-256 against `documentation-screenshots.json`. Commit the PNGs and both generated
+JSON manifests unchanged through the documentation pull request. Record the run and
+artifact identity in a concise QA note. A PR run can capture GitHub's synthetic merge
+commit: preserve that actual source commit, tree and parents rather than replacing
+them with the branch head or a later main SHA. Recheck the production-source diff
+before describing such captures as matching the integrated application.
 
 To trigger it manually from the GitHub UI: **Actions → Documentation Screenshots → Run workflow**.
 Select a repair branch to verify generation before merging. Branch runs upload

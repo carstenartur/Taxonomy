@@ -28,11 +28,13 @@ class ArchitectureSourceFocusSecurityTest {
     @Test void realFiltersRequireAuthenticationAndCsrfForReadOnlySourceInvestigation() throws Exception {
         String path = "/api/architecture/focus/suggestions";
         mvc.perform(post(path).with(csrf())).andExpect(status().isUnauthorized());
-        for (String role : java.util.List.of("USER","ARCHITECT","ADMIN")) {
+        for (String role : java.util.List.of("USER","ARCHITECT","ADMIN","READER")) {
             mvc.perform(post(path).with(user("alice").roles(role))).andExpect(status().isForbidden());
             mvc.perform(post(path).with(user("alice").roles(role)).with(csrf().useInvalidToken())).andExpect(status().isForbidden());
-            // Empty body passes the real filter chain and reaches MVC validation.
-            mvc.perform(post(path).with(user("alice").roles(role)).with(csrf())).andExpect(status().isBadRequest());
+            // Only execution-capable roles reach MVC validation with valid CSRF.
+            mvc.perform(post(path).with(user("alice").roles(role)).with(csrf()))
+                    .andExpect(java.util.Set.of("USER", "ARCHITECT").contains(role)
+                            ? status().isBadRequest() : status().isForbidden());
         }
         verifyNoInteractions(service);
     }
