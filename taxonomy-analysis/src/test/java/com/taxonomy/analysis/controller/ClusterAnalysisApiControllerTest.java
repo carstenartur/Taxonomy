@@ -10,6 +10,8 @@ import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.MessageSource;
 import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -74,6 +76,35 @@ class ClusterAnalysisApiControllerTest {
                 .andExpect(jsonPath("$.rawScores.CP").value(71));
         verifyNoInteractions(localRegistry);
         verify(analyze, never()).analyze(any());
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void continuationReplayReturnsItsOriginalOperationWhenTheRequestHeaderIsOmittedOrDifferent(boolean conflictingHeader) throws Exception {
+        var continuation = mock(com.taxonomy.analysis.recovery.AnalysisContinuationService.class);
+        var replay = mock(com.taxonomy.analysis.recovery.AnalysisContinuationService.Execution.class);
+        String originalOperation = "1cd8d504-e494-4d50-bc4b-583e56e5f66c";
+        var retained = new AnalysisResult(Map.of("CP", 42), List.of());
+        retained.setAnalysisOperationId(originalOperation);
+        retained.setViewContext(new ViewContext("original-commit", "draft", null, false, false, false));
+        when(replay.replay()).thenReturn(retained);
+        when(continuation.beginDistributed(any(), eq("alice"), eq(source), anyInt())).thenReturn(replay);
+        ReflectionTestUtils.setField(controller, "continuationService", continuation);
+        var request = post("/api/analyze").contentType(MediaType.APPLICATION_JSON).content(
+                "{\"businessText\":\"Original requirement\",\"resumable\":true,\"continuationId\":\"same-continuation\"}");
+        if (conflictingHeader) request.header(AnalysisApiController.ANALYSIS_OPERATION_ID_HEADER, "6b1873fb-79b2-46ea-9ac4-f7f08f873704");
+
+        mvc.perform(request)
+                .andExpect(status().isOk())
+                .andExpect(header().string(AnalysisApiController.ANALYSIS_OPERATION_ID_HEADER, originalOperation))
+                .andExpect(jsonPath("$.analysisOperationId").value(originalOperation))
+                .andExpect(jsonPath("$.viewContext.basedOnCommit").value("original-commit"))
+                .andExpect(jsonPath("$.rawScores.CP").value(42));
+
+        assertThat(retained.getAnalysisOperationId()).isEqualTo(originalOperation);
+        verify(continuation).beginDistributed(any(), eq("alice"), eq(source), anyInt());
+        verify(replay).close();
+        verifyNoInteractions(analyze, localRegistry);
+        verify(state, never()).getViewContext(any(), any(), any());
     }
 
     @Test void resumableDecisionsKeepTheExistingContinuationProtocolInClusterMode() throws Exception {
