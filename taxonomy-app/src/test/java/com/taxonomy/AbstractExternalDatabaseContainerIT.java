@@ -63,11 +63,13 @@ abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseConta
             template = input.readAllBytes();
         }
         try (var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()) {
-            var created = client.send(HttpRequest.newBuilder(URI.create(base + "/api/admin/document-templates/" + id))
+            var created = client.send(HttpRequest.newBuilder(URI.create(base + "/api/admin/document-templates/" + id
+                            + "?displayName=Shared%20WebDAV%20Acceptance"))
                     .timeout(Duration.ofSeconds(20)).header("Authorization", authorization)
                     .header("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.template")
                     .PUT(HttpRequest.BodyPublishers.ofByteArray(template)).build(), HttpResponse.BodyHandlers.ofByteArray());
-            assertThat(created.statusCode()).isEqualTo(201);
+            assertThat(created.statusCode()).as("Template creation response: %s",
+                    new String(created.body(), StandardCharsets.UTF_8)).isEqualTo(201);
             String original = created.headers().firstValue("ETag").orElseThrow();
             URI resource = URI.create(base + "/dav/templates/" + id + ".dotx");
             var locked = client.send(HttpRequest.newBuilder(resource).timeout(Duration.ofSeconds(20))
