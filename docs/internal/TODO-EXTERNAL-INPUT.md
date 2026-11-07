@@ -38,7 +38,7 @@ work. They do not require customer systems merely because they are substantial.
 |---|---|---|
 | [EXT-01](#ext-01) | Original Preferences state-loss deployment and reproduction | A concrete new fix depends on identifying the failure |
 | [EXT-02](#ext-02) | Authoritative legacy-owner identities and migration approval | Migration tooling in #785 can proceed now |
-| [EXT-03](#ext-03) | Actual Microsoft Word and selected HTTPS/WebDAV/client environment | #828/#832 and automated export checks can proceed now |
+| [EXT-03](#ext-03) | Actual Microsoft Word and selected HTTPS/WebDAV/client environment | #832 and automated export checks can proceed now |
 | [EXT-04](#ext-04) | Licensed Microsoft Visio desktop acceptance | Exporter and independent format checks can proceed now |
 | [EXT-05](#ext-05) | Approved live model execution and independent human quality review | Deterministic application and evaluation-tooling work can proceed now |
 | [EXT-06](#ext-06) | Authorized LeanIX workspace and actual schema/data | Synthetic HTTP and packaged-plugin tests remain implementable |
@@ -132,13 +132,17 @@ results, as applicable to the claimed workflow. Retain original and resulting
 files, screenshots and observed losses. Performance claims additionally need a
 named workload, method and measured result. Unexecuted combinations remain so.
 
-**Implementation remains assignable:** Shared locks or a safe topology gate,
-durable saves and two-instance recovery belong to
-[#828](https://github.com/carstenartur/Taxonomy/issues/828); rich authoring and
-candidate activation belong to [#832](https://github.com/carstenartur/Taxonomy/issues/832).
-Controlled proxy tests, OOXML checks, independent LibreOffice rendering and the
-two-iteration export work in [#1352](https://github.com/carstenartur/Taxonomy/issues/1352)
-do not wait for this external acceptance. Scale fixtures stay in
+**Automated acceptance:** The Maven/Failsafe `DocumentTemplateHttpIT` uses two
+HTTP servers and independent Git storage handles against one test database. It
+covers shared leases, concurrent saves, a dropped response through a loopback
+proxy, restart recovery and credential revocation.
+[#828](https://github.com/carstenartur/Taxonomy/issues/828) records this scope.
+
+Rich authoring and candidate activation belong to
+[#832](https://github.com/carstenartur/Taxonomy/issues/832). OOXML checks,
+independent LibreOffice rendering and the two-iteration export work in
+[#1352](https://github.com/carstenartur/Taxonomy/issues/1352) can proceed with
+automated fixtures. Scale fixtures stay in
 [#839](https://github.com/carstenartur/Taxonomy/issues/839).
 
 **Completion:** Reviewed results cover the exact combinations claimed. Actual
@@ -303,7 +307,6 @@ priority order. Optional work remains optional and can be commissioned directly.
 | [#785](https://github.com/carstenartur/Taxonomy/issues/785) | Stable-principal migration tooling and current revocation; real-owner input is EXT-02 |
 | [#786](https://github.com/carstenartur/Taxonomy/issues/786) | Enabled authentication contracts and optional model Git/PAT implementation |
 | [#787](https://github.com/carstenartur/Taxonomy/issues/787) | Versioned repository policy and current authorization |
-| [#828](https://github.com/carstenartur/Taxonomy/issues/828) | Shared WebDAV authority and recoverable saves; actual client acceptance is EXT-03 |
 | [#832](https://github.com/carstenartur/Taxonomy/issues/832) | Rich Word layouts and exact-candidate validation/activation |
 | [#839](https://github.com/carstenartur/Taxonomy/issues/839) | Controlled template/revision scale fixtures and two-service measurements |
 | [#914](https://github.com/carstenartur/Taxonomy/issues/914) | Project gap aggregation and reviewer tooling, not real procurement decisions |
