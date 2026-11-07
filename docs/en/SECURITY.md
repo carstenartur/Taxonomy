@@ -100,6 +100,12 @@ Artifact downloads, including editor SVG/PDF, portfolio DSL, saved reports and r
 
 Fresh readers and read-scoped tokens can inspect Git, context and projection diagnostics without creating workspace metadata, navigation state or projection records. Reads requiring an isolated working copy return 403 when no ready copy exists; explicit system provisioning remains available through its existing path.
 
+Configured connector publication is a reviewed business action using server-configured profiles and credentials, with repository membership, workspace ownership and exact-branch checks. It does not change technical transport configuration. Workspace external push/full-sync retain their separate publication-and-administration conjunction.
+
+Document AI extraction/regulation mapping and source/editor focus suggestions require `analysis:run`. Focus endpoints accept optional `useAi`; the complete operation therefore requires execution authority even for a deterministic request. Ordinary document upload/confirmation remains a business write. Diagram routes that reanalyse input (`/api/diagram/visio`, `/archimate`, `/mermaid`, `/structurizr` and `/export/{formatId}` under that prefix) require `analysis:run` AND `integration:export`; existing-view `/api/diagram/current/**` and score downloads need only `integration:export`.
+
+An accepted explicit pass continuation also admits finalization of its retained Copilot operation when both business-write and analysis-execution capabilities are present. An analysis-only continuation cannot borrow business enrichment authority. Loading, polling and uncertain-command recovery remain observational and never repeat a command automatically.
+
 `ApiPermission` and the ordered `ApiAccessPolicy` are the common source for server authorization and OpenAPI. The policy distinguishes reads (including read-only POST), analysis execution, changes/deletion/publication, import/export and administration. Unclassified writes are denied, including for administrators. Existing project/repository visibility, membership, lifecycle and personal-workspace ownership checks still apply. Neither a global role nor a scope grants access to someone else's private resources. Hiding a UI control is not an authorization boundary.
 
 ## Organizational groups and repository grants

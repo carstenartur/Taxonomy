@@ -24,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Tag("ci-app-shard-domain-integration")
 class IntegrationPublicationPermissionApiTest extends PublicationIntegrationFixture {
     @Autowired MockMvc mvc;
+    @Autowired com.taxonomy.workspace.service.WorkspaceManager manager;
 
     @Test
     void remotePublicationRequiresItsOwnScopeAndNoTechnicalAdministratorRole() throws Exception {
@@ -51,6 +52,9 @@ class IntegrationPublicationPermissionApiTest extends PublicationIntegrationFixt
         assertEquals(1, provider.writes.get());
         assertEquals(0, provider.mutationCount(pending.items().getFirst().resourceId()));
         String path = "/api/integrations/" + connection + "/operations/" + pending.operationId() + "/retry";
+        var active = workspaces.createWorkingCopy(context.username(), context.repositoryId(), "draft", "Another selected copy", "");
+        manager.switchWorkspace(context.username(), active.getWorkspaceId());
+        assertEquals(active.getWorkspaceId(), manager.findActiveWorkspace(context.username()).getWorkspaceId());
 
         mvc.perform(scoped(post(path), "integration:import")).andExpect(status().isForbidden());
         assertEquals(pending, publication.publication(context, connection, pending.operationId()));
@@ -61,6 +65,37 @@ class IntegrationPublicationPermissionApiTest extends PublicationIntegrationFixt
                 .andExpect(status().isOk()).andExpect(jsonPath("phase").value("COMPLETED"));
         assertEquals(2, provider.writes.get());
         assertEquals(1, provider.mutationCount(pending.items().getFirst().resourceId()));
+        assertEquals(active.getWorkspaceId(), manager.findActiveWorkspace(context.username()).getWorkspaceId(),
+                "An exact retry pin must not replace the active tab selection");
+    }
+
+    @Test
+    void foreignMissingAndUnreadyWorkspacePinsCannotReachPublicationRetry() throws Exception {
+        var draft = preview(PublicationMode.PUSH);
+        String path = "/api/integrations/" + connection + "/operations/" + draft.operationId() + "/retry";
+        String foreignActor = "foreign-" + java.util.UUID.randomUUID();
+        var foreignRepo = repositories.createRepository("Foreign", foreignActor, "",
+                com.taxonomy.workspace.model.RepositoryVisibility.PRIVATE, foreignActor, "draft");
+        var foreign = workspaces.createWorkingCopy(foreignActor, foreignRepo.getRepositoryId(), "draft", "Foreign copy", "");
+        for (String pin : java.util.List.of(foreign.getWorkspaceId(), "missing-workspace")) {
+            mvc.perform(scoped(post(path), "architecture:publish").header("X-Taxonomy-Workspace-Id", pin))
+                    .andExpect(status().isForbidden());
+            assertEquals(0, provider.writes.get());
+        }
+        var pending = manager.createWorkspace(context.username(), "Pending copy", "Explicit unready test selection");
+        mvc.perform(scoped(post(path), "architecture:publish").header("X-Taxonomy-Workspace-Id", pending.getWorkspaceId()))
+                .andExpect(status().isConflict());
+        assertEquals(0, provider.writes.get());
+    }
+
+    @Test
+    void missingConnectionOrOperationCannotReachRemoteRetry() throws Exception {
+        for (String path : java.util.List.of(
+                "/api/integrations/" + java.util.UUID.randomUUID() + "/operations/" + java.util.UUID.randomUUID() + "/retry",
+                "/api/integrations/" + connection + "/operations/" + java.util.UUID.randomUUID() + "/retry")) {
+            mvc.perform(scoped(post(path), "architecture:publish")).andExpect(status().isNotFound());
+            assertEquals(0, provider.writes.get());
+        }
     }
 
     private MockHttpServletRequestBuilder scoped(MockHttpServletRequestBuilder request, String scope) {

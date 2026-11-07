@@ -143,7 +143,13 @@ public final class ApiAccessPolicy {
         rules.add(rule(null, "/api/integrations/**", Access.DENIED, null, "Unclassified integration operation is denied."));
         rules.add(rule(null, "/oslc/**", Access.DENIED, null, "OSLC is read-only."));
 
+        add(rules, "POST", INTEGRATION_EXPORT, "/api/scores/export");
         add(rules, "POST", ARCHITECTURE_READ, "/api/dsl/parse", "/api/dsl/validate", "/api/dsl/format", "/api/graph/**", "/api/scores/**");
+        for (String path : List.of("/api/diagram/visio", "/api/diagram/archimate", "/api/diagram/mermaid",
+                "/api/diagram/structurizr", "/api/diagram/export/*")) {
+            rules.add(new Rule("POST", path, Access.PERMISSION, ANALYSIS_RUN, RESOURCE_CHECKS,
+                    PathPatternParser.defaultInstance.parse(path), List.of(INTEGRATION_EXPORT), List.of(), List.of()));
+        }
         add(rules, "POST", INTEGRATION_EXPORT, "/api/diagram/**", "/api/export/**", "/api/report/**", "/api/decision-report/**");
         add(rules, "GET", INTEGRATION_EXPORT, "/api/export/**", "/api/report/**", "/api/decision-report/**", "/api/diagram/**");
         // Capability metadata and saved-snapshot options precede the dynamic report format route.
@@ -159,7 +165,9 @@ public final class ApiAccessPolicy {
                 "/api/projects/*/architecture-workbench/*.visio.zip",
                 "/api/projects/*/requirements/*/reformulations/*/revisions/*/export",
                 "/api/projects/*/requirements/*/reformulations/*/adoptions/*/export");
-        add(rules, "POST", ANALYSIS_READ, "/api/architecture/focus/suggestions");
+        // These complete operations accept model execution, including focus requests with useAi.
+        add(rules, "POST", ANALYSIS_RUN, "/api/architecture/focus/suggestions", "/api/architecture/editor/focus/suggestions",
+                "/api/documents/extract-ai", "/api/documents/map-regulation");
         // These GET handlers start new LLM work; HTTP method alone does not make them read-only.
         add(rules, "GET", ANALYSIS_RUN, "/api/analyze-stream", "/api/analyze-node");
         add(rules, "POST", ANALYSIS_RUN, "/api/analyze", "/api/justify-leaf", "/api/recommend", "/api/gap/**", "/api/patterns/**", "/api/explain/**",

@@ -519,8 +519,11 @@
         announce(t('continuePending'));
         try {
             await window.TaxonomyPortfolioApi.continueAnalysis(projectId, candidate.job.id, candidate.item.id, decision);
-            // Existing pass identity is unchanged; refresh selection and aggregate status.
-            const operation = await api().get(projectId, activeOperationId);
+            // The explicit pass command also admits retained-operation finalization for an authorized editor.
+            // A status read never selects/enriches a result, and an analyst cannot borrow business-write authority.
+            const operation = architectureMutationAllowed
+                ? await api().resume(projectId, activeOperationId)
+                : await api().get(projectId, activeOperationId);
             lastServerContact = new Date();
             renderOperation(operation);
             if (terminal.has(operation.status)) handleTerminal(operation);

@@ -198,6 +198,33 @@ class OpenApiSecurityDocumentationTest {
         assertThat(retry.getDescription()).contains(" OR ", "integration:import", "integration:export", "architecture:publish");
     }
 
+    @Test
+    void optionalModelInvestigationsAreDocumentedAsCompleteExecutionOperations() {
+        for (String path : java.util.List.of("/api/architecture/focus/suggestions", "/api/architecture/editor/focus/suggestions",
+                "/api/documents/extract-ai", "/api/documents/map-regulation")) {
+            var operation = document(true, new Paths().addPathItem(path, new PathItem().post(new Operation())))
+                    .getPaths().get(path).getPost();
+            assertThat(operation.getSecurity().getFirst()).containsEntry("keycloak", java.util.List.of("analysis:run"));
+            assertThat(operation.getDescription()).contains("ANALYSIS", "USER", "ARCHITECT");
+        }
+    }
+
+    @Test
+    void reanalysisAndExistingViewDownloadsDocumentTheirDifferentEffects() {
+        for (String path : java.util.List.of("/api/diagram/visio", "/api/diagram/archimate", "/api/diagram/mermaid",
+                "/api/diagram/structurizr", "/api/diagram/export/{formatId}")) {
+            var operation = document(true, new Paths().addPathItem(path, new PathItem().post(new Operation())))
+                    .getPaths().get(path).getPost();
+            assertThat(operation.getSecurity().getFirst()).containsEntry("keycloak", java.util.List.of("analysis:run", "integration:export"));
+            assertThat(operation.getDescription()).contains("ANALYSIS", "EXPORT");
+        }
+        for (String path : java.util.List.of("/api/diagram/current/pdf", "/api/diagram/current/{formatId}", "/api/scores/export")) {
+            var operation = document(true, new Paths().addPathItem(path, new PathItem().post(new Operation())))
+                    .getPaths().get(path).getPost();
+            assertThat(operation.getSecurity().getFirst()).containsEntry("keycloak", java.util.List.of("integration:export"));
+        }
+    }
+
     private OpenAPI document(boolean keycloak) {
         return document(keycloak, new Paths()
                 .addPathItem("/api/projects/{projectId}", new PathItem().get(new Operation())

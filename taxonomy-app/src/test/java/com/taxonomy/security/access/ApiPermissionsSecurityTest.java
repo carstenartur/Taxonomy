@@ -64,6 +64,42 @@ class ApiPermissionsSecurityTest {
                 .andExpect(status().isOk());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/architecture/focus/suggestions", "/api/architecture/editor/focus/suggestions",
+            "/api/documents/extract-ai", "/api/documents/map-regulation"})
+    void modelProducingInvestigationsRequireExecutionInsteadOfReadOrBusinessWrite(String path) throws Exception {
+        for (String scope : java.util.List.of("architecture:read", "analysis:read", "architecture:write")) {
+            mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ARCHITECT"),
+                    new SimpleGrantedAuthority("SCOPE_" + scope)))).andExpect(status().isForbidden());
+        }
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"),
+                new SimpleGrantedAuthority("SCOPE_analysis:run")))).andExpect(status().isOk());
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_READER"),
+                new SimpleGrantedAuthority("SCOPE_analysis:run")))).andExpect(status().isForbidden());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/diagram/visio", "/api/diagram/archimate", "/api/diagram/mermaid",
+            "/api/diagram/structurizr", "/api/diagram/export/mermaid"})
+    void inputReanalysisDownloadsRequireBothExecutionAndExport(String path) throws Exception {
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_READER"),
+                new SimpleGrantedAuthority("SCOPE_integration:export")))).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"),
+                new SimpleGrantedAuthority("SCOPE_analysis:run")))).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"),
+                new SimpleGrantedAuthority("SCOPE_analysis:run"), new SimpleGrantedAuthority("SCOPE_integration:export"))))
+                .andExpect(status().isOk());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/diagram/current/pdf", "/api/diagram/current/mermaid", "/api/scores/export"})
+    void retainedViewAndScoreDownloadsKeepExportOnlyAuthority(String path) throws Exception {
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_READER"),
+                new SimpleGrantedAuthority("SCOPE_integration:export")))).andExpect(status().isOk());
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_READER"),
+                new SimpleGrantedAuthority("SCOPE_architecture:read")))).andExpect(status().isForbidden());
+    }
+
     @Test
     void analystCanRunAnalysisButCannotEditArchitecture() throws Exception {
         mvc.perform(post("/api/analyze").with(csrf()).with(user("analyst").roles("USER")))
@@ -327,7 +363,8 @@ class ApiPermissionsSecurityTest {
                 "/api/analyze-stream", "/api/analyze-node", "/api/workspace/external/push", "/api/workspace/external/full-sync",
                 "/api/workspace/create", "/api/workspace/copy", "/api/workspace/compare", "/api/workspace/unclassified",
                 "/api/projects/p/**", "/api/architecture/editor.svg", "/api/architecture/editor.pdf", "/api/dsl/export",
-                "/api/projects/git/export",
+                "/api/projects/git/export", "/api/documents/**", "/api/architecture/focus/suggestions",
+                "/api/architecture/editor/focus/suggestions", "/api/diagram/**", "/api/scores/export",
                 "/api/integrations/c/publish", "/api/integrations/c/operations/o/retry"})
         String ok() { return "ok"; }
     }
