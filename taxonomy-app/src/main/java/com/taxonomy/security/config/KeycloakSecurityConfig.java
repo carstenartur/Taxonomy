@@ -153,9 +153,9 @@ public class KeycloakSecurityConfig {
         if (!uri.equals("/dav/templates") && !uri.startsWith("/dav/templates/")) {
             return false;
         }
-        String authorization = request.getHeader("Authorization");
-        return authorization != null
-                && authorization.regionMatches(true, 0, "Basic ", 0, 6);
+        // Ordinary Basic credentials can fall through the application-credential
+        // filter. They must not exempt a restored browser session from CSRF.
+        return SecurityConfig.isStatelessProtocolClient(request);
     }
 
     private static boolean isOAuth2Callback(HttpServletRequest request) {

@@ -7,10 +7,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.ObjectPostProcessor;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
@@ -146,7 +148,12 @@ public class SecurityConfig {
         };
     }
 
-    /** Explicit Basic/Bearer protocol calls are stateless; browser sessions retain CSRF. */
+    /**
+     * CSRF runs after context restoration and before Basic authentication. A
+     * restored browser authentication therefore still needs CSRF, even with a
+     * Basic header: that filter may reuse the same-name authenticated principal.
+     * Local mode has no Bearer authentication filter.
+     */
     static boolean isStatelessProtocolClient(HttpServletRequest request) {
         String uri = protocolPath(request);
         if (!uri.startsWith("/api/")
@@ -155,9 +162,12 @@ public class SecurityConfig {
             return false;
         }
         String authorization = request.getHeader("Authorization");
-        return authorization != null
-                && (authorization.regionMatches(true, 0, "Basic ", 0, 6)
-                || authorization.regionMatches(true, 0, "Bearer ", 0, 7));
+        if (authorization == null || !authorization.regionMatches(true, 0, "Basic ", 0, 6)) {
+            return false;
+        }
+        var restored = SecurityContextHolder.getContext().getAuthentication();
+        return restored == null || !restored.isAuthenticated()
+                || restored instanceof AnonymousAuthenticationToken;
     }
 
     static String protocolPath(HttpServletRequest request) {
