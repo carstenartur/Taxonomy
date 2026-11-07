@@ -5,6 +5,19 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.JdbcDatabaseContainer;
 
+import com.taxonomy.templates.DocumentTemplateWebDavLockManager;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Base64;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 /** Adds durable execution acceptance to the existing PostgreSQL, Oracle and SQL Server suites. */
 abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseContainerIT {
     protected abstract JdbcDatabaseContainer<?> getDatabaseContainer();
@@ -33,6 +46,69 @@ abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseConta
     void clusterOwnerSourceAndRequirementScopeIsAppliedBeforeTheHistoryLimit() {
         try (var contract = clusterContract()) {
             contract.ownerSourceAndRequirementScopeIsAppliedBeforeTheHistoryLimit();
+        }
+    }
+
+    @Test @Order(24)
+    void webDavLeasesFenceIndependentApplicationHandlesAndRetainExactGitVersions() throws Exception {
+        var database = getDatabaseContainer();
+        var source = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
+        String id = "shared-dav-" + UUID.randomUUID();
+        String base = "http://" + getAppContainer().getHost() + ":" + getAppContainer().getMappedPort(8080);
+        String authorization = "Basic " + Base64.getEncoder().encodeToString(
+                ("admin:" + ContainerTestUtils.TEST_ADMIN_PASSWORD).getBytes(StandardCharsets.UTF_8));
+        byte[] template;
+        try (var input = getClass().getResourceAsStream("/document-templates/decision-rationale-report.dotx")) {
+            assertThat(input).isNotNull();
+            template = input.readAllBytes();
+        }
+        try (var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()) {
+            var created = client.send(HttpRequest.newBuilder(URI.create(base + "/api/admin/document-templates/" + id))
+                    .timeout(Duration.ofSeconds(20)).header("Authorization", authorization)
+                    .header("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.template")
+                    .PUT(HttpRequest.BodyPublishers.ofByteArray(template)).build(), HttpResponse.BodyHandlers.ofByteArray());
+            assertThat(created.statusCode()).isEqualTo(201);
+            String original = created.headers().firstValue("ETag").orElseThrow();
+            URI resource = URI.create(base + "/dav/templates/" + id + ".dotx");
+            var locked = client.send(HttpRequest.newBuilder(resource).timeout(Duration.ofSeconds(20))
+                    .header("Authorization", authorization).method("LOCK", HttpRequest.BodyPublishers.noBody()).build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            assertThat(locked.statusCode()).isEqualTo(200);
+            String token = locked.headers().firstValue("Lock-Token").orElseThrow();
+            try {
+                var otherInstance = new DocumentTemplateWebDavLockManager(source);
+                var lease = otherInstance.find(id);
+                assertThat(lease).isNotNull();
+                assertThat("<" + lease.token() + ">").isEqualTo(token);
+                assertThat(lease.currentCommit()).isEqualTo(original.replace("\"", ""));
+                assertThatThrownBy(() -> otherInstance.acquire(id, "foreign-actor", lease.currentCommit(), Duration.ofMinutes(5), null))
+                        .isInstanceOf(DocumentTemplateWebDavLockManager.LockConflictException.class);
+                assertThatThrownBy(() -> otherInstance.executeWrite(id, null, lease.owner(), lease.currentCommit(),
+                        expected -> { throw new AssertionError("A foreign write must never reach Git"); }))
+                        .isInstanceOf(DocumentTemplateWebDavLockManager.LockConflictException.class);
+                var saved = client.send(HttpRequest.newBuilder(resource).timeout(Duration.ofSeconds(20))
+                        .header("Authorization", authorization).header("If", "(" + token + ")")
+                        .header("If-Match", original).PUT(HttpRequest.BodyPublishers.ofByteArray(template)).build(),
+                        HttpResponse.BodyHandlers.ofByteArray());
+                assertThat(saved.statusCode()).isEqualTo(204);
+                String current = saved.headers().firstValue("ETag").orElseThrow();
+                assertThat(current).isNotEqualTo(original);
+                var restartedInstance = new DocumentTemplateWebDavLockManager(source);
+                assertThat(restartedInstance.require(id, token, lease.owner()).currentCommit())
+                        .isEqualTo(current.replace("\"", ""));
+                var stale = client.send(HttpRequest.newBuilder(resource).timeout(Duration.ofSeconds(20))
+                        .header("Authorization", authorization).header("If", "(" + token + ")")
+                        .header("If-Match", original).PUT(HttpRequest.BodyPublishers.ofByteArray(template)).build(),
+                        HttpResponse.BodyHandlers.ofByteArray());
+                assertThat(stale.statusCode()).isEqualTo(412);
+                assertThat(otherInstance.require(id, token, lease.owner()).currentCommit())
+                        .isEqualTo(current.replace("\"", ""));
+            } finally {
+                var unlocked = client.send(HttpRequest.newBuilder(resource).timeout(Duration.ofSeconds(20))
+                        .header("Authorization", authorization).header("Lock-Token", token)
+                        .method("UNLOCK", HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofByteArray());
+                assertThat(unlocked.statusCode()).isEqualTo(204);
+            }
         }
     }
 }

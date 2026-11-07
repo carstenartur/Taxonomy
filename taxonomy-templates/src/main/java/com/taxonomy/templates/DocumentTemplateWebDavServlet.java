@@ -87,6 +87,9 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
                     exception.getMessage());
         } catch (LockConflictException exception) {
             response.sendError(SC_LOCKED, exception.getMessage());
+        } catch (DocumentTemplateWebDavLockManager.LockStoreUnavailableException exception) {
+            response.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+                    "Shared WebDAV edit authority is unavailable; check the current template version before retrying");
         } catch (SecurityException exception) {
             response.sendError(HttpServletResponse.SC_FORBIDDEN, exception.getMessage());
         } catch (IllegalArgumentException exception) {
@@ -208,13 +211,8 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
         }
 
         String ifMatch = request.getHeader("If-Match");
-        String expectedWithoutLock = null;
-        if (ifMatch != null && !ifMatch.isBlank()) {
-            // Evaluate every If-Match precondition even when a DAV lock is active.
-            // The service implements strong comparison and comma-separated tag lists.
-            expectedWithoutLock = templates.resolveExpectedVersion(
-                    resource.templateId(), ifMatch);
-        } else if (observedLock == null && current != null) {
+        boolean conditional = ifMatch != null && !ifMatch.isBlank();
+        if (!conditional && observedLock == null && current != null) {
             response.sendError(SC_PRECONDITION_REQUIRED,
                     "Use WebDAV LOCK or If-Match before replacing a template");
             return;
@@ -223,18 +221,29 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
         String displayName = current == null
                 ? resource.templateId()
                 : current.manifest().displayName();
-        String fallbackExpected = observedLock == null ? expectedWithoutLock : null;
         TemplateDescriptor saved = locks.executeWrite(
                 resource.templateId(),
                 suppliedToken,
                 owner,
-                fallbackExpected,
+                null,
                 expectedCommit -> {
+                    // HTTP preconditions belong inside the shared write fence too.
+                    // Two autosaves can carry one token and the same old ETag.
+                    String ifNoneMatch = request.getHeader("If-None-Match");
+                    if (ifNoneMatch != null && !ifNoneMatch.isBlank()) {
+                        TemplateFile latest = currentOrNull(resource.templateId());
+                        if (latest != null && etagMatches(ifNoneMatch, latest.commitId())) {
+                            throw new TemplateConflictException(ifNoneMatch, latest.commitId());
+                        }
+                    }
+                    String expected = conditional
+                            ? templates.resolveExpectedVersion(resource.templateId(), ifMatch)
+                            : expectedCommit;
                     TemplateDescriptor committed = templates.upload(
                             resource.templateId(),
                             displayName,
                             request.getInputStream(),
-                            expectedCommit,
+                            expected,
                             owner,
                             "Update document template through WebDAV");
                     return new LockedWriteResult<>(

@@ -115,12 +115,23 @@ aktuelle Vorlagen-ETag. `If-Match` verwendet starke HTTP-Entity-Tags, akzeptiert
 Alternativen in einer kommaseparierten Liste und legt niemals eine fehlende Ressource
 an.
 
-WebDAV-Sperren verbessern die Bearbeitung in Word. Sie werden bewusst pro Prozess
-gehalten; das unterstützte Helm-Profil bleibt deshalb bei genau einer Replik. Die
-atomare Git-Prüfung der erwarteten Vorlagenversion bleibt auch nach einem
-Prozessneustart oder dem Ablauf einer Sperre der dauerhafte Schutz vor verlorenen
-Änderungen. Für mehrere Repliken wäre zunächst ein gemeinsamer Lock-Speicher nötig,
-damit Word-Sperren ohne Unterbrechung zwischen Instanzen funktionieren.
+WebDAV-Sperren verwenden die konfigurierte gemeinsame Datenbank. Anlegen,
+Verlängern, Ablauf und Freigabe gelten dadurch über Anwendungsinstanzen hinweg;
+ein Neustart erhält eine noch gültige Sperre. Die Datenbankzeit bestimmt den Ablauf.
+Eine Transaktionssperre bleibt während des vorhandenen begrenzten Git-Speichervorgangs
+gehalten. Eine andere Instanz kann eine abgelaufene Sperre deshalb nicht während
+eines angenommenen Speichervorgangs übernehmen. Jeder erfolgreiche PUT prüft und
+committet seine Bytes vor der Bestätigung; es gibt keinen ungespeicherten Sitzungspuffer.
+
+Die Vorlagenfunktion migriert ihre eigenen temporären Koordinationstabellen über
+`webdav_lock_schema_history`. Alle Instanzen müssen dieselbe Installationsdatenbank
+verwenden. Bei nicht verfügbarer Sperrverwaltung werden WebDAV-Schreibzugriffe mit
+HTTP 503 abgewiesen; es gibt keinen Rückfall auf unabhängige lokale Sperren. Nach
+einer unklaren Antwort sollten die aktuelle Vorlage und ihr ETag vor einem erneuten
+Speicherversuch gelesen werden. Die erwartete Git-Vorlagenversion verhindert weiterhin
+veraltete Schreibzugriffe und erhält frühere Versionen. Diese Sperrgarantien belegen
+weder eine Cluster-Kapazitätsgrenze noch eine native Microsoft-Word-Zertifizierung;
+der ausgelieferte Helm-Standard bleibt bei einer Replik.
 
 <a id="template-access"></a>
 ## Zugriff und Transport

@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -36,6 +37,24 @@ class DocumentTemplateWebDavServletTest {
 
     @Mock
     private DocumentTemplateService templates;
+
+    @Test
+    void unavailableSharedAuthorityFailsClosedWithoutExposingStorageDetails() throws Exception {
+        var locks = org.mockito.Mockito.mock(DocumentTemplateWebDavLockManager.class);
+        when(templates.downloadCurrent("decision-report")).thenReturn(templateFile(COMMIT_A, new byte[]{1}));
+        when(locks.acquire(eq("decision-report"), eq("admin"), eq(COMMIT_A), any(), isNull()))
+                .thenThrow(new DocumentTemplateWebDavLockManager.LockStoreUnavailableException(
+                        "sensitive-database-details", new IllegalStateException("private connection settings")));
+        var request = request("LOCK", "/dav/templates/decision-report.dotx", "/decision-report.dotx");
+        authenticateAdmin(request, "admin");
+        var response = new MockHttpServletResponse();
+
+        assertThatCode(() -> servlet(locks).service(request, response)).doesNotThrowAnyException();
+        assertThat(response.getStatus()).isEqualTo(503);
+        assertThat(response.getErrorMessage()).contains("Shared WebDAV edit authority is unavailable")
+                .doesNotContain("sensitive", "private connection");
+        org.mockito.Mockito.verify(templates, org.mockito.Mockito.never()).upload(any(), any(), any(), any(), any(), any());
+    }
 
     @Test
     void propfindAdvertisesThePackedRepresentationLengthAndParsesAsXml()
