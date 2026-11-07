@@ -212,7 +212,9 @@ final class FrontendApiBoundaryPolicy {
         Matcher aliases = FETCH_ALIAS.matcher(text);
         while (aliases.find()) {
             String remainder = text.substring(aliases.end());
-            if (!remainder.matches("(?s)^\\s*\\.\\s*(?:call|apply|bind)\\s*\\(.*")) count++;
+            // An assigned fetch result is not a callable transport alias.
+            if (remainder.matches("(?s)^\\s*(?:\\(|\\.\\s*(?:call|apply)\\s*\\().*")) continue;
+            if (!remainder.matches("(?s)^\\s*\\.\\s*bind\\s*\\(.*")) count++;
             Matcher calls = Pattern.compile("\\b" + Pattern.quote(aliases.group(1)) + "\\s*\\(").matcher(text);
             while (calls.find()) count++;
         }
