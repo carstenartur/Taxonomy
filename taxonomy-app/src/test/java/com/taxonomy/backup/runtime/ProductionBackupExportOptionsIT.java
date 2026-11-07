@@ -2,7 +2,6 @@ package com.taxonomy.backup.runtime;
 
 import com.taxonomy.backup.*;
 import com.taxonomy.backup.jobs.BackupJobService;
-import com.taxonomy.security.model.PrincipalUserDetails;
 import com.taxonomy.security.service.PrincipalIdentityService;
 import com.taxonomy.workspace.model.*;
 import jakarta.persistence.EntityManagerFactory;
@@ -11,7 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 import javax.sql.DataSource;
@@ -37,15 +35,17 @@ class ProductionBackupExportOptionsIT {
 
     @Test void renderedHistoryChoiceUsesCurrentGrantsAndExcludesForeignWorkspacesInBothLanguages() throws Exception {
         var jdbc=new JdbcTemplate(database);String suffix=UUID.randomUUID().toString();
-        var alice=identities.oidc("https://export-choice.example.invalid","alice-"+suffix);
-        var bob=identities.oidc("https://export-choice.example.invalid","bob-"+suffix);
+        String issuer = "https://export-choice.example.invalid";
+        String aliceSubject = "alice-" + suffix;
+        var alice = identities.oidc(issuer, aliceSubject);
+        var bob = identities.oidc(issuer, "bob-" + suffix);
         String repository="choices-"+suffix,workspace="private-"+suffix,foreignRepository="foreign-"+suffix,foreignWorkspace="foreign-private-"+suffix;
         route(repository,workspace,alice.scopeKey());route(foreignRepository,foreignWorkspace,bob.scopeKey());
-        var login=new PrincipalUserDetails(alice.id(),alice.scopeKey(),"fixture-password",true,List.of(new SimpleGrantedAuthority("ROLE_USER")));
+        var login = BackupOidcLogin.forPrincipal(alice, issuer, aliceSubject);
         long before=jdbc.queryForObject("select count(*) from backup_job",Long.class);
         jdbc.update("insert into backup_capability_grant values (?,'EXPORT_HISTORY')",alice.id().value().toString());
         for(var locale:List.of(Locale.ENGLISH,Locale.GERMAN)) {
-            String html=mvc.perform(get("/backup-jobs").param("lang",locale.getLanguage()).with(user(login)))
+            String html=mvc.perform(get("/backup-jobs").param("lang",locale.getLanguage()).with(login))
                     .andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store"))
                     .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
             assertThat(workspaceOption(html,workspace)).contains("data-history-available=\"true\"");
@@ -57,7 +57,7 @@ class ProductionBackupExportOptionsIT {
                 .contains(workspace).doesNotContain(foreignWorkspace);
         jdbc.update("delete from backup_capability_grant where principal_id=? and capability='EXPORT_HISTORY'",alice.id().value().toString());
         for(var locale:List.of(Locale.ENGLISH,Locale.GERMAN)) {
-            String html=mvc.perform(get("/backup-jobs").param("lang",locale.getLanguage()).with(user(login))).andExpect(status().isOk())
+            String html=mvc.perform(get("/backup-jobs").param("lang",locale.getLanguage()).with(login)).andExpect(status().isOk())
                     .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
             assertThat(workspaceOption(html,workspace)).contains("data-history-available=\"false\"");
             assertThat(html).contains("lang=\""+locale.getLanguage()+"\"",locale.equals(Locale.GERMAN)?"Sicherungsaufträge":"Backup jobs")
@@ -65,11 +65,11 @@ class ProductionBackupExportOptionsIT {
         }
         var request=new BackupRequest(BackupProfile.REPOSITORY_HISTORY,new BackupScope.Workspace(repository,workspace),
                 new BackupTime.History(),GitRepresentation.BUNDLE,SecretsSelection.EXCLUDE);
-        mvc.perform(post("/api/backups/jobs").with(user(login)).with(csrf()).contentType("application/json")
+        mvc.perform(post("/api/backups/jobs").with(login).with(csrf()).contentType("application/json")
                 .content(new BackupManifestCodec().writeRequest(request))).andExpect(status().isForbidden());
         jdbc.update("insert into backup_capability_grant values (?,'EXPORT_HISTORY')",alice.id().value().toString());
         jdbc.update("delete from backup_capability_grant where principal_id=? and capability='EXPORT_CURRENT'",alice.id().value().toString());
-        String disabled=mvc.perform(get("/backup-jobs").with(user(login))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String disabled=mvc.perform(get("/backup-jobs").with(login)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         assertThat(disabled).doesNotContain("id=\"backupExportHistoryOption\"","data-workspace-id=\""+workspace+"\"",foreignWorkspace);
         assertThat(jdbc.queryForObject("select count(*) from backup_job",Long.class)).isEqualTo(before);
     }
