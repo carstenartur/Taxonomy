@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DatabaseProvisioningService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.setup</a> &gt; <span class="el_source">DatabaseProvisioningService.java</span></div><h1>DatabaseProvisioningService.java</h1><pre class="source lang-java linenums">package com.taxonomy.setup;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.sql.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/** Shared, bounded orchestration for explicitly reviewed database resource preparation. */
+@Service
+public class DatabaseProvisioningService {
+<span class="fc" id="L15">    private static final Semaphore OPERATIONS = new Semaphore(2);</span>
+    private final Map&lt;String, Provider&gt; providers;
+
+    @Autowired
+<span class="fc" id="L19">    public DatabaseProvisioningService(List&lt;Provider&gt; providers) {</span>
+<span class="fc" id="L20">        var selected = new HashMap&lt;String, Provider&gt;();</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        for (Provider provider : providers) {</span>
+<span class="pc bpc" id="L22" title="1 of 2 branches missed.">            if (selected.put(provider.type(), provider) != null) throw new IllegalArgumentException(&quot;Duplicate database provider&quot;);</span>
+<span class="fc" id="L23">        }</span>
+<span class="fc" id="L24">        this.providers = Map.copyOf(selected);</span>
+<span class="fc" id="L25">    }</span>
+<span class="fc" id="L26">    DatabaseProvisioningService(Provider... providers) { this(List.of(providers)); }</span>
+
+    interface Provider {
+        String type();
+        void validate(ProvisionSettings input);
+        ProvisionResult execute(ProvisionSettings input, boolean create, Progress progress) throws Exception;
+    }
+    @FunctionalInterface
+    interface Connector { Connection connect(String url, Properties properties) throws SQLException; }
+<span class="fc" id="L35">    public enum Outcome { READY, COMPLETE, CONFLICT, FAILED, PARTIAL, UNKNOWN, BUSY }</span>
+<span class="fc" id="L36">    public enum ResourceState { CREATE, REUSE, CREATED, REUSED, NOT_CREATED, UNKNOWN }</span>
+    @Schema(requiredProperties = {&quot;target&quot;, &quot;maintenanceDatabase&quot;, &quot;adminUsername&quot;, &quot;adminPassword&quot;},
+            additionalProperties = Schema.AdditionalPropertiesValue.FALSE)
+<span class="fc" id="L39">    public record ProvisionSettings(DatabaseSetupService.ConnectionSettings target, String maintenanceDatabase,</span>
+                                    String adminUsername,
+                                    @Schema(format = &quot;password&quot;, accessMode = Schema.AccessMode.WRITE_ONLY) String adminPassword,
+                                    boolean confirmed,
+                                    @Schema(allowableValues = {&quot;CREATE&quot;, &quot;REUSE&quot;}) ResourceState expectedRole,
+                                    @Schema(allowableValues = {&quot;CREATE&quot;, &quot;REUSE&quot;}) ResourceState expectedDatabase,
+                                    @Schema(description = &quot;Oracle only: existing permanent tablespace&quot;, maxLength = 30) String tablespace,
+                                    @Schema(description = &quot;Oracle only: finite quota in MiB&quot;, minimum = &quot;1&quot;, maximum = &quot;1048576&quot;) Integer quotaMiB) {
+        public ProvisionSettings(DatabaseSetupService.ConnectionSettings target, String maintenanceDatabase,
+                                 String adminUsername, String adminPassword, boolean confirmed,
+                                 ResourceState expectedRole, ResourceState expectedDatabase) {
+<span class="fc" id="L50">            this(target, maintenanceDatabase, adminUsername, adminPassword, confirmed, expectedRole, expectedDatabase, null, null);</span>
+<span class="fc" id="L51">        }</span>
+<span class="fc" id="L52">        @Override public String toString() { return &quot;Database preparation settings [redacted]&quot;; }</span>
+    }
+<span class="fc" id="L54">    public record ProvisionResult(Outcome outcome, ResourceState role, ResourceState database, SetupChecks.Finding finding) { }</span>
+
+
+    public ProvisionResult inspect(ProvisionSettings input) {
+<span class="fc" id="L58">        Provider provider = validate(input);</span>
+<span class="fc" id="L59">        return bounded(provider, input, false);</span>
+    }
+    public ProvisionResult provision(ProvisionSettings input) {
+<span class="fc" id="L62">        Provider provider = validate(input);</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        if (!input.confirmed()) return result(Outcome.FAILED, ResourceState.NOT_CREATED, ResourceState.NOT_CREATED,</span>
+                &quot;confirmation&quot;, &quot;Review the inspection and explicitly confirm the displayed resource creation or reuse.&quot;);
+<span class="fc bfc" id="L65" title="All 4 branches covered.">        if (!expectedAction(input.expectedRole()) || !expectedAction(input.expectedDatabase())) throw invalid();</span>
+<span class="fc" id="L66">        return bounded(provider, input, true);</span>
+    }
+    private Provider validate(ProvisionSettings input) {
+<span class="pc bpc" id="L69" title="2 of 4 branches missed.">        if (input == null || input.target() == null) throw invalid();</span>
+<span class="fc" id="L70">        DatabaseSetupService.validate(input.target());</span>
+<span class="fc bfc" id="L71" title="All 4 branches covered.">        if ((input.expectedRole() != null &amp;&amp; !expectedAction(input.expectedRole()))</span>
+<span class="fc bfc" id="L72" title="All 4 branches covered.">                || (input.expectedDatabase() != null &amp;&amp; !expectedAction(input.expectedDatabase()))) throw invalid();</span>
+<span class="pc bpc" id="L73" title="2 of 4 branches missed.">        if (input.target().password() == null || input.target().password().isBlank()</span>
+<span class="pc bpc" id="L74" title="2 of 4 branches missed.">                || input.adminUsername() == null || !input.adminUsername().matches(&quot;[A-Za-z0-9_@.$\\\\-]{1,128}&quot;)</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">                || input.adminUsername().equalsIgnoreCase(input.target().username())</span>
+<span class="pc bpc" id="L76" title="2 of 4 branches missed.">                || input.adminPassword() == null || input.adminPassword().isBlank()</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">                || input.adminPassword().length() &gt; 4096) throw invalid();</span>
+<span class="fc" id="L78">        Provider provider = providers.get(input.target().type());</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">        if (provider == null) throw invalid();</span>
+<span class="fc" id="L80">        provider.validate(input);</span>
+<span class="fc" id="L81">        return provider;</span>
+    }
+    private ProvisionResult bounded(Provider provider, ProvisionSettings input, boolean create) {
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (!OPERATIONS.tryAcquire()) return result(Outcome.BUSY, ResourceState.UNKNOWN, ResourceState.UNKNOWN,</span>
+                &quot;busy&quot;, &quot;Other database preparation operations are running. Wait, then inspect again.&quot;);
+<span class="fc" id="L86">        Progress progress = new Progress();</span>
+<span class="fc" id="L87">        AtomicBoolean released = new AtomicBoolean();</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        Runnable release = () -&gt; { if (released.compareAndSet(false, true)) OPERATIONS.release(); };</span>
+<span class="fc" id="L89">        FutureTask&lt;ProvisionResult&gt; task = new FutureTask&lt;&gt;(() -&gt; {</span>
+<span class="fc" id="L90">            try { return provider.execute(input, create, progress); }</span>
+<span class="fc" id="L91">            catch (Exception problem) { return failure(progress, problem); }</span>
+            // JDBC has exited here. Release before FutureTask publishes a result,
+            // so a completed operation cannot leave a subsequent request BUSY.
+<span class="fc" id="L94">            finally { release.run(); }</span>
+        });
+<span class="fc" id="L96">        Thread.ofVirtual().name(&quot;taxonomy-database-preparation&quot;).start(() -&gt; {</span>
+            // Also handles cancellation before Callable starts. A running JDBC
+            // operation still retains its permit until its actual completion.
+<span class="fc" id="L99">            try { task.run(); } finally { release.run(); }</span>
+<span class="fc" id="L100">        });</span>
+        try {
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            return task.get(create ? 60 : 20, TimeUnit.SECONDS);</span>
+<span class="fc" id="L103">        } catch (InterruptedException interrupted) {</span>
+<span class="fc" id="L104">            Thread.currentThread().interrupt();</span>
+<span class="fc" id="L105">            progress.cancelled = true;</span>
+<span class="fc" id="L106">            return uncertain(progress, create);</span>
+<span class="nc" id="L107">        } catch (TimeoutException timeout) {</span>
+<span class="nc" id="L108">            progress.cancelled = true;</span>
+<span class="nc" id="L109">            return uncertain(progress, create);</span>
+<span class="nc" id="L110">        } catch (ExecutionException failure) {</span>
+<span class="nc" id="L111">            return failure(progress, failure.getCause());</span>
+        } finally {
+            // Cancellation does not release capacity while JDBC is still running.
+<span class="fc" id="L114">            task.cancel(true);</span>
+        }
+    }
+
+
+    static Connection connect(Connector connector, ProvisionSettings input, String database, String user, String password) throws SQLException {
+<span class="fc" id="L120">        var target = input.target();</span>
+<span class="fc" id="L121">        var settings = new DatabaseSetupService.ConnectionSettings(target.type(), target.host(), target.port(), database,</span>
+<span class="fc" id="L122">                user, password, target.tls(), target.caCertificate());</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">        String url = DatabaseSetupService.jdbcUrl(settings, !Boolean.FALSE.equals(target.tls()));</span>
+<span class="fc" id="L124">        Properties properties = SetupProbe.connectionProperties(url, user, password);</span>
+<span class="pc bpc" id="L125" title="1 of 4 branches missed.">        switch (target.type()) {</span>
+<span class="fc" id="L126">            case &quot;postgres&quot; -&gt; { properties.setProperty(&quot;socketTimeout&quot;, &quot;20&quot;); properties.setProperty(&quot;ApplicationName&quot;, &quot;Taxonomy database preparation&quot;); }</span>
+<span class="fc" id="L127">            case &quot;mssql&quot; -&gt; { properties.setProperty(&quot;socketTimeout&quot;, &quot;20000&quot;); properties.setProperty(&quot;applicationName&quot;, &quot;Taxonomy database preparation&quot;); }</span>
+<span class="fc" id="L128">            case &quot;oracle&quot; -&gt; properties.setProperty(&quot;oracle.jdbc.ReadTimeout&quot;, &quot;20000&quot;);</span>
+<span class="nc" id="L129">            default -&gt; throw invalid();</span>
+        }
+<span class="fc" id="L131">        return connector.connect(url, properties);</span>
+    }
+    static boolean expectedAction(ResourceState state) {
+<span class="fc bfc" id="L134" title="All 4 branches covered.">        return state == ResourceState.CREATE || state == ResourceState.REUSE;</span>
+    }
+<span class="fc" id="L136">    static IllegalArgumentException invalid() { return new IllegalArgumentException(&quot;Invalid database preparation settings.&quot;); }</span>
+    static Statement statement(Connection connection) throws SQLException {
+<span class="fc" id="L138">        Statement statement = connection.createStatement(); statement.setQueryTimeout(15); return statement;</span>
+    }
+    static void executeSql(Connection connection, String sql) throws SQLException {
+<span class="fc" id="L141">        try (Statement statement = statement(connection)) { statement.execute(sql); }</span>
+<span class="fc" id="L142">    }</span>
+    static boolean scalarBoolean(Connection connection, String sql) throws SQLException {
+<span class="fc" id="L144">        try (Statement statement = statement(connection); ResultSet rows = statement.executeQuery(sql)) {</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">            if (!rows.next()) throw new SQLException(&quot;&quot;, &quot;08000&quot;);</span>
+<span class="fc" id="L146">            return rows.getBoolean(1);</span>
+        }
+    }
+    static ProvisionResult planChanged(Progress progress) {
+<span class="fc" id="L150">        return result(Outcome.CONFLICT, progress.role, progress.database, &quot;plan-changed&quot;,</span>
+                &quot;The resource creation or reuse plan changed after inspection. Inspect again and review the new plan before confirming.&quot;);
+    }
+    static ProvisionResult denied(Progress progress) {
+<span class="fc" id="L154">        return result(Outcome.FAILED, progress.role, progress.database, &quot;permission&quot;,</span>
+                &quot;Administrator permissions are insufficient to establish resource creation and application privileges before writing. Existing resources will not be changed.&quot;);
+    }
+    static ProvisionResult failure(Progress progress, Throwable problem) {
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">        String state = problem instanceof SQLException sql ? sql.getSQLState() : null;</span>
+<span class="fc bfc" id="L159" title="All 4 branches covered.">        if (progress.writing &amp;&amp; uncertainWrite(problem))</span>
+<span class="fc" id="L160">            return uncertain(progress, true);</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (progress.role == ResourceState.UNKNOWN) progress.role = ResourceState.NOT_CREATED;</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        if (progress.database == ResourceState.UNKNOWN) progress.database = ResourceState.NOT_CREATED;</span>
+<span class="pc bpc" id="L163" title="1 of 4 branches missed.">        boolean changed = progress.role == ResourceState.CREATED || progress.database == ResourceState.CREATED;</span>
+<span class="pc bpc" id="L164" title="1 of 4 branches missed.">        if (problem instanceof SQLException sql &amp;&amp; Set.of(15116, 15118, 15128, 28003).contains(sql.getErrorCode()))</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">            return result(changed ? Outcome.PARTIAL : Outcome.FAILED, progress.role, progress.database,</span>
+                    &quot;password-policy&quot;, &quot;The database server rejected the application password under its password policy. Choose a compliant password, then inspect again. No password or server exception is returned.&quot;);
+<span class="pc bpc" id="L167" title="3 of 6 branches missed.">        if (&quot;42710&quot;.equals(state) || &quot;42P04&quot;.equals(state)</span>
+<span class="pc bpc" id="L168" title="3 of 4 branches missed.">                || problem instanceof SQLException sql &amp;&amp; Set.of(15025, 1801, 1920, 1921).contains(sql.getErrorCode())) return result(changed ? Outcome.PARTIAL : Outcome.CONFLICT,</span>
+                progress.role, progress.database, &quot;conflict&quot;, &quot;A resource was created concurrently. No existing resource was changed. Inspect again before continuing.&quot;);
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        if (changed) return new ProvisionResult(Outcome.PARTIAL, progress.role, progress.database, SetupProbe.databaseFailure(problem));</span>
+<span class="fc" id="L171">        return new ProvisionResult(Outcome.FAILED, progress.role, progress.database, SetupProbe.databaseFailure(problem));</span>
+    }
+    /** Drivers can report unknown completion without using connection-error class 08.
+     * Inspect both JDBC chains and Java causes: wrapper states must not turn uncertainty into absence.
+     */
+    static boolean uncertainWrite(Throwable problem) {
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">        if (!(problem instanceof SQLException)) return true;</span>
+<span class="fc" id="L178">        var pending = new ArrayDeque&lt;Throwable&gt;();</span>
+<span class="fc" id="L179">        Set&lt;Throwable&gt; visited = Collections.newSetFromMap(new IdentityHashMap&lt;&gt;());</span>
+<span class="fc" id="L180">        pending.add(problem);</span>
+<span class="pc bpc" id="L181" title="1 of 4 branches missed.">        for (int count = 0; count &lt; 32 &amp;&amp; !pending.isEmpty(); count++) {</span>
+<span class="fc" id="L182">            Throwable current = pending.removeFirst();</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">            if (!visited.add(current)) continue;</span>
+<span class="pc bpc" id="L184" title="4 of 10 branches missed.">            if (current instanceof SQLTimeoutException || current instanceof SQLRecoverableException</span>
+                    || current instanceof TimeoutException
+<span class="fc" id="L186">                    || current instanceof InterruptedException || current instanceof java.io.IOException) return true;</span>
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">            if (current instanceof SQLException sql) {</span>
+<span class="fc" id="L188">                String state = sql.getSQLState();</span>
+<span class="pc bpc" id="L189" title="1 of 6 branches missed.">                if (state == null || state.startsWith(&quot;08&quot;) || Set.of(&quot;40003&quot;, &quot;57P01&quot;, &quot;57P02&quot;, &quot;HYT00&quot;, &quot;HYT01&quot;, &quot;HY008&quot;).contains(state)</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">                        || Set.of(1013, 3113, 3114, 17002, 17410).contains(sql.getErrorCode())) return true;</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">                if (sql.getNextException() != null) pending.addLast(sql.getNextException());</span>
+            }
+<span class="fc bfc" id="L193" title="All 2 branches covered.">            if (current.getCause() != null) pending.addLast(current.getCause());</span>
+        }
+        // An exceptionally deep chain cannot establish definite non-creation.
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">        return !pending.isEmpty();</span>
+    }
+    static ProvisionResult uncertain(Progress progress, boolean create) {
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        if (!create) return new ProvisionResult(Outcome.FAILED, progress.role, progress.database,</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">                SetupProbe.databaseFailure(Thread.currentThread().isInterrupted()</span>
+<span class="pc" id="L201">                        ? new InterruptedException() : new TimeoutException()));</span>
+<span class="fc" id="L202">        return result(Outcome.UNKNOWN, progress.role, progress.database, &quot;unknown&quot;,</span>
+                &quot;Preparation was interrupted or its outcome could not be confirmed. Resources may exist. Inspect before another creation attempt; nothing is automatically removed or retried.&quot;);
+    }
+    static ProvisionResult result(Outcome outcome, ResourceState role, ResourceState database, String key, String message) {
+<span class="fc bfc" id="L206" title="All 4 branches covered.">        SetupChecks.Status status = switch (outcome) {</span>
+<span class="fc" id="L207">            case COMPLETE -&gt; SetupChecks.Status.OK;</span>
+<span class="fc" id="L208">            case READY -&gt; SetupChecks.Status.NOT_CHECKED;</span>
+<span class="fc" id="L209">            case BUSY -&gt; SetupChecks.Status.WARNING;</span>
+<span class="fc" id="L210">            default -&gt; SetupChecks.Status.ERROR;</span>
+        };
+<span class="fc" id="L212">        return new ProvisionResult(outcome, role, database, new SetupChecks.Finding(status, &quot;database.provision.&quot; + key, message));</span>
+    }
+<span class="fc" id="L214">    static final class Progress {</span>
+<span class="fc" id="L215">        volatile ResourceState role = ResourceState.UNKNOWN, database = ResourceState.UNKNOWN;</span>
+        volatile boolean writing, cancelled;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

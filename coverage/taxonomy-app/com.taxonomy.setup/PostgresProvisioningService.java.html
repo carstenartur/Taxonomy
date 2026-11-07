@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PostgresProvisioningService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.setup</a> &gt; <span class="el_source">PostgresProvisioningService.java</span></div><h1>PostgresProvisioningService.java</h1><pre class="source lang-java linenums">package com.taxonomy.setup;
+
+import org.postgresql.util.PasswordUtil;
+import org.springframework.stereotype.Component;
+import java.sql.*;
+import java.util.Arrays;
+import java.util.Set;
+import com.taxonomy.setup.DatabaseProvisioningService.*;
+import static com.taxonomy.setup.DatabaseProvisioningService.*;
+
+/** PostgreSQL preparation; never changes existing resources or the active datasource. */
+@Component
+public class PostgresProvisioningService implements DatabaseProvisioningService.Provider {
+    private static final long LOCK_KEY = 0x5441584f4e4f4d59L;
+<span class="fc" id="L15">    private static final Set&lt;String&gt; RESERVED = Set.of(&quot;postgres&quot;, &quot;template0&quot;, &quot;template1&quot;, &quot;public&quot;);</span>
+    private final Connector connector;
+<span class="fc" id="L17">    public PostgresProvisioningService() { this(DriverManager::getConnection); }</span>
+<span class="fc" id="L18">    PostgresProvisioningService(Connector connector) { this.connector = connector; }</span>
+<span class="fc" id="L19">    @Override public String type() { return &quot;postgres&quot;; }</span>
+
+    @Override public ProvisionResult execute(ProvisionSettings input, boolean create, Progress progress) {
+<span class="fc" id="L22">        try (Connection admin = connect(input, input.maintenanceDatabase(), input.adminUsername(), input.adminPassword())) {</span>
+<span class="fc" id="L23">            admin.setAutoCommit(true); // CREATE DATABASE must not run inside a transaction.</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">            if (admin.getMetaData().getDatabaseMajorVersion() &lt; 15)</span>
+<span class="fc" id="L25">                return result(Outcome.FAILED, progress.role, progress.database, &quot;version&quot;, &quot;Automatic preparation requires PostgreSQL 15 or later.&quot;);</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">            if (scalarBoolean(admin, &quot;SELECT pg_is_in_recovery() OR current_setting('transaction_read_only')::boolean&quot;))</span>
+<span class="fc" id="L27">                return result(Outcome.FAILED, progress.role, progress.database, &quot;readonly&quot;, &quot;This server is read-only. Use the writable PostgreSQL primary endpoint.&quot;);</span>
+<span class="fc" id="L28">            boolean locked = false;</span>
+            try {
+<span class="fc bfc" id="L30" title="All 2 branches covered.">                if (create) {</span>
+<span class="fc" id="L31">                    locked = scalarBoolean(admin, &quot;SELECT pg_try_advisory_lock(&quot; + LOCK_KEY + &quot;)&quot;);</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">                    if (!locked) return result(Outcome.BUSY, progress.role, progress.database,</span>
+                            &quot;busy&quot;, &quot;Another PostgreSQL preparation is running. Wait, then inspect again.&quot;);
+                }
+<span class="fc" id="L35">                Plan plan = inspectCatalog(admin, input, progress, create);</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">                if (plan.failure != null) return plan.failure;</span>
+<span class="fc bfc" id="L37" title="All 4 branches covered.">                if (!create) return result(Outcome.READY, plan.roleExists ? ResourceState.REUSE : ResourceState.CREATE,</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">                        plan.databaseExists ? ResourceState.REUSE : ResourceState.CREATE, &quot;ready&quot;,</span>
+                        &quot;Names, administrator capabilities and existing application account were inspected. Review the planned creation or reuse before confirming.&quot;);
+<span class="pc bpc" id="L40" title="2 of 4 branches missed.">                if (progress.cancelled || Thread.currentThread().isInterrupted()) return uncertain(progress, true);</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">                if (!plan.roleExists) {</span>
+<span class="fc" id="L42">                    char[] password = input.target().password().toCharArray();</span>
+                    String verifier;
+<span class="fc" id="L44">                    try { verifier = PasswordUtil.encodePassword(input.target().username(), password, &quot;scram-sha-256&quot;); }</span>
+<span class="fc" id="L45">                    finally { Arrays.fill(password, '\0'); }</span>
+<span class="fc" id="L46">                    progress.writing = true;</span>
+<span class="fc" id="L47">                    progress.role = ResourceState.UNKNOWN;</span>
+<span class="fc" id="L48">                    executeSql(admin, &quot;CREATE ROLE &quot; + identifier(input.target().username())</span>
+                            + &quot; LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '&quot;
+<span class="fc" id="L50">                            + verifier.replace(&quot;'&quot;, &quot;''&quot;) + &quot;'&quot;);</span>
+<span class="fc" id="L51">                    progress.role = ResourceState.CREATED;</span>
+<span class="fc" id="L52">                    progress.writing = false;</span>
+<span class="fc" id="L53">                } else progress.role = ResourceState.REUSED;</span>
+<span class="pc bpc" id="L54" title="1 of 4 branches missed.">                if (progress.cancelled || Thread.currentThread().isInterrupted()) return uncertain(progress, true);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">                if (!plan.databaseExists) {</span>
+<span class="fc" id="L56">                    progress.writing = true;</span>
+<span class="fc" id="L57">                    progress.database = ResourceState.UNKNOWN;</span>
+<span class="fc" id="L58">                    executeSql(admin, &quot;CREATE DATABASE &quot; + identifier(input.target().database()) + &quot; OWNER &quot;</span>
+<span class="fc" id="L59">                            + identifier(input.target().username()) + &quot; TEMPLATE template0&quot;);</span>
+<span class="fc" id="L60">                    progress.database = ResourceState.CREATED;</span>
+<span class="fc" id="L61">                    progress.writing = false;</span>
+<span class="fc" id="L62">                } else progress.database = ResourceState.REUSED;</span>
+<span class="fc" id="L63">                verifyApplication(input, input.target().database(), true);</span>
+<span class="fc" id="L64">                return result(Outcome.COMPLETE, progress.role, progress.database, &quot;complete&quot;,</span>
+                        &quot;Database and restricted application account are ready; application login, ownership and schema privileges were verified. Apply deployment configuration and restart Taxonomy to run schema migrations.&quot;);
+            } finally {
+<span class="fc bfc" id="L67" title="All 2 branches covered.">                if (locked) {</span>
+<span class="fc" id="L68">                    try { scalarBoolean(admin, &quot;SELECT pg_advisory_unlock(&quot; + LOCK_KEY + &quot;)&quot;); }</span>
+<span class="pc" id="L69">                    catch (SQLException ignored) { /* Connection close also releases this session lock. */ }</span>
+                }
+            }
+<span class="pc bpc" id="L72" title="8 of 14 branches missed.">        } catch (Exception problem) { return failure(progress, problem); }</span>
+    }
+
+    private Plan inspectCatalog(Connection admin, ProvisionSettings input, Progress progress, boolean create) throws SQLException {
+<span class="fc" id="L76">        String role = input.target().username(), database = input.target().database();</span>
+        boolean superuser, createdb, createrole;
+<span class="fc" id="L78">        try (Statement statement = statement(admin); ResultSet rows = statement.executeQuery(</span>
+                &quot;SELECT rolsuper, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname = current_user&quot;)) {
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">            if (!rows.next()) throw new SQLException(&quot;&quot;, &quot;42501&quot;);</span>
+<span class="fc" id="L81">            superuser = rows.getBoolean(1); createdb = rows.getBoolean(2); createrole = rows.getBoolean(3);</span>
+        }
+        boolean roleExists;
+<span class="fc" id="L84">        try (PreparedStatement statement = admin.prepareStatement(</span>
+                &quot;SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls, &quot;
+                        + &quot;EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member = r.oid) &quot;
+                        + &quot;FROM pg_roles r WHERE rolname = ?&quot;)) {
+<span class="fc" id="L88">            statement.setQueryTimeout(15); statement.setString(1, role);</span>
+<span class="fc" id="L89">            try (ResultSet rows = statement.executeQuery()) {</span>
+<span class="fc" id="L90">                roleExists = rows.next();</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                progress.role = roleExists ? ResourceState.REUSE : ResourceState.NOT_CREATED;</span>
+<span class="fc bfc" id="L92" title="All 6 branches covered.">                if (create &amp;&amp; input.expectedRole() != (roleExists ? ResourceState.REUSE : ResourceState.CREATE))</span>
+<span class="fc" id="L93">                    return new Plan(false, false, DatabaseProvisioningService.planChanged(progress));</span>
+<span class="pc bpc" id="L94" title="3 of 8 branches missed.">                if (roleExists &amp;&amp; (!rows.getBoolean(1) || rows.getBoolean(2) || rows.getBoolean(3)</span>
+<span class="pc bpc" id="L95" title="4 of 8 branches missed.">                        || rows.getBoolean(4) || rows.getBoolean(5) || rows.getBoolean(6) || rows.getBoolean(7)))</span>
+<span class="nc" id="L96">                    return conflict(progress, &quot;The application role already exists with incompatible privileges or memberships. Choose a dedicated restricted application account; existing roles are never changed.&quot;);</span>
+<span class="pc bpc" id="L97" title="3 of 4 branches missed.">            }</span>
+<span class="pc bpc" id="L98" title="3 of 4 branches missed.">        }</span>
+        boolean databaseExists;
+<span class="fc" id="L100">        try (PreparedStatement statement = admin.prepareStatement(</span>
+                &quot;SELECT pg_get_userbyid(datdba), datallowconn, datistemplate FROM pg_database WHERE datname = ?&quot;)) {
+<span class="fc" id="L102">            statement.setQueryTimeout(15); statement.setString(1, database);</span>
+<span class="fc" id="L103">            try (ResultSet rows = statement.executeQuery()) {</span>
+<span class="fc" id="L104">                databaseExists = rows.next();</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                progress.database = databaseExists ? ResourceState.REUSE : ResourceState.NOT_CREATED;</span>
+<span class="fc bfc" id="L106" title="All 6 branches covered.">                if (create &amp;&amp; input.expectedDatabase() != (databaseExists ? ResourceState.REUSE : ResourceState.CREATE))</span>
+<span class="fc" id="L107">                    return new Plan(false, false, DatabaseProvisioningService.planChanged(progress));</span>
+<span class="pc bpc" id="L108" title="4 of 10 branches missed.">                if (databaseExists &amp;&amp; (!roleExists || !role.equals(rows.getString(1)) || !rows.getBoolean(2) || rows.getBoolean(3)))</span>
+<span class="nc" id="L109">                    return conflict(progress, &quot;The database already exists with a different owner or incompatible settings. Existing databases are never changed.&quot;);</span>
+<span class="pc bpc" id="L110" title="3 of 4 branches missed.">            }</span>
+<span class="pc bpc" id="L111" title="3 of 4 branches missed.">        }</span>
+<span class="pc bpc" id="L112" title="4 of 12 branches missed.">        if (!superuser &amp;&amp; ((!roleExists &amp;&amp; (!createrole || !createdb)) || (!databaseExists &amp;&amp; !createdb)))</span>
+<span class="nc" id="L113">            return new Plan(false, false, DatabaseProvisioningService.denied(progress));</span>
+        // CREATE ROLE + CREATEDB does not establish SET ROLE for the future owner on every supported server.
+        // Do not create a role and then discover that database ownership cannot be assigned.
+<span class="fc bfc" id="L116" title="All 4 branches covered.">        if (!superuser &amp;&amp; !roleExists) return new Plan(false, false, DatabaseProvisioningService.denied(progress));</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (roleExists) {</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            verifyApplication(input, databaseExists ? database : input.maintenanceDatabase(), databaseExists);</span>
+<span class="pc bpc" id="L119" title="1 of 4 branches missed.">            if (!superuser &amp;&amp; !databaseExists) {</span>
+                try {
+<span class="fc" id="L121">                    executeSql(admin, &quot;SET ROLE &quot; + identifier(role));</span>
+<span class="fc" id="L122">                    executeSql(admin, &quot;RESET ROLE&quot;);</span>
+<span class="fc" id="L123">                } catch (SQLException denied) { return new Plan(false, false, DatabaseProvisioningService.denied(progress)); }</span>
+            }
+        }
+<span class="fc" id="L126">        return new Plan(roleExists, databaseExists, null);</span>
+    }
+
+    private void verifyApplication(ProvisionSettings input, String database, boolean requireSchema) throws SQLException {
+<span class="fc" id="L130">        try (Connection app = connect(input, database, input.target().username(), input.target().password());</span>
+<span class="fc" id="L131">             Statement statement = statement(app);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">             ResultSet rows = statement.executeQuery(requireSchema</span>
+<span class="fc" id="L133">                     ? &quot;SELECT current_user, current_database(), pg_get_userbyid(d.datdba) = current_user, &quot;</span>
+                        + &quot;has_schema_privilege(current_user, 'public', 'USAGE'), has_schema_privilege(current_user, 'public', 'CREATE') &quot;
+                        + &quot;FROM pg_database d WHERE d.datname = current_database()&quot;
+<span class="fc" id="L136">                     : &quot;SELECT current_user, current_database()&quot;)) {</span>
+<span class="pc bpc" id="L137" title="3 of 6 branches missed.">            if (!rows.next() || !input.target().username().equals(rows.getString(1)) || !database.equals(rows.getString(2)))</span>
+<span class="nc" id="L138">                throw new SQLException(&quot;&quot;, &quot;42501&quot;);</span>
+<span class="pc bpc" id="L139" title="3 of 8 branches missed.">            if (requireSchema &amp;&amp; (!rows.getBoolean(3) || !rows.getBoolean(4) || !rows.getBoolean(5)))</span>
+<span class="nc" id="L140">                throw new SQLException(&quot;&quot;, &quot;42501&quot;);</span>
+        }
+<span class="fc" id="L142">    }</span>
+
+    private Connection connect(ProvisionSettings input, String database, String user, String password) throws SQLException {
+<span class="fc" id="L145">        return DatabaseProvisioningService.connect(connector, input, database, user, password);</span>
+    }
+    @Override public void validate(ProvisionSettings input) {
+<span class="pc bpc" id="L148" title="2 of 4 branches missed.">        if (input == null || input.target() == null) throw invalid();</span>
+<span class="fc" id="L149">        DatabaseSetupService.validate(input.target());</span>
+<span class="pc bpc" id="L150" title="1 of 4 branches missed.">        if ((input.expectedRole() != null &amp;&amp; !expectedAction(input.expectedRole()))</span>
+<span class="pc bpc" id="L151" title="1 of 4 branches missed.">                || (input.expectedDatabase() != null &amp;&amp; !expectedAction(input.expectedDatabase()))) throw invalid();</span>
+<span class="fc" id="L152">        var target = input.target();</span>
+<span class="pc bpc" id="L153" title="4 of 10 branches missed.">        if (input.tablespace() != null || input.quotaMiB() != null || !&quot;postgres&quot;.equals(target.type()) || !creationName(target.database()) || !creationName(target.username())</span>
+<span class="pc bpc" id="L154" title="2 of 4 branches missed.">                || target.password() == null || target.password().isBlank()</span>
+<span class="pc bpc" id="L155" title="2 of 4 branches missed.">                || input.maintenanceDatabase() == null || !input.maintenanceDatabase().matches(&quot;[a-z_][a-z0-9_]{0,62}&quot;)</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">                || input.maintenanceDatabase().equals(target.database())</span>
+<span class="pc bpc" id="L157" title="2 of 4 branches missed.">                || input.adminUsername() == null || !input.adminUsername().matches(&quot;[A-Za-z0-9_@.$\\\\-]{1,128}&quot;)</span>
+<span class="pc bpc" id="L158" title="2 of 4 branches missed.">                || input.adminUsername().equals(target.username()) || input.adminPassword() == null</span>
+<span class="pc bpc" id="L159" title="2 of 4 branches missed.">                || input.adminPassword().isBlank() || input.adminPassword().length() &gt; 4096) throw invalid();</span>
+<span class="fc" id="L160">    }</span>
+    private static boolean creationName(String name) {
+<span class="pc bpc" id="L162" title="1 of 8 branches missed.">        return name != null &amp;&amp; name.matches(&quot;[a-z_][a-z0-9_]{0,62}&quot;) &amp;&amp; !name.startsWith(&quot;pg_&quot;) &amp;&amp; !RESERVED.contains(name);</span>
+    }
+<span class="fc" id="L164">    private static String identifier(String value) { return '&quot;' + value.replace(&quot;\&quot;&quot;, &quot;\&quot;\&quot;&quot;) + '&quot;'; }</span>
+    private static Plan conflict(Progress progress, String message) {
+<span class="nc" id="L166">        return new Plan(false, false, result(Outcome.CONFLICT, progress.role, progress.database, &quot;conflict&quot;, message));</span>
+    }
+<span class="fc" id="L168">    private record Plan(boolean roleExists, boolean databaseExists, ProvisionResult failure) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

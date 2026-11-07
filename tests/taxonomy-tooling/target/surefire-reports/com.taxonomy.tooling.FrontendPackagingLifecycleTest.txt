@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.tooling.FrontendPackagingLifecycleTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 18.69 s -- in com.taxonomy.tooling.FrontendPackagingLifecycleTest

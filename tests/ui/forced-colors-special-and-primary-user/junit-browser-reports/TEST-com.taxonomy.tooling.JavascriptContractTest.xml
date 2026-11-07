@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="com.taxonomy.tooling.JavascriptContractTest" time="80.466" tests="236" errors="0" skipped="0" failures="0" flakes="0">
+  <properties>
+    <property name="taxonomy.frontend.skip" value="true"/>
+    <property name="java.specification.version" value="25"/>
+    <property name="sun.jnu.encoding" value="UTF-8"/>
+    <property name="java.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling/target/test-classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling/target/classes:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-test/4.1.2/spring-boot-starter-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter/4.1.2/spring-boot-starter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-logging/4.1.2/spring-boot-starter-logging-4.1.2.jar:/home/runner/.m2/repository/ch/qos/logback/logback-classic/1.5.38/logback-classic-1.5.38.jar:/home/runner/.m2/repository/ch/qos/logback/logback-core/1.5.38/logback-core-1.5.38.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-to-slf4j/2.25.5/log4j-to-slf4j-2.25.5.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-api/2.25.5/log4j-api-2.25.5.jar:/home/runner/.m2/repository/org/slf4j/jul-to-slf4j/2.0.20/jul-to-slf4j-2.0.20.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-autoconfigure/4.1.2/spring-boot-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/jakarta/annotation/jakarta.annotation-api/3.0.0/jakarta.annotation-api-3.0.0.jar:/home/runner/.m2/repository/org/yaml/snakeyaml/2.6/snakeyaml-2.6.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test/4.1.2/spring-boot-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot/4.1.2/spring-boot-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-context/7.0.10/spring-context-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-aop/7.0.10/spring-aop-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-beans/7.0.10/spring-beans-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-expression/7.0.10/spring-expression-7.0.10.jar:/home/runner/.m2/repository/io/micrometer/micrometer-observation/1.17.2/micrometer-observation-1.17.2.jar:/home/runner/.m2/repository/io/micrometer/micrometer-commons/1.17.2/micrometer-commons-1.17.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test-autoconfigure/4.1.2/spring-boot-test-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/com/jayway/jsonpath/json-path/2.10.0/json-path-2.10.0.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar:/home/runner/.m2/repository/jakarta/xml/bind/jakarta.xml.bind-api/4.0.5/jakarta.xml.bind-api-4.0.5.jar:/home/runner/.m2/repository/jakarta/activation/jakarta.activation-api/2.1.4/jakarta.activation-api-2.1.4.jar:/home/runner/.m2/repository/net/minidev/json-smart/2.6.0/json-smart-2.6.0.jar:/home/runner/.m2/repository/net/minidev/accessors-smart/2.6.0/accessors-smart-2.6.0.jar:/home/runner/.m2/repository/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar:/home/runner/.m2/repository/org/assertj/assertj-core/3.27.7/assertj-core-3.27.7.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.18.15/byte-buddy-1.18.15.jar:/home/runner/.m2/repository/org/awaitility/awaitility/4.3.0/awaitility-4.3.0.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest/3.0/hamcrest-3.0.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter/6.0.3/junit-jupiter-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.0.3/junit-jupiter-api-6.0.3.jar:/home/runner/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-commons/6.0.3/junit-platform-commons-6.0.3.jar:/home/runner/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.0.3/junit-jupiter-params-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.0.3/junit-jupiter-engine-6.0.3.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-engine/6.0.3/junit-platform-engine-6.0.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.18.15/byte-buddy-agent-1.18.15.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.3/objenesis-3.3.jar:/home/runner/.m2/repository/org/mockito/mockito-junit-jupiter/5.23.0/mockito-junit-jupiter-5.23.0.jar:/home/runner/.m2/repository/org/skyscreamer/jsonassert/1.5.3/jsonassert-1.5.3.jar:/home/runner/.m2/repository/com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar:/home/runner/.m2/repository/org/springframework/spring-core/7.0.10/spring-core-7.0.10.jar:/home/runner/.m2/repository/commons-logging/commons-logging/1.3.6/commons-logging-1.3.6.jar:/home/runner/.m2/repository/org/jspecify/jspecify/1.0.1/jspecify-1.0.1.jar:/home/runner/.m2/repository/org/springframework/spring-test/7.0.10/spring-test-7.0.10.jar:/home/runner/.m2/repository/org/xmlunit/xmlunit-core/2.11.0/xmlunit-core-2.11.0.jar:"/>
+    <property name="java.vm.vendor" value="Eclipse Adoptium"/>
+    <property name="sun.arch.data.model" value="64"/>
+    <property name="java.vendor.url" value="https://adoptium.net/"/>
+    <property name="os.name" value="Linux"/>
+    <property name="java.vm.specification.version" value="25"/>
+    <property name="keycloak.container.image" value="quay.io/keycloak/keycloak:26.7.0"/>
+    <property name="taxonomy.test.browser.offline" value="maven:false"/>
+    <property name="sun.java.launcher" value="SUN_STANDARD"/>
+    <property name="sun.boot.library.path" value="/usr/lib/jvm/temurin-25-jdk-amd64/lib"/>
+    <property name="runKeycloakTests" value="true"/>
+    <property name="sun.java.command" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling/target/surefire/surefirebooter-20261107110103917_3.jar /home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling/target/surefire 2026-11-07T11-01-03_854-jvmRun1 surefire-20261107110103917_1tmp surefire_0-20261107110103917_2tmp"/>
+    <property name="jdk.debug" value="release"/>
+    <property name="surefire.test.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling/target/test-classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling/target/classes:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-test/4.1.2/spring-boot-starter-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter/4.1.2/spring-boot-starter-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-logging/4.1.2/spring-boot-starter-logging-4.1.2.jar:/home/runner/.m2/repository/ch/qos/logback/logback-classic/1.5.38/logback-classic-1.5.38.jar:/home/runner/.m2/repository/ch/qos/logback/logback-core/1.5.38/logback-core-1.5.38.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-to-slf4j/2.25.5/log4j-to-slf4j-2.25.5.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-api/2.25.5/log4j-api-2.25.5.jar:/home/runner/.m2/repository/org/slf4j/jul-to-slf4j/2.0.20/jul-to-slf4j-2.0.20.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-autoconfigure/4.1.2/spring-boot-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/jakarta/annotation/jakarta.annotation-api/3.0.0/jakarta.annotation-api-3.0.0.jar:/home/runner/.m2/repository/org/yaml/snakeyaml/2.6/snakeyaml-2.6.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test/4.1.2/spring-boot-test-4.1.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot/4.1.2/spring-boot-4.1.2.jar:/home/runner/.m2/repository/org/springframework/spring-context/7.0.10/spring-context-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-aop/7.0.10/spring-aop-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-beans/7.0.10/spring-beans-7.0.10.jar:/home/runner/.m2/repository/org/springframework/spring-expression/7.0.10/spring-expression-7.0.10.jar:/home/runner/.m2/repository/io/micrometer/micrometer-observation/1.17.2/micrometer-observation-1.17.2.jar:/home/runner/.m2/repository/io/micrometer/micrometer-commons/1.17.2/micrometer-commons-1.17.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test-autoconfigure/4.1.2/spring-boot-test-autoconfigure-4.1.2.jar:/home/runner/.m2/repository/com/jayway/jsonpath/json-path/2.10.0/json-path-2.10.0.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar:/home/runner/.m2/repository/jakarta/xml/bind/jakarta.xml.bind-api/4.0.5/jakarta.xml.bind-api-4.0.5.jar:/home/runner/.m2/repository/jakarta/activation/jakarta.activation-api/2.1.4/jakarta.activation-api-2.1.4.jar:/home/runner/.m2/repository/net/minidev/json-smart/2.6.0/json-smart-2.6.0.jar:/home/runner/.m2/repository/net/minidev/accessors-smart/2.6.0/accessors-smart-2.6.0.jar:/home/runner/.m2/repository/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar:/home/runner/.m2/repository/org/assertj/assertj-core/3.27.7/assertj-core-3.27.7.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.18.15/byte-buddy-1.18.15.jar:/home/runner/.m2/repository/org/awaitility/awaitility/4.3.0/awaitility-4.3.0.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest/3.0/hamcrest-3.0.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter/6.0.3/junit-jupiter-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.0.3/junit-jupiter-api-6.0.3.jar:/home/runner/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-commons/6.0.3/junit-platform-commons-6.0.3.jar:/home/runner/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.0.3/junit-jupiter-params-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.0.3/junit-jupiter-engine-6.0.3.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-engine/6.0.3/junit-platform-engine-6.0.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.18.15/byte-buddy-agent-1.18.15.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.3/objenesis-3.3.jar:/home/runner/.m2/repository/org/mockito/mockito-junit-jupiter/5.23.0/mockito-junit-jupiter-5.23.0.jar:/home/runner/.m2/repository/org/skyscreamer/jsonassert/1.5.3/jsonassert-1.5.3.jar:/home/runner/.m2/repository/com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar:/home/runner/.m2/repository/org/springframework/spring-core/7.0.10/spring-core-7.0.10.jar:/home/runner/.m2/repository/commons-logging/commons-logging/1.3.6/commons-logging-1.3.6.jar:/home/runner/.m2/repository/org/jspecify/jspecify/1.0.1/jspecify-1.0.1.jar:/home/runner/.m2/repository/org/springframework/spring-test/7.0.10/spring-test-7.0.10.jar:/home/runner/.m2/repository/org/xmlunit/xmlunit-core/2.11.0/xmlunit-core-2.11.0.jar:"/>
+    <property name="test" value="JavascriptContractTest"/>
+    <property name="sun.cpu.endian" value="little"/>
+    <property name="user.home" value="/home/runner"/>
+    <property name="user.language" value="en"/>
+    <property name="java.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.version.date" value="2026-10-20"/>
+    <property name="java.home" value="/usr/lib/jvm/temurin-25-jdk-amd64"/>
+    <property name="file.separator" value="/"/>
+    <property name="basedir" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling"/>
+    <property name="java.vm.compressedOopsMode" value="Zero based"/>
+    <property name="line.separator" value="&#10;"/>
+    <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.specification.name" value="Java Platform API Specification"/>
+    <property name="taxonomy.test.browser.cache" value="/home/runner/work/Taxonomy/Taxonomy/target/test-runtime/selenium"/>
+    <property name="surefire.real.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling/target/surefire/surefirebooter-20261107110103917_3.jar"/>
+    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
+    <property name="java.runtime.version" value="25.0.5+8-LTS"/>
+    <property name="user.name" value="runner"/>
+    <property name="stdout.encoding" value="UTF-8"/>
+    <property name="path.separator" value=":"/>
+    <property name="os.version" value="7.0.0-1017-azure"/>
+    <property name="java.runtime.name" value="OpenJDK Runtime Environment"/>
+    <property name="file.encoding" value="UTF-8"/>
+    <property name="taxonomy.test.browser.version" value="149.0.7827.55"/>
+    <property name="surefire.failIfNoSpecifiedTests" value="false"/>
+    <property name="java.vm.name" value="OpenJDK 64-Bit Server VM"/>
+    <property name="java.vendor.version" value="Temurin-25.0.5+8"/>
+    <property name="localRepository" value="/home/runner/.m2/repository"/>
+    <property name="java.vendor.url.bug" value="https://github.com/adoptium/adoptium-support/issues"/>
+    <property name="java.io.tmpdir" value="/tmp"/>
+    <property name="taxonomy.javascript.reports" value="/home/runner/work/Taxonomy/Taxonomy/target/ui-verification/forced-colors-special-and-primary-user/junit-browser-reports"/>
+    <property name="java.version" value="25.0.5"/>
+    <property name="taxonomy.node.executable" value="/home/runner/work/Taxonomy/Taxonomy/target/test-runtime/frontend/node/node"/>
+    <property name="user.dir" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling"/>
+    <property name="os.arch" value="amd64"/>
+    <property name="taxonomy.javascript.mode" value="browser"/>
+    <property name="java.vm.specification.name" value="Java Virtual Machine Specification"/>
+    <property name="native.encoding" value="UTF-8"/>
+    <property name="java.library.path" value="/usr/java/packages/lib:/usr/lib64:/lib64:/lib:/usr/lib"/>
+    <property name="java.vm.info" value="mixed mode, sharing"/>
+    <property name="stderr.encoding" value="UTF-8"/>
+    <property name="java.vendor" value="Eclipse Adoptium"/>
+    <property name="java.vm.version" value="25.0.5+8-LTS"/>
+    <property name="stdin.encoding" value="UTF-8"/>
+    <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
+    <property name="java.class.version" value="69.0"/>
+  </properties>
+  <testcase name="javascriptContracts()[1][1]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.396"/>
+  <testcase name="javascriptContracts()[1][2]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.331"/>
+  <testcase name="javascriptContracts()[1][3]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.241"/>
+  <testcase name="javascriptContracts()[1][4]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.248"/>
+  <testcase name="javascriptContracts()[1][5]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.197"/>
+  <testcase name="javascriptContracts()[1][6]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.361"/>
+  <testcase name="javascriptContracts()[1][7]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.238"/>
+  <testcase name="javascriptContracts()[1][8]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.373"/>
+  <testcase name="javascriptContracts()[1][9]" classname="com.taxonomy.tooling.JavascriptContractTest" time="1.646"/>
+  <testcase name="javascriptContracts()[1][10]" classname="com.taxonomy.tooling.JavascriptContractTest" time="1.601"/>
+  <testcase name="javascriptContracts()[1][11]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.392"/>
+  <testcase name="javascriptContracts()[1][12]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.398"/>
+  <testcase name="javascriptContracts()[1][13]" classname="com.taxonomy.tooling.JavascriptContractTest" time="1.042"/>
+  <testcase name="javascriptContracts()[1][14]" classname="com.taxonomy.tooling.JavascriptContractTest" time="1.032"/>
+  <testcase name="javascriptContracts()[1][15]" classname="com.taxonomy.tooling.JavascriptContractTest" time="1.03"/>
+  <testcase name="javascriptContracts()[1][16]" classname="com.taxonomy.tooling.JavascriptContractTest" time="1.016"/>
+  <testcase name="javascriptContracts()[1][17]" classname="com.taxonomy.tooling.JavascriptContractTest" time="1.031"/>
+  <testcase name="javascriptContracts()[1][18]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.731"/>
+  <testcase name="javascriptContracts()[1][19]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.734"/>
+  <testcase name="javascriptContracts()[1][20]" classname="com.taxonomy.tooling.JavascriptContractTest" time="1.032"/>
+  <testcase name="javascriptContracts()[1][21]" classname="com.taxonomy.tooling.JavascriptContractTest" time="1.013"/>
+  <testcase name="javascriptContracts()[1][22]" classname="com.taxonomy.tooling.JavascriptContractTest" time="1.034"/>
+  <testcase name="javascriptContracts()[1][23]" classname="com.taxonomy.tooling.JavascriptContractTest" time="1.032"/>
+  <testcase name="javascriptContracts()[1][24]" classname="com.taxonomy.tooling.JavascriptContractTest" time="1.016"/>
+  <testcase name="javascriptContracts()[1][25]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.731"/>
+  <testcase name="javascriptContracts()[1][26]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.733"/>
+  <testcase name="javascriptContracts()[1][27]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.247"/>
+  <testcase name="javascriptContracts()[1][28]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.243"/>
+  <testcase name="javascriptContracts()[1][29]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.281"/>
+  <testcase name="javascriptContracts()[1][30]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.236"/>
+  <testcase name="javascriptContracts()[1][31]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.232"/>
+  <testcase name="javascriptContracts()[1][32]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.275"/>
+  <testcase name="javascriptContracts()[1][33]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.175"/>
+  <testcase name="javascriptContracts()[1][34]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.382"/>
+  <testcase name="javascriptContracts()[1][35]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.381"/>
+  <testcase name="javascriptContracts()[1][36]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.383"/>
+  <testcase name="javascriptContracts()[1][37]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.383"/>
+  <testcase name="javascriptContracts()[1][38]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.383"/>
+  <testcase name="javascriptContracts()[1][39]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.383"/>
+  <testcase name="javascriptContracts()[1][40]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.383"/>
+  <testcase name="javascriptContracts()[1][41]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.38"/>
+  <testcase name="javascriptContracts()[1][42]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.278"/>
+  <testcase name="javascriptContracts()[1][43]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.284"/>
+  <testcase name="javascriptContracts()[1][44]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.208"/>
+  <testcase name="javascriptContracts()[1][45]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.209"/>
+  <testcase name="javascriptContracts()[1][46]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.538"/>
+  <testcase name="javascriptContracts()[1][47]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.411"/>
+  <testcase name="javascriptContracts()[1][48]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.316"/>
+  <testcase name="javascriptContracts()[1][49]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.313"/>
+  <testcase name="javascriptContracts()[1][50]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.315"/>
+  <testcase name="javascriptContracts()[1][51]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.252"/>
+  <testcase name="javascriptContracts()[1][52]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.247"/>
+  <testcase name="javascriptContracts()[1][53]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.241"/>
+  <testcase name="javascriptContracts()[1][54]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.289"/>
+  <testcase name="javascriptContracts()[1][55]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.28"/>
+  <testcase name="javascriptContracts()[1][56]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.377"/>
+  <testcase name="javascriptContracts()[1][57]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.349"/>
+  <testcase name="javascriptContracts()[1][58]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.282"/>
+  <testcase name="javascriptContracts()[1][59]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.281"/>
+  <testcase name="javascriptContracts()[2][1]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.494"/>
+  <testcase name="javascriptContracts()[2][2]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.074"/>
+  <testcase name="javascriptContracts()[3][1]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.429"/>
+  <testcase name="javascriptContracts()[3][2]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.33"/>
+  <testcase name="javascriptContracts()[3][3]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.125"/>
+  <testcase name="javascriptContracts()[3][4]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.144"/>
+  <testcase name="javascriptContracts()[3][5]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.201"/>
+  <testcase name="javascriptContracts()[3][6]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.1"/>
+  <testcase name="javascriptContracts()[3][7]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.193"/>
+  <testcase name="javascriptContracts()[3][8]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.095"/>
+  <testcase name="javascriptContracts()[3][9]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.108"/>
+  <testcase name="javascriptContracts()[3][10]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.098"/>
+  <testcase name="javascriptContracts()[3][11]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.193"/>
+  <testcase name="javascriptContracts()[3][12]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.092"/>
+  <testcase name="javascriptContracts()[3][13]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.107"/>
+  <testcase name="javascriptContracts()[3][14]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.257"/>
+  <testcase name="javascriptContracts()[3][15]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.284"/>
+  <testcase name="javascriptContracts()[3][16]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.272"/>
+  <testcase name="javascriptContracts()[3][17]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.231"/>
+  <testcase name="javascriptContracts()[3][18]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.401"/>
+  <testcase name="javascriptContracts()[3][19]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.484"/>
+  <testcase name="javascriptContracts()[3][20]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.503"/>
+  <testcase name="javascriptContracts()[3][21]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.495"/>
+  <testcase name="javascriptContracts()[3][22]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.3"/>
+  <testcase name="javascriptContracts()[3][23]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.298"/>
+  <testcase name="javascriptContracts()[3][24]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.162"/>
+  <testcase name="javascriptContracts()[3][25]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.166"/>
+  <testcase name="javascriptContracts()[3][26]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.165"/>
+  <testcase name="javascriptContracts()[3][27]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.149"/>
+  <testcase name="javascriptContracts()[3][28]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.144"/>
+  <testcase name="javascriptContracts()[3][29]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.116"/>
+  <testcase name="javascriptContracts()[3][30]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.117"/>
+  <testcase name="javascriptContracts()[3][31]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.1"/>
+  <testcase name="javascriptContracts()[3][32]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.154"/>
+  <testcase name="javascriptContracts()[3][33]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.162"/>
+  <testcase name="javascriptContracts()[3][34]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.085"/>
+  <testcase name="javascriptContracts()[3][35]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.22"/>
+  <testcase name="javascriptContracts()[3][36]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.216"/>
+  <testcase name="javascriptContracts()[3][37]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.383"/>
+  <testcase name="javascriptContracts()[3][38]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.086"/>
+  <testcase name="javascriptContracts()[3][39]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.114"/>
+  <testcase name="javascriptContracts()[3][40]" classname="com.taxonomy.tooling.JavascriptContractTest" time="2.118"/>
+  <testcase name="javascriptContracts()[3][41]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.374"/>
+  <testcase name="javascriptContracts()[3][42]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.085"/>
+  <testcase name="javascriptContracts()[3][43]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.115"/>
+  <testcase name="javascriptContracts()[3][44]" classname="com.taxonomy.tooling.JavascriptContractTest" time="2.106"/>
+  <testcase name="javascriptContracts()[3][45]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.114"/>
+  <testcase name="javascriptContracts()[3][46]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.116"/>
+  <testcase name="javascriptContracts()[3][47]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.098"/>
+  <testcase name="javascriptContracts()[3][48]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.152"/>
+  <testcase name="javascriptContracts()[3][49]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.122"/>
+  <testcase name="javascriptContracts()[3][50]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.15"/>
+  <testcase name="javascriptContracts()[3][51]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.15"/>
+  <testcase name="javascriptContracts()[3][52]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.183"/>
+  <testcase name="javascriptContracts()[3][53]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.187"/>
+  <testcase name="javascriptContracts()[3][54]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.167"/>
+  <testcase name="javascriptContracts()[3][55]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.164"/>
+  <testcase name="javascriptContracts()[3][56]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.171"/>
+  <testcase name="javascriptContracts()[3][57]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.167"/>
+  <testcase name="javascriptContracts()[3][58]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.155"/>
+  <testcase name="javascriptContracts()[3][59]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.156"/>
+  <testcase name="javascriptContracts()[3][60]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.241"/>
+  <testcase name="javascriptContracts()[3][61]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.954"/>
+  <testcase name="javascriptContracts()[3][62]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.057"/>
+  <testcase name="javascriptContracts()[3][63]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.326"/>
+  <testcase name="javascriptContracts()[3][64]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.315"/>
+  <testcase name="javascriptContracts()[3][65]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.248"/>
+  <testcase name="javascriptContracts()[3][66]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.223"/>
+  <testcase name="javascriptContracts()[4][1]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.304"/>
+  <testcase name="javascriptContracts()[5][1]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.282"/>
+  <testcase name="javascriptContracts()[5][2]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.159"/>
+  <testcase name="javascriptContracts()[5][3]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.165"/>
+  <testcase name="javascriptContracts()[5][4]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.149"/>
+  <testcase name="javascriptContracts()[5][5]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.151"/>
+  <testcase name="javascriptContracts()[5][6]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.239"/>
+  <testcase name="javascriptContracts()[6][1]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.39"/>
+  <testcase name="javascriptContracts()[6][2]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.284"/>
+  <testcase name="javascriptContracts()[6][3]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.28"/>
+  <testcase name="javascriptContracts()[6][4]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.282"/>
+  <testcase name="javascriptContracts()[6][5]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.241"/>
+  <testcase name="javascriptContracts()[6][6]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.267"/>
+  <testcase name="javascriptContracts()[6][7]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.209"/>
+  <testcase name="javascriptContracts()[6][8]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.25"/>
+  <testcase name="javascriptContracts()[6][9]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.189"/>
+  <testcase name="javascriptContracts()[6][10]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.259"/>
+  <testcase name="javascriptContracts()[6][11]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.249"/>
+  <testcase name="javascriptContracts()[6][12]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.198"/>
+  <testcase name="javascriptContracts()[6][13]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.196"/>
+  <testcase name="javascriptContracts()[6][14]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.287"/>
+  <testcase name="javascriptContracts()[6][15]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.233"/>
+  <testcase name="javascriptContracts()[6][16]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.251"/>
+  <testcase name="javascriptContracts()[6][17]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.237"/>
+  <testcase name="javascriptContracts()[6][18]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.206"/>
+  <testcase name="javascriptContracts()[6][19]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.192"/>
+  <testcase name="javascriptContracts()[6][20]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.187"/>
+  <testcase name="javascriptContracts()[6][21]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.82"/>
+  <testcase name="javascriptContracts()[6][22]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.278"/>
+  <testcase name="javascriptContracts()[6][23]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.227"/>
+  <testcase name="javascriptContracts()[6][24]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.376"/>
+  <testcase name="javascriptContracts()[6][25]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.238"/>
+  <testcase name="javascriptContracts()[6][26]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.234"/>
+  <testcase name="javascriptContracts()[6][27]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.218"/>
+  <testcase name="javascriptContracts()[6][28]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.235"/>
+  <testcase name="javascriptContracts()[6][29]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.208"/>
+  <testcase name="javascriptContracts()[6][30]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.218"/>
+  <testcase name="javascriptContracts()[7][1]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.306"/>
+  <testcase name="javascriptContracts()[7][2]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.171"/>
+  <testcase name="javascriptContracts()[7][3]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.186"/>
+  <testcase name="javascriptContracts()[7][4]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.086"/>
+  <testcase name="javascriptContracts()[7][5]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.106"/>
+  <testcase name="javascriptContracts()[7][6]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.103"/>
+  <testcase name="javascriptContracts()[7][7]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.12"/>
+  <testcase name="javascriptContracts()[7][8]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.112"/>
+  <testcase name="javascriptContracts()[7][9]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.214"/>
+  <testcase name="javascriptContracts()[7][10]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.233"/>
+  <testcase name="javascriptContracts()[7][11]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.237"/>
+  <testcase name="javascriptContracts()[7][12]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.181"/>
+  <testcase name="javascriptContracts()[7][13]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.16"/>
+  <testcase name="javascriptContracts()[7][14]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.124"/>
+  <testcase name="javascriptContracts()[7][15]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.244"/>
+  <testcase name="javascriptContracts()[8][1]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.295"/>
+  <testcase name="javascriptContracts()[8][2]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.164"/>
+  <testcase name="javascriptContracts()[8][3]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.161"/>
+  <testcase name="javascriptContracts()[8][4]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.159"/>
+  <testcase name="javascriptContracts()[8][5]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.242"/>
+  <testcase name="javascriptContracts()[8][6]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.22"/>
+  <testcase name="javascriptContracts()[8][7]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.19"/>
+  <testcase name="javascriptContracts()[8][8]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.147"/>
+  <testcase name="javascriptContracts()[8][9]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.187"/>
+  <testcase name="javascriptContracts()[8][10]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.222"/>
+  <testcase name="javascriptContracts()[8][11]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.214"/>
+  <testcase name="javascriptContracts()[8][12]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.193"/>
+  <testcase name="javascriptContracts()[8][13]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.258"/>
+  <testcase name="javascriptContracts()[8][14]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.245"/>
+  <testcase name="javascriptContracts()[8][15]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.246"/>
+  <testcase name="javascriptContracts()[8][16]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.253"/>
+  <testcase name="javascriptContracts()[8][17]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.255"/>
+  <testcase name="javascriptContracts()[8][18]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.249"/>
+  <testcase name="javascriptContracts()[8][19]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.253"/>
+  <testcase name="javascriptContracts()[8][20]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.257"/>
+  <testcase name="javascriptContracts()[8][21]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.245"/>
+  <testcase name="javascriptContracts()[8][22]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.24"/>
+  <testcase name="javascriptContracts()[8][23]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.246"/>
+  <testcase name="javascriptContracts()[8][24]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.238"/>
+  <testcase name="javascriptContracts()[8][25]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.247"/>
+  <testcase name="javascriptContracts()[8][26]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.243"/>
+  <testcase name="javascriptContracts()[8][27]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.249"/>
+  <testcase name="javascriptContracts()[8][28]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.243"/>
+  <testcase name="javascriptContracts()[8][29]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.234"/>
+  <testcase name="javascriptContracts()[8][30]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.248"/>
+  <testcase name="javascriptContracts()[8][31]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.148"/>
+  <testcase name="javascriptContracts()[9][1]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.455"/>
+  <testcase name="javascriptContracts()[9][2]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.332"/>
+  <testcase name="javascriptContracts()[9][3]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.314"/>
+  <testcase name="javascriptContracts()[9][4]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.362"/>
+  <testcase name="javascriptContracts()[9][5]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.669"/>
+  <testcase name="javascriptContracts()[9][6]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.427"/>
+  <testcase name="javascriptContracts()[9][7]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.341"/>
+  <testcase name="javascriptContracts()[9][8]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.334"/>
+  <testcase name="javascriptContracts()[9][9]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.415"/>
+  <testcase name="javascriptContracts()[9][10]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.433"/>
+  <testcase name="javascriptContracts()[9][11]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.417"/>
+  <testcase name="javascriptContracts()[9][12]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.432"/>
+  <testcase name="javascriptContracts()[9][13]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.325"/>
+  <testcase name="javascriptContracts()[10][1]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.395"/>
+  <testcase name="javascriptContracts()[10][2]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.273"/>
+  <testcase name="javascriptContracts()[10][3]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.099"/>
+  <testcase name="javascriptContracts()[10][4]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.093"/>
+  <testcase name="javascriptContracts()[10][5]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.112"/>
+  <testcase name="javascriptContracts()[11][1]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.282"/>
+  <testcase name="javascriptContracts()[11][2]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.127"/>
+  <testcase name="javascriptContracts()[11][3]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.181"/>
+  <testcase name="javascriptContracts()[11][4]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.15"/>
+  <testcase name="javascriptContracts()[11][5]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.15"/>
+  <testcase name="javascriptContracts()[12][1]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.589"/>
+  <testcase name="javascriptContracts()[12][2]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.419"/>
+  <testcase name="javascriptContracts()[12][3]" classname="com.taxonomy.tooling.JavascriptContractTest" time="0.197"/>
+</testsuite>

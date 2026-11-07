@@ -1,0 +1,334 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceContextResolver.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceContextResolver.java</span></div><h1>WorkspaceContextResolver.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import jakarta.servlet.http.HttpServletRequest;
+
+/**
+ * Resolves the current workspace and repository contexts from the authenticated
+ * principal and persistent workspace metadata.
+ *
+ * &lt;p&gt;The legacy {@link WorkspaceContext} is retained while existing callers are
+ * migrated. New repository-sensitive code must use {@link RepositoryContext} so
+ * a {@code null} workspace can never mean an unspecified global repository.&lt;/p&gt;
+ *
+ * &lt;p&gt;Browser tabs may pin their exact workspace with
+ * {@value #WORKSPACE_HEADER}. Native {@code EventSource} cannot set a custom
+ * header, so SSE endpoints may use the equivalent
+ * {@value #WORKSPACE_QUERY_PARAMETER} query parameter. This prevents another
+ * session of the same user from silently changing the repository context of an
+ * already open page.&lt;/p&gt;
+ */
+@Service
+public class WorkspaceContextResolver {
+
+    /** Request header used by one browser tab to bind API calls to its workspace. */
+    public static final String WORKSPACE_HEADER = &quot;X-Taxonomy-Workspace-Id&quot;;
+
+    /** Query parameter used only when a browser transport cannot set headers. */
+    public static final String WORKSPACE_QUERY_PARAMETER = &quot;workspaceId&quot;;
+
+<span class="fc" id="L45">    private static final Logger log = LoggerFactory.getLogger(WorkspaceContextResolver.class);</span>
+
+    private final WorkspaceManager workspaceManager;
+    private final SystemRepositoryService systemRepositoryService;
+    private final UserWorkspaceRepository workspaceRepository;
+    private final RepositoryMembershipService repositoryMembershipService;
+<span class="fc" id="L51">    private WorkspaceActorAccess actorAccess = WorkspaceActorAccess.unavailable();</span>
+
+    @Autowired(required = false)
+    public void setActorAccess(WorkspaceActorAccess actorAccess) {
+<span class="fc" id="L55">        this.actorAccess = java.util.Objects.requireNonNull(actorAccess);</span>
+<span class="fc" id="L56">    }</span>
+
+    @Autowired
+    public WorkspaceContextResolver(WorkspaceManager workspaceManager,
+                                    SystemRepositoryService systemRepositoryService,
+                                    UserWorkspaceRepository workspaceRepository,
+<span class="fc" id="L62">                                    RepositoryMembershipService repositoryMembershipService) {</span>
+<span class="fc" id="L63">        this.workspaceManager = workspaceManager;</span>
+<span class="fc" id="L64">        this.systemRepositoryService = systemRepositoryService;</span>
+<span class="fc" id="L65">        this.workspaceRepository = workspaceRepository;</span>
+<span class="fc" id="L66">        this.repositoryMembershipService = repositoryMembershipService;</span>
+<span class="fc" id="L67">    }</span>
+
+    /** Compatibility constructor for callers without explicit central repository/branch routing. */
+    public WorkspaceContextResolver(WorkspaceManager workspaceManager, SystemRepositoryService systemRepositoryService,
+                                    UserWorkspaceRepository workspaceRepository) {
+<span class="fc" id="L72">        this(workspaceManager,systemRepositoryService,workspaceRepository,null);</span>
+<span class="fc" id="L73">    }</span>
+
+    /** Compatibility constructor for focused unit tests without persistence. */
+    public WorkspaceContextResolver(WorkspaceManager workspaceManager,
+                                    SystemRepositoryService systemRepositoryService) {
+<span class="fc" id="L78">        this(workspaceManager, systemRepositoryService, null);</span>
+<span class="fc" id="L79">    }</span>
+
+    /** Resolve the legacy workspace context for the currently authenticated user. */
+    public WorkspaceContext resolveCurrentContext() {
+<span class="nc" id="L83">        return resolveForUser(resolveUsername());</span>
+    }
+
+    /**
+     * Resolve the legacy workspace context for a specific user.
+     *
+     * &lt;p&gt;Only users with an explicitly provisioned persistent workspace receive
+     * a workspace-scoped context. Callers that need repository identity must use
+     * {@link #resolveRepositoryContextForUser(String)} instead.&lt;/p&gt;
+     */
+    public WorkspaceContext resolveForUser(String username) {
+<span class="fc bfc" id="L94" title="All 4 branches covered.">        if (username == null || username.isBlank()</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">                || WorkspaceManager.DEFAULT_USER.equals(username)) {</span>
+<span class="fc" id="L96">            return WorkspaceContext.SHARED;</span>
+        }
+
+<span class="fc" id="L99">        UserWorkspace workspace = resolveWorkspace(username);</span>
+<span class="fc bfc" id="L100" title="All 4 branches covered.">        if (workspace != null &amp;&amp; hasText(workspace.getWorkspaceId())) {</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">            String branch = hasText(workspace.getCurrentBranch())</span>
+<span class="fc" id="L102">                    ? workspace.getCurrentBranch().strip()</span>
+<span class="fc" id="L103">                    : systemRepositoryService.getSharedBranch();</span>
+<span class="fc" id="L104">            log.debug(&quot;Resolved workspace context for user '{}': workspace={}, branch={}&quot;,</span>
+<span class="fc" id="L105">                    username, workspace.getWorkspaceId(), branch);</span>
+<span class="fc" id="L106">            return new WorkspaceContext(</span>
+<span class="fc" id="L107">                    username.strip(), workspace.getWorkspaceId().strip(), branch);</span>
+        }
+
+<span class="fc" id="L110">        log.debug(&quot;No provisioned workspace for user '{}'; falling back to SHARED&quot;, username);</span>
+<span class="fc" id="L111">        return WorkspaceContext.SHARED;</span>
+    }
+
+    /** Resolve an explicit repository context for the authenticated user. */
+    public RepositoryContext resolveCurrentRepositoryContext() {
+<span class="nc" id="L116">        return resolveRepositoryContextForUser(resolveUsername());</span>
+    }
+
+    /**
+     * Resolve the selected logical repository and optional workspace for one user.
+     *
+     * &lt;p&gt;A user without a personal workspace receives an explicit read-only
+     * context for the primary central repository. A legacy workspace without
+     * {@code sourceRepositoryId} is assigned to that same primary repository,
+     * which is the only repository such rows could originate from before the
+     * multi-repository migration. The inferred provenance is persisted so
+     * remaining legacy adapters cannot later resolve the same workspace against
+     * an unspecified repository.&lt;/p&gt;
+     */
+    public RepositoryContext resolveRepositoryContextForUser(String username) {
+<span class="fc" id="L131">        String user = normalizeUsername(username);</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">        UserWorkspace workspace = WorkspaceManager.DEFAULT_USER.equals(user)</span>
+<span class="nc" id="L133">                ? null</span>
+<span class="fc" id="L134">                : resolveWorkspace(user);</span>
+
+<span class="pc bpc" id="L136" title="1 of 4 branches missed.">        if (workspace != null &amp;&amp; hasText(workspace.getWorkspaceId())) {</span>
+<span class="fc" id="L137">            SystemRepository repository = resolveWorkspaceSource(workspace);</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            String branch = hasText(workspace.getCurrentBranch())</span>
+<span class="fc" id="L139">                    ? workspace.getCurrentBranch().strip()</span>
+<span class="fc" id="L140">                    : requireBranch(repository);</span>
+<span class="fc" id="L141">            RepositoryContext context = new RepositoryContext(</span>
+<span class="fc" id="L142">                    requireRepositoryId(repository),</span>
+<span class="fc" id="L143">                    workspace.getWorkspaceId().strip(),</span>
+                    branch,
+<span class="fc" id="L145">                    user, RepositoryScope.WORKSPACE, workspace.isCollaborative());</span>
+<span class="fc" id="L146">            log.debug(</span>
+                    &quot;Resolved repository context for user '{}': repository={}, workspace={}, branch={}&quot;,
+<span class="fc" id="L148">                    user, context.repositoryId(), context.workspaceId(), context.branch());</span>
+<span class="fc" id="L149">            return context;</span>
+        }
+
+<span class="fc" id="L152">        RepositoryContext pinnedCentral = explicitlyPinnedCentralRead(user);</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        if (pinnedCentral != null) return pinnedCentral;</span>
+<span class="fc" id="L154">        SystemRepository primary = systemRepositoryService.getPrimaryRepository();</span>
+<span class="fc" id="L155">        RepositoryContext context = RepositoryContext.centralRead(</span>
+<span class="fc" id="L156">                requireRepositoryId(primary), requireBranch(primary), user);</span>
+<span class="fc" id="L157">        log.debug(</span>
+                &quot;Resolved central repository context for user '{}': repository={}, branch={}&quot;,
+<span class="fc" id="L159">                user, context.repositoryId(), context.branch());</span>
+<span class="fc" id="L160">        return context;</span>
+    }
+
+    /** Only an explicit central selection may pin a readable repository and retained source branch.
+     * Private workspaces continue to derive repository and branch from their authoritative metadata. */
+    private RepositoryContext explicitlyPinnedCentralRead(String user) {
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        if (!&quot;&quot;.equals(requestedWorkspaceId())) return null;</span>
+<span class="fc" id="L167">        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">        if (!(attributes instanceof ServletRequestAttributes servlet)) return null;</span>
+<span class="fc" id="L169">        String repositoryId = servlet.getRequest().getParameter(&quot;repositoryId&quot;);</span>
+<span class="fc" id="L170">        String branch = servlet.getRequest().getParameter(&quot;branch&quot;);</span>
+<span class="fc bfc" id="L171" title="All 4 branches covered.">        if (repositoryId == null &amp;&amp; branch == null) return null;</span>
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">        if (repositoryMembershipService == null) throw new IllegalStateException(&quot;Explicit central routing requires repository authorization&quot;);</span>
+        SystemRepository repository;
+        try {
+<span class="fc bfc" id="L175" title="All 2 branches covered.">            repository = repositoryId == null ? systemRepositoryService.getPrimaryRepository()</span>
+<span class="fc" id="L176">                    : systemRepositoryService.getRepository(repositoryId);</span>
+<span class="nc" id="L177">        } catch (IllegalArgumentException missing) {</span>
+<span class="nc" id="L178">            throw new ResponseStatusException(HttpStatus.NOT_FOUND,&quot;Central source is not accessible&quot;);</span>
+<span class="fc" id="L179">        }</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        if (!repositoryMembershipService.canRead(repository,user))</span>
+<span class="fc" id="L181">            throw new ResponseStatusException(HttpStatus.NOT_FOUND,&quot;Central source is not accessible&quot;);</span>
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">        String selectedBranch = branch == null ? requireBranch(repository) : branch.strip();</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">        if (!org.eclipse.jgit.lib.Repository.isValidRefName(&quot;refs/heads/&quot; + selectedBranch))</span>
+<span class="fc" id="L184">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,&quot;An exact valid central branch is required&quot;);</span>
+<span class="fc" id="L185">        return RepositoryContext.centralRead(requireRepositoryId(repository),selectedBranch,user);</span>
+    }
+
+    private UserWorkspace resolveWorkspace(String username) {
+<span class="fc" id="L189">        UserWorkspace workspace = resolveWorkspaceMetadataForUser(username);</span>
+        // Keep the existing first-use experience for automatically created default
+        // workspaces, but finish initialization before exposing a usable context.
+        // Join this manager's ongoing initialization before re-reading readiness.
+        // Explicit pins and failed attempts still require lifecycle recovery.
+<span class="fc bfc" id="L194" title="All 6 branches covered.">        if (workspace != null &amp;&amp; workspace.isDefault() &amp;&amp; requestedWorkspaceId() == null</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">                &amp;&amp; (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">                || workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING)) {</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">            if (!workspaceManager.mayProvisionDefaultWorkspace(username)) {</span>
+<span class="fc" id="L198">                return null;</span>
+            }
+<span class="fc" id="L200">            workspace = workspaceManager.provisionDefaultWorkspaceRepository(</span>
+<span class="fc" id="L201">                    username, workspace.getWorkspaceId());</span>
+        }
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        if (workspace != null</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">                &amp;&amp; workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY) {</span>
+<span class="fc" id="L205">            throw new ResponseStatusException(HttpStatus.CONFLICT,</span>
+                    &quot;Workspace repository is not ready; complete provisioning before using it&quot;);
+        }
+<span class="fc" id="L208">        return workspace;</span>
+    }
+
+    /**
+     * Resolve and authorize metadata without opening a repository or requiring
+     * completed provisioning. Only lifecycle endpoints may use this distinction.
+     * Database failures propagate; only a successful empty lookup means absence.
+     */
+    public UserWorkspace resolveWorkspaceMetadataForUser(String username) {
+<span class="fc" id="L217">        username = normalizeUsername(username);</span>
+<span class="fc" id="L218">        String requestedWorkspaceId = requestedWorkspaceId();</span>
+        // A missing pin follows the active workspace. A present empty pin is an
+        // explicit central read and must not trigger any implicit metadata lookup.
+<span class="fc bfc" id="L221" title="All 4 branches covered.">        if (requestedWorkspaceId != null &amp;&amp; requestedWorkspaceId.isEmpty()) return null;</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        UserWorkspace workspace = requestedWorkspaceId == null</span>
+<span class="fc" id="L223">                ? findWorkspace(username)</span>
+<span class="fc" id="L224">                : workspaceManager.getWorkspaceById(requestedWorkspaceId);</span>
+        // No provisioned workspace keeps the central-read fallback. An actual
+        // selection must satisfy the same rules whether implicit or request-pinned.
+<span class="fc bfc" id="L227" title="All 4 branches covered.">        if (workspace == null &amp;&amp; requestedWorkspaceId == null) {</span>
+<span class="fc" id="L228">            return null;</span>
+        }
+
+<span class="fc bfc" id="L231" title="All 2 branches covered.">        if (workspace == null</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">                || !hasText(workspace.getUsername())</span>
+<span class="fc bfc" id="L233" title="All 4 branches covered.">                || (!workspace.getUsername().strip().equals(username.strip())</span>
+<span class="pc bpc" id="L234" title="1 of 4 branches missed.">                    &amp;&amp; !(requestedWorkspaceId != null &amp;&amp; workspace.isCollaborative()</span>
+                        &amp;&amp; repositoryMembershipService != null
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">                        &amp;&amp; hasText(workspace.getSourceRepositoryId())</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">                        &amp;&amp; repositoryMembershipService.canCollaborate(</span>
+<span class="fc" id="L238">                            systemRepositoryService.getRepository(workspace.getSourceRepositoryId()), username)))</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                || workspace.isArchived()</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">                || workspace.isShared()) {</span>
+<span class="fc" id="L241">            throw new AccessDeniedException(</span>
+                    &quot;Requested workspace is not available to the authenticated user&quot;);
+        }
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        if (workspace.isCollaborative()) {</span>
+<span class="fc" id="L245">            actorAccess.requireActive(username);</span>
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">            if (!hasText(workspace.getSourceRepositoryId()) || systemRepositoryService</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">                    .getRepository(workspace.getSourceRepositoryId()).getLifecycleState()</span>
+                    != com.taxonomy.workspace.model.RepositoryLifecycleState.ACTIVE) {
+<span class="fc" id="L249">                throw new AccessDeniedException(&quot;The shared working-copy source repository is unavailable&quot;);</span>
+            }
+        }
+<span class="fc" id="L252">        return workspace;</span>
+    }
+
+    private UserWorkspace findWorkspace(String username) {
+<span class="fc" id="L256">        UserWorkspace workspace = workspaceManager.findActiveWorkspace(username);</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">        return workspace != null ? workspace : workspaceManager.findUserWorkspace(username);</span>
+    }
+
+    private SystemRepository resolveWorkspaceSource(UserWorkspace workspace) {
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        if (hasText(workspace.getSourceRepositoryId())) {</span>
+<span class="fc" id="L262">            return systemRepositoryService.getRepository(</span>
+<span class="fc" id="L263">                    workspace.getSourceRepositoryId().strip());</span>
+        }
+
+<span class="fc" id="L266">        SystemRepository primary = systemRepositoryService.getPrimaryRepository();</span>
+<span class="fc" id="L267">        String primaryRepositoryId = requireRepositoryId(primary);</span>
+<span class="fc" id="L268">        workspace.setSourceRepositoryId(primaryRepositoryId);</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">        if (workspaceRepository != null) {</span>
+<span class="fc" id="L270">            workspaceRepository.save(workspace);</span>
+        }
+<span class="fc" id="L272">        log.info(</span>
+                &quot;Persisted primary repository {} as source provenance for legacy workspace {}&quot;,
+<span class="fc" id="L274">                primaryRepositoryId, workspace.getWorkspaceId());</span>
+<span class="fc" id="L275">        return primary;</span>
+    }
+
+    /** Exact tab selection from the current request, with header precedence over query transport. */
+    public static String requestedWorkspaceId() {
+<span class="fc" id="L280">        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();</span>
+<span class="fc bfc" id="L281" title="All 2 branches covered.">        if (!(attributes instanceof ServletRequestAttributes servletAttributes)) {</span>
+<span class="fc" id="L282">            return null;</span>
+        }
+<span class="fc" id="L284">        return requestedWorkspaceId(servletAttributes.getRequest());</span>
+    }
+
+    /**
+     * Canonical parser for explicit workspace-pin transport semantics.
+     * A present blank header is an explicit central selection and therefore
+     * overrides a stale query parameter with the empty string.
+     */
+    public static String requestedWorkspaceId(HttpServletRequest request) {
+<span class="fc" id="L293">        String header = request.getHeader(WORKSPACE_HEADER);</span>
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        if (header != null) {</span>
+<span class="fc" id="L295">            return header.strip();</span>
+        }
+<span class="fc" id="L297">        String parameter = request.getParameter(WORKSPACE_QUERY_PARAMETER);</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">        return parameter == null ? null : parameter.strip();</span>
+    }
+
+    private static String requireRepositoryId(SystemRepository repository) {
+<span class="pc bpc" id="L302" title="1 of 4 branches missed.">        if (repository == null || !hasText(repository.getRepositoryId())) {</span>
+<span class="fc" id="L303">            throw new IllegalStateException(&quot;Resolved repository has no repositoryId&quot;);</span>
+        }
+<span class="fc" id="L305">        return repository.getRepositoryId().strip();</span>
+    }
+
+    private static String requireBranch(SystemRepository repository) {
+<span class="pc bpc" id="L309" title="2 of 4 branches missed.">        if (repository == null || !hasText(repository.getDefaultBranch())) {</span>
+<span class="nc" id="L310">            throw new IllegalStateException(&quot;Resolved repository has no default branch&quot;);</span>
+        }
+<span class="fc" id="L312">        return repository.getDefaultBranch().strip();</span>
+    }
+
+    private static String normalizeUsername(String username) {
+<span class="pc bpc" id="L316" title="2 of 4 branches missed.">        return username == null || username.isBlank()</span>
+<span class="nc" id="L317">                ? WorkspaceManager.DEFAULT_USER</span>
+<span class="fc" id="L318">                : username.strip();</span>
+    }
+
+    private static boolean hasText(String value) {
+<span class="pc bpc" id="L322" title="1 of 4 branches missed.">        return value != null &amp;&amp; !value.isBlank();</span>
+    }
+
+    private String resolveUsername() {
+<span class="nc" id="L326">        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="nc bnc" id="L327" title="All 4 branches missed.">        if (authentication != null &amp;&amp; authentication.isAuthenticated()</span>
+<span class="nc bnc" id="L328" title="All 2 branches missed.">                &amp;&amp; !&quot;anonymousUser&quot;.equals(authentication.getPrincipal())) {</span>
+<span class="nc" id="L329">            return authentication.getName();</span>
+        }
+<span class="nc" id="L331">        return WorkspaceManager.DEFAULT_USER;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,300 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureWorkbenchController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.workbench</a> &gt; <span class="el_source">ArchitectureWorkbenchController.java</span></div><h1>ArchitectureWorkbenchController.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.workbench;
+
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.editor.ArchitectureWorkspaceRedirect;
+import com.taxonomy.model.WorkspaceOverlayScope;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.portfolio.workbench.ArchitectureSnapshotExportService.Artifact;
+import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.util.MultiValueMap;
+import org.springframework.util.LinkedMultiValueMap;
+
+import java.nio.charset.StandardCharsets;
+
+/** Page and API adapter for the read-only architecture workbench. */
+@Controller
+@Tag(name = &quot;Architecture Workbench&quot;)
+public class ArchitectureWorkbenchController {
+
+<span class="fc" id="L35">    private static final MediaType SVG =</span>
+<span class="fc" id="L36">            MediaType.parseMediaType(&quot;image/svg+xml&quot;);</span>
+    private static final String SNAPSHOT_HEADER =
+            &quot;X-Taxonomy-Snapshot-Id&quot;;
+    private static final String SNAPSHOT_STATUS_HEADER =
+            &quot;X-Taxonomy-Snapshot-Status&quot;;
+    private static final String WORKSPACE_HEADER =
+            &quot;X-Taxonomy-Workspace-Id&quot;;
+    private static final String BRANCH_HEADER =
+            &quot;X-Taxonomy-Branch&quot;;
+    private static final String COMMIT_HEADER =
+            &quot;X-Taxonomy-Commit-Sha&quot;;
+    private static final String EXPORT_PROFILE_HEADER =
+            &quot;X-Taxonomy-Exporter-Profile&quot;;
+    private static final String CANONICAL_GRAPH_HEADER =
+            &quot;X-Taxonomy-Canonical-Graph-Sha256&quot;;
+    private static final String ARTIFACT_HEADER =
+            &quot;X-Taxonomy-Artifact-Sha256&quot;;
+
+    private final ArchitectureWorkbenchService service;
+    private final ArchitectureSnapshotExportService snapshotExportService;
+    private final ProjectPortfolioService projectService;
+    private final WorkspaceResolver workspaceResolver;
+
+    public ArchitectureWorkbenchController(
+            ArchitectureWorkbenchService service,
+            ArchitectureSnapshotExportService snapshotExportService,
+            ProjectPortfolioService projectService,
+<span class="fc" id="L63">            WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L64">        this.service = service;</span>
+<span class="fc" id="L65">        this.snapshotExportService = snapshotExportService;</span>
+<span class="fc" id="L66">        this.projectService = projectService;</span>
+<span class="fc" id="L67">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L68">    }</span>
+
+    @GetMapping(&quot;/architecture/workbench&quot;)
+    public String workbenchPage(@RequestParam MultiValueMap&lt;String,String&gt; coordinates) {
+<span class="fc" id="L72">        return ArchitectureWorkspaceRedirect.snapshot(coordinates);</span>
+    }
+
+    public String workbenchPage(Long projectId, String snapshotId, Model model) {
+<span class="fc" id="L76">        var coordinates = new LinkedMultiValueMap&lt;String,String&gt;();</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">        if (projectId != null) coordinates.set(&quot;projectId&quot;,projectId.toString());</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        if (snapshotId != null) coordinates.set(&quot;snapshotId&quot;,snapshotId);</span>
+<span class="fc" id="L79">        return workbenchPage(coordinates);</span>
+    }
+
+    @GetMapping(&quot;/projects/{projectId}/requirements/{requirementId}/architecture&quot;)
+    public String currentRequirementArchitecture(
+            @PathVariable Long projectId,
+            @PathVariable Long requirementId,
+            @RequestParam MultiValueMap&lt;String,String&gt; requestedCoordinates) {
+<span class="fc" id="L87">        RequestScope scope = scope();</span>
+<span class="fc" id="L88">        RequirementView requirement = projectService.getRequirement(</span>
+                projectId,
+                requirementId,
+<span class="fc" id="L91">                scope.username(),</span>
+<span class="fc" id="L92">                scope.context());</span>
+<span class="fc" id="L93">        String snapshotId = requirement.currentAnalysisSnapshotId();</span>
+<span class="pc bpc" id="L94" title="1 of 4 branches missed.">        if (snapshotId == null || snapshotId.isBlank()) {</span>
+<span class="fc" id="L95">            throw PortfolioException.conflict(</span>
+<span class="fc" id="L96">                    &quot;Requirement &quot; + requirement.requirementKey()</span>
+                            + &quot; has no current architecture snapshot. &quot;
+                            + &quot;Analyze the current version first.&quot;);
+        }
+        // Use the already authorized effective scope, never stale incoming source pins.
+<span class="fc" id="L101">        var coordinates = new LinkedMultiValueMap&lt;&gt;(requestedCoordinates);</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        String workspaceId = scope.context().workspaceId() == null ? &quot;&quot; : scope.context().workspaceId();</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        String scopeKey = workspaceId.isBlank() ? WorkspaceOverlayScope.CENTRAL_SCOPE_KEY : workspaceId;</span>
+<span class="fc" id="L104">        coordinates.set(&quot;projectId&quot;,projectId.toString()); coordinates.set(&quot;sourceProjectId&quot;,projectId.toString());</span>
+<span class="fc" id="L105">        coordinates.set(&quot;requirementId&quot;,requirementId.toString()); coordinates.set(&quot;sourceRequirementId&quot;,requirementId.toString());</span>
+<span class="fc" id="L106">        coordinates.set(&quot;snapshotId&quot;,snapshotId); coordinates.set(&quot;sourceSnapshotId&quot;,snapshotId);</span>
+<span class="fc" id="L107">        coordinates.set(&quot;workspaceId&quot;,workspaceId); coordinates.set(&quot;sourceWorkspaceId&quot;,workspaceId);</span>
+<span class="fc" id="L108">        coordinates.set(&quot;workspaceScopeKey&quot;,scopeKey); coordinates.set(&quot;sourceWorkspaceScopeKey&quot;,scopeKey);</span>
+<span class="fc" id="L109">        coordinates.set(&quot;repositoryId&quot;,scope.context().repositoryId()); coordinates.set(&quot;sourceRepositoryId&quot;,scope.context().repositoryId());</span>
+<span class="fc" id="L110">        coordinates.set(&quot;branch&quot;,scope.context().currentBranch()); coordinates.set(&quot;sourceBranch&quot;,scope.context().currentBranch());</span>
+        // The current requirement version can differ from the snapshot's captured version.
+        // The authoritative workbench projection supplies that version after the redirect.
+<span class="fc" id="L113">        coordinates.remove(&quot;requirementVersionId&quot;); coordinates.remove(&quot;sourceRequirementVersionId&quot;);</span>
+<span class="fc" id="L114">        return ArchitectureWorkspaceRedirect.snapshot(coordinates);</span>
+    }
+
+    public String currentRequirementArchitecture(Long projectId, Long requirementId) {
+<span class="fc" id="L118">        return currentRequirementArchitecture(projectId,requirementId,new LinkedMultiValueMap&lt;&gt;());</span>
+    }
+
+    @GetMapping(&quot;/api/projects/{projectId}/architecture-workbench/{snapshotId}&quot;)
+    @ResponseBody
+    @Operation(
+            summary = &quot;Load one immutable architecture snapshot &quot;
+                    + &quot;as a render-ready scene&quot;,
+            description = &quot;Loads the retained analysis snapshot as a render-ready scene in the authorized project and workspace. Uses the snapshot's recorded evidence and source context, not a new analysis of the current requirement.&quot;)
+    public Projection projection(
+            @PathVariable Long projectId,
+            @PathVariable String snapshotId) {
+<span class="fc" id="L130">        RequestScope scope = scope();</span>
+<span class="fc" id="L131">        return service.load(</span>
+                projectId,
+                snapshotId,
+<span class="fc" id="L134">                scope.username(),</span>
+<span class="fc" id="L135">                scope.context());</span>
+    }
+
+    @GetMapping(
+            value = &quot;/api/projects/{projectId}/architecture-workbench/&quot;
+                    + &quot;{snapshotId}.svg&quot;,
+            produces = &quot;image/svg+xml&quot;)
+    @ResponseBody
+    @Operation(
+            summary = &quot;Export the architecture snapshot &quot;
+                    + &quot;as deterministic standalone SVG&quot;,
+            description = &quot;Renders the authorized immutable analysis snapshot as a deterministic standalone SVG attachment. No viewport crop, live editor mutation or new model invocation is performed.&quot;)
+    public ResponseEntity&lt;String&gt; svg(
+            @PathVariable Long projectId,
+            @PathVariable String snapshotId) {
+<span class="fc" id="L150">        RequestScope scope = scope();</span>
+<span class="fc" id="L151">        String content = service.renderSvg(</span>
+                projectId,
+                snapshotId,
+<span class="fc" id="L154">                scope.username(),</span>
+<span class="fc" id="L155">                scope.context());</span>
+<span class="fc" id="L156">        return ResponseEntity.ok()</span>
+<span class="fc" id="L157">                .contentType(SVG)</span>
+<span class="fc" id="L158">                .header(</span>
+                        HttpHeaders.CONTENT_DISPOSITION,
+<span class="fc" id="L160">                        disposition(&quot;architecture&quot;, &quot;svg&quot;))</span>
+<span class="fc" id="L161">                .body(content);</span>
+    }
+
+    @GetMapping(
+            value = &quot;/api/projects/{projectId}/architecture-workbench/&quot;
+                    + &quot;{snapshotId}.pdf&quot;,
+            produces = MediaType.APPLICATION_PDF_VALUE)
+    @ResponseBody
+    @Operation(summary = &quot;Export the architecture snapshot as a vector PDF&quot;,
+            description = &quot;Renders the authorized immutable analysis snapshot as a downloadable PDF diagram. Uses the saved snapshot and does not rerun its requirement analysis.&quot;)
+    public ResponseEntity&lt;byte[]&gt; pdf(
+            @PathVariable Long projectId,
+            @PathVariable String snapshotId) {
+<span class="fc" id="L174">        RequestScope scope = scope();</span>
+<span class="fc" id="L175">        byte[] content = service.renderPdf(</span>
+                projectId,
+                snapshotId,
+<span class="fc" id="L178">                scope.username(),</span>
+<span class="fc" id="L179">                scope.context());</span>
+<span class="fc" id="L180">        return ResponseEntity.ok()</span>
+<span class="fc" id="L181">                .contentType(MediaType.APPLICATION_PDF)</span>
+<span class="fc" id="L182">                .contentLength(content.length)</span>
+<span class="fc" id="L183">                .header(</span>
+                        HttpHeaders.CONTENT_DISPOSITION,
+<span class="fc" id="L185">                        disposition(&quot;architecture&quot;, &quot;pdf&quot;))</span>
+<span class="fc" id="L186">                .body(content);</span>
+    }
+
+    @GetMapping(value = &quot;/api/projects/{projectId}/architecture-workbench/{snapshotId}.archimate.zip&quot;,
+            produces = &quot;application/zip&quot;)
+    @ResponseBody
+    @Operation(summary = &quot;Export experimental ArchiMate XML with the exact mapping profile and loss manifest&quot;,
+            description = &quot;Exports an ArchiMate bundle for the authorized saved snapshot, retaining the registered export profile and provenance metadata. No remote import or new analysis is triggered.&quot;)
+    public ResponseEntity&lt;byte[]&gt; archiMateBundle(@PathVariable Long projectId, @PathVariable String snapshotId) {
+<span class="fc" id="L195">        RequestScope scope = scope();</span>
+<span class="fc" id="L196">        return artifactResponse(snapshotExportService.exportArchiMateBundle(</span>
+<span class="fc" id="L197">                projectId, snapshotId, scope.username(), scope.context()));</span>
+    }
+
+    @GetMapping(
+            value = &quot;/api/projects/{projectId}/architecture-workbench/&quot;
+                    + &quot;{snapshotId}.archimate.xml&quot;,
+            produces = MediaType.APPLICATION_XML_VALUE)
+    @ResponseBody
+    @Operation(
+            summary = &quot;Export the exact persisted architecture snapshot &quot;
+                    + &quot;as the schema-validated ArchiMate 3.1 supported subset&quot;,
+            description = &quot;Exports the authorized saved architecture snapshot as an ArchiMate exchange attachment, with source and artifact provenance headers. Export does not import or approve the architecture in another tool.&quot;)
+    public ResponseEntity&lt;byte[]&gt; archiMate(
+            @PathVariable Long projectId,
+            @PathVariable String snapshotId) {
+<span class="fc" id="L212">        RequestScope scope = scope();</span>
+<span class="fc" id="L213">        Artifact artifact = snapshotExportService.exportArchiMate(</span>
+                projectId,
+                snapshotId,
+<span class="fc" id="L216">                scope.username(),</span>
+<span class="fc" id="L217">                scope.context());</span>
+<span class="fc" id="L218">        return artifactResponse(artifact);</span>
+    }
+
+    @GetMapping(
+            value = &quot;/api/projects/{projectId}/architecture-workbench/&quot;
+                    + &quot;{snapshotId}.vsdx&quot;,
+            produces = &quot;application/vnd.ms-visio.drawing&quot;)
+    @ResponseBody
+    @Operation(
+            summary = &quot;Export the exact persisted architecture snapshot &quot;
+                    + &quot;as an experimental bounded Visio 2012 VSDX package&quot;,
+            description = &quot;Exports the authorized saved architecture snapshot as a Visio attachment with source and artifact provenance headers. This uses frozen analysis evidence rather than the current mutable editor graph.&quot;)
+    public ResponseEntity&lt;byte[]&gt; visio(
+            @PathVariable Long projectId,
+            @PathVariable String snapshotId) {
+<span class="fc" id="L233">        RequestScope scope = scope();</span>
+<span class="fc" id="L234">        Artifact artifact = snapshotExportService.exportVisio(</span>
+                projectId,
+                snapshotId,
+<span class="fc" id="L237">                scope.username(),</span>
+<span class="fc" id="L238">                scope.context());</span>
+<span class="fc" id="L239">        return artifactResponse(artifact);</span>
+    }
+
+    @GetMapping(value = &quot;/api/projects/{projectId}/architecture-workbench/{snapshotId}.visio.zip&quot;,
+            produces = &quot;application/zip&quot;)
+    @ResponseBody
+    @Operation(summary = &quot;Export the exact persisted snapshot as a ZIP bundle containing experimental VSDX, mapping profile and loss manifest&quot;,
+            description = &quot;Exports a Visio bundle for the authorized saved snapshot, retaining its source identity and artifact metadata. The download does not modify the snapshot or publish it to a remote application.&quot;)
+    public ResponseEntity&lt;byte[]&gt; visioBundle(@PathVariable Long projectId, @PathVariable String snapshotId) {
+<span class="fc" id="L248">        RequestScope scope = scope();</span>
+<span class="fc" id="L249">        return artifactResponse(snapshotExportService.exportVisioBundle(projectId, snapshotId, scope.username(), scope.context()));</span>
+    }
+
+    private RequestScope scope() {
+<span class="fc" id="L253">        return new RequestScope(</span>
+<span class="fc" id="L254">                workspaceResolver.resolveCurrentUsername(),</span>
+<span class="fc" id="L255">                workspaceResolver.resolveCurrentContext());</span>
+    }
+
+    private static ResponseEntity&lt;byte[]&gt; artifactResponse(Artifact artifact) {
+<span class="fc" id="L259">        byte[] content = artifact.content();</span>
+<span class="fc" id="L260">        return ResponseEntity.ok()</span>
+<span class="fc" id="L261">                .contentType(MediaType.parseMediaType(artifact.mediaType()))</span>
+<span class="fc" id="L262">                .contentLength(content.length)</span>
+<span class="fc" id="L263">                .cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L264">                .eTag(&quot;\&quot;sha256-&quot; + artifact.artifactSha256() + &quot;\&quot;&quot;)</span>
+<span class="fc" id="L265">                .header(</span>
+                        HttpHeaders.CONTENT_DISPOSITION,
+<span class="fc" id="L267">                        disposition(artifact.fileName()))</span>
+<span class="fc" id="L268">                .header(SNAPSHOT_HEADER, artifact.snapshotId())</span>
+<span class="fc" id="L269">                .header(</span>
+                        SNAPSHOT_STATUS_HEADER,
+<span class="fc" id="L271">                        artifact.snapshotStatus().name())</span>
+<span class="fc" id="L272">                .header(WORKSPACE_HEADER, artifact.workspaceId())</span>
+<span class="fc" id="L273">                .header(BRANCH_HEADER, artifact.branchName())</span>
+<span class="fc" id="L274">                .header(COMMIT_HEADER, artifact.commitSha())</span>
+<span class="fc" id="L275">                .header(</span>
+                        EXPORT_PROFILE_HEADER,
+<span class="fc" id="L277">                        artifact.exporterProfile())</span>
+<span class="fc" id="L278">                .header(</span>
+                        CANONICAL_GRAPH_HEADER,
+<span class="fc" id="L280">                        artifact.canonicalGraphSha256())</span>
+<span class="fc" id="L281">                .header(ARTIFACT_HEADER, artifact.artifactSha256())</span>
+<span class="fc" id="L282">                .header(&quot;X-Content-Type-Options&quot;, &quot;nosniff&quot;)</span>
+<span class="fc" id="L283">                .body(content);</span>
+    }
+
+    private static String disposition(String name, String extension) {
+<span class="fc" id="L287">        return disposition(name + &quot;.&quot; + extension);</span>
+    }
+
+    private static String disposition(String fileName) {
+<span class="fc" id="L291">        return ContentDisposition.attachment()</span>
+<span class="fc" id="L292">                .filename(fileName, StandardCharsets.UTF_8)</span>
+<span class="fc" id="L293">                .build()</span>
+<span class="fc" id="L294">                .toString();</span>
+    }
+
+<span class="fc" id="L297">    private record RequestScope(String username, WorkspaceContext context) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

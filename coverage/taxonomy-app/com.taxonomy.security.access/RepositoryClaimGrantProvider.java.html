@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RepositoryClaimGrantProvider.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.access</a> &gt; <span class="el_source">RepositoryClaimGrantProvider.java</span></div><h1>RepositoryClaimGrantProvider.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.access;
+
+import com.taxonomy.workspace.model.RepositoryRole;
+import com.taxonomy.workspace.service.RepositoryRoleGrantProvider;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.stereotype.Component;
+
+import java.util.Map;
+import java.util.Optional;
+
+/** Reads repository grants from authenticated identity-provider claims. */
+@Component
+<span class="fc" id="L17">public class RepositoryClaimGrantProvider implements RepositoryRoleGrantProvider {</span>
+    private static final String CLAIM = &quot;taxonomy_repository_roles&quot;;
+
+    @Override
+    public Optional&lt;RepositoryRole&gt; findRole(String repositoryId, String actor) {
+<span class="fc" id="L22">        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="fc bfc" id="L23" title="All 6 branches covered.">        if (authentication == null || !authentication.isAuthenticated()</span>
+<span class="pc bpc" id="L24" title="1 of 4 branches missed.">                || actor == null || !actor.equals(authentication.getName())</span>
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">                || repositoryId == null || repositoryId.isBlank()) {</span>
+<span class="fc" id="L26">            return Optional.empty();</span>
+        }
+
+        // These authentication types are created after JWT/OIDC validation by Spring Security.
+        // In particular, local authentication principals and request parameters are not claims.
+        Object claim;
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        if (authentication instanceof JwtAuthenticationToken jwt) {</span>
+<span class="fc" id="L33">            claim = jwt.getToken().getClaims().get(CLAIM);</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        } else if (authentication instanceof OAuth2AuthenticationToken oauth2</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">                &amp;&amp; oauth2.getPrincipal() instanceof OidcUser oidc) {</span>
+<span class="fc" id="L36">            claim = oidc.getClaims().get(CLAIM);</span>
+        } else {
+<span class="fc" id="L38">            return Optional.empty();</span>
+        }
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (!(claim instanceof Map&lt;?, ?&gt; roles)) {</span>
+<span class="fc" id="L41">            return Optional.empty();</span>
+        }
+
+        // Reject the whole malformed mapping rather than partially trusting its entries.
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        for (var entry : roles.entrySet()) {</span>
+<span class="pc bpc" id="L46" title="1 of 6 branches missed.">            if (!(entry.getKey() instanceof String id) || id.isBlank() || !id.equals(id.strip())</span>
+<span class="fc bfc" id="L47" title="All 4 branches covered.">                    || !(entry.getValue() instanceof String role) || parseRole(role).isEmpty()) {</span>
+<span class="fc" id="L48">                return Optional.empty();</span>
+            }
+<span class="fc" id="L50">        }</span>
+<span class="fc" id="L51">        Object role = roles.get(repositoryId);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        return role instanceof String value ? parseRole(value) : Optional.empty();</span>
+    }
+
+    private static Optional&lt;RepositoryRole&gt; parseRole(String value) {
+        try {
+<span class="fc" id="L57">            return Optional.of(RepositoryRole.valueOf(value));</span>
+<span class="fc" id="L58">        } catch (IllegalArgumentException invalidRole) {</span>
+<span class="fc" id="L59">            return Optional.empty();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceCollaborationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.editor</a> &gt; <span class="el_source">WorkspaceCollaborationService.java</span></div><h1>WorkspaceCollaborationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.editor;
+
+import com.taxonomy.editor.ArchitectureCommandPort.Context;
+import com.taxonomy.editor.persistence.EditorJournal.RevisionConflict;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceActorAccess;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+import java.util.Objects;
+
+/** Owner-managed opt-in for the existing durable working copy, never a second editor state. */
+@Service
+public class WorkspaceCollaborationService {
+    private final UserWorkspaceRepository workspaces;
+    private final ArchitectureEditorService editor;
+    private final SystemRepositoryService repositories;
+<span class="fc" id="L25">    private WorkspaceActorAccess actorAccess = WorkspaceActorAccess.unavailable();</span>
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setActorAccess(WorkspaceActorAccess actorAccess) {
+<span class="fc" id="L29">        this.actorAccess = Objects.requireNonNull(actorAccess);</span>
+<span class="fc" id="L30">    }</span>
+
+    public WorkspaceCollaborationService(UserWorkspaceRepository workspaces, ArchitectureEditorService editor,
+<span class="fc" id="L33">            SystemRepositoryService repositories) {</span>
+<span class="fc" id="L34">        this.workspaces = workspaces; this.editor = editor; this.repositories = repositories;</span>
+<span class="fc" id="L35">    }</span>
+
+<span class="fc" id="L37">    public record Status(boolean enabled, boolean mayManage) {}</span>
+
+    @Transactional(readOnly = true)
+    public Status status(RepositoryContext context) {
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        if (context.scope() != RepositoryScope.WORKSPACE) return new Status(false, false);</span>
+<span class="fc" id="L42">        var workspace = workspaces.findByWorkspaceId(context.workspaceId()).orElseThrow(WorkspaceCollaborationService::unavailable);</span>
+<span class="fc" id="L43">        requireScope(context, workspace);</span>
+<span class="fc" id="L44">        return new Status(workspace.isCollaborative(), Objects.equals(context.username(), workspace.getUsername()));</span>
+    }
+
+    @Transactional(rollbackFor = IOException.class)
+    public Status setEnabled(RepositoryContext context, Context expected, boolean enabled) throws IOException {
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (context.scope() != RepositoryScope.WORKSPACE) throw unavailable();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (workspaces.countReadyOwnedWorkspace(context.workspaceId(), context.username(), context.repositoryId(),</span>
+<span class="fc" id="L51">                context.branch(), WorkspaceProvisioningStatus.READY) != 1) throw unavailable();</span>
+<span class="fc" id="L52">        actorAccess.requireActive(context.username());</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (repositories.getRepository(context.repositoryId()).getLifecycleState()</span>
+<span class="fc" id="L54">                != com.taxonomy.workspace.model.RepositoryLifecycleState.ACTIVE) throw unavailable();</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">        if (!Context.of(context, expected.commit(), expected.revision()).equals(expected)) throw unavailable();</span>
+<span class="fc" id="L56">        return editor.collaborationBoundary(context, current -&gt; {</span>
+            // The journal lock is already held and joins this transaction through its commit/rollback.
+<span class="fc" id="L58">            var workspace = workspaces.findByWorkspaceIdForUpdate(context.workspaceId()).orElseThrow(WorkspaceCollaborationService::unavailable);</span>
+<span class="fc" id="L59">            requireScope(context, workspace);</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">            if (!Objects.equals(context.username(), workspace.getUsername())</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">                    || context.collaborative() != workspace.isCollaborative()) throw unavailable();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            if (current.context().revision() != expected.revision()) throw new RevisionConflict(expected.revision(), current.context().revision());</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">            if (!Objects.equals(current.context().commit(), expected.commit()))</span>
+<span class="nc" id="L64">                throw new com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem(&quot;VERSION_CHANGED&quot;, &quot;context&quot;,</span>
+<span class="nc" id="L65">                        &quot;The architecture checkpoint changed; refresh before changing sharing&quot;, java.util.List.of());</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            if (!&quot;READY&quot;.equals(current.projectionState())) throw new IllegalArgumentException(&quot;Refresh or recover the current working copy before changing sharing&quot;);</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">            if (workspaces.updateCollaborationFlag(workspace.getWorkspaceId(), enabled) != 1) throw unavailable();</span>
+            // Bulk writes bypass managed state; retain the acknowledged flag in this transaction too.
+<span class="fc" id="L69">            workspace.setCollaborative(enabled);</span>
+<span class="fc" id="L70">            return new Status(enabled, true);</span>
+        });
+    }
+
+    private static void requireScope(RepositoryContext context, UserWorkspace workspace) {
+<span class="pc bpc" id="L75" title="3 of 6 branches missed.">        if (workspace.isArchived() || workspace.isShared() || workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">                || !Objects.equals(context.repositoryId(), workspace.getSourceRepositoryId())</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">                || !Objects.equals(context.branch(), workspace.getCurrentBranch())) throw unavailable();</span>
+<span class="fc" id="L78">    }</span>
+
+<span class="fc" id="L80">    private static AccessDeniedException unavailable() { return new AccessDeniedException(&quot;Only the working-copy owner can manage sharing&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

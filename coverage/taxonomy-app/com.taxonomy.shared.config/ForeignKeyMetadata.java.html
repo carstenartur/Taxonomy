@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ForeignKeyMetadata.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.config</a> &gt; <span class="el_source">ForeignKeyMetadata.java</span></div><h1>ForeignKeyMetadata.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.config;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
+
+/** The same enabled foreign-key contract for repository and hypothesis migrations. */
+final class ForeignKeyMetadata {
+    private ForeignKeyMetadata() { }
+
+    static boolean matches(Connection connection, String sourceCatalog, String sourceSchema,
+            String sourceTable, String targetSchema, String targetTable,
+            List&lt;String&gt; sourceColumns, List&lt;String&gt; targetColumns) throws SQLException {
+<span class="fc" id="L23">        Map&lt;String, Map&lt;Short, String&gt;&gt; keys = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">        if (connection.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT).contains(&quot;oracle&quot;)) {</span>
+            // Oracle JDBC imported-key metadata filters parent constraints to P,
+            // omitting foreign keys to UNIQUE natural repository and hypothesis keys.
+<span class="nc" id="L27">            try (PreparedStatement query = connection.prepareStatement(&quot;&quot;&quot;</span>
+                    SELECT f.constraint_name, fc.position, fc.column_name, pc.column_name
+                    FROM all_constraints f
+                    JOIN all_constraints p ON p.owner=f.r_owner AND p.constraint_name=f.r_constraint_name
+                    JOIN all_cons_columns fc ON fc.owner=f.owner AND fc.constraint_name=f.constraint_name
+                      AND fc.table_name=f.table_name
+                    JOIN all_cons_columns pc ON pc.owner=p.owner AND pc.constraint_name=p.constraint_name
+                      AND pc.table_name=p.table_name AND pc.position=fc.position
+                    WHERE f.constraint_type='R' AND f.status='ENABLED' AND p.constraint_type IN ('P','U')
+                      AND f.owner=? AND f.table_name=? AND p.owner=? AND p.table_name=?
+                    &quot;&quot;&quot;)) {
+<span class="nc" id="L38">                query.setString(1, sourceSchema);</span>
+<span class="nc" id="L39">                query.setString(2, sourceTable);</span>
+<span class="nc" id="L40">                query.setString(3, targetSchema);</span>
+<span class="nc" id="L41">                query.setString(4, targetTable);</span>
+<span class="nc" id="L42">                try (ResultSet result = query.executeQuery()) {</span>
+<span class="nc bnc" id="L43" title="All 2 branches missed.">                    while (result.next()) keys.computeIfAbsent(result.getString(1), unused -&gt; new TreeMap&lt;&gt;())</span>
+<span class="nc" id="L44">                            .put(result.getShort(2), result.getString(3).toLowerCase(Locale.ROOT)</span>
+<span class="nc" id="L45">                                    + &quot;:&quot; + result.getString(4).toLowerCase(Locale.ROOT));</span>
+                }
+            }
+        } else {
+<span class="fc" id="L49">            try (ResultSet result = connection.getMetaData().getImportedKeys(sourceCatalog, sourceSchema, sourceTable)) {</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                while (result.next()) {</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">                    if (!targetTable.equalsIgnoreCase(result.getString(&quot;PKTABLE_NAME&quot;))</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">                            || !Objects.equals(targetSchema, result.getString(&quot;PKTABLE_SCHEM&quot;))) continue;</span>
+<span class="fc" id="L53">                    keys.computeIfAbsent(result.getString(&quot;FK_NAME&quot;), unused -&gt; new TreeMap&lt;&gt;())</span>
+<span class="fc" id="L54">                            .put(result.getShort(&quot;KEY_SEQ&quot;), result.getString(&quot;FKCOLUMN_NAME&quot;).toLowerCase(Locale.ROOT)</span>
+<span class="fc" id="L55">                                    + &quot;:&quot; + result.getString(&quot;PKCOLUMN_NAME&quot;).toLowerCase(Locale.ROOT));</span>
+                }
+            }
+        }
+<span class="fc" id="L59">        List&lt;String&gt; expected = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        for (int i = 0; i &lt; sourceColumns.size(); i++) expected.add(sourceColumns.get(i) + &quot;:&quot; + targetColumns.get(i));</span>
+        // Hibernate may order equivalent pairs differently. Retain the complete
+        // mapping, cardinality, referenced owner and each source/target pairing.
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">        return keys.values().stream().anyMatch(key -&gt; key.size() == expected.size()</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">                &amp;&amp; new LinkedHashSet&lt;&gt;(key.values()).equals(new LinkedHashSet&lt;&gt;(expected)));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SharedWorkspaceActorAccess.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.architecture</a> &gt; <span class="el_source">SharedWorkspaceActorAccess.java</span></div><h1>SharedWorkspaceActorAccess.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.architecture;
+
+import com.taxonomy.security.service.PrincipalIdentityService;
+import com.taxonomy.workspace.service.WorkspaceActorAccess;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+
+/** Reuses the current authoritative identity, including revocation of an old browser session. */
+@Component
+public final class SharedWorkspaceActorAccess implements WorkspaceActorAccess {
+    private final PrincipalIdentityService identities;
+
+<span class="fc" id="L14">    public SharedWorkspaceActorAccess(PrincipalIdentityService identities) { this.identities = identities; }</span>
+
+    @Override public void requireActive(String username) {
+<span class="fc" id="L17">        var authentication = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="fc" id="L18">        var principal = identities.require(authentication);</span>
+<span class="pc bpc" id="L19" title="1 of 2 branches missed.">        if (!username.equals(authentication.getName()) || identities.find(principal)</span>
+<span class="pc bpc" id="L20" title="1 of 2 branches missed.">                .filter(identity -&gt; username.equals(identity.scopeKey())).isEmpty()) {</span>
+<span class="nc" id="L21">            throw new AccessDeniedException(&quot;Verified active principal required for shared editing&quot;);</span>
+        }
+<span class="fc" id="L23">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>
