@@ -167,6 +167,10 @@ function contextHarness() {
  const scope = { window: {addEventListener:lifecycle.addEventListener.bind(lifecycle)},
   document:{getElementById:()=>null}, TaxonomyI18n:{t:key=>key}, TaxonomyUtils:{escapeHtml:String},
   fetch:(url,options)=>new Promise(resolve=>calls.push({url,options,resolve})), AbortController, clearInterval, setInterval };
+ scope.Headers = Headers;
+ scope.window.TaxonomyApiClient = {request: (url, options, policy) => scope.fetch(url, {...options, signal: policy.signal})
+  .then(response => {if (!response.ok) throw new Error('HTTP ' + response.status); return response;})};
+ vm.runInNewContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/workspace-api.js', import.meta.url), 'utf8'), scope);
  vm.runInNewContext(contextSource, scope);
  return {api:scope.window.TaxonomyContextBar,calls,lifecycle};
 }

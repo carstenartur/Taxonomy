@@ -14,7 +14,7 @@ const roleSource = readFileSync(new URL(
 // explicit refresh, without starting a browser or waiting for a wall-clock race.
 function createHarness({ lateConnectivity = false, extraReads = 0,
   incidentalActionReads = false, failEvidence = null,
-  delayPublishRequest = false, delayPublishResponse = false, delayPublishPoll = false } = {}) {
+  delayPublishRequest = false, delayPublishResponse = false, delayPublishPoll = false, workspaceId } = {}) {
   const routes = [];
   const requests = [];
   const passed = [];
@@ -112,14 +112,23 @@ function createHarness({ lateConnectivity = false, extraReads = 0,
     addEventListener: lifecycle.addEventListener.bind(lifecycle),
     setTimeout: callback => queued.push(callback),
     TaxonomyContextBar: { getCurrentContext: () => ({ branch: 'draft' }) },
-    TaxonomyApiClient: { getJson: async path => (await fetch(path)).json() },
+    TaxonomyApiClient: { getJson: async path => (await fetch(path)).json(),
+      request: async (path, init) => {
+        const response = await fetch(path, init);
+        if (!response.ok) {
+          const body = await response.json();
+          throw Object.assign(new Error(body.message || body.error || 'HTTP ' + response.status),
+            {status: response.status, detail: body.message || body.error});
+        }
+        return response;
+      } },
     TaxonomyOperationResult: {
       showError: (_title, detail) => { toast = detail; toastKind = 'error'; },
       showSuccess: title => { toast = title; toastKind = 'success'; }
     }
   };
   const context = vm.createContext({
-    window, fetch, AbortController, setInterval() {},
+    window, fetch, AbortController, Headers, setInterval() {},
     document: {
       addEventListener: (type, callback) => listeners.set(type, callback),
       getElementById: id => id === 'syncStatePanel' ? panel : null
@@ -128,6 +137,8 @@ function createHarness({ lateConnectivity = false, extraReads = 0,
     TaxonomyUtils: { escapeHtml: String },
     navigateToPage: async () => undefined
   });
+  if (workspaceId) window.__TaxonomyAnalysisSessionContext = {runtime: {workspaceId}};
+  vm.runInContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/workspace-api.js', import.meta.url), 'utf8'), context);
   vm.runInContext(syncSource, context, { filename: 'taxonomy-workspace-sync.js' });
   const guardStart = roleSource.indexOf('    function renderWorkspaceOffline(error)');
   const guardEnd = roleSource.indexOf('    function refresh()', guardStart);
@@ -228,6 +239,13 @@ test('workspace workflow succeeds with an immediately completed connectivity rea
   await harness.run();
   assert.deepEqual(harness.passed, ['workspace diverged conflict state',
     'workspace remote sync error', 'workspace publish success']);
+  assert.equal(harness.routes.length, 0);
+});
+
+test('workspace workflow observes named-client reads pinned to the active analysis workspace', async () => {
+  const harness = createHarness({workspaceId: 'private-workspace'});
+  await harness.run();
+  assert.equal(harness.passed.length, 3);
   assert.equal(harness.routes.length, 0);
 });
 

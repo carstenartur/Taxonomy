@@ -51,9 +51,10 @@ class ProductionCurrentBackupIT {
         assertThat(context.getBeansOfType(BackupCaptureSource.class)).hasSize(1);
         var jdbc = new JdbcTemplate(database);
         String suffix = UUID.randomUUID().toString();
-        String aliceName = "backup-alice-" + suffix, bobName = "backup-bob-" + suffix;
-        var alice = identities.oidc("https://backup-test.example", aliceName);
-        var bob = identities.oidc("https://backup-test.example", bobName);
+        String issuer = "https://backup-test.example";
+        String aliceSubject = "backup-alice-" + suffix;
+        var alice = identities.oidc(issuer, aliceSubject);
+        var bob = identities.oidc(issuer, "backup-bob-" + suffix);
         String repoA = "backup-a-" + suffix, repoB = "backup-b-" + suffix;
         String wsA = "private-a-" + suffix, wsB = "private-b-" + suffix;
         route(repoA, wsA, alice.scopeKey()); route(repoB, wsB, bob.scopeKey());
@@ -71,8 +72,8 @@ class ProductionCurrentBackupIT {
         context.getBean(com.taxonomy.backup.jobs.BackupJobRunner.class).destroy();
         var jobs = context.getBean(BackupJobService.class); var worker = context.getBean(BackupJobWorker.class);
         var request = new BackupRequest(BackupProfile.CURRENT_STATE,new BackupScope.Workspace(repoA,wsA),new BackupTime.Current(),GitRepresentation.BUNDLE,SecretsSelection.EXCLUDE);
-        var login=new com.taxonomy.security.model.PrincipalUserDetails(alice.id(),alice.scopeKey(),"fixture-password",true,List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_USER")));
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/backup-jobs").locale(Locale.ENGLISH).with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(login)))
+        var login = BackupOidcLogin.forPrincipal(alice, issuer, aliceSubject);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/backup-jobs").locale(Locale.ENGLISH).with(login))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(org.hamcrest.Matchers.containsString("data-workspace-id=\""+wsA+"\"")))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(wsB))));

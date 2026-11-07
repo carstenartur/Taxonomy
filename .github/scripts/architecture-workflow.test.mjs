@@ -18,7 +18,7 @@ function boot(search = '', prefix = '') {
     const context = vm.createContext({URL, URLSearchParams, Request, Headers, console,
         location: {href: 'https://example.test' + prefix + '/architecture/workbench' + search, search, origin: 'https://example.test'},
         document: {getElementById: id => elements.get(id) || null, querySelectorAll: () => [...elements.values()].filter(node => node.tagName === 'A'), addEventListener() {}},
-        fetch: async (url, options) => {requests.push({url, options}); return {ok: true};},
+        fetch: async (url, options) => {requests.push({url, options}); return {ok: true, json: async () => ({})};},
         TaxonomyI18n: {getLocale: () => 'de', getBasePath: () => prefix,
             resolveUrl: value => prefix && typeof value === 'string' && value.startsWith('/')
                 && !value.startsWith('//') && value !== prefix && !value.startsWith(prefix + '/') ? prefix + value : value,
@@ -30,6 +30,17 @@ function boot(search = '', prefix = '') {
     return {api: context.TaxonomyArchitectureWorkflow, context, requests, elements};
 }
 function url(value) {return new URL(value, 'https://example.test');}
+
+test('named context status retains the original page workspace before session hydration', async () => {
+    const {context, requests} = boot('?workspaceId=original&repositoryId=repo&branch=draft');
+    context.TaxonomyState = {};
+    vm.runInContext(sessionCore, context);
+    context.TaxonomyApiClient = {request: (path, options) => context.fetch(path, options)};
+    vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/api/workspace-api.js', import.meta.url), 'utf8'), context);
+    await context.TaxonomyContextApi.current();
+    assert.equal(requests[0].url, '/api/context/current');
+    assert.equal(requests[0].options.headers.get('X-Taxonomy-Workspace-Id'), 'original');
+});
 
 for (const prefix of ['', '/taxonomy']) for (const query of [
     '?workspaceId=initial&workspaceScopeKey=initial&repositoryId=repo&branch=draft',

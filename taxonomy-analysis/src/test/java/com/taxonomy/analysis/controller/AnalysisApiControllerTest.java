@@ -22,6 +22,8 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -54,6 +56,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(MockitoExtension.class)
@@ -104,6 +107,38 @@ class AnalysisApiControllerTest {
                 .thenReturn(new WorkspaceContext("alice", "alice-ws", "draft"));
         lenient().when(analysisRuntimeSettings.getInt(
                 "limits.max-architecture-nodes", 50)).thenReturn(50);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void continuationReplayReturnsItsOriginalOperationWhenTheRequestHeaderIsOmittedOrDifferent(boolean conflictingHeader) throws Exception {
+        var continuations = org.mockito.Mockito.mock(com.taxonomy.analysis.recovery.AnalysisContinuationService.class);
+        var execution = org.mockito.Mockito.mock(com.taxonomy.analysis.recovery.AnalysisContinuationService.Execution.class);
+        var scope = new WorkspaceContext("alice", "alice-ws", "draft");
+        String originalOperation = "1cd8d504-e494-4d50-bc4b-583e56e5f66c";
+        var retained = new AnalysisResult(Map.of("CP", 42), List.of());
+        retained.setAnalysisOperationId(originalOperation);
+        retained.setViewContext(new com.taxonomy.dto.ViewContext("original-commit", "draft", null, false, false, false));
+        when(execution.replay()).thenReturn(retained);
+        when(continuations.begin(any(), org.mockito.ArgumentMatchers.eq("alice"), org.mockito.ArgumentMatchers.eq(scope), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(execution);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "continuationService", continuations);
+        var request = post("/api/analyze").contentType(MediaType.APPLICATION_JSON).content(
+                "{\"businessText\":\"Original requirement\",\"resumable\":true,\"continuationId\":\"same-continuation\"}");
+        if (conflictingHeader) request.header(AnalysisApiController.ANALYSIS_OPERATION_ID_HEADER, "6b1873fb-79b2-46ea-9ac4-f7f08f873704");
+
+        mockMvc.perform(request)
+                .andExpect(status().isOk())
+                .andExpect(header().string(AnalysisApiController.ANALYSIS_OPERATION_ID_HEADER, originalOperation))
+                .andExpect(jsonPath("$.analysisOperationId").value(originalOperation))
+                .andExpect(jsonPath("$.viewContext.basedOnCommit").value("original-commit"))
+                .andExpect(jsonPath("$.rawScores.CP").value(42));
+
+        assertThat(retained.getAnalysisOperationId()).isEqualTo(originalOperation);
+        verify(continuations).begin(any(), org.mockito.ArgumentMatchers.eq("alice"), org.mockito.ArgumentMatchers.eq(scope), org.mockito.ArgumentMatchers.anyInt());
+        verify(execution).close();
+        verifyNoInteractions(analyzeRequirementUseCase);
+        verify(repositoryStateService, org.mockito.Mockito.never()).getViewContext(any(), any(), any());
     }
 
     @Test

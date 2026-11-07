@@ -1,24 +1,32 @@
 package com.taxonomy.templates;
 
+import com.sun.net.httpserver.HttpServer;
 import tools.jackson.databind.json.JsonMapper;
 
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -28,8 +36,12 @@ import java.util.zip.ZipOutputStream;
 final class DocumentTemplateHttpContract implements AutoCloseable {
     private static final String API = "/api/admin/document-templates/";
     private static final String DAV = "/dav/templates/";
+    private static final String DAV_CREDENTIALS = "/api/admin/webdav-credentials";
     private static final String DOTX = "application/vnd.openxmlformats-officedocument.wordprocessingml.template";
     private static final byte[] EMPTY = new byte[0];
+    private static final byte[] LOCK_BODY = ("<D:lockinfo xmlns:D=\"DAV:\"><D:lockscope><D:exclusive/></D:lockscope>"
+            + "<D:locktype><D:write/></D:locktype><D:owner>HTTP contract</D:owner></D:lockinfo>")
+            .getBytes(StandardCharsets.UTF_8);
     private final URI base;
     private final String password;
     private final String authorization;
@@ -42,8 +54,7 @@ final class DocumentTemplateHttpContract implements AutoCloseable {
                 && this.base.getUserInfo() == null && this.base.getQuery() == null
                 && this.base.getFragment() == null, "Use an isolated loopback test instance");
         this.password = password;
-        this.authorization = "Basic " + Base64.getEncoder().encodeToString(
-                ("admin:" + password).getBytes(StandardCharsets.UTF_8));
+        this.authorization = basicAuthorization(password);
     }
 
     void webDavRoundTrip() throws Exception {
@@ -75,10 +86,7 @@ final class DocumentTemplateHttpContract implements AutoCloseable {
         status(get, 200);
         require(etag(get).equals(head), "Same template revision across API and DAV");
         status(send("GET", resource, EMPTY, "If-None-Match", head), 304);
-        byte[] lockBody = ("<D:lockinfo xmlns:D=\"DAV:\"><D:lockscope><D:exclusive/></D:lockscope>"
-                + "<D:locktype><D:write/></D:locktype><D:owner>HTTP contract</D:owner></D:lockinfo>")
-                .getBytes(StandardCharsets.UTF_8);
-        var lock = send("LOCK", resource, lockBody, "Content-Type", "application/xml", "Timeout", "Second-60");
+        var lock = send("LOCK", resource, LOCK_BODY, "Content-Type", "application/xml", "Timeout", "Second-60");
         status(lock, 200);
         String token = lock.headers().firstValue("Lock-Token").orElseThrow();
         require(token.startsWith("<opaquelocktoken:"), "Opaque lock token");
@@ -99,6 +107,152 @@ final class DocumentTemplateHttpContract implements AutoCloseable {
         } finally {
             status(send("UNLOCK", resource, EMPTY, "Lock-Token", token), 204);
         }
+    }
+
+    PendingDavRecovery contendAndLoseDavAcknowledgement(DocumentTemplateHttpContract peer) throws Exception {
+        String id = fixtureId();
+        String resource = DAV + id + ".dotx";
+        byte[] original = original();
+        var created = send("PUT", API + id + "?displayName=HTTP-recovery", original, "Content-Type", DOTX);
+        status(created, 201);
+        var initial = new Revision(etag(created), original);
+        var credential = createDavCredential(true);
+        String auth = credential.authorization();
+
+        var acquired = acquireDavLock(auth, resource);
+        status(acquired, 200);
+        String token = acquired.headers().firstValue("Lock-Token").orElseThrow();
+        status(peer.acquireDavLock(auth, resource), 423);
+        status(peer.scoped(auth, "PUT", resource, original, "Content-Type", DOTX, "If-Match", initial.etag()), 423);
+        peer.refreshDavLock(auth, resource, token);
+
+        byte[] firstEdit = modified(original, "race-primary");
+        byte[] peerEdit = modified(original, "race-peer");
+        var first = http.sendAsync(davPut(URI.create(base + resource), auth, firstEdit, initial.etag(), token),
+                HttpResponse.BodyHandlers.ofByteArray());
+        var second = peer.http.sendAsync(davPut(URI.create(peer.base + resource), auth, peerEdit, initial.etag(), token),
+                HttpResponse.BodyHandlers.ofByteArray());
+        var a = first.get(30, TimeUnit.SECONDS);
+        var b = second.get(30, TimeUnit.SECONDS);
+        require((a.statusCode() == 204 && b.statusCode() == 412) || (a.statusCode() == 412 && b.statusCode() == 204),
+                "Two servers using the same ETag and lock token: expected 204 and 412, received "
+                        + a.statusCode() + " and " + b.statusCode());
+        var winner = a.statusCode() == 204 ? new Revision(etag(a), firstEdit) : new Revision(etag(b), peerEdit);
+        verifyDownload(peer.scoped(auth, "GET", resource), winner);
+
+        byte[] uncertainEdit = modified(winner.bytes(), "proxy-dropped-acknowledgement");
+        var committed = peer.dropDavPutAcknowledgement(resource, auth, uncertainEdit, winner.etag(), token);
+        status(committed, 204);
+        var unacknowledged = new Revision(etag(committed), uncertainEdit);
+        require(!unacknowledged.etag().equals(winner.etag()), "The upstream PUT advanced the revision");
+        verifyDownload(scoped(auth, "GET", resource), unacknowledged);
+        return new PendingDavRecovery(id, credential, token, initial, winner, unacknowledged);
+    }
+
+    void recoverDavSave(DocumentTemplateHttpContract restarted, PendingDavRecovery pending) throws Exception {
+        String resource = DAV + pending.id() + ".dotx";
+        String auth = pending.credential().authorization();
+        String token = pending.token();
+        var recovered = restarted.scoped(auth, "GET", resource);
+        verifyDownload(recovered, pending.unacknowledged());
+        restarted.refreshDavLock(auth, resource, token);
+
+        status(restarted.scoped(auth, "PUT", resource, pending.unacknowledged().bytes(), "Content-Type", DOTX,
+                "If-Match", pending.winner().etag(), "If", "(" + token + ")"), 412);
+        byte[] nextEdit = modified(recovered.body(), "resumed-after-restart");
+        var next = restarted.scoped(auth, "PUT", resource, nextEdit, "Content-Type", DOTX,
+                "If-Match", etag(recovered), "If", "(" + token + ")");
+        status(next, 204);
+        var current = new Revision(etag(next), nextEdit);
+
+        status(restarted.scoped(auth, "UNLOCK", resource, EMPTY, "Lock-Token", token), 204);
+        status(scoped(auth, "PUT", resource, nextEdit, "Content-Type", DOTX,
+                "If-Match", current.etag(), "If", "(" + token + ")"), 423);
+        revokeDavCredential(pending.credential());
+        status(restarted.scoped(auth, "PUT", resource, nextEdit, "Content-Type", DOTX,
+                "If-Match", current.etag()), 401);
+
+        // The ordinary admin API remains available without bypassing version checks.
+        String path = API + pending.id();
+        status(restarted.send("PUT", path + "?displayName=HTTP-recovery", nextEdit, "Content-Type", DOTX,
+                "If-Match", pending.unacknowledged().etag()), 412);
+        verifyDownload(send("GET", path + "/download", EMPTY), current);
+        var history = restarted.send("GET", path + "/history", EMPTY);
+        status(history, 200);
+        var commitIds = new ArrayList<String>();
+        JsonMapper.builder().build().readTree(history.body()).forEach(item -> commitIds.add(item.path("commitId").asText()));
+        var expectedHistory = List.of(current, pending.unacknowledged(), pending.winner(), pending.initial());
+        require(commitIds.equals(expectedHistory.stream().map(Revision::commitId).toList()),
+                "History includes every accepted save exactly once and excludes rejected writes");
+        for (var revision : expectedHistory) {
+            verifyDownload(restarted.send("GET", path + "/download?revision=" + revision.commitId(), EMPTY), revision);
+        }
+    }
+
+    private HttpResponse<byte[]> acquireDavLock(String auth, String resource) throws Exception {
+        return scoped(auth, "LOCK", resource, LOCK_BODY, "Content-Type", "application/xml", "Timeout", "Second-600");
+    }
+
+    private void refreshDavLock(String auth, String resource, String token) throws Exception {
+        var refreshed = scoped(auth, "LOCK", resource, EMPTY, "If", "(" + token + ")", "Timeout", "Second-600");
+        status(refreshed, 200);
+        require(refreshed.headers().firstValue("Lock-Token").orElseThrow().equals(token),
+                "The other server refreshes the same lock token");
+    }
+
+    private static HttpRequest davPut(URI uri, String auth, byte[] body, String etag, String token) {
+        return request(uri, auth, "PUT", body, "Content-Type", DOTX, "If-Match", etag, "If", "(" + token + ")");
+    }
+
+    /** Forward a real PUT once, then close the downstream socket without writing the upstream acknowledgement. */
+    private HttpResponse<byte[]> dropDavPutAcknowledgement(String resource, String auth, byte[] body,
+                                                            String etag, String token) throws Exception {
+        URI target = URI.create(base + resource);
+        URI path = URI.create(target.getRawPath());
+        var upstream = new CompletableFuture<HttpResponse<byte[]>>();
+        var forwarded = new AtomicBoolean();
+        var proxy = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        proxy.createContext(path.toString(), exchange -> {
+            try (exchange) {
+                if (!exchange.getRequestURI().equals(path) || !exchange.getRequestMethod().equals("PUT")
+                        || !forwarded.compareAndSet(false, true)) return;
+                var forward = HttpRequest.newBuilder(target).timeout(Duration.ofSeconds(10))
+                        .PUT(HttpRequest.BodyPublishers.ofByteArray(exchange.getRequestBody().readAllBytes()));
+                for (String name : List.of("Authorization", "Content-Type", "If-Match", "If")) {
+                    forward.header(name, exchange.getRequestHeaders().getFirst(name));
+                }
+                upstream.complete(http.send(forward.build(), HttpResponse.BodyHandlers.ofByteArray()));
+            } catch (Exception failure) {
+                upstream.completeExceptionally(failure);
+            }
+        });
+        try {
+            proxy.start();
+            URI downstream = URI.create("http://127.0.0.1:" + proxy.getAddress().getPort() + path);
+            try {
+                var response = http.send(davPut(downstream, auth, body, etag, token), HttpResponse.BodyHandlers.ofByteArray());
+                throw new AssertionError("The client unexpectedly received HTTP " + response.statusCode());
+            } catch (HttpTimeoutException timeout) {
+                throw timeout;
+            } catch (IOException disconnected) {
+                // The client's response was lost, so use the proxy's independent upstream observation.
+                return upstream.get(5, TimeUnit.SECONDS);
+            }
+        } finally {
+            proxy.stop(0);
+        }
+    }
+
+    private static void verifyDownload(HttpResponse<byte[]> response, Revision revision) {
+        status(response, 200);
+        require(etag(response).equals(revision.etag()), "Download exposes the expected ETag " + revision.etag());
+        require(Arrays.equals(response.body(), revision.bytes()), "Download preserves the exact DOTX for " + revision.etag());
+    }
+
+    record PendingDavRecovery(String id, DavCredential credential, String token,
+                              Revision initial, Revision winner, Revision unacknowledged) { }
+    private record Revision(String etag, byte[] bytes) {
+        private String commitId() { return etag.substring(1, etag.length() - 1); }
     }
 
     void apiConflictAndHistory() throws Exception {
@@ -206,33 +360,52 @@ final class DocumentTemplateHttpContract implements AutoCloseable {
     }
 
     void readOnlyCredentialsRemainScopedAndRevocable() throws Exception {
-        String endpoint = "/api/admin/webdav-credentials";
-        var created = send("POST", endpoint,
-                "{\"description\":\"HTTP-contract\",\"readAllowed\":true,\"writeAllowed\":false,\"lifetimeDays\":1}"
-                        .getBytes(StandardCharsets.UTF_8), "Content-Type", "application/json");
-        status(created, 201);
-        var json = JsonMapper.builder().build().readTree(created.body());
-        String id = json.path("credential").path("id").asText();
-        String secret = json.path("secret").asText();
-        require(!id.isBlank() && !secret.isBlank(), "Scoped credential created");
-        String readOnly = "Basic " + Base64.getEncoder().encodeToString(("admin:" + secret).getBytes(StandardCharsets.UTF_8));
+        var credential = createDavCredential(false);
+        String readOnly = credential.authorization();
         try {
             status(scoped(readOnly, "GET", DAV + "decision-rationale-report.dotx"), 200);
-            status(scoped(readOnly, "PROPFIND", DAV), 207);
+            status(scoped(readOnly, "PROPFIND", DAV, EMPTY, "Depth", "0"), 207);
             status(scoped(readOnly, "PUT", DAV + "decision-rationale-report.dotx"), 403);
             status(scoped(readOnly, "LOCK", DAV + "decision-rationale-report.dotx"), 403);
             status(scoped(readOnly, "UNLOCK", DAV + "decision-rationale-report.dotx"), 403);
             status(scoped(readOnly, "GET", API.substring(0, API.length() - 1)), 401);
         } finally {
-            status(send("DELETE", endpoint + "/" + id, EMPTY), 204);
+            revokeDavCredential(credential);
         }
         status(scoped(readOnly, "GET", DAV + "decision-rationale-report.dotx"), 401);
     }
 
+    private DavCredential createDavCredential(boolean writeAllowed) throws Exception {
+        String request = "{\"description\":\"HTTP-contract\",\"readAllowed\":true,\"writeAllowed\":"
+                + writeAllowed + ",\"lifetimeDays\":1}";
+        var created = send("POST", DAV_CREDENTIALS, request.getBytes(StandardCharsets.UTF_8),
+                "Content-Type", "application/json");
+        status(created, 201);
+        var json = JsonMapper.builder().build().readTree(created.body());
+        String id = json.path("credential").path("id").asText();
+        String secret = json.path("secret").asText();
+        require(!id.isBlank() && !secret.isBlank(), "Scoped credential created");
+        return new DavCredential(id, basicAuthorization(secret));
+    }
+
+    private void revokeDavCredential(DavCredential credential) throws Exception {
+        status(send("DELETE", DAV_CREDENTIALS + "/" + credential.id(), EMPTY), 204);
+    }
+
+    private record DavCredential(String id, String authorization) { }
+
+    private static String basicAuthorization(String secret) {
+        return "Basic " + Base64.getEncoder().encodeToString(("admin:" + secret).getBytes(StandardCharsets.UTF_8));
+    }
+
     private HttpResponse<byte[]> scoped(String credential, String method, String path) throws Exception {
-        return http.send(HttpRequest.newBuilder(URI.create(base + path)).timeout(Duration.ofSeconds(20))
-                .header("Authorization", credential).header("Depth", "0")
-                .method(method, HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofByteArray());
+        return scoped(credential, method, path, EMPTY);
+    }
+
+    private HttpResponse<byte[]> scoped(String credential, String method, String path, byte[] body, String... headers)
+            throws Exception {
+        return http.send(request(URI.create(base + path), credential, method, body, headers),
+                HttpResponse.BodyHandlers.ofByteArray());
     }
 
     @Override
@@ -247,7 +420,11 @@ final class DocumentTemplateHttpContract implements AutoCloseable {
     }
 
     private HttpRequest request(String method, String path, byte[] body, String... headers) {
-        var builder = HttpRequest.newBuilder(URI.create(base + path)).timeout(Duration.ofSeconds(20))
+        return request(URI.create(base + path), authorization, method, body, headers);
+    }
+
+    private static HttpRequest request(URI uri, String authorization, String method, byte[] body, String... headers) {
+        var builder = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20))
                 .header("Authorization", authorization).method(method, HttpRequest.BodyPublishers.ofByteArray(body));
         if (headers.length != 0) builder.headers(headers);
         return builder.build();
@@ -297,7 +474,9 @@ final class DocumentTemplateHttpContract implements AutoCloseable {
                     data = xml.replace("</w:body>", "<w:p><w:r><w:t>" + marker + "</w:t></w:r></w:p></w:body>")
                             .getBytes(StandardCharsets.UTF_8);
                 }
-                out.putNextEntry(new ZipEntry(entry.getName())); out.write(data); out.closeEntry();
+                var replacement = new ZipEntry(entry.getName());
+                replacement.setTimeLocal(entry.getTimeLocal());
+                out.putNextEntry(replacement); out.write(data); out.closeEntry();
             }
         }
         return buffer.toByteArray();

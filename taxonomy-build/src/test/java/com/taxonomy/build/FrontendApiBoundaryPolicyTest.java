@@ -31,6 +31,17 @@ class FrontendApiBoundaryPolicyTest {
     }
 
     @Test
+    void countsBracketAccessBoundFetchAndLocalTransportAliases() {
+        assertThat(FrontendApiBoundaryPolicy.countDirectFetch("""
+                window['fetch']('/api/one');
+                const http = window.fetch.bind(window);
+                http('/api/two');
+                const send = fetch;
+                send('/api/three');
+                """)).isEqualTo(5);
+    }
+
+    @Test
     void scansFixedInventoryLineNumbersTemplateAndUnexpectedModules(
             @TempDir Path root) throws Exception {
         writeJs(root, "api/client.js", "fetch('/api/owned');\n");

@@ -83,8 +83,12 @@ export function classifyWebKitPollCancellation(input) {
     }
 
     const prefix = base.pathname.replace(/\/$/, '');
+    const syncPath = `${prefix}/api/workspace/sync-state`;
+    const workspace = oldUrl.searchParams.get('workspaceId');
+    const scopedSyncPath = workspace && oldUrl.searchParams.getAll('workspaceId').length === 1
+      ? `${syncPath}?workspaceId=${encodeURIComponent(workspace)}` : null;
     const allowed = reload ? [`${prefix}/api/git/state?branch=${encodeURIComponent(oldUrl.searchParams.get('branch') || '')}`,
-      `${prefix}/api/context/current`] : [`${prefix}/api/status/startup`, `${prefix}/api/workspace/sync-state`];
+      `${prefix}/api/context/current`] : [`${prefix}/api/status/startup`, syncPath, scopedSyncPath].filter(Boolean);
     const endpoint = allowed
       .find(path => error.name === `Fetch API cannot load ${base.protocol.slice(0, -1)}`
         && error.message === `/${base.host}${path} due to access control checks.`
@@ -104,17 +108,22 @@ export function classifyWebKitPollCancellation(input) {
       && event.sequence >= navigation.startSequence)) return null;
 
     const endpointUrl = base.origin + endpoint;
+    const scopedSync = endpoint === scopedSyncPath;
+    const bootstrapSyncUrl = base.origin + syncPath;
+    // The destination may poll before its workspace session has hydrated.
+    const matchesPoll = read => read.url === endpointUrl || scopedSync && read.url === bootstrapSyncUrl;
     // A real network/HTTP failure is not the engine's pre-request cancellation.
-    if (reads.some(read => read.url === endpointUrl && (read.failed || read.status >= 400)
+    if (reads.some(read => matchesPoll(read) && (read.failed || read.status >= 400)
         && (read.documentEpoch === newDocument.epoch
           || read.documentEpoch === oldDocument.epoch
             && read.sequence >= navigation.startSequence && read.sequence <= navigation.endSequence))) return null;
     for (const read of reads) {
-      if (read.url !== endpointUrl || read.method !== 'GET' || read.status !== 200
+      if (!matchesPoll(read) || read.method !== 'GET' || read.status !== 200
           || !read.finished || !read.jsonParsed || read.failed || read.redirected
           || !(read.sequence > navigation.startSequence)
           || read.documentEpoch !== newDocument.epoch
           || withoutFragment(read.pageUrl) !== withoutFragment(newDocument.url)) continue;
+      if (scopedSync && (read.workspaceId ?? null) !== (read.url === endpointUrl ? workspace : null)) continue;
       const data = read.payload, messages = observation.messages?.[read.id];
       if (!data || typeof data !== 'object' || Array.isArray(data) || !messages) continue;
       let render;

@@ -49,8 +49,7 @@ window.TaxonomyContextBar = (function () {
         if (pendingRead) pendingRead.abort();
         var controller = new AbortController();
         pendingRead = controller;
-        return fetch('/api/context/current', { signal: controller.signal })
-            .then(function (r) { return r.ok ? r.json() : null; })
+        return window.TaxonomyContextApi.current({ signal: controller.signal })
             .then(function (ctx) {
                 if (!ctx || !pageActive || controller.signal.aborted || pendingRead !== controller) return null;
                 currentContext = ctx;
@@ -198,24 +197,22 @@ window.TaxonomyContextBar = (function () {
      * Navigate back one step.
      */
     function back() {
-        fetch('/api/context/back', { method: 'POST' })
-            .then(function (r) { return r.json(); })
+        return window.TaxonomyContextApi.back()
             .then(function (ctx) {
                 currentContext = ctx;
-                fetchAndRender('contextBar');
-            });
+                return fetchAndRender('contextBar');
+            }).catch(showError);
     }
 
     /**
      * Return to the origin context
      */
     function returnToOrigin() {
-        fetch('/api/context/return-to-origin', { method: 'POST' })
-            .then(function (r) { return r.json(); })
+        return window.TaxonomyContextApi.returnToOrigin()
             .then(function (ctx) {
                 currentContext = ctx;
-                fetchAndRender('contextBar');
-            });
+                return fetchAndRender('contextBar');
+            }).catch(showError);
     }
 
     /**
@@ -247,8 +244,7 @@ window.TaxonomyContextBar = (function () {
             }
             return;
         }
-        fetch('/api/context/variant?name=' + encodeURIComponent(name), { method: 'POST' })
-            .then(function (r) { return r.json(); })
+        return window.TaxonomyContextApi.createVariant(name)
             .then(function (result) {
                 if (result.error) {
                     if (statusEl) {
@@ -261,7 +257,22 @@ window.TaxonomyContextBar = (function () {
                     fetchAndRender('contextBar');
                     if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
                 }
+            }).catch(function (error) {
+                if (error.code === 'ABORTED') return;
+                if (statusEl) {
+                    statusEl.textContent = t('variants.variant.error', error.message);
+                    statusEl.className = 'small text-danger mt-2';
+                }
             });
+    }
+
+    function showError(error) {
+        if (error.code === 'ABORTED') return;
+        if (window.TaxonomyOperationResult) {
+            window.TaxonomyOperationResult.showError(t('operation.failed', error.message), error.detail || '');
+        } else {
+            alert(t('operation.failed', error.message));
+        }
     }
 
     /**

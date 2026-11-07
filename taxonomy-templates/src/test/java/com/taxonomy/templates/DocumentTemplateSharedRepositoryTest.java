@@ -12,10 +12,21 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Isolated;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.ByteArrayInputStream;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import org.hsqldb.jdbc.JDBCDataSource;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -30,10 +41,15 @@ class DocumentTemplateSharedRepositoryTest {
     private DocumentTemplateService first;
     private DocumentTemplateService second;
     private byte[] bundledTemplate;
+    private JDBCDataSource database;
 
     @BeforeEach
     void openIndependentApplicationRepositories() throws Exception {
         String url = "jdbc:hsqldb:mem:template-shared-" + UUID.randomUUID();
+        database = new JDBCDataSource();
+        database.setUrl(url);
+        database.setUser("SA");
+        database.setPassword("");
         firstFactory = sessionFactory(url);
         secondFactory = sessionFactory(url);
         var name = new RepositoryName(DocumentTemplateGitRepository.REPOSITORY_NAME);
@@ -103,6 +119,151 @@ class DocumentTemplateSharedRepositoryTest {
         assertThat(second.downloadCurrent("alpha").manifest().displayName()).isEqualTo("Alpha revised");
         assertThat(second.history("alpha")).hasSize(2);
         assertThat(second.history(TemplateTestFixture.TEMPLATE_ID)).hasSize(1);
+    }
+
+    @ParameterizedTest(name = "wildcard If-Match: {0}")
+    @ValueSource(booleans = {true, false})
+    void matchingIfMatchCannotOverrideTheLeaseAfterAnIndependentUpload(boolean wildcard) throws Exception {
+        var initial = first.upload("alpha", "Alpha", new ByteArrayInputStream(bundledTemplate),
+                null, "admin", "Create alpha");
+        var locks = new DocumentTemplateWebDavLockManager(database);
+        var lease = locks.acquire("alpha", "admin", initial.headCommit(), Duration.ofMinutes(5), null);
+        var intervening = second.upload("alpha", "Alpha revised", new ByteArrayInputStream(bundledTemplate),
+                initial.headCommit(), "other-admin", "Revise alpha outside WebDAV");
+
+        String ifMatch = wildcard ? "*" : etag(intervening.headCommit());
+        var rejected = put(new DocumentTemplateWebDavServlet(first, locks),
+                ifMatch, lease.token(), new MockHttpServletResponse());
+
+        assertThat(rejected.getStatus()).isEqualTo(412);
+        assertThat(first.downloadCurrent("alpha").commitId()).isEqualTo(intervening.headCommit());
+        assertThat(first.history("alpha")).hasSize(2);
+        assertThat(locks.require("alpha", lease.token(), "admin")).isEqualTo(lease);
+    }
+
+    @Test
+    void wildcardIfMatchCannotOverrideACreateOnlyLeaseAfterAnIndependentCreate() throws Exception {
+        var locks = new DocumentTemplateWebDavLockManager(database);
+        var lease = locks.acquire("alpha", "admin", null, Duration.ofMinutes(5), null);
+        var intervening = second.upload("alpha", "Alpha", new ByteArrayInputStream(bundledTemplate),
+                null, "other-admin", "Create alpha outside WebDAV");
+
+        var rejected = put(new DocumentTemplateWebDavServlet(first, locks),
+                "*", lease.token(), new MockHttpServletResponse());
+
+        assertThat(rejected.getStatus()).isEqualTo(412);
+        assertThat(first.downloadCurrent("alpha").commitId()).isEqualTo(intervening.headCommit());
+        assertThat(first.history("alpha")).hasSize(1);
+        assertThat(locks.require("alpha", lease.token(), "admin")).isEqualTo(lease);
+    }
+
+    @Test
+    void concurrentLockedPutsCannotReuseOneIfMatchAfterAnotherInstanceCommits() throws Exception {
+        var initial = first.upload("alpha", "Alpha", new ByteArrayInputStream(bundledTemplate),
+                null, "admin", "Create alpha");
+        var barrier = new CyclicBarrier(2);
+        var firstLocks = new ConcurrentWriteLocks(database, barrier);
+        var secondLocks = new ConcurrentWriteLocks(database, barrier);
+        var lease = firstLocks.acquire("alpha", "admin", initial.headCommit(), Duration.ofMinutes(5), null);
+        var firstServlet = new DocumentTemplateWebDavServlet(first, firstLocks);
+        var secondServlet = new DocumentTemplateWebDavServlet(second, secondLocks);
+        String ifMatch = etag(initial.headCommit());
+        var workers = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
+        try {
+            var one = workers.submit(() -> put(firstServlet, ifMatch, lease.token(), new MockHttpServletResponse()));
+            var two = workers.submit(() -> put(secondServlet, ifMatch, lease.token(), new MockHttpServletResponse()));
+            assertThat(List.of(one.get(10, TimeUnit.SECONDS).getStatus(), two.get(10, TimeUnit.SECONDS).getStatus()))
+                    .containsExactlyInAnyOrder(204, 412);
+        } finally {
+            workers.shutdownNow();
+        }
+        assertThat(first.history("alpha")).hasSize(2);
+        assertThat(second.history("alpha")).hasSize(2);
+        assertThat(firstLocks.require("alpha", lease.token(), "admin").currentCommit())
+                .isEqualTo(first.downloadCurrent("alpha").commitId());
+    }
+
+    @Test
+    void lostHttpAcknowledgementRetainsTheCommittedBytesLeaseAndHistoryAcrossRestart() throws Exception {
+        var initial = first.upload("alpha", "Alpha", new ByteArrayInputStream(bundledTemplate),
+                null, "admin", "Create alpha");
+        String ifMatch = etag(initial.headCommit());
+        var locks = new DocumentTemplateWebDavLockManager(database);
+        var lease = locks.acquire("alpha", "admin", initial.headCommit(), Duration.ofMinutes(5), null);
+        var disconnected = new MockHttpServletResponse() {
+            @Override public void setHeader(String name, String value) {
+                if (name.equals("ETag")) throw new IllegalStateException("HTTP acknowledgement lost after Git success");
+                super.setHeader(name, value);
+            }
+        };
+        assertThatThrownBy(() -> put(new DocumentTemplateWebDavServlet(first, locks),
+                ifMatch, lease.token(), disconnected)).isInstanceOf(IllegalStateException.class);
+        var saved = second.downloadCurrent("alpha");
+        assertThat(saved.commitId()).isNotEqualTo(initial.headCommit());
+        assertThat(saved.content()).isNotEmpty();
+        var restarted = new DocumentTemplateWebDavLockManager(database);
+        assertThat(restarted.require("alpha", lease.token(), "admin").currentCommit()).isEqualTo(saved.commitId());
+        assertThat(put(new DocumentTemplateWebDavServlet(second, restarted), ifMatch,
+                lease.token(), new MockHttpServletResponse()).getStatus()).isEqualTo(412);
+        assertThat(second.history("alpha")).hasSize(2);
+        assertThat(second.download("alpha", initial.headCommit()).commitId()).isEqualTo(initial.headCommit());
+    }
+
+    @Test
+    void concurrentCreateOnlyLockedPutsCannotReplaceTheFirstAcceptedTemplate() throws Exception {
+        var barrier = new CyclicBarrier(2);
+        var firstLocks = new ConcurrentWriteLocks(database, barrier);
+        var secondLocks = new ConcurrentWriteLocks(database, barrier);
+        var lease = firstLocks.acquire("alpha", "admin", null, Duration.ofMinutes(5), null);
+        var firstServlet = new DocumentTemplateWebDavServlet(first, firstLocks);
+        var secondServlet = new DocumentTemplateWebDavServlet(second, secondLocks);
+        var workers = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
+        try {
+            var one = workers.submit(() -> put(firstServlet, null, lease.token(), new MockHttpServletResponse()));
+            var two = workers.submit(() -> put(secondServlet, null, lease.token(), new MockHttpServletResponse()));
+            assertThat(List.of(one.get(10, TimeUnit.SECONDS).getStatus(), two.get(10, TimeUnit.SECONDS).getStatus()))
+                    .containsExactlyInAnyOrder(201, 412);
+        } finally {
+            workers.shutdownNow();
+        }
+        assertThat(first.history("alpha")).hasSize(1);
+        assertThat(second.downloadCurrent("alpha").commitId())
+                .isEqualTo(firstLocks.require("alpha", lease.token(), "admin").currentCommit());
+    }
+
+    private MockHttpServletResponse put(DocumentTemplateWebDavServlet servlet, String ifMatch,
+                                       String token, MockHttpServletResponse response) throws Exception {
+        var request = new MockHttpServletRequest("PUT", "/dav/templates/alpha.dotx");
+        request.setPathInfo("/alpha.dotx");
+        request.setUserPrincipal(() -> "admin");
+        request.addUserRole("ADMIN");
+        if (ifMatch == null) request.addHeader("If-None-Match", "*");
+        else request.addHeader("If-Match", ifMatch);
+        request.addHeader("If", "(<" + token + ">)");
+        request.setContent(bundledTemplate);
+        servlet.service(request, response);
+        return response;
+    }
+
+    private static String etag(String commit) {
+        return "\"" + commit + "\"";
+    }
+
+    private static final class ConcurrentWriteLocks extends DocumentTemplateWebDavLockManager {
+        private final CyclicBarrier beforeFence;
+        private ConcurrentWriteLocks(DataSource database, CyclicBarrier beforeFence) {
+            super(database);
+            this.beforeFence = beforeFence;
+        }
+        @Override public <T> T executeWrite(String resource, String token, String owner, String expected,
+                                            LockedWrite<T> operation) throws IOException {
+            try {
+                beforeFence.await(5, TimeUnit.SECONDS);
+            } catch (Exception failure) {
+                throw new IOException("Concurrent PUTs did not reach the write fence", failure);
+            }
+            return super.executeWrite(resource, token, owner, expected, operation);
+        }
     }
 
     private List<String> refPacks() {

@@ -178,7 +178,8 @@ public class AnalysisApiController {
                     throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Durable continuation is unavailable");
                 try (var continuation = request.isResumable() ? continuationService.beginDistributed(request, username, context, maxArchitectureNodes) : null) {
                     if (continuation != null && continuation.replay() != null) return ResponseEntity.ok()
-                            .cacheControl(org.springframework.http.CacheControl.noStore()).header(ANALYSIS_OPERATION_ID_HEADER, operationId).body(continuation.replay());
+                            .cacheControl(org.springframework.http.CacheControl.noStore())
+                            .header(ANALYSIS_OPERATION_ID_HEADER, continuation.replay().getAnalysisOperationId()).body(continuation.replay());
                     var command = new AnalyzeRequirementCommand(request.getBusinessText(), request.isIncludeArchitectureView(),
                             maxArchitectureNodes, request.getProvider(), username, context, null, analysisScope);
                     if (continuation != null) command = continuation.bind(command);
@@ -199,7 +200,7 @@ public class AnalysisApiController {
                     ? continuationService.begin(request, username, context, maxArchitectureNodes) : null) {
             if (continuation != null && continuation.replay() != null) {
                 return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
-                        .header(ANALYSIS_OPERATION_ID_HEADER, operationId).body(continuation.replay());
+                        .header(ANALYSIS_OPERATION_ID_HEADER, continuation.replay().getAnalysisOperationId()).body(continuation.replay());
             }
             var reasonLength = continuation == null ? resolveReasonLength(request.getAnalysisReasonLength())
                     : continuation.analysisReasonLength();

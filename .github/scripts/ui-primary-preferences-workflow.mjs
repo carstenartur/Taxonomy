@@ -1,5 +1,7 @@
 import { csrfJson, navigateArchitectureSubtab, navigateToPage } from './ui-role-fixtures.mjs';
 
+const preferencesEndpoint = url => url.pathname.endsWith('/api/preferences');
+
 async function provisionAnalysisWorkspace(page, workspaceId, assert) {
   // A new explicit workspace cannot load its draft until its repository is
   // READY. Provision that fixture before selecting/reloading the browser tab.
@@ -230,7 +232,7 @@ async function saveArchitectureLimit(page, value) {
   await page.waitForFunction(() => !document.getElementById('prefSaveBtn')?.disabled);
 
   const response = page.waitForResponse(candidate =>
-    candidate.url().includes('/api/preferences')
+    preferencesEndpoint(new URL(candidate.url()))
       && candidate.request().method() === 'PUT');
   await save.click();
   const result = await response;
@@ -244,7 +246,6 @@ async function saveArchitectureLimit(page, value) {
 }
 
 async function saveArchitectureLimitExpectFailure(page, value) {
-  const pattern = '**/api/preferences';
   const failPut = async route => {
     if (route.request().method() !== 'PUT') {
       await route.continue();
@@ -256,13 +257,13 @@ async function saveArchitectureLimitExpectFailure(page, value) {
       body: JSON.stringify({ error: 'QA_PREFERENCES_WRITE_FAILURE' })
     });
   };
-  await page.route(pattern, failPut);
+  await page.route(preferencesEndpoint, failPut);
   try {
     const field = page.locator('#pref-max-arch-nodes');
     await field.fill(String(value));
     await page.waitForFunction(() => !document.getElementById('prefSaveBtn')?.disabled);
     const response = page.waitForResponse(candidate =>
-      candidate.url().includes('/api/preferences')
+      preferencesEndpoint(new URL(candidate.url()))
         && candidate.request().method() === 'PUT');
     await page.locator('#prefSaveBtn').click();
     const result = await response;
@@ -275,7 +276,7 @@ async function saveArchitectureLimitExpectFailure(page, value) {
         && /503|QA_PREFERENCES_WRITE_FAILURE/i.test(message.textContent || ''));
     });
   } finally {
-    await page.unroute(pattern, failPut);
+    await page.unroute(preferencesEndpoint, failPut);
   }
 }
 
@@ -402,7 +403,7 @@ async function assertVisibleArchitecture(page, assert) {
   `Restored architecture is missing from the visible UI: ${visible.slice(0, 500)}`);
 }
 
-async function installRequestGate(page, pattern, method) {
+async function installRequestGate(page, pattern, method, description = pattern) {
   let releaseRequest;
   let markSeen;
   let released = false;
@@ -428,7 +429,7 @@ async function installRequestGate(page, pattern, method) {
         seen,
         new Promise((resolve, reject) => {
           timer = setTimeout(() => reject(new Error(
-            `Timed out after 30000 ms waiting for ${method} ${pattern} request in Preferences regression`
+            `Timed out after 30000 ms waiting for ${method} ${description} request in Preferences regression`
           )), 30_000);
         })
       ]).finally(() => clearTimeout(timer));
@@ -585,7 +586,7 @@ async function runPreferencesPreservationWorkflow({ page, baseUrl, evidence }, h
 
     // Unlike draft autosave, this holds the Preferences request itself. The
     // controls stay editable: a newer edit must survive the older acknowledgement.
-    const preferenceSaveGate = await installRequestGate(page, '**/api/preferences', 'PUT');
+    const preferenceSaveGate = await installRequestGate(page, preferencesEndpoint, 'PUT', '/api/preferences');
     try {
       await field.fill(String(failedLimit));
       await page.waitForFunction(() => !document.getElementById('prefSaveBtn')?.disabled);

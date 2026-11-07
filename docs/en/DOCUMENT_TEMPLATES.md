@@ -112,11 +112,21 @@ or restoring one requires the current template ETag. `If-Match` uses strong HTTP
 entity-tag semantics, accepts comma-separated alternatives, and never creates a
 missing resource.
 
-WebDAV locks improve the Word editing workflow. They are intentionally process-local;
-the supported Helm profile therefore remains single-replica. Git's atomic
-per-template expected-version check is the durable lost-update guard after a process
-restart or expired lock. A future multi-replica deployment needs a shared lock store
-before it can promise uninterrupted Word lock sessions across replicas.
+WebDAV leases use the configured shared database. Acquisition, refresh, expiry and
+release therefore apply across application instances; a restart retains an unexpired
+lease. Database time owns expiry. A transactional fence remains held through the
+existing bounded Git save, so another instance cannot take over an expired lease
+while that save is committing. Each accepted PUT validates and commits its bytes
+before acknowledging success; no uncommitted edit-session buffer is introduced.
+
+The template feature migrates its own transient coordination tables through
+`webdav_lock_schema_history`. All instances must use the same installation database.
+An unavailable coordination store rejects WebDAV writes with HTTP 503 and never
+falls back to independent local locks. After an uncertain response, read the current
+template and ETag before retrying. Git's per-template expected-version comparison
+continues to reject stale saves and preserve previous revisions. These lock guarantees
+do not establish a cluster capacity envelope or native Microsoft Word certification;
+the shipped Helm default remains one replica.
 
 <a id="template-access"></a>
 ## Access and transport

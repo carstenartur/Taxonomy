@@ -30,7 +30,7 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
     const current = {contextId:'context-1', branch:'draft', commitId:null, mode:'EDITABLE',
         timestamp:'2026-11-06T22:12:09Z', dirty:false};
     const paths = ['shared/taxonomy-utils.js', 'shared/architecture-workflow.js',
-        'api/taxonomy-api-client.js', 'core/taxonomy-state.js', 'core/taxonomy-analysis-session-core.js',
+        'api/taxonomy-api-client.js', 'api/workspace-api.js', 'core/taxonomy-state.js', 'core/taxonomy-analysis-session-core.js',
         'core/taxonomy-analysis-session-api-routing.js'];
     const messages = Object.fromEntries((await readFile(path.join(resources, 'i18n/messages.properties'), 'utf8'))
         .split('\n').map(line => line.match(/^([^#!\s][^=]*)=(.*)$/)).filter(Boolean).map(match => [match[1], match[2]]));
@@ -139,6 +139,8 @@ async function fixture() {
                 }});
         });
     });
+    await page.addScriptTag({path: path.join(resources, 'static/js/api/taxonomy-api-client.js')});
+    await page.addScriptTag({path: path.join(resources, 'static/js/api/workspace-api.js')});
     await page.addScriptTag({path: path.join(resources, 'static/js/workspace/taxonomy-git-status.js')});
     await page.addScriptTag({path: path.join(resources, 'static/js/workspace/taxonomy-workspace-sync.js')});
     await page.evaluate(() => document.dispatchEvent(new Event('DOMContentLoaded')));

@@ -97,6 +97,8 @@ export KEYCLOAK_ADMIN_URL=https://idp.example
 
 Konfigurieren Sie Datenbank und Produktionsprofile gemäß Deployment-Anleitung. `taxonomy.keycloak.principal-mode` ist standardmäßig `LEGACY` und erhält bestehendes benutzernamenbasiertes Eigentum. `STABLE` ist eine explizite Option, die Issuer/Subject auf einen gespeicherten Principal abbildet; sie ist für portable Backups erforderlich. Stellen Sie bestehende Installationen nicht ohne geprüfte Eigentumsmigration auf STABLE um; ein gleicher Anzeigename ist keine verifizierte Identitätsverknüpfung.
 
+Im Modus `STABLE` prüfen geschützte Browser-/Sitzungs- und Bearer-Anfragen den aktuellen Principal und ihre genaue Issuer/Subject-Bindung im gemeinsamen Identitätsspeicher erneut. Eine bestätigte Deaktivierung des Principals oder dieser Bindung sperrt die nächste geschützte Anfrage auf allen Anwendungsinstanzen, auch wenn eine andere Bindung aktiv bleibt. Ist der Identitätsspeicher nicht verfügbar, wird der Zugriff verweigert. Nach erneuter Aktivierung derselben Bindung kann eine ansonsten gültige Sitzung fortgesetzt werden. Vor der Änderung zugelassene Anfragen dürfen noch abgeschlossen werden. Diese Grenze gilt für Anfragen; wartende Hintergrundaufgaben, Rollenänderungen beim Identitätsanbieter und Repository-Rollen aus älteren Sitzungen/Tokens benötigen eigene Berechtigungsprüfungen. `LEGACY`-Sitzungen behalten bis zur geprüften Migration ihr bisheriges Eigentumsverhalten.
+
 ## Swagger mit Authorization Code und PKCE
 
 Die Anwendung konfiguriert:

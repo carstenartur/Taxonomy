@@ -105,9 +105,14 @@ The last enabled administrator remains protected by the service. The opt-in prof
 requires replacement of newly created/reset passwords by default; the existing
 `TAXONOMY_REQUIRE_PASSWORD_CHANGE` override is respected and displayed.
 
-Account disabling prevents new logins but **does not revoke existing browser sessions**.
-No distributed session revocation, email delivery, second user store or new identity
-provider is introduced. Use persistent storage, deployment secrets and HTTPS.
+Account disabling prevents new logins and denies the next protected request from
+an existing local browser session. Every protected request checks the current
+principal, its local installation binding and the account in the shared database;
+other application instances observe committed disabling without a session cache
+refresh. An unavailable identity store denies access. Re-enabling the same account
+allows an otherwise valid retained session to continue. A request admitted before
+the change may finish; queued work and changes to cached login roles require their
+own authority checks. Use persistent storage, deployment secrets and HTTPS.
 
 ## Verification
 

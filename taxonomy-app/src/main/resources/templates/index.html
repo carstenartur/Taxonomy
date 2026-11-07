@@ -980,8 +980,7 @@
                     }
 
                     function loadContextHistory() {
-                        TaxonomyI18n.ready().then(function () { return fetch('/api/workspace/history'); })
-                            .then(function(r) { return r.json(); })
+                        TaxonomyI18n.ready().then(function () { return window.TaxonomyWorkspaceApi.history(); })
                             .then(function(records) {
                                 var container = document.getElementById('contextHistoryTimeline');
                                 if (!records || records.length === 0) {
@@ -1592,6 +1591,7 @@
 <th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/api/import-api.js}"></script>
 <script th:src="@{/js/api/analysis-api.js}"></script>
+<script th:src="@{/js/api/workspace-api.js}" src="/js/api/workspace-api.js"></script>
 <script th:src="@{/js/core/taxonomy-state.js}"></script>
 <script th:src="@{/js/core/taxonomy-views.js}"></script>
 <script th:src="@{/js/workspace/taxonomy-git-status.js}"></script>
@@ -2087,8 +2087,19 @@
 
     // Load workspace info for the user badge
     document.addEventListener('DOMContentLoaded', function () {
-        TaxonomyI18n.ready().then(function () { return fetch('/api/workspace/current'); })
-            .then(function (r) { return r.ok ? r.json() : null; })
+        TaxonomyI18n.ready().then(function () {
+            var context = window.__TaxonomyAnalysisSessionContext;
+            var initialWorkspace = context && context.runtime.workspaceId;
+            return window.TaxonomyWorkspaceApi.current().catch(function (error) {
+                var runtime = window.__TaxonomyAnalysisSessionContext?.runtime;
+                // Hydration can supersede this one-shot bootstrap read. Read
+                // once more with its resolved pin; never adopt the stale body.
+                if (error.code === 'ABORTED' && initialWorkspace == null && runtime?.workspaceId != null) {
+                    return window.TaxonomyWorkspaceApi.current();
+                }
+                throw error;
+            });
+        })
             .then(function (ws) {
                 if (!ws) return;
                 var badge = document.getElementById('workspaceUserBadge');
@@ -2353,13 +2364,6 @@
     var statusTimer = null;
     var preferenceEditRevisions = new WeakMap();
 
-    function requestJson(url, options) {
-        return fetch(url, options).then(function (response) {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            return response.json();
-        });
-    }
-
     function preferenceValue(el) {
         if (el.type === 'checkbox') return { present: true, value: el.checked };
         if (el.type === 'password') {
@@ -2487,13 +2491,14 @@
         if (requestInFlight) return;
         var requestInputs = capturePreferenceInputs();
         setPreferenceBusy(true);
-        requestJson('/api/preferences')
+        window.TaxonomyPreferencesApi.current()
             .then(function (data) {
                 currentPrefs = data || {};
                 preferencesLoaded = true;
                 populateForm(currentPrefs, requestInputs);
             })
             .catch(function (error) {
+                if (error.code === 'ABORTED') return;
                 preferencesLoaded = false;
                 showPrefStatus(t('preferences.load.failed', error.message), 'danger');
             })
@@ -2525,11 +2530,7 @@
 
         var requestInputs = capturePreferenceInputs();
         setPreferenceBusy(true);
-        requestJson('/api/preferences', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(result.changes)
-        })
+        window.TaxonomyPreferencesApi.save(result.changes)
             .then(function (data) {
                 currentPrefs = data || {};
                 preferencesLoaded = true;
@@ -2537,6 +2538,7 @@
                 showPrefStatus(t('preferences.saved'), 'success');
             })
             .catch(function (error) {
+                if (error.code === 'ABORTED') return;
                 showPrefStatus(t('preferences.save.failed', error.message), 'danger');
             })
             .finally(function () {
@@ -2548,7 +2550,7 @@
         if (!window.confirm(t('preferences.reset.confirm'))) return;
         var requestInputs = capturePreferenceInputs();
         setPreferenceBusy(true);
-        requestJson('/api/preferences/reset', { method: 'POST' })
+        window.TaxonomyPreferencesApi.reset()
             .then(function (data) {
                 currentPrefs = data || {};
                 preferencesLoaded = true;
@@ -2556,6 +2558,7 @@
                 showPrefStatus(t('preferences.reset'), 'info');
             })
             .catch(function (error) {
+                if (error.code === 'ABORTED') return;
                 showPrefStatus(t('preferences.reset.failed', error.message), 'danger');
             })
             .finally(function () {
@@ -2564,7 +2567,7 @@
     }
 
     function loadHistory() {
-        requestJson('/api/preferences/history')
+        window.TaxonomyPreferencesApi.history()
             .then(function (commits) {
                 var tbody = document.getElementById('prefHistoryBody');
                 if (!tbody) return;
@@ -2583,6 +2586,7 @@
                 }).join('');
             })
             .catch(function (error) {
+                if (error.code === 'ABORTED') return;
                 var tbody = document.getElementById('prefHistoryBody');
                 if (tbody) {
                     tbody.innerHTML = '<tr><td colspan="4" class="text-danger small">'
@@ -2647,8 +2651,7 @@
     }
 
     function loadWorkspaces() {
-        TaxonomyI18n.ready().then(function () { return fetch('/api/workspace/list'); })
-            .then(function(r) { return r.json(); })
+        TaxonomyI18n.ready().then(function () { return window.TaxonomyWorkspaceApi.list(); })
             .then(function(workspaces) {
                 var container = document.getElementById('workspaceListContainer');
                 if (!workspaces || workspaces.length === 0) {
@@ -2674,31 +2677,35 @@
 
                 container.querySelectorAll('.ws-switch-btn').forEach(function(btn) {
                     btn.addEventListener('click', function() {
-                        fetch('/api/workspace/' + encodeURIComponent(this.getAttribute('data-ws-id')) + '/switch', { method: 'POST' })
-                            .then(function(r) { if (r.ok) loadWorkspaces(); });
+                        window.TaxonomyWorkspaceApi.switchWorkspace(this.getAttribute('data-ws-id'))
+                            .catch(showWorkspaceError);
                     });
                 });
                 container.querySelectorAll('.ws-archive-btn').forEach(function(btn) {
                     btn.addEventListener('click', function() {
                         if (!confirm(TaxonomyI18n.t('index.ui.archiveConfirm'))) return;
-                        fetch('/api/workspace/' + encodeURIComponent(this.getAttribute('data-ws-id')) + '/archive', { method: 'POST' })
-                            .then(function(r) { if (r.ok) loadWorkspaces(); });
+                        window.TaxonomyWorkspaceApi.archive(this.getAttribute('data-ws-id'))
+                            .then(loadWorkspaces).catch(showWorkspaceError);
                     });
                 });
             })
-            .catch(function() {
+            .catch(function(error) {
+                if (error.code === 'ABORTED') return;
                 document.getElementById('workspaceListContainer').innerHTML = '<div class="col-12 text-danger small">' + TaxonomyI18n.t('index.ui.workspaceFailed') + '</div>';
             });
+    }
+
+    function showWorkspaceError(error) {
+        if (error.code === 'ABORTED') return;
+        var container = document.getElementById('workspaceListContainer');
+        container.textContent = TaxonomyI18n.t('operation.failed', error.message);
+        container.setAttribute('role', 'alert');
     }
 
     function createWorkspace() {
         var name = prompt(TaxonomyI18n.t('index.ui.workspaceName'));
         if (!name || !name.trim()) return;
-        fetch('/api/workspace/create', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ displayName: name.trim() })
-        }).then(function(r) { if (r.ok) loadWorkspaces(); });
+        window.TaxonomyWorkspaceApi.create(name.trim()).then(loadWorkspaces).catch(showWorkspaceError);
     }
 
     if (panel) panel.addEventListener('toggle', function() { if (panel.open) loadWorkspaces(); });

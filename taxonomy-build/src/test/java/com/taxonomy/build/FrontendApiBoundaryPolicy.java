@@ -31,7 +31,12 @@ final class FrontendApiBoundaryPolicy {
     private static final String TEMPLATE =
             "taxonomy-app/src/main/resources/templates/index.html";
     private static final String TEMPLATE_KEY = "templates/index.html";
-    private static final Pattern DIRECT_FETCH = Pattern.compile("\\bfetch\\s*\\(");
+    private static final String FETCH_REFERENCE =
+            "(?:\\b(?:window|globalThis)\\s*(?:\\.\\s*fetch|\\[\\s*['\"]fetch['\"]\\s*\\])|\\bfetch)";
+    private static final Pattern DIRECT_FETCH = Pattern.compile(
+            FETCH_REFERENCE + "\\s*(?:\\(|\\.\\s*(?:call|apply|bind)\\s*\\()");
+    private static final Pattern FETCH_ALIAS = Pattern.compile(
+            "\\b(?:const|let|var)\\s+([\\w$]+)\\s*=\\s*" + FETCH_REFERENCE + "(?![\\w$])");
     private static final Pattern DIRECT_API_FETCH = Pattern.compile(
             "\\bfetch\\s*\\(\\s*['\"`]\\/api\\/");
     private static final Set<String> INFRASTRUCTURE_EXCEPTIONS = Set.of(
@@ -49,7 +54,6 @@ final class FrontendApiBoundaryPolicy {
             "shared/taxonomy-export.js",
             "shared/taxonomy-graph.js",
             "shared/taxonomy-search.js",
-            "versioning/taxonomy-context-bar.js",
             "versioning/taxonomy-context-compare.js",
             "versioning/taxonomy-context-transfer.js",
             "versioning/taxonomy-history-search.js",
@@ -58,8 +62,7 @@ final class FrontendApiBoundaryPolicy {
             "versioning/taxonomy-viewcontext.js",
             "workspace/taxonomy-git-status.js",
             "workspace/taxonomy-merge-resolution.js",
-            "workspace/taxonomy-workspace-provisioning.js",
-            "workspace/taxonomy-workspace-sync.js");
+            "workspace/taxonomy-workspace-provisioning.js");
 
     Inspection inspect(
             Path repositoryRoot,
@@ -203,6 +206,17 @@ final class FrontendApiBoundaryPolicy {
         Matcher matcher = DIRECT_FETCH.matcher(text);
         while (matcher.find()) {
             count++;
+        }
+        // Acquiring a transport alias is debt too: otherwise a newly added
+        // alias could move calls outside the API boundary without growing it.
+        Matcher aliases = FETCH_ALIAS.matcher(text);
+        while (aliases.find()) {
+            String remainder = text.substring(aliases.end());
+            // An assigned fetch result is not a callable transport alias.
+            if (remainder.matches("(?s)^\\s*(?:\\(|\\.\\s*(?:call|apply)\\s*\\().*")) continue;
+            if (!remainder.matches("(?s)^\\s*\\.\\s*bind\\s*\\(.*")) count++;
+            Matcher calls = Pattern.compile("\\b" + Pattern.quote(aliases.group(1)) + "\\s*\\(").matcher(text);
+            while (calls.find()) count++;
         }
         return count;
     }
