@@ -2,8 +2,8 @@
   "release_version": "1.5.3",
   "next_development_version": "1.5.4-SNAPSHOT",
   "skip_tests": false,
-  "dry_run": true,
+  "dry_run": false,
   "resume_staged_release": false,
-  "request_revision": 27,
-  "requested_after_commit": "f7d6d5c39877dc388b91881f6eec2b18f9e8902a"
+  "request_revision": 28,
+  "requested_after_commit": "b8961b53e6d0e962f9e31e4f33d1a4e0f2fe64d1"
 }
