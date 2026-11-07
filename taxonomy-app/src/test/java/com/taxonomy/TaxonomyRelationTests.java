@@ -31,7 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(username = "relation-read-contract-admin", roles = "ADMIN")
+@WithMockUser(username = "relation-read-contract-admin", roles = {"USER", "ARCHITECT", "ADMIN"})
 class TaxonomyRelationTests {
 
     @Autowired

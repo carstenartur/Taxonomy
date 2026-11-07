@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** The complete later-project lifecycle runs against the real portfolio, editor journal and native JGit storage. */
 @SpringBootTest
-@WithMockUser(username = "alice", roles = "ADMIN")
+@WithMockUser(username = "alice", roles = {"USER", "ARCHITECT", "ADMIN"})
 class RequirementLifecycleIntegrationTest extends LifecycleTestSupport {
     @Test
     void nineRequirementsRemainInOneArchitectureThroughLaterProjectsAndAnExactNinthVersionChange() throws Exception {

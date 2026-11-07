@@ -31,7 +31,7 @@ import com.taxonomy.diagram.DiagramLayout;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(roles = "ADMIN")
+@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class VisioDiagramTests {
 
     @Autowired

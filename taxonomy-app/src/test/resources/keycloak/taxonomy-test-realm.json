@@ -7,10 +7,26 @@
   "rememberMe": false,
   "roles": {
     "realm": [
-      { "name": "ROLE_USER", "description": "Read-only user" },
-      { "name": "ROLE_ARCHITECT", "description": "Can mutate architecture" },
-      { "name": "ROLE_ADMIN", "description": "Full administration" },
-      { "name": "ROLE_UNSUPPORTED", "description": "Must not map to an application authority" }
+      {
+        "name": "ROLE_READER",
+        "description": "Read permitted data"
+      },
+      {
+        "name": "ROLE_USER",
+        "description": "Analyst: execute analyses and manage drafts"
+      },
+      {
+        "name": "ROLE_ARCHITECT",
+        "description": "Can mutate architecture"
+      },
+      {
+        "name": "ROLE_ADMIN",
+        "description": "Full administration"
+      },
+      {
+        "name": "ROLE_UNSUPPORTED",
+        "description": "Must not map to an application authority"
+      }
     ]
   },
   "clients": [
@@ -26,13 +42,22 @@
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "fullScopeAllowed": true,
-      "redirectUris": ["http://taxonomy.test:8080/login/oauth2/code/keycloak"],
-      "webOrigins": ["http://taxonomy.test:8080"],
+      "redirectUris": [
+        "http://taxonomy.test:8080/login/oauth2/code/keycloak"
+      ],
+      "webOrigins": [
+        "http://taxonomy.test:8080"
+      ],
       "baseUrl": "http://taxonomy.test:8080/",
       "attributes": {
         "post.logout.redirect.uris": "http://taxonomy.test:8080/*"
       },
-      "defaultClientScopes": ["basic", "profile", "email", "roles"],
+      "defaultClientScopes": [
+        "basic",
+        "profile",
+        "email",
+        "roles"
+      ],
       "protocolMappers": [
         {
           "name": "taxonomy API audience",
@@ -77,6 +102,22 @@
             "introspection.token.claim": "true"
           }
         }
+      ],
+      "optionalClientScopes": [
+        "architecture:read",
+        "architecture:write",
+        "architecture:delete",
+        "architecture:publish",
+        "analysis:read",
+        "analysis:run",
+        "integration:import",
+        "integration:export",
+        "repository:manage",
+        "backup:read",
+        "backup:create",
+        "admin:users",
+        "admin:configuration",
+        "admin:diagnostics"
       ]
     },
     {
@@ -91,7 +132,10 @@
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "fullScopeAllowed": false,
-      "defaultClientScopes": ["basic", "profile"],
+      "defaultClientScopes": [
+        "basic",
+        "profile"
+      ],
       "protocolMappers": [
         {
           "name": "taxonomy API audience",
@@ -120,6 +164,22 @@
             "introspection.token.claim": "true"
           }
         }
+      ],
+      "optionalClientScopes": [
+        "architecture:read",
+        "architecture:write",
+        "architecture:delete",
+        "architecture:publish",
+        "analysis:read",
+        "analysis:run",
+        "integration:import",
+        "integration:export",
+        "repository:manage",
+        "backup:read",
+        "backup:create",
+        "admin:users",
+        "admin:configuration",
+        "admin:diagnostics"
       ]
     },
     {
@@ -134,7 +194,10 @@
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "fullScopeAllowed": false,
-      "defaultClientScopes": ["basic", "profile"],
+      "defaultClientScopes": [
+        "basic",
+        "profile"
+      ],
       "protocolMappers": [
         {
           "name": "taxonomy API audience",
@@ -178,6 +241,22 @@
             "introspection.token.claim": "true"
           }
         }
+      ],
+      "optionalClientScopes": [
+        "architecture:read",
+        "architecture:write",
+        "architecture:delete",
+        "architecture:publish",
+        "analysis:read",
+        "analysis:run",
+        "integration:import",
+        "integration:export",
+        "repository:manage",
+        "backup:read",
+        "backup:create",
+        "admin:users",
+        "admin:configuration",
+        "admin:diagnostics"
       ]
     }
   ],
@@ -190,8 +269,18 @@
       "enabled": true,
       "emailVerified": true,
       "requiredActions": [],
-      "credentials": [{ "type": "password", "value": "admin", "temporary": false }],
-      "realmRoles": ["ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ROLE_USER",
+        "ROLE_ARCHITECT",
+        "ROLE_ADMIN"
+      ]
     },
     {
       "username": "architect",
@@ -201,8 +290,17 @@
       "enabled": true,
       "emailVerified": true,
       "requiredActions": [],
-      "credentials": [{ "type": "password", "value": "architect", "temporary": false }],
-      "realmRoles": ["ROLE_USER", "ROLE_ARCHITECT"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "architect",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ROLE_USER",
+        "ROLE_ARCHITECT"
+      ]
     },
     {
       "username": "user",
@@ -212,8 +310,16 @@
       "enabled": true,
       "emailVerified": true,
       "requiredActions": [],
-      "credentials": [{ "type": "password", "value": "user", "temporary": false }],
-      "realmRoles": ["ROLE_USER"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "user",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ROLE_USER"
+      ]
     },
     {
       "username": "unsupported",
@@ -223,8 +329,147 @@
       "enabled": true,
       "emailVerified": true,
       "requiredActions": [],
-      "credentials": [{ "type": "password", "value": "unsupported", "temporary": false }],
-      "realmRoles": ["ROLE_UNSUPPORTED"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "unsupported",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ROLE_UNSUPPORTED"
+      ]
     }
-  ]
+  ],
+  "clientScopes": [
+    {
+      "name": "architecture:read",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [],
+      "description": "Read architecture and taxonomy data"
+    },
+    {
+      "name": "architecture:write",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [],
+      "description": "Create or change business data"
+    },
+    {
+      "name": "architecture:delete",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [],
+      "description": "Call dedicated DELETE endpoints; command and DSL edits use architecture:write"
+    },
+    {
+      "name": "architecture:publish",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [],
+      "description": "Publish or synchronize architecture changes"
+    },
+    {
+      "name": "analysis:read",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [],
+      "description": "Read existing analysis results"
+    },
+    {
+      "name": "analysis:run",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [],
+      "description": "Execute analyses and manage personal analysis drafts"
+    },
+    {
+      "name": "integration:import",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [],
+      "description": "Import or apply integration changes"
+    },
+    {
+      "name": "integration:export",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [],
+      "description": "Generate or download permitted exports"
+    },
+    {
+      "name": "repository:manage",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [],
+      "description": "Manage repository memberships as an authorized owner"
+    },
+    {
+      "name": "backup:read",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [],
+      "description": "Read or download an authorized backup"
+    },
+    {
+      "name": "backup:create",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [],
+      "description": "Create or cancel an authorized backup job"
+    },
+    {
+      "name": "admin:users",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [],
+      "description": "Manage users, access and browser sessions"
+    },
+    {
+      "name": "admin:configuration",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [],
+      "description": "Manage technical configuration"
+    },
+    {
+      "name": "admin:diagnostics",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [],
+      "description": "Read administrative diagnostics"
+    }
+  ],
+  "attributes": {
+    "CreateDefaultClientScopes": "true"
+  }
 }

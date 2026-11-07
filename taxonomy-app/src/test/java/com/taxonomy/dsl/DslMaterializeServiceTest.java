@@ -21,7 +21,7 @@ import org.springframework.security.test.context.support.WithMockUser;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(roles = "ADMIN")
+@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class DslMaterializeServiceTest {
 
     @Autowired

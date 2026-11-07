@@ -131,4 +131,18 @@ class WorkspaceManagerTest {
         assertNull(state.getLastIndexCommit());
         assertTrue(state.isHistoryEmpty());
     }
+
+    @Test
+    void deniedImplicitDefaultCreationLeavesNoNavigationState() {
+        manager.setWorkspaceProvisionPermission(actor -> false);
+
+        try {
+            manager.getOrCreateWorkspace("reader");
+        } catch (org.springframework.security.access.AccessDeniedException denied) {
+            // A non-provisioning actor must not allocate a synthetic default.
+        }
+
+        assertNull(manager.getWorkspace("reader"));
+        assertEquals(0, manager.getActiveWorkspaceCount());
+    }
 }

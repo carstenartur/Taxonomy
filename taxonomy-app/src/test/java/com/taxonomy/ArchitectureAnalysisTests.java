@@ -43,7 +43,7 @@ import com.taxonomy.relations.service.RequirementCoverageService;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(roles = "ADMIN")
+@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class ArchitectureAnalysisTests {
 
     @Autowired private MockMvc mockMvc;

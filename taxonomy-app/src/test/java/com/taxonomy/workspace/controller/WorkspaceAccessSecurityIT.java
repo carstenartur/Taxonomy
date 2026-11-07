@@ -3,6 +3,8 @@ package com.taxonomy.workspace.controller;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -18,6 +20,7 @@ import java.time.Instant;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -98,7 +101,7 @@ class WorkspaceAccessSecurityIT {
 
     @Test
     @WithMockUser(username = "alice", roles = "USER")
-    void userRoleCannotCreateRepositoryOrAdministerWorkspace() throws Exception {
+    void analystCannotCreateRepositoryOrRenameMissingWorkspace() throws Exception {
         mockMvc.perform(post("/api/repositories")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -108,17 +111,23 @@ class WorkspaceAccessSecurityIT {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"displayName\":\"stolen\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isBadRequest());
     }
 
     @Test
-    @WithMockUser(username = "alice", roles = "ADMIN")
-    void archivingHidesMetadataWithoutDeletingTheWorkspace() throws Exception {
+    @WithMockUser(username = "alice", roles = "USER")
+    void analystCanRenameAndArchiveOwnWorkspaceWithoutDeletingIt() throws Exception {
         UserWorkspace workspace = workspaceRepository.saveAndFlush(
                 workspace("qa-archive-lifecycle", "alice", false));
 
         mockMvc.perform(get("/api/workspace/{id}/info", workspace.getWorkspaceId()))
                 .andExpect(status().isOk());
+        mockMvc.perform(put("/api/workspace/{id}/rename", workspace.getWorkspaceId())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"Reviewed analysis\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.displayName").value("Reviewed analysis"));
         mockMvc.perform(post("/api/workspace/{id}/archive", workspace.getWorkspaceId())
                         .with(csrf()))
                 .andExpect(status().isOk())
@@ -129,9 +138,48 @@ class WorkspaceAccessSecurityIT {
         UserWorkspace retained = workspaceRepository.findByWorkspaceId(
                 workspace.getWorkspaceId()).orElseThrow();
         assertThat(retained.isArchived()).isTrue();
+        assertThat(retained.getDisplayName()).isEqualTo("Reviewed analysis");
         assertThat(retained.getId()).isEqualTo(workspace.getId());
         assertThat(retained.getCurrentBranch()).isEqualTo("draft");
         assertThat(retained.getBaseBranch()).isEqualTo("draft");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"READER", "ADMIN"})
+    void rolesWithoutAnalysisPermissionCannotChangeOwnWorkspaceMetadata(String role) throws Exception {
+        UserWorkspace workspace = workspaceRepository.saveAndFlush(
+                workspace("qa-read-only-metadata", "alice", false));
+
+        mockMvc.perform(put("/api/workspace/{id}/rename", workspace.getWorkspaceId())
+                        .with(user("alice").roles(role)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"forbidden rename\"}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/workspace/{id}/archive", workspace.getWorkspaceId())
+                        .with(user("alice").roles(role)).with(csrf()))
+                .andExpect(status().isForbidden());
+
+        UserWorkspace retained = workspaceRepository.findByWorkspaceId(workspace.getWorkspaceId()).orElseThrow();
+        assertThat(retained.getDisplayName()).isEqualTo("qa-read-only-metadata");
+        assertThat(retained.isArchived()).isFalse();
+    }
+
+    @Test
+    @WithMockUser(username = "alice", roles = "USER")
+    void analystCannotRenameOrArchiveAnotherUsersWorkspace() throws Exception {
+        UserWorkspace foreign = workspaceRepository.saveAndFlush(
+                workspace("qa-foreign-metadata", "bob", false));
+
+        mockMvc.perform(put("/api/workspace/{id}/rename", foreign.getWorkspaceId())
+                        .with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"forbidden rename\"}"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/workspace/{id}/archive", foreign.getWorkspaceId()).with(csrf()))
+                .andExpect(status().isBadRequest());
+
+        UserWorkspace retained = workspaceRepository.findByWorkspaceId(foreign.getWorkspaceId()).orElseThrow();
+        assertThat(retained.getDisplayName()).isEqualTo("qa-foreign-metadata");
+        assertThat(retained.isArchived()).isFalse();
     }
 
     @Test

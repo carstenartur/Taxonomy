@@ -13,6 +13,7 @@ import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.eclipse.jgit.lib.ObjectId;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 @Controller
@@ -32,6 +34,7 @@ public class ArchitectureEditorController {
     private final ArchitectureEditorService service;
     private final ArchitectureEditorProjection projection;
     private final WorkspaceResolver resolver;
+    private final Optional<ArchitectureEditPermission> editPermission;
     private WorkspaceCollaborationService collaboration;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -41,9 +44,16 @@ public class ArchitectureEditorController {
 
     public ArchitectureEditorController(ArchitectureEditorService service, ArchitectureEditorProjection projection,
                                         WorkspaceResolver resolver) {
+        this(service, projection, resolver, Optional.empty());
+    }
+
+    @Autowired
+    public ArchitectureEditorController(ArchitectureEditorService service, ArchitectureEditorProjection projection,
+                                        WorkspaceResolver resolver, Optional<ArchitectureEditPermission> editPermission) {
         this.service = service;
         this.projection = projection;
         this.resolver = resolver;
+        this.editPermission = editPermission;
     }
 
     @GetMapping("/architecture/editor")
@@ -263,10 +273,12 @@ public class ArchitectureEditorController {
         return context;
     }
 
-    private static boolean mayEdit() {
+    private boolean mayEdit() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication != null && authentication.getAuthorities().stream()
-                .anyMatch(authority -> List.of("ROLE_ARCHITECT", "ROLE_ADMIN").contains(authority.getAuthority()));
+        return authentication != null && authentication.isAuthenticated()
+                && authentication.getAuthorities().stream()
+                        .anyMatch(authority -> "ROLE_ARCHITECT".equals(authority.getAuthority()))
+                && editPermission.map(permission -> permission.mayEdit(authentication)).orElse(true);
     }
 
     private static ResponseEntity.BodyBuilder documentResponse(ArchitectureEditorService.Document document) {

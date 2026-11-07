@@ -57,13 +57,21 @@ class AnalysisRunAuthorizationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"USER", "ARCHITECT", "ADMIN"})
-    void ownerCanCancelWithCsrfForEveryProductRole(String role) throws Exception {
+    @ValueSource(strings = {"USER", "ARCHITECT"})
+    void ownerCanCancelWithCsrfForAnalysisRoles(String role) throws Exception {
         mvc.perform(post(cancelUrl()).with(user("alice").roles(role)).with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.operationId").value(handle.id()))
                 .andExpect(jsonPath("$.status").value("CANCELLING"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"READER", "ADMIN"})
+    void ownerWithoutAnAnalysisRoleCannotCancelEvenWithCsrf(String role) throws Exception {
+        mvc.perform(post(cancelUrl()).with(user("alice").roles(role)).with(csrf()))
+                .andExpect(status().isForbidden());
+        assertRunning();
     }
 
     @Test
@@ -86,8 +94,8 @@ class AnalysisRunAuthorizationTest {
     }
 
     @Test
-    void anotherOwnerCannotCancelEvenWithAdminRole() throws Exception {
-        mvc.perform(post(cancelUrl()).with(user("bob").roles("ADMIN")).with(csrf()))
+    void anotherOwnerCannotCancelEvenWithBusinessAndAdminRoles() throws Exception {
+        mvc.perform(post(cancelUrl()).with(user("bob").roles("USER", "ARCHITECT", "ADMIN")).with(csrf()))
                 .andExpect(status().isNotFound());
         assertRunning();
     }
@@ -107,7 +115,7 @@ class AnalysisRunAuthorizationTest {
     @Test
     void newSiblingWritesDoNotInheritCancellationPermission() throws Exception {
         mvc.perform(post("/api/analysis-runs/" + handle.id() + "/restart")
-                        .with(user("alice").roles("ADMIN")).with(csrf()))
+                        .with(user("alice").roles("USER", "ARCHITECT", "ADMIN")).with(csrf()))
                 .andExpect(status().isForbidden());
         assertRunning();
     }

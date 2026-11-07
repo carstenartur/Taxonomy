@@ -43,7 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-@WithMockUser(username = "provisioning-boundary-user", roles = "ADMIN")
+@WithMockUser(username = "provisioning-boundary-user", roles = {"USER", "ARCHITECT", "ADMIN"})
 @TestPropertySource(properties = {
         "gemini.api.key=", "openai.api.key=", "deepseek.api.key=",
         "qwen.api.key=", "llama.api.key=", "mistral.api.key=",
@@ -152,7 +152,7 @@ class WorkspaceProvisioningBoundaryIT {
         String ownerUser=USER+"-"+UUID.randomUUID();
         UserWorkspace copy = workspace(ownerUser, WorkspaceProvisioningStatus.NOT_PROVISIONED);
         String id = copy.getWorkspaceId(), bob = "collaboration-contributor-"+UUID.randomUUID();
-        var ownerActor=activeActor(ownerUser,"ADMIN"); var bobActor=activeActor(bob,"ARCHITECT");
+        var ownerActor=activeActor(ownerUser,"ARCHITECT"); var bobActor=activeActor(bob,"ARCHITECT");
         memberships.assignRole(source.getRepositoryId(),ownerUser,RepositoryRole.CONTRIBUTOR,USER);
         try {
             memberships.assignRole(source.getRepositoryId(), bob, RepositoryRole.CONTRIBUTOR, USER);
@@ -263,7 +263,7 @@ class WorkspaceProvisioningBoundaryIT {
         var copy=workspace(USER,WorkspaceProvisioningStatus.READY);
         assertThat(rows.updateCollaborationFlag(copy.getWorkspaceId(),true)).isEqualTo(1);
         copy.setCollaborative(true);
-        var owner=activeActor(USER,"ADMIN");
+        var owner=activeActor(USER,"USER");
         String path="/api/analysis-drafts/"+copy.getWorkspaceId();
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(path).with(user(owner)).with(csrf())
                 .contentType("application/json").content("{\"payload\":{\"businessText\":\"Retained owner draft\"}}"))
@@ -279,6 +279,31 @@ class WorkspaceProvisioningBoundaryIT {
             default -> throw new AssertionError(operation);
         };
         mvc.perform(request.with(user(owner)).with(csrf())).andExpect(status().isForbidden());
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"READER", "USER", "ADMIN"})
+    void ownershipDoesNotGrantTheArchitectureWriteCapabilityForSharing(String role) throws Exception {
+        var copy = workspace(USER, WorkspaceProvisioningStatus.NOT_PROVISIONED);
+        String id = copy.getWorkspaceId();
+        mvc.perform(post("/api/workspace/provision").header(HEADER, id).with(csrf()))
+                .andExpect(status().isOk());
+        var owner = activeActor(USER, role);
+        var json = tools.jackson.databind.json.JsonMapper.builder().build();
+        var view = json.readTree(mvc.perform(get("/api/architecture/editor").header(HEADER, id).with(user(owner)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.mayEdit").value(false))
+                .andExpect(jsonPath("$.collaboration.enabled").value(false))
+                .andReturn().getResponse().getContentAsString());
+
+        mvc.perform(post("/api/architecture/editor/collaboration").header(HEADER, id).with(user(owner)).with(csrf())
+                .header("If-Match", "\"workspace-revision-0\"").contentType("application/json")
+                .content(json.writeValueAsString(java.util.Map.of("context", view.path("document").path("context"), "enabled", true))))
+                .andExpect(status().isForbidden());
+
+        assertThat(rows.findByWorkspaceId(id).orElseThrow().isCollaborative()).isFalse();
+        mvc.perform(get("/api/architecture/editor").header(HEADER, id).with(user(owner)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.document.context.revision").value(0))
+                .andExpect(jsonPath("$.collaboration.enabled").value(false));
     }
 
     private com.taxonomy.security.model.PrincipalUserDetails activeActor(String username,String role) {

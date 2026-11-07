@@ -15,11 +15,13 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateRequirementRequest;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
+import com.taxonomy.portfolio.service.AnalysisExecutionPermission;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -42,6 +44,12 @@ public class ProjectPortfolioController {
     private final WorkspaceResolver workspaceResolver;
     private final int maximumImportRequirements;
     private final long maximumImportCharacters;
+    private AnalysisExecutionPermission analysisExecutionPermission = actor -> true;
+
+    @Autowired(required = false)
+    void analysisExecutionPermission(AnalysisExecutionPermission permission) {
+        this.analysisExecutionPermission = permission;
+    }
 
     public ProjectPortfolioController(ProjectPortfolioService projectService,
                                       ProjectRequirementAnalysisService analysisService,
@@ -112,7 +120,11 @@ public class ProjectPortfolioController {
             @PathVariable Long projectId,
             @RequestBody ImportRequirementsRequest request) {
         validateImportRequest(request);
-        RequestScope scope = scope();
+        String actor = workspaceResolver.resolveCurrentUsername();
+        if (request.analyzeAfterImport() && !analysisExecutionPermission.mayExecute(actor)) {
+            return ResponseEntity.status(403).build();
+        }
+        RequestScope scope = new RequestScope(actor, workspaceResolver.resolveCurrentContext());
         List<RequirementView> requirements = projectService.importRequirements(
                 projectId, request.requirements(), scope.username(), scope.context());
         var job = request.analyzeAfterImport()

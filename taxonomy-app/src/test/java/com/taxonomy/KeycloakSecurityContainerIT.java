@@ -504,7 +504,7 @@ class KeycloakSecurityContainerIT {
                 "client_secret", clientSecret,
                 "username", username,
                 "password", password,
-                "scope", "openid profile"));
+                "scope", "openid profile " + String.join(" ", com.taxonomy.security.access.ApiPermission.scopes().keySet())));
         HttpResponse<String> response = hostKeycloakPost(
                 "/realms/" + REALM + "/protocol/openid-connect/token", form);
         assertThat(response.statusCode())

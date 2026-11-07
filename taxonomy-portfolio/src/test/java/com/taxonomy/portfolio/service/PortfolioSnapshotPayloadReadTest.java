@@ -154,7 +154,7 @@ class PortfolioSnapshotPayloadReadTest {
     }
 
     @Test
-    void terminalAndRepeatedCopilotReadsOnlyTheAnalysisPayloadNeededToRankEachPass() {
+    void terminalAndRepeatedCopilotReadsOnlyPersistedMetadataWithoutFinalization() {
         try (var f = new Fixture()) {
             for (int read = 0; read < 2; read++) {
                 f.resetReads();
@@ -162,7 +162,24 @@ class PortfolioSnapshotPayloadReadTest {
                 assertThat(operation.status()).isEqualTo(AnalysisStatus.PARTIAL);
                 assertThat(operation.jobs()).extracting(AnalysisJobView::id).containsExactlyElementsOf(f.jobIds);
                 assertThat(operation.selectedSnapshotId()).isEqualTo(f.snapshotIds.get(1));
-                assertThat(f.payloadSelects()).as("One analysis payload per immutable pass, including repeated terminal polls")
+                assertThat(f.payloadSelects()).isEmpty();
+                f.assertNoResultEntityLoads();
+                assertThat(f.sql).noneMatch(sql -> sql.startsWith("update ") || sql.startsWith("insert "));
+            }
+            verifyNoInteractions(f.completion, f.selector);
+        }
+    }
+
+    @Test
+    void explicitCopilotResumeReadsOnlyTheAnalysisPayloadNeededToRankEachPass() {
+        try (var f = new Fixture()) {
+            for (int read = 0; read < 2; read++) {
+                f.resetReads();
+                var operation = f.copilot.resumeOperation(f.projectId, Fixture.OPERATION, "owner", f.scope);
+                assertThat(operation.status()).isEqualTo(AnalysisStatus.PARTIAL);
+                assertThat(operation.jobs()).extracting(AnalysisJobView::id).containsExactlyElementsOf(f.jobIds);
+                assertThat(operation.selectedSnapshotId()).isEqualTo(f.snapshotIds.get(1));
+                assertThat(f.payloadSelects()).as("One analysis payload per immutable pass, including repeated explicit recovery")
                         .hasSize(2).allSatisfy(sql -> assertThat(sql)
                                 .doesNotContain("gap_payload", "pattern_payload", "recommendation_payload"));
                 f.assertNoResultEntityLoads();
@@ -327,7 +344,7 @@ class PortfolioSnapshotPayloadReadTest {
         try (var f = new Fixture(true)) {
             for (int read = 0; read < 2; read++) {
                 f.resetReads();
-                var operation = f.copilot.getOperation(f.projectId, Fixture.OPERATION, "owner", f.scope);
+                var operation = f.copilot.resumeOperation(f.projectId, Fixture.OPERATION, "owner", f.scope);
                 assertThat(operation.selectedSnapshotId()).isEqualTo(f.snapshotIds.get(1));
                 verify(f.coverage, times(read + 1)).existsByNodeCodeAndReviewStatusAndSolutionScopeKey(
                         "BP-1000", ReviewStatus.CONFIRMED, PortfolioScope.key("owner", f.scope));
@@ -354,7 +371,7 @@ class PortfolioSnapshotPayloadReadTest {
     }
 
     @Test
-    void terminalSelectionStillRejectsAChangedCurrentRequirementVersion() {
+    void explicitTerminalResumeStillRejectsAChangedCurrentRequirementVersion() {
         try (var f = new Fixture()) {
             f.transaction(em -> {
                 var requirement = em.find(ProjectRequirement.class, f.requirementId);
@@ -364,7 +381,7 @@ class PortfolioSnapshotPayloadReadTest {
                 requirement.pointToVersion(version.getId(), Fixture.TIME.plusSeconds(20));
             });
             f.resetReads();
-            assertThatThrownBy(() -> f.copilot.getOperation(f.projectId, Fixture.OPERATION, "owner", f.scope))
+            assertThatThrownBy(() -> f.copilot.resumeOperation(f.projectId, Fixture.OPERATION, "owner", f.scope))
                     .isInstanceOfSatisfying(PortfolioException.class, failure ->
                             assertThat(failure.getKind()).isEqualTo(PortfolioException.Kind.CONFLICT));
             verifyNoInteractions(f.completion);
@@ -375,7 +392,7 @@ class PortfolioSnapshotPayloadReadTest {
     @Test
     void anExplicitContinuationIsNotFinalizedWhilePendingAndItsNewSnapshotIsRankedOnCompletion() {
         try (var f = new Fixture()) {
-            assertThat(f.copilot.getOperation(f.projectId, Fixture.OPERATION, "owner", f.scope).selectedSnapshotId())
+            assertThat(f.copilot.resumeOperation(f.projectId, Fixture.OPERATION, "owner", f.scope).selectedSnapshotId())
                     .isEqualTo(f.snapshotIds.get(1));
             f.transaction(em -> {
                 var job = em.find(RequirementAnalysisJob.class, f.jobIds.getFirst());
@@ -408,7 +425,7 @@ class PortfolioSnapshotPayloadReadTest {
                 requirement.pointToAnalysis(continuedId, Fixture.TIME.plusSeconds(31));
             });
             f.resetReads();
-            var completed = f.copilot.getOperation(f.projectId, Fixture.OPERATION, "owner", f.scope);
+            var completed = f.copilot.resumeOperation(f.projectId, Fixture.OPERATION, "owner", f.scope);
             assertThat(completed.selectedSnapshotId()).isEqualTo(continuedId);
             assertThat(completed.jobs().getFirst().items().getFirst().requirementVersionId()).isEqualTo(f.versionId);
             assertThat(f.payloadSelects()).hasSize(2).allSatisfy(sql -> assertThat(sql).doesNotContain("gap_payload"));
@@ -451,13 +468,13 @@ class PortfolioSnapshotPayloadReadTest {
                 });
                 return ranked;
             }).when(f.selector).selectForOperation(anyList());
-            f.copilot.getOperation(f.projectId, Fixture.OPERATION, "owner", f.scope);
+            f.copilot.resumeOperation(f.projectId, Fixture.OPERATION, "owner", f.scope);
             assertThat(f.projects.getRequirement(f.projectId, f.requirementId, "owner", f.scope).currentAnalysisSnapshotId())
-                    .as("An older terminal-status read must not restore its archived winner")
+                    .as("An older explicit finalizer must not restore its archived winner")
                     .isEqualTo(nextState == AnalysisStatus.PARTIAL ? continuedId : f.snapshotIds.get(1));
             verifyNoInteractions(f.completion);
             doCallRealMethod().when(f.selector).selectForOperation(anyList());
-            var fresh = f.copilot.getOperation(f.projectId, Fixture.OPERATION, "owner", f.scope);
+            var fresh = f.copilot.resumeOperation(f.projectId, Fixture.OPERATION, "owner", f.scope);
             if (nextState == AnalysisStatus.PARTIAL) {
                 assertThat(fresh.selectedSnapshotId()).isEqualTo(continuedId);
                 verify(f.completion).enrich(f.projectId, "owner", f.scope, false, false);

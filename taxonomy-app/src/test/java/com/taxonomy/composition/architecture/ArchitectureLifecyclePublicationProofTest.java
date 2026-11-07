@@ -17,7 +17,7 @@ import static org.mockito.Mockito.when;
 
 /** A durable command receipt proves its original publication only while Git retains that version. */
 @SpringBootTest
-@WithMockUser(username = "alice", roles = "ADMIN")
+@WithMockUser(username = "alice", roles = {"USER", "ARCHITECT", "ADMIN"})
 class ArchitectureLifecyclePublicationProofTest extends LifecycleTestSupport {
     @ParameterizedTest
     @ValueSource(booleans = {false, true})

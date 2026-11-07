@@ -33,7 +33,8 @@ available. Tree and graph selection stay synchronized, while navigation and
 filter changes preserve diagram position. Printing supports A0 and A1 output.
 Contextual help is available from the application views.
 
-One File/Edit/View/Tools/Help command system now serves the work areas. Search
+One compact toolbar combines the File/Edit/View/Tools/Help commands and work-area
+navigation. The score legend remains visible in one compact row. Search
 explains its modes with localized examples; semantic search accepts natural
 language. Selecting a hit or moving to the previous/next hit selects it in Graph
 Explorer while retaining architecture focus, filters and drafts. Application
@@ -73,6 +74,36 @@ retrieval; the second-tab correction belongs to this release. Remaining adapter
 identity, stored-event/status retention and expired-recovery work is tracked in
 [#1354](https://github.com/carstenartur/Taxonomy/issues/1354). This closure does not
 claim that every lifecycle adapter or retention case is complete.
+
+## REST access and Swagger
+
+Reader, analyst (`USER`), architect and administrator are independent application
+roles. Bearer integrations additionally require the named OAuth scopes for the
+complete operation. Repository visibility, current membership, workspace
+ownership and source restrictions remain additional checks. Technical
+administration alone grants no business-data editing permission; existing
+administrators who edit architectures need an explicit `ARCHITECT` assignment.
+
+Swagger documents each operation's roles, scopes, alternatives, conditional
+requirements and resource restrictions from the same ordered policy used for
+request authorization. The Keycloak configuration supports Authorization Code
+with PKCE and service-account Client Credentials, including a separate public
+Swagger client. Active Basic and browser-session mechanisms remain supported.
+Live identity-provider federation and deployment acceptance require the
+operator's actual identity-provider environment.
+
+Copilot status reads observe retained operations without resuming provider work.
+An explicit authorized resume action uses the stored operation identity and
+settings. Read-only callers do not implicitly create workspaces or Git storage.
+Integration retries recheck the retained operation's direction and current
+authority. Business publication through a configured connector requires its
+publication permission; external Git push and full synchronization additionally
+require technical administration. Browser sessions retain CSRF protection even
+when a request supplies an ignored protocol-credential header.
+
+See [security](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/en/SECURITY.md)
+and [Keycloak setup](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/en/KEYCLOAK_SETUP.md)
+for the role, scope and migration contracts.
 
 ## Scoped inventory evidence
 

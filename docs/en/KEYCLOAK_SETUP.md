@@ -17,532 +17,157 @@ commands and [database Pods](../../deploy/helm/taxonomy/DATABASE_PODS.md) for ex
 PostgreSQL/MSSQL Services. A successful preflight or guard startup is not proof of a
 successful OIDC login, role mapping or TLS setup in the target cluster.
 
-> **✅ Implementation Status: Available**
->
-> Keycloak/OIDC integration is implemented and can be activated via the `keycloak` Spring profile.
-> The default mode (without Keycloak) continues to use **form login** (for the GUI) and **HTTP Basic** (for the REST API).
-> Activate the `keycloak` profile to switch to OIDC-based authentication with Keycloak.
+## Authentication and authorization
 
-This document describes how to integrate the Taxonomy Architecture Analyzer with Keycloak for enterprise-grade identity management, including SSO federation with government identity providers via SAML 2.0 and OIDC.
+The `keycloak` Spring profile already implements browser OIDC login, Bearer JWT validation and role mapping. Activate the profile and configure the identity provider; no replacement `SecurityConfig`, custom token filter or HTTP Basic fallback is required. Without this profile, local form login and HTTP Basic remain available.
 
----
+The four application roles are `ROLE_READER`, `ROLE_USER` (Analyst; stored name retained), `ROLE_ARCHITECT` and `ROLE_ADMIN`. ADMIN is an independent technical-administration capability, not an implicit architecture editor or analysis runner. Assign ARCHITECT explicitly to administrators who need business writes. Existing explicit multi-role accounts, including the local bootstrap USER + ARCHITECT + ADMIN assignment, keep those capabilities. See the [role/scope matrix](SECURITY.md#roles-and-permissions).
 
-## Table of Contents
+Every permission-protected Bearer API operation requires an allowed application role within each required permission group and all its explicit OAuth scopes. There is no fallback for role-bearing tokens without scopes. Project/repository visibility, membership and personal-workspace ownership checks remain additional requirements. Read-only POST, analysis execution, import/export, business writes and administration have separate permissions. Unclassified writes remain denied, including for administrators.
 
-1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Quick Start with Docker Compose](#quick-start-with-docker-compose)
-4. [Keycloak Realm Configuration](#keycloak-realm-configuration)
-5. [Application Configuration](#application-configuration)
-6. [Role Mapping](#role-mapping)
-7. [User Federation](#user-federation)
-8. [Testing the Integration](#testing-the-integration)
-9. [Production Considerations](#production-considerations)
-10. [SSO Federation](#sso-federation)
-11. [Government SSO Scenarios](#government-sso-scenarios)
-12. [SSO Troubleshooting](#sso-troubleshooting)
+The catalogue can require several permission groups together. `POST /api/workspace/external/push` and `/api/workspace/external/full-sync` require ARCHITECT + `architecture:publish` **and** ADMIN + `admin:configuration` for Bearer clients; sessions need both roles. Swagger displays all required groups/scopes. `architecture:delete` covers dedicated REST DELETE endpoints, while `architecture:write` authorizes a complete command/DSL edit, including removing or replacing content. These are endpoint permissions, not semantic-diff restrictions; read-only scopes do not authorize edits.
 
----
-
-## Overview
-
-Keycloak provides centralized identity management with support for:
-
-- **OpenID Connect (OIDC)** — modern token-based authentication
-- **SAML 2.0** — federation with government identity providers
-- **LDAP/AD integration** — existing directory services
-- **Multi-factor authentication (MFA)** — hardware tokens, TOTP
-- **Single Sign-On (SSO)** — across multiple applications
-
-The integration replaces the built-in Spring Security form login with Keycloak-managed authentication while preserving the existing three-role authorization model (USER, ARCHITECT, ADMIN).
-
----
-
-## Architecture
-
-```
-┌─────────────┐     OIDC / JWT      ┌──────────────┐
-│  Browser     │ ◀─────────────────▶ │  Keycloak     │
-│  (User)      │                     │  Server       │
-└──────┬──────┘                     └──────┬───────┘
-       │                                    │
-       │  Authenticated request             │  Token validation
-       │  (JWT Bearer token)                │  (JWKS endpoint)
-       ▼                                    ▼
-┌──────────────────────────────────────────────────┐
-│  Taxonomy Architecture Analyzer                   │
-│  (Spring Security + OAuth2 Resource Server)        │
-│                                                    │
-│  SecurityConfig:                                   │
-│  - Validates JWT from Keycloak                     │
-│  - Maps Keycloak roles to Spring roles             │
-│  - Preserves RBAC (USER, ARCHITECT, ADMIN)         │
-└──────────────────────────────────────────────────┘
-```
-
----
+`GET /api/analyze-stream` and `GET /api/analyze-node` execute new LLM work and require ANALYSIS_RUN (USER or ARCHITECT and, for Bearer calls, `analysis:run`). The same permission guards lazy/default working-copy creation from `GET /api/workspace/current`. Readers without a ready working copy receive 204 and use the central read-only context; an existing ready working copy remains readable subject to resource checks.
 
 ## Quick Start with Docker Compose
-
-Use `docker-compose-keycloak.yml` to start a development environment with Keycloak:
 
 ```bash
 docker compose -f docker-compose-keycloak.yml up -d
 ```
 
-This starts:
-
-| Service | URL | Credentials |
-|---|---|---|
-| **Taxonomy Analyzer** | http://localhost:8080 | Keycloak-managed |
-| **Keycloak** | http://localhost:8180 | admin / admin |
-| **PostgreSQL** | localhost:5432 | taxonomy / taxonomy |
-
----
+This is a development composition, with the application at `http://localhost:8080` and Keycloak at `http://localhost:8180`. The imported development users and credentials are not a production provisioning method. Existing realms are not migrated by changing the realm-export file; follow [migration](KEYCLOAK_MIGRATION.md) before upgrading.
 
 ## Keycloak Realm Configuration
 
-### 1. Create the Realm
+Create/use the `taxonomy` realm and configure three separate client purposes:
 
-1. Log in to Keycloak Admin Console: http://localhost:8180
-2. Create a new realm: **taxonomy**
-
-### 2. Create the Client
-
-| Setting | Value |
-|---|---|
-| **Client ID** | `taxonomy-app` |
-| **Client Protocol** | openid-connect |
-| **Access Type** | confidential |
-| **Root URL** | `http://localhost:8080` |
-| **Valid Redirect URIs** | `http://localhost:8080/*` |
-| **Web Origins** | `http://localhost:8080` |
-
-### 3. Create Realm Roles
-
-Create three roles matching the application's authorization model:
-
-| Role | Description |
-|---|---|
-| `ROLE_USER` | Browse taxonomy, run analysis, search, export |
-| `ROLE_ARCHITECT` | Create/edit relations, commit DSL, manage branches |
-| `ROLE_ADMIN` | Admin endpoints, LLM diagnostics, user management |
-
-### 4. Create Users
-
-| Username | Roles | Purpose |
+| Client | Type and flow | Redirect / use |
 |---|---|---|
-| `admin` | ROLE_USER, ROLE_ARCHITECT, ROLE_ADMIN | Full administrator |
-| `architect` | ROLE_USER, ROLE_ARCHITECT | Architecture team |
-| `analyst` | ROLE_USER | Read-only analyst |
+| `taxonomy-app` | Confidential; Authorization Code | Server-side session login, callback `https://app.example/login/oauth2/code/keycloak`; secret stays on the server. |
+| `taxonomy-swagger` | Public; Authorization Code with PKCE S256 | Swagger callback `https://app.example/swagger-ui/oauth2-redirect.html`; no client secret. |
+| A deployment-specific service client, e.g. `taxonomy-export-service` | Confidential; Client Credentials/service accounts | Machine API calls; separate secret and explicit service-account permissions. |
 
-### 5. Configure Client Scopes (Role Mapping in JWT)
+Use exact deployment redirect URIs and origins, including any servlet context path. Enable the standard authorization-code flow for the browser clients. On `taxonomy-swagger`, disable client authentication, password/direct-access grants and service accounts, and require PKCE S256. Do not reuse the server session-login secret in Swagger. The service client needs service accounts enabled; interactive redirects and password grants are unnecessary for that purpose.
 
-Ensure realm roles are included in the JWT token:
+### Roles and organizational groups
 
-1. Go to **Client Scopes** → **roles** → **Mappers**
-2. Verify **realm roles** mapper is configured
-3. Token Claim Name: `realm_access.roles`
-4. Add to ID token: Yes
-5. Add to access token: Yes
+Create the four known realm roles:
+
+| Role | Capability |
+|---|---|
+| `ROLE_READER` | Read data and existing analyses; permitted exports. |
+| `ROLE_USER` | Analyst: read/export and execute analyses. |
+| `ROLE_ARCHITECT` | Architecture editing, import, publication and analysis execution. |
+| `ROLE_ADMIN` | Technical administration, users/sessions and diagnostics; no implicit business writes or analysis execution. |
+
+Assign roles directly or through identity-provider-managed organizational groups. For example, map `taxonomy-readers` to READER, `taxonomy-analysts` to USER, `taxonomy-architects` to ARCHITECT, and `taxonomy-admins` to ADMIN. These mappings are independent; do not make ADMIN a composite that silently includes all business capabilities. If one account needs several capabilities, assign those roles explicitly. Choose any default role deliberately; USER allows analysis execution and is not a read-only default.
+
+Configure the role mapper to emit known role strings under `realm_access.roles` in access tokens and the claims used for browser OIDC login. Both browser and JWT role extraction use `taxonomy.keycloak.role-claim-path` (default `realm_access.roles`). Only the four known role strings are accepted; arbitrary group names and unknown roles do not grant access.
+
+### API client scopes
+
+Create client scopes with the exact names in the [permission matrix](SECURITY.md#roles-and-permissions), and ensure requested scopes are included in the access-token `scope` claim. The application also supports the standard `scp` claim through Spring's scope converter. Role claims and scope claims are separate: neither supplies the other.
+
+Assign the needed API client scopes as **optional** scopes to `taxonomy-swagger`, so the user can select them in Swagger's Authorize dialog. Configure the authorized API client scopes for service clients as well. Keep OIDC login scopes such as `openid`, `profile`, `email` and `roles`; they do not satisfy API permissions. Limit role scope mappings and API scopes to the capabilities intended for each client/account.
+
+For a read-only export integration, use `ROLE_READER` with `architecture:read integration:export`. Reading existing analyses additionally needs `analysis:read`; backups have separate scopes. The access table on each Swagger operation gives all required groups/scopes, role alternatives and resource restrictions.
 
 ### 6. Include the API audience in access tokens
 
-The Keycloak profile requires an access-token `aud` containing `taxonomy-app` by default. A valid signature, issuer and `azp` (authorized party) alone do not satisfy this requirement. Tokens with another audience or no audience receive HTTP 401; a list of audiences is accepted when it contains the configured API audience.
+The Keycloak profile requires an access-token `aud` containing `taxonomy-app` by default. A valid signature, issuer and `azp` alone are insufficient; a missing/wrong audience produces HTTP 401. A list is accepted when it contains the configured audience.
 
-For each client authorized to call this API, add an **Audience** mapper to its dedicated client scope (or an explicitly assigned API client scope). Set **Included Client Audience** to `taxonomy-app`, **Add to access token** to **On**, and **Add to ID token** to **Off**. The realm export uses `oidc-audience-mapper` with `included.client.audience=taxonomy-app` and `access.token.claim=true`. Keep the existing role mappers. The shipped realm includes this mapper for a fresh import; an existing realm needs the mapper added before upgrading the application. Obtain a new access token afterward and verify its `aud` before testing the API.
+Add an Audience mapper for every client authorized to call the API, including `taxonomy-swagger` and service clients: **Included Client Audience** = `taxonomy-app`, **Add to access token** = On, **Add to ID token** = Off. Keep the role mappers. Obtain a fresh token after mapper/scope changes. Importing a development realm does not update an existing realm automatically.
 
-The application defaults `spring.security.oauth2.resourceserver.jwt.audiences` to `${KEYCLOAK_CLIENT_ID:taxonomy-app}`. If you set `KEYCLOAK_CLIENT_ID` to a custom client, change **Included Client Audience** to that client as well. For a distinct API resource, set the standard Spring property `spring.security.oauth2.resourceserver.jwt.audiences` (environment variable `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES`) to that resource, and configure **Included Custom Audience** with the same value. For example, use `taxonomy-api` in both places. Keep the required audience nonempty. Overriding only the standard Spring browser client-ID property does not change the `KEYCLOAK_CLIENT_ID` placeholder; set the API audience explicitly in that case.
-
----
+The application defaults `spring.security.oauth2.resourceserver.jwt.audiences` to `${KEYCLOAK_CLIENT_ID:taxonomy-app}`. For a custom `KEYCLOAK_CLIENT_ID`, align the mapper. To use a separate resource audience, set `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES=taxonomy-api` and the mapper's **Included Custom Audience** to `taxonomy-api`. Keep the required audience nonempty. A standard Spring override of only the browser client ID does not change the `KEYCLOAK_CLIENT_ID` placeholder; configure the API audience explicitly in that case. Changing the Swagger client ID does not change the API audience.
 
 ## Application Configuration
 
-### Environment Variables for Keycloak
+Keep deployment secrets in the selected secret store. A standalone configuration uses:
 
 ```bash
-# Enable OAuth2/OIDC authentication
-SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak:8180/realms/taxonomy
-SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak:8180/realms/taxonomy/protocol/openid-connect/certs
-
-# Client credentials (for token exchange / service-to-service)
-KEYCLOAK_CLIENT_ID=taxonomy-app
-SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_CLIENT_SECRET=<client-secret-from-keycloak>
-SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI=http://keycloak:8180/realms/taxonomy
-
-# Optional distinct API audience; configure its Keycloak audience mapper too
-# SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES=taxonomy-api
+export SPRING_PROFILES_ACTIVE=postgres,keycloak
+export KEYCLOAK_ISSUER_URI=https://idp.example/realms/taxonomy
+export KEYCLOAK_JWK_SET_URI=https://idp.example/realms/taxonomy/protocol/openid-connect/certs
+export KEYCLOAK_CLIENT_ID=taxonomy-app
+export KEYCLOAK_CLIENT_SECRET='<server-login-client-secret>'
+export KEYCLOAK_SWAGGER_CLIENT_ID=taxonomy-swagger
+export KEYCLOAK_ADMIN_URL=https://idp.example
 ```
 
-### Spring Security Configuration Changes
+Configure database and production profiles as described in the deployment guide. `taxonomy.keycloak.principal-mode` defaults to `LEGACY`, preserving existing username-based ownership. `STABLE` is an explicit opt-in resolving issuer/subject to a persisted principal, and is required for portable backups. Do not switch an existing installation to STABLE without a verified ownership migration; changing the display name is not a verified identity link.
 
-The current `SecurityConfig` uses form login and HTTP Basic. To switch to Keycloak:
+## Swagger Authorization Code with PKCE
 
-1. Add `spring-boot-starter-oauth2-resource-server` dependency
-2. Configure JWT validation in `SecurityConfig`
-3. Map Keycloak realm roles to Spring Security authorities
-4. Keep HTTP Basic as fallback for REST clients (optional)
+The application configures:
 
-**Example SecurityConfig adjustment:**
-
-```java
-@Bean
-public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-    http
-        .authorizeHttpRequests(auth -> auth
-            .requestMatchers("/api/admin/**").hasRole("ADMIN")
-            .requestMatchers(HttpMethod.POST, "/api/relations/**").hasRole("ARCHITECT")
-            .requestMatchers(HttpMethod.PUT, "/api/relations/**").hasRole("ARCHITECT")
-            .requestMatchers(HttpMethod.DELETE, "/api/relations/**").hasRole("ARCHITECT")
-            .requestMatchers("/api/**").authenticated()
-            .requestMatchers("/actuator/health/**").permitAll()
-            .anyRequest().authenticated()
-        )
-        .oauth2ResourceServer(oauth2 -> oauth2
-            .jwt(jwt -> jwt
-                .jwtAuthenticationConverter(keycloakJwtConverter())
-            )
-        );
-    return http.build();
-}
-
-private JwtAuthenticationConverter keycloakJwtConverter() {
-    JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-    converter.setJwtGrantedAuthoritiesConverter(jwt -> {
-        Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
-        Collection<String> roles = (Collection<String>) realmAccess.get("roles");
-        return roles.stream()
-            .filter(role -> role.startsWith("ROLE_"))
-            .map(SimpleGrantedAuthority::new)
-            .collect(Collectors.toList());
-    });
-    return converter;
-}
+```properties
+springdoc.swagger-ui.oauth.client-id=${KEYCLOAK_SWAGGER_CLIENT_ID:taxonomy-swagger}
+springdoc.swagger-ui.oauth.use-pkce-with-authorization-code-grant=true
 ```
 
-> **Note:** Keycloak/OIDC integration is fully implemented. Activate the `keycloak` Spring profile to switch from the default form-login mode to OIDC-based authentication with Keycloak.
+Open Swagger UI and use **Authorize** with the public Swagger client. Select the API scopes needed for the operations, sign in at the identity provider and return through the exact Swagger redirect URI. Do not enter a confidential client secret in the browser. A successful login does not grant operations whose role, scope or repository/workspace check is missing.
 
----
+OpenAPI advertises only active authentication schemes, including `sessionCookie` as an alternative in the OIDC profile. Existing OIDC sessions use roles and CSRF protection for browser writes; JWTs require roles and all scopes. Operations retain functional tags and show a policy-derived access table with every required permission group, its role alternatives, all Bearer scopes, operation effect, resource restrictions and 401/403 responses. Default OAuth URLs are the issuer plus `/protocol/openid-connect/auth` and `/protocol/openid-connect/token`. Override them with `taxonomy.keycloak.swagger.authorization-url` and `taxonomy.keycloak.swagger.token-url` when the provider uses other endpoints or the browser needs different public URLs.
 
-## Role Mapping
+## Service accounts and Client Credentials
 
-The application's three roles map directly to Keycloak realm roles:
+Use a separate confidential client for automation. Assign its service account explicit application roles, authorize the requested API scopes and include the API audience. Private repository operations also require memberships for the authenticated service principal or trusted repository-role claims. Global ADMIN does not bypass these checks.
 
-| Application Role | Keycloak Realm Role | Spring Authority |
-|---|---|---|
-| USER | `ROLE_USER` | `ROLE_USER` |
-| ARCHITECT | `ROLE_ARCHITECT` | `ROLE_ARCHITECT` |
-| ADMIN | `ROLE_ADMIN` | `ROLE_ADMIN` |
-
-### Composite Roles (Optional)
-
-Create composite roles in Keycloak for convenience:
-
-| Composite Role | Includes |
-|---|---|
-| `architect` | ROLE_USER + ROLE_ARCHITECT |
-| `admin` | ROLE_USER + ROLE_ARCHITECT + ROLE_ADMIN |
-
----
-
-## User Federation
-
-### LDAP / Active Directory
-
-Keycloak can federate users from LDAP or Active Directory:
-
-1. Go to **User Federation** → **Add provider** → **ldap**
-2. Configure connection:
-   - **Connection URL:** `ldap://ldap.example.gov:389`
-   - **Users DN:** `ou=users,dc=example,dc=gov`
-   - **Bind DN:** `cn=service-account,dc=example,dc=gov`
-3. Map LDAP groups to Keycloak roles:
-   - LDAP group `taxonomy-users` → ROLE_USER
-   - LDAP group `taxonomy-architects` → ROLE_ARCHITECT
-   - LDAP group `taxonomy-admins` → ROLE_ADMIN
-
-### SAML Identity Provider (Government SSO)
-
-See [SSO Federation](#sso-federation) below for SAML/OIDC federation with government identity providers.
-
----
-
-## Testing the Integration
-
-### Obtain a Token
+For a minimal read-only export client, configure READER and `architecture:read integration:export`, then obtain a token using its own credentials:
 
 ```bash
-# Get an access token from Keycloak
-TOKEN=$(curl -s -X POST \
-  http://localhost:8180/realms/taxonomy/protocol/openid-connect/token \
-  -d "client_id=taxonomy-app" \
-  -d "client_secret=<secret>" \
-  -d "username=admin" \
-  -d "password=admin" \
-  -d "grant_type=password" | jq -r .access_token)
-
-echo $TOKEN
+TOKEN=$(curl --fail --silent --show-error \
+  'https://idp.example/realms/taxonomy/protocol/openid-connect/token' \
+  --data-urlencode 'grant_type=client_credentials' \
+  --data-urlencode 'client_id=taxonomy-export-service' \
+  --data-urlencode "client_secret=${TAXONOMY_SERVICE_CLIENT_SECRET}" \
+  --data-urlencode 'scope=architecture:read integration:export' | jq -er '.access_token')
+curl --fail -H "Authorization: Bearer $TOKEN" 'https://app.example/api/taxonomy'
 ```
 
-### Use the Token with the API
+Inspect tokens locally without publishing them. A suitable payload includes the verified issuer/subject, `aud` containing `taxonomy-app`, `realm_access.roles` containing `ROLE_READER`, and `scope` containing the two requested scopes. A scope-only token is insufficient. Use the operation description to determine the additional resource access required for exports.
 
-```bash
-# Call a protected endpoint with the JWT
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8080/api/taxonomy
+## Repository grants from trusted claims
 
-# Verify role-based access
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8080/api/admin/users
-```
-
-### Inspect the Token
-
-```bash
-# Decode the JWT (base64)
-echo $TOKEN | cut -d. -f2 | base64 -d | jq .
-```
-
-Expected payload includes:
+For organization-specific repository access, an identity-provider mapper may issue:
 
 ```json
 {
-  "realm_access": {
-    "roles": ["ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN"]
-  },
-  "preferred_username": "admin"
+  "taxonomy_repository_roles": {
+    "repository-a": "READER",
+    "repository-b": "CONTRIBUTOR"
+  }
 }
 ```
 
----
+Each key is an exact repository ID and each value is one `READER`, `CONTRIBUTOR`, `MAINTAINER` or `OWNER` string. Arrays, `ROLE_` prefixes, blank/padded keys and unknown values are invalid; a malformed entry invalidates the whole map. Keys are matched literally; wildcard expansion is not supported. Supply the claim only through validated JWT/OIDC identity-provider claims, bound to the currently authenticated actor. It is evaluated alongside stored memberships; it cannot grant access on behalf of another username supplied in a request. Repository grants do not replace application roles, API scopes, lifecycle checks or personal-workspace ownership. See [Security](SECURITY.md#organizational-groups-and-repository-grants).
+
+## User Federation and SSO Federation
+
+Configure LDAP/Active Directory user federation or upstream SAML/OIDC identity providers in Keycloak. The application remains an OIDC client and JWT resource server. For SAML, exchange metadata and validate signatures at the broker; for LDAP/AD, configure directory connectivity and group mapping there. There is no direct SAML login path or local organizational-group database in Taxonomy.
+
+Map trusted upstream groups/attributes to the explicit application roles and, where needed, the repository claim above. Configure MFA, identity-provider session policies, deprovisioning and audit events at the provider; verify the resulting application session and token behavior in the deployment. Do not infer application access merely from successful federation.
+
+### Generic OIDC provider
+
+The implemented OIDC profile can be configured for another provider. Override the Spring client/provider settings under `spring.security.oauth2.client.registration.keycloak.*` and `spring.security.oauth2.client.provider.keycloak.*`, plus `spring.security.oauth2.resourceserver.jwt.issuer-uri`, `jwk-set-uri` and `audiences`. Align the username claim with the legacy ownership contract, and set `taxonomy.keycloak.role-claim-path` for the provider's nested role claim. The emitted roles must still be the four known `ROLE_*` strings. Override both Swagger OAuth URLs when they differ from the Keycloak defaults. Provider-specific account-console/logout behavior also needs deployment verification.
+
+## Testing the Integration and Troubleshooting
+
+Validate browser login with the confidential server client and Swagger login with the separate public PKCE client. Test READER reads/exports and write denial; USER analysis execution; ARCHITECT business writes; ADMIN administration with business writes denied unless ARCHITECT is explicitly assigned. For Bearer clients, satisfy every required permission group and all scopes, then remove each required role/group or scope independently and expect denial. Include the analysis-running GETs and the combined external push/full-sync permissions. Exercise private-repository and foreign-workspace denials as well.
+
+| Result | Check |
+|---|---|
+| HTTP 401 | Issuer, signature/JWK, expiry, audience and token validity; `azp` is not the API audience. |
+| HTTP 403 | Role satisfaction for every permission group, all operation scopes, repository membership/claim and workspace ownership. |
+| Swagger redirect/PKCE failure | Public Swagger client, exact redirect/origin, PKCE S256, public authorization/token URLs. |
+| Login succeeds but roles are absent | Trusted group-to-role mapping, role claim path and token/client scope mapping. |
+| Existing private data appears absent | Principal mode and legacy username alignment; do not relink by display name. |
+
+Use fresh tokens after permissions/mappers change. Keep clocks synchronized and trust the deployed HTTPS certificate chain. Protect Swagger/OpenAPI according to deployment policy; `TAXONOMY_SWAGGER_PUBLIC` controls exposure, not API authorization. Review authentication/audit events without logging secrets or complete tokens.
 
 ## Production Considerations
 
-### High Availability
+Use HTTPS, exact redirect/origin allowlists, separately managed client secrets, an appropriately operated identity-provider database and backup/recovery process. Verify provider availability, TLS, real browser login, roles, scopes and resource restrictions in the target environment. A startup check does not prove those flows.
 
-- Deploy Keycloak in a clustered configuration (Infinispan cache)
-- Use an external PostgreSQL database for Keycloak
-- Place behind a load balancer with sticky sessions
-
-### Security
-
-- Enable HTTPS for Keycloak (required for production)
-- Configure CORS appropriately
-- Set strong admin credentials
-- Enable audit events in Keycloak
-
-### Network Topology
-
-```
-┌───────────────┐     ┌───────────────┐     ┌───────────────┐
-│  Load Balancer │────▶│  Keycloak      │────▶│  LDAP / AD     │
-│  (TLS)         │     │  (OIDC/SAML)   │     │  (User Store)  │
-└───────┬───────┘     └───────────────┘     └───────────────┘
-        │
-        ▼
-┌───────────────┐     ┌───────────────┐
-│  Taxonomy App  │────▶│  PostgreSQL    │
-│  (Spring Boot) │     │  (Data Store)  │
-└───────────────┘     └───────────────┘
-```
-
----
-
-## Related Documentation
-
-- [Security](SECURITY.md) — current security architecture
-- [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) — government deployment checklist
-- [Configuration Reference](CONFIGURATION_REFERENCE.md) — all environment variables
-
----
-
-## SSO Federation
-
-Government environments typically require integration with a central identity provider (IdP) for:
-
-- **Centralized user management** — no separate user accounts per application
-- **Single Sign-On** — authenticate once, access multiple applications
-- **Multi-factor authentication** — enforce MFA policies centrally
-- **Audit compliance** — centralized authentication logs
-- **De-provisioning** — disable access across all applications from one place
-
-The Taxonomy Architecture Analyzer supports SSO through **Keycloak as an identity broker**, which federates with government identity providers via SAML 2.0 or OIDC.
-
-### Supported Protocols
-
-| Protocol | Use Case | Standard |
-|---|---|---|
-| **SAML 2.0** | Government IdPs (ADFS, Shibboleth, BundID) | OASIS SAML 2.0 |
-| **OpenID Connect** | Modern cloud IdPs (Azure AD, Google, Keycloak-to-Keycloak) | OpenID Connect Core 1.0 |
-| **LDAP** | Direct directory integration (Active Directory, OpenLDAP) | RFC 4511 |
-
-### Architecture Patterns
-
-**Pattern A: Keycloak as Identity Broker (Recommended)**
-
-```
-┌─────────────┐                    ┌──────────────┐
-│  Government  │  SAML 2.0 / OIDC  │              │
-│  Identity    │ ◀────────────────▶ │  Keycloak    │
-│  Provider    │                    │  (Broker)    │
-└─────────────┘                    └──────┬───────┘
-                                          │
-                                   OIDC / JWT
-                                          │
-                                          ▼
-                                   ┌──────────────┐
-                                   │  Taxonomy     │
-                                   │  Analyzer     │
-                                   └──────────────┘
-```
-
-**Pattern B: Direct SAML Integration**
-
-When Keycloak is not permitted or a lightweight integration is preferred. Requires `spring-security-saml2-service-provider` dependency.
-
-### SAML 2.0 Federation via Keycloak
-
-1. **In Keycloak:** Add the government IdP as an Identity Provider
-   - Go to **Identity Providers** → **Add provider** → **SAML v2.0**
-   - Enter the IdP's **metadata URL** or upload the metadata XML
-
-2. **Configure SAML settings:**
-
-   | Setting | Value |
-   |---|---|
-   | **Alias** | `gov-idp` |
-   | **Display Name** | Government SSO |
-   | **Import from URL** | `https://idp.example.gov/metadata` |
-   | **NameID Policy Format** | `urn:oasis:names:tc:SAML:2.0:nameid-format:persistent` |
-   | **Principal Type** | Subject NameID |
-   | **First Login Flow** | `first broker login` (creates local Keycloak user on first SSO login) |
-
-3. **Map SAML attributes to Keycloak:**
-
-   | SAML Attribute | Keycloak Attribute | Purpose |
-   |---|---|---|
-   | `urn:oid:0.9.2342.19200300.100.1.3` | `email` | Email address |
-   | `urn:oid:2.5.4.42` | `firstName` | First name |
-   | `urn:oid:2.5.4.4` | `lastName` | Last name |
-   | `urn:oid:1.3.6.1.4.1.5923.1.1.1.7` | `groups` | Group membership (for role mapping) |
-
-**Service Provider Metadata** — Keycloak provides SP metadata for the government IdP at:
-```
-https://keycloak.example.gov/realms/taxonomy/protocol/saml/descriptor
-```
-
-### OIDC Federation via Keycloak
-
-1. **In Keycloak:** Add an OIDC Identity Provider
-   - Go to **Identity Providers** → **Add provider** → **OpenID Connect v1.0**
-
-2. **Configure OIDC settings:**
-
-   | Setting | Value |
-   |---|---|
-   | **Alias** | `gov-oidc` |
-   | **Authorization URL** | `https://idp.example.gov/authorize` |
-   | **Token URL** | `https://idp.example.gov/token` |
-   | **Client ID** | Provided by the government IdP |
-   | **Client Secret** | Provided by the government IdP |
-   | **Default Scopes** | `openid profile email` |
-
-### Direct Spring Security OIDC (Without Keycloak)
-
-For direct integration without Keycloak:
-
-```properties
-# application-sso.properties
-spring.security.oauth2.client.registration.gov.client-id=taxonomy-app
-spring.security.oauth2.client.registration.gov.client-secret=${GOV_SSO_CLIENT_SECRET}
-spring.security.oauth2.client.registration.gov.scope=openid,profile,email
-spring.security.oauth2.client.provider.gov.issuer-uri=https://idp.example.gov
-```
-
-### Role Mapping from SSO
-
-Government IdPs typically provide group membership as SAML attributes or OIDC claims. Configure Keycloak to map these to application roles:
-
-1. Go to **Identity Providers** → **gov-idp** → **Mappers**
-2. Add a mapper:
-
-   | Setting | Value |
-   |---|---|
-   | **Mapper Type** | Attribute Importer (SAML) / Claim to Role (OIDC) |
-   | **Attribute Name** | `memberOf` or `groups` |
-   | **Attribute Value** | `taxonomy-users` |
-   | **Role** | `ROLE_USER` |
-
-3. Repeat for `taxonomy-architects` → `ROLE_ARCHITECT` and `taxonomy-admins` → `ROLE_ADMIN`
-
-**Default Role Assignment:** Configure a default role for new SSO users in **Realm Settings** → **Default Roles** → Add `ROLE_USER`.
-
-### Session Management
-
-| Event | Behavior |
-|---|---|
-| **Login** | User redirected to Keycloak → IdP → back to application with JWT |
-| **Session duration** | Controlled by Keycloak session settings (default: 30 minutes) |
-| **Token refresh** | Application refreshes JWT using refresh token |
-| **Logout** | Application → Keycloak → IdP (front-channel or back-channel logout) |
-| **Idle timeout** | Configurable in Keycloak realm settings |
-
----
-
-## Government SSO Scenarios
-
-### Scenario 1: Federal Agency (BundID / Nutzerkonto Bund)
-
-| Aspect | Configuration |
-|---|---|
-| **Protocol** | SAML 2.0 |
-| **IdP** | BundID / Nutzerkonto Bund |
-| **Authentication** | eID (Personalausweis), username/password |
-| **MFA** | Enforced by IdP |
-| **Integration** | Keycloak as broker → SAML federation |
-
-### Scenario 2: State Agency (Landesportal)
-
-| Aspect | Configuration |
-|---|---|
-| **Protocol** | SAML 2.0 or OIDC (varies by state) |
-| **IdP** | State identity portal |
-| **Authentication** | Username/password + MFA |
-| **Integration** | Keycloak as broker |
-
-### Scenario 3: Enterprise with Active Directory
-
-| Aspect | Configuration |
-|---|---|
-| **Protocol** | LDAP + Kerberos (SPNEGO) or ADFS (SAML) |
-| **IdP** | Active Directory Federation Services (ADFS) |
-| **Authentication** | Windows Integrated Authentication |
-| **Integration** | Keycloak LDAP federation or ADFS SAML broker |
-
-### Scenario 4: Multi-Organization Collaboration
-
-| Aspect | Configuration |
-|---|---|
-| **Protocol** | OIDC (inter-organizational) |
-| **IdP** | Each organization's IdP |
-| **Authentication** | Organization-managed |
-| **Integration** | Multiple IdPs federated through Keycloak |
-
----
-
-## SSO Troubleshooting
-
-| Problem | Cause | Solution |
-|---|---|---|
-| Redirect loop after login | Incorrect redirect URI in Keycloak | Verify `Valid Redirect URIs` in client settings |
-| "Invalid token" errors | Clock skew between servers | Synchronize clocks (NTP) |
-| Roles not mapped | SAML attributes not forwarded | Check IdP attribute release policy |
-| User created without roles | No group-to-role mapping | Configure Keycloak mappers |
-| SSL/TLS errors | Self-signed certificates | Import CA cert into Java truststore |
-
-**Diagnostic Steps:**
-
-1. **Check Keycloak events:** Admin Console → Events → Login Events
-2. **Inspect JWT contents:** Decode the token (see [Testing the Integration](#testing-the-integration))
-3. **Enable debug logging:** `LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY=DEBUG`
-4. **Verify SAML assertion:** Check the SAML response from the IdP for attribute names and values
+See [Security](SECURITY.md), [Migration](KEYCLOAK_MIGRATION.md), [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) and [Configuration Reference](CONFIGURATION_REFERENCE.md).

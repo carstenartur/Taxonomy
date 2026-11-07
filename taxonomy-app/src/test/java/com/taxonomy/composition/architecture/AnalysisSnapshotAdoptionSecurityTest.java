@@ -25,15 +25,15 @@ class AnalysisSnapshotAdoptionSecurityTest {
     @Autowired AnalysisSnapshotAdoptionService service;
     private MockMvc mvc;
     @BeforeEach void setup() { reset(service); mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build(); }
-    @Test void realFiltersRequireArchitectOrAdminAndCsrfForBothEndpoints() throws Exception {
+    @Test void realFiltersRequireArchitectAndCsrfForBothEndpoints() throws Exception {
         for (String path : java.util.List.of("/api/architecture/editor/snapshot-adoptions/preview","/api/architecture/editor/snapshot-adoptions")) {
             mvc.perform(post(path).with(user("alice").roles("USER")).with(csrf())).andExpect(status().isForbidden());
             mvc.perform(post(path).with(user("alice").roles("ARCHITECT"))).andExpect(status().isForbidden());
             mvc.perform(post(path).with(user("alice").roles("ADMIN")).with(csrf().useInvalidToken())).andExpect(status().isForbidden());
             mvc.perform(post(path).with(csrf())).andExpect(status().isUnauthorized());
+            mvc.perform(post(path).with(user("alice").roles("ADMIN")).with(csrf())).andExpect(status().isForbidden());
             // Empty request reaches MVC validation, proving it passed the real authorization/CSRF filters.
             mvc.perform(post(path).with(user("alice").roles("ARCHITECT")).with(csrf())).andExpect(status().isBadRequest());
-            mvc.perform(post(path).with(user("alice").roles("ADMIN")).with(csrf())).andExpect(status().isBadRequest());
         }
         verifyNoInteractions(service);
     }

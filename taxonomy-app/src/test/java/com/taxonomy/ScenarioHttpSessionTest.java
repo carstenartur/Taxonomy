@@ -221,7 +221,7 @@ class ScenarioHttpSessionTest {
         @Bean CountingPasswordEncoder passwords() { return new CountingPasswordEncoder(); }
         @Bean InMemoryUserDetailsManager users(CountingPasswordEncoder passwords) {
             return new InMemoryUserDetailsManager(User.withUsername("admin")
-                    .password(passwords.encode(ScenarioArchitectureAcceptanceTest.PASSWORD)).roles("ADMIN").build());
+                    .password(passwords.encode(ScenarioArchitectureAcceptanceTest.PASSWORD)).roles("USER", "ARCHITECT", "ADMIN").build());
         }
         @Bean PasswordChangeRequiredFilter passwordChange() { return new PasswordChangeRequiredFilter(null, false); }
         @Bean RateLimitFilter rateLimit() { return new RateLimitFilter(); }

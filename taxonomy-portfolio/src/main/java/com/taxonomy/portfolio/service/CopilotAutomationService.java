@@ -153,6 +153,19 @@ public class CopilotAutomationService {
         if (jobs.isEmpty()) {
             throw PortfolioException.notFound("Copilot operation not found: " + operationId);
         }
+        return observedView(definition(jobs), jobs, username, context);
+    }
+
+    /** Explicitly recover orchestration and completion using the persisted run definition. */
+    public CopilotOperationView resumeOperation(
+            Long projectId,
+            String operationId,
+            String username,
+            WorkspaceContext context) {
+        List<JobWithKey> jobs = jobsForOperation(projectId, operationId, username, context);
+        if (jobs.isEmpty()) {
+            throw PortfolioException.notFound("Copilot operation not found: " + operationId);
+        }
         OperationDefinition definition = definition(jobs);
         if (!operationTerminal(jobs, definition.totalPasses())) {
             schedule(definition, username, context);
@@ -292,34 +305,50 @@ public class CopilotAutomationService {
             OperationDefinition definition,
             String username,
             WorkspaceContext context) {
-        String executionKey = PortfolioScope.key(username, context)
-                + "|" + definition.operationId();
-        try {
-            running.computeIfAbsent(executionKey, ignored -> {
-                CompletableFuture<Void> future = new CompletableFuture<>();
-                coordinator.execute(() -> {
+        String executionKey = executionKey(definition, username, context);
+        while (true) {
+            CompletableFuture<Void> future = new CompletableFuture<>();
+            CompletableFuture<Void> existing;
+            // Readers must see even an inline worker, while competing submissions wait for admission.
+            synchronized (future) {
+                existing = running.putIfAbsent(executionKey, future);
+                if (existing == null) {
                     try {
-                        execute(definition, username, context);
-                        future.complete(null);
-                    } catch (Throwable failure) {
-                        LOGGER.error(
-                                "Copilot operation {} for project {} requirement {} stopped unexpectedly",
-                                definition.operationId(),
-                                definition.projectId(),
-                                definition.requirementId(),
-                                failure);
-                        future.completeExceptionally(failure);
-                    } finally {
+                        coordinator.execute(() -> {
+                            try {
+                                execute(definition, username, context);
+                                future.complete(null);
+                            } catch (Throwable failure) {
+                                LOGGER.error(
+                                        "Copilot operation {} for project {} requirement {} stopped unexpectedly",
+                                        definition.operationId(),
+                                        definition.projectId(),
+                                        definition.requirementId(),
+                                        failure);
+                                future.completeExceptionally(failure);
+                            } finally {
+                                running.remove(executionKey, future);
+                            }
+                        });
+                    } catch (RejectedExecutionException rejected) {
                         running.remove(executionKey, future);
+                        throw PortfolioException.unavailable(
+                                "Copilot coordinator capacity is exhausted; the persisted operation can be resumed later",
+                                rejected);
                     }
-                });
-                return future;
-            });
-        } catch (RejectedExecutionException rejected) {
-            throw PortfolioException.unavailable(
-                    "Copilot coordinator capacity is exhausted; the persisted operation can be resumed later",
-                    rejected);
+                    return;
+                }
+            }
+            synchronized (existing) {
+                if (existing.isDone() || running.get(executionKey) == existing) return;
+            }
+            // The previous submission rejected and removed its incomplete reservation; retry admission.
         }
+    }
+
+    private static String executionKey(
+            OperationDefinition definition, String username, WorkspaceContext context) {
+        return PortfolioScope.key(username, context) + "|" + definition.operationId();
     }
 
     private void execute(
@@ -446,7 +475,7 @@ public class CopilotAutomationService {
         });
     }
 
-    /** Finalize the exact job snapshot used by the response, including completion during a status read. */
+    /** Finalize the exact job snapshot returned by an explicit start or resume request. */
     private CopilotOperationView finalizedView(
             OperationDefinition definition,
             List<JobWithKey> jobs,
@@ -461,6 +490,30 @@ public class CopilotAutomationService {
             List<JobWithKey> entries,
             String username,
             WorkspaceContext context) {
+        return view(definition, entries, username, context,
+                aggregateStatus(entries, definition.totalPasses()));
+    }
+
+    /** Observe completion only after this process's coordinator has finished finalization. */
+    private CopilotOperationView observedView(
+            OperationDefinition definition,
+            List<JobWithKey> entries,
+            String username,
+            WorkspaceContext context) {
+        AnalysisStatus status = aggregateStatus(entries, definition.totalPasses());
+        if (status != AnalysisStatus.CANCELLED && isTerminal(status)) {
+            CompletableFuture<Void> execution = running.get(executionKey(definition, username, context));
+            if (execution != null && !execution.isDone()) status = AnalysisStatus.RUNNING;
+        }
+        return view(definition, entries, username, context, status);
+    }
+
+    private CopilotOperationView view(
+            OperationDefinition definition,
+            List<JobWithKey> entries,
+            String username,
+            WorkspaceContext context,
+            AnalysisStatus status) {
         OperationDefinition persistedDefinition = definition(entries);
         if (!persistedDefinition.equals(definition)) {
             throw PortfolioException.conflict(
@@ -470,7 +523,6 @@ public class CopilotAutomationService {
                 .sorted(Comparator.comparingInt(entry -> entry.key().pass()))
                 .toList();
         List<AnalysisJobView> jobs = ordered.stream().map(JobWithKey::job).toList();
-        AnalysisStatus status = aggregateStatus(ordered, definition.totalPasses());
         int completed = (int) jobs.stream().filter(job -> isTerminal(job.status())).count();
         Set<String> snapshots = new LinkedHashSet<>();
         for (AnalysisJobView job : jobs) {
@@ -653,8 +705,10 @@ public class CopilotAutomationService {
     private static String message(AnalysisStatus status, int completed, int total) {
         return switch (status) {
             case PENDING -> "Copilot is queued (" + completed + "/" + total + " passes complete).";
-            case RUNNING -> "Copilot is analyzing the requirement (" + completed + "/" + total
-                    + " passes complete).";
+            case RUNNING -> completed == total
+                    ? "Copilot is finalizing the recorded analysis results."
+                    : "Copilot is analyzing the requirement (" + completed + "/" + total
+                            + " passes complete).";
             case SUCCESS -> "Full analysis is complete and ready for human review.";
             case PARTIAL -> "Analysis completed with partial results; review warnings and failed passes.";
             case FAILED -> "All Copilot passes failed. The persisted jobs can be retried safely.";

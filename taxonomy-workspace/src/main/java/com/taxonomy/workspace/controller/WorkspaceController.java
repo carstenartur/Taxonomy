@@ -37,8 +37,8 @@ import java.util.UUID;
  * REST API for workspace management.
  *
  * <p>Provides endpoints to query the current user's workspace, list all active
- * workspaces (admin), and manage workspace lifecycle. Each authenticated user
- * automatically gets a personal workspace on first access.
+ * workspaces (admin), and manage workspace lifecycle. Users with provisioning permission
+ * automatically get a personal workspace on first access.
  *
  * <p>Additional endpoints support context comparison, synchronization with the
  * shared integration repository, navigation history, and projection state.
@@ -94,6 +94,9 @@ public class WorkspaceController {
                     workspaceResolver.resolveCurrentWorkspaceMetadata()));
         }
         WorkspaceInfo info = workspaceManager.getWorkspaceInfo(user);
+        if (info == null) {
+            return ResponseEntity.noContent().build();
+        }
         // The browser pins the identity returned here. Finish the existing
         // implicit-default initialization before publishing that initial pin.
         // Explicit pins above and non-default/failed metadata remain recovery paths.

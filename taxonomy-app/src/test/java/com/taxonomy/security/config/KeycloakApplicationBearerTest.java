@@ -67,6 +67,42 @@ class KeycloakApplicationBearerTest {
     @Test void anotherIssuerCannotReuseAValidSignature() throws Exception {
         assertThat(request("/api/account/me", token("https://another-idp.test"))).isEqualTo(401);
     }
+
+    @Test @DisabledIfSystemProperty(named = "taxonomy.keycloak.test.issuer", matches = ".+")
+    void verifiedReadScopeCannotBeUsedForArchitectureWrites() throws Exception {
+        String read = ISSUER.scopedToken(applicationAudience, List.of("ROLE_ARCHITECT"), "architecture:read");
+        assertThat(request("/api/admin/status", read)).isEqualTo(200);
+        assertThat(writeRequest(read)).isEqualTo(403);
+        String write = ISSUER.scopedToken(applicationAudience, List.of("ROLE_ARCHITECT"), "architecture:write");
+        // The malformed body is rejected only after real authentication and authorization succeed.
+        assertThat(writeRequest(write)).isEqualTo(400);
+        String wrongRole = ISSUER.scopedToken(applicationAudience, List.of("ROLE_READER"), "architecture:write");
+        assertThat(writeRequest(wrongRole)).isEqualTo(403);
+    }
+
+    @Test @DisabledIfSystemProperty(named = "taxonomy.keycloak.test.issuer", matches = ".+")
+    void unscopedVerifiedAccountHasNoBusinessDataAccess() throws Exception {
+        String unscoped = ISSUER.scopedToken(applicationAudience, List.of("ROLE_ARCHITECT"), null);
+        assertThat(request("/api/account/me", unscoped)).isEqualTo(200);
+        assertThat(request("/api/admin/status", unscoped)).isEqualTo(403);
+    }
+
+    @Test
+    void unauthenticatedRestRequestDoesNotRedirectToInteractiveLogin() throws Exception {
+        try (var client = HttpClient.newHttpClient()) {
+            var response = client.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/admin/status"))
+                    .header("Accept", "text/html").GET().build(), HttpResponse.BodyHandlers.discarding());
+            assertThat(response.statusCode()).isEqualTo(401);
+        }
+    }
+
+    private int writeRequest(String bearer) throws Exception {
+        try (var client = HttpClient.newHttpClient()) {
+            return client.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/architecture/editor/commands"))
+                    .header("Authorization", "Bearer " + bearer).header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString("{}" )).build(), HttpResponse.BodyHandlers.discarding()).statusCode();
+        }
+    }
     // These assertions use the application's auto-configured decoder, not a test decoder.
     // Omitting the resource-server audience constraint must fail the two audience negatives.
     @Test @DisabledIfSystemProperty(named = "taxonomy.keycloak.test.issuer", matches = ".+")

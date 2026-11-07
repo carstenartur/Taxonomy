@@ -26,7 +26,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 @SpringBootTest
 @Tag("ci-app-shard-browser")
 @AutoConfigureMockMvc
-@WithMockUser(roles = "ADMIN")
+@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class DerivedMetadataAndSummaryTests {
     @org.springframework.beans.factory.annotation.Autowired
     com.taxonomy.workspace.service.WorkspaceResolver workspaceResolver;

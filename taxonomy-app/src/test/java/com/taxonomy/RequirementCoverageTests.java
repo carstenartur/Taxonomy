@@ -25,7 +25,7 @@ import com.taxonomy.relations.controller.CoverageApiController;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(roles = "ADMIN")
+@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class RequirementCoverageTests {
 
     @Autowired private MockMvc mockMvc;

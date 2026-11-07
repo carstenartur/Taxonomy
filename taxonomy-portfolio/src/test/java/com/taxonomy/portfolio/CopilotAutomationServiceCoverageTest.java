@@ -33,7 +33,12 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -217,6 +222,10 @@ class CopilotAutomationServiceCoverageTest {
                 PROJECT_ID, "missing", context.username(), context))
                 .isInstanceOf(PortfolioException.class)
                 .hasMessageContaining("not found");
+        assertThatThrownBy(() -> fixture.service.resumeOperation(
+                PROJECT_ID, "missing", context.username(), context))
+                .isInstanceOf(PortfolioException.class)
+                .hasMessageContaining("not found");
 
         String operation = "e".repeat(64);
         CopilotOperationKey key = new CopilotOperationKey(
@@ -244,8 +253,266 @@ class CopilotAutomationServiceCoverageTest {
                 .hasMessageContaining("no requirement identity");
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void unfinishedOperationReadsOnlyObservePersistedPasses(boolean latest) {
+        Fixture fixture = new Fixture();
+        String operation = "5".repeat(64);
+        AnalysisJobView firstPass = job(
+                "job-1", operation, 1, 2, REQUIREMENT_ID,
+                AnalysisStatus.SUCCESS, "snapshot-1", Instant.now());
+        when(fixture.analysisService.listJobs(
+                PROJECT_ID, context.username(), context)).thenReturn(List.of(firstPass));
+        when(fixture.projectService.getRequirement(
+                PROJECT_ID, REQUIREMENT_ID, context.username(), context))
+                .thenReturn(requirement(version(), "snapshot-1"));
+        when(fixture.policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
+
+        var result = latest
+                ? fixture.service.latestOperation(
+                        PROJECT_ID, REQUIREMENT_ID, context.username(), context).orElseThrow()
+                : fixture.service.getOperation(
+                        PROJECT_ID, operation, context.username(), context);
+
+        assertThat(result.status()).isEqualTo(AnalysisStatus.PENDING);
+        assertThat(result.completedPasses()).isEqualTo(1);
+        assertThat(result.selectedSnapshotId()).isEqualTo("snapshot-1");
+        verify(fixture.analysisService, never()).enqueueRequirement(
+                any(), any(), any(), any(), any(), any(), any());
+        verifyNoInteractions(fixture.coordinator, fixture.resultSelector,
+                fixture.resultPersistenceService, fixture.completionService);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void terminalOperationReadsNeverPromoteSnapshotsOrEnrichPortfolio(boolean latest) {
+        Fixture fixture = new Fixture();
+        String operation = "6".repeat(64);
+        AnalysisJobView success = job(
+                "job-1", operation, 1, 1, REQUIREMENT_ID,
+                AnalysisStatus.SUCCESS, "snapshot-1", Instant.now());
+        SnapshotSelection best = mock(SnapshotSelection.class);
+        when(best.id()).thenReturn("snapshot-1");
+        when(fixture.analysisService.listJobs(
+                PROJECT_ID, context.username(), context)).thenReturn(List.of(success));
+        when(fixture.analysisService.getSnapshotSelection(
+                PROJECT_ID, "snapshot-1", context.username(), context)).thenReturn(best);
+        when(fixture.resultSelector.selectForOperation(anyList())).thenReturn(Optional.of(best));
+        when(fixture.resultPersistenceService.selectCurrentSnapshot(
+                PROJECT_ID, REQUIREMENT_ID, "snapshot-1", List.of(success), context.username(), context))
+                .thenReturn("snapshot-1");
+        when(fixture.projectService.getRequirement(
+                PROJECT_ID, REQUIREMENT_ID, context.username(), context))
+                .thenReturn(requirement(version(), "snapshot-previous"));
+        when(fixture.policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
+
+        var result = latest
+                ? fixture.service.latestOperation(
+                        PROJECT_ID, REQUIREMENT_ID, context.username(), context).orElseThrow()
+                : fixture.service.getOperation(
+                        PROJECT_ID, operation, context.username(), context);
+
+        assertThat(result.status()).isEqualTo(AnalysisStatus.SUCCESS);
+        assertThat(result.selectedSnapshotId()).isNull();
+        verify(fixture.analysisService, never()).enqueueRequirement(
+                any(), any(), any(), any(), any(), any(), any());
+        verifyNoInteractions(fixture.coordinator, fixture.resultSelector,
+                fixture.resultPersistenceService, fixture.completionService);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void operationReadsWaitForActiveCoordinatorFinalizationWithoutExecutingWork(boolean latest) {
+        Fixture fixture = fixtureWithCapturedCoordinator();
+        String operation = "7".repeat(64);
+        Instant now = Instant.now();
+        AnalysisJobView pending = job("job-1", operation, 1, 1, REQUIREMENT_ID,
+                AnalysisStatus.PENDING, null, now);
+        AnalysisJobView success = job("job-1", operation, 1, 1, REQUIREMENT_ID,
+                AnalysisStatus.SUCCESS, "snapshot-1", now);
+        AtomicReference<AnalysisJobView> persisted = new AtomicReference<>(pending);
+        when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context))
+                .thenAnswer(ignored -> List.of(persisted.get()));
+        when(fixture.projectService.getRequirement(PROJECT_ID, REQUIREMENT_ID, context.username(), context))
+                .thenReturn(requirement(version(), "snapshot-1"));
+        when(fixture.policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
+        java.util.function.Supplier<com.taxonomy.portfolio.dto.CopilotDtos.CopilotOperationView> observe = () -> latest
+                ? fixture.service.latestOperation(PROJECT_ID, REQUIREMENT_ID, context.username(), context).orElseThrow()
+                : fixture.service.getOperation(PROJECT_ID, operation, context.username(), context);
+
+        fixture.service.resumeOperation(PROJECT_ID, operation, context.username(), context);
+        persisted.set(success);
+
+        var observed = observe.get();
+        assertThat(observed.status()).isEqualTo(AnalysisStatus.RUNNING);
+        assertThat(observed.message()).contains("finalizing");
+        verifyNoInteractions(fixture.resultSelector, fixture.resultPersistenceService, fixture.completionService);
+        verify(fixture.analysisService, never()).enqueueRequirement(any(), any(), any(), any(), any(), any(), any());
+        verify(fixture.analysisService, never()).getSnapshotSelection(any(), any(), any(), any());
+
+        SnapshotSelection best = mock(SnapshotSelection.class);
+        when(best.id()).thenReturn("snapshot-1");
+        when(fixture.analysisService.enqueueRequirement(PROJECT_ID, REQUIREMENT_ID, "CUSTOM_OPENAI", 50,
+                success.idempotencyKey(), context.username(), context)).thenReturn(success);
+        when(fixture.analysisService.getJob("job-1", PROJECT_ID, context.username(), context)).thenReturn(success);
+        when(fixture.policy.maximumRuntime()).thenReturn(Duration.ofSeconds(5));
+        when(fixture.analysisService.getSnapshotSelection(PROJECT_ID, "snapshot-1", context.username(), context))
+                .thenReturn(best);
+        when(fixture.resultSelector.selectForOperation(anyList())).thenAnswer(ignored -> {
+            assertThat(observe.get().status()).isEqualTo(AnalysisStatus.RUNNING);
+            verifyNoInteractions(fixture.resultPersistenceService, fixture.completionService);
+            return Optional.of(best);
+        });
+        when(fixture.resultPersistenceService.selectCurrentSnapshot(PROJECT_ID, REQUIREMENT_ID, "snapshot-1",
+                List.of(success), context.username(), context)).thenReturn("snapshot-1");
+
+        captured(fixture).run();
+
+        assertThat(observe.get().status()).isEqualTo(AnalysisStatus.SUCCESS);
+        verify(fixture.coordinator).execute(any(Runnable.class));
+        verify(fixture.resultSelector).selectForOperation(anyList());
+        verify(fixture.resultPersistenceService).selectCurrentSnapshot(PROJECT_ID, REQUIREMENT_ID, "snapshot-1",
+                List.of(success), context.username(), context);
+        verify(fixture.completionService).enrich(PROJECT_ID, context.username(), context, true, true);
+    }
+
     @Test
-    void terminalSuccessPromotesStrongestSnapshotAndRunsReviewOnlyEnrichment() {
+    void persistedCancellationRemainsAuthoritativeWhileTheCoordinatorIsQueued() {
+        Fixture fixture = fixtureWithCapturedCoordinator();
+        String operation = "8".repeat(64);
+        Instant now = Instant.now();
+        AtomicReference<AnalysisJobView> persisted = new AtomicReference<>(job(
+                "job-1", operation, 1, 1, REQUIREMENT_ID, AnalysisStatus.PENDING, null, now));
+        when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context))
+                .thenAnswer(ignored -> List.of(persisted.get()));
+        when(fixture.projectService.getRequirement(PROJECT_ID, REQUIREMENT_ID, context.username(), context))
+                .thenReturn(requirement(version(), null));
+        when(fixture.policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
+
+        fixture.service.resumeOperation(PROJECT_ID, operation, context.username(), context);
+        persisted.set(job("job-1", operation, 1, 1, REQUIREMENT_ID, AnalysisStatus.CANCELLED, null, now));
+
+        assertThat(fixture.service.getOperation(PROJECT_ID, operation, context.username(), context).status())
+                .isEqualTo(AnalysisStatus.CANCELLED);
+        assertThat(fixture.service.latestOperation(PROJECT_ID, REQUIREMENT_ID, context.username(), context)
+                .orElseThrow().status()).isEqualTo(AnalysisStatus.CANCELLED);
+        verify(fixture.coordinator).execute(any(Runnable.class));
+        verifyNoInteractions(fixture.resultSelector, fixture.resultPersistenceService, fixture.completionService);
+    }
+
+    @Test
+    void fastCoordinatorIsRegisteredBeforeItCanFinishPersistedPasses() {
+        Fixture fixture = new Fixture();
+        String operation = "0".repeat(64);
+        Instant now = Instant.now();
+        AnalysisJobView pending = job("job-1", operation, 1, 1, REQUIREMENT_ID, AnalysisStatus.PENDING, null, now);
+        AnalysisJobView success = job("job-1", operation, 1, 1, REQUIREMENT_ID, AnalysisStatus.SUCCESS, null, now);
+        AtomicReference<AnalysisJobView> persisted = new AtomicReference<>(pending);
+        AtomicReference<AnalysisStatus> observedDuringFinalization = new AtomicReference<>();
+        when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context))
+                .thenAnswer(ignored -> List.of(persisted.get()));
+        when(fixture.projectService.getRequirement(PROJECT_ID, REQUIREMENT_ID, context.username(), context))
+                .thenReturn(requirement(version(), null));
+        when(fixture.policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
+        when(fixture.policy.maximumRuntime()).thenReturn(Duration.ofSeconds(5));
+        when(fixture.analysisService.enqueueRequirement(PROJECT_ID, REQUIREMENT_ID, "CUSTOM_OPENAI", 50,
+                success.idempotencyKey(), context.username(), context)).thenAnswer(ignored -> {
+                    persisted.set(success);
+                    return success;
+                });
+        when(fixture.analysisService.getJob("job-1", PROJECT_ID, context.username(), context)).thenReturn(success);
+        when(fixture.resultSelector.selectForOperation(anyList())).thenAnswer(ignored -> {
+            observedDuringFinalization.compareAndSet(null,
+                    fixture.service.getOperation(PROJECT_ID, operation, context.username(), context).status());
+            return Optional.empty();
+        });
+        doAnswer(invocation -> {
+            invocation.<Runnable>getArgument(0).run();
+            return null;
+        }).when(fixture.coordinator).execute(any(Runnable.class));
+
+        AtomicReference<com.taxonomy.portfolio.dto.CopilotDtos.CopilotOperationView> resumed = new AtomicReference<>();
+        Throwable failure = org.assertj.core.api.Assertions.catchThrowable(() -> resumed.set(
+                fixture.service.resumeOperation(PROJECT_ID, operation, context.username(), context)));
+
+        assertThat(observedDuringFinalization.get()).isEqualTo(AnalysisStatus.RUNNING);
+        assertThat(failure).isNull();
+        assertThat(resumed.get().status()).isEqualTo(AnalysisStatus.SUCCESS);
+        assertThat(fixture.service.getOperation(PROJECT_ID, operation, context.username(), context).status())
+                .isEqualTo(AnalysisStatus.SUCCESS);
+    }
+
+    @Test
+    void rejectedResumeCanBeRetriedAndThenDeduplicatesTheActiveCoordinator() {
+        Fixture fixture = new Fixture();
+        String operation = "a".repeat(64);
+        AnalysisJobView pending = job("job-1", operation, 1, 1, REQUIREMENT_ID,
+                AnalysisStatus.PENDING, null, Instant.now());
+        when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context)).thenReturn(List.of(pending));
+        when(fixture.projectService.getRequirement(PROJECT_ID, REQUIREMENT_ID, context.username(), context))
+                .thenReturn(requirement(version(), null));
+        when(fixture.policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
+        org.mockito.Mockito.doThrow(new java.util.concurrent.RejectedExecutionException("queue full"))
+                .doNothing().when(fixture.coordinator).execute(any(Runnable.class));
+
+        assertThatThrownBy(() -> fixture.service.resumeOperation(PROJECT_ID, operation, context.username(), context))
+                .isInstanceOfSatisfying(PortfolioException.class,
+                        failure -> assertThat(failure.getKind()).isEqualTo(PortfolioException.Kind.UNAVAILABLE));
+        assertThat(fixture.service.resumeOperation(PROJECT_ID, operation, context.username(), context).status())
+                .isEqualTo(AnalysisStatus.PENDING);
+        fixture.service.resumeOperation(PROJECT_ID, operation, context.username(), context);
+
+        verify(fixture.coordinator, times(2)).execute(any(Runnable.class));
+        verifyNoInteractions(fixture.resultSelector, fixture.resultPersistenceService, fixture.completionService);
+    }
+
+    @Test
+    void concurrentResumeWaitsForSubmissionAndRetriesARejectedReservation() throws Exception {
+        Fixture fixture = new Fixture();
+        String operation = "b".repeat(64);
+        AnalysisJobView pending = job("job-1", operation, 1, 1, REQUIREMENT_ID,
+                AnalysisStatus.PENDING, null, Instant.now());
+        when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context)).thenReturn(List.of(pending));
+        when(fixture.projectService.getRequirement(PROJECT_ID, REQUIREMENT_ID, context.username(), context))
+                .thenReturn(requirement(version(), null));
+        when(fixture.policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
+        CountDownLatch submitting = new CountDownLatch(1);
+        CountDownLatch rejectSubmission = new CountDownLatch(1);
+        AtomicInteger submissions = new AtomicInteger();
+        doAnswer(ignored -> {
+            if (submissions.incrementAndGet() == 1) {
+                submitting.countDown();
+                assertThat(rejectSubmission.await(5, TimeUnit.SECONDS)).isTrue();
+                throw new java.util.concurrent.RejectedExecutionException("queue full");
+            }
+            return null;
+        }).when(fixture.coordinator).execute(any(Runnable.class));
+
+        try (var callers = Executors.newFixedThreadPool(2)) {
+            var first = callers.submit(() -> fixture.service.resumeOperation(
+                    PROJECT_ID, operation, context.username(), context));
+            assertThat(submitting.await(5, TimeUnit.SECONDS)).isTrue();
+            var second = callers.submit(() -> fixture.service.resumeOperation(
+                    PROJECT_ID, operation, context.username(), context));
+            try {
+                assertThatThrownBy(() -> second.get(250, TimeUnit.MILLISECONDS))
+                        .isInstanceOf(TimeoutException.class);
+            } finally {
+                rejectSubmission.countDown();
+            }
+
+            assertThatThrownBy(() -> first.get(5, TimeUnit.SECONDS))
+                    .hasCauseInstanceOf(PortfolioException.class);
+            assertThat(second.get(5, TimeUnit.SECONDS).status()).isEqualTo(AnalysisStatus.PENDING);
+        } finally {
+            rejectSubmission.countDown();
+        }
+        verify(fixture.coordinator, times(2)).execute(any(Runnable.class));
+        verifyNoInteractions(fixture.resultSelector, fixture.resultPersistenceService, fixture.completionService);
+    }
+
+    @Test
+    void explicitResumePromotesStrongestTerminalSnapshotAndRunsReviewOnlyEnrichment() {
         Fixture fixture = new Fixture();
         String operation = "f".repeat(64);
         AnalysisJobView success = job(
@@ -265,7 +532,7 @@ class CopilotAutomationServiceCoverageTest {
                 .thenReturn(requirement(version(), "snapshot-1"));
         when(fixture.policy.costPolicy()).thenReturn(AiCostPolicy.UNMETERED);
 
-        var result = fixture.service.getOperation(
+        var result = fixture.service.resumeOperation(
                 PROJECT_ID, operation, context.username(), context);
 
         assertThat(result.status()).isEqualTo(AnalysisStatus.SUCCESS);
@@ -288,7 +555,6 @@ class CopilotAutomationServiceCoverageTest {
                     status, null, Instant.now());
             when(fixture.analysisService.listJobs(
                     PROJECT_ID, context.username(), context)).thenReturn(List.of(job));
-            when(fixture.resultSelector.selectForOperation(anyList())).thenReturn(Optional.empty());
             when(fixture.projectService.getRequirement(
                     PROJECT_ID, REQUIREMENT_ID, context.username(), context))
                     .thenReturn(requirement(version(), null));
@@ -300,6 +566,7 @@ class CopilotAutomationServiceCoverageTest {
             assertThat(result.status()).isEqualTo(status);
             assertThat(result.message()).isNotBlank();
             verifyNoInteractions(
+                    fixture.resultSelector,
                     fixture.resultPersistenceService,
                     fixture.completionService,
                     fixture.coordinator);
@@ -307,7 +574,7 @@ class CopilotAutomationServiceCoverageTest {
     }
 
     @Test
-    void runningAndIncompleteSuccessfulOperationsRemainRecoverable() {
+    void explicitResumeSchedulesRunningAndIncompleteSuccessfulOperations() {
         Fixture runningFixture = new Fixture();
         String runningOperation = "3".repeat(64);
         AnalysisJobView running = job(
@@ -320,7 +587,7 @@ class CopilotAutomationServiceCoverageTest {
                 .thenReturn(requirement(version(), null));
         when(runningFixture.policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
 
-        var runningView = runningFixture.service.getOperation(
+        var runningView = runningFixture.service.resumeOperation(
                 PROJECT_ID, runningOperation, context.username(), context);
         assertThat(runningView.status()).isEqualTo(AnalysisStatus.RUNNING);
         assertThat(runningView.message()).contains("analyzing");
@@ -338,7 +605,7 @@ class CopilotAutomationServiceCoverageTest {
                 .thenReturn(requirement(version(), null));
         when(incompleteFixture.policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
 
-        var incompleteView = incompleteFixture.service.getOperation(
+        var incompleteView = incompleteFixture.service.resumeOperation(
                 PROJECT_ID, incompleteOperation, context.username(), context);
         assertThat(incompleteView.status()).isEqualTo(AnalysisStatus.PENDING);
         assertThat(incompleteView.message()).contains("queued", "1/2");
@@ -749,7 +1016,7 @@ class CopilotAutomationServiceCoverageTest {
         var previous = org.springframework.context.i18n.LocaleContextHolder.getLocaleContext();
         try {
             org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.GERMAN);
-            fixture.service.getOperation(PROJECT_ID, operation, context.username(), context);
+            fixture.service.resumeOperation(PROJECT_ID, operation, context.username(), context);
             org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.ENGLISH);
             captured(fixture).run();
             assertThat(persisted.values()).hasSize(2).allSatisfy(job -> assertThat(job.analysisLanguage()).isEqualTo(recorded));

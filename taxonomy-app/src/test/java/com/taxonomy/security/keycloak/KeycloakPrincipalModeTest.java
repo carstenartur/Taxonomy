@@ -129,6 +129,28 @@ class KeycloakPrincipalModeTest {
         assertThat(jdbc.queryForObject("select count(*) from principal_binding", Integer.class)).isZero();
     }
 
+    @Test void configuredRolePathAppliesToBrowserAndBearerWithoutChangingPrincipalIdentity() {
+        context.withPropertyValues("taxonomy.keycloak.role-claim-path=resource_access.taxonomy.roles")
+                .run(c -> {
+                    var claims = Map.<String, Object>of(
+                            "realm_access", Map.of("roles", List.of("ROLE_USER", "ROLE_ARCHITECT")),
+                            "resource_access", Map.of("taxonomy", Map.of("roles",
+                                    List.of("ROLE_READER", "ROLE_ADMIN", "ROLE_ROOT", 42))));
+                    var browser = c.getBean(KeycloakOidcUserService.class).loadUser(browserRequest(claims));
+                    var bearer = c.getBean(KeycloakJwtAuthConverter.class).convert(
+                            Jwt.withTokenValue("token").header("alg", "RS256")
+                                    .issuer("https://idp.example").subject("existing-account-id")
+                                    .claim("preferred_username", "alice")
+                                    .claims(values -> values.putAll(claims)).build());
+                    assertThat(browser.getAuthorities()).extracting(org.springframework.security.core.GrantedAuthority::getAuthority)
+                            .containsExactlyInAnyOrder("OIDC_USER", "SCOPE_openid", "ROLE_READER", "ROLE_ADMIN");
+                    assertThat(bearer.getAuthorities()).extracting(org.springframework.security.core.GrantedAuthority::getAuthority)
+                            .containsExactlyInAnyOrder("ROLE_READER", "ROLE_ADMIN");
+                    assertThat(browser.getName()).isEqualTo("alice").isEqualTo(bearer.getName());
+                    assertThat(jdbc.queryForObject("select count(*) from principal_binding", Integer.class)).isZero();
+                });
+    }
+
     private static Jwt jwt() {
         return Jwt.withTokenValue("verified-token").header("alg", "RS256").issuer("https://idp.example")
                 .subject("existing-account-id").claim("preferred_username", "alice").build();

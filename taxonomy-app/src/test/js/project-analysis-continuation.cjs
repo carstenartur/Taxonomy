@@ -44,20 +44,30 @@ function operation(status = 'PARTIAL') {
 
 async function uiFixture(options = {}) {
     const d = dom(), requests = [], timers = [], redirects = [];
-    for (const id of ['requirementCopilotCard', 'copilotRun', 'copilotRunSpinner', 'copilotCancel', 'copilotProfile',
+    const language = options.language || 'de';
+    d.document.documentElement.lang = language;
+    for (const id of ['requirementCopilotCard', 'copilotRun', 'copilotRunSpinner', 'copilotCancel', 'copilotResume', 'copilotProfile',
         'copilotForce', 'copilotError', 'copilotPolicy', 'copilotOperation', 'copilotOperationStatus',
         'copilotOperationPhase', 'copilotOperationMessage', 'copilotResultActions', 'copilotSelectedSnapshot',
         'copilotOpenResult', 'copilotContinuationActions', 'requirementLive']) d.element('div', id);
-    let current = operation();
-    const window = {location: {pathname: '/projects/41/requirements/7', search: '?lang=de',
-        href: 'http://localhost/projects/41/requirements/7?lang=de', replace: url => redirects.push(String(url))},
+    d.nodes.get('copilotResume').disabled = true;
+    d.nodes.get('copilotResume').classList.add('d-none');
+    let current = operation(options.restoredStatus || 'PARTIAL');
+    const window = {location: {pathname: '/projects/41/requirements/7', search: '?lang=' + language,
+        href: 'http://localhost/projects/41/requirements/7?lang=' + language, replace: url => redirects.push(String(url))},
         TaxonomyUtils: {escapeHtml: value => String(value)},
         setTimeout: (fn, ms) => {timers.push({fn, ms}); return timers.length;},
         TaxonomyCopilotApi: {
-            status: async () => ({manualCopilotReady: true}), latest: async () => current,
-            get: async () => {requests.push({method: 'status'}); return current;}
+            status: async () => ({manualCopilotReady: options.manualCopilotReady !== false}), latest: async () => current,
+            get: async () => {requests.push({method: 'status'}); return current;},
+            resume: async (project, id) => {
+                requests.push({method: 'POST', action: 'resume', project, id});
+                if (options.lostResumeResponse) throw new Error('Connection lost after resume');
+                return current;
+            }
         },
         TaxonomyPortfolioApi: {
+            getAccount: async () => options.account || {architectureMutationAllowed: true, analysisExecutionAllowed: true},
             getAnalysisContinuation: async (project, job, item) => {
                 requests.push({method: 'GET', project, job, item});
                 return {available: options.unavailable !== job, reason: 'A failed provider attempt needs its own recovery decision',
@@ -107,17 +117,135 @@ test('reading a restored partial operation offers only server-authorized explici
     assert.match(f.nodes.get('copilotOpenResult').href, /snapshot=snapshot-old-1/);
 });
 
+test('restoring and polling an unfinished operation never resumes it until an explicit authorized click', async () => {
+    const f = await uiFixture({restoredStatus: 'PENDING'});
+    assert.deepEqual(f.requests, []);
+    const resume = f.nodes.get('copilotResume');
+    assert.equal(resume.disabled, false);
+    assert.equal(resume.classList.contains('d-none'), false);
+    f.timers.shift().fn(); await tick();
+    assert.deepEqual(f.requests.map(request => request.method), ['status']);
+
+    await resume.click(); await tick();
+    assert.deepEqual(f.requests.filter(request => request.method === 'POST'), [
+        {method: 'POST', action: 'resume', project: 41, id: 'saved-operation'}
+    ]);
+});
+
+for (const [name, account] of [
+    ['a viewer', {architectureMutationAllowed: false, analysisExecutionAllowed: false}],
+    ['an analyst without business write access', {architectureMutationAllowed: false, analysisExecutionAllowed: true}],
+    ['an architect without analysis execution access', {architectureMutationAllowed: true, analysisExecutionAllowed: false}]
+]) {
+    test(`restored operations keep resume disabled for ${name}`, async () => {
+        const f = await uiFixture({restoredStatus: 'PENDING', account});
+        assert.equal(f.nodes.get('copilotResume').disabled, true);
+        assert.equal(f.nodes.get('copilotRun').disabled, true);
+        assert.equal(f.nodes.get('copilotCancel').disabled, !account.analysisExecutionAllowed);
+        await f.nodes.get('copilotResume').click();
+        f.timers.shift().fn(); await tick();
+        assert.equal(f.requests.filter(request => request.method === 'POST').length, 0);
+    });
+    test(`a completed operation keeps new runs disabled for ${name}`, async () => {
+        const f = await uiFixture({restoredStatus: 'SUCCESS', account});
+        assert.equal(f.nodes.get('copilotRun').disabled, true);
+        assert.equal(f.nodes.get('copilotResume').disabled, true);
+        await f.nodes.get('copilotResume').click();
+        assert.equal(f.requests.filter(request => request.method === 'POST').length, 0);
+    });
+}
+
+test('explicit resume remains available for interrupted terminal processing after the current manual policy changes', async () => {
+    const f = await uiFixture({restoredStatus: 'SUCCESS', manualCopilotReady: false});
+    assert.equal(f.nodes.get('copilotRun').disabled, true);
+    assert.equal(f.nodes.get('copilotResume').disabled, false);
+    await f.nodes.get('copilotResume').click(); await tick();
+    assert.equal(f.requests.filter(request => request.action === 'resume').length, 1);
+});
+
+test('cancelled operations cannot be explicitly resumed', async () => {
+    const f = await uiFixture({restoredStatus: 'CANCELLED'});
+    assert.equal(f.nodes.get('copilotResume').disabled, true);
+    await f.nodes.get('copilotResume').click();
+    assert.equal(f.requests.filter(request => request.method === 'POST').length, 0);
+});
+
+test('a viewer can inspect retained partial evidence without an enabled model continuation action', async () => {
+    const f = await uiFixture({account: {architectureMutationAllowed: false, analysisExecutionAllowed: false}});
+    assert.equal(f.buttons().length, 2);
+    assert.equal(f.buttons().every(button => button.disabled), true);
+    await f.buttons()[0].click();
+    assert.equal(f.requests.filter(request => request.method === 'POST').length, 0);
+    assert.match(f.nodes.get('copilotOpenResult').href, /snapshot=snapshot-old-1/);
+});
+
+test('an uncertain resume response only observes the operation and never repeats the POST', async () => {
+    const f = await uiFixture({restoredStatus: 'PENDING', lostResumeResponse: true});
+    await f.nodes.get('copilotResume').click(); await tick();
+    for (let attempt = 0; attempt < 3; attempt++) {
+        f.timers.shift()?.fn(); await tick();
+    }
+    assert.equal(f.requests.filter(request => request.method === 'POST').length, 1);
+    assert.equal(f.requests.some(request => request.method === 'status'), true);
+});
+
+test('the Copilot API resumes the persisted operation with CSRF protection and no replacement run settings', async () => {
+    const requests = [], window = {};
+    const document = {querySelector(selector) {return selector.includes('_csrf_header') ? {content: 'X-CSRF-TEST'} : {content: 'token'};}};
+    vm.runInNewContext(source('api/copilot-api.js'), {window, document,
+        fetch: async (url, options) => {requests.push({url, options}); return {ok: true, status: 202, json: async () => ({operationId: 'saved/operation'})};}});
+    await window.TaxonomyCopilotApi.resume(41, 'saved/operation');
+    assert.equal(requests[0].url, '/api/projects/41/copilot-operations/saved%2Foperation/resume');
+    assert.equal(requests[0].options.method, 'POST');
+    assert.equal(requests[0].options.headers['X-CSRF-TEST'], 'token');
+    assert.deepEqual(JSON.parse(requests[0].options.body), {});
+});
+
 test('one click continues that pass and refreshes status and selected snapshot without creating a verification pass', async () => {
     const f = await uiFixture();
     await f.buttons()[0].click(); await tick();
-    assert.deepEqual(f.requests.filter(r => r.method === 'POST'), [{method: 'POST', project: 41, job: 'pass-1', item: 11,
-        snapshotId: 'snapshot-old-1', revision: 111}]);
+    assert.deepEqual(f.requests.filter(r => r.method === 'POST'), [
+        {method: 'POST', project: 41, job: 'pass-1', item: 11, snapshotId: 'snapshot-old-1', revision: 111},
+        {method: 'POST', action: 'resume', project: 41, id: 'saved-operation'}
+    ]);
     assert.equal(f.buttons().length, 1);
     assert.equal(f.buttons()[0].dataset.jobId, 'pass-2');
     assert.match(f.nodes.get('copilotOpenResult').href, /snapshot=snapshot-new-1/);
     assert.equal(f.nodes.get('copilotOperation').attributes['data-operation-status'], 'PARTIAL');
     assert.equal(f.timers.length, 0, 'partial result remains visible instead of forcing navigation');
     assert.equal(f.redirects.length, 0);
+});
+
+for (const language of ['en', 'de']) {
+    test(`${language}: accepted pass continuation explicitly admits finalization of the same retained operation`, async () => {
+        const f = await uiFixture({language});
+        assert.equal(f.requests.filter(request => request.method === 'POST').length, 0);
+        await f.buttons()[0].click(); await tick();
+        assert.deepEqual(f.requests.filter(request => request.method === 'POST').map(request => request.action || 'continue'),
+            ['continue', 'resume']);
+        assert.deepEqual(f.requests.find(request => request.action === 'resume'),
+            {method: 'POST', action: 'resume', project: 41, id: 'saved-operation'});
+        assert.equal(f.requests.some(request => request.action === 'start'), false);
+    });
+}
+
+test('analysis-only pass continuation keeps business finalization unavailable', async () => {
+    const f = await uiFixture({account: {architectureMutationAllowed: false, analysisExecutionAllowed: true}});
+    await f.buttons()[0].click(); await tick();
+    assert.equal(f.requests.filter(request => request.method === 'POST').length, 1);
+    assert.equal(f.requests.some(request => request.action === 'resume'), false);
+    assert.equal(f.nodes.get('copilotResume').disabled, true);
+    assert.match(f.nodes.get('copilotOpenResult').href, /snapshot=snapshot-new-1/);
+});
+
+test('uncertain finalization admission observes the accepted pass without replaying either command', async () => {
+    const f = await uiFixture({lostResumeResponse: true});
+    await f.buttons()[0].click(); await tick();
+    assert.equal(f.requests.filter(request => request.method === 'POST').length, 2);
+    assert.equal(f.requests.filter(request => request.action === 'resume').length, 1);
+    assert.equal(f.requests.filter(request => request.method === 'status').length, 1);
+    assert.equal(f.nodes.get('copilotError').textContent, 'Connection lost after resume');
+    assert.equal(f.nodes.get('copilotOperation').attributes['data-operation-status'], 'PARTIAL');
 });
 
 test('an uncertain continuation HTTP response causes observation, never an automatic second POST', async () => {

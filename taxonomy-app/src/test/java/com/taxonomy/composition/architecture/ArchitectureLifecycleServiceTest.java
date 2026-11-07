@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 
 /** Persistent application contracts; no remote analysis, shell Git, or container prerequisites. */
 @SpringBootTest
-@WithMockUser(username = "alice", roles = "ADMIN")
+@WithMockUser(username = "alice", roles = {"USER", "ARCHITECT", "ADMIN"})
 class ArchitectureLifecycleServiceTest extends LifecycleTestSupport {
     @Autowired ObjectMapper json;
 

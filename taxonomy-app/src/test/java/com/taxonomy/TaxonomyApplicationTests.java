@@ -35,7 +35,7 @@ import org.springframework.security.test.context.support.WithMockUser;
     "mistral.api.key=",
     "embedding.enabled=false"
 })
-@WithMockUser(roles = "ADMIN")
+@WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
 class TaxonomyApplicationTests {
 
     @Autowired
@@ -342,6 +342,7 @@ class TaxonomyApplicationTests {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void adminVerifyUsesAuthenticatedAdminRole() throws Exception {
         mockMvc.perform(post("/api/admin/verify")
                         .contentType(MediaType.APPLICATION_JSON)
