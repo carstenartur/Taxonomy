@@ -1,5 +1,6 @@
 package com.taxonomy.workspace.storage;
 
+import com.taxonomy.backup.recovery.OracleRecoveryMetadata;
 import io.github.carstenartur.jgit.storage.hibernate.DefaultHibernateRepositoryFactory;
 import io.github.carstenartur.jgit.storage.hibernate.config.CoreEntities;
 import io.github.carstenartur.jgit.storage.hibernate.config.JgitOracleDialect;
@@ -156,26 +157,12 @@ class JgitStorageOracleMigrationIT {
             while (rows.next()) {
                 String name = rows.getString("INDEX_NAME"), column = rows.getString("COLUMN_NAME");
                 if (name != null && column != null && rows.getShort("TYPE") != DatabaseMetaData.tableIndexStatistic) {
-                    String direction = rows.getString("ASC_OR_DESC");
-                    String physicalColumn = column, indexedExpression = null;
-                    if (column.startsWith("SYS_NC")) {
-                        try (var expression = connection.prepareStatement("SELECT column_expression FROM user_ind_expressions WHERE index_name = ? AND column_position = ?")) {
-                            expression.setString(1, name); expression.setInt(2, rows.getInt("ORDINAL_POSITION"));
-                            try (var value = expression.executeQuery()) {
-                                if (value.next()) {
-                                    indexedExpression = value.getString(1);
-                                    if (("SYS_OP_DESCEND(\"ID\")".equals(indexedExpression) || "\"ID\"".equals(indexedExpression))
-                                            && "D".equals(direction)) column = "ID";
-                                    // Oracle represents a TIMESTAMP WITH TIME ZONE index by its UTC expression.
-                                    if ("SYS_EXTRACT_UTC(\"WRITE_LEASE_UNTIL\")".equals(indexedExpression)) column = "WRITE_LEASE_UNTIL";
-                                }
-                            }
-                        }
-                    }
-                    if ("D".equals(direction)) column += " DESC";
+                    var indexed = OracleRecoveryMetadata.indexColumn(connection, table, name, rows.getInt("ORDINAL_POSITION"), column, rows.getString("ASC_OR_DESC"));
+                    column = indexed.resolvedColumn();
                     dictionary.append(name).append(" position=").append(rows.getInt("ORDINAL_POSITION"))
-                            .append(" column=").append(physicalColumn).append(" expression=").append(indexedExpression)
-                            .append(" direction=").append(direction).append(" resolved=").append(column).append(System.lineSeparator());
+                            .append(" column=").append(indexed.physicalColumn()).append(" expression=").append(indexed.expression())
+                            .append(" jdbcDirection=").append(indexed.jdbcDirection()).append(" dictionaryDirection=").append(indexed.dictionaryDirection())
+                            .append(" resolved=").append(column).append(System.lineSeparator());
                     result.computeIfAbsent(name, ignored -> new TreeMap<>()).put(rows.getInt("ORDINAL_POSITION"), column);
                 }
             }

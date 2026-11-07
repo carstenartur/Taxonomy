@@ -48,6 +48,11 @@ class NativeInstallationOracleRecoveryIT {
         try {
             createUser(sourceUser, sourcePassword);
             createUser(targetUser, targetPassword);
+            String serverVersion;
+            try (var connection = DriverManager.getConnection(DATABASE.getJdbcUrl(), sourceUser, sourcePassword)) {
+                serverVersion = OracleRecoveryMetadata.serverVersion(connection);
+            }
+            Files.writeString(evidence.resolve("database-product-version.txt"), serverVersion);
             // Compose the released fresh Core stream with the application's controlled
             // empty-schema initialization. Hibernate's existing Core filter prevents a second DDL owner.
             var migration = org.flywaydb.core.Flyway.configure()
@@ -108,7 +113,7 @@ class NativeInstallationOracleRecoveryIT {
             assertThat(grants(targetUser)).isEqualTo(targetGrants);
             var report = new LinkedHashMap<String, Object>();
             report.put("status", "PASSED"); report.put("applicationVersion", version); report.put("databaseFamily", "ORACLE");
-            report.put("serverVersion", query(sourceUser, sourcePassword, "SELECT version_full FROM product_component_version WHERE product LIKE 'Oracle Database%'") );
+            report.put("serverVersion", serverVersion);
             report.put("recovery", "trusted same-version stopped-writer native schema export/import to a separate restricted user in the same PDB");
             report.put("manifestSha256", receipt.sha256()); report.put("fileCount", receipt.fileCount()); report.put("bytes", receipt.bytes());
             report.put("filesystemSnapshotScope", "FILES_ONLY; Oracle database backup and recovery are verified separately through Data Pump");
