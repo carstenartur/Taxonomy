@@ -155,6 +155,13 @@ public class SecurityConfig {
      * Local mode has no Bearer authentication filter.
      */
     static boolean isStatelessProtocolClient(HttpServletRequest request) {
+        // Decide from the restored authority before inspecting untrusted routing
+        // or credential hints. No request value may skip this authentication check.
+        var restored = SecurityContextHolder.getContext().getAuthentication();
+        if (restored != null && restored.isAuthenticated()
+                && !(restored instanceof AnonymousAuthenticationToken)) {
+            return false;
+        }
         String uri = protocolPath(request);
         if (!uri.startsWith("/api/")
                 && !uri.equals("/dav/templates")
@@ -162,12 +169,8 @@ public class SecurityConfig {
             return false;
         }
         String authorization = request.getHeader("Authorization");
-        if (authorization == null || !authorization.regionMatches(true, 0, "Basic ", 0, 6)) {
-            return false;
-        }
-        var restored = SecurityContextHolder.getContext().getAuthentication();
-        return restored == null || !restored.isAuthenticated()
-                || restored instanceof AnonymousAuthenticationToken;
+        return authorization != null
+                && authorization.regionMatches(true, 0, "Basic ", 0, 6);
     }
 
     static String protocolPath(HttpServletRequest request) {
