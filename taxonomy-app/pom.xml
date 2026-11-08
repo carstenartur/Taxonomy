@@ -850,11 +850,14 @@
                 </configuration>
             </plugin></plugins></build>
         </profile>
-        <!-- The release reactor runs the browser group after the core suite on the
-             same runner. Retire the core JVM before starting browser and app processes. -->
+        <!-- Apply the CI application shard boundary inside the single release reactor.
+             Fresh forks keep app and browser processes off the core suite's retained heap. -->
         <profile>
-            <id>release-browser-test-isolation</id>
+            <id>release-app-test-isolation</id>
             <activation><property><name>releaseCheckCurrentState</name><value>release</value></property></activation>
+            <properties>
+                <taxonomy.release.appShardTags>ci-app-shard-recovery,ci-app-shard-browser,ci-app-shard-scenario,ci-app-shard-runtime,ci-app-shard-domain-integration</taxonomy.release.appShardTags>
+            </properties>
             <build><plugins><plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
@@ -862,18 +865,43 @@
                     <execution>
                         <id>default-test</id>
                         <configuration>
-                            <excludedGroups>${excludedGroups},ci-app-shard-browser</excludedGroups>
+                            <excludedGroups>${excludedGroups},${taxonomy.release.appShardTags}</excludedGroups>
                         </configuration>
                     </execution>
                     <execution>
-                        <id>release-browser-isolated</id>
+                        <id>release-app-shards-isolated</id>
                         <phase>test</phase>
                         <goals><goal>test</goal></goals>
                         <configuration>
-                            <groups>ci-app-shard-browser</groups>
+                            <groups>${taxonomy.release.appShardTags}</groups>
                             <forkCount>1</forkCount>
                             <reuseForks>false</reuseForks>
                             <failIfNoTests>true</failIfNoTests>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin><plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>default</id>
+                        <configuration>
+                            <excludedGroups>${excludedGroups},${taxonomy.release.appShardTags}</excludedGroups>
+                            <summaryFiles>
+                                <summaryFile>${project.build.directory}/failsafe-reports/failsafe-summary-release-shards.xml</summaryFile>
+                            </summaryFiles>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>release-app-shards-isolated</id>
+                        <goals><goal>integration-test</goal></goals>
+                        <configuration>
+                            <groups>${taxonomy.release.appShardTags}</groups>
+                            <forkCount>1</forkCount>
+                            <reuseForks>false</reuseForks>
+                            <failIfNoTests>true</failIfNoTests>
+                            <summaryFile>${project.build.directory}/failsafe-reports/failsafe-summary-release-shards.xml</summaryFile>
                         </configuration>
                     </execution>
                 </executions>

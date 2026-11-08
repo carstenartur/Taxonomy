@@ -55,30 +55,45 @@ class ApplicationTestShardRepositoryTest {
         assertNotEquals(scenario.getKey(), browser.getKey(),
                 "The measured long architecture scenario must not consume the browser acceptance job's time budget");
     }
-    @Test void releaseBrowserTestsHaveTheirOwnFreshSurefireForks() throws Exception {
+    @Test void releaseApplicationShardsHaveFreshForksAndVerifiedResults() throws Exception {
         var catalogue = object(read(root.resolve(".mvn/verification-suites.json")).get("applicationTestShards"));
-        String browserTag = (String) object(object(catalogue.get("groups")).get("browser")).get("tag");
-        var release = profile(pom("taxonomy-app"), "release-browser-test-isolation");
+        Set<String> tags = new HashSet<>();
+        for (Object group : object(catalogue.get("groups")).values()) {
+            if (object(group).get("tag") instanceof String tag) tags.add(tag);
+        }
+        var release = profile(pom("taxonomy-app"), "release-app-test-isolation");
+        var properties = XmlSupport.child(release, "properties");
+        assertEquals(tags, Set.of(XmlSupport.childText(properties, "taxonomy.release.appShardTags").split(",")));
         var activation = XmlSupport.child(XmlSupport.child(release, "activation"), "property");
         assertEquals("releaseCheckCurrentState", XmlSupport.childText(activation, "name"));
         assertEquals("release", XmlSupport.childText(activation, "value"));
-        var surefire = XmlSupport.descendants(release, "plugin").stream()
-                .filter(plugin -> "maven-surefire-plugin".equals(XmlSupport.childText(plugin, "artifactId")))
-                .findFirst().orElseThrow();
-        var executions = XmlSupport.children(XmlSupport.child(surefire, "executions"), "execution");
-        var defaults = executions.stream().filter(e -> "default-test".equals(XmlSupport.childText(e, "id")))
-                .findFirst().orElseThrow();
-        assertEquals("${excludedGroups}," + browserTag,
-                XmlSupport.childText(XmlSupport.child(defaults, "configuration"), "excludedGroups"));
-        var isolated = executions.stream().filter(e -> "release-browser-isolated".equals(XmlSupport.childText(e, "id")))
-                .findFirst().orElseThrow();
-        assertEquals("test", XmlSupport.childText(isolated, "phase"));
-        assertEquals("test", XmlSupport.childText(XmlSupport.child(isolated, "goals"), "goal"));
-        var configuration = XmlSupport.child(isolated, "configuration");
-        assertEquals(browserTag, XmlSupport.childText(configuration, "groups"));
-        assertEquals("1", XmlSupport.childText(configuration, "forkCount"));
-        assertEquals("false", XmlSupport.childText(configuration, "reuseForks"));
-        assertEquals("true", XmlSupport.childText(configuration, "failIfNoTests"));
+        for (String goal : List.of("test", "integration-test")) {
+            boolean integration = goal.equals("integration-test");
+            String pluginId = integration ? "maven-failsafe-plugin" : "maven-surefire-plugin";
+            String defaultId = integration ? "default" : "default-test";
+            var plugin = XmlSupport.descendants(release, "plugin").stream()
+                    .filter(element -> pluginId.equals(XmlSupport.childText(element, "artifactId")))
+                    .findFirst().orElseThrow();
+            var executions = XmlSupport.children(XmlSupport.child(plugin, "executions"), "execution");
+            var defaults = executions.stream().filter(e -> defaultId.equals(XmlSupport.childText(e, "id")))
+                    .findFirst().orElseThrow();
+            var coreConfiguration = XmlSupport.child(defaults, "configuration");
+            assertEquals("${excludedGroups},${taxonomy.release.appShardTags}",
+                    XmlSupport.childText(coreConfiguration, "excludedGroups"));
+            var isolated = executions.stream().filter(e -> "release-app-shards-isolated".equals(XmlSupport.childText(e, "id")))
+                    .findFirst().orElseThrow();
+            assertEquals(goal, XmlSupport.childText(XmlSupport.child(isolated, "goals"), "goal"));
+            var configuration = XmlSupport.child(isolated, "configuration");
+            assertEquals("${taxonomy.release.appShardTags}", XmlSupport.childText(configuration, "groups"));
+            assertEquals("1", XmlSupport.childText(configuration, "forkCount"));
+            assertEquals("false", XmlSupport.childText(configuration, "reuseForks"));
+            assertEquals("true", XmlSupport.childText(configuration, "failIfNoTests"));
+            if (integration) {
+                String summary = "${project.build.directory}/failsafe-reports/failsafe-summary-release-shards.xml";
+                assertEquals(summary, XmlSupport.childText(configuration, "summaryFile"));
+                assertEquals(summary, XmlSupport.childText(XmlSupport.child(coreConfiguration, "summaryFiles"), "summaryFile"));
+            }
+        }
     }
     @Test void shardAndPackagingProfilesDisableCrossProfileBuildCacheReuse() throws Exception {
         for (String module : List.of("", "taxonomy-app")) for (String id : List.of("ci-app-test-shards-core", "ci-app-test-shard-recovery", "ci-app-test-shard-browser", "ci-app-test-shard-scenario", "ci-app-test-shards-coverage", "ci-plugin-packaging")) {
