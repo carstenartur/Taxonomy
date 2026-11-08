@@ -30,8 +30,11 @@ class UiScenarioIT {
         }));
         return Stream.concat(cases,Stream.of(DynamicTest.dynamicTest("complete driver and scenario inventory",()-> {
             executeOnce(expected);
+            if (execution != null) {
+                assertEquals(0, execution.exitCode(), () ->
+                        "Browser driver failed. See target/junit-drivers/ui-scenarios.log\n" + execution.diagnosticTail());
+            }
             if(failure!=null) throw new AssertionError("Required browser driver failed",failure);
-            assertEquals(0,execution.exitCode(),"Browser driver failed; see target/junit-drivers/ui-scenarios.log");
             validateOutcomes(report,expected);
         })));
     }
@@ -51,12 +54,23 @@ class UiScenarioIT {
         for(var scenario:actual.values()) assertEquals("passed",scenario.path("outcome").asText());
         return actual;
     }
+    private static int driverTimeoutMinutes() {
+        var environment = System.getenv();
+        String suite = environment.getOrDefault("TAXONOMY_UI_SUITE",
+                System.getProperty("taxonomy.ui.suite", "all"));
+        String profile = environment.getOrDefault("TAXONOMY_UI_PROFILE_FILTER",
+                System.getProperty("taxonomy.ui.profile.filter", ""));
+        String shard = environment.getOrDefault("TAXONOMY_UI_SHARD", "");
+        boolean completeSuite = (suite.isEmpty() || suite.equals("all")) && profile.isEmpty() && shard.isEmpty();
+        // The complete run executes all six CI shards sequentially on one runner.
+        return completeSuite ? 45 : 35;
+    }
     private synchronized void executeOnce(List<String> expected) {
         if(outcomes!=null || failure!=null) return;
         try {
             Path output=ExternalDriverSupport.root().resolve(System.getenv().getOrDefault("TAXONOMY_UI_OUTPUT_ROOT","target/ui-verification")).normalize();
             Files.deleteIfExists(output.resolve("timings.json"));
-            execution=ExternalDriverSupport.observe("run-ui-suite.mjs","ui-scenarios.log",35);
+            execution=ExternalDriverSupport.observe("run-ui-suite.mjs","ui-scenarios.log",driverTimeoutMinutes());
             report=new ObjectMapper().readTree(Files.readString(output.resolve("timings.json")));
             outcomes=readOutcomes(report);
         } catch(Throwable error) { failure=error; }

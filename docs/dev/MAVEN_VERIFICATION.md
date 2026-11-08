@@ -526,8 +526,8 @@ selected document integration test with normal test execution enabled.
 
 ## UI process isolation and timings
 
-The Maven-owned launcher executes every selected browser scenario but does not
-restart the packaged application when scenarios have the same isolation needs:
+The Maven-owned launcher executes every selected browser scenario. Within a
+shard, scenarios with the same isolation needs can share a packaged application:
 
 - read-only `ui` and `accessibility` checks share one application at the same servlet context;
 - `ui/login-context-chromium` uses a separate application mounted at `/taxonomy`
@@ -537,13 +537,12 @@ restart the packaged application when scenarios have the same isolation needs:
 - role/state profiles share one application only with profiles for the same role;
 - each primary mutation workflow keeps its own fresh application.
 
-The complete default matrix contains 19 scenarios in 9 application starts: the
-18 existing scenarios retain their eight groups, and the context-path login
-profile adds one group. Execution remains sequential. Scenarios that
-mutate application state are not allowed to share with read-only browser checks,
-primary mutation workflows remain isolated, and a role/state scenario can never
-share an application with another role. These rules are executable contracts in
-`.github/scripts/ui-suite-plan.test.mjs` rather than implicit CI behavior.
+The complete default matrix runs all 19 scenarios in the declared CI shards,
+sequentially on one runner. Each shard starts its own application groups.
+Role/state profiles in different shards start with independent data, even when
+they use the same test account. The grouping contract is covered in
+`.github/scripts/ui-suite-plan.test.mjs`. The full driver has a 45-minute
+timeout. An individual shard or focused run has a 35-minute timeout.
 
 Each scenario contains `application-log.txt`, which points to the log of its
 isolation group. The launcher also writes `target/ui-verification/timings.json`

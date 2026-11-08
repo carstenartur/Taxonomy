@@ -1,3 +1,5 @@
+import { scenarioKey } from './ui-shard-plan.mjs';
+
 function roleName(scenario) {
   return String(scenario.env?.TAXONOMY_ROLE || '').trim().toLowerCase();
 }
@@ -35,6 +37,14 @@ export function groupScenarios(scenarios) {
     groups.get(id).scenarios.push(scenario);
   }
   return [...groups.values()];
+}
+
+export function groupScenariosByShard(scenarios, shardPlan) {
+  return shardPlan.shards.flatMap(shard => {
+    const keys = new Set(shard.scenarios);
+    const selected = scenarios.filter(scenario => keys.has(scenarioKey(scenario.suite, scenario.id)));
+    return groupScenarios(selected).map(group => ({ ...group, id: `${shard.id}-${group.id}` }));
+  });
 }
 
 export function applicationConfiguration(group, baseUrl) {

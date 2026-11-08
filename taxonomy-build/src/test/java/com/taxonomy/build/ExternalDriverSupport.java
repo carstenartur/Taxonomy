@@ -29,7 +29,11 @@ final class ExternalDriverSupport {
         }
         assertEquals("passed",outcomes.get(name).path(field).asText(),outcomes.get(name).toString());
     }
-    record Result(int exitCode,String output) {}
+    record Result(int exitCode,String output) {
+        String diagnosticTail() {
+            return output.substring(Math.max(0, output.length() - 12_000));
+        }
+    }
     static Result observe(String script,String logName,int minutes) throws Exception {
         String node=System.getenv().getOrDefault("TAXONOMY_NODE_EXECUTABLE",System.getProperty("taxonomy.node.executable","node"));
         if(node.contains("/") && !Files.isExecutable(Path.of(node))) node="node";
@@ -40,7 +44,7 @@ final class ExternalDriverSupport {
     }
     private static String command(List<String> command,String logName,int minutes,Map<String,String> environment) throws Exception {
         Result result=observeCommand(command,logName,minutes,environment);
-        assertEquals(0,result.exitCode(),"Driver failed: "+logName+"\n"+result.output().substring(Math.max(0,result.output().length()-12000)));
+        assertEquals(0, result.exitCode(), () -> "Driver failed: " + logName + "\n" + result.diagnosticTail());
         return result.output();
     }
     private static Result observeCommand(List<String> command,String logName,int minutes) throws Exception {
