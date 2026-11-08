@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { applicationConfiguration, groupScenarios, isolationGroupId } from './ui-suite-plan.mjs';
+import { applicationConfiguration, groupScenarios, groupScenariosByShard, isolationGroupId } from './ui-suite-plan.mjs';
 
 function scenario(suite, id, role) {
   return {
@@ -123,6 +123,28 @@ test('shares role-state applications only inside the same role', () => {
     'desktop-user-chromium',
     'zoom-400-user-chromium'
   ]);
+});
+
+test('runs the complete matrix with the same application boundaries as CI shards', () => {
+  const profiles = [
+    scenario('role-state', 'desktop-architect-firefox', 'ARCHITECT'),
+    scenario('role-state', 'forced-colors-architect-chromium', 'ARCHITECT'),
+    scenario('role-state', 'desktop-user-chromium', 'USER'),
+    scenario('role-state', 'landscape-user-firefox', 'USER')
+  ];
+  const plan = { shards: [
+    { id: 'architect-and-a11y-desktop', scenarios: ['role-state/desktop-architect-firefox'] },
+    { id: 'forced-colors-special-and-primary-user', scenarios: ['role-state/forced-colors-architect-chromium'] },
+    { id: 'desktop-and-landscape-user', scenarios: ['role-state/desktop-user-chromium', 'role-state/landscape-user-firefox'] }
+  ] };
+  const groups = groupScenariosByShard(profiles, plan);
+
+  assert.deepEqual(groups.map(group => group.scenarios.map(item => item.id)), [
+    ['desktop-architect-firefox'],
+    ['forced-colors-architect-chromium'],
+    ['desktop-user-chromium', 'landscape-user-firefox']
+  ]);
+  assert.equal(new Set(groups.map(group => group.id)).size, groups.length);
 });
 
 test('keeps every primary mutation workflow isolated', () => {

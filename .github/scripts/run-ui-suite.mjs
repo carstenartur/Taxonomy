@@ -6,7 +6,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-import { applicationConfiguration, groupScenarios } from './ui-suite-plan.mjs';
+import { applicationConfiguration, groupScenarios, groupScenariosByShard } from './ui-suite-plan.mjs';
 import { UI_READINESS_GROUP, waitForApplication } from './ui-application-readiness.mjs';
 import {
   scenarioKey,
@@ -362,7 +362,8 @@ if (process.argv.includes('--list-scenarios')) {
   process.exit(0);
 }
 
-const groups = groupScenarios(scenarios);
+const completeSuite = requestedSuite === 'all' && !requestedProfile && !requestedShard;
+const groups = completeSuite ? groupScenariosByShard(scenarios, shardPlan) : groupScenarios(scenarios);
 const report = {
   schemaVersion: 1,
   requestedSuite,
