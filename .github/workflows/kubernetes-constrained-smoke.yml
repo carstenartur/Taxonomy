@@ -94,18 +94,28 @@ jobs:
       - name: Install verified kind 0.31.0
         env:
           KIND_VERSION: v0.31.0
+          KIND_MODULE_SUM: h1:UcT4nzm+YM7YEbqiAKECk+b6dsvc/HRZZu9U0FolL1g=
         shell: bash
         run: |
           set -euo pipefail
           asset="kind-linux-amd64"
-          base="https://kind.sigs.k8s.io/dl/${KIND_VERSION}"
-          curl -fsSLo "$RUNNER_TEMP/kind" "${base}/${asset}"
-          curl -fsSLo "$RUNNER_TEMP/kind.sha256sum" \
-            "${base}/${asset}.sha256sum"
-          expected=$(awk 'NF {print $1; exit}' "$RUNNER_TEMP/kind.sha256sum")
-          test "${#expected}" -eq 64
-          printf '%s  %s\n' "$expected" "$RUNNER_TEMP/kind" \
-            | sha256sum -c -
+          base="https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}"
+          curl_flags=(-fsSL --retry 3 --retry-max-time 120 --connect-timeout 10 --max-time 60)
+          if curl "${curl_flags[@]}" -o "$RUNNER_TEMP/kind" "${base}/${asset}" \
+            && curl "${curl_flags[@]}" -o "$RUNNER_TEMP/kind.sha256sum" "${base}/${asset}.sha256sum"; then
+            expected=$(awk 'NF {print $1; exit}' "$RUNNER_TEMP/kind.sha256sum")
+            test "${#expected}" -eq 64
+            printf '%s  %s\n' "$expected" "$RUNNER_TEMP/kind" \
+              | sha256sum -c -
+          else
+            # The Go proxy is independent of the GitHub release download.
+            export GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org GOTOOLCHAIN=local
+            module="sigs.k8s.io/kind@${KIND_VERSION}"
+            go mod download -json "$module" \
+              | jq -e --arg sum "$KIND_MODULE_SUM" '.Sum == $sum' >/dev/null
+            GOBIN="$RUNNER_TEMP/kind-from-source" go install "$module"
+            mv "$RUNNER_TEMP/kind-from-source/kind" "$RUNNER_TEMP/kind"
+          fi
           sudo install -m 0755 "$RUNNER_TEMP/kind" /usr/local/bin/kind
           kind version
 
