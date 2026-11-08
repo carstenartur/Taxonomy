@@ -55,6 +55,31 @@ class ApplicationTestShardRepositoryTest {
         assertNotEquals(scenario.getKey(), browser.getKey(),
                 "The measured long architecture scenario must not consume the browser acceptance job's time budget");
     }
+    @Test void releaseBrowserTestsHaveTheirOwnFreshSurefireForks() throws Exception {
+        var catalogue = object(read(root.resolve(".mvn/verification-suites.json")).get("applicationTestShards"));
+        String browserTag = (String) object(object(catalogue.get("groups")).get("browser")).get("tag");
+        var release = profile(pom("taxonomy-app"), "release-browser-test-isolation");
+        var activation = XmlSupport.child(XmlSupport.child(release, "activation"), "property");
+        assertEquals("releaseCheckCurrentState", XmlSupport.childText(activation, "name"));
+        assertEquals("release", XmlSupport.childText(activation, "value"));
+        var surefire = XmlSupport.descendants(release, "plugin").stream()
+                .filter(plugin -> "maven-surefire-plugin".equals(XmlSupport.childText(plugin, "artifactId")))
+                .findFirst().orElseThrow();
+        var executions = XmlSupport.children(XmlSupport.child(surefire, "executions"), "execution");
+        var defaults = executions.stream().filter(e -> "default-test".equals(XmlSupport.childText(e, "id")))
+                .findFirst().orElseThrow();
+        assertEquals("${excludedGroups}," + browserTag,
+                XmlSupport.childText(XmlSupport.child(defaults, "configuration"), "excludedGroups"));
+        var isolated = executions.stream().filter(e -> "release-browser-isolated".equals(XmlSupport.childText(e, "id")))
+                .findFirst().orElseThrow();
+        assertEquals("test", XmlSupport.childText(isolated, "phase"));
+        assertEquals("test", XmlSupport.childText(XmlSupport.child(isolated, "goals"), "goal"));
+        var configuration = XmlSupport.child(isolated, "configuration");
+        assertEquals(browserTag, XmlSupport.childText(configuration, "groups"));
+        assertEquals("1", XmlSupport.childText(configuration, "forkCount"));
+        assertEquals("false", XmlSupport.childText(configuration, "reuseForks"));
+        assertEquals("true", XmlSupport.childText(configuration, "failIfNoTests"));
+    }
     @Test void shardAndPackagingProfilesDisableCrossProfileBuildCacheReuse() throws Exception {
         for (String module : List.of("", "taxonomy-app")) for (String id : List.of("ci-app-test-shards-core", "ci-app-test-shard-recovery", "ci-app-test-shard-browser", "ci-app-test-shard-scenario", "ci-app-test-shards-coverage", "ci-plugin-packaging")) {
             Element profile = profile(pom(module), id);
