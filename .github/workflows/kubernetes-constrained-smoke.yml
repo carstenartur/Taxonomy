@@ -98,9 +98,10 @@ jobs:
         run: |
           set -euo pipefail
           asset="kind-linux-amd64"
-          base="https://kind.sigs.k8s.io/dl/${KIND_VERSION}"
-          curl -fsSLo "$RUNNER_TEMP/kind" "${base}/${asset}"
-          curl -fsSLo "$RUNNER_TEMP/kind.sha256sum" \
+          base="https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}"
+          curl_flags=(-fsSL --retry 3 --retry-max-time 120 --connect-timeout 10 --max-time 60)
+          curl "${curl_flags[@]}" -o "$RUNNER_TEMP/kind" "${base}/${asset}"
+          curl "${curl_flags[@]}" -o "$RUNNER_TEMP/kind.sha256sum" \
             "${base}/${asset}.sha256sum"
           expected=$(awk 'NF {print $1; exit}' "$RUNNER_TEMP/kind.sha256sum")
           test "${#expected}" -eq 64
