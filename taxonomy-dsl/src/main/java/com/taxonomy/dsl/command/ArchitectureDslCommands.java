@@ -79,13 +79,13 @@ public final class ArchitectureDslCommands {
         }
         validateContainment(blocks);
         validatePackages(source);
-        if (blocks.containsKey(AdmbwDeliveryProfile.BLOCK_KEY)) validateReconciledDelivery(previous, source, blocks, changes);
+        if (blocks.containsKey(AdmbwDeliveryProfile.BLOCK_KEY)) validateAdmbwTransition(previous, source, blocks, changes);
         try { com.taxonomy.dsl.planning.PlanningInformation.validateReferences(source); }
         catch (IllegalArgumentException invalid) { throw problem("INVALID_REFERENCE", "source", invalid.getMessage()); }
     }
 
-    private void validateReconciledDelivery(String previous, String source, Map<String, BlockAst> blocks,
-                                           List<ArchitectureSemanticPatch.BlockChange> changes) {
+    private void validateAdmbwTransition(String previous, String source, Map<String, BlockAst> blocks,
+                                         List<ArchitectureSemanticPatch.BlockChange> changes) {
         try {
             var before = model(previous);
             var after = model(source);
@@ -174,9 +174,10 @@ public final class ArchitectureDslCommands {
         }
         String next = ArchitectureSemanticPatch.inverse(current, before, original);
         Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(next);
+        var changes = ArchitectureSemanticPatch.between(current, next);
         // Deletion inverses must not silently strand mappings, views or evidence added later.
         Map<String, BlockAst> currentBlocks = ArchitectureSemanticPatch.index(current);
-        for (var change : ArchitectureSemanticPatch.between(current, next)) {
+        for (var change : changes) {
             if (change.after() == null) {
                 BlockAst removed = currentBlocks.get(change.id());
                 List<String> dependencies = dependencies(blocks, removed);
@@ -190,15 +191,8 @@ public final class ArchitectureDslCommands {
             RelationKey key = relationKey(block);
             if (changed.contains(ArchitectureSemanticPatch.key(block)) || changed.contains("element:" + key.sourceId())
                     || changed.contains("element:" + key.targetId())) validateRelation(blocks, key);
-            if (changed.contains(ArchitectureSemanticPatch.key(block)) && "accepted".equals(block.property("status")))
-                requireAdmbwRelation(next, blocks, key);
         }
-        if (blocks.containsKey(AdmbwDeliveryProfile.BLOCK_KEY)) {
-            var model = model(next);
-            model.getAdmbwDelivery().members(model);
-        }
-        for (String id : changed) if (id.startsWith("element:"))
-            retainAdmbwEndpoints(current, next, currentBlocks, id.substring("element:".length()));
+        if (blocks.containsKey(AdmbwDeliveryProfile.BLOCK_KEY)) validateAdmbwTransition(current, next, blocks, changes);
         for (BlockAst mapping : blocks.values()) if ("mapping".equals(mapping.getKind()) && changed.contains(ArchitectureSemanticPatch.key(mapping))) {
             validateMappingReferences(blocks, mapping);
         }
@@ -206,7 +200,7 @@ public final class ArchitectureDslCommands {
         validatePackages(next);
         if (original.stream().anyMatch(c -> com.taxonomy.dsl.planning.PlanningInformation.planningOnlyChange(before, after, c.id())))
             com.taxonomy.dsl.planning.PlanningInformation.validateReferences(next);
-        return new Change(next, ArchitectureSemanticPatch.between(current, next));
+        return new Change(next, changes);
     }
 
     private static void validateMappingReferences(Map<String, BlockAst> blocks, BlockAst mapping) {

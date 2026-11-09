@@ -3,6 +3,7 @@ package com.taxonomy.dsl.admbw;
 import com.taxonomy.dsl.command.ArchitectureCommand.ClearArchitectureElementProperties;
 import com.taxonomy.dsl.command.ArchitectureCommand.ConfigureAdmbwDelivery;
 import com.taxonomy.dsl.command.ArchitectureCommand.CreateArchitectureRelation;
+import com.taxonomy.dsl.command.ArchitectureCommand.DeleteArchitectureRelation;
 import com.taxonomy.dsl.command.ArchitectureCommand.DeleteArchitectureView;
 import com.taxonomy.dsl.command.ArchitectureCommand.RelationKey;
 import com.taxonomy.dsl.command.ArchitectureCommand.UpdateArchitectureElement;
@@ -11,6 +12,8 @@ import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.mapper.ModelToAstMapper;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.Map;
@@ -154,6 +157,35 @@ class AdmbwDeliveryAuthoringTest {
         assertThatThrownBy(() -> commands.validateReconciledSource(DSL, amended))
                 .isInstanceOfSatisfying(ArchitectureDslCommands.CommandProblem.class,
                         error -> assertThat(error.code()).isEqualTo("ADMBW_SOURCE_VIEW_IN_USE"));
+    }
+
+    @Test
+    void undoCannotChangeTheMembersOfAnAnalysisViewBoundAfterTheEdit() {
+        String initial = DSL.substring(0, DSL.indexOf("delivery admbw"))
+                .replace("view warning {", "view analysis-warning {")
+                .replace("x-analysis-relation-members:", "x-analysis-graph-fingerprint: \"" + "a1".repeat(32)
+                        + "\";\n  x-analysis-relation-members:");
+        String edited = commands.apply(initial, new UpsertArchitectureView(
+                "analysis-warning", "Warnung", "", List.of("CP-1022", "CR-1047", "other"), Map.of())).dsl();
+        String bound = commands.apply(edited, new ConfigureAdmbwDelivery("WARN", "analysis-warning")).dsl();
+
+        assertThatThrownBy(() -> commands.inverse(bound, initial, edited))
+                .isInstanceOfSatisfying(ArchitectureDslCommands.CommandProblem.class,
+                        error -> assertThat(error.code()).isEqualTo("ADMBW_SOURCE_VIEW_IN_USE"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"proposed", "provisional"})
+    void undoCannotRestoreARelationWhoseCatalogueEndpointHasBecomeIneligible(String status) {
+        var key = new RelationKey("CR-1047", "FULFILLS", "CP-1022");
+        String linked = commands.apply(DSL, new CreateArchitectureRelation(key, status)).dsl();
+        String removed = commands.apply(linked, new DeleteArchitectureRelation(key)).dsl();
+        String unbound = commands.apply(removed, new ClearArchitectureElementProperties(
+                "CP-1022", Set.of(AdmbwFffmlvProfile.CATALOGUE_GUID))).dsl();
+
+        assertThatThrownBy(() -> commands.inverse(unbound, linked, removed))
+                .isInstanceOfSatisfying(ArchitectureDslCommands.CommandProblem.class,
+                        error -> assertThat(error.code()).isEqualTo("ADMBW_RELATION_NOT_ALLOWED"));
     }
 
     private static CreateArchitectureRelation relation(String source, String type, String target) {
