@@ -4,6 +4,7 @@ import com.taxonomy.analysis.dag.SubtaxonomyAnalysisTask;
 import com.taxonomy.analysis.dag.inprocess.InProcessAnalysisOperation;
 import com.taxonomy.analysis.service.AnalysisMemoryGuard;
 import com.taxonomy.analysis.service.AnalysisRunControl;
+import com.taxonomy.analysis.service.AnalysisStoppedException;
 import com.taxonomy.analysis.service.LlmTransportMeter;
 import com.taxonomy.analysis.service.LlmProviderConfig;
 import com.taxonomy.analysis.service.LlmService;
@@ -87,7 +88,11 @@ public final class FrozenClusterAnalysisComputation implements ClusterAnalysisCo
             }
             var result = llm.analyzeWithBudget(command.businessText(),
                     new AnalysisScope(Set.of(root), AnalysisMode.TAXONOMIES_ONLY));
-            AnalysisRunControl.checkpoint();
+            try {
+                AnalysisRunControl.checkpoint();
+            } catch (AnalysisStoppedException stopped) {
+                throw stopped.withPartialResult(result);
+            }
             return result;
         }
     }

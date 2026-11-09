@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.service;
 
+import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import java.util.ArrayList;
@@ -11,7 +12,13 @@ import java.util.Map;
 public final class AnalysisStoppedException extends RuntimeException {
     public enum Reason { CANCELLED, MEMORY_PRESSURE, TIME_LIMIT, AWAITING_DECISION }
     private final Reason reason;
+    private AnalysisResult partialResult;
     private LlmCallDetail completedCallEvidence;
+    public AnalysisResult partialResult() { return partialResult; }
+    public AnalysisStoppedException withPartialResult(AnalysisResult result) {
+        partialResult = result;
+        return this;
+    }
     public LlmCallDetail completedCallEvidence() { return completedCallEvidence; }
     public AnalysisStoppedException withCompletedCall(LlmCallDetail detail) {
         completedCallEvidence = detail;

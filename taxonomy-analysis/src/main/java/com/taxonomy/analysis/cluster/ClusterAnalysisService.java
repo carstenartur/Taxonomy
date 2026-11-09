@@ -4,6 +4,7 @@ import com.taxonomy.analysis.dag.*;
 import com.taxonomy.analysis.service.AnalysisStoppedException;
 import com.taxonomy.dto.AnalysisResult;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,11 +41,17 @@ public final class ClusterAnalysisService {
                 result = failed(unavailable.reason()); result.setStatus("PARTIAL");
                 outcome = AnalysisTaskOutcome.STOPPED; reason = unavailable.reason();
             } catch (AnalysisStoppedException stopped) {
-                result = new AnalysisResult(stopped.partialScores(), List.of());
-                result.setReasons(stopped.partialReasons()); result.setDiscrepancies(stopped.partialDiscrepancies());
-                result.setStatus("PARTIAL"); result.setErrorMessage(stopped.reason().name());
-                result.setWarnings(new java.util.ArrayList<>(List.of(stopped.reason().name())));
-                outcome = AnalysisTaskOutcome.STOPPED; reason = stopped.reason().name();
+                reason = stopped.reason().name();
+                result = stopped.partialResult();
+                if (result == null) {
+                    result = new AnalysisResult(stopped.partialScores(), List.of());
+                    result.setReasons(stopped.partialReasons()); result.setDiscrepancies(stopped.partialDiscrepancies());
+                }
+                var warnings = new ArrayList<>(result.getWarnings());
+                if (!warnings.contains(reason)) warnings.add(reason);
+                result.setWarnings(warnings);
+                result.setStatus("PARTIAL"); result.setErrorMessage(reason);
+                outcome = AnalysisTaskOutcome.STOPPED;
             } catch (RuntimeException failure) {
                 // Preserve failure explicitly without retaining arbitrary provider/credential-bearing exception text.
                 result = failed("ROOT_EVALUATION_FAILED"); outcome = AnalysisTaskOutcome.FAILED;
