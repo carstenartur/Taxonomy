@@ -13,17 +13,24 @@ import com.taxonomy.editor.ArchitectureEditorExportPort;
 import com.taxonomy.editor.ArchitectureEditorExportPort.ExportDocument;
 import com.taxonomy.export.ArchitecturePdfRenderer;
 import com.taxonomy.export.SvgDiagramRenderer;
+import com.taxonomy.extension.api.integration.AdmbwQeaExport;
+import com.taxonomy.extension.api.integration.IntegrationConnectorExtension;
+import com.taxonomy.extension.api.plugin.ExtensionCatalog;
+import com.taxonomy.extension.api.plugin.ExtensionUnavailableException;
 import com.taxonomy.model.WorkspaceOverlayScope;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import jakarta.servlet.http.HttpServletRequest;
 import org.eclipse.jgit.lib.ObjectId;
 import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -46,20 +53,23 @@ public final class ArchitectureEditorExportController {
     private final WorkspaceResolver resolver;
     private final SvgDiagramRenderer svg;
     private final ArchitecturePdfRenderer pdf;
+    private final ExtensionCatalog catalog;
 
     public ArchitectureEditorExportController(
             ArchitectureEditorExportPort exports,
             WorkspaceResolver resolver,
             SvgDiagramRenderer svg,
-            ArchitecturePdfRenderer pdf) {
+            ArchitecturePdfRenderer pdf,
+            ExtensionCatalog catalog) {
         this.exports = Objects.requireNonNull(exports, "exports");
         this.resolver = Objects.requireNonNull(resolver, "resolver");
         this.svg = Objects.requireNonNull(svg, "svg");
         this.pdf = Objects.requireNonNull(pdf, "pdf");
+        this.catalog = Objects.requireNonNull(catalog, "catalog");
     }
 
     public record AdmbwAssessment(String repositoryId, String workspaceScopeKey, String branch, String commit,
-                                  AdmbwFffmlvProfile.Report assessment) { }
+                                  AdmbwFffmlvProfile.Report assessment, List<AdmbwFffmlvProfile.Issue> qeaIssues) { }
 
     @GetMapping(value = "/api/architecture/editor.admbw.json", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Prepare ADMBw C1-S1 and R7 from an exact architecture checkpoint",
@@ -71,14 +81,96 @@ public final class ArchitectureEditorExportController {
             @RequestParam String commit,
             @RequestParam String projectCode,
             @RequestParam(required = false) String viewId) throws IOException {
-        var context = readContext(repositoryId, workspaceScopeKey, branch);
-        var checkpoint = exports.readCheckpoint(context, commit);
-        var assessment = new AdmbwFffmlvProfile().assess(checkpoint.dsl(), projectCode, viewId);
+        var assessment = assessAdmbw(repositoryId, workspaceScopeKey, branch, commit, projectCode, viewId);
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=admbw-assessment.json")
                 .header("X-Content-Type-Options", "nosniff")
-                .body(new AdmbwAssessment(repositoryId, workspaceScopeKey, branch, checkpoint.commit(), assessment));
+                .body(assessment);
+    }
+
+    @PostMapping(value = "/api/architecture/editor.admbw.qea",
+            consumes = {AdmbwQeaExport.MEDIA_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE})
+    @Operation(summary = "Download a native ADMBw QEA copy",
+            description = "Requires the Sparx plugin, a structurally checked Git checkpoint in the selected context, and the GUID of a model root in the supplied QEA basis. The output adds C1-S1 and R7 to a private copy for manual review.",
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+                    content = @Content(mediaType = AdmbwQeaExport.MEDIA_TYPE, schema = @Schema(type = "string", format = "binary"))))
+    @ApiResponse(responseCode = "200", description = "Native QEA copy for manual review",
+            content = @Content(mediaType = AdmbwQeaExport.MEDIA_TYPE, schema = @Schema(type = "string", format = "binary")))
+    public ResponseEntity<byte[]> admbwQea(
+            @RequestParam String repositoryId,
+            @RequestParam String workspaceScopeKey,
+            @RequestParam String branch,
+            @RequestParam String commit,
+            @RequestParam String projectCode,
+            @RequestParam(required = false) String viewId,
+            @RequestParam String rootPackageGuid,
+            HttpServletRequest request) throws IOException {
+        var checked = assessAdmbw(repositoryId, workspaceScopeKey, branch, commit, projectCode, viewId);
+        var report = checked.assessment();
+        var views = List.of(report.capabilityToService(), report.requirementDerivation());
+        var issues = views.stream().flatMap(view -> view.issues().stream())
+                .map(AdmbwFffmlvProfile.Issue::code).distinct().toList();
+        if (!issues.isEmpty()) throw new CommandProblem("ADMBW_CHANGES_REQUIRED", "commit",
+                "Resolve the structural findings from the ADMBw assessment before creating a QEA copy", issues);
+
+        if (!checked.qeaIssues().isEmpty()) throw new CommandProblem("ADMBW_QEA_PART_OWNER", "commit",
+                "Bind each R7 ResourceRole to an existing owned EA Part before native delivery",
+                checked.qeaIssues().stream().map(AdmbwFffmlvProfile.Issue::object).toList());
+
+        try (var lease = catalog.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class)) {
+            if (!(lease.extension() instanceof AdmbwQeaExport writer)) throw admbwExporterUnavailable();
+            var delivery = new AdmbwQeaExport.Delivery(report.projectCode(), checked.commit(),
+                    views.stream().map(ArchitectureEditorExportController::nativeView).toList());
+            var file = writer.exportAdmbw(delivery, rootPackageGuid, readQeaBasis(request));
+            return ResponseEntity.ok()
+                    .cacheControl(CacheControl.noStore())
+                    .contentType(MediaType.parseMediaType(file.mediaType()))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(file.filename()).build().toString())
+                    .header("X-Content-Type-Options", "nosniff")
+                    .header("X-Taxonomy-Source", "GIT_CHECKPOINT")
+                    .header("X-Taxonomy-Commit", checked.commit())
+                    .body(file.content());
+        } catch (ExtensionUnavailableException unavailable) {
+            throw admbwExporterUnavailable();
+        }
+    }
+
+    private AdmbwAssessment assessAdmbw(String repositoryId, String workspaceScopeKey, String branch,
+                                        String commit, String projectCode, String viewId) throws IOException {
+        var context = readContext(repositoryId, workspaceScopeKey, branch);
+        var checkpoint = exports.readCheckpoint(context, commit);
+        var assessment = new AdmbwFffmlvProfile().assess(checkpoint.dsl(), projectCode, viewId);
+        var qeaIssues = assessment.requirementDerivation().elements().stream()
+                .filter(e -> e.stereotype().equals("ResourceRole") && e.catalogueGuid() == null)
+                .map(e -> new AdmbwFffmlvProfile.Issue("ADMBW_QEA_PART_OWNER", e.ref(),
+                        "Bind this ResourceRole to an existing owned EA Part before native delivery."))
+                .toList();
+        return new AdmbwAssessment(repositoryId, workspaceScopeKey, branch, checkpoint.commit(), assessment, qeaIssues);
+    }
+
+    private static AdmbwQeaExport.View nativeView(AdmbwFffmlvProfile.View view) {
+        return new AdmbwQeaExport.View(view.viewpoint(), view.name(), view.packagePath(),
+                view.elements().stream().map(e -> new AdmbwQeaExport.Element(e.ref(), e.stereotype(), e.name(), e.notes(),
+                        e.catalogueGuid(), e.requirementVersion(), e.requirementContentHash())).toList(),
+                view.connectors().stream().map(c -> new AdmbwQeaExport.Connector(c.stereotype(), c.client(), c.supplier())).toList());
+    }
+
+    private static byte[] readQeaBasis(HttpServletRequest request) {
+        int maxBytes = AdmbwQeaExport.MAX_BASIS_BYTES;
+        if (request.getContentLengthLong() <= maxBytes) {
+            try {
+                byte[] bytes = request.getInputStream().readNBytes(maxBytes + 1);
+                if (bytes.length > 0 && bytes.length <= maxBytes) return bytes;
+            } catch (IOException interrupted) {
+                throw new CommandProblem("ADMBW_QEA_BASIS", "basis", "The QEA upload could not be read completely", List.of());
+            }
+        }
+        throw new CommandProblem("ADMBW_QEA_BASIS", "basis", "Supply a QEA file of up to 32 MiB", List.of());
+    }
+
+    private static CommandProblem admbwExporterUnavailable() {
+        return new CommandProblem("ADMBW_QEA_UNAVAILABLE", "basis", "Install or update the Sparx plugin to enable native ADMBw export", List.of());
     }
 
     @GetMapping(value = "/api/architecture/editor.svg", produces = "image/svg+xml")
@@ -206,6 +298,7 @@ public final class ArchitectureEditorExportController {
         int status = switch (error.code()) {
             case "NOT_FOUND" -> 404;
             case "READ_ONLY" -> 403;
+            case "ADMBW_QEA_UNAVAILABLE" -> 503;
             case "CONTEXT_CHANGED", "UNDO_CONFLICT", "ALREADY_INVERTED", "COMMAND_ID_REUSED",
                     "DEPENDENCIES_EXIST", "CHECKPOINT_PENDING", "CHECKPOINT_CONFLICT", "VERSION_CHANGED" -> 409;
             default -> 422;

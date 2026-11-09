@@ -6,9 +6,6 @@ import com.taxonomy.plugins.sparx.QeaDatabase.Snapshot;
 import com.taxonomy.plugins.sparx.QeaWriteModel.NativeObject;
 import com.taxonomy.sparx.mapping.SparxSemanticTypes;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.*;
 
@@ -41,56 +38,42 @@ final class QeaWriter {
                     request.outbound().document().metadata(), List.of());
         }
         var model = new QeaWriteModel(request, basis, before);
-        Path directory = null;
-        try {
-            directory = Files.createTempDirectory("taxonomy-qea-write-");
-            Path copy = directory.resolve("copy.qea"); Files.write(copy, bytes);
-            boolean changed;
-            var losses = new ArrayList<MappingLoss>();
-            try (var database = new QeaWriteDatabase(copy)) {
-                if (request.mode() == FileExportMode.NEW_PROJECT) database.validateEmptyTemplate();
-                model.allocate(database);
-                if (request.mode() == FileExportMode.NEW_PROJECT) {
-                    List<Row> identities = basis.rows("usys_system").stream().filter(r -> r.text("property").equalsIgnoreCase("ProjectGUID")).toList();
-                    if (identities.isEmpty()) database.insert("usys_system", Map.of("property", "ProjectGUID", "value", model.model));
-                    else database.update("usys_system", "property", identities.getFirst().text("property"), Map.of("value", model.model));
-                    database.update("t_package", "package_id", originalRoot.id("package_id"), Map.of("ea_guid", model.root));
-                }
-                var tags = new QeaWriteTags(basis, database, request.identityNamespace());
-                List<Artifact> ordered = model.selected.values().stream().sorted(Comparator
-                        .comparingInt((Artifact a) -> a.kind() == ArtifactKind.SPECIFICATION ? model.depth(a.id()) : QeaDatabase.MAX_DEPTH + 1)
-                        .thenComparing(Artifact::id)).toList();
-                for (Artifact artifact : ordered) artifact(artifact, model, database, tags);
-                for (var entry : model.parents.entrySet()) {
-                    if (!model.parentChanges.contains(entry.getKey())) continue;
-                    NativeObject owner = model.nativeObjects.get(entry.getKey());
-                    if (owner == null || owner.original() == null) continue;
-                    String column = owner.kind() == ArtifactKind.SPECIFICATION ? "parent_id" : "package_id";
-                    var fields = delta(owner.original(), Map.of(column, model.packageId(entry.getKey())));
-                    database.update(owner.table(), owner.key(), owner.id(), fields);
-                    Row mirror = model.mirrors.get(entry.getKey());
-                    if (mirror != null) database.update("t_object", "object_id", mirror.id("object_id"), delta(mirror, Map.of("package_id", model.packageId(entry.getKey()))));
-                }
-                for (Relation relation : model.relations.values()) relation(relation, model, database, tags);
-                new QeaWritePlacements(basis, before, model, database, losses).write(request.outbound().document().placements());
-                changed = database.dirty(); database.commit();
+        var snapshot = basis;
+        var templateRoot = originalRoot;
+        var losses = new ArrayList<MappingLoss>();
+        byte[] result = QeaWriteDatabase.writeCopy(bytes, false, database -> {
+            if (request.mode() == FileExportMode.NEW_PROJECT) database.validateEmptyTemplate();
+            model.allocate(database);
+            if (request.mode() == FileExportMode.NEW_PROJECT) {
+                List<Row> identities = snapshot.rows("usys_system").stream().filter(r -> r.text("property").equalsIgnoreCase("ProjectGUID")).toList();
+                if (identities.isEmpty()) database.insert("usys_system", Map.of("property", "ProjectGUID", "value", model.model));
+                else database.update("usys_system", "property", identities.getFirst().text("property"), Map.of("value", model.model));
+                database.update("t_package", "package_id", templateRoot.id("package_id"), Map.of("ea_guid", model.root));
             }
-            if (Files.size(copy) > QeaDatabase.MAX_BYTES) throw fail("QEA_LIMIT", "The native QEA output exceeds 32 MiB");
-            byte[] result = changed ? Files.readAllBytes(copy) : bytes;
-            ExchangeDocument verified = new QeaReader("2").read(result, null);
-            if (!verified.metadata().get("identifier").equals(model.model)) throw fail("QEA_WRITE_CONFLICT", "Native read-back changed the reviewed model identity");
-            verifyReviewed(model, verified);
-            losses.add(new MappingLoss(model.model, "scope", "QEA_COPY_PRESERVED", LossDisposition.PRESERVED_EXTENSION,
-                    "The supplied SQLite copy retains unselected rows, unknown data and native layout; no missing item authorizes deletion"));
-            return new ExchangeFile(SparxQeaWriterConnector.MEDIA_TYPE, "taxonomy-" + (request.mode() == FileExportMode.NEW_PROJECT ? "project" : "updated-copy") + ".qea", result, losses);
-        } catch (SQLException invalid) { throw fail("QEA_WRITE_REJECTED", "Native serialization failed schema, reference, work-budget or size validation; no file was delivered"); }
-        catch (IOException unavailable) { throw fail("QEA_WRITE_UNAVAILABLE", "Unable to create or read the owned temporary QEA output"); }
-        finally {
-            if (directory != null) try {
-                for (String name : List.of("copy.qea-journal", "copy.qea-wal", "copy.qea-shm", "copy.qea")) Files.deleteIfExists(directory.resolve(name));
-                Files.deleteIfExists(directory);
-            } catch (IOException cleanup) { throw fail("QEA_WRITE_UNAVAILABLE", "Unable to remove the owned temporary QEA output"); }
-        }
+            var tags = new QeaWriteTags(snapshot, database, request.identityNamespace());
+            List<Artifact> ordered = model.selected.values().stream().sorted(Comparator
+                    .comparingInt((Artifact a) -> a.kind() == ArtifactKind.SPECIFICATION ? model.depth(a.id()) : QeaDatabase.MAX_DEPTH + 1)
+                    .thenComparing(Artifact::id)).toList();
+            for (Artifact artifact : ordered) artifact(artifact, model, database, tags);
+            for (var entry : model.parents.entrySet()) {
+                if (!model.parentChanges.contains(entry.getKey())) continue;
+                NativeObject owner = model.nativeObjects.get(entry.getKey());
+                if (owner == null || owner.original() == null) continue;
+                String column = owner.kind() == ArtifactKind.SPECIFICATION ? "parent_id" : "package_id";
+                var fields = delta(owner.original(), Map.of(column, model.packageId(entry.getKey())));
+                database.update(owner.table(), owner.key(), owner.id(), fields);
+                Row mirror = model.mirrors.get(entry.getKey());
+                if (mirror != null) database.update("t_object", "object_id", mirror.id("object_id"), delta(mirror, Map.of("package_id", model.packageId(entry.getKey()))));
+            }
+            for (Relation relation : model.relations.values()) relation(relation, model, database, tags);
+            new QeaWritePlacements(snapshot, before, model, database, losses).write(request.outbound().document().placements());
+        });
+        ExchangeDocument verified = new QeaReader("2").read(result, null);
+        if (!verified.metadata().get("identifier").equals(model.model)) throw fail("QEA_WRITE_CONFLICT", "Native read-back changed the reviewed model identity");
+        verifyReviewed(model, verified);
+        losses.add(new MappingLoss(model.model, "scope", "QEA_COPY_PRESERVED", LossDisposition.PRESERVED_EXTENSION,
+                "The supplied SQLite copy retains unselected rows, unknown data and native layout; no missing item authorizes deletion"));
+        return new ExchangeFile(SparxQeaWriterConnector.MEDIA_TYPE, "taxonomy-" + (request.mode() == FileExportMode.NEW_PROJECT ? "project" : "updated-copy") + ".qea", result, losses);
     }
 
     private static void validateRequest(BasedOutboundRequest request) {

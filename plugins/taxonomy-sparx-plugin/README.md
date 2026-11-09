@@ -24,7 +24,7 @@ cd plugins/taxonomy-sparx-plugin
 
 Install `target/taxonomy-sparx-plugin-1.5.3-SNAPSHOT.jar` through the host's existing
 operator plugin installation flow and restart the host. The manifest declares
-plugin ID `taxonomy.sparx`, mode `STARTUP`, and host SPI `>=1.4.0 & <2.0.0`.
+plugin ID `taxonomy.sparx`, mode `STARTUP`, and host SPI `>=1.5.0 & <2.0.0`.
 The SDK is provided by the host and is not included in the plugin JAR. SQLite
 and its native libraries are included. The JDK-only `taxonomy-sparx-mapping`
 library is shaded into the plugin's own package namespace, so its element and
@@ -39,6 +39,13 @@ The preferred upload MIME type is `application/vnd.sparx.qea`; SQLite and binary
 upload MIME types are also accepted. A MIME type or filename never substitutes
 for SQLite header and schema validation. Upload a self-contained, closed database
 snapshot: an uncheckpointed WAL file is not included by uploading only a `.qea`.
+
+## ADMBw delivery from the architecture editor
+
+The editor can add C1–S1 and R7 to a private copy of a closed QEA project
+with the required ADMBw catalogues. It uses the same optional plugin and a
+separate checkpoint-based delivery action. See the
+[ADMBw profile and review steps](../../docs/features/admbw-conformance-de.md).
 
 ## Supported projection
 

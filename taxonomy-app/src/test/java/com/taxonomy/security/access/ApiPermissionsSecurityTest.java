@@ -221,6 +221,15 @@ class ApiPermissionsSecurityTest {
                 new SimpleGrantedAuthority("SCOPE_analysis:run")))).andExpect(status().isOk());
     }
 
+    @Test
+    void nativeAdmbwCopyRequiresExportScope() throws Exception {
+        String path = "/api/architecture/editor.admbw.qea";
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ARCHITECT"),
+                new SimpleGrantedAuthority("SCOPE_architecture:write")))).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(csrf()).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_READER"),
+                new SimpleGrantedAuthority("SCOPE_integration:export")))).andExpect(status().isOk());
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "/api/architecture/editor.svg", "/api/architecture/editor.pdf", "/api/architecture/editor.admbw.json", "/api/dsl/export",
@@ -363,7 +372,7 @@ class ApiPermissionsSecurityTest {
                 "/api/analyze-stream", "/api/analyze-node", "/api/workspace/external/push", "/api/workspace/external/full-sync",
                 "/api/workspace/create", "/api/workspace/copy", "/api/workspace/compare", "/api/workspace/unclassified",
                 "/api/projects/p/**", "/api/architecture/editor.svg", "/api/architecture/editor.pdf",
-                "/api/architecture/editor.admbw.json", "/api/dsl/export",
+                "/api/architecture/editor.admbw.json", "/api/architecture/editor.admbw.qea", "/api/dsl/export",
                 "/api/projects/git/export", "/api/documents/**", "/api/architecture/focus/suggestions",
                 "/api/architecture/editor/focus/suggestions", "/api/diagram/**", "/api/scores/export",
                 "/api/integrations/c/publish", "/api/integrations/c/operations/o/retry"})

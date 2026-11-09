@@ -47,7 +47,7 @@
             <configuration><archive><manifestEntries>
                 <Plugin-Id>taxonomy.sparx</Plugin-Id>
                 <Plugin-Version>${project.version}</Plugin-Version>
-                <Plugin-Requires>&gt;=1.4.0 &amp; &lt;2.0.0</Plugin-Requires>
+                <Plugin-Requires>&gt;=1.5.0 &amp; &lt;2.0.0</Plugin-Requires>
                 <Taxonomy-Plugin-Mode>STARTUP</Taxonomy-Plugin-Mode>
                 <Taxonomy-Plugin-Capabilities>integration.read,export</Taxonomy-Plugin-Capabilities>
                 <Multi-Release>true</Multi-Release>
