@@ -9,6 +9,7 @@ import java.util.List;
 
 /** Copies a captured commit closure using public JGit APIs, without creating any acceptance ref. */
 public final class GitHistoryTransfer {
+    public static final int MAX_OBJECT_BYTES = 64 * 1024 * 1024;
     private static final int MAX_OBJECTS = 1_000_000;
     private static final long MAX_BYTES = 1024L * 1024 * 1024;
     private GitHistoryTransfer() {}
@@ -51,7 +52,7 @@ public final class GitHistoryTransfer {
         if (++budget[0] > MAX_OBJECTS) throw new IOException("History transfer exceeds the object budget");
         if (destination.getObjectDatabase().has(object)) return;
         ObjectLoader loader = reader.open(object);
-        if (loader.getSize() > 64L * 1024 * 1024 || budget[1] + loader.getSize() > MAX_BYTES)
+        if (loader.getSize() > MAX_OBJECT_BYTES || budget[1] + loader.getSize() > MAX_BYTES)
             throw new IOException("History transfer exceeds the byte budget");
         try (ObjectStream stream = loader.openStream()) {
             ObjectId copied = writer.insert(loader.getType(), loader.getSize(), stream);

@@ -255,10 +255,7 @@ public class SystemRepositoryService implements RepositoryMutationFence {
             RepositoryVisibility visibility,
             String ownerId) {
         SystemRepository source = getRepository(sourceRepositoryId);
-        if (source.getVisibility() != RepositoryVisibility.PUBLIC
-                && visibility != null && visibility != RepositoryVisibility.PRIVATE) {
-            throw new IllegalArgumentException("A fork of a restricted repository must be private");
-        }
+        requirePermittedForkVisibility(source, visibility);
         String branch = sourceBranch == null || sourceBranch.isBlank()
                 ? source.getDefaultBranch()
                 : sourceBranch.strip();
@@ -274,6 +271,13 @@ public class SystemRepositoryService implements RepositoryMutationFence {
         fork.setForkPointCommit(forkPointCommit);
         fork.setUpdatedAt(Instant.now());
         return repository.save(fork);
+    }
+
+    static void requirePermittedForkVisibility(SystemRepository source, RepositoryVisibility visibility) {
+        if (source.getVisibility() != RepositoryVisibility.PUBLIC
+                && visibility != null && visibility != RepositoryVisibility.PRIVATE) {
+            throw new IllegalArgumentException("A fork of a restricted repository must be private");
+        }
     }
 
     @Transactional

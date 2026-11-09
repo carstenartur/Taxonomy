@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -172,6 +173,10 @@ public class ArchitectureRepositoryController {
             return ResponseEntity.ok(toMap(fork));
         } catch (IllegalArgumentException exception) {
             return ResponseEntity.badRequest().body(Map.of("error", safeMessage(exception)));
+        } catch (AccessDeniedException exception) {
+            return forbidden(safeMessage(exception));
+        } catch (ResponseStatusException exception) {
+            return ResponseEntity.status(exception.getStatusCode()).body(Map.of("error", safeMessage(exception)));
         } catch (RuntimeException exception) {
             return ResponseEntity.internalServerError().body(Map.of(
                     "error", "Fork provisioning failed",
