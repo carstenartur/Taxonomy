@@ -50,6 +50,15 @@
         <button id="editorAdmbwInspect" type="button" disabled data-i18n="editor.admbw.inspect">Check checkpoint</button>
         <a id="editorAdmbw" hidden data-i18n="editor.admbw.download">Download ADMBw assessment (JSON)</a>
         <div id="editorAdmbwResult" role="status" aria-live="polite" hidden></div>
+        <div id="editorAdmbwNativeOptions" hidden>
+            <p data-i18n="editor.admbw.qeaHelp">Use a closed QEA basis with the required catalogues and an existing model root. The Sparx plugin adds both views to a copy for review in Enterprise Architect.</p>
+            <label for="editorAdmbwQeaBasis" data-i18n="editor.admbw.qeaBasis">QEA basis (up to 32 MiB)</label>
+            <input id="editorAdmbwQeaBasis" type="file" accept=".qea,application/vnd.sparx.qea"/>
+            <label for="editorAdmbwRootGuid" data-i18n="editor.admbw.qeaRoot">Model root package GUID</label>
+            <input id="editorAdmbwRootGuid" type="text" maxlength="38" autocomplete="off"/>
+            <button id="editorAdmbwQeaDownload" type="button" disabled data-i18n="editor.admbw.qeaDownload">Download ADMBw QEA copy</button>
+            <p id="editorAdmbwQeaStatus" role="status" aria-live="polite" hidden></p>
+        </div>
     </details>
     <p id="editorMode"></p>
     <section id="editorCollaboration" aria-labelledby="editorCollaborationTitle" hidden>

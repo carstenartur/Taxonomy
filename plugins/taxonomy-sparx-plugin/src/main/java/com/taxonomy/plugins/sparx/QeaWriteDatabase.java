@@ -5,6 +5,8 @@ import org.sqlite.ProgressHandler;
 import org.sqlite.SQLiteConfig;
 import org.sqlite.SQLiteOpenMode;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -21,11 +23,12 @@ final class QeaWriteDatabase implements AutoCloseable {
             "t_package", Set.of("package_id", "name", "parent_id", "ea_guid", "notes", "tpos", "createddate", "modifieddate"),
             "t_object", Set.of("object_id", "object_type", "name", "note", "package_id", "stereotype", "ea_guid", "parentid", "pdata1", "createddate", "modifieddate"),
             "t_connector", Set.of("connector_id", "connector_type", "start_object_id", "end_object_id", "ea_guid", "name", "notes", "stereotype", "direction", "sourceisaggregate", "destisaggregate"),
-            "t_diagram", Set.of("diagram_id", "package_id", "name", "notes", "diagram_type", "ea_guid", "createddate", "modifieddate"),
+            "t_diagram", Set.of("diagram_id", "package_id", "name", "notes", "diagram_type", "ea_guid", "createddate", "modifieddate", "styleex"),
             "t_diagramobjects", Set.of("diagram_id", "object_id", "recttop", "rectleft", "rectright", "rectbottom", "sequence", "objectstyle", "instance_id"),
+            "t_diagramlinks", Set.of("diagramid", "connectorid", "geometry", "style", "hidden", "instance_id"),
             "t_objectproperties", Set.of("propertyid", "object_id", "property", "value", "notes", "ea_guid"),
             "t_connectortag", Set.of("propertyid", "elementid", "property", "value", "notes", "ea_guid"),
-            "t_xref", Set.of("xrefid", "name", "type", "client", "description"));
+            "t_xref", Set.of("xrefid", "name", "type", "client", "description", "visibility", "supplier"));
     private static final Set<String> CLOCK_COLUMNS = Set.of("createddate", "modifieddate");
     private static final Set<String> EMPTY_TEMPLATE_TABLES = Set.of("t_diagramlinks", "t_attribute", "t_attributeconstraints", "t_attributetag",
             "t_operation", "t_operationparams", "t_operationposts", "t_operationpres", "t_operationtag", "t_connectorconstraint",
@@ -41,7 +44,36 @@ final class QeaWriteDatabase implements AutoCloseable {
     private final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
     private boolean dirty;
 
-    QeaWriteDatabase(Path copy) throws SQLException {
+    @FunctionalInterface
+    interface CopyChanges { void apply(QeaWriteDatabase database) throws SQLException; }
+
+    static byte[] writeCopy(byte[] basis, boolean writeDiagramLinks, CopyChanges changes) {
+        Path directory = null;
+        try {
+            directory = Files.createTempDirectory("taxonomy-qea-write-");
+            Path copy = Files.write(directory.resolve("copy.qea"), basis);
+            try (var database = new QeaWriteDatabase(copy, writeDiagramLinks)) {
+                changes.apply(database);
+                database.commit();
+                if (!database.dirty) return basis;
+            }
+            if (Files.size(copy) > QeaDatabase.MAX_BYTES) throw fail("QEA_LIMIT", "The native QEA output exceeds 32 MiB");
+            return Files.readAllBytes(copy);
+        } catch (SQLException invalid) {
+            throw fail("QEA_WRITE_REJECTED", "Native serialization failed schema, reference, work-budget or size validation; no file was delivered");
+        } catch (IOException unavailable) {
+            throw fail("QEA_WRITE_UNAVAILABLE", "Unable to create or read the owned temporary QEA output");
+        } finally {
+            if (directory != null) try {
+                for (String name : List.of("copy.qea-journal", "copy.qea-wal", "copy.qea-shm", "copy.qea")) Files.deleteIfExists(directory.resolve(name));
+                Files.deleteIfExists(directory);
+            } catch (IOException cleanup) {
+                throw fail("QEA_WRITE_UNAVAILABLE", "Unable to remove the owned temporary QEA output");
+            }
+        }
+    }
+
+    private QeaWriteDatabase(Path copy, boolean writeDiagramLinks) throws SQLException {
         SQLiteConfig config = new SQLiteConfig();
         config.setOpenMode(SQLiteOpenMode.OPEN_URI);
         config.enableLoadExtension(false);
@@ -67,7 +99,7 @@ final class QeaWriteDatabase implements AutoCloseable {
                     try (var limit = connection.createStatement()) { limit.execute("PRAGMA max_page_count=" + pages); }
                 }
             }
-            schema();
+            schema(writeDiagramLinks);
             connection.setAutoCommit(false);
         } catch (SQLException | RuntimeException failure) {
             try { connection.close(); } catch (SQLException closing) { failure.addSuppressed(closing); }
@@ -75,7 +107,7 @@ final class QeaWriteDatabase implements AutoCloseable {
         }
     }
 
-    private void schema() throws SQLException {
+    private void schema(boolean writeDiagramLinks) throws SQLException {
         int entries = 0;
         try (var statement = connection.createStatement(); var rows = statement.executeQuery("SELECT name,type,sql FROM sqlite_schema LIMIT 513")) {
             while (rows.next()) {
@@ -83,7 +115,7 @@ final class QeaWriteDatabase implements AutoCloseable {
                 String kind = rows.getString(2), name = rows.getString(1).toLowerCase(Locale.ROOT), sql = Objects.toString(rows.getString(3), "");
                 if (kind.equals("trigger")) throw fail("QEA_SCHEMA_UNSUPPORTED", "QEA copies with database triggers cannot be written safely");
                 if (EMPTY_TEMPLATE_TABLES.contains(name)) templateTables.put(name, kind.equals("table") && !sql.stripLeading().toUpperCase(Locale.ROOT).startsWith("CREATE VIRTUAL TABLE"));
-                if (!WRITABLE.containsKey(name)) continue;
+                if (!WRITABLE.containsKey(name) || !writeDiagramLinks && name.equals("t_diagramlinks")) continue;
                 if (!kind.equals("table") || sql.stripLeading().toUpperCase(Locale.ROOT).startsWith("CREATE VIRTUAL TABLE"))
                     throw fail("QEA_SCHEMA_UNSUPPORTED", "Writable QEA sources must be ordinary tables");
                 if (tables.put(name, columns(name)) != null) throw fail("QEA_SCHEMA_UNSUPPORTED", "Ambiguous writable table identity");
@@ -221,7 +253,6 @@ final class QeaWriteDatabase implements AutoCloseable {
         }
         connection.commit();
     }
-    boolean dirty() { return dirty; }
     private boolean expired() { return System.nanoTime() > deadline || Thread.currentThread().isInterrupted(); }
     void budget() { if (expired()) throw fail("QEA_LIMIT", "Native QEA writing exceeded its bounded work budget"); }
     @Override public void close() throws SQLException { connection.close(); }

@@ -28,6 +28,18 @@ final class QeaDatabase {
     private static final byte[] MAGIC = "SQLite format 3\0".getBytes(StandardCharsets.US_ASCII);
     private static final List<String> TABLES = List.of("usys_system", "t_package", "t_object", "t_connector",
             "t_diagram", "t_diagramobjects", "t_objectproperties", "t_connectortag", "t_xref");
+    private static final List<String> ADMBW_TABLES = List.of("usys_system", "t_package", "t_object",
+            "t_connector", "t_diagram", "t_diagramobjects", "t_objectproperties", "t_connectortag", "t_xref");
+    private static final Map<String, List<String>> ADMBW_COLUMNS = Map.of(
+            "usys_system", List.of("property", "value"),
+            "t_package", List.of("package_id", "parent_id", "name", "ea_guid"),
+            "t_object", List.of("object_id", "object_type", "ea_guid", "parentid", "stereotype"),
+            "t_connector", List.of("connector_id", "start_object_id", "end_object_id", "ea_guid"),
+            "t_diagram", List.of("diagram_id", "package_id", "name", "ea_guid"),
+            "t_diagramobjects", List.of("object_id"),
+            "t_objectproperties", List.of("propertyid", "object_id", "property", "ea_guid"),
+            "t_connectortag", List.of("elementid"),
+            "t_xref", List.of("xrefid", "name", "type", "client", "description"));
     private static final Set<String> REQUIRED = Set.of("usys_system", "t_package", "t_object", "t_connector");
     private static final Map<String, Set<String>> COLUMNS = Map.of(
             "usys_system", Set.of("property", "value"),
@@ -72,7 +84,12 @@ final class QeaDatabase {
     private int textCharacters;
     private boolean interrupted;
 
-    Snapshot read(byte[] bytes) {
+    Snapshot read(byte[] bytes) { return read(bytes, false); }
+
+    Snapshot readAdmbw(byte[] bytes) { return read(bytes, true); }
+
+    private Snapshot read(byte[] bytes, boolean admbw) {
+        List<String> selectedTables = admbw ? ADMBW_TABLES : TABLES;
         if (bytes.length > MAX_BYTES) throw fail("QEA_LIMIT", "The QEA upload exceeds 32 MiB");
         if (bytes.length < 512 || !Arrays.equals(MAGIC, Arrays.copyOf(bytes, MAGIC.length)))
             throw fail("QEA_FILE_INVALID", "Upload a complete SQLite QEA snapshot with a valid database header");
@@ -102,7 +119,7 @@ final class QeaDatabase {
                     statement.execute("PRAGMA trusted_schema=OFF");
                 }
                 Map<String, Schema> schema = schema(connection);
-                for (String table : TABLES) {
+                for (String table : selectedTables) {
                     Schema entry = schema.get(table);
                     if (entry == null && REQUIRED.contains(table)) throw fail(table.equals("usys_system") ? "QEA_MODEL_IDENTITY" : "QEA_SCHEMA_UNSUPPORTED",
                             "Missing required QEA table " + table + (table.equals("usys_system") ? " (Property/Value with ProjectGUID)" : ""));
@@ -113,8 +130,9 @@ final class QeaDatabase {
                     if (!check.next() || !"ok".equals(check.getString(1))) throw fail("QEA_FILE_INVALID", "SQLite integrity check failed for the uploaded snapshot");
                 }
                 Map<String, List<Row>> tables = new LinkedHashMap<>();
-                for (String table : TABLES) if (schema.containsKey(table)) tables.put(table, table(connection, table));
-                List<String> omitted = schema.keySet().stream().filter(t -> !TABLES.contains(t) && !t.startsWith("sqlite_"))
+                for (String table : selectedTables) if (schema.containsKey(table))
+                    tables.put(table, table(connection, table, admbw));
+                List<String> omitted = schema.keySet().stream().filter(t -> !selectedTables.contains(t) && !t.startsWith("sqlite_"))
                         .filter(t -> Set.of("table", "view").contains(schema.get(t).kind())).sorted().toList();
                 return new Snapshot(Map.copyOf(tables), omitted, digest(bytes), bytes.length);
             }
@@ -145,15 +163,35 @@ final class QeaDatabase {
         return result;
     }
 
-    private List<Row> table(Connection connection, String table) throws SQLException {
+    private List<Row> table(Connection connection, String table, boolean admbw) throws SQLException {
         var result = new ArrayList<Row>();
-        // table is chosen exclusively from TABLES; user-supplied identifiers never enter SQL.
-        try (var statement = connection.createStatement(); var found = statement.executeQuery("SELECT * FROM \"" + table + "\" LIMIT " + (MAX_ROWS + 1))) {
+        // Native delivery retains structural fields and orphan IDs that new rows could otherwise reuse.
+        Collection<String> required = admbw ? ADMBW_COLUMNS.get(table) : COLUMNS.get(table);
+        // table is chosen exclusively from TABLES or ADMBW_TABLES.
+        String from = " FROM \"" + table + "\"";
+        String query = !admbw ? "SELECT *" + from : switch (table) {
+            case "t_xref" -> "SELECT xrefid, name, type, client, CASE WHEN lower(name) = 'stereotypes' THEN description END AS description" + from;
+            case "usys_system" -> "SELECT property, CASE WHEN lower(property) = 'projectguid' THEN value END AS value" + from;
+            case "t_diagramobjects" -> """
+                    SELECT DISTINCT placement.object_id FROM t_diagramobjects placement
+                    WHERE placement.object_id IS NOT NULL AND NOT EXISTS (
+                        SELECT 1 FROM t_object existing WHERE existing.object_id = placement.object_id
+                    )
+                    """;
+            case "t_connectortag" -> """
+                    SELECT DISTINCT tag.elementid FROM t_connectortag tag
+                    WHERE tag.elementid IS NOT NULL AND NOT EXISTS (
+                        SELECT 1 FROM t_connector existing WHERE existing.connector_id = tag.elementid
+                    )
+                    """;
+            default -> "SELECT " + String.join(", ", required) + from;
+        };
+        try (var statement = connection.createStatement(); var found = statement.executeQuery(query + " LIMIT " + (MAX_ROWS + 1))) {
             var metadata = found.getMetaData();
             if (metadata.getColumnCount() > 128) throw fail("QEA_LIMIT", "A supported QEA table exceeds 128 columns");
             var columns = new ArrayList<String>();
             for (int i = 1; i <= metadata.getColumnCount(); i++) columns.add(bounded(metadata.getColumnName(i)).toLowerCase(Locale.ROOT));
-            if (!new HashSet<>(columns).containsAll(COLUMNS.get(table))) throw fail("QEA_SCHEMA_UNSUPPORTED", "Required columns are missing from " + table);
+            if (!new HashSet<>(columns).containsAll(required)) throw fail("QEA_SCHEMA_UNSUPPORTED", "Required columns are missing from " + table);
             while (found.next()) {
                 budget();
                 if (++rows > MAX_ROWS) throw fail("QEA_LIMIT", "Supported QEA rows exceed 20000; no partial result is returned");

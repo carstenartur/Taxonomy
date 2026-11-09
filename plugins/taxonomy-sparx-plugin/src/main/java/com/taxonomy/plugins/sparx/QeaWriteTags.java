@@ -73,6 +73,16 @@ final class QeaWriteTags {
             database.update("t_xref", "xrefid", old.text("xrefid"), Map.of("description", description));
         }
     }
+    void newAdmbwStereotype(String owner, String stereotype, boolean connector) throws SQLException {
+        database.insert("t_xref", Map.of("xrefid", auxiliary("stereotype:" + owner),
+                "name", "Stereotypes", "type", connector ? "connector property" : "element property",
+                "visibility", "Public", "supplier", "<none>", "client", owner, "description", admbwDescription(stereotype)));
+    }
+
+    static String admbwDescription(String stereotype) {
+        return "@STEREO;Name=" + stereotype + ";FQName=NAFv4-ADMBw::" + stereotype + ";@ENDSTEREO;";
+    }
+
     static void checkExistingStereotype(String stereotype) {
         if (stereotype == null || stereotype.isBlank()) return;
         String canonical = stereotype.startsWith("Taxonomy::") ? stereotype.substring(10) : stereotype;
