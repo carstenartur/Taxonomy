@@ -5,6 +5,7 @@ import com.taxonomy.dto.AnalysisRequest;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.extension.api.plugin.PluginInvocation;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.MapperFeature;
@@ -14,6 +15,8 @@ import tools.jackson.core.json.JsonWriteFeature;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.List;
@@ -22,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -80,7 +84,29 @@ class AnalysisEvidenceFingerprintTest {
     }
 
     @Test
-    void largeRawFramesAreBoundedWithoutMakingOrdinaryProviderPromptsMoreExpensive() throws Exception {
+    void largeRawFramesAreBoundedWithoutMakingOrdinaryProviderPromptsMoreExpensive(@TempDir Path directory) throws Exception {
+        // Compare the small allocation delta at the same compilation tier. In the full
+        // suite HotSpot can eliminate legacy temporaries before compiling the current path.
+        Path log = directory.resolve("small-frame-allocation.log");
+        var probe = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-Xint", "-Xmx64m", "-cp", System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")),
+                AnalysisEvidenceFingerprintTest.class.getName()).redirectErrorStream(true).redirectOutput(log.toFile()).start();
+        try {
+            assertThat(probe.waitFor(30, TimeUnit.SECONDS)).as("small frame allocation probe completed").isTrue();
+            assertThat(probe.exitValue()).as("small frame allocation probe output: %s", Files.readString(log)).isZero();
+        } finally {
+            probe.destroyForcibly();
+        }
+
+        String large = "ASCII中😀\ud800".repeat(200_000);
+        Checked old = () -> observed = legacy(large, null);
+        Checked current = () -> observed = AnalysisCheckpointSession.digest(large, null);
+        assertThat(AnalysisCheckpointSession.digest(large, null)).isEqualTo(legacy(large, null));
+        for (int i = 0; i < 3; i++) { old.run(); current.run(); }
+        assertThat(allocated(current, 3)).isLessThan(allocated(old, 3) / 10);
+    }
+
+    public static void main(String[] args) throws Exception {
         for (int size : new int[]{1_024, 4_096, 8_192, 16_000}) for (String unit : List.of("a", "中", "😀", "\ud800")) {
             String value = unit.repeat(size / unit.length());
             assertThat(AnalysisCheckpointSession.digest(value)).isEqualTo(legacy(value));
@@ -90,12 +116,6 @@ class AnalysisEvidenceFingerprintTest {
             assertThat(allocated(current, 20)).as("small prompt %s characters U+%s", size,
                     Integer.toHexString(unit.charAt(0))).isLessThanOrEqualTo(allocated(old, 20) + 4_096);
         }
-        String large = "ASCII中😀\ud800".repeat(200_000);
-        Checked old = () -> observed = legacy(large, null);
-        Checked current = () -> observed = AnalysisCheckpointSession.digest(large, null);
-        assertThat(AnalysisCheckpointSession.digest(large, null)).isEqualTo(legacy(large, null));
-        for (int i = 0; i < 3; i++) { old.run(); current.run(); }
-        assertThat(allocated(current, 3)).isLessThan(allocated(old, 3) / 10);
     }
 
     @Test
