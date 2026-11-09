@@ -77,7 +77,7 @@ class WorkspaceScopedEndpointIsolationTest {
     @Test
     @WithMockUser(username = "architect", roles = "USER")
     void graphSearchUsesTheSelectedContextEvenWhenWorkspaceSetupFails() throws Exception {
-        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(
+        when(workspaceResolver.resolveCurrentRepositoryContextForRead()).thenReturn(
                 RepositoryContext.workspace("selected-repository", "selected-workspace", "draft", "architect"));
         mockMvc.perform(get("/api/search/graph")
                         .queryParam("q", "secure communication")

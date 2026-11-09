@@ -21,7 +21,7 @@ class SearchWorkspaceFailureTest {
     @Test
     void failedWorkspaceResolutionDoesNotSilentlySearchSharedRelations() {
         when(search.isInitialized()).thenReturn(true);
-        when(workspaces.resolveCurrentRepositoryContext())
+        when(workspaces.resolveCurrentRepositoryContextForRead())
                 .thenThrow(new IllegalStateException("private-workspace-details"));
         assertThatThrownBy(() -> controller.graphSearch("query", 10))
                 .isInstanceOf(IllegalStateException.class)
@@ -33,7 +33,7 @@ class SearchWorkspaceFailureTest {
     void deniedWorkspaceAccessCannotBeReplacedBySharedSearch() {
         when(search.isInitialized()).thenReturn(true);
         var denied = new AccessDeniedException("private-workspace-details");
-        when(workspaces.resolveCurrentRepositoryContext()).thenThrow(denied);
+        when(workspaces.resolveCurrentRepositoryContextForRead()).thenThrow(denied);
         assertThatThrownBy(() -> controller.graphSearch("query", 10)).isSameAs(denied);
         verify(search, never()).graphSearch(anyString(), anyInt(), any());
     }
@@ -42,7 +42,7 @@ class SearchWorkspaceFailureTest {
     void unreadyWorkspaceRetainsItsConflictStatus() {
         when(search.isInitialized()).thenReturn(true);
         var notReady = new ResponseStatusException(HttpStatus.CONFLICT, "Workspace is not ready");
-        when(workspaces.resolveCurrentRepositoryContext()).thenThrow(notReady);
+        when(workspaces.resolveCurrentRepositoryContextForRead()).thenThrow(notReady);
         assertThatThrownBy(() -> controller.graphSearch("query", 10)).isSameAs(notReady);
         verify(search, never()).graphSearch(anyString(), anyInt(), any());
     }
@@ -60,7 +60,7 @@ class SearchWorkspaceFailureTest {
     void explicitlyResolvedCanonicalCentralContextRemainsSupported() {
         when(search.isInitialized()).thenReturn(true);
         var central = RepositoryContext.centralRead("fixture-repository", "draft", "test-user");
-        when(workspaces.resolveCurrentRepositoryContext()).thenReturn(central);
+        when(workspaces.resolveCurrentRepositoryContextForRead()).thenReturn(central);
         controller.graphSearch("query", 10);
         verify(search).graphSearch("query", 10, central);
     }
@@ -69,7 +69,7 @@ class SearchWorkspaceFailureTest {
         when(search.isInitialized()).thenReturn(true);
         var fork = new RepositoryContext("fixture-repository", null, "draft", "test-user",
                 com.taxonomy.workspace.service.RepositoryScope.FORK);
-        when(workspaces.resolveCurrentRepositoryContext()).thenReturn(fork);
+        when(workspaces.resolveCurrentRepositoryContextForRead()).thenReturn(fork);
         controller.graphSearch("query", 10);
         verify(search).graphSearch("query", 10, fork);
         verify(workspaces, never()).resolveCurrentContext();

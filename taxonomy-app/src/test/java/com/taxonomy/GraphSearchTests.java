@@ -13,6 +13,7 @@ import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceManager;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.List;
@@ -54,10 +55,12 @@ class GraphSearchTests {
     @Autowired private WorkspaceManager workspaceManager;
     @Autowired private SystemRepositoryService repositories;
     @Autowired private WorkspaceContextResolver contexts;
+    @Autowired private DslGitRepositoryFactory git;
 
     @AfterEach
     void evictGraphReadNavigation() {
-        List.of("graph-reader-central", "graph-admin-central", "graph-reader-ready", "graph-user-central")
+        List.of("graph-reader-central", "graph-admin-central", "graph-reader-ready", "graph-user-central",
+                "graph-user-unready", "graph-reader-unready")
                 .forEach(workspaceManager::evictWorkspace);
     }
 
@@ -161,6 +164,36 @@ class GraphSearchTests {
 
     @Test
     @Transactional
+    @WithMockUser(username = "graph-user-unready", roles = "USER")
+    void graphReadDoesNotProvisionAnAuthorsExistingDefault() throws Exception {
+        var workspace = saveUnprovisionedDefault("graph-user-unready");
+        assertThat(workspaceManager.mayProvisionDefaultWorkspace("graph-user-unready")).isTrue();
+
+        var response = mockMvc.perform(get("/api/search/graph")
+                .param("q", "communications").param("maxResults", "0"));
+
+        assertStillUnprovisioned(workspace.getWorkspaceId());
+        response.andExpect(status().isConflict());
+    }
+
+    @Test
+    @Transactional
+    @WithMockUser(username = "graph-reader-unready", roles = "READER")
+    void readerWithAnUnreadyDefaultCanSearchCentralUnlessExplicitlyPinned() throws Exception {
+        var workspace = saveUnprovisionedDefault("graph-reader-unready");
+        assertThat(workspaceManager.mayProvisionDefaultWorkspace("graph-reader-unready")).isFalse();
+
+        mockMvc.perform(get("/api/search/graph").param("q", "communications").param("maxResults", "0"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.matchedNodes").isEmpty());
+        mockMvc.perform(get("/api/search/graph").param("q", "communications").param("maxResults", "0")
+                        .header(WorkspaceContextResolver.WORKSPACE_HEADER, workspace.getWorkspaceId()))
+                .andExpect(status().isConflict());
+        assertStillUnprovisioned(workspace.getWorkspaceId());
+    }
+
+    @Test
+    @Transactional
     @WithMockUser(username = "graph-reader-ready", roles = "READER")
     void readerRetainsExistingReadyWorkingCopyForSearch() throws Exception {
         var workspace = new UserWorkspace();
@@ -187,6 +220,33 @@ class GraphSearchTests {
         assertThat(workspaceManager.getWorkspace(username)).isNull();
         assertThat(contexts.resolveRepositoryContextForUser(username).scope())
                 .isEqualTo(RepositoryScope.CENTRAL_READ);
+    }
+
+    private UserWorkspace saveUnprovisionedDefault(String username) throws Exception {
+        var primary = repositories.getPrimaryRepository();
+        var branch = primary.getDefaultBranch();
+        assertThat(git.getCentralRepository(primary.getRepositoryId()).getHeadCommit(branch))
+                .as("The primary checkpoint is ready for a real workspace allocation")
+                .isNotBlank();
+        var workspace = new UserWorkspace();
+        workspace.setUsername(username);
+        workspace.setWorkspaceId(username + "-default");
+        workspace.setDisplayName("Unprovisioned graph workspace");
+        workspace.setDefault(true);
+        workspace.setCurrentBranch(branch);
+        workspace.setSourceRepositoryId(primary.getRepositoryId());
+        workspace.setSourceBranch(branch);
+        workspace.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
+        workspace.setCreatedAt(Instant.now());
+        return workspaceRows.saveAndFlush(workspace);
+    }
+
+    private void assertStillUnprovisioned(String workspaceId) {
+        var workspace = workspaceRows.findByWorkspaceId(workspaceId).orElseThrow();
+        assertThat(workspace.getProvisioningStatus()).isEqualTo(WorkspaceProvisioningStatus.NOT_PROVISIONED);
+        assertThat(workspace.getBaseCommit()).isNull();
+        assertThat(workspace.getCurrentCommit()).isNull();
+        assertThat(workspace.getProvisionedAt()).isNull();
     }
 
 }

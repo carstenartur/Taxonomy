@@ -50,7 +50,7 @@ class SearchFailureHttpTest {
         var facade = new SearchFacade(taxonomy, fullText,
                 new HybridSearchService(fullText, embeddings), embeddings,
                 new GraphSearchService(embeddings, authority), initializer);
-        when(workspaces.resolveCurrentRepositoryContext()).thenReturn(RepositoryContext.centralRead("fixture-repository", "draft", "system"));
+        when(workspaces.resolveCurrentRepositoryContextForRead()).thenReturn(RepositoryContext.centralRead("fixture-repository", "draft", "system"));
         var messages = new ResourceBundleMessageSource();
         messages.setBasenames("i18n/messages_search", "i18n/messages");
         messages.setDefaultEncoding("UTF-8");
@@ -113,7 +113,7 @@ class SearchFailureHttpTest {
 
     @Test
     void workspaceDenialKeepsIts403Meaning() throws Exception {
-        when(workspaces.resolveCurrentRepositoryContext())
+        when(workspaces.resolveCurrentRepositoryContextForRead())
                 .thenThrow(new AccessDeniedException("private-workspace"));
         mvc.perform(get("/api/search/graph").param("q", "query"))
                 .andExpect(status().isForbidden())
@@ -124,7 +124,7 @@ class SearchFailureHttpTest {
     @Test
     void graphReadPassesTheSelectedWorkspaceToSearchAuthority() throws Exception {
         var selected = RepositoryContext.workspace("fixture-repository", "selected-workspace", "draft", "test-user");
-        when(workspaces.resolveCurrentRepositoryContext()).thenReturn(selected);
+        when(workspaces.resolveCurrentRepositoryContextForRead()).thenReturn(selected);
         when(authority.inspect(selected)).thenThrow(new com.taxonomy.error.SearchUnavailableException());
         mvc.perform(get("/api/search/graph").param("q", "query"))
                 .andExpect(status().isServiceUnavailable());
@@ -134,7 +134,7 @@ class SearchFailureHttpTest {
 
     @Test
     void workspaceFailureReturns503BeforeRetrieval() throws Exception {
-        when(workspaces.resolveCurrentRepositoryContext())
+        when(workspaces.resolveCurrentRepositoryContextForRead())
                 .thenThrow(new IllegalStateException("private-workspace"));
         mvc.perform(get("/api/search/graph").param("q", "query"))
                 .andExpect(status().isServiceUnavailable())

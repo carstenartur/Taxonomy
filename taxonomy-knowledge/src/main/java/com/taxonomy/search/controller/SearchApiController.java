@@ -98,7 +98,7 @@ public class SearchApiController {
         return ResponseEntity.ok(searchFacade.getEmbeddingStatus());
     }
 
-    @Operation(summary = "Graph-semantic search", description = "Checks the canonical selected branch source. Legacy fallback supports relation KNN; proven empty projections support node results. Unsupported or unready scopes return 503. graphReady reports global prerequisites only.", tags = {"Search"})
+    @Operation(summary = "Graph-semantic search", description = "Checks the canonical selected branch source without provisioning workspaces. An unready selected workspace returns 409. Unsupported or unavailable search authority returns 503. graphReady reports global prerequisites only.", tags = {"Search"})
     @GetMapping("/search/graph")
     public ResponseEntity<GraphSearchResult> graphSearch(
             @Parameter(description = "Natural-language query") @RequestParam String q,
@@ -134,7 +134,7 @@ public class SearchApiController {
 
     private RepositoryContext currentRepositoryContext() {
         try {
-            RepositoryContext context = workspaceResolver.resolveCurrentRepositoryContext();
+            RepositoryContext context = workspaceResolver.resolveCurrentRepositoryContextForRead();
             if (context == null) throw new SearchUnavailableException();
             return context;
         } catch (AccessDeniedException | ResponseStatusException error) {
