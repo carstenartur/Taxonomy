@@ -4,7 +4,9 @@ import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.storage.CommitProvenance;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -16,7 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-/** Real Git allocation survives a failed READY save; recovery must not reseed it. */
+/** Real Git allocation survives a failed READY save. */
 class WorkspaceFactoryRetryRecoveryTest {
     private static final String ORIGINAL = "meta { version: \"original\"; }";
     private static final String NEWER = "meta { version: \"newer\"; }";
@@ -24,11 +26,12 @@ class WorkspaceFactoryRetryRecoveryTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"main", "draft"})
-    void retryAdoptsTheRecordedSeedWithoutFollowingANewerSource(String branch) throws Exception {
+    void retryAdoptsTheOriginalCommitWithoutFollowingANewerSource(String branch) throws Exception {
         try (var fixture = new Fixture(branch)) {
             fixture.failFinalMetadataSave();
             String captured = fixture.workspace.getBaseCommit();
             String allocated = fixture.workspace.getCurrentCommit();
+            assertEquals(captured, allocated);
             var destination = fixture.factory.openWorkspaceRepository("retry-workspace");
             assertEquals(1, destination.getDslHistory(branch).size());
             fixture.factory.getCentralRepository("retry-source")
@@ -46,11 +49,31 @@ class WorkspaceFactoryRetryRecoveryTest {
             assertEquals(allocated, destination.getHeadCommit(branch));
             assertEquals(1, destination.getDslHistory(branch).size());
             assertEquals(List.of(branch), destination.getBranchNames());
-            var provenance = destination.getProvenance(allocated);
-            assertEquals("fork", provenance.operation());
-            assertEquals("retry-source", provenance.sources().getFirst().repositoryId());
-            assertEquals("release", provenance.sources().getFirst().branch());
-            assertEquals(captured, provenance.sources().getFirst().commitId());
+        }
+    }
+
+    @Test
+    void retryPreservesAnInterruptedLegacyRootCommit() throws Exception {
+        try (var fixture = new Fixture("main", false)) {
+            var source = fixture.factory.getCentralRepository("retry-source");
+            String captured = source.getHeadCommit("release");
+            var destination = fixture.factory.openWorkspaceRepository("retry-workspace");
+            var evidence = CommitProvenance.capture("fork", source, "retry-source", "release", captured, null);
+            String oldSeed = destination.commitDsl("main", ORIGINAL, "retry-owner", "Legacy content copy", evidence);
+            fixture.workspace.setBaseCommit(captured);
+            fixture.workspace.setBaseBranch("release");
+            fixture.workspace.setSourceBranch(null);
+            fixture.source.setDefaultBranch("new-default");
+            fixture.workspace.setCurrentCommit(oldSeed);
+            fixture.workspace.setProvisioningStatus(WorkspaceProvisioningStatus.FAILED);
+
+            var ready = fixture.manager.provisionWorkspaceRepository("retry-owner", "retry-workspace");
+
+            assertEquals(WorkspaceProvisioningStatus.READY, ready.getProvisioningStatus());
+            assertEquals(captured, ready.getBaseCommit());
+            assertEquals("release", ready.getSourceBranch());
+            assertEquals(oldSeed, ready.getCurrentCommit());
+            assertEquals(oldSeed, destination.getHeadCommit("main"));
         }
     }
 
@@ -61,7 +84,8 @@ class WorkspaceFactoryRetryRecoveryTest {
             fixture.failFinalMetadataSave();
             String captured = fixture.workspace.getBaseCommit();
             var destination = fixture.factory.openWorkspaceRepository("retry-workspace");
-            String edit = destination.commitDsl("main", EDITED, "retry-owner", "Unsaved recovery edit");
+            String editDsl = metadataFollowsEdit ? ORIGINAL : EDITED;
+            String edit = destination.commitDsl("main", editDsl, "retry-owner", "Unsaved recovery edit");
             if (metadataFollowsEdit) fixture.workspace.setCurrentCommit(edit);
 
             assertThrows(RuntimeException.class,
@@ -70,18 +94,22 @@ class WorkspaceFactoryRetryRecoveryTest {
             assertEquals(WorkspaceProvisioningStatus.FAILED, fixture.workspace.getProvisioningStatus());
             assertEquals(captured, fixture.workspace.getBaseCommit());
             assertEquals(edit, destination.getHeadCommit("main"));
-            assertEquals(EDITED, destination.getDslAtHead("main"));
+            assertEquals(editDsl, destination.getDslAtHead("main"));
             assertEquals(2, destination.getDslHistory("main").size());
         }
     }
 
     private static final class Fixture implements AutoCloseable {
         final DslGitRepositoryFactory factory = new DslGitRepositoryFactory(null);
+        final SystemRepository source = new SystemRepository();
         final UserWorkspace workspace = new UserWorkspace();
         final WorkspaceManager manager;
 
         Fixture(String branch) throws Exception {
-            var source = new SystemRepository();
+            this(branch, true);
+        }
+
+        Fixture(String branch, boolean failReadySave) throws Exception {
             source.setRepositoryId("retry-source");
             source.setDefaultBranch("release");
             var catalog = mock(SystemRepositoryService.class);
@@ -100,7 +128,7 @@ class WorkspaceFactoryRetryRecoveryTest {
             when(rows.findByWorkspaceId("retry-workspace")).thenReturn(Optional.of(workspace));
             when(rows.claimProvisioning(anyString(), anyString(),
                     eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection())).thenReturn(1);
-            var failReadyOnce = new AtomicBoolean(true);
+            var failReadyOnce = new AtomicBoolean(failReadySave);
             when(rows.save(any(UserWorkspace.class))).thenAnswer(call -> {
                 UserWorkspace value = call.getArgument(0);
                 if (value.getProvisioningStatus() == WorkspaceProvisioningStatus.READY

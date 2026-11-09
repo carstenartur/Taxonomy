@@ -42,6 +42,11 @@ class WorkspaceGitCasBoundaryTest {
         @Override public String commitDslIfHeadMatches(String b, String h, String d, String a, String m, CommitProvenance p) throws IOException {
             race(b); return super.commitDslIfHeadMatches(b,h,d,a,m,p);
         }
+        @Override public String fastForwardIfHeadMatches(String branch, String expected, String incoming,
+                                                         String author, String message) throws IOException {
+            race(branch);
+            return super.fastForwardIfHeadMatches(branch, expected, incoming, author, message);
+        }
     }
     static final class Fixture implements AutoCloseable {
         final DslGitRepository source = new DslGitRepository();

@@ -34,6 +34,13 @@ public final class GitHistoryTransfer {
                 while ((object = walk.nextObject()) != null) copy(reader, writer, to, object, budget);
                 writer.flush();
             }
+            try (ObjectWalk verification = new ObjectWalk(to)) {
+                verification.markStart(verification.parseCommit(selected));
+                for (String head : accepted) {
+                    verification.markUninteresting(verification.parseCommit(ObjectId.fromString(head)));
+                }
+                verification.checkConnectivity();
+            }
         }
         // Check every newly introduced ancestor, including all sides of merges, under destination policy.
         destination.verifyIncomingFromAcceptedHeads(commit, accepted);
