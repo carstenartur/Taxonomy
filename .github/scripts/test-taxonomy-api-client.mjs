@@ -91,6 +91,57 @@ async function loadWorkspaceFeatures(fetchImpl, bootstrap) {
   return app;
 }
 
+test('the comparison dialog reads one authorized workspace and ignores results from the previous workspace', async () => {
+  const calls = [];
+  const scripts = new URL('../../taxonomy-app/src/main/resources/static/js/', import.meta.url);
+  const i18n = await readFile(new URL('taxonomy-i18n.js', scripts), 'utf8');
+  const app = await loadWorkspaceFeatures((url, init) => {
+    if (url === '/taxonomy/api/i18n/en') return Promise.resolve(Response.json({}));
+    return new Promise(resolve => calls.push({url, init, resolve}));
+  }, context => {
+    context.document.currentScript = {src: 'https://taxonomy.example.test/taxonomy/js/taxonomy-i18n.js'};
+    context.document.documentElement = {lang: 'en'};
+    vm.runInContext(i18n, context, {filename: 'taxonomy-i18n.js'});
+  });
+  const {context} = app;
+  const {window, document} = context;
+  const results = {innerHTML: '', textContent: ''};
+  const nodes = {contextCompareModal: {querySelector: () => null, addEventListener() {}}, contextCompareResults: results};
+  for (const id of ['compareLeftBranch', 'compareRightBranch', 'compareLeftCommit', 'compareRightCommit']) {
+    nodes[id] = {value: '', replaceChildren() {}, appendChild() {}, addEventListener() {}};
+  }
+  document.getElementById = id => nodes[id] || null;
+  document.createElement = () => ({});
+  context.bootstrap = {Modal: {getOrCreateInstance: () => ({show() {}})}};
+  await window.TaxonomyI18n.ready();
+  context.TaxonomyI18n = window.TaxonomyI18n;
+  context.TaxonomyUtils = {escapeHtml: String};
+  const script = new URL('versioning/taxonomy-context-compare.js', scripts);
+  vm.runInContext(await readFile(script, 'utf8'), context);
+
+  const opening = window.TaxonomyContextCompare.showDialog({branch: 'review/one + two', commitId: 'left'}, 'draft', false, 'right');
+  calls[0].resolve(Response.json({branches: ['review/one + two', 'draft']}));
+  await opening;
+  window.TaxonomyContextCompare.doCompare();
+  const loading = results.innerHTML;
+  window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'workspace B';
+  calls[1].resolve(Response.json({summary: {}, changes: [], left: {branch: 'old workspace'}}));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(results.innerHTML, loading);
+  window.TaxonomyContextCompare.doCompare();
+  assert.equal(calls.length, 2, 'the previous workspace branch selection cannot start another compare');
+  for (const call of calls) {
+    assert.equal(call.init.headers.get('X-Taxonomy-Workspace-Id'), 'workspace A/1');
+    assert.equal(new URL(call.url, window.location.href).searchParams.get('workspaceId'), 'workspace A/1');
+    assert.equal(call.init.headers.get('X-Request-ID'), 'client-request-id');
+  }
+  const url = new URL(calls[1].url, window.location.href);
+  assert.equal(url.pathname, '/taxonomy/api/context/compare');
+  assert.deepEqual(Object.fromEntries(url.searchParams), {
+    leftBranch: 'review/one + two', rightBranch: 'draft', leftCommit: 'left', rightCommit: 'right', workspaceId: 'workspace A/1'
+  });
+});
+
 async function loadVersioningFeatures(fetchImpl) {
   const scripts = new URL('../../taxonomy-app/src/main/resources/static/js/', import.meta.url);
   const i18n = await readFile(new URL('taxonomy-i18n.js', scripts), 'utf8');
