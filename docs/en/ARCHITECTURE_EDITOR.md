@@ -217,4 +217,4 @@ and **ADMBw R7 derivation** under requirement planning information to bind the
 derivation to an exact requirement version. Open a Git checkpoint and use
 **Prepare ADMBw delivery** to download the structural assessment and modeling
 data for C1–S1 and R7. The report identifies the reviews required for native
-delivery. [Rules and delivery evidence (German)](../features/admbw-conformance-de.md)
+delivery. [Rules and delivery evidence (German)](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/admbw-conformance-de.md)

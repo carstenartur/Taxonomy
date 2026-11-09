@@ -238,4 +238,4 @@ Unter **ADMBw-Elementzuordnung** können Sie offizielle Katalogreferenzen und
 Stereotype am Element erfassen. Das Profil **ADMBw R7 Anforderungsherleitung**
 verbindet versionierte Anforderungen mit den zugehörigen Modellelementen.
 Öffnen Sie einen Git-Checkpoint und laden Sie unter **ADMBw-Abgabe vorbereiten**
-den Prüfbericht für C1–S1 und R7. [Regeln und Liefernachweise](../features/admbw-conformance-de.md)
+den Prüfbericht für C1–S1 und R7. [Regeln und Liefernachweise](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/admbw-conformance-de.md)
