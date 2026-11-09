@@ -5,6 +5,8 @@ import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.time.Instant;
 import java.time.DateTimeException;
 import java.util.*;
@@ -47,6 +49,25 @@ public class CatalogueSourceJournal {
 
     @Transactional(readOnly = true)
     public Snapshot current() { return snapshot(em.find(CatalogueSourceState.class, STATE_ID)); }
+
+    /** Scalar read bypasses the persistence context's cached state during a concurrent import. */
+    @Transactional(readOnly = true)
+    public boolean isCurrent(String revision) {
+        return !em.createQuery("select s.id from CatalogueSourceState s where s.id=:id and s.currentRevision=:revision", String.class)
+                .setParameter("id", STATE_ID).setParameter("revision", revision).getResultList().isEmpty();
+    }
+
+    /** Returns the recorded workbook for an applied source reference, independent of configured resources. */
+    @Transactional(readOnly = true)
+    public CatalogueSourceBytes retainedWorkbook(InputReference reference) throws IOException {
+        if (reference.use() != Use.APPLIED) throw invalid();
+        var blob = em.find(CatalogueSourceBlob.class, reference.sha256());
+        if (blob == null || blob.payload == null || blob.byteLength != reference.length()
+                || blob.payload.length != reference.length()) throw invalid();
+        var workbook = CatalogueSourceBytes.read(new ByteArrayInputStream(blob.payload));
+        if (!workbook.sha256().equals(reference.sha256())) throw invalid();
+        return workbook;
+    }
 
     /** Acquire before reading or changing any catalogue rows; held until the import commits. */
     @Transactional(propagation = Propagation.MANDATORY)

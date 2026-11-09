@@ -1,5 +1,6 @@
 package com.taxonomy.catalog.snapshot;
 
+import com.taxonomy.catalog.controller.ApiController;
 import com.taxonomy.catalog.model.PrimaryRepositorySeedRelationListener;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
@@ -10,11 +11,15 @@ import com.taxonomy.catalog.service.AppInitializationStateService;
 import com.taxonomy.catalog.service.CatalogueOverlayService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.hibernate.cfg.Configuration;
 import org.junit.jupiter.api.Test;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.context.support.StaticMessageSource;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.core.io.Resource;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
@@ -22,12 +27,14 @@ import org.springframework.orm.jpa.hibernate.SpringBeanContainer;
 import org.springframework.orm.jpa.vendor.HibernateJpaDialect;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
 import org.springframework.transaction.interceptor.TransactionInterceptor;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
@@ -41,6 +48,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static com.taxonomy.catalog.provenance.CatalogueSourceJournal.SourceUse;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.mock;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /** Real MVCC database, repository, journal and Spring transaction interception. */
 class CatalogueSnapshotConsistencyTest {
@@ -156,6 +165,100 @@ class CatalogueSnapshotConsistencyTest {
             db.tx.executeWithoutResult(status -> db.journal.reconcileOverlay(SourceUse.applied(bytes("different overlay"))));
             db.afterRootRead = () -> { throw new AssertionError("Must reject overlay drift before node capture"); };
             assertThatThrownBy(db::capture).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("overlay");
+        }
+    }
+
+    @Test
+    void provisionalMappingQueueKeepsTheOriginalParentAndExactGeneration() throws Exception {
+        var overlayJson = """
+                {"schemaVersion":2,"mode":"OVERLAY","baseCatalogue":"source.xlsx","mappingVersion":"review-v2",
+                 "nodePatches":[
+                   {"code":"IP-3","expectedTitle":"Field report","expectedState":"draft","parentCode":"IP-1",
+                    "analysisRole":"PRODUCT","secondaryClassificationCodes":["IP-2"],"confidence":0.61,
+                    "reviewRequired":true,"justification":"Proposed from the product title"},
+                   {"code":"IP-4","expectedTitle":"Desk report","expectedState":"draft","parentCode":"IP-1",
+                    "analysisRole":"PRODUCT","confidence":0.9,"reviewRequired":false,"justification":"Technical mapping"}]}
+                """.getBytes(StandardCharsets.UTF_8);
+        var workbookBytes = new ByteArrayOutputStream();
+        try (var workbook = new XSSFWorkbook()) {
+            var sheet = workbook.createSheet("Information Products");
+            sheet.createRow(0).createCell(0).setCellValue("Page");
+            var rows = List.of(
+                    List.of("IP-1", "Operations", "IP", "approved"),
+                    List.of("IP-2", "Source group", "IP", "approved"),
+                    List.of("IP-3", "Field report", "IP-2", "draft"),
+                    List.of("IP-4", "Desk report", "IP-2", "draft"));
+            for (var rowValues : rows) {
+                var row = sheet.createRow(sheet.getLastRowNum() + 1);
+                row.createCell(0).setCellValue(rowValues.get(0));
+                row.createCell(2).setCellValue(rowValues.get(1));
+                row.createCell(4).setCellValue(rowValues.get(2));
+                row.createCell(10).setCellValue(rowValues.get(3));
+            }
+            workbook.createSheet("Relations");
+            workbook.write(workbookBytes);
+        }
+        var resources = new DefaultResourceLoader() {
+            @Override public Resource getResource(String location) {
+                return new ByteArrayResource(location.equals("source.xlsx") ? workbookBytes.toByteArray() : overlayJson) {
+                    @Override public String getFilename() { return location; }
+                };
+            }
+        };
+        try (var db = new Database()) {
+            var taxonomy = db.importer();
+            ReflectionTestUtils.setField(taxonomy, "resourceLoader", resources);
+            ReflectionTestUtils.setField(taxonomy, "catalogueResource", "source.xlsx");
+            ReflectionTestUtils.setField(taxonomy, "catalogueOverlayService",
+                    new CatalogueOverlayService(new ObjectMapper(), resources, true, "overlay.json"));
+            taxonomy.initOnStartup();
+            assertThat(taxonomy.isInitialized()).isTrue();
+            var generation = db.journal.current();
+            var version = db.em.createQuery("select s.rowVersion from CatalogueSourceState s", Long.class).getSingleResult();
+            var mvc = MockMvcBuilders.standaloneSetup(new ApiController(taxonomy, new StaticMessageSource())).build();
+            String path = "/api/admin/catalogue/provisional-information-products";
+
+            mvc.perform(get(path).param("q", " FIELD "))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Cache-Control", "no-store"))
+                    .andExpect(jsonPath("$.catalogueRevision").value(generation.id()))
+                    .andExpect(jsonPath("$.workbookUse").value("APPLIED"))
+                    .andExpect(jsonPath("$.workbookSha256").value(generation.workbook().sha256()))
+                    .andExpect(jsonPath("$.overlaySha256").value(generation.overlay().sha256()))
+                    .andExpect(jsonPath("$.mappingVersion").value("review-v2"))
+                    .andExpect(jsonPath("$.mappings.length()").value(1))
+                    .andExpect(jsonPath("$.mappings[0].productCode").value("IP-3"))
+                    .andExpect(jsonPath("$.mappings[0].productTitle").value("Field report"))
+                    .andExpect(jsonPath("$.mappings[0].sourceParentReference").value("IP-2"))
+                    .andExpect(jsonPath("$.mappings[0].proposedParentCode").value("IP-1"))
+                    .andExpect(jsonPath("$.mappings[0].secondaryClassificationCodes[0]").value("IP-2"))
+                    .andExpect(jsonPath("$.mappings[0].confidence").value(0.61))
+                    .andExpect(jsonPath("$.mappings[0].state").value("PROVISIONAL"))
+                    .andExpect(jsonPath("$.mappings[0].sourceState").value("draft"))
+                    .andExpect(jsonPath("$.mappings[0].justification").value("Proposed from the product title"));
+            mvc.perform(get(path)).andExpect(status().isOk()).andExpect(jsonPath("$.mappings.length()").value(1));
+            mvc.perform(get(path).param("q", "Desk report"))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.mappings.length()").value(0));
+            mvc.perform(get(path).param("q", "a".repeat(161))).andExpect(status().isBadRequest());
+            mvc.perform(post(path)).andExpect(status().isMethodNotAllowed());
+            assertThat(db.journal.current()).isEqualTo(generation);
+            assertThat(db.em.createQuery("select s.rowVersion from CatalogueSourceState s", Long.class).getSingleResult())
+                    .isEqualTo(version);
+
+            // A backfilled catalogue generation can predate workbook byte retention.
+            db.tx.executeWithoutResult(status -> db.em.createNativeQuery("""
+                    update catalogue_source_revision set workbook_sha256=null, workbook_use='NOT_RETAINED' where id=:id
+                    """).setParameter("id", generation.id()).executeUpdate());
+            mvc.perform(get(path)).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.workbookUse").value("NOT_RETAINED"))
+                    .andExpect(jsonPath("$.mappings[0].sourceParentReference").doesNotExist())
+                    .andExpect(jsonPath("$.mappings[0].proposedParentCode").value("IP-1"));
+
+            db.afterRootRead = () -> db.tx.executeWithoutResult(status ->
+                    db.journal.reconcileOverlay(SourceUse.applied(bytes("different overlay"))));
+            mvc.perform(get(path)).andExpect(status().isServiceUnavailable());
+            db.afterRootRead = () -> { throw new AssertionError("Overlay drift must fail before reading mappings"); };
+            mvc.perform(get(path)).andExpect(status().isServiceUnavailable());
         }
     }
 
