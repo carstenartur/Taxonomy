@@ -79,7 +79,7 @@
         el('editorAdmbwNativeOptions').hidden = !admbwChecked;
         var basisInput = el('editorAdmbwQeaBasis'), rootInput = el('editorAdmbwRootGuid');
         basisInput.disabled = rootInput.disabled = admbwNativeRequest !== null;
-        var basis = basisInput.files[0], rootGuid = rootInput.value.trim();
+        var basis = basisInput.files?.[0], rootGuid = rootInput.value.trim();
         el('editorAdmbwQeaDownload').disabled = !admbwChecked || admbwNativeRequest !== null || !basis
             || basis.size === 0 || basis.size > 32 * 1024 * 1024
             || !/^\{[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\}$/i.test(rootGuid);
@@ -97,7 +97,8 @@
             if (admbwRequest !== request) return;
             result.replaceChildren();
             var views = [response.assessment.capabilityToService, response.assessment.requirementDerivation];
-            admbwChecked = response.qeaIssues.length === 0
+            var qeaIssues = response.qeaIssues || [];
+            admbwChecked = qeaIssues.length === 0
                 && views.every(function (reportView) { return reportView.status === 'REVIEW_REQUIRED'; });
             views.forEach(function (reportView) {
                 var title = document.createElement('h3');
@@ -109,7 +110,7 @@
                     });
                 result.append(title, list);
             });
-            response.qeaIssues.forEach(function (issue) {
+            qeaIssues.forEach(function (issue) {
                 var item = document.createElement('p');
                 item.textContent = issue.object + ' · ' + t('editor.problem.' + issue.code);
                 result.append(item);
