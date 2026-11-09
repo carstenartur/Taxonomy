@@ -2,7 +2,7 @@
 
 Taxonomy uses Maven as the canonical verification entry point and JUnit/Failsafe as the authority for executable tests and repository pass/fail policies. Dependency-free Java tooling owns structured release transformations where a real program is required. Shell and GitHub Actions orchestrate external tools but must not duplicate policy logic.
 
-The long-term goal remains a repository with no tracked Python files and no executable Python setup or invocation. On 24 August 2026, complete removal was deliberately moved from the Taxonomy 1.4.0 release scope to issue #673 on the 1.4.1 development line. The bounded adapters retained in 1.4.0 are not product runtime dependencies and remain protected by Maven/JUnit-owned positive and negative contracts.
+The long-term goal remains a repository with no tracked Python files and no executable Python setup or invocation. On 24 August 2026, complete removal moved from the Taxonomy 1.4.0 release scope to post-release maintenance. The bounded adapters retained in 1.4.0 are not product runtime dependencies and remain protected by Maven/JUnit-owned positive and negative contracts.
 
 ## Taxonomy 1.4.0 boundary
 
@@ -17,7 +17,7 @@ The release remains acceptable only while all of the following hold:
 5. Release notes disclose the retained bounded adapters and the post-1.4.0 migration plan truthfully.
 6. Any retained adapter shown to cause a concrete correctness or security defect becomes a release issue in its own right.
 
-Complete removal is therefore not a 1.4.0 publication gate. It remains required before #673 can close.
+Issue #673 delivered the Java release core and Maven/JUnit policy foundations. Issue #629 tracks the remaining migration and source-bound release evidence.
 
 ## Permanent architecture rules
 
@@ -48,6 +48,7 @@ Complete removal is therefore not a 1.4.0 publication gate. It remains required 
 | Release metadata transformation and routing | #771 / #774 |
 | CycloneDX SBOM/VEX companion generation | #804 / #846 |
 | CodeQL SARIF high-severity enforcement | #846 |
+| Observability performance lane scope | #629 (`ObservabilityPerformanceScopeRepositoryTest`) |
 
 ## Completed Java release-core migration
 
@@ -86,7 +87,6 @@ The following files remain temporarily and may only be removed in contract-prese
 - `.github/scripts/check-release-delivery-contract.py`
 - `.github/scripts/check-release-image-gate.py`
 - `.github/scripts/check-delivery-hardening.py`
-- `.github/scripts/check-observability-performance-scope.py`
 - `.github/scripts/verify-deployment.py`
 - `.github/scripts/verify-quality-publication.py`
 
@@ -101,7 +101,7 @@ No item is accepted as a permanent exception.
 ## Post-release migration order
 
 1. Move release-delivery and immutable-image policy to Java/JUnit authority.
-2. Move delivery-hardening and observability-scope policy to Java/JUnit authority.
+2. Move delivery-hardening policy to Java/JUnit authority.
 3. Replace quality-site generation and publication verification with Java/Maven-native tooling and deterministic output tests.
 4. Replace deployment verification at its real HTTP/Helm boundary.
 5. Delete the final Python file and executable/setup reference.
@@ -118,9 +118,9 @@ Draft PRs #851 and #852 were closed unmerged when 1.4.0 publication was prioriti
 - deleting a productive adapter before its exact behaviour is covered;
 - keeping Java and Python implementations of the same policy as fallbacks.
 
-## Completion criteria for #673
+## Python removal criteria for #629
 
-Issue #673 can close only when:
+The Python removal in #629 is complete when all of the following hold.
 
 - repository search returns zero tracked Python files;
 - repository-wide search finds no executable Python or setup reference;
