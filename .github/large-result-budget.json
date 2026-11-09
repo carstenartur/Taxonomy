@@ -18,6 +18,10 @@
     {
       "id": "large-1000",
       "resultCount": 1000
+    },
+    {
+      "id": "boundary-100",
+      "resultCount": 100
     }
   ],
   "responsiveProfiles": [
