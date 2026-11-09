@@ -141,6 +141,8 @@ class HelmConstrainedSmokeContractTest {
                 .contains("Created configured administrator account")
                 .contains("curl --fail --location --silent --show-error")
                 .contains("--header 'Accept: text/html'")
+                .contains("\"service/${SERVICE}\" :80", "Fixture port-forward exited before readiness")
+                .doesNotContain("127.0.0.1:18080")
                 .contains("/actuator/health/readiness")
                 .contains("DEPLOYMENT_START_EPOCH")
                 .contains("READINESS_SECONDS=$((READY_EPOCH - DEPLOYMENT_START_EPOCH))")
@@ -188,8 +190,21 @@ class HelmConstrainedSmokeContractTest {
     void existingNamespaceIsNeverReusedOrDeleted() throws Exception {
         Path calls = runRejectedSmoke("0123456789abcdef0123456789abcdef01234567", true,
                 "namespace taxonomy-smoke already exists in kind-review-fixture");
-        assertThat(Files.readAllLines(calls)).containsExactly("kind get clusters",
-                "kubectl --context kind-review-fixture get namespace taxonomy-smoke --ignore-not-found --request-timeout=10s -o name");
+        List<String> commands = Files.readAllLines(calls);
+        assertThat(commands).hasSize(2);
+        assertThat(commands.getFirst()).isEqualTo("kind get kubeconfig --name review-fixture");
+        assertThat(commands.getLast()).startsWith("kubectl --kubeconfig ")
+                .endsWith(" --context kind-review-fixture get namespace taxonomy-smoke --ignore-not-found --request-timeout=10s -o name");
+    }
+
+    @Test
+    void failureAfterCreatingNamespaceCleansUpOnlyTheRecordedUid() throws Exception {
+        Path calls = runRejectedSmoke("0123456789abcdef0123456789abcdef01234567", false,
+                "fixture Git failure");
+        assertThat(Files.readAllLines(calls)).hasSize(5).last().asString()
+                .endsWith(" --context kind-review-fixture delete --request-timeout=10s --raw /api/v1/namespaces/taxonomy-smoke -f -");
+        assertThat(Files.readString(temporary.resolve("delete-options.json")))
+                .contains("\"preconditions\":{\"uid\":\"fixture-uid\"}");
     }
 
     private Path runRejectedSmoke(String source, boolean existingNamespace, String diagnostic) throws Exception {
@@ -198,7 +213,15 @@ class HelmConstrainedSmokeContractTest {
         for (String command : List.of("docker", "kind", "kubectl", "helm", "curl", "jq", "od", "git")) {
             String result = switch (command) {
                 case "kind" -> "printf '%s\\n' review-fixture";
-                case "kubectl" -> existingNamespace ? "printf '%s\\n' namespace/taxonomy-smoke" : "exit 97";
+                case "kubectl" -> """
+                        case "$*" in
+                          *' get namespace '*) %s ;;
+                          *' create namespace '*) printf 'fixture-uid' ;;
+                          *' --raw /api/v1/namespaces/taxonomy-smoke '*) cat > "$SMOKE_TEST_DELETE" ;;
+                          *) exit 97 ;;
+                        esac
+                        """.formatted(existingNamespace ? "printf '%s\\n' namespace/taxonomy-smoke" : ":");
+                case "git" -> "echo 'fixture Git failure' >&2; exit 97";
                 default -> "exit 97";
             };
             Path stub = stubs.resolve(command);
@@ -213,6 +236,7 @@ class HelmConstrainedSmokeContractTest {
         var environment = builder.environment();
         environment.put("PATH", stubs + ":" + environment.get("PATH"));
         environment.put("SMOKE_TEST_CALLS", calls.toString());
+        environment.put("SMOKE_TEST_DELETE", temporary.resolve("delete-options.json").toString());
         environment.put("EVIDENCE_DIR", evidence.toString());
         environment.put("SOURCE_SHA", source);
         environment.put("IMAGE_TAG", "sha-0123456789abcdef0123456789abcdef01234567");

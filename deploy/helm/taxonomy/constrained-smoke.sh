@@ -20,6 +20,7 @@ SMOKE_SECRET=taxonomy-smoke-credentials
 RESOURCE_SELECTOR="app.kubernetes.io/instance=${RELEASE},app.kubernetes.io/name=taxonomy"
 PORT_FORWARD_PID=""
 NAMESPACE_UID=""
+FIXTURE_KUBECONFIG=""
 
 fail() {
   echo "::error::$*" >&2
@@ -32,13 +33,13 @@ cleanup() {
     wait "${PORT_FORWARD_PID}" >/dev/null 2>&1 || true
   fi
   if [[ "${KEEP_RESOURCES}" != "true" && -n "${NAMESPACE_UID}" ]]; then
-    local current_uid
-    current_uid=$(kubectl get namespace "${NAMESPACE}" --ignore-not-found \
-      --request-timeout=10s -o jsonpath='{.metadata.uid}' 2>/dev/null || true)
-    if [[ "${current_uid}" == "${NAMESPACE_UID}" ]]; then
-      helm uninstall "${RELEASE}" --namespace "${NAMESPACE}" >/dev/null 2>&1 || true
-      kubectl delete namespace "${NAMESPACE}" --wait=false >/dev/null 2>&1 || true
-    fi
+    # The API checks the UID when deleting. A replacement namespace with the
+    # same name is outside this run's ownership, including during cleanup.
+    printf '{"apiVersion":"v1","kind":"DeleteOptions","preconditions":{"uid":"%s"}}\n' "${NAMESPACE_UID}" \
+      | kubectl delete --request-timeout=10s --raw "/api/v1/namespaces/${NAMESPACE}" -f - >/dev/null 2>&1 || true
+  fi
+  if [[ -n "${FIXTURE_KUBECONFIG}" ]]; then
+    rm -f -- "${FIXTURE_KUBECONFIG}"
   fi
 }
 trap cleanup EXIT
@@ -60,14 +61,19 @@ if [[ "${KEEP_RESOURCES}" != "true" && "${KEEP_RESOURCES}" != "false" ]]; then
   fail "KEEP_RESOURCES must be true or false"
 fi
 
-kubectl() { command kubectl --context "${KUBE_CONTEXT}" "$@"; }
-helm() { command helm --kube-context "${KUBE_CONTEXT}" "$@"; }
-kind get clusters | grep -Fxq "${KIND_CLUSTER_NAME}" \
-  || fail "kind cluster ${KIND_CLUSTER_NAME} does not exist"
+FIXTURE_KUBECONFIG=$(mktemp)
+kind get kubeconfig --name "${KIND_CLUSTER_NAME}" >"${FIXTURE_KUBECONFIG}" \
+  || fail "Cannot obtain kubeconfig for kind cluster ${KIND_CLUSTER_NAME}"
+[[ -s "${FIXTURE_KUBECONFIG}" ]] || fail "kind returned an empty fixture kubeconfig"
+kubectl() { command kubectl --kubeconfig "${FIXTURE_KUBECONFIG}" --context "${KUBE_CONTEXT}" "$@"; }
+helm() { command helm --kubeconfig "${FIXTURE_KUBECONFIG}" --kube-context "${KUBE_CONTEXT}" "$@"; }
 existing_namespace=$(kubectl get namespace "${NAMESPACE}" --ignore-not-found --request-timeout=10s -o name)
 [[ -z "${existing_namespace}" ]] || fail "namespace ${NAMESPACE} already exists in ${KUBE_CONTEXT}"
 NAMESPACE_UID=$(kubectl create namespace "${NAMESPACE}" --request-timeout=10s -o jsonpath='{.metadata.uid}')
-[[ -n "${NAMESPACE_UID}" ]] || fail "Could not establish ownership of fixture namespace ${NAMESPACE}"
+if ! [[ "${NAMESPACE_UID}" =~ ^[A-Za-z0-9-]+$ ]]; then
+  NAMESPACE_UID=""
+  fail "Could not establish ownership of fixture namespace ${NAMESPACE}"
+fi
 
 STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 SMOKE_START_EPOCH=$(date +%s)
@@ -195,21 +201,29 @@ fi
 grep -Fq 'Created configured administrator account' \
   "${EVIDENCE_DIR}/application.log"
 
-command kubectl --context "${KUBE_CONTEXT}" port-forward --namespace "${NAMESPACE}" \
-  "service/${SERVICE}" 18080:80 \
+command kubectl --kubeconfig "${FIXTURE_KUBECONFIG}" --context "${KUBE_CONTEXT}" \
+  port-forward --namespace "${NAMESPACE}" --address 127.0.0.1 \
+  "service/${SERVICE}" :80 \
   >"${EVIDENCE_DIR}/port-forward.log" 2>&1 &
 PORT_FORWARD_PID=$!
+WEB_READY=false
 for _ in $(seq 1 60); do
-  if curl --fail --silent --show-error \
-      http://127.0.0.1:18080/actuator/health/readiness \
+  kill -0 "${PORT_FORWARD_PID}" 2>/dev/null || fail "Fixture port-forward exited before readiness"
+  WEB_PORT=$(sed -nE 's/^Forwarding from 127\.0\.0\.1:([0-9]+) -> [0-9]+$/\1/p' "${EVIDENCE_DIR}/port-forward.log")
+  if [[ "${WEB_PORT}" =~ ^[0-9]{1,5}$ ]] && curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
+      "http://127.0.0.1:${WEB_PORT}/actuator/health/readiness" \
       >"${EVIDENCE_DIR}/readiness.json"; then
+    WEB_READY=true
     break
   fi
   sleep 2
 done
+[[ "${WEB_READY}" == true ]] || fail "Fixture service did not become ready through its port-forward"
+kill -0 "${PORT_FORWARD_PID}" 2>/dev/null || fail "Fixture port-forward exited before the login request"
 curl --fail --location --silent --show-error \
+  --connect-timeout 2 --max-time 10 \
   --header 'Accept: text/html' \
-  http://127.0.0.1:18080/ \
+  "http://127.0.0.1:${WEB_PORT}/" \
   >"${EVIDENCE_DIR}/home.html"
 [[ -s "${EVIDENCE_DIR}/home.html" ]] \
   || fail "Taxonomy root redirect did not produce a login page"
