@@ -42,6 +42,16 @@ public final class PlanningInformation {
         return profiles.values().stream().map(PlanningProfile::descriptor)
                 .sorted(java.util.Comparator.comparing(PlanningProfile.Descriptor::id).thenComparing(PlanningProfile.Descriptor::version)).toList();
     }
+    /** Choices keyed by profile ID and version (id@version), then by reference field key. */
+    public Map<String, Map<String, List<String>>> elementChoices(CanonicalArchitectureModel model) {
+        Map<String, Map<String, List<String>>> result = new LinkedHashMap<>();
+        profiles.forEach((key, profile) -> {
+            Map<String, List<String>> fields = new LinkedHashMap<>();
+            profile.elementChoices(model).forEach((field, ids) -> fields.put(field, List.copyOf(ids)));
+            if (!fields.isEmpty()) result.put(key.id() + "@" + key.version(), Map.copyOf(fields));
+        });
+        return Map.copyOf(result);
+    }
     public boolean supports(String profile, String version) { return profiles.containsKey(new Key(profile, version)); }
     public void validatePortable(PlanningEntry entry) {
         PlanningProfile profile = profiles.get(new Key(entry.profile(), entry.version()));
@@ -179,6 +189,9 @@ public final class PlanningInformation {
         return any != null && (("requirementSourceLink".equals(any.getKind()) && any.property("x-planning-entry") != null)
                 || List.of("source", "sourceVersion", "sourceFragment").contains(any.getKind()) && "true".equals(any.property("x-planning-owned")));
     }
+    public static void validateRetainedR7Endpoint(CanonicalArchitectureModel before, CanonicalArchitectureModel after, String elementId) {
+        new AdmbwRequirementProfile().validateRetainedEndpoint(before, after, elementId);
+    }
     public static void validateReferences(String dsl) {
         CanonicalArchitectureModel model = new ArchitectureDslCommands().model(dsl);
         for (var version : model.getSourceVersions()) {
@@ -196,5 +209,6 @@ public final class PlanningInformation {
                     || link.getSourceFragmentId() != null && model.getSourceFragments().stream().noneMatch(f -> Objects.equals(f.getId(), link.getSourceFragmentId()) && Objects.equals(f.getSourceVersionId(), link.getSourceVersionId())))
                 throw new IllegalArgumentException("Undo would strand a canonical source reference");
         }
+        new AdmbwRequirementProfile().validateReviewedAssignments(model);
     }
 }

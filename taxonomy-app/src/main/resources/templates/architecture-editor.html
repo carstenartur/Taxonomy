@@ -42,11 +42,12 @@
     </div>
     <details id="editorAdmbwOptions" hidden>
         <summary data-i18n="editor.admbw.title">Prepare ADMBw delivery</summary>
-        <p data-i18n="editor.admbw.help">Check C1–S1 and R7 against the public FFFmLV 2.0 profile. The report includes modeling data and the reviews needed for native delivery.</p>
+        <p data-i18n="editor.admbw.help">Save the FFFmLV 2.0 profile in the editable workspace. Choose a retained analysis view to bind its C3 catalogue evidence. Check the saved Git checkpoint to prepare delivery.</p>
         <label for="editorAdmbwProjectCode" data-i18n="editor.admbw.projectCode">Project code</label>
         <input id="editorAdmbwProjectCode" type="text" maxlength="32" autocomplete="off"/>
         <label for="editorAdmbwView" data-i18n="editor.admbw.view">C1–S1 source view</label>
         <select id="editorAdmbwView"></select>
+        <button id="editorAdmbwConfigure" type="button" hidden disabled data-i18n="editor.admbw.configure">Save ADMBw delivery profile</button>
         <button id="editorAdmbwInspect" type="button" disabled data-i18n="editor.admbw.inspect">Check checkpoint</button>
         <a id="editorAdmbw" hidden data-i18n="editor.admbw.download">Download ADMBw assessment (JSON)</a>
         <div id="editorAdmbwResult" role="status" aria-live="polite" hidden></div>

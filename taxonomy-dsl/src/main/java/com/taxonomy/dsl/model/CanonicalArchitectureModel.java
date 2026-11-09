@@ -1,5 +1,7 @@
 package com.taxonomy.dsl.model;
 
+import com.taxonomy.dsl.admbw.AdmbwDeliveryProfile;
+
 import java.util.*;
 
 /**
@@ -34,6 +36,15 @@ public class CanonicalArchitectureModel {
     public List<ArchitectureSourceVersion> getSourceVersions() { return sourceVersions; }
     public List<ArchitectureSourceFragment> getSourceFragments() { return sourceFragments; }
     public List<ArchitectureRequirementSourceLink> getRequirementSourceLinks() { return requirementSourceLinks; }
+
+    private AdmbwDeliveryProfile admbwDelivery;
+
+    public AdmbwDeliveryProfile getAdmbwDelivery() { return admbwDelivery; }
+
+    public void setAdmbwDelivery(AdmbwDeliveryProfile profile) {
+        if (admbwDelivery != null) throw new IllegalArgumentException("Duplicate ADMBw delivery configuration");
+        admbwDelivery = Objects.requireNonNull(profile);
+    }
 
     /** Look up an element by ID. */
     public Optional<ArchitectureElement> findElement(String id) {

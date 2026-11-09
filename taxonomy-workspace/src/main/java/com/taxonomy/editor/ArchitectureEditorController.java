@@ -238,6 +238,7 @@ public class ArchitectureEditorController {
             case "SET_PACKAGE_PLACEMENTS" -> new SemanticCommand(new SetArchitecturePackagePlacements(body.placements(), body.completeParentScopes()));
             case "UPSERT_REQUIREMENT_MAPPING" -> new SemanticCommand(new UpsertRequirementMapping(body.sourceId(), body.targetId(), body.metadata().rationale(), body.properties()));
             case "DELETE_REQUIREMENT_MAPPING" -> new SemanticCommand(new DeleteRequirementMapping(body.sourceId(), body.targetId()));
+            case "SET_ADMBW_DELIVERY" -> new SemanticCommand(new ConfigureAdmbwDelivery(body.id(), body.targetId()));
             case "CREATE_ELEMENT" -> new SemanticCommand(new CreateArchitectureElement("arch-" + body.metadata().commandId(), body.type(), body.properties()));
             case "UPDATE_ELEMENT" -> new SemanticCommand(new UpdateArchitectureElement(body.id(), body.type(), body.properties()));
             case "DELETE_ELEMENT" -> new SemanticCommand(new DeleteArchitectureElement(body.id()));

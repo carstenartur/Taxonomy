@@ -13,6 +13,8 @@ import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
 
@@ -93,6 +95,60 @@ class ArchitectureFocusSuggestionServiceTest {
         });
     }
 
+    @Test void boundAdmbwFocusOffersOnlyTheDirectedServiceToCapabilityCandidate() throws Exception {
+        when(editor.read(scope, null, null)).thenReturn(doc(admbwDsl()));
+        generative("""
+                {"suggestions":[{"candidateId":"c1","rationale":"The service implements the order capability.",
+                "evidence":[{"elementId":"arch-service","field":"description","quote":"Processes and validates customer orders"},
+                            {"elementId":"capability","field":"description","quote":"Validate customer orders"}]}]}
+                """);
+        var result = service.investigate(scope, request(true));
+        assertThat(result.outcome()).isEqualTo("ASSESSED");
+        assertThat(result.candidateCount()).isEqualTo(1);
+        assertThat(result.suggestions()).singleElement().satisfies(suggestion -> {
+            assertThat(suggestion.sourceId()).isEqualTo("arch-service");
+            assertThat(suggestion.relationType()).isEqualTo("FULFILLS");
+            assertThat(suggestion.targetId()).isEqualTo("capability");
+        });
+        var prompt = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(llm).callLlmRaw(prompt.capture(), any(LlmCompletionOptions.class));
+        String input = prompt.getValue().substring(prompt.getValue().indexOf("INPUT=") + "INPUT=".length());
+        assertThat(input).contains("FULFILLS").doesNotContain("arch-app", "RELATED_TO");
+    }
+
+    @Test void aLegacyRealizesEdgeConsumesTheSameAdmbwCandidate() throws Exception {
+        when(editor.read(scope, null, null)).thenReturn(doc(admbwDsl() + """
+                relation capability REALIZES arch-service {
+                  status: accepted;
+                }
+                """));
+        assertThat(service.investigate(scope, request(true)).outcome()).isEqualTo("NO_CANDIDATES");
+        verifyNoInteractions(llm, budget);
+    }
+
+    private static String admbwDsl() {
+        return DSL.replace("title: \"Order processing service\";",
+                "title: \"Order processing service\";\n  x-admbw-type: \"ServiceSpecification\";") + """
+                element capability type Capability {
+                  title: "Order capability";
+                  description: "Validate customer orders";
+                  x-admbw-catalogue-guid: "{67AEAD63-403A-48FD-A022-174DC3037CE2}";
+                  x-admbw-catalogue-reference: "Catalogue edition 1";
+                }
+                view order {
+                  title: "Order";
+                  include: arch-service;
+                  include: arch-app;
+                  include: capability;
+                }
+                delivery admbw {
+                  profile: "admbw-2026.05-fffmlv-2.0-c1-s1-r7";
+                  project-code: "ORDER";
+                  source-view: "order";
+                }
+                """;
+    }
+
     @Test void unsupportedGenerationRetainsHonestUnassessedLocalCandidates() throws Exception {
         when(llm.supportsGenerativeCompletion()).thenReturn(false);
         var response = service.investigate(scope, request(true));
@@ -109,6 +165,9 @@ class ArchitectureFocusSuggestionServiceTest {
         assertThat(response.modelCalls()).isEqualTo(1);
         assertThat(response.method()).isEqualTo("AI:test-provider");
         assertThat(response.suggestions()).singleElement().satisfies(s -> {
+            assertThat(s.sourceId()).isEqualTo("arch-app");
+            assertThat(s.targetId()).isEqualTo("arch-service");
+            assertThat(s.relationType()).isEqualTo("USES");
             assertThat(s.rationale()).isEqualTo("The application sends orders to the validation service.");
             assertThat(s.properties()).containsEntry("x-focus-rationale", s.rationale())
                     .containsEntry("x-focus-source-hash", response.sourceHash());
@@ -145,10 +204,50 @@ class ArchitectureFocusSuggestionServiceTest {
         verifyNoInteractions(llm, budget);
     }
 
-    @Test void providerCannotIntroduceAnUnofferedTripleOrDuplicateEvidenceKeys() throws Exception {
-        generative(validReply("Processes and validates customer orders").replace("arch-app", "guessed-id"));
-        assertThat(service.investigate(scope, request(true)).outcome()).isEqualTo("FAILED");
-        when(llm.callLlmRaw(anyString(), any())).thenReturn("{\"suggestions\":[],\"suggestions\":[]}");
+    @Test void schemaRequiresAnOfferedCandidateIdAsTheOnlyRelationshipSelection() throws Exception {
+        generative("{\"suggestions\":[]}");
+        var request = new ArchitectureFocusSuggestionService.Request(context, "arch-service", 1, true, "en");
+        service.investigate(scope, request);
+        var prompt = ArgumentCaptor.forClass(String.class);
+        var options = ArgumentCaptor.forClass(LlmCompletionOptions.class);
+        verify(llm).callLlmRaw(prompt.capture(), options.capture());
+        var json = JsonMapper.builder().build();
+        var schema = json.valueToTree(options.getValue().schema()).at("/properties/suggestions/items");
+        assertThat(schema.path("required").valueStream().map(node -> node.asString()).toList())
+                .containsExactlyInAnyOrder("candidateId", "rationale", "evidence");
+        assertThat(schema.path("properties").propertyNames()).containsExactlyInAnyOrder("candidateId", "rationale", "evidence");
+        assertThat(schema.at("/properties/candidateId/enum/0").asString()).isEqualTo("c1");
+        assertThat(schema.at("/properties/candidateId/enum").size()).isEqualTo(1);
+        assertThat(schema.path("additionalProperties").asBoolean()).isFalse();
+        var offered = json.readTree(prompt.getValue().split("\\nINPUT=", 2)[1]).path("candidates");
+        assertThat(offered.size()).isEqualTo(1);
+        assertThat(offered.get(0)).isEqualTo(json.readTree("""
+                {"candidateId":"c1","sourceId":"arch-app","targetId":"arch-service","relationType":"USES"}
+                """));
+    }
+
+    @Test void fabricatedCandidateIdAndCrossProductOverridesCannotBecomeAssessedSuggestions() throws Exception {
+        String valid = validReply("Processes and validates customer orders");
+        String selection = "\"candidateId\":\"c1\"";
+        String reversed = "\"sourceId\":\"arch-service\",\"targetId\":\"arch-app\",\"relationType\":\"USES\"";
+        generative(valid);
+        for (String reply : List.of(
+                valid.replace("\"c1\"", "\"c99\""),
+                valid.replace(selection, reversed),
+                valid.replace(selection, selection + "," + reversed))) {
+            when(llm.callLlmRaw(anyString(), any())).thenReturn(reply);
+            var response = service.investigate(scope, request(true));
+            assertThat(response.outcome()).isEqualTo("FAILED");
+            assertThat(response.suggestions()).noneSatisfy(s -> {
+                assertThat(s.sourceId()).isEqualTo("arch-service");
+                assertThat(s.targetId()).isEqualTo("arch-app");
+                assertThat(s.relationType()).isEqualTo("USES");
+            }).allSatisfy(s -> assertThat(s.properties()).containsEntry("x-focus-method", "LOCAL_TEXT_UNASSESSED:AI_FAILED"));
+        }
+    }
+
+    @Test void providerCannotIntroduceDuplicateResponseKeys() throws Exception {
+        generative("{\"suggestions\":[],\"suggestions\":[]}");
         assertThat(service.investigate(scope, request(true)).outcome()).isEqualTo("FAILED");
     }
 
@@ -348,7 +447,7 @@ class ArchitectureFocusSuggestionServiceTest {
     }
     private static String validReply(String quote) {
         return """
-                {"suggestions":[{"sourceId":"arch-app","targetId":"arch-service","relationType":"USES",
+                {"suggestions":[{"candidateId":"c1",
                 "rationale":"The application sends orders to the validation service.","evidence":[
                 {"elementId":"arch-app","field":"description","quote":"Submits customer orders for validation"},
                 {"elementId":"arch-service","field":"description","quote":"%s"}]}]}

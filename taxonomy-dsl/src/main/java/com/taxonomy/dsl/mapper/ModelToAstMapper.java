@@ -42,6 +42,7 @@ public class ModelToAstMapper {
         for (ArchitectureView view : model.getViews()) {
             blocks.add(viewToBlock(view));
         }
+        if (model.getAdmbwDelivery() != null) blocks.add(model.getAdmbwDelivery().toBlock());
         for (ArchitectureEvidence ev : model.getEvidence()) {
             blocks.add(evidenceToBlock(ev));
         }

@@ -1,5 +1,6 @@
 package com.taxonomy.dsl.command;
 
+import com.taxonomy.dsl.admbw.AdmbwDeliveryProfile;
 import com.taxonomy.dsl.admbw.AdmbwFffmlvProfile;
 import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.ast.PropertyAst;
@@ -57,8 +58,12 @@ public final class ArchitectureDslCommands {
 
     /** Validate a reconciled final state with the strict semantic command invariants. */
     public void validateReconciledSource(String source) {
+        validateReconciledSource(source, source);
+    }
+
+    public void validateReconciledSource(String previous, String source) {
         // The import parser is tolerant; source ranges enforce complete, unambiguous edited blocks.
-        ArchitectureSemanticPatch.between("", source);
+        var changes = ArchitectureSemanticPatch.between(previous, source);
         Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(source);
         for (BlockAst block : blocks.values()) {
             if ("relation".equals(block.getKind())) {
@@ -74,8 +79,37 @@ public final class ArchitectureDslCommands {
         }
         validateContainment(blocks);
         validatePackages(source);
+        if (blocks.containsKey(AdmbwDeliveryProfile.BLOCK_KEY)) validateReconciledDelivery(previous, source, blocks, changes);
         try { com.taxonomy.dsl.planning.PlanningInformation.validateReferences(source); }
         catch (IllegalArgumentException invalid) { throw problem("INVALID_REFERENCE", "source", invalid.getMessage()); }
+    }
+
+    private void validateReconciledDelivery(String previous, String source, Map<String, BlockAst> blocks,
+                                           List<ArchitectureSemanticPatch.BlockChange> changes) {
+        try {
+            var before = model(previous);
+            var after = model(source);
+            var members = after.getAdmbwDelivery().members(after);
+            var previousBlocks = ArchitectureSemanticPatch.index(previous);
+            var viewId = after.getAdmbwDelivery().sourceViewId();
+            var previousDelivery = before.getAdmbwDelivery();
+            if (viewId != null && previousDelivery != null && viewId.equals(previousDelivery.sourceViewId()))
+                requireAdmbwViewMembers(previousBlocks.get("view:" + viewId), members);
+            for (var change : changes) {
+                if (change.id().startsWith("relation:") && change.after() != null) {
+                    var relation = blocks.get(change.id());
+                    var old = previousBlocks.get(change.id());
+                    if (old == null || "accepted".equals(relation.property("status")) && !"accepted".equals(old.property("status")))
+                        requireAdmbwRelation(after, members, relationKey(relation));
+                } else if (change.id().startsWith("element:")) {
+                    retainAdmbwEndpoints(before, after, change.id().substring("element:".length()));
+                }
+            }
+        } catch (CommandProblem invalid) {
+            throw invalid;
+        } catch (IllegalArgumentException invalid) {
+            throw problem("INVALID_ADMBW_DELIVERY", "source", invalid.getMessage());
+        }
     }
 
     public Change apply(String source, ArchitectureCommand command) {
@@ -109,6 +143,7 @@ public final class ArchitectureDslCommands {
             case DeleteArchitecturePackage delete -> deletePackage(source, blocks, delete.id());
             case UpsertRequirementMapping mapping -> upsertMapping(source, blocks, mapping);
             case DeleteRequirementMapping mapping -> deleteMapping(source, blocks, mapping);
+            case ConfigureAdmbwDelivery delivery -> configureDelivery(source, blocks, delivery);
             case CreateArchitectureElement create -> createElement(source, blocks, create);
             case UpdateArchitectureElement update -> updateElement(source, blocks, update);
             case DeleteArchitectureElement delete -> deleteElement(source, blocks, delete.id());
@@ -119,7 +154,7 @@ public final class ArchitectureDslCommands {
             case SetExchangeProperties exchange -> exchangeProperties(source, blocks, exchange);
             case ClearArchitectureElementProperties clear -> clearElementProperties(source, blocks, clear);
             case UpsertArchitectureView view -> exchangeView(source, blocks, view);
-            case DeleteArchitectureView view -> ArchitectureSemanticPatch.replace(source, require(blocks, "view:" + view.id()), null);
+            case DeleteArchitectureView view -> deleteView(source, blocks, view.id());
             case StoreExchangeEvidence evidence -> exchangeEvidence(source, blocks, evidence);
         };
     }
@@ -131,6 +166,7 @@ public final class ArchitectureDslCommands {
         if (original.stream().anyMatch(change -> !change.id().startsWith("element:")
                 && !change.id().startsWith("relation:") && !change.id().startsWith("package:")
                 && !change.id().startsWith("mapping:")
+                && !change.id().equals(AdmbwDeliveryProfile.BLOCK_KEY)
                 && !AnalysisSnapshotAdoption.isAdoptionView(change)
                 && !com.taxonomy.dsl.requirements.RequirementRealization.reviewOnlyChange(before, after, change.id())
                 && !com.taxonomy.dsl.planning.PlanningInformation.planningOnlyChange(before, after, change.id()))) {
@@ -154,7 +190,15 @@ public final class ArchitectureDslCommands {
             RelationKey key = relationKey(block);
             if (changed.contains(ArchitectureSemanticPatch.key(block)) || changed.contains("element:" + key.sourceId())
                     || changed.contains("element:" + key.targetId())) validateRelation(blocks, key);
+            if (changed.contains(ArchitectureSemanticPatch.key(block)) && "accepted".equals(block.property("status")))
+                requireAdmbwRelation(next, blocks, key);
         }
+        if (blocks.containsKey(AdmbwDeliveryProfile.BLOCK_KEY)) {
+            var model = model(next);
+            model.getAdmbwDelivery().members(model);
+        }
+        for (String id : changed) if (id.startsWith("element:"))
+            retainAdmbwEndpoints(current, next, currentBlocks, id.substring("element:".length()));
         for (BlockAst mapping : blocks.values()) if ("mapping".equals(mapping.getKind()) && changed.contains(ArchitectureSemanticPatch.key(mapping))) {
             validateMappingReferences(blocks, mapping);
         }
@@ -283,6 +327,12 @@ public final class ArchitectureDslCommands {
         return ArchitectureSemanticPatch.replace(source, existing, null);
     }
 
+    private String configureDelivery(String source, Map<String, BlockAst> blocks, ConfigureAdmbwDelivery command) {
+        var profile = AdmbwDeliveryProfile.configure(model(source), command.projectCode(), command.sourceViewId());
+        var existing = blocks.get(AdmbwDeliveryProfile.BLOCK_KEY);
+        return ArchitectureSemanticPatch.replace(source, existing, profile.toBlock());
+    }
+
     private String createElement(String source, Map<String, BlockAst> blocks, CreateArchitectureElement command) {
         token(command.id(), "id");
         requireType(command.type());
@@ -336,6 +386,9 @@ public final class ArchitectureDslCommands {
         if (command.members().size() > 10000) throw problem("ITEM_LIMIT", "members", "View has too many members");
         command.members().forEach(id -> require(blocks, "element:" + id));
         BlockAst existing = blocks.get("view:" + command.id());
+        var delivery = blocks.get(AdmbwDeliveryProfile.BLOCK_KEY);
+        if (delivery != null && command.id().equals(delivery.property("source-view")))
+            requireAdmbwViewMembers(existing, Set.copyOf(command.members()));
         List<PropertyAst> values = new ArrayList<>();
         if (existing != null) {
             requireUnambiguousViewProperties(existing);
@@ -351,13 +404,27 @@ public final class ArchitectureDslCommands {
         return ArchitectureSemanticPatch.replace(source, existing, new BlockAst("view", List.of(command.id()), values, List.of(), command.properties(), null));
     }
 
-    private static String clearElementProperties(String source, Map<String, BlockAst> blocks, ClearArchitectureElementProperties command) {
+    private static void requireAdmbwViewMembers(BlockAst view, Set<String> members) {
+        if (view != null && !Set.copyOf(view.propertyValues("include")).equals(members))
+            throw problem("ADMBW_SOURCE_VIEW_IN_USE", "viewId", "Bind another source view to change the retained C1-S1 scope");
+    }
+
+    private static String deleteView(String source, Map<String, BlockAst> blocks, String id) {
+        BlockAst view = require(blocks, "view:" + id);
+        requireNoDependencies(id, dependencies(blocks, view));
+        return ArchitectureSemanticPatch.replace(source, view, null);
+    }
+
+    private String clearElementProperties(String source, Map<String, BlockAst> blocks, ClearArchitectureElementProperties command) {
         BlockAst existing = require(blocks, "element:" + command.id());
         if (command.properties().contains("title") || !ELEMENT_PROPERTIES.containsAll(command.properties()))
             throw problem("READ_ONLY_PROPERTY", "properties", "Only optional editable properties can be cleared");
         List<PropertyAst> values = existing.getProperties().stream().filter(p -> !command.properties().contains(p.key())).toList();
         Map<String, String> extensions = new LinkedHashMap<>(existing.getExtensions()); command.properties().forEach(extensions::remove);
-        return ArchitectureSemanticPatch.replace(source, existing, new BlockAst(existing.getKind(), existing.getHeaderTokens(), values, existing.getChildren(), extensions, null));
+        String next = ArchitectureSemanticPatch.replace(source, existing,
+                new BlockAst(existing.getKind(), existing.getHeaderTokens(), values, existing.getChildren(), extensions, null));
+        retainAdmbwEndpoints(source, next, blocks, command.id());
+        return next;
     }
 
     private static String exchangeEvidence(String source, Map<String, BlockAst> blocks, StoreExchangeEvidence command) {
@@ -393,7 +460,9 @@ public final class ArchitectureDslCommands {
                 }
             }
         }
-        return ArchitectureSemanticPatch.replace(source, existing, replacement);
+        String next = ArchitectureSemanticPatch.replace(source, existing, replacement);
+        retainAdmbwEndpoints(source, next, blocks, command.id());
+        return next;
     }
 
     private String deleteElement(String source, Map<String, BlockAst> blocks, String id) {
@@ -401,7 +470,9 @@ public final class ArchitectureDslCommands {
         if (existing.property("package") != null) throw new CommandProblem("DEPENDENCIES_EXIST", id,
                 "Detach the element from its package before deletion", List.of("package:" + existing.property("package")));
         requireNoDependencies(id, dependencies(blocks, existing));
-        return ArchitectureSemanticPatch.replace(source, existing, null);
+        String next = ArchitectureSemanticPatch.replace(source, existing, null);
+        retainAdmbwEndpoints(source, next, blocks, id);
+        return next;
     }
 
     private String createRelation(String source, Map<String, BlockAst> blocks, RelationKey relation, String status,
@@ -409,6 +480,7 @@ public final class ArchitectureDslCommands {
         String key = "relation:" + relation.id();
         if (blocks.containsKey(key)) throw problem("DUPLICATE_RELATION", "relation", "Relation already exists");
         validateRelation(blocks, relation);
+        requireAdmbwRelation(source, blocks, relation);
         requireStatus(status);
         Map<String, String> values = new LinkedHashMap<>(properties);
         values.put("status", status == null ? "proposed" : status);
@@ -422,6 +494,7 @@ public final class ArchitectureDslCommands {
     private String updateRelation(String source, Map<String, BlockAst> blocks, RelationKey relation, String status) {
         BlockAst existing = require(blocks, "relation:" + relation.id());
         validateRelation(blocks, relation);
+        if ("accepted".equals(status)) requireAdmbwRelation(source, blocks, relation);
         requireStatus(status);
         return ArchitectureSemanticPatch.replace(source, existing,
                 block("relation", existing.getHeaderTokens(), status == null ? Map.of() : Map.of("status", status), existing));
@@ -452,6 +525,49 @@ public final class ArchitectureDslCommands {
         }
         return command.parentId() == null ? next : createRelation(next, ArchitectureSemanticPatch.index(next),
                 new RelationKey(command.parentId(), "CONTAINS", command.id()), "proposed", Map.of());
+    }
+
+    private void requireAdmbwRelation(String source, Map<String, BlockAst> blocks, RelationKey relation) {
+        if (!blocks.containsKey(AdmbwDeliveryProfile.BLOCK_KEY)) return;
+        var model = model(source);
+        requireAdmbwRelation(model, model.getAdmbwDelivery().members(model), relation);
+    }
+
+    private static void requireAdmbwRelation(CanonicalArchitectureModel model, Set<String> members, RelationKey relation) {
+        if (!members.contains(relation.sourceId()) || !members.contains(relation.targetId())) return;
+        if (!isC1S1Connection(model, relation)) {
+            throw problem("ADMBW_RELATION_NOT_ALLOWED", "relationType",
+                    "C1-S1 requires an Exhibits connection from a declared service to a bound catalogue capability");
+        }
+    }
+
+    private void retainAdmbwEndpoints(String source, String next, Map<String, BlockAst> blocks, String elementId) {
+        if (!blocks.containsKey(AdmbwDeliveryProfile.BLOCK_KEY)) return;
+        retainAdmbwEndpoints(model(source), model(next), elementId);
+    }
+
+    private static void retainAdmbwEndpoints(CanonicalArchitectureModel before, CanonicalArchitectureModel after, String elementId) {
+        if (before.getAdmbwDelivery() == null || after.getAdmbwDelivery() == null) return;
+        com.taxonomy.dsl.planning.PlanningInformation.validateRetainedR7Endpoint(before, after, elementId);
+        var members = before.getAdmbwDelivery().members(before);
+        if (!members.contains(elementId)) return;
+        var retained = after.getAdmbwDelivery().members(after);
+        for (var relation : after.getRelations()) {
+            if ("rejected".equals(relation.getStatus())) continue;
+            var key = new RelationKey(relation.getSourceId(), relation.getRelationType(), relation.getTargetId());
+            if ((elementId.equals(key.sourceId()) || elementId.equals(key.targetId()))
+                    && members.contains(key.sourceId()) && members.contains(key.targetId())
+                    && retained.contains(key.sourceId()) && retained.contains(key.targetId())
+                    && isC1S1Connection(before, key) && !isC1S1Connection(after, key)) {
+                throw new CommandProblem("ADMBW_C1_S1_ENDPOINT_IN_USE", elementId,
+                        "Remove the Exhibits connection before changing the endpoint assignment", List.of("relation:" + key.id()));
+            }
+        }
+    }
+
+    private static boolean isC1S1Connection(CanonicalArchitectureModel model, RelationKey relation) {
+        return AdmbwFffmlvProfile.c1S1Connector(model.findElement(relation.sourceId()).orElse(null),
+                relation.relationType(), model.findElement(relation.targetId()).orElse(null)) != null;
     }
 
     static void validateRelation(Map<String, BlockAst> blocks, RelationKey relation) {
@@ -511,6 +627,9 @@ public final class ArchitectureDslCommands {
             } else if ("relation".equals(removed.getKind())) {
                 references = relationKey(removed).id().equals(candidate.property("for-relation"))
                         || AnalysisSnapshotAdoption.relationMembers(candidate).contains(relationKey(removed).id());
+            } else if ("view".equals(removed.getKind())) {
+                references = AdmbwDeliveryProfile.BLOCK_KEY.equals(ArchitectureSemanticPatch.key(candidate))
+                        && id.equals(candidate.property("source-view"));
             }
             if (references) dependencies.add(ArchitectureSemanticPatch.key(candidate));
         }

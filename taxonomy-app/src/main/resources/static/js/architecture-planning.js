@@ -11,6 +11,7 @@
         }
         function addOption(select, value, label) {
             var option = document.createElement('option'); option.value = value; option.textContent = label; select.append(option);
+            return option;
         }
         function entries() { return view && view.planningInformation && view.planningInformation[selectedRequirement] || []; }
         function invalid() { return entries().some(function (v) { return !v.entry; }); }
@@ -21,6 +22,37 @@
             return (view.schema.planningProfiles || []).find(function (p) {
                 return entry ? p.id === entry.entry.profile && p.version === entry.entry.version : p.id + '@' + p.version === el('editorPlanningProfile').value;
             });
+        }
+        function elementChoices(profile) {
+            return (view.planningElementChoices || {})[profile.id + '@' + profile.version] || {};
+        }
+        function elementTitles() {
+            return new Map((view.model.elements || []).map(function (element) { return [element.id, element.title]; }));
+        }
+        function validateElementChoice(input, choices) {
+            input.setCustomValidity(input.value && !choices.includes(input.value) ? text('chooseEligibleElement') : '');
+        }
+        function populateElementChoices(input, choices, titles, value) {
+            function label(id) { var title = titles.get(id); return title ? title + ' · ' + id : id; }
+            input.replaceChildren();
+            var placeholder = input.required ? (choices.length ? 'selectElement' : 'noEligibleElements') : 'noElement';
+            addOption(input, '', text(placeholder));
+            choices.forEach(function (id) { addOption(input, id, label(id)); });
+            if (value && !choices.includes(value)) {
+                addOption(input, value, text('unavailableElement') + ' · ' + label(value)).disabled = true;
+            }
+            input.value = value;
+            validateElementChoice(input, choices);
+        }
+        function planningFields() { return el('editorPlanningFields').querySelectorAll('[data-planning-field]'); }
+        function refreshElementChoices() {
+            var profile = descriptor(), choices = profile ? elementChoices(profile) : {};
+            if (!Object.keys(choices).length) return;
+            var titles = elementTitles();
+            for (var input of planningFields()) {
+                var eligible = choices[input.dataset.planningField];
+                if (input.tagName === 'SELECT' && Array.isArray(eligible)) populateElementChoices(input, eligible, titles, input.value);
+            }
         }
         function updatePermissions() {
             var item = current(), supported = !invalid() && (!item || item.supported);
@@ -44,15 +76,25 @@
                     term.textContent = key; value.textContent = item.entry.values[key]; el('editorPlanningValues').append(term, value);
                 });
             } else if (profile) {
+                var choices = elementChoices(profile);
+                var titles = Object.keys(choices).length ? elementTitles() : null;
                 profile.fields.forEach(function (field) {
                     var label = document.createElement('label'); label.htmlFor = 'editorPlanningValue-' + field.key;
                     label.textContent = text('field.' + field.key) + (field.required ? ' *' : '');
-                    var input = document.createElement(field.choices.length ? 'select' : 'input');
+                    var eligible = choices[field.key], elementField = Array.isArray(eligible);
+                    var input = document.createElement(elementField || field.choices.length ? 'select' : 'input');
                     input.id = label.htmlFor; input.dataset.planningField = field.key;
                     input.required = field.required; input.maxLength = 4096;
-                    if (field.choices.length) field.choices.forEach(function (choice) { addOption(input, choice, text('choice.' + choice)); });
-                    input.value = item ? item.entry.values[field.key] || '' : field.choices[0] || '';
-                    input.addEventListener('input', function () { dirty = true; });
+                    var value = item ? item.entry.values[field.key] || '' : field.choices[0] || '';
+                    if (elementField) populateElementChoices(input, eligible, titles, value);
+                    else {
+                        field.choices.forEach(function (choice) { addOption(input, choice, text('choice.' + choice)); });
+                        input.value = value;
+                    }
+                    input.addEventListener('input', function () {
+                        dirty = true;
+                        if (elementField) validateElementChoice(input, elementChoices(profile)[field.key] || []);
+                    });
                     el('editorPlanningFields').append(label, input);
                 });
             }
@@ -93,8 +135,10 @@
             event.preventDefault();
             var item = current(), profile = descriptor();
             if (!writable || invalid() || !selectedRequirement || !profile || item && !item.supported || !reasonValid()) return;
-            var fields = el('editorPlanningFields').querySelectorAll('[data-planning-field]'), values = {};
-            for (var input of fields) {
+            var choices = elementChoices(profile), values = {};
+            for (var input of planningFields()) {
+                var eligible = choices[input.dataset.planningField];
+                if (Array.isArray(eligible)) validateElementChoice(input, eligible);
                 if (!input.reportValidity()) return;
                 if (input.required || input.value !== '') values[input.dataset.planningField] = input.value;
             }
@@ -114,7 +158,7 @@
                 view.model.requirements.forEach(function (r) { addOption(select, r.id, (r.title || r.id) + ' · ' + r.id); });
                 if (!view.model.requirements.some(function (r) { return r.id === selectedRequirement; })) selectedRequirement = view.model.requirements[0] && view.model.requirements[0].id || '';
                 select.value = selectedRequirement;
-                if (preserveDraft && dirty) { updatePermissions(); return; }
+                if (preserveDraft && dirty) { refreshElementChoices(); updatePermissions(); return; }
                 if (draftId && entries().some(function (e) { return e.entry && e.entry.id === draftId; })) selectedEntry = draftId;
                 dirty = false; populateEntries();
             },

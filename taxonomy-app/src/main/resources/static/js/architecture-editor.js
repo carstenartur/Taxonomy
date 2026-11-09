@@ -57,10 +57,21 @@
     var admbwChecked = false, admbwNativeRequest = null;
     function renderAdmbwExport() {
         var options = el('editorAdmbwOptions');
-        options.hidden = !active || loading || !view || view.document.source !== 'GIT_CHECKPOINT' || !context().commit;
-        var projectCode = el('editorAdmbwProjectCode').value.trim();
+        var visible = active && !loading && view;
+        var checkpoint = visible && view.document.source === 'GIT_CHECKPOINT' && context().commit;
+        var editable = visible && view.mayEdit && view.document.source === 'WORKSPACE_REVISION';
+        options.hidden = !checkpoint && !editable;
+        var project = el('editorAdmbwProjectCode');
+        var projectCode = project.value.trim();
+        var validCode = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/.test(projectCode);
+        var boundCheckpoint = checkpoint && view.model.admbwDelivery;
+        project.disabled = el('editorAdmbwView').disabled = Boolean(busy || boundCheckpoint);
+        var configure = el('editorAdmbwConfigure');
+        configure.hidden = !editable;
+        configure.disabled = !editable || busy || !validCode;
+        el('editorAdmbwInspect').hidden = !checkpoint;
         var link = el('editorAdmbw');
-        link.hidden = options.hidden || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/.test(projectCode);
+        link.hidden = !checkpoint || !validCode;
         var url = link.hidden ? null : api.admbwUrl(context(), projectCode, el('editorAdmbwView').value);
         if (url !== admbwUrl) {
             admbwUrl = url;
@@ -86,6 +97,11 @@
     }
     el('editorAdmbwProjectCode').addEventListener('input', renderAdmbwExport);
     el('editorAdmbwView').addEventListener('change', renderAdmbwExport);
+    el('editorAdmbwConfigure').addEventListener('click', function () {
+        if (this.disabled) return;
+        stage({ kind: 'SET_ADMBW_DELIVERY', id: el('editorAdmbwProjectCode').value.trim(),
+            targetId: el('editorAdmbwView').value || null }, null, t('editor.admbw.configure'));
+    });
     el('editorAdmbwInspect').addEventListener('click', async function () {
         if (!admbwUrl || admbwRequest || admbwNativeRequest) return;
         var request = admbwRequest = {};
@@ -278,7 +294,10 @@
         });
         var admbwView = el('editorAdmbwView');
         var scope = [c.repositoryId, c.workspaceScopeKey, c.branch, c.commit, selectedView].join('\0');
-        var admbwSelection = scope === admbwScope ? admbwView.value : selectedView;
+        var delivery = view.model.admbwDelivery;
+        var admbwSelection = delivery ? delivery.sourceViewId : scope === admbwScope ? admbwView.value : selectedView;
+        if (delivery) el('editorAdmbwProjectCode').value = delivery.projectCode;
+        else if (admbwScope !== null && scope !== admbwScope) el('editorAdmbwProjectCode').value = '';
         admbwScope = scope;
         admbwView.replaceChildren();
         option(admbwView, '', t('editor.admbw.allElements'));

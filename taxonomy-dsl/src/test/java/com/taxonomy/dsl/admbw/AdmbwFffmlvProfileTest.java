@@ -181,7 +181,10 @@ class AdmbwFffmlvProfileTest {
 
     @Test
     void enforcesFffmlvConstraintsBeyondTheGeneralAdmbwMetamodel() {
-        var view = assess(plan("service", "service"), null).requirementDerivation();
+        String retained = plan("operation", "warning-office")
+                .replace("x-planning.r7.value.derivedFrom: \"operation\";", "x-planning.r7.value.derivedFrom: \"service\";")
+                .replace("x-planning.r7.value.realizer: \"warning-office\";", "x-planning.r7.value.realizer: \"service\";");
+        var view = assess(retained, null).requirementDerivation();
         assertThat(view.issues()).extracting(AdmbwFffmlvProfile.Issue::code)
                 .containsExactly("OPERATIONAL_CONSTRAINT_REQUIRED", "R7_REALIZER_TYPE");
         assertThat(view.connectors()).isEmpty();
@@ -220,7 +223,8 @@ class AdmbwFffmlvProfileTest {
 
     @Test
     void preventsTheSameOfficialCapabilityFromBecomingAnOperationalConstraint() {
-        String dsl = plan("capability", "warning-office")
+        String dsl = plan("operation", "warning-office")
+                .replace("x-planning.r7.value.derivedFrom: \"operation\";", "x-planning.r7.value.derivedFrom: \"capability\";")
                 .replace("title: \"Warnungen bereitstellen\";", """
                         title: "Warnungen bereitstellen";
                         x-admbw-type: "OperationalConstraint";

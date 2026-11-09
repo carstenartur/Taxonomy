@@ -525,7 +525,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         if (!removed.isEmpty()) return problem("PORTFOLIO_RECONCILIATION_REQUIRED", "resolutions",
                 "Keep these portfolio blocks and explicitly archive the business records before removing them; a Git omission cannot delete portfolio history", removed);
         try {
-            transformer.validateReconciledSource(source);
+            transformer.validateReconciledSource(local, source);
             if (hasPortfolioChanges(local, source)) portfolioPort().validatePortfolio(local, source);
             return null;
         } catch (CommandProblem invalid) { return invalid; }
@@ -845,6 +845,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 }
                 case UpsertRequirementMapping m -> { parts.add(m.requirementIdentity()); parts.add(m.elementId()); parts.add(m.rationale()); properties(parts, m.exchangeProperties()); }
                 case DeleteRequirementMapping m -> { parts.add(m.requirementIdentity()); parts.add(m.elementId()); }
+                case ConfigureAdmbwDelivery d -> { parts.add(d.projectCode()); parts.add(d.sourceViewId()); }
                 case CreateArchitectureElement e -> { parts.add(e.id()); parts.add(e.type()); properties(parts, e.properties()); }
                 case UpdateArchitectureElement e -> { parts.add(e.id()); parts.add(e.type()); properties(parts, e.properties()); }
                 case DeleteArchitectureElement e -> parts.add(e.id());

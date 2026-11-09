@@ -16,6 +16,8 @@ public interface PlanningProfile {
         public Stored { values = Map.copyOf(values); }
     }
     Descriptor descriptor();
+    /** Modeled element IDs available for each reference field, including empty choice lists. */
+    default Map<String, List<String>> elementChoices(CanonicalArchitectureModel model) { return Map.of(); }
     void validate(Map<String, String> values);
     default Stored store(String dsl, String requirement, String entry, Map<String, String> values) {
         validate(values); return new Stored(dsl, values);

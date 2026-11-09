@@ -1,6 +1,7 @@
 package com.taxonomy.editor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.taxonomy.dsl.command.ArchitectureCommand.ConfigureAdmbwDelivery;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.export.LayeredDiagramLayoutService;
@@ -113,6 +114,21 @@ class ArchitectureEditorControllerTest {
         verify(service).preview(eq(scope), argument.capture());
         assertThat(((SemanticCommand) argument.getValue().operation()).command())
                 .isInstanceOf(com.taxonomy.dsl.command.ArchitectureCommand.CreateArchitecturePackage.class);
+    }
+
+    @Test
+    void admbwDeliveryWireBindsTheProjectAndSourceViewToTheRevision() throws Exception {
+        var base = wire();
+        var deliveryWire = new ArchitectureEditorController.WireCommand(base.context(), base.metadata(),
+                "SET_ADMBW_DELIVERY", "WARN", null, Map.of(), null, null, "analysis-warn", null, null, null);
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
+        when(service.preview(eq(scope), any())).thenThrow(new CommandProblem("DISPATCHED", "", "dispatched", java.util.List.of()));
+        assertThatThrownBy(() -> controller.preview(deliveryWire, "\"workspace-revision-0\"", null))
+                .isInstanceOfSatisfying(CommandProblem.class, p -> assertThat(p.code()).isEqualTo("DISPATCHED"));
+        var argument = org.mockito.ArgumentCaptor.forClass(Command.class);
+        verify(service).preview(eq(scope), argument.capture());
+        assertThat(((SemanticCommand) argument.getValue().operation()).command())
+                .isEqualTo(new ConfigureAdmbwDelivery("WARN", "analysis-warn"));
     }
 
 

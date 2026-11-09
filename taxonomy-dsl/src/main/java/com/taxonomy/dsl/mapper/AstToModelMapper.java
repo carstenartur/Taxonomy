@@ -1,5 +1,6 @@
 package com.taxonomy.dsl.mapper;
 
+import com.taxonomy.dsl.admbw.AdmbwDeliveryProfile;
 import com.taxonomy.dsl.ast.*;
 import com.taxonomy.dsl.model.*;
 
@@ -30,6 +31,10 @@ public class AstToModelMapper {
                 case "requirement" -> mapRequirement(block, model);
                 case "mapping" -> mapMapping(block, model);
                 case "view" -> mapView(block, model);
+                case "delivery" -> {
+                    if (!block.getHeaderTokens().isEmpty() && AdmbwDeliveryProfile.BLOCK_ID.equals(block.getHeaderTokens().getFirst()))
+                        model.setAdmbwDelivery(AdmbwDeliveryProfile.fromBlock(block));
+                }
                 case "evidence" -> mapEvidence(block, model);
                 case "source" -> mapSource(block, model);
                 case "sourceVersion" -> mapSourceVersion(block, model);
