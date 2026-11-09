@@ -8,12 +8,16 @@ import com.taxonomy.diagram.DiagramNode;
 import com.taxonomy.diagram.DiagramScene;
 import com.taxonomy.dsl.admbw.AdmbwFffmlvProfile;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.model.ArchitectureElement;
+import com.taxonomy.dsl.model.ArchitectureRelation;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.model.TaxonomyRootTypes;
 import com.taxonomy.dsl.validation.DslValidator;
 import com.taxonomy.export.LayeredDiagramLayoutService;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -59,6 +63,9 @@ public class ArchitectureEditorProjection {
             Map<String, List<com.taxonomy.dsl.planning.PlanningInformation.View>> result = new java.util.LinkedHashMap<>();
             for (var requirement : model.getRequirements()) result.put(requirement.getId(), registry.read(model, requirement.getId()));
             return java.util.Collections.unmodifiableMap(result);
+        }
+        public Map<String, Map<String, List<String>>> getPlanningElementChoices() {
+            return new com.taxonomy.dsl.planning.PlanningInformation().elementChoices(model);
         }
     }
 
@@ -106,13 +113,29 @@ public class ArchitectureEditorProjection {
         if (selectedViewId == null || selectedViewId.isBlank()) return diagram;
         var view = model.getViews().stream().filter(item -> selectedViewId.equals(item.getId())).findFirst()
                 .orElseThrow(() -> new ArchitectureDslCommands.CommandProblem("NOT_FOUND", "viewId", "Canonical view is not present in this revision", List.of()));
-        var members = new java.util.HashSet<>(view.getIncludes());
+        var members = new HashSet<>(view.getIncludes());
         String recorded = view.getExtensions().get("x-analysis-relation-members");
-        var relations = recorded == null || recorded.isEmpty() ? java.util.Set.<String>of()
-                : new java.util.HashSet<>(java.util.Arrays.asList(recorded.split("\n")));
+        var relations = recorded == null || recorded.isEmpty() ? new HashSet<String>()
+                : new HashSet<>(List.of(recorded.split("\n")));
+        var delivery = model.getAdmbwDelivery();
+        if (recorded != null && delivery != null && selectedViewId.equals(delivery.sourceViewId())) {
+            Map<String, ArchitectureElement> elements = new HashMap<>();
+            model.getElements().stream().filter(element -> members.contains(element.getId()))
+                    .forEach(element -> elements.putIfAbsent(element.getId(), element));
+            for (var relation : model.getRelations()) {
+                if ("accepted".equals(relation.getStatus()) && AdmbwFffmlvProfile.c1S1Connector(
+                        elements.get(relation.getSourceId()), relation.getRelationType(), elements.get(relation.getTargetId())) != null) {
+                    relations.add(relationId(relation));
+                }
+            }
+        }
         return new DiagramModel(view.getTitle(), diagram.nodes().stream().filter(node -> members.contains(node.id())).toList(),
                 diagram.edges().stream().filter(edge -> members.contains(edge.sourceId()) && members.contains(edge.targetId())
                         && (recorded == null || relations.contains(edge.id()))).toList(), diagram.layout());
+    }
+
+    private static String relationId(ArchitectureRelation relation) {
+        return relation.getSourceId() + " " + relation.getRelationType() + " " + relation.getTargetId();
     }
 
     private DiagramModel diagram(CanonicalArchitectureModel model, String branch) {
@@ -126,8 +149,7 @@ public class ArchitectureEditorProjection {
                 element.getId(), element.getTitle(), element.getType(), 0, false,
                 typeRanks.getOrDefault(element.getType(), 0), 0, false,
                 parents.get(element.getId()), false)).toList();
-        List<DiagramEdge> edges = model.getRelations().stream().map(relation -> new DiagramEdge(
-                relation.getSourceId() + " " + relation.getRelationType() + " " + relation.getTargetId(),
+        List<DiagramEdge> edges = model.getRelations().stream().map(relation -> new DiagramEdge(relationId(relation),
                 relation.getSourceId(), relation.getTargetId(), relation.getRelationType(), 0)).toList();
         return new DiagramModel("Architecture · " + branch, nodes, edges, new DiagramLayout("LR", true));
     }

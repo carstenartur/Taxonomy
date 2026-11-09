@@ -49,7 +49,7 @@ public final class AdmbwFffmlvProfile {
     private static final String ZERO_GUID = "{00000000-0000-0000-0000-000000000000}";
 
     public record Report(String profile, String projectCode, String sourceViewId,
-                         View capabilityToService, View requirementDerivation) { }
+                         View capabilityToService, View requirementDerivation, AdmbwDeliveryProfile delivery) { }
 
     public record View(String viewpoint, String name, List<String> packagePath, String status,
                        List<Element> elements, List<Connector> connectors, List<Issue> issues,
@@ -78,20 +78,30 @@ public final class AdmbwFffmlvProfile {
                 throw new IllegalArgumentException("Each architecture element must have a unique identity");
             }
         }
+        var delivery = model.getAdmbwDelivery();
+        if (delivery != null) {
+            delivery.requireRequest(projectCode, viewId);
+            delivery.members(model);
+        }
         Map<String, String> catalogueIdentities = new HashMap<>();
         return new Report(ID, projectCode, viewId,
                 capabilityToService(model, elements, projectCode, viewId, catalogueIdentities),
-                requirementDerivation(model, elements, projectCode, catalogueIdentities));
+                requirementDerivation(model, elements, projectCode, catalogueIdentities), delivery);
     }
 
     private View capabilityToService(CanonicalArchitectureModel model, Map<String, ArchitectureElement> elements,
                                      String projectCode, String viewId, Map<String, String> catalogueIdentities) {
         ArchitectureView selected = selectedView(model, viewId);
         Set<String> members = selected == null ? elements.keySet() : new HashSet<>(selected.getIncludes());
-        String recordedRelations = selected == null ? null : selected.getExtensions().get("x-analysis-relation-members");
+        // The retained snapshot provides membership evidence. An explicitly saved delivery
+        // view includes newly authored, accepted connections between those members.
+        String recordedRelations = selected == null || model.getAdmbwDelivery() != null
+                ? null : selected.getExtensions().get("x-analysis-relation-members");
         Set<String> allowedRelations = recordedRelations == null ? Set.of()
                 : new HashSet<>(Arrays.asList(recordedRelations.split("\n")));
         var view = new ViewBuilder();
+        if (model.getAdmbwDelivery() != null && model.getAdmbwDelivery().catalogueFingerprint() == null)
+            view.issue("NC3T_PROVENANCE_REQUIRED", "C1-S1", "Select a retained analysis view with a recorded C3 catalogue fingerprint.");
         for (String id : members.stream().sorted().toList()) {
             ArchitectureElement element = elements.get(id);
             if (element == null) {
@@ -123,13 +133,8 @@ public final class AdmbwFffmlvProfile {
                     || recordedRelations != null && !allowedRelations.contains(relationId(relation))) {
                 continue;
             }
-            if ("REALIZES".equals(relation.getRelationType()) && CAPABILITY.equals(elements.get(source).getType())
-                    && "CoreService".equals(elements.get(target).getType())) {
-                view.connect("Exhibits", ref(target), ref(source));
-            } else if ("FULFILLS".equals(relation.getRelationType()) && isService(elements.get(source))
-                    && CAPABILITY.equals(elements.get(target).getType())) {
-                view.connect("Exhibits", ref(source), ref(target));
-            }
+            var connector = c1S1Connector(elements.get(source), relation.getRelationType(), elements.get(target));
+            if (connector != null) view.connect(connector.stereotype(), connector.client(), connector.supplier());
         }
 
         Set<String> linked = new HashSet<>();
@@ -251,7 +256,7 @@ public final class AdmbwFffmlvProfile {
         String id = ref(element.getId());
         String guid = element.getExtensions().get(CATALOGUE_GUID);
         String reference = element.getExtensions().get(CATALOGUE_REFERENCE);
-        if (guid == null || !EA_GUID.matcher(guid).matches() || ZERO_GUID.equals(guid)) {
+        if (!validCatalogueGuid(guid)) {
             view.issue(role + "_CATALOGUE_GUID_REQUIRED", id, "Record the GUID of the existing catalogue element.");
             guid = null;
         } else {
@@ -302,7 +307,36 @@ public final class AdmbwFffmlvProfile {
         }
     }
 
-    private static String r7Role(ArchitectureElement element) {
+    /** Projects the directed canonical connection onto the ADMBw 2026.05 C1–S1 rule. */
+    public static Connector c1S1Connector(ArchitectureElement source, String type, ArchitectureElement target) {
+        if (source == null || target == null || source.getId() == null || target.getId() == null
+                || source.getId().equals(target.getId())) return null;
+        if ("REALIZES".equals(type) && capabilityEndpoint(source) && "CoreService".equals(target.getType()) && serviceEndpoint(target))
+            return new Connector("Exhibits", ref(target.getId()), ref(source.getId()));
+        if ("FULFILLS".equals(type) && serviceEndpoint(source) && capabilityEndpoint(target))
+            return new Connector("Exhibits", ref(source.getId()), ref(target.getId()));
+        return null;
+    }
+
+    private static boolean capabilityEndpoint(ArchitectureElement element) {
+        return CAPABILITY.equals(element.getType()) && missing(element.getExtensions().get(TYPE)) && hasCatalogueBinding(element);
+    }
+
+    private static boolean serviceEndpoint(ArchitectureElement element) {
+        return isService(element) && SERVICE.equals(element.getExtensions().get(TYPE));
+    }
+
+    static boolean hasCatalogueBinding(ArchitectureElement element) {
+        if (element == null) return false;
+        return validCatalogueGuid(element.getExtensions().get(CATALOGUE_GUID))
+                && !missing(element.getExtensions().get(CATALOGUE_REFERENCE));
+    }
+
+    private static boolean validCatalogueGuid(String guid) {
+        return guid != null && EA_GUID.matcher(guid).matches() && !ZERO_GUID.equals(guid);
+    }
+
+    static String r7Role(ArchitectureElement element) {
         if (element == null || CAPABILITY.equals(element.getType()) || isService(element)
                 || "CommunicationsService".equals(element.getType())) return "";
         return Objects.toString(element.getExtensions().get(TYPE), "");

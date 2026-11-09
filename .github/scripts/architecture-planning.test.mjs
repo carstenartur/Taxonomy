@@ -18,7 +18,7 @@ class Element {
     removeAttribute(key) { delete this.attributes[key]; }
     querySelectorAll() { return this.children.filter(c => c.dataset.planningField); }
     contains(node) { return this === node || this.children.some(child => child.contains(node)); }
-    reportValidity() { return true; }
+    reportValidity() { return !this.validationMessage && (!this.required || this.value !== ''); }
     setCustomValidity(value) { this.validationMessage = value; }
     focus() { this.focused = true; }
 }
@@ -81,6 +81,83 @@ test('malformed namespace is visible and cannot be overwritten through the profi
     f.panel.render(f.view); f.ids.editorPlanningForm.events.submit({preventDefault(){}});
     assert.equal(f.intents.length,0); assert.equal(f.ids.editorPlanningSave.disabled,true);
     assert.equal(f.ids.editorPlanningStatus.textContent,'invalid');
+});
+
+function r7Fixture(values) {
+    const f = fixture();
+    f.view.schema.planningProfiles.push({id:'admbw-r7', version:'1', fields:[
+        {key:'requirementType',required:true,choices:['FunctionalRequirement','NonfunctionalRequirement']},
+        {key:'derivedFrom',required:true,choices:[]}, {key:'constraintSubject',required:true,choices:[]},
+        {key:'realizer',required:false,choices:[]} ]});
+    f.view.model.elements = [{id:'constraint',title:'Operating constraint'}, {id:'subject',title:'Catalogue role'},
+        {id:'realizer',title:'Delivery role'}, {id:'unbound',title:'Local role'}];
+    f.view.planningElementChoices = {'admbw-r7@1':{derivedFrom:['constraint'],constraintSubject:['subject'],realizer:['realizer']}};
+    if (values) f.view.planningInformation.R = [{supported:true,entry:{id:'r7',profile:'admbw-r7',version:'1',origin:'REQIF',values}}];
+    f.panel.render(f.view);
+    if (values) {
+        f.ids.editorPlanningEntry.value = 'r7'; f.ids.editorPlanningEntry.events.change();
+    } else {
+        f.ids.editorPlanningProfile.value = 'admbw-r7@1'; f.ids.editorPlanningProfile.events.change();
+    }
+    const fields = () => Object.fromEntries(f.ids.editorPlanningFields.querySelectorAll().map(field => [field.dataset.planningField, field]));
+    return {...f, fields};
+}
+
+test('R7 slots show only eligible named elements and allow an unset realizer', () => {
+    const f = r7Fixture();
+    const {derivedFrom, constraintSubject, realizer} = f.fields();
+    for (const [field, id, title] of [[derivedFrom,'constraint','Operating constraint'],
+        [constraintSubject,'subject','Catalogue role'],[realizer,'realizer','Delivery role']]) {
+        assert.equal(field.tagName, 'SELECT');
+        assert.deepEqual(field.children.map(option => option.value), ['',id]);
+        assert.equal(field.children[1].textContent, `${title} · ${id}`);
+        assert.equal(field.value, '');
+    }
+    f.ids.editorPlanningForm.events.submit({preventDefault(){}});
+    assert.equal(f.intents.length, 0);
+    derivedFrom.value = 'constraint'; constraintSubject.value = 'subject';
+    f.ids.editorPlanningForm.events.submit({preventDefault(){}});
+    assert.deepEqual(JSON.parse(JSON.stringify(f.intents[0].planning.values)),
+        {requirementType:'FunctionalRequirement',derivedFrom:'constraint',constraintSubject:'subject'});
+});
+
+test('R7 shows unresolved imported values and requires correction before preview', () => {
+    const f = r7Fixture({requirementType:'NonfunctionalRequirement',derivedFrom:'missing',
+        constraintSubject:'subject',realizer:'unbound',imported:'true'});
+    const {derivedFrom, realizer} = f.fields();
+    for (const [field, id] of [[derivedFrom,'missing'],[realizer,'unbound']]) {
+        assert.equal(field.value, id);
+        const retained = field.children.find(option => option.value === id);
+        assert.ok(retained, 'Retain the unresolved value as a visible option');
+        assert.equal(retained.disabled, true);
+        assert.match(retained.textContent, new RegExp(id));
+    }
+    f.ids.editorPlanningForm.events.submit({preventDefault(){}});
+    assert.equal(f.intents.length, 0);
+    derivedFrom.value = 'constraint'; derivedFrom.events.input();
+    f.ids.editorPlanningForm.events.submit({preventDefault(){}});
+    assert.equal(f.intents.length, 0, 'The unresolved optional selection still needs a decision');
+    realizer.value = ''; realizer.events.input();
+    f.ids.editorPlanningForm.events.submit({preventDefault(){}});
+    assert.deepEqual(JSON.parse(JSON.stringify(f.intents[0].planning.values)),
+        {requirementType:'NonfunctionalRequirement',derivedFrom:'constraint',constraintSubject:'subject'});
+});
+
+test('R7 refreshes eligible choices while retaining a draft value that now needs correction', () => {
+    const f = r7Fixture();
+    const {derivedFrom, constraintSubject} = f.fields();
+    derivedFrom.value = 'constraint'; derivedFrom.events.input();
+    constraintSubject.value = 'subject'; constraintSubject.events.input();
+    f.view.planningElementChoices['admbw-r7@1'].derivedFrom = [];
+    f.panel.render(f.view, true);
+
+    const refreshed = f.fields().derivedFrom;
+    assert.equal(refreshed.tagName, 'SELECT');
+    assert.equal(refreshed.value, 'constraint');
+    assert.equal(refreshed.children.find(option => option.value === 'constraint').disabled, true);
+    assert.equal(f.fields().constraintSubject.value, 'subject');
+    f.ids.editorPlanningForm.events.submit({preventDefault(){}});
+    assert.equal(f.intents.length, 0);
 });
 
 // Run the production planning, focus and editor modules together: do not replace the panel's stage callback.

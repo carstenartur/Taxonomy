@@ -14,7 +14,7 @@ dienen der internen Projektbearbeitung. [Aktuelle Bundeswehr-Downloads](https://
 | Thema | In Taxonomy geprüft oder vorbereitet | Für die Abgabe erforderlich |
 |---|---|---|
 | Architekturauftrag und Modellbeschreibung | Checkpoint, Repository, Zweig, Workspace, Projektkürzel und Prüfprofil sind im Bericht festgehalten. | Vorhabenspezifische Leitfadenfassung, geforderte Sichten, A1-Architekturbeschreibung mit Modell- und Projektmetadaten, Startpaket und Lieferformat mit dem Auftraggeber festlegen. |
-| C1–S1, FFFmLV § 3.2.6.1 | Ordnerpfad `Service Specifications/C1-S1/Einordnung Fähigkeitslage`, Diagrammname, `Capability`, `ServiceSpecification` und `Exhibits` vom Dienst zur Fähigkeit. Einbezogen werden akzeptierte `REALIZES`-Beziehungen von Fähigkeit zu Core Service und akzeptierte `FULFILLS`-Beziehungen von Core/COI Service zu Fähigkeit. Bei ausgewählter gespeicherter Sicht gelten deren Element- und aufgezeichnete Beziehungsauswahl. | GUID und Katalogfassung im tatsächlichen Standardelementekatalog prüfen und das vorhandene Element wiederverwenden. Fehlende Fähigkeit als `Issue` erfassen und klären. Falls erforderlich, `Environment` und `EnvironmentalCondition` modellieren. |
+| C1–S1, FFFmLV § 3.2.6.1 | Ordnerpfad `Service Specifications/C1-S1/Einordnung Fähigkeitslage`, Diagrammname, `Capability`, `ServiceSpecification` und `Exhibits` vom Dienst zur Fähigkeit. Die gespeicherte Ausgangssicht liefert den Elementumfang und den Fingerabdruck des verwendeten C3-Katalogs. Einbezogen werden gültige, akzeptierte Verbindungen innerhalb dieses Umfangs, einschließlich früherer `REALIZES`-Zuordnungen. | GUID und Katalogfassung im tatsächlichen Standardelementekatalog bestätigen und das vorhandene Element wiederverwenden. Fehlende Fähigkeit als `Issue` erfassen und klären. Falls erforderlich, `Environment` und `EnvironmentalCondition` modellieren. |
 | R7, FFFmLV § 3.2.8.3 | Ordnerpfad `Requirements/R7/Requirement Derivation`. Genau ein R7-Planungseintrag pro gespeicherter Anforderungsversion. `DerivedFrom` zeigt von der funktionalen oder nichtfunktionalen Anforderung zu genau einem `OperationalConstraint`. Ein optionales `ToBeRealizedBy` zeigt zu einer `CapabilityConfiguration` oder `ResourceRole`. Für R7-MK08 wird ein Katalogsubjekt als `OperationalArchitecture` oder `OperationalRole` über `Satisfy` mit der Vorgabe verbunden. | Das `Subjekt` der Anforderung muss mit dem vorgesehenen Systemelement übereinstimmen. Satzschablone und Tagged Values nach Require.7/SAMIT fachlich prüfen und im Zielmodell ergänzen. Das Katalogsubjekt und die Rollen des nativen `Satisfy`-Verbinders im Zielmodell prüfen. |
 | Element- und Diagrammkonventionen | Name und Beschreibung für jedes in der Sicht ausgegebene Element. Die Beschreibung wird als Inhalt für EA-Notes angeboten. | Eindeutige Bezeichnungen und Glossar prüfen. Deutsch ist der Regelfall. Den tatsächlichen ADMBw-Diagrammtyp und Diagrammnotizen im Zielwerkzeug kontrollieren. |
 | Weitere FFFmLV- und PBN-Sichten | Der Bericht enthält C1–S1 und R7. | Die im Vorhaben verlangten Sichten und Regeln separat ergänzen. Der ältere PBN-Service-/Systemleitfaden verwendet beispielsweise für R7 auch eine andere Ableitungsquelle. Die PFK-/Require.7-Übergabe hat einen eigenen Liefervertrag. |
@@ -36,26 +36,40 @@ ergibt sich aus dem Vorhaben. [Sparx-EA-Anleitung der Bundeswehr](https://www.bu
    für R7 benötigten Elementen deren ADMBw-Stereotyp auswählen. Für das Subjekt
    der operationellen Vorgabe die GUID und Fassung des Modellelementekatalogs
    erfassen.
-2. Die Beziehungen von Fähigkeit und Dienst im Modell fachlich prüfen und
-   akzeptieren. Unter **Planungsinformationen zur Anforderung** das Profil
-   **ADMBw R7 Anforderungsherleitung** verwenden. Den Anforderungstyp, die
-   Element-ID der operationellen Vorgabe, das zugehörige Katalogsubjekt und
-   gegebenenfalls die Element-ID des vorgesehenen Systemelements angeben. Taxonomy hält die genaue Textversion und
-   ihren SHA-256 fest. Bei einer neuen Textversion den R7-Eintrag erneut prüfen
-   und speichern. Importierte R7-Zuordnungen brauchen diese lokale Prüfung auch
+2. In der bearbeitbaren Architektur unter **ADMBw-Abgabe vorbereiten** das
+   Projektkürzel und die übernommene NC3T-Analysesicht für C1–S1 wählen.
+   **ADMBw-Abgabeprofil speichern** bindet Profilversion, Sicht und
+   Katalogfingerabdruck an die Architektur. Eine Konfiguration ohne
+   Katalogfingerabdruck ist als Entwurf möglich.
+3. Im Architektur-Fokus eine Fähigkeit oder einen Dienst aus dieser Sicht
+   wählen. Der Fokus bietet der KI ausschließlich ganze zulässige Verbindungen
+   mit festem Dienst, Typ und katalogisierter Fähigkeit an. Die KI wählt eine
+   Kandidaten-ID und begründet den Vorschlag mit Zitaten zu beiden Endpunkten.
+   Zugeordnete Anforderungen können diese Belege ergänzen. Ohne passende
+   Belegstellen bleibt die KI-Auswahl leer.
+   Die Entscheidung zum Übernehmen ist fachlich. Auch manuelle Befehle wahren
+   die modellierten Rollen.
+4. Unter **Planungsinformationen zur Anforderung** das Profil **ADMBw R7
+   Anforderungsherleitung** verwenden. Die operationelle Vorgabe, das
+   Katalogsubjekt und gegebenenfalls das Systemelement stehen als typisierte
+   Auswahlen zur Verfügung. Ein Systemelement vom Typ `ResourceRole` steht im
+   gespeicherten Abgabeprofil zur Auswahl, sobald die GUID und Katalogfassung
+   des vorhandenen EA-Parts eingetragen sind. Taxonomy hält die Textversion und ihren
+   SHA-256 fest. Bei einer neuen Textversion den R7-Eintrag erneut prüfen und
+   speichern. Importierte R7-Zuordnungen brauchen diese lokale Freigabe auch
    bei gleichem Text und gleicher Versionsnummer.
-3. Einen Checkpoint erstellen und ihn in der Versionshistorie öffnen. Unter
-   **ADMBw-Abgabe vorbereiten** das Projektkürzel eintragen und bei Bedarf
-   die Ausgangssicht für C1–S1 wählen. **Checkpoint prüfen** zeigt die Befunde
-   direkt an. Der JSON-Download enthält zusätzlich die Modellierungsdaten. Die Sichten zeigen getrennt `CHANGES_REQUIRED` mit Befunden oder
-   `REVIEW_REQUIRED` mit den offenen fachlichen und technischen Prüfungen.
-4. Wenn die Strukturprüfung für beide Sichten durchgelaufen ist, für
+5. Einen Checkpoint erstellen und ihn in der Versionshistorie öffnen.
+   **Checkpoint prüfen** zeigt die Befunde und offene Liefernachweise direkt an.
+   Der JSON-Download enthält zusätzlich die Modellierungsdaten. Die Sichten
+   zeigen getrennt `CHANGES_REQUIRED` mit Befunden oder `REVIEW_REQUIRED` mit
+   den offenen fachlichen und technischen Prüfungen.
+6. Wenn die Strukturprüfung für beide Sichten durchgelaufen ist, für
    **ADMBw-QEA-Kopie herunterladen** eine geschlossene `.qea` bis 32 MiB und die
    GUID des gewünschten Modellwurzelpakets angeben. Die Basis muss die
    vereinbarten Kataloge enthalten. Für eine `ResourceRole` als Systemelement
    in Taxonomy die GUID und Fassung des vorhandenen EA-Parts hinterlegen.
    Der Export benötigt das [Sparx-Plugin](sparx-integration-de.md) mit Host-SPI 1.5.
-5. Die erzeugte Kopie in Enterprise Architect mit ADMBw 2026.05 öffnen,
+7. Die erzeugte Kopie in Enterprise Architect mit ADMBw 2026.05 öffnen,
    die im Prüfbericht genannten Kontrollen durchführen und die offenen
    vorhabenspezifischen Anforderungen ergänzen.
 
@@ -68,6 +82,14 @@ ADMBw-Stereotyp in der Basis. Die Prüfung der tatsächlichen Katalogfassung
 gehört zur fachlichen Abnahme. Die Diagrammnotizen halten den Git-Commit fest.
 Die Anforderungsobjekte enthalten die ursprüngliche Modellreferenz, Textversion
 und SHA-256 als Taxonomy-Tags.
+
+Die EAM-Toolfamilie liest die gerichteten Verbindungsregeln aus der MDG.
+Ihr Extraktionsablauf lässt die KI Endpunkte und Typ angeben und prüft das
+erzeugte Modell anschließend. Taxonomy verwendet die gerichtete Regel bereits
+beim Erzeugen der Kandidaten. Dieselbe Regel bildet die gespeicherten
+C1–S1-Verbindungen auf native `Exhibits`-Verbinder ab.
+[EAM-Regelkatalog](https://github.com/Mitchel85/EAM-Toolfamilie/blob/6b1baa03bb097d3aa9afc8bde4d56e275e8a0e93/packages/core/extract.py#L191-L231)
+· [EAM-Modellprüfung](https://github.com/Mitchel85/EAM-Toolfamilie/blob/6b1baa03bb097d3aa9afc8bde4d56e275e8a0e93/packages/core/eam_ai.py#L706-L791)
 
 Die nativen Typen und Verbindungen wurden mit der öffentlichen
 [MASC-Musterarchitektur](https://github.com/Mitchel85/EAM-Toolfamilie/blob/6b1baa03bb097d3aa9afc8bde4d56e275e8a0e93/packages/core/fixtures/Musterarchitektur_MASC.qea)
@@ -82,7 +104,9 @@ und die projektbezogene Abnahme stehen separat an.
 `workspaceScopeKey`, `branch`, den exakten `commit` und `projectCode`. Optional
 beschränkt `viewId` C1–S1 auf die gespeicherte Sicht. R7 prüft die im
 Checkpoint enthaltenen Anforderungen. Die Route setzt die Exportberechtigung und
-Zugriff auf den ausgewählten Git-Kontext voraus.
+Zugriff auf den ausgewählten Git-Kontext voraus. Bei gespeichertem Abgabeprofil
+müssen `projectCode` und `viewId` mit der Konfiguration des Checkpoints
+übereinstimmen.
 
 `POST /api/architecture/editor.admbw.qea` verwendet dieselben Parameter und
 zusätzlich `rootPackageGuid`. Der Request-Body enthält die geschlossene QEA-Datei

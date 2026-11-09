@@ -35,6 +35,8 @@ public sealed interface ArchitectureCommand {
         public DeleteRequirementPlanning { Objects.requireNonNull(requirementId); Objects.requireNonNull(entryId); }
     }
 
+    record ConfigureAdmbwDelivery(String projectCode, String sourceViewId) implements ArchitectureCommand { }
+
     record CreateArchitectureElement(String id, String type, Map<String, String> properties)
             implements ArchitectureCommand {
         public CreateArchitectureElement { properties = copyProperties(properties); }
