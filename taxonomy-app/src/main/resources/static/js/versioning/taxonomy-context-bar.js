@@ -16,8 +16,10 @@ window.TaxonomyContextBar = (function () {
     var currentContext = null;
     var pendingRead = null;
     var pageActive = true;
+    var openGeneration = 0;
     var activeContainer = null;
     window.addEventListener('pagehide', function () {
+        openGeneration++;
         pageActive = false; clearInterval(pollTimer); pollTimer = null;
         if (pendingRead) pendingRead.abort();
     });
@@ -193,6 +195,21 @@ window.TaxonomyContextBar = (function () {
         }
     }
 
+    function open(branch, commitId, readOnly) {
+        if (!pageActive) return Promise.resolve(null);
+        var generation = ++openGeneration;
+        return window.TaxonomyContextApi.open(branch, commitId, readOnly)
+            .then(function (ctx) {
+                if (generation !== openGeneration || !ctx) return null;
+                if (pendingRead) pendingRead.abort();
+                currentContext = ctx;
+                render(activeContainer || 'contextBar', ctx);
+                return ctx;
+            }).catch(function (error) {
+                if (generation === openGeneration) showError(error);
+            });
+    }
+
     /**
      * Navigate back one step.
      */
@@ -314,6 +331,7 @@ window.TaxonomyContextBar = (function () {
     return {
         init: init,
         fetchAndRender: fetchAndRender,
+        open: open,
         back: back,
         returnToOrigin: returnToOrigin,
         showVariantDialog: showVariantDialog,

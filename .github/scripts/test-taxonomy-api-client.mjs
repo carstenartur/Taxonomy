@@ -31,7 +31,7 @@ function abortingFetch() {
   });
 }
 
-function loadClient(fetchImpl) {
+function loadClient(fetchImpl, bootstrap) {
   const events = [];
   const csrf = { content: 'csrf-token' };
   const csrfHeader = { content: 'X-CSRF-TOKEN' };
@@ -75,12 +75,13 @@ function loadClient(fetchImpl) {
     console
   });
   context.fetch = (...args) => window.fetch(...args);
+  bootstrap?.(context);
   vm.runInContext(core, context, { filename: 'taxonomy-api-client.js' });
   return { client: window.TaxonomyApiClient, events, context };
 }
 
-async function loadWorkspaceFeatures(fetchImpl) {
-  const app = loadClient(fetchImpl);
+async function loadWorkspaceFeatures(fetchImpl, bootstrap) {
+  const app = loadClient(fetchImpl, bootstrap);
   const feature = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/api/workspace-api.js', import.meta.url), 'utf8')
     .catch(() => null);
   assert.ok(feature, 'workspace and context features must use the named API boundary');
@@ -89,6 +90,166 @@ async function loadWorkspaceFeatures(fetchImpl) {
   vm.runInContext(feature, app.context, { filename: 'workspace-api.js' });
   return app;
 }
+
+async function loadVersioningFeatures(fetchImpl) {
+  const scripts = new URL('../../taxonomy-app/src/main/resources/static/js/', import.meta.url);
+  const i18n = await readFile(new URL('taxonomy-i18n.js', scripts), 'utf8');
+  const timeline = {setAttribute() {}, querySelectorAll: () => [variantButton]};
+  let clickVariant;
+  const variantButton = {
+    addEventListener: (_type, listener) => { clickVariant = listener; },
+    getAttribute: name => ({
+      'data-action': 'variant', 'data-branch': 'draft/one + two', 'data-commit': '7654321'
+    })[name]
+  };
+  const contextBar = {classList: {remove() {}}, setAttribute() {}};
+  const search = {innerHTML: ''};
+  const variantModal = {};
+  let openedVariantModal = 0;
+  const errors = [];
+  const lifecycle = new EventTarget();
+  const app = await loadWorkspaceFeatures((url, init) => {
+    if (url === '/taxonomy/api/i18n/en') return Promise.resolve(Response.json({}));
+    return fetchImpl(url, init);
+  }, context => {
+    context.document.currentScript = {src: 'https://taxonomy.example.test/taxonomy/js/taxonomy-i18n.js'};
+    context.document.documentElement = {lang: 'en'};
+    vm.runInContext(i18n, context, {filename: 'taxonomy-i18n.js'});
+  });
+  const {context} = app;
+  const {window, document} = context;
+  await window.TaxonomyI18n.ready();
+  context.TaxonomyI18n = window.TaxonomyI18n;
+  context.TaxonomyUtils = {escapeHtml: String};
+  context.bootstrap = {Modal: class { show() { openedVariantModal++; } }};
+  context.clearInterval = clearInterval;
+  context.fetch = url => {
+    assert.equal(url, '/api/dsl/history?branch=draft', 'context navigation must use the named API client');
+    return Promise.resolve(Response.json({commits: [{commitId: '7654321'}]}));
+  };
+  document.getElementById = id => ({
+    contextBar, versionsTimeline: timeline, versionedSearch: search, createVariantModal: variantModal
+  })[id] || null;
+  document.addEventListener = () => {};
+  window.addEventListener = lifecycle.addEventListener.bind(lifecycle);
+  window.TaxonomyOperationResult = {showError: (...args) => errors.push(args)};
+  for (const name of ['context-bar', 'history-search', 'variants', 'versions']) {
+    const path = 'versioning/taxonomy-' + name + '.js';
+    vm.runInContext(await readFile(new URL(path, scripts), 'utf8'), context, {filename: path});
+  }
+  window.TaxonomyVersions.loadTimeline();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(typeof clickVariant, 'function');
+  return {...app, window, contextBar, search, errors, lifecycle, openedVariantModal: () => openedVariantModal,
+    clickVariant: () => clickVariant({currentTarget: variantButton})};
+}
+
+test('history, variants and timeline context opens keep exact source and handle denied writes', async () => {
+  const calls = [];
+  let status = 401;
+  const app = await loadVersioningFeatures(async (url, init) => {
+    calls.push({url, init});
+    return status === 200 ? Response.json({branch: 'draft/one + two', commitId: '7654321', mode: 'EDITABLE'})
+      : Response.json({detail: 'Context access denied'}, {status});
+  });
+  const w = app.window;
+  const branch = 'draft/one + two';
+  const actions = [
+    [() => w.TaxonomyHistorySearch.openReadOnly(branch, '1234567'), '1234567', 'true'],
+    [() => w.TaxonomyHistorySearch.switchTo(branch, '2345678'), '2345678', 'false'],
+    [() => w.TaxonomyVariants.switchTo(branch), null, 'false'],
+    [app.clickVariant, '7654321', 'false']
+  ];
+  for (const [action, commitId, readOnly] of actions) {
+    await action();
+    const {url, init} = calls.at(-1);
+    const target = new URL(url, w.location.href);
+    assert.equal(target.pathname, '/taxonomy/api/context/open');
+    assert.equal(target.searchParams.get('branch'), branch);
+    assert.equal(target.searchParams.get('commitId'), commitId);
+    assert.equal(target.searchParams.get('readOnly'), readOnly);
+    assert.equal(target.searchParams.get('workspaceId'), 'workspace A/1');
+    assert.equal(init.method, 'POST');
+    assert.equal(init.credentials, 'same-origin');
+    assert.equal(init.headers.get('X-Taxonomy-Workspace-Id'), 'workspace A/1');
+    assert.equal(init.headers.get('X-CSRF-TOKEN'), 'csrf-token');
+    assert.equal(init.headers.get('X-Request-ID'), 'client-request-id');
+    status = 403;
+  }
+  assert.equal(calls.length, actions.length, 'denial neither refreshes nor retries a context command');
+  assert.deepEqual(app.events.filter(event => event.type === 'taxonomy-api-auth-failure')
+    .map(event => event.detail.status), [401, 403, 403, 403]);
+  assert.equal(app.errors.length, actions.length);
+  assert.equal(app.openedVariantModal(), 0);
+  assert.equal(w.TaxonomyContextBar.getCurrentContext(), null);
+
+  status = 200;
+  await app.clickVariant();
+  assert.equal(app.openedVariantModal(), 1, 'variant dialog opens after acknowledged selection');
+  assert.equal(w.TaxonomyContextBar.getCurrentContext().commitId, '7654321');
+  assert.ok(app.contextBar.innerHTML.includes(branch));
+});
+
+test('a context open from a departed workspace never adopts its result', async () => {
+  let complete;
+  const app = await loadVersioningFeatures(() => new Promise(resolve => { complete = resolve; }));
+  const w = app.window;
+  const opened = w.TaxonomyHistorySearch.switchTo('other', '2345678');
+  w.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'workspace B';
+  complete(Response.json({branch: 'other', commitId: '2345678', mode: 'EDITABLE'}));
+  await opened;
+  assert.equal(w.TaxonomyContextBar.getCurrentContext(), null);
+  assert.equal(app.contextBar.innerHTML, undefined);
+  assert.equal(app.errors.length, 0);
+});
+
+for (const staleStatus of [200, 403]) {
+  test(`a superseded context open cannot repaint or show an error (HTTP ${staleStatus})`, async () => {
+    const pending = [];
+    const app = await loadVersioningFeatures(() => new Promise(resolve => pending.push(resolve)));
+    const w = app.window;
+    const first = w.TaxonomyHistorySearch.switchTo('older-selection', '1234567');
+    const second = w.TaxonomyHistorySearch.switchTo('newer-selection', '2345678');
+    pending[1](Response.json({branch: 'newer-selection', commitId: '2345678', mode: 'EDITABLE'}));
+    await second;
+    pending[0](staleStatus === 200
+      ? Response.json({branch: 'older-selection', commitId: '1234567', mode: 'EDITABLE'})
+      : Response.json({detail: 'Previous selection is unavailable'}, {status: staleStatus}));
+    await first;
+    assert.equal(w.TaxonomyContextBar.getCurrentContext().commitId, '2345678');
+    assert.match(app.contextBar.innerHTML, /newer-selection/);
+    assert.equal(app.errors.length, 0);
+  });
+}
+
+test('versioned history search uses the current pin and ignores a superseded response', async () => {
+  const reads = [];
+  const app = await loadVersioningFeatures((url, init) => new Promise(resolve => reads.push({url, init, resolve})));
+  const w = app.window;
+  const first = w.TaxonomyHistorySearch.search('old', 'versionedSearch', 'draft/one');
+  const second = w.TaxonomyHistorySearch.search('R&D + support', 'versionedSearch', 'draft/two');
+  assert.equal(reads.length, 2);
+  const target = new URL(reads[1].url, w.location.href);
+  assert.equal(target.pathname, '/taxonomy/api/dsl/history/search-versioned');
+  assert.equal(target.searchParams.get('query'), 'R&D + support');
+  assert.equal(target.searchParams.get('currentBranch'), 'draft/two');
+  assert.equal(target.searchParams.get('workspaceId'), 'workspace A/1');
+  assert.equal(reads[1].init.headers.get('X-Taxonomy-Workspace-Id'), 'workspace A/1');
+  assert.equal(reads[0].init.signal.aborted, true);
+  reads[1].resolve(Response.json([{branch: 'draft/two', matchedText: 'accepted result'}]));
+  await second;
+  reads[0].resolve(Response.json([{branch: 'draft/one', matchedText: 'obsolete result'}]));
+  await first;
+  assert.match(app.search.innerHTML, /accepted result/);
+  assert.doesNotMatch(app.search.innerHTML, /obsolete result/);
+
+  const hidden = w.TaxonomyHistorySearch.search('hidden', 'versionedSearch');
+  app.lifecycle.dispatchEvent(new Event('pagehide'));
+  assert.equal(reads[2].init.signal.aborted, true);
+  reads[2].resolve(Response.json([{branch: 'draft', matchedText: 'after departure'}]));
+  await hidden;
+  assert.match(app.search.innerHTML, /accepted result/);
+});
 
 test('workspace/context/preferences feature writes retain CSRF, source, request IDs and structured auth errors without retry', async () => {
   const calls = [];

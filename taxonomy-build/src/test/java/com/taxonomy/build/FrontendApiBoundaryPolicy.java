@@ -56,7 +56,6 @@ final class FrontendApiBoundaryPolicy {
             "shared/taxonomy-search.js",
             "versioning/taxonomy-context-compare.js",
             "versioning/taxonomy-context-transfer.js",
-            "versioning/taxonomy-history-search.js",
             "versioning/taxonomy-variants.js",
             "versioning/taxonomy-versions.js",
             "versioning/taxonomy-viewcontext.js",
