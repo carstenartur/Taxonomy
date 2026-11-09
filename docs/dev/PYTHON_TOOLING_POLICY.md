@@ -49,6 +49,7 @@ Issue #673 delivered the Java release core and Maven/JUnit policy foundations. I
 | CycloneDX SBOM/VEX companion generation | #804 / #846 |
 | CodeQL SARIF high-severity enforcement | #846 |
 | Observability performance lane scope | #629 (`ObservabilityPerformanceScopeRepositoryTest`) |
+| Immutable release image gate | #629 (`ReleaseImageGate`, `ReleaseImageGateRepositoryTest`) |
 
 ## Completed Java release-core migration
 
@@ -85,7 +86,6 @@ The following files remain temporarily and may only be removed in contract-prese
 ### Release, delivery, and external-boundary verification
 
 - `.github/scripts/check-release-delivery-contract.py`
-- `.github/scripts/check-release-image-gate.py`
 - `.github/scripts/check-delivery-hardening.py`
 - `.github/scripts/verify-deployment.py`
 - `.github/scripts/verify-quality-publication.py`
@@ -100,7 +100,7 @@ No item is accepted as a permanent exception.
 
 ## Post-release migration order
 
-1. Move release-delivery and immutable-image policy to Java/JUnit authority.
+1. Move the remaining release-delivery policy to Java/JUnit authority.
 2. Move delivery-hardening policy to Java/JUnit authority.
 3. Replace quality-site generation and publication verification with Java/Maven-native tooling and deterministic output tests.
 4. Replace deployment verification at its real HTTP/Helm boundary.

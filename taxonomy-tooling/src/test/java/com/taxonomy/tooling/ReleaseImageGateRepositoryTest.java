@@ -1,15 +1,19 @@
 package com.taxonomy.tooling;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.taxonomy.tooling.ReleaseImageGate.stepBlock;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ReleaseImageGateRepositoryTest {
@@ -24,6 +28,38 @@ class ReleaseImageGateRepositoryTest {
                 .isEmpty();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"\"attestations\"", "\"provenance\": True", "\"sbom\": True",
+            "\"result\": \"passed\"", "--set-string \"image.digest=${IMAGE_DIGEST}\""})
+    void legacyImageEvidenceRequirementsFailClosedInMaven(String requirement) throws Exception {
+        String workflow = releaseWorkflow();
+        assertThat(workflow).contains(requirement);
+        String replacement = requirement.startsWith("--set-string") ? "image.digest=${IMAGE_DIGEST}" : "";
+
+        assertThat(failures(workflow.replace(requirement, replacement)))
+                .anyMatch(message -> message.contains(requirement));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"missing", "invalid-utf8"})
+    void imageGateRejectsUnreadableWorkflow(String input, @TempDir Path fixture) throws Exception {
+        Path workflow = fixture.resolve("deploy-release.yml");
+        if (input.equals("invalid-utf8")) {
+            Files.write(workflow, new byte[]{(byte) 0xC3, 0x28});
+        }
+        var output = new ByteArrayOutputStream();
+        var error = new ByteArrayOutputStream();
+
+        int status = ReleaseImageGate.run(workflow,
+                new PrintStream(output, true, StandardCharsets.UTF_8),
+                new PrintStream(error, true, StandardCharsets.UTF_8));
+
+        assertThat(status).isEqualTo(1);
+        assertThat(output.toString(StandardCharsets.UTF_8)).isEmpty();
+        assertThat(error.toString(StandardCharsets.UTF_8))
+                .contains("Immutable release image gate failed:", "Could not read deploy-release.yml");
+    }
+
     @Test
     void tagOnlyOrNonBlockingImageScansFailClosed() throws Exception {
         String workflow = releaseWorkflow()
@@ -34,9 +70,9 @@ class ReleaseImageGateRepositoryTest {
 
         assertThat(failures(workflow))
                 .anyMatch(message -> message.contains(
-                        "scan must consume the immutable build-push digest"))
+                        "image scan must consume the build-push digest output"))
                 .anyMatch(message -> message.contains(
-                        "scan must fail publication on blocking findings"));
+                        "immutable digest scan must fail the release on blocking findings"));
     }
 
     @Test
@@ -51,7 +87,17 @@ class ReleaseImageGateRepositoryTest {
                 .anyMatch(message -> message.contains(
                         "digest evidence must be attached to the draft release"))
                 .anyMatch(message -> message.contains(
-                        "evidence digest must be compared before publication"));
+                        "if [[ \"$evidence_digest\" != \"$IMAGE_DIGEST\" ]]; then"));
+    }
+
+    @Test
+    void digestEvidenceIsReadBeforeTheComparison() throws Exception {
+        String workflow = releaseWorkflow();
+        String read = "\n          evidence_digest=";
+        assertThat(workflow).contains(read);
+
+        assertThat(failures(workflow.replace(read, "\n          other_digest=")))
+                .contains("evidence digest must be read before its comparison");
     }
 
     @ParameterizedTest
@@ -110,9 +156,10 @@ class ReleaseImageGateRepositoryTest {
             default -> throw new IllegalArgumentException(mutation);
         };
 
+        String diagnostic = mutation.equals("missing-binding") ? "EXPECTED_MAIN_SHA" : "final main";
         assertThat(failures(workflow.replace(publishBlock, invalidPublish)))
                 .as("final main publication regression: %s", mutation)
-                .anyMatch(message -> message.contains("final main"));
+                .anyMatch(message -> message.contains(diagnostic));
     }
 
     @Test
@@ -162,178 +209,24 @@ class ReleaseImageGateRepositoryTest {
         assertThat(failures(invalid)).as(mutation).anyMatch(message -> message.contains("ONNX"));
     }
 
-    static List<String> failures(String workflow) {
-        List<String> failures = new ArrayList<>();
-        require(workflow, "id: release_image",
-                "release image build must expose a digest output", failures);
-        require(workflow, "provenance: mode=max",
-                "release image build must enable maximum provenance", failures);
-        require(workflow, "sbom: true",
-                "release image build must enable SBOM attestation", failures);
-        require(workflow, "- name: Scan immutable release image digest",
-                "immutable digest scan step is missing", failures);
-        require(workflow,
-                "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25",
-                "release image scanner must stay immutable and reviewed", failures);
-        require(workflow,
-                "image-ref: ghcr.io/${{ github.repository_owner }}/taxonomy@${{ steps.release_image.outputs.digest }}",
-                "scan must consume the immutable build-push digest", failures);
-        require(workflow, "severity: HIGH,CRITICAL",
-                "release image scan must cover HIGH and CRITICAL findings", failures);
-        require(workflow, "exit-code: '1'",
-                "release image scan must fail publication on blocking findings", failures);
-        require(workflow,
-                "- name: Bind release evidence and Helm deployment to immutable image digest",
-                "digest evidence binding step is missing", failures);
-        require(workflow, "IMAGE_DIGEST: ${{ steps.release_image.outputs.digest }}",
-                "evidence binding must consume the exact build digest", failures);
-        require(workflow, "^sha256:[0-9a-f]{64}$",
-                "release digest must be validated as a full SHA-256", failures);
-        require(workflow, "immutable_image=\"${repository}@${IMAGE_DIGEST}\"",
-                "release evidence must use an immutable image reference", failures);
-        require(workflow, "image.digest=${IMAGE_DIGEST}",
-                "Helm evidence must render the immutable digest", failures);
-        require(workflow, "taxonomy-${RELEASE_VERSION}-kubernetes-digest.yaml",
-                "digest-bound Kubernetes evidence is missing", failures);
-        require(workflow, "taxonomy-${RELEASE_VERSION}-image-evidence.json",
-                "release image evidence asset is missing", failures);
-        require(workflow, "taxonomy-${RELEASE_VERSION}-image-trivy.sarif",
-                "release image SARIF asset is missing", failures);
-        require(workflow, "taxonomy-${RELEASE_VERSION}-release.sha256",
-                "release evidence checksum asset is missing", failures);
-        require(workflow, "retention-days: 90",
-                "release image security evidence retention is missing", failures);
-        require(workflow, "docker buildx imagetools inspect \"$image\"",
-                "publication must inspect the immutable image digest", failures);
-        require(workflow,
-                "if [[ \"$evidence_digest\" != \"$IMAGE_DIGEST\" ]]; then",
-                "evidence digest must be compared before publication", failures);
-
-        int finalGates = indexOf(
-                workflow,
-                "- name: Verify exact final main release gate matrix",
-                "exact final-main gate step",
-                failures);
-        int build = indexOf(
-                workflow,
-                "- name: Build and publish immutable release image",
-                "immutable image build step",
-                failures);
-        int builder = indexOf(
-                workflow,
-                "- name: Set up release image builder",
-                "release builder setup step",
-                failures);
-        int scan = indexOf(
-                workflow,
-                "- name: Scan immutable release image digest",
-                "immutable image scan step",
-                failures);
-        int bind = indexOf(
-                workflow,
-                "- name: Bind release evidence and Helm deployment to immutable image digest",
-                "digest evidence binding step",
-                failures);
-        int archive = indexOf(
-                workflow,
-                "- name: Archive immutable release image evidence",
-                "image evidence archive step",
-                failures);
-        int publish = indexOf(
-                workflow,
-                "- name: Publish complete release and trigger deployment",
-                "final release publication step",
-                failures);
-        if (allPresent(finalGates, builder, build, scan, bind, archive, publish)
-                && !(finalGates < builder
-                && builder < build
-                && build < scan
-                && scan < bind
-                && bind < archive
-                && archive < publish)) {
-            failures.add(
-                    "exact final-main gates must precede builder setup, image build, scan, evidence binding, archive and publication");
-        }
-
-        if (builder >= 0) {
-            String builderBlock = stepBlock(workflow, builder);
-            require(builderBlock, "id: release_builder",
-                    "release builder must expose its name", failures);
-            require(builderBlock, "if: steps.release_parameters.outputs.dry_run != 'true'",
-                    "release builder setup must follow the image build condition", failures);
-            require(builderBlock,
-                    "uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069",
-                    "release builder action must stay immutable and reviewed", failures);
-            require(builderBlock, "driver: docker-container",
-                    "release builder must support provenance and SBOM attestations", failures);
-            require(builderBlock, "buildkitd-config-inline: |",
-                    "release BuildKit must receive its own registry configuration", failures);
-            require(builderBlock, "[registry.\"docker.io\"]",
-                    "release BuildKit mirror must apply to Docker Hub", failures);
-            require(builderBlock, "mirrors = [\"mirror.gcr.io\"]",
-                    "release BuildKit must preserve the Docker Hub mirror", failures);
-        }
-        if (build >= 0) {
-            require(stepBlock(workflow, build), "builder: ${{ steps.release_builder.outputs.name }}",
-                    "release image build must select the configured container builder", failures);
-        }
-
-        if (scan >= 0 && bind > scan) {
-            String scanBlock = workflow.substring(scan, bind);
-            require(scanBlock, "exit-code: '1'",
-                    "release image scan must fail publication on blocking findings", failures);
-            require(scanBlock, "steps.release_image.outputs.digest",
-                    "scan must consume the immutable build-push digest", failures);
-        }
-        if (bind >= 0 && archive > bind) {
-            String bindBlock = workflow.substring(bind, archive);
-            require(bindBlock, "gh release upload",
-                    "digest evidence must be attached to the draft release", failures);
-            require(bindBlock, "image.digest=${IMAGE_DIGEST}",
-                    "Helm release evidence must include a digest-bound manifest", failures);
-        }
+    private static List<String> failures(String workflow) {
+        List<String> failures = new ArrayList<>(ReleaseImageGate.failures(workflow));
+        int build = workflow.indexOf("- name: Build and publish immutable release image");
+        int bind = workflow.indexOf("- name: Bind release evidence and Helm deployment to immutable image digest");
+        int publish = workflow.indexOf("- name: Publish complete release and trigger deployment");
         if (publish >= 0) {
-            String publishBlock = stepBlock(workflow, publish);
-            int evidenceCheck = publishBlock.indexOf("evidence_digest");
-            int digestComparison = publishBlock.indexOf(
-                    "if [[ \"$evidence_digest\" != \"$IMAGE_DIGEST\" ]]; then");
-            int publishRelease = publishBlock.indexOf("gh release edit");
-            if (evidenceCheck < 0
-                    || digestComparison < evidenceCheck
-                    || publishRelease < 0
-                    || digestComparison > publishRelease) {
-                failures.add(
-                        "evidence digest must be compared before publication");
-            }
-            require(publishBlock, "image=\"${repository}@${IMAGE_DIGEST}\"",
-                    "final publication must inspect an immutable digest, not only a tag", failures);
-            require(publishBlock, "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",
-                    "final main publication must retain the previously verified main SHA", failures);
-            List<String> mainGuardOrder = List.of(
-                    "if [[ \"$evidence_digest\" != \"$IMAGE_DIGEST\" ]]; then",
-                    "is_draft=$(gh release view \"$tag\" --json isDraft",
-                    "git fetch origin \"refs/heads/main:refs/remotes/origin/main\" --force",
-                    "publication_main=$(git rev-parse --verify \"refs/remotes/origin/main^{commit}\")",
-                    "if [[ \"$publication_main\" != \"$EXPECTED_MAIN_SHA\" ]]; then",
-                    "if [[ \"$is_draft\" == \"true\" ]]; then",
-                    "gh release edit",
-                    "curl -fSL --retry 3 \"$RENDER_DEPLOY_HOOK_URL\"");
-            int previous = -1;
-            for (String needle : mainGuardOrder) {
-                int position = publishBlock.indexOf(needle);
-                if (position < 0 || position <= previous) {
-                    failures.add(
-                            "final main must be freshly fetched, resolved and compared before either the draft branch or publication and deployment");
-                    break;
-                }
-                previous = position;
+            String block = stepBlock(workflow, publish);
+            int digestComparison = block.indexOf("if [[ \"$evidence_digest\" != \"$IMAGE_DIGEST\" ]]; then");
+            if (digestComparison >= 0 && digestComparison < block.indexOf("evidence_digest")) {
+                failures.add("evidence digest must be read before its comparison");
             }
         }
         int onnxBuild = indexOf(workflow, "- name: Build and publish immutable ONNX release image",
                 "ONNX image build", failures);
         int onnxScan = indexOf(workflow, "- name: Scan immutable ONNX release image digest",
                 "ONNX image scan", failures);
-        if (allPresent(build, onnxBuild, onnxScan, bind) && !(build < onnxBuild && onnxBuild < onnxScan && onnxScan < bind)) {
+        if (build >= 0 && onnxBuild >= 0 && onnxScan >= 0 && bind >= 0
+                && !(build < onnxBuild && onnxBuild < onnxScan && onnxScan < bind)) {
             failures.add("ONNX build and blocking scan must precede evidence binding");
         }
         if (onnxBuild >= 0) {
@@ -392,20 +285,6 @@ class ReleaseImageGateRepositoryTest {
             failures.add(description + " is missing");
         }
         return index;
-    }
-
-    private static boolean allPresent(int... indices) {
-        for (int index : indices) {
-            if (index < 0) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static String stepBlock(String workflow, int start) {
-        int end = workflow.indexOf("\n      - name:", start);
-        return end < 0 ? workflow.substring(start) : workflow.substring(start, end);
     }
 
     private static String releaseWorkflow() throws Exception {
