@@ -54,6 +54,7 @@
     function short(commit) { return commit ? commit.substring(0, 12) : t('editor.emptyBranch'); }
     function context() { return view.document.context; }
     var admbwUrl = null, admbwRequest = null, admbwScope = null;
+    var admbwChecked = false, admbwNativeRequest = null;
     function renderAdmbwExport() {
         var options = el('editorAdmbwOptions');
         options.hidden = !active || loading || !view || view.document.source !== 'GIT_CHECKPOINT' || !context().commit;
@@ -65,23 +66,41 @@
             admbwUrl = url;
             admbwRequest = null;
             el('editorAdmbwResult').hidden = true;
+            admbwChecked = false;
+            if (admbwNativeRequest) admbwNativeRequest.abort();
+            admbwNativeRequest = null;
+            el('editorAdmbwQeaBasis').value = '';
+            el('editorAdmbwRootGuid').value = '';
+            el('editorAdmbwQeaStatus').hidden = true;
         }
         if (link.hidden) link.removeAttribute('href');
         else link.href = url;
-        el('editorAdmbwInspect').disabled = link.hidden || admbwRequest !== null;
+        el('editorAdmbwInspect').disabled = link.hidden || admbwRequest !== null || admbwNativeRequest !== null;
+        el('editorAdmbwNativeOptions').hidden = !admbwChecked;
+        var basisInput = el('editorAdmbwQeaBasis'), rootInput = el('editorAdmbwRootGuid');
+        basisInput.disabled = rootInput.disabled = admbwNativeRequest !== null;
+        var basis = basisInput.files?.[0], rootGuid = rootInput.value.trim();
+        el('editorAdmbwQeaDownload').disabled = !admbwChecked || admbwNativeRequest !== null || !basis
+            || basis.size === 0 || basis.size > 32 * 1024 * 1024
+            || !/^\{[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\}$/i.test(rootGuid);
     }
     el('editorAdmbwProjectCode').addEventListener('input', renderAdmbwExport);
     el('editorAdmbwView').addEventListener('change', renderAdmbwExport);
     el('editorAdmbwInspect').addEventListener('click', async function () {
-        if (!admbwUrl || admbwRequest) return;
+        if (!admbwUrl || admbwRequest || admbwNativeRequest) return;
         var request = admbwRequest = {};
+        admbwChecked = false;
         renderAdmbwExport();
         var result = el('editorAdmbwResult');
         try {
             var response = await api.admbwAssessment(context(), el('editorAdmbwProjectCode').value.trim(), el('editorAdmbwView').value);
             if (admbwRequest !== request) return;
             result.replaceChildren();
-            [response.assessment.capabilityToService, response.assessment.requirementDerivation].forEach(function (reportView) {
+            var views = [response.assessment.capabilityToService, response.assessment.requirementDerivation];
+            var qeaIssues = response.qeaIssues || [];
+            admbwChecked = qeaIssues.length === 0
+                && views.every(function (reportView) { return reportView.status === 'REVIEW_REQUIRED'; });
+            views.forEach(function (reportView) {
                 var title = document.createElement('h3');
                 title.textContent = reportView.name + ' · ' + t('editor.admbw.status.' + reportView.status);
                 var list = document.createElement('ul');
@@ -91,11 +110,43 @@
                     });
                 result.append(title, list);
             });
+            qeaIssues.forEach(function (issue) {
+                var item = document.createElement('p');
+                item.textContent = issue.object + ' · ' + t('editor.problem.' + issue.code);
+                result.append(item);
+            });
             result.hidden = false;
         } catch (error) {
             if (admbwRequest === request) report(error, result);
         } finally {
             if (admbwRequest === request) { admbwRequest = null; renderAdmbwExport(); }
+        }
+    });
+    el('editorAdmbwQeaBasis').addEventListener('change', renderAdmbwExport);
+    el('editorAdmbwRootGuid').addEventListener('input', renderAdmbwExport);
+    el('editorAdmbwQeaDownload').addEventListener('click', async function () {
+        if (this.disabled) return;
+        var request = admbwNativeRequest = new AbortController();
+        var project = el('editorAdmbwProjectCode').value.trim(), status = el('editorAdmbwQeaStatus');
+        renderAdmbwExport();
+        status.textContent = t('editor.admbw.qeaPreparing');
+        status.hidden = false;
+        try {
+            var blob = await api.admbwQea(context(), project, el('editorAdmbwView').value,
+                el('editorAdmbwRootGuid').value.trim(), el('editorAdmbwQeaBasis').files[0], request.signal);
+            if (admbwNativeRequest !== request) return;
+            var url = URL.createObjectURL(blob), anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = project + '-admbw.qea';
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+            status.textContent = t('editor.admbw.qeaReady');
+        } catch (error) {
+            if (admbwNativeRequest === request) report(error, status);
+        } finally {
+            if (admbwNativeRequest === request) { admbwNativeRequest = null; renderAdmbwExport(); }
         }
     });
     function selectedElement() { return view && view.model.elements.find(function (element) { return element.id === selected; }); }

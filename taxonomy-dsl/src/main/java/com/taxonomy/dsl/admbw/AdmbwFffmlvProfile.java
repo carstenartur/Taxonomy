@@ -209,7 +209,12 @@ public final class AdmbwFffmlvProfile {
                 if (!REALIZERS.contains(realizerType)) {
                     view.issue("R7_REALIZER_TYPE", id, "Use a declared CapabilityConfiguration or ResourceRole for the FFFmLV subject.");
                 } else {
-                    view.add(realizer, realizerType, null, null);
+                    var binding = new CatalogueBinding(null, null);
+                    if ("ResourceRole".equals(realizerType) && (realizer.getExtensions().containsKey(CATALOGUE_GUID)
+                            || realizer.getExtensions().containsKey(CATALOGUE_REFERENCE))) {
+                        binding = checkCatalogue(view, realizer, catalogueIdentities, "REALIZER");
+                    }
+                    view.add(realizer, realizerType, binding.guid(), binding.reference());
                     view.connect("ToBeRealizedBy", id, ref(realizer.getId()));
                 }
             }
