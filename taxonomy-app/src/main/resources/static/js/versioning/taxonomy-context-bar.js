@@ -296,7 +296,7 @@ window.TaxonomyContextBar = (function () {
             if (currentContext && currentContext.originCommitId) {
                 targetCommit = currentContext.originCommitId;
             }
-            window.TaxonomyContextTransfer.showDialog(sourceCommit, targetCommit);
+            window.TaxonomyContextTransfer.showDialog(sourceCommit, targetCommit, currentContext?.contextId);
         }
     }
 

@@ -52,12 +52,12 @@ class ContextNavigationControllerEdgeTest {
 
     @Test
     void successfulTransferReturnsTheActualCommit() throws Exception {
-        when(transfer.applyTransfer(selection)).thenReturn("created-commit");
-        var result = controller.applyTransfer(selection);
+        when(transfer.applyTransfer(selection, "selected-context")).thenReturn("created-commit");
+        var result = controller.applyTransfer(selection, "selected-context");
         assertEquals(200, result.getStatusCode().value());
         assertEquals("created-commit", result.getBody().get("commitId"));
         assertEquals(true, result.getBody().get("success"));
-        verify(transfer).applyTransfer(selection);
+        verify(transfer).applyTransfer(selection, "selected-context");
     }
 
     static Stream<Arguments> filters() {
@@ -129,18 +129,18 @@ class ContextNavigationControllerEdgeTest {
         assertEquals(conflict, response.getBody().get("hasConflicts"));
         assertEquals(1, response.getBody().get("selectedElements"));
         assertEquals(1, response.getBody().get("selectedRelations"));
-        verify(transfer, never()).applyTransfer(any());
+        verify(transfer, never()).applyTransfer(any(), any());
     }
 
     @Test
     void transferFailuresReturnErrors() throws Exception {
         when(resolver.resolveCurrentContext()).thenReturn(workspace);
         when(transfer.previewTransfer(selection, workspace)).thenThrow(new IOException("preview unavailable"));
-        when(transfer.applyTransfer(selection)).thenThrow(new IOException("write unavailable"));
+        when(transfer.applyTransfer(selection, null)).thenThrow(new IOException("write unavailable"));
         var preview = controller.previewTransfer(selection);
         assertEquals(500, preview.getStatusCode().value());
         assertEquals("Transfer preview failed: preview unavailable", preview.getBody().get("error"));
-        var apply = controller.applyTransfer(selection);
+        var apply = controller.applyTransfer(selection, null);
         assertEquals(500, apply.getStatusCode().value());
         assertEquals("Transfer failed: write unavailable", apply.getBody().get("error"));
     }

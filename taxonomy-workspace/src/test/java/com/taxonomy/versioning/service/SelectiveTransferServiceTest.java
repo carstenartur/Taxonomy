@@ -11,7 +11,12 @@ import com.taxonomy.dto.TransferConflict;
 import com.taxonomy.dto.TransferSelection;
 import com.taxonomy.dto.ContextMode;
 import com.taxonomy.dto.ContextRef;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.UserWorkspaceState;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceManager;
 import com.taxonomy.workspace.signing.SigningTestKeys;
 import com.taxonomy.workspace.signing.SignatureStatus;
 import org.eclipse.jgit.lib.Constants;
@@ -20,6 +25,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -27,10 +34,13 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -43,6 +53,8 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
 class SelectiveTransferServiceTest {
     @TempDir Path signingKeys;
 
+    private static final WorkspaceContext PERSONAL = new WorkspaceContext(
+            "testuser", "personal-workspace", "target", "central-source");
     private DslGitRepository gitRepo;
     private DslGitRepositoryFactory factory;
     private SelectiveTransferService transferService;
@@ -90,9 +102,11 @@ class SelectiveTransferServiceTest {
         gitRepo = factory.getSystemRepository();
         navService = mock(ContextNavigationService.class);
         workspaceResolver = mock(WorkspaceResolver.class);
-        when(workspaceResolver.resolveCurrentUsername()).thenReturn("testuser");
-        when(workspaceResolver.resolveCurrentContext()).thenReturn(WorkspaceContext.SHARED);
-        when(navService.getCurrentContext("testuser")).thenReturn(editableContext("target"));
+        when(workspaceResolver.resolveCurrentContext()).thenReturn(PERSONAL);
+        var state = new UserWorkspaceState(PERSONAL.username(), 10);
+        state.setCurrentContext(editableContext("target"));
+        when(navService.getEditableTransferTarget(PERSONAL, null)).thenReturn(
+                new ContextNavigationService.TransferTarget(state, state.getNavigationSelection(), "target"));
         transferService = new SelectiveTransferService(factory, navService, workspaceResolver);
     }
 
@@ -224,9 +238,10 @@ class SelectiveTransferServiceTest {
 
     @Test
     void applyCopiesOnlySelectedElementsAndRelationsToCurrentBranch() throws Exception {
-        gitRepo.withSignatureService(SigningTestKeys.createService(signingKeys), "central");
-        String sourceCommit = gitRepo.commitDsl("source", DSL_SOURCE, "tester", "source");
-        String targetCommit = gitRepo.commitDsl("target", DSL_TARGET, "tester", "target");
+        var workspace = factory.openWorkspaceRepository(PERSONAL.workspaceId());
+        workspace.withSignatureService(SigningTestKeys.createService(signingKeys), "workspace:personal-workspace");
+        String sourceCommit = workspace.commitDsl("source", DSL_SOURCE, "tester", "source");
+        String targetCommit = workspace.commitDsl("target", DSL_TARGET, "tester", "target");
         TransferSelection selection = new TransferSelection(
                 sourceCommit,
                 targetCommit,
@@ -234,13 +249,13 @@ class SelectiveTransferServiceTest {
                 Set.of("CP-1023 REALIZES CR-1047"),
                 TransferSelection.TransferMode.COPY);
 
-        String commit = transferService.applyTransfer(selection);
+        String commit = transferService.applyTransfer(selection, null);
 
-        assertEquals(commit, gitRepo.getHeadCommit("target"));
-        assertEquals(SignatureStatus.VERIFIED, gitRepo.verifyCommit(commit).status());
-        assertEquals(List.of(sourceCommit, targetCommit), gitRepo.getProvenance(commit).sources().stream()
+        assertEquals(commit, workspace.getHeadCommit("target"));
+        assertEquals(SignatureStatus.VERIFIED, workspace.verifyCommit(commit).status());
+        assertEquals(List.of(sourceCommit, targetCommit), workspace.getProvenance(commit).sources().stream()
                 .map(com.taxonomy.workspace.storage.CommitProvenance.Source::commitId).toList());
-        String committedDsl = gitRepo.getDslAtHead("target");
+        String committedDsl = workspace.getDslAtHead("target");
         assertTrue(committedDsl.contains("CP-1024"));
         assertTrue(committedDsl.contains("CP-1023 REALIZES CR-1047"));
         assertTrue(committedDsl.contains("Secure Voice"));
@@ -252,37 +267,15 @@ class SelectiveTransferServiceTest {
 
     @Test
     void personalTransferRecordsWorkspaceIdentityForBothSourceProofs() throws Exception {
-        WorkspaceContext context = new WorkspaceContext(
-                "testuser", "personal-workspace", "target", "central-source");
-        DslGitRepository workspace = factory.openWorkspaceRepository("personal-workspace");
-
-        assertTransferRepositoryIdentity(context, workspace, "workspace:personal-workspace");
-
-        assertNull(factory.getCentralRepository("central-source").getHeadCommit("target"));
-    }
-
-    @Test
-    void centralTransferRetainsCatalogIdentityForBothSourceProofs() throws Exception {
-        WorkspaceContext context = new WorkspaceContext(
-                "testuser", null, "target", "selected-central");
-
-        assertTransferRepositoryIdentity(context,
-                factory.getCentralRepository("selected-central"), "selected-central");
-
-        assertNull(factory.getSystemRepository().getHeadCommit("target"));
-    }
-
-    private void assertTransferRepositoryIdentity(WorkspaceContext context,
-                                                   DslGitRepository repository,
-                                                   String expectedRepositoryId) throws Exception {
+        String expectedRepositoryId = "workspace:personal-workspace";
+        DslGitRepository repository = factory.openWorkspaceRepository(PERSONAL.workspaceId());
         repository.withSignatureService(SigningTestKeys.createService(signingKeys), expectedRepositoryId);
-        when(workspaceResolver.resolveCurrentContext()).thenReturn(context);
         String source = repository.commitDsl("source", DSL_SOURCE, "tester", "source");
         String target = repository.commitDsl("target", DSL_TARGET, "tester", "target");
         TransferSelection selection = new TransferSelection(
                 source, target, Set.of("CP-1024"), Set.of(), TransferSelection.TransferMode.COPY);
 
-        String result = transferService.applyTransfer(selection);
+        String result = transferService.applyTransfer(selection, null);
 
         assertEquals(result, repository.getHeadCommit("target"));
         assertEquals(SignatureStatus.VERIFIED, repository.verifyCommit(result).status());
@@ -291,30 +284,105 @@ class SelectiveTransferServiceTest {
                 .map(com.taxonomy.workspace.storage.CommitProvenance.Source::commitId).toList());
         assertEquals(List.of(expectedRepositoryId, expectedRepositoryId), evidence.sources().stream()
                 .map(com.taxonomy.workspace.storage.CommitProvenance.Source::repositoryId).toList());
+        assertEquals("target", evidence.sources().getLast().branch());
         assertTrue(repository.getDslAtHead("target").contains("CP-1024"));
+        assertNull(factory.getCentralRepository("central-source").getHeadCommit("target"));
+    }
+
+    @Test
+    void centralReadScopeCannotWriteEvenWithMatchingGitCommits() throws IOException {
+        var central = new WorkspaceContext("testuser", null, "target", "selected-central");
+        when(workspaceResolver.resolveCurrentContext()).thenReturn(central);
+        var repository = factory.getCentralRepository("selected-central");
+        String source = repository.commitDsl("source", DSL_SOURCE, "tester", "source");
+        String target = repository.commitDsl("target", DSL_TARGET, "tester", "target");
+        var selection = new TransferSelection(source, target, Set.of("CP-1024"), Set.of(),
+                TransferSelection.TransferMode.COPY);
+
+        assertThrows(AccessDeniedException.class, () -> transferService.applyTransfer(selection, null));
+        assertEquals(target, repository.getHeadCommit("target"));
+        verify(navService, never()).getEditableTransferTarget(central, null);
+    }
+
+    @Test
+    void targetMovementDuringSnapshotReadStillFailsTheCommitPrecondition() throws IOException {
+        var workspace = factory.openWorkspaceRepository(PERSONAL.workspaceId());
+        String source = workspace.commitDsl("source", DSL_SOURCE, "tester", "source");
+        String target = workspace.commitDsl("target", DSL_TARGET, "tester", "target");
+        String changed = DSL_TARGET.replace("Secure Voice", "Concurrent edit");
+        var movedHead = new AtomicReference<String>();
+        var reader = spy(workspace);
+        doAnswer(call -> {
+            if (movedHead.get() == null) {
+                movedHead.set(workspace.commitDsl("target", changed, "tester", "Concurrent update"));
+            }
+            return call.callRealMethod();
+        }).when(reader).getDslAtCommit(source);
+        var boundary = mock(DslGitRepositoryFactory.class);
+        when(boundary.resolveRepository(PERSONAL)).thenReturn(reader);
+        var service = new SelectiveTransferService(boundary, navService, workspaceResolver);
+        var selection = new TransferSelection(source, target, Set.of("CP-1024"), Set.of(),
+                TransferSelection.TransferMode.COPY);
+
+        var conflict = assertThrows(BranchHeadConflictException.class, () -> service.applyTransfer(selection, null));
+        assertNotNull(movedHead.get());
+        assertEquals(movedHead.get(), conflict.getActualHeadCommit());
+        assertEquals(movedHead.get(), workspace.getHeadCommit("target"));
+        assertEquals(changed, workspace.getDslAtHead("target"));
+    }
+
+    @Test
+    void navigationChangeDuringSnapshotReadPreventsPublication() throws IOException {
+        var workspace = factory.openWorkspaceRepository(PERSONAL.workspaceId());
+        String source = workspace.commitDsl("source", DSL_SOURCE, "tester", "source");
+        String target = workspace.commitDsl("target", DSL_TARGET, "tester", "target");
+        workspace.createBranchAtCommit("other", target);
+        var manager = new WorkspaceManager(mock(UserWorkspaceRepository.class), 50,
+                mock(SystemRepositoryService.class), workspace);
+        var navigation = new ContextNavigationService(factory, mock(RepositoryStateService.class), manager, 50);
+        var original = navigation.switchContext(PERSONAL.username(), "target", target, PERSONAL);
+        var reader = spy(workspace);
+        doAnswer(call -> {
+            navigation.switchContext(PERSONAL.username(), "other", target, PERSONAL);
+            return call.callRealMethod();
+        }).when(reader).getDslAtCommit(source);
+        var boundary = mock(DslGitRepositoryFactory.class);
+        when(boundary.resolveRepository(PERSONAL)).thenReturn(reader);
+        var service = new SelectiveTransferService(boundary, navigation, workspaceResolver);
+        var selection = new TransferSelection(source, target, Set.of("CP-1024"), Set.of(),
+                TransferSelection.TransferMode.COPY);
+
+        var conflict = assertThrows(ResponseStatusException.class,
+                () -> service.applyTransfer(selection, original.contextId()));
+
+        assertEquals(409, conflict.getStatusCode().value());
+        assertEquals("other", navigation.getCurrentContextForScope(PERSONAL).branch());
+        assertEquals(target, workspace.getHeadCommit("target"));
+        assertEquals(target, workspace.getHeadCommit("other"));
     }
 
     @Test
     void cannotLaunderARejectedIncomingObjectThroughSelectiveTransfer() throws Exception {
-        gitRepo.withSignatureService(SigningTestKeys.createService(signingKeys), "central");
-        String source = gitRepo.commitDsl("source", DSL_SOURCE, "tester", "source");
-        String target = gitRepo.commitDsl("target", DSL_TARGET, "tester", "target");
-        byte[] raw = gitRepo.getGitRepository().open(ObjectId.fromString(source), Constants.OBJ_COMMIT).getBytes();
+        var workspace = factory.openWorkspaceRepository(PERSONAL.workspaceId());
+        workspace.withSignatureService(SigningTestKeys.createService(signingKeys), "workspace:personal-workspace");
+        String source = workspace.commitDsl("source", DSL_SOURCE, "tester", "source");
+        String target = workspace.commitDsl("target", DSL_TARGET, "tester", "target");
+        byte[] raw = workspace.getGitRepository().open(ObjectId.fromString(source), Constants.OBJ_COMMIT).getBytes();
         String rejected;
-        try (var inserter = gitRepo.getGitRepository().newObjectInserter()) {
+        try (var inserter = workspace.getGitRepository().newObjectInserter()) {
             byte[] tampered = new String(raw, StandardCharsets.UTF_8).replace("\n\nsource", "\n\ntampered")
                     .getBytes(StandardCharsets.UTF_8);
             rejected = inserter.insert(Constants.OBJ_COMMIT, tampered).name();
             inserter.flush();
         }
         var selection = new TransferSelection(rejected, target, Set.of("CP-1024"), Set.of(), TransferSelection.TransferMode.COPY);
-        assertThrows(IOException.class, () -> transferService.applyTransfer(selection));
-        assertEquals(target, gitRepo.getHeadCommit("target"));
-        assertEquals(1, gitRepo.getCommitCount("target"));
+        assertThrows(IOException.class, () -> transferService.applyTransfer(selection, null));
+        assertEquals(target, workspace.getHeadCommit("target"));
+        assertEquals(1, workspace.getCommitCount("target"));
     }
 
     @Test
-    void applyFallsBackToSharedContextWhenRequestResolutionFails() throws IOException {
+    void failedWorkspaceResolutionCannotWriteToShared() throws IOException {
         String sourceCommit = gitRepo.commitDsl("source", DSL_SOURCE, "tester", "source");
         String targetCommit = gitRepo.commitDsl("target", DSL_TARGET, "tester", "target");
         when(workspaceResolver.resolveCurrentContext())
@@ -323,10 +391,8 @@ class SelectiveTransferServiceTest {
                 sourceCommit, targetCommit, Set.of(), Set.of(),
                 TransferSelection.TransferMode.COPY);
 
-        String commit = transferService.applyTransfer(selection);
-
-        assertEquals(commit, gitRepo.getHeadCommit("target"));
-        assertFalse(gitRepo.getDslAtHead("target").contains("CP-1024"));
+        assertThrows(IllegalStateException.class, () -> transferService.applyTransfer(selection, null));
+        assertEquals(targetCommit, gitRepo.getHeadCommit("target"));
     }
 
     @Test

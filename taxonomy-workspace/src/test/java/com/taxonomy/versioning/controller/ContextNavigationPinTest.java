@@ -1,6 +1,7 @@
 package com.taxonomy.versioning.controller;
 
 import com.taxonomy.dto.ContextMode;
+import com.taxonomy.dto.TransferSelection;
 import com.taxonomy.versioning.service.ContextCompareService;
 import com.taxonomy.versioning.service.ContextNavigationService;
 import com.taxonomy.versioning.service.RepositoryStateService;
@@ -26,16 +27,33 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class ContextNavigationPinTest {
     private static final String USER = "alice";
+    private static final String TARGET_DSL = """
+            meta {
+              language: "taxdsl";
+              version: "2.0";
+              namespace: "test";
+            }
+            element CP-1023 type Capability {
+              title: "Working model";
+            }
+            """;
+    private static final String INCOMING_ELEMENT = """
+            element CP-1024 type Capability {
+              title: "Incoming model";
+            }
+            """;
     private final UserWorkspaceRepository rows = mock(UserWorkspaceRepository.class);
     private final SystemRepositoryService repositories = mock(SystemRepositoryService.class);
     private final RepositoryMembershipService memberships = mock(RepositoryMembershipService.class);
@@ -47,7 +65,7 @@ class ContextNavigationPinTest {
     private final RepositoryStateService state = new RepositoryStateService(factory, manager, repositories);
     private final ContextNavigationService navigation = new ContextNavigationService(factory, state, manager, 50);
     private final ContextNavigationController controller = new ContextNavigationController(
-            navigation, new ContextCompareService(factory), mock(SelectiveTransferService.class), resolver);
+            navigation, new ContextCompareService(factory), new SelectiveTransferService(factory, navigation, resolver), resolver);
 
     @BeforeEach
     void authenticate() {
@@ -156,6 +174,90 @@ class ContextNavigationPinTest {
         pin("shared-copy");
         assertEquals(owner, controller.getCurrentContext().getBody());
         assertEquals(1, controller.getHistory().getBody().size());
+    }
+
+    @Test
+    void copyBackFromReadOnlyWritesOnlyToThePinnedWorkspacesEditableOrigin() throws IOException {
+        DslGitRepository older = workspace("older", USER, "repo-a");
+        DslGitRepository newer = workspace("newer", USER, "repo-b");
+        String source = older.commitDsl("historical", TARGET_DSL + INCOMING_ELEMENT, USER, "Historical source");
+        String origin = older.commitDsl("working", TARGET_DSL, USER, "Editable origin");
+        String other = newer.commitDsl("other-tab", TARGET_DSL, USER, "Other workspace");
+        manager.switchWorkspace(USER, "older");
+        pin("older");
+        controller.openContext("working", origin, false, null, null);
+        var historical = controller.openContext("historical", source, true, null, null).getBody();
+        manager.switchWorkspace(USER, "newer");
+        pin("newer");
+        controller.openContext("other-tab", other, false, null, null);
+
+        pin("older");
+        var result = controller.applyTransfer(selection(source, origin), historical.contextId());
+
+        assertEquals(200, result.getStatusCode().value());
+        assertEquals(result.getBody().get("commitId"), older.getHeadCommit("working"));
+        assertTrue(older.getDslAtHead("working").contains("Incoming model"));
+        assertEquals(source, older.getHeadCommit("historical"));
+        assertNull(older.getHeadCommit("other-tab"));
+        assertEquals(other, newer.getHeadCommit("other-tab"));
+    }
+
+    @Test
+    void copyBackCannotOverwriteNewEditsAfterPreview() throws IOException {
+        DslGitRepository git = workspace("selected", USER, "repo-a");
+        manager.switchWorkspace(USER, "selected");
+        pin("selected");
+        String source = git.commitDsl("historical", TARGET_DSL + INCOMING_ELEMENT, USER, "Historical source");
+        String origin = git.commitDsl("working", TARGET_DSL, USER, "Editable origin");
+        controller.openContext("working", origin, false, null, null);
+        var transfer = selection(source, origin);
+        assertEquals(200, controller.previewTransfer(transfer).getStatusCode().value());
+        String newDsl = TARGET_DSL.replace("Working model", "Concurrent edit");
+        String moved = git.commitDsl("working", newDsl, USER, "Independent edit");
+
+        var result = controller.applyTransfer(transfer, null);
+
+        assertEquals(409, result.getStatusCode().value());
+        assertEquals(moved, git.getHeadCommit("working"));
+        assertEquals(newDsl, git.getDslAtHead("working"));
+        assertEquals(source, git.getHeadCommit("historical"));
+    }
+
+    @Test
+    void nestedReadOnlySelectionCannotTreatItsReadOnlyOriginAsEditable() throws IOException {
+        DslGitRepository git = workspace("selected", USER, "repo-a");
+        manager.switchWorkspace(USER, "selected");
+        pin("selected");
+        String first = git.commitDsl("first-read", TARGET_DSL, USER, "First read-only snapshot");
+        String second = git.commitDsl("second-read", TARGET_DSL + INCOMING_ELEMENT, USER, "Second read-only snapshot");
+        controller.openContext("first-read", first, true, null, null);
+        controller.openContext("second-read", second, true, null, null);
+
+        assertThrows(AccessDeniedException.class, () -> controller.applyTransfer(selection(second, first), null));
+        assertEquals(first, git.getHeadCommit("first-read"));
+        assertEquals(second, git.getHeadCommit("second-read"));
+    }
+
+    @Test
+    void oldDialogCannotRetargetAnotherBranchWithTheSameHead() throws IOException {
+        DslGitRepository git = workspace("selected", USER, "repo-a");
+        manager.switchWorkspace(USER, "selected");
+        pin("selected");
+        String source = git.commitDsl("historical", TARGET_DSL + INCOMING_ELEMENT, USER, "Historical source");
+        String head = git.commitDsl("working", TARGET_DSL, USER, "Editable origin");
+        git.createBranchAtCommit("other", head);
+        var first = controller.openContext("working", head, false, null, null).getBody();
+        controller.openContext("other", head, false, null, null);
+
+        var conflict = assertThrows(ResponseStatusException.class,
+                () -> controller.applyTransfer(selection(source, head), first.contextId()));
+        assertEquals(409, conflict.getStatusCode().value());
+        assertEquals(head, git.getHeadCommit("working"));
+        assertEquals(head, git.getHeadCommit("other"));
+    }
+
+    private static TransferSelection selection(String source, String target) {
+        return new TransferSelection(source, target, Set.of("CP-1024"), Set.of(), TransferSelection.TransferMode.COPY);
     }
 
     private static void authenticateAs(String user) {

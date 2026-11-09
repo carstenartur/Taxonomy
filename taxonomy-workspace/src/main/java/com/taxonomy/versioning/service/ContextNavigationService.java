@@ -9,8 +9,10 @@ import com.taxonomy.dto.NavigationReason;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -87,6 +89,35 @@ public class ContextNavigationService {
             return workspaceManager.getOrCreateScopedWorkspaceState(scope).getCurrentContext();
         }
         return centralReadContext(scope.username(), scope.repositoryId(), scope.currentBranch());
+    }
+
+    record TransferTarget(UserWorkspaceState state, UserWorkspaceState.NavigationSelection selection, String branch) {
+        /** The caller holds the same state monitor as setCurrentContext through the Git ref update. */
+        void requireCurrent() {
+            if (state.getNavigationSelection() != selection) throw copyBackContextChanged();
+        }
+    }
+
+    TransferTarget getEditableTransferTarget(WorkspaceContext scope, String expectedContextId) {
+        var state = workspaceManager.getOrCreateScopedWorkspaceState(scope);
+        var selection = state.getNavigationSelection();
+        var current = selection.current();
+        if (expectedContextId != null && !expectedContextId.equals(current.contextId())) {
+            throw copyBackContextChanged();
+        }
+        if (current.mode() == ContextMode.EDITABLE) {
+            return new TransferTarget(state, selection, current.branch());
+        }
+        var origin = selection.origin();
+        if (current.mode() == ContextMode.READ_ONLY && origin != null && origin.mode() == ContextMode.EDITABLE) {
+            return new TransferTarget(state, selection, origin.branch());
+        }
+        throw new AccessDeniedException("Copy-back requires an editable workspace context or origin");
+    }
+
+    private static ResponseStatusException copyBackContextChanged() {
+        return new ResponseStatusException(HttpStatus.CONFLICT,
+                "The copy-back context changed. Reopen the transfer and preview it again.");
     }
 
     private ContextRef centralReadContext(String username, String repositoryId, String branch) {

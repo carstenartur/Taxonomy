@@ -9,6 +9,7 @@ import com.taxonomy.dto.TransferSelection;
 import com.taxonomy.versioning.service.ContextCompareService;
 import com.taxonomy.versioning.service.ContextNavigationService;
 import com.taxonomy.versioning.service.SelectiveTransferService;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -16,6 +17,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -193,15 +195,19 @@ public class ContextNavigationController {
     @PostMapping("/copy-back/apply")
     @Operation(summary = "Apply a selective transfer",
             description = "Transfers the selected elements and relations from the source " +
-                    "context into the target context, creating a new commit.")
+                    "snapshot to the editable workspace branch if the target commit is still its head.")
     public ResponseEntity<Map<String, Object>> applyTransfer(
-            @RequestBody TransferSelection selection) {
+            @RequestBody TransferSelection selection,
+            @RequestParam(required = false) String expectedContextId) {
         try {
-            String commitId = transferService.applyTransfer(selection);
+            String commitId = transferService.applyTransfer(selection, expectedContextId);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("commitId", commitId);
             result.put("success", true);
             return ResponseEntity.ok(result);
+        } catch (BranchHeadConflictException conflict) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "error", "The target branch changed. Preview its current head before applying."));
         } catch (IOException e) {
             log.error("Transfer failed", e);
             return ResponseEntity.internalServerError().body(
