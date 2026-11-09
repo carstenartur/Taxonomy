@@ -57,7 +57,7 @@ class GraphSearchTests {
 
     @AfterEach
     void evictGraphReadNavigation() {
-        List.of("graph-reader-central", "graph-admin-central", "graph-reader-ready")
+        List.of("graph-reader-central", "graph-admin-central", "graph-reader-ready", "graph-user-central")
                 .forEach(workspaceManager::evictWorkspace);
     }
 
@@ -147,6 +147,16 @@ class GraphSearchTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.matchedNodes").isEmpty());
         assertNoWorkspaceAllocation("graph-admin-central");
+    }
+
+    @Test
+    @Transactional
+    @WithMockUser(username = "graph-user-central", roles = "USER")
+    void graphReadDoesNotProvisionAWorkspaceForAnAuthor() throws Exception {
+        mockMvc.perform(get("/api/search/graph").param("q", "communications").param("maxResults", "0"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.matchedNodes").isEmpty());
+        assertNoWorkspaceAllocation("graph-user-central");
     }
 
     @Test
