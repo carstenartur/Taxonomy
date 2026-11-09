@@ -9,6 +9,7 @@ CHART_DIR="${ROOT_DIR}/deploy/helm/taxonomy"
 NAMESPACE=taxonomy-smoke
 RELEASE=${TAXONOMY_SMOKE_RELEASE:-taxonomy}
 KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME:-taxonomy-smoke}
+KUBE_CONTEXT="kind-${KIND_CLUSTER_NAME}"
 SOURCE_SHA=${SOURCE_SHA:-$(git -C "${ROOT_DIR}" rev-parse HEAD)}
 IMAGE_REPOSITORY=${IMAGE_REPOSITORY:-taxonomy-smoke}
 IMAGE_TAG=${IMAGE_TAG:-sha-${SOURCE_SHA}}
@@ -18,6 +19,7 @@ KEEP_RESOURCES=${KEEP_RESOURCES:-false}
 SMOKE_SECRET=taxonomy-smoke-credentials
 RESOURCE_SELECTOR="app.kubernetes.io/instance=${RELEASE},app.kubernetes.io/name=taxonomy"
 PORT_FORWARD_PID=""
+NAMESPACE_UID=""
 
 fail() {
   echo "::error::$*" >&2
@@ -29,12 +31,20 @@ cleanup() {
     kill "${PORT_FORWARD_PID}" >/dev/null 2>&1 || true
     wait "${PORT_FORWARD_PID}" >/dev/null 2>&1 || true
   fi
-  if [[ "${KEEP_RESOURCES}" != "true" ]]; then
-    helm uninstall "${RELEASE}" --namespace "${NAMESPACE}" >/dev/null 2>&1 || true
-    kubectl delete namespace "${NAMESPACE}" --wait=false >/dev/null 2>&1 || true
+  if [[ "${KEEP_RESOURCES}" != "true" && -n "${NAMESPACE_UID}" ]]; then
+    local current_uid
+    current_uid=$(kubectl get namespace "${NAMESPACE}" --ignore-not-found \
+      --request-timeout=10s -o jsonpath='{.metadata.uid}' 2>/dev/null || true)
+    if [[ "${current_uid}" == "${NAMESPACE_UID}" ]]; then
+      helm uninstall "${RELEASE}" --namespace "${NAMESPACE}" >/dev/null 2>&1 || true
+      kubectl delete namespace "${NAMESPACE}" --wait=false >/dev/null 2>&1 || true
+    fi
   fi
 }
 trap cleanup EXIT
+
+mkdir -p "${EVIDENCE_DIR}"
+rm -f -- "${EVIDENCE_DIR}/evidence.json"
 
 for command in docker kind kubectl helm curl jq od; do
   command -v "${command}" >/dev/null 2>&1 \
@@ -50,7 +60,15 @@ if [[ "${KEEP_RESOURCES}" != "true" && "${KEEP_RESOURCES}" != "false" ]]; then
   fail "KEEP_RESOURCES must be true or false"
 fi
 
-mkdir -p "${EVIDENCE_DIR}"
+kubectl() { command kubectl --context "${KUBE_CONTEXT}" "$@"; }
+helm() { command helm --kube-context "${KUBE_CONTEXT}" "$@"; }
+kind get clusters | grep -Fxq "${KIND_CLUSTER_NAME}" \
+  || fail "kind cluster ${KIND_CLUSTER_NAME} does not exist"
+existing_namespace=$(kubectl get namespace "${NAMESPACE}" --ignore-not-found --request-timeout=10s -o name)
+[[ -z "${existing_namespace}" ]] || fail "namespace ${NAMESPACE} already exists in ${KUBE_CONTEXT}"
+NAMESPACE_UID=$(kubectl create namespace "${NAMESPACE}" --request-timeout=10s -o jsonpath='{.metadata.uid}')
+[[ -n "${NAMESPACE_UID}" ]] || fail "Could not establish ownership of fixture namespace ${NAMESPACE}"
+
 STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 SMOKE_START_EPOCH=$(date +%s)
 BUILD_DATE=$(git -C "${ROOT_DIR}" show -s --format=%cI "${SOURCE_SHA}")
@@ -70,8 +88,6 @@ if ! [[ "${IMAGE_ID}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   fail "Docker did not return an immutable local image ID"
 fi
 
-kind get clusters | grep -Fxq "${KIND_CLUSTER_NAME}" \
-  || fail "kind cluster ${KIND_CLUSTER_NAME} does not exist"
 kind load docker-image "${IMAGE_REFERENCE}" --name "${KIND_CLUSTER_NAME}"
 
 kubectl apply -f "${CHART_DIR}/constrained-smoke-prerequisites.yaml"
@@ -179,7 +195,7 @@ fi
 grep -Fq 'Created configured administrator account' \
   "${EVIDENCE_DIR}/application.log"
 
-kubectl port-forward --namespace "${NAMESPACE}" \
+command kubectl --context "${KUBE_CONTEXT}" port-forward --namespace "${NAMESPACE}" \
   "service/${SERVICE}" 18080:80 \
   >"${EVIDENCE_DIR}/port-forward.log" 2>&1 &
 PORT_FORWARD_PID=$!
@@ -224,6 +240,8 @@ jq -n \
   --arg imageId "${IMAGE_ID}" \
   --arg podImageId "${POD_IMAGE_ID}" \
   --arg namespace "${NAMESPACE}" \
+  --arg namespaceUid "${NAMESPACE_UID}" \
+  --arg context "${KUBE_CONTEXT}" \
   --arg deployment "${DEPLOYMENT}" \
   --arg service "${SERVICE}" \
   --arg pod "${POD}" \
@@ -245,7 +263,9 @@ jq -n \
       kind: $kindVersion,
       kubernetes: $kubernetesVersion,
       helm: $helmVersion,
+      context: $context,
       namespace: $namespace,
+      namespaceUid: $namespaceUid,
       node: $node
     },
     workload: {

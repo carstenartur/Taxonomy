@@ -1,6 +1,7 @@
 package com.taxonomy.build;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -14,6 +15,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Fast repository contract for the constrained Kubernetes release floor. */
 class HelmConstrainedSmokeContractTest {
+
+    @TempDir Path temporary;
 
     @Test
     void supportedProfilesUseRestrictedExplicitEgress() throws Exception {
@@ -173,6 +176,58 @@ class HelmConstrainedSmokeContractTest {
 
     private static String read(Path path) throws Exception {
         return Files.readString(path, StandardCharsets.UTF_8);
+    }
+
+    @Test
+    void invalidSourceClearsOldSuccessWithoutMutatingAnyCluster() throws Exception {
+        Path calls = runRejectedSmoke("invalid", false, "SOURCE_SHA must be a full");
+        assertThat(calls).doesNotExist();
+    }
+
+    @Test
+    void existingNamespaceIsNeverReusedOrDeleted() throws Exception {
+        Path calls = runRejectedSmoke("0123456789abcdef0123456789abcdef01234567", true,
+                "namespace taxonomy-smoke already exists in kind-review-fixture");
+        assertThat(Files.readAllLines(calls)).containsExactly("kind get clusters",
+                "kubectl --context kind-review-fixture get namespace taxonomy-smoke --ignore-not-found --request-timeout=10s -o name");
+    }
+
+    private Path runRejectedSmoke(String source, boolean existingNamespace, String diagnostic) throws Exception {
+        Path stubs = Files.createDirectory(temporary.resolve("bin"));
+        Path calls = temporary.resolve("calls.txt");
+        for (String command : List.of("docker", "kind", "kubectl", "helm", "curl", "jq", "od", "git")) {
+            String result = switch (command) {
+                case "kind" -> "printf '%s\\n' review-fixture";
+                case "kubectl" -> existingNamespace ? "printf '%s\\n' namespace/taxonomy-smoke" : "exit 97";
+                default -> "exit 97";
+            };
+            Path stub = stubs.resolve(command);
+            Files.writeString(stub, "#!/bin/sh\nprintf '%s %s\\n' '" + command
+                    + "' \"$*\" >> \"$SMOKE_TEST_CALLS\"\n" + result + "\n");
+            assertThat(stub.toFile().setExecutable(true)).isTrue();
+        }
+        Path evidence = Files.createDirectory(temporary.resolve("evidence"));
+        Files.writeString(evidence.resolve("evidence.json"), "{\"result\":\"passed\"}");
+        var builder = new ProcessBuilder("bash", findRepositoryRoot()
+                .resolve("deploy/helm/taxonomy/constrained-smoke.sh").toString()).redirectErrorStream(true);
+        var environment = builder.environment();
+        environment.put("PATH", stubs + ":" + environment.get("PATH"));
+        environment.put("SMOKE_TEST_CALLS", calls.toString());
+        environment.put("EVIDENCE_DIR", evidence.toString());
+        environment.put("SOURCE_SHA", source);
+        environment.put("IMAGE_TAG", "sha-0123456789abcdef0123456789abcdef01234567");
+        environment.put("KIND_CLUSTER_NAME", "review-fixture");
+        environment.put("KEEP_RESOURCES", "false");
+        Process process = builder.start();
+        if (!process.waitFor(10, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            throw new AssertionError("Constrained smoke preflight did not finish");
+        }
+        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertThat(process.exitValue()).as(output).isNotZero();
+        assertThat(output).contains(diagnostic);
+        assertThat(evidence.resolve("evidence.json")).doesNotExist();
+        return calls;
     }
 
     private static Path findRepositoryRoot() {

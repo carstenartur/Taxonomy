@@ -43,7 +43,9 @@ KIND_CLUSTER_NAME=taxonomy-smoke \
 kind delete cluster --name taxonomy-smoke
 ```
 
-The evidence is written below `target/kubernetes-smoke/`. A passing `evidence.json` contains both the exact Git source identity and the immutable local image ID used by the pod. `workload.readinessSeconds` measures from immediately before Helm installation until the Deployment is ready; `totalSmokeSeconds` additionally includes image construction, cluster loading and prerequisite setup. It records only that the ephemeral fixture Secret existed; the Secret resource and its values are not archived. Release publication later binds the equivalent proof to the published OCI digest.
+The smoke script pins Kubernetes and Helm commands to `kind-${KIND_CLUSTER_NAME}` and requires a fresh `taxonomy-smoke` namespace. When `KEEP_RESOURCES=true` retains the namespace, use a new fixture cluster or remove the retained fixture before rerunning.
+
+The evidence is written below `target/kubernetes-smoke/`. Each invocation clears the prior success marker before preflight. A passing `evidence.json` contains the exact Git source, immutable local image ID, Kubernetes context and fixture namespace UID. `workload.readinessSeconds` measures from immediately before Helm installation until the Deployment is ready. `totalSmokeSeconds` includes image construction, cluster loading and prerequisite setup. The evidence records whether the fixture Secret existed and excludes its resource and values. Release publication later binds the equivalent proof to the published OCI digest.
 
 ## Additive external-Artemis acceptance case
 
