@@ -255,6 +255,10 @@ public class SystemRepositoryService implements RepositoryMutationFence {
             RepositoryVisibility visibility,
             String ownerId) {
         SystemRepository source = getRepository(sourceRepositoryId);
+        if (source.getVisibility() != RepositoryVisibility.PUBLIC
+                && visibility != null && visibility != RepositoryVisibility.PRIVATE) {
+            throw new IllegalArgumentException("A fork of a restricted repository must be private");
+        }
         String branch = sourceBranch == null || sourceBranch.isBlank()
                 ? source.getDefaultBranch()
                 : sourceBranch.strip();
