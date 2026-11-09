@@ -51,12 +51,15 @@ public class UserWorkspaceState {
     private volatile String operationKind;  // null = no operation
 
     public UserWorkspaceState(String username, int maxHistory) {
+        this(username, maxHistory, "draft");
+    }
+
+    UserWorkspaceState(String username, int maxHistory, String branch) {
         this.username = username;
         this.maxHistory = maxHistory;
-        // Initialize with default editable context on draft branch
         this.currentContext = new ContextRef(
                 UUID.randomUUID().toString(),
-                "draft",
+                branch == null || branch.isBlank() ? "draft" : branch,
                 null,
                 Instant.now(),
                 ContextMode.EDITABLE,

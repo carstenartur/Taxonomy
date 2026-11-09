@@ -75,8 +75,8 @@ public class RepositoryStateGuard {
         List<String> warnings = new ArrayList<>();
         List<String> blocks = new ArrayList<>();
 
-        // Block if current context is read-only (per-user check)
-        if (contextNavigationService != null && contextNavigationService.isReadOnly(username)) {
+        // Check the navigation mode of the same workspace as the guarded command.
+        if (contextNavigationService != null && contextNavigationService.isReadOnlyInScope(workspaceContext)) {
             blocks.add("Current context is read-only. Switch to an editable context before making changes.");
         }
 

@@ -27,9 +27,11 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Stream;
 
 /**
  * Manages per-user workspace state for multi-user architecture editing.
@@ -72,8 +74,10 @@ public class WorkspaceManager {
                 TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
     }
 
-    /** Active workspace states keyed by workspace ID. */
-    private final ConcurrentMap<String, UserWorkspaceState> activeWorkspaces =
+    /** Navigation state belongs to one actor and workspace, including pinned inactive tabs. */
+    private record WorkspaceStateKey(String username, String workspaceId) {}
+
+    private final ConcurrentMap<WorkspaceStateKey, UserWorkspaceState> workspaceStates =
             new ConcurrentHashMap<>();
 
     /** Maps a username to its currently active workspace ID. */
@@ -118,7 +122,7 @@ public class WorkspaceManager {
 
         String activeWorkspaceId = activeWorkspaceByUser.get(user);
         if (activeWorkspaceId != null) {
-            UserWorkspaceState existing = activeWorkspaces.get(activeWorkspaceId);
+            UserWorkspaceState existing = workspaceStates.get(new WorkspaceStateKey(user, activeWorkspaceId));
             if (existing != null) {
                 return existing;
             }
@@ -153,10 +157,8 @@ public class WorkspaceManager {
         String workspaceId = workspace != null
                 ? workspace.getWorkspaceId()
                 : user + "-workspace";
-        UserWorkspaceState state = activeWorkspaces.computeIfAbsent(workspaceId, id -> {
-            log.info("Creating workspace state for user '{}', workspaceId='{}'", user, id);
-            return new UserWorkspaceState(user, maxHistory);
-        });
+        UserWorkspaceState state = getOrCreateWorkspaceState(user, workspaceId,
+                workspace == null ? null : workspace.getCurrentBranch());
         activeWorkspaceByUser.put(user, workspaceId);
         return state;
     }
@@ -166,25 +168,40 @@ public class WorkspaceManager {
         if (username == null || username.isBlank()) {
             username = DEFAULT_USER;
         }
-        String user = username;
-        UserWorkspaceState state = activeWorkspaces.computeIfAbsent(workspaceId, id -> {
-            log.info("Creating workspace state for user '{}', workspaceId='{}'", user, id);
-            return new UserWorkspaceState(user, maxHistory);
-        });
-        activeWorkspaceByUser.put(user, workspaceId);
+        UserWorkspaceState state = getOrCreateWorkspaceState(username, workspaceId, null);
+        activeWorkspaceByUser.put(username, workspaceId);
         return state;
+    }
+
+    /** Use an authorized workspace from the current request without changing the active selection. */
+    public UserWorkspaceState getOrCreateScopedWorkspaceState(WorkspaceContext context) {
+        return getOrCreateWorkspaceState(context.username(), context.workspaceId(), context.currentBranch());
+    }
+
+    /** Look up an authorized selection without initializing navigation state. */
+    public UserWorkspaceState getScopedWorkspaceState(WorkspaceContext context) {
+        return workspaceStates.get(new WorkspaceStateKey(context.username(), context.workspaceId()));
+    }
+
+    private UserWorkspaceState getOrCreateWorkspaceState(String username, String workspaceId, String branch) {
+        var key = new WorkspaceStateKey(username, Objects.requireNonNull(workspaceId));
+        return workspaceStates.computeIfAbsent(key, ignored -> {
+            log.info("Creating workspace state for user '{}', workspaceId='{}'", username, workspaceId);
+            return new UserWorkspaceState(username, maxHistory, branch);
+        });
     }
 
     /** Return the active in-memory workspace state for a user, or {@code null}. */
     public UserWorkspaceState getWorkspace(String username) {
         String user = username != null ? username : DEFAULT_USER;
         String activeWorkspaceId = activeWorkspaceByUser.get(user);
-        return activeWorkspaceId != null ? activeWorkspaces.get(activeWorkspaceId) : null;
+        return activeWorkspaceId != null
+                ? workspaceStates.get(new WorkspaceStateKey(user, activeWorkspaceId)) : null;
     }
 
     /** Return summaries of all currently active workspaces. */
     public List<WorkspaceInfo> listActiveWorkspaces() {
-        return activeWorkspaces.values().stream()
+        return activeWorkspaceStates()
                 .map(this::toWorkspaceInfo)
                 .toList();
     }
@@ -206,7 +223,8 @@ public class WorkspaceManager {
 
     /** Summarize already-authorized metadata without changing the active selection. */
     public WorkspaceInfo getWorkspaceMetadataInfo(UserWorkspace workspace) {
-        UserWorkspaceState state = activeWorkspaces.get(workspace.getWorkspaceId());
+        UserWorkspaceState state = workspaceStates.get(new WorkspaceStateKey(
+                workspace.getUsername(), workspace.getWorkspaceId()));
         return new WorkspaceInfo(workspace.getWorkspaceId(), workspace.getUsername(),
                 workspace.getDisplayName(), workspace.getCurrentBranch(), workspace.getBaseBranch(),
                 workspace.isShared(), state == null ? null : state.getCurrentContext(),
@@ -219,20 +237,21 @@ public class WorkspaceManager {
 
     /** Remove only a user's in-memory workspace state. */
     public void evictWorkspace(String username) {
-        String activeWorkspaceId = activeWorkspaceByUser.remove(username);
-        if (activeWorkspaceId == null) {
-            return;
-        }
-        UserWorkspaceState removed = activeWorkspaces.remove(activeWorkspaceId);
-        if (removed != null) {
-            log.info("Evicted workspace state for user '{}', workspaceId='{}'",
-                    username, activeWorkspaceId);
+        activeWorkspaceByUser.remove(username);
+        if (workspaceStates.keySet().removeIf(key -> username.equals(key.username()))) {
+            log.info("Evicted workspace state for user '{}'", username);
         }
     }
 
     /** Return the number of active in-memory workspaces. */
     public int getActiveWorkspaceCount() {
-        return activeWorkspaces.size();
+        return Math.toIntExact(activeWorkspaceStates().count());
+    }
+
+    private Stream<UserWorkspaceState> activeWorkspaceStates() {
+        return activeWorkspaceByUser.entrySet().stream()
+                .map(entry -> workspaceStates.get(new WorkspaceStateKey(entry.getKey(), entry.getValue())))
+                .filter(state -> state != null);
     }
 
     /** Find a user's persistent workspace, preferring the active one. */
@@ -287,18 +306,10 @@ public class WorkspaceManager {
             throw new IllegalArgumentException("Cannot switch to the shared workspace");
         }
 
-        String oldWorkspaceId = activeWorkspaceByUser.get(username);
-        if (oldWorkspaceId != null) {
-            activeWorkspaces.remove(oldWorkspaceId);
-        }
-
-        activeWorkspaceByUser.put(username, workspaceId);
-        activeWorkspaces.computeIfAbsent(
-                workspaceId,
-                id -> new UserWorkspaceState(username, maxHistory));
-
         workspace.setLastAccessedAt(Instant.now());
         workspaceRepository.save(workspace);
+        getOrCreateWorkspaceState(username, workspaceId, workspace.getCurrentBranch());
+        activeWorkspaceByUser.put(username, workspaceId);
         log.info("User '{}' switched to workspace '{}'", username, workspaceId);
         return workspace;
     }
@@ -351,7 +362,7 @@ public class WorkspaceManager {
 
         workspace.setArchived(true);
         workspaceRepository.save(workspace);
-        activeWorkspaces.remove(workspaceId);
+        workspaceStates.keySet().removeIf(key -> workspaceId.equals(key.workspaceId()));
         activeWorkspaceByUser.entrySet()
                 .removeIf(entry -> entry.getValue().equals(workspaceId));
         log.info("Archived workspace '{}' for user '{}'", workspaceId, username);
@@ -381,7 +392,7 @@ public class WorkspaceManager {
             throw new IllegalArgumentException("Cannot delete the default workspace");
         }
 
-        activeWorkspaces.remove(workspaceId);
+        workspaceStates.keySet().removeIf(key -> workspaceId.equals(key.workspaceId()));
         activeWorkspaceByUser.entrySet()
                 .removeIf(entry -> entry.getValue().equals(workspaceId));
 
