@@ -22,6 +22,13 @@ public final class ArchitectureEditorExportAdapter implements ArchitectureEditor
     }
 
     @Override
+    public CheckpointModel readCheckpoint(RepositoryContext context, String commit) throws IOException {
+        if (commit == null || commit.isBlank()) throw new IllegalArgumentException("Select an exact Git checkpoint");
+        var document = service.read(context, commit);
+        return new CheckpointModel(document.context().commit(), document.dsl());
+    }
+
+    @Override
     public ExportDocument read(
             RepositoryContext context,
             String commit,

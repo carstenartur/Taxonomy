@@ -209,3 +209,12 @@ Open **Tool integrations** from the architecture editor. Select a connection and
 The connection summary shows the tool, external project, branch, workspace revision and authority. Expand the connection or operation details when technical information is needed.
 
 The shared application navigation remains available on this page. Repository, workspace and branch are retained when moving between the architecture editor and tool integrations; **Projects** returns to the project overview.
+
+## Prepare an ADMBw delivery
+
+Use **ADMBw element assignment** to record catalogue references and stereotypes,
+and **ADMBw R7 derivation** under requirement planning information to bind the
+derivation to an exact requirement version. Open a Git checkpoint and use
+**Prepare ADMBw delivery** to download the structural assessment and modeling
+data for C1–S1 and R7. The report identifies the reviews required for native
+delivery. [Rules and delivery evidence (German)](../features/admbw-conformance-de.md)

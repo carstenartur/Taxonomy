@@ -1,5 +1,6 @@
 package com.taxonomy.dsl.planning;
 
+import com.taxonomy.dsl.admbw.AdmbwRequirementProfile;
 import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.ast.PropertyAst;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
@@ -23,7 +24,8 @@ public final class PlanningInformation {
 
     public PlanningInformation() { this(installedProfiles()); }
     private static List<PlanningProfile> installedProfiles() {
-        List<PlanningProfile> result = new ArrayList<>(List.of(new GoLiveProfile(), new StandardReferenceProfile()));
+        List<PlanningProfile> result = new ArrayList<>(List.of(new GoLiveProfile(), new StandardReferenceProfile(),
+                new AdmbwRequirementProfile()));
         java.util.ServiceLoader.load(PlanningProfile.class).forEach(result::add);
         return result;
     }
@@ -88,7 +90,8 @@ public final class PlanningInformation {
         }
         Map<String, String> stored = entry.values();
         if (profile != null) {
-            var normalized = profile.store(dsl, requirement, entry.id(), entry.values());
+            var normalized = preserveUnknown ? profile.storeImported(dsl, requirement, entry.id(), entry.values())
+                    : profile.store(dsl, requirement, entry.id(), entry.values());
             dsl = normalized.dsl(); stored = normalized.values();
         }
         Map<String, String> values = properties(require(dsl, requirement));

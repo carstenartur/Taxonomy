@@ -6,6 +6,7 @@ import com.taxonomy.diagram.DiagramLayout.Strategy;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
 import com.taxonomy.diagram.DiagramScene;
+import com.taxonomy.dsl.admbw.AdmbwFffmlvProfile;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.model.TaxonomyRootTypes;
@@ -136,10 +137,17 @@ public class ArchitectureEditorProjection {
     private static Map<String, PropertyRule> properties() {
         Map<String, PropertyRule> properties = new java.util.TreeMap<>();
         Map<String, String> labels = Map.of("title", "name", "description", "description", "x-editor-status", "elementStatus",
-                "x-owner", "owner", "x-responsible-organization", "organization", "x-product-reference", "product", "x-system-reference", "system");
-        ArchitectureDslCommands.ELEMENT_PROPERTIES.forEach(key -> properties.put(key,
-                new PropertyRule("title".equals(key), false, false,
-                        "x-editor-status".equals(key) ? List.of("draft", "active", "retired") : List.of(), "editor." + labels.get(key))));
+                "x-owner", "owner", "x-responsible-organization", "organization", "x-product-reference", "product", "x-system-reference", "system",
+                AdmbwFffmlvProfile.TYPE, "admbw.stereotype", AdmbwFffmlvProfile.CATALOGUE_GUID, "admbw.catalogueGuid",
+                AdmbwFffmlvProfile.CATALOGUE_REFERENCE, "admbw.catalogueReference");
+        ArchitectureDslCommands.ELEMENT_PROPERTIES.forEach(key -> {
+            List<String> values = switch (key) {
+                case "x-editor-status" -> List.of("draft", "active", "retired");
+                case AdmbwFffmlvProfile.TYPE -> AdmbwFffmlvProfile.ELEMENT_STEREOTYPES;
+                default -> List.of();
+            };
+            properties.put(key, new PropertyRule("title".equals(key), false, false, values, "editor." + labels.get(key)));
+        });
         properties.put("id", new PropertyRule(true, true, true, List.of(), "editor.identity"));
         properties.put("taxonomy", new PropertyRule(false, true, false, List.of(), "editor.taxonomy"));
         properties.put("type", new PropertyRule(true, false, false, types(), "editor.type"));

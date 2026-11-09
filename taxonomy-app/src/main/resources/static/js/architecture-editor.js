@@ -22,7 +22,9 @@
     var fieldMap = {
         title: 'editorTitle', description: 'editorDescription', 'x-editor-status': 'editorElementStatus',
         'x-owner': 'editorOwner', 'x-responsible-organization': 'editorOrganization',
-        'x-product-reference': 'editorProduct', 'x-system-reference': 'editorSystem'
+        'x-product-reference': 'editorProduct', 'x-system-reference': 'editorSystem',
+        'x-admbw-type': 'editorAdmbwType', 'x-admbw-catalogue-guid': 'editorAdmbwCatalogueGuid',
+        'x-admbw-catalogue-reference': 'editorAdmbwCatalogueReference'
     };
     var renderer = window.ArchitectureEditorRenderer(el('editorGraph'), selectElement, selectRelation, function (visible, total) {
         el('editorGraphSummary').textContent = t('editor.visible', visible, total);
@@ -51,6 +53,51 @@
     function t(key) { return window.TaxonomyI18n.t.apply(null, arguments); }
     function short(commit) { return commit ? commit.substring(0, 12) : t('editor.emptyBranch'); }
     function context() { return view.document.context; }
+    var admbwUrl = null, admbwRequest = null, admbwScope = null;
+    function renderAdmbwExport() {
+        var options = el('editorAdmbwOptions');
+        options.hidden = !active || loading || !view || view.document.source !== 'GIT_CHECKPOINT' || !context().commit;
+        var projectCode = el('editorAdmbwProjectCode').value.trim();
+        var link = el('editorAdmbw');
+        link.hidden = options.hidden || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/.test(projectCode);
+        var url = link.hidden ? null : api.admbwUrl(context(), projectCode, el('editorAdmbwView').value);
+        if (url !== admbwUrl) {
+            admbwUrl = url;
+            admbwRequest = null;
+            el('editorAdmbwResult').hidden = true;
+        }
+        if (link.hidden) link.removeAttribute('href');
+        else link.href = url;
+        el('editorAdmbwInspect').disabled = link.hidden || admbwRequest !== null;
+    }
+    el('editorAdmbwProjectCode').addEventListener('input', renderAdmbwExport);
+    el('editorAdmbwView').addEventListener('change', renderAdmbwExport);
+    el('editorAdmbwInspect').addEventListener('click', async function () {
+        if (!admbwUrl || admbwRequest) return;
+        var request = admbwRequest = {};
+        renderAdmbwExport();
+        var result = el('editorAdmbwResult');
+        try {
+            var response = await api.admbwAssessment(context(), el('editorAdmbwProjectCode').value.trim(), el('editorAdmbwView').value);
+            if (admbwRequest !== request) return;
+            result.replaceChildren();
+            [response.assessment.capabilityToService, response.assessment.requirementDerivation].forEach(function (reportView) {
+                var title = document.createElement('h3');
+                title.textContent = reportView.name + ' · ' + t('editor.admbw.status.' + reportView.status);
+                var list = document.createElement('ul');
+                reportView.issues.map(function (issue) { return issue.object + ' · ' + issue.detail; })
+                    .concat(reportView.requiredReviews).forEach(function (detail) {
+                        var item = document.createElement('li'); item.textContent = detail; list.append(item);
+                    });
+                result.append(title, list);
+            });
+            result.hidden = false;
+        } catch (error) {
+            if (admbwRequest === request) report(error, result);
+        } finally {
+            if (admbwRequest === request) { admbwRequest = null; renderAdmbwExport(); }
+        }
+    });
     function selectedElement() { return view && view.model.elements.find(function (element) { return element.id === selected; }); }
     function relationId(relation) { return relation.sourceId + ' ' + relation.relationType + ' ' + relation.targetId; }
     function setStatus(message) { el('editorStatus').textContent = message; }
@@ -98,6 +145,7 @@
         adoptionPanel.setLocked(busy || loading);
         planningPanel.setEnabled(writable);
         focusPanel.setLocked(!active || busy || loading);
+        renderAdmbwExport();
         el('editorArrange').disabled = busy || loading || !view;
         el('editorCheckpoint').disabled = !writable;
         el('editorResumeCheckpoint').disabled = busy;
@@ -177,7 +225,19 @@
             var link = el('editor' + format); link.hidden = !view.model.elements.length;
             if (!link.hidden) link.href = api.exportUrl(c, format.toLowerCase(), view.document.source, layout, layoutRevision, selectedView);
         });
+        var admbwView = el('editorAdmbwView');
+        var scope = [c.repositoryId, c.workspaceScopeKey, c.branch, c.commit, selectedView].join('\0');
+        var admbwSelection = scope === admbwScope ? admbwView.value : selectedView;
+        admbwScope = scope;
+        admbwView.replaceChildren();
+        option(admbwView, '', t('editor.admbw.allElements'));
+        (view.model.views || []).forEach(function (item) { option(admbwView, item.id, item.title || item.id); });
+        admbwView.value = admbwSelection || '';
         if (!preserveDraft) {
+            el('editorAdmbwType').replaceChildren();
+            option(el('editorAdmbwType'), '', t('editor.admbw.unassigned'));
+            var admbwProperty = view.schema.properties && view.schema.properties['x-admbw-type'];
+            (admbwProperty ? admbwProperty.values : []).forEach(function (type) { option(el('editorAdmbwType'), type); });
             el('editorType').replaceChildren();
             view.schema.elementTypes.forEach(function (type) { option(el('editorType'), type, t('editor.type.' + type)); });
             el('editorRelationType').replaceChildren();

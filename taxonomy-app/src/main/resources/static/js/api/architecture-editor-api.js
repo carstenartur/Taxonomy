@@ -18,6 +18,11 @@ window.ArchitectureEditorApi = (function () {
         if (layoutRevision !== null && layoutRevision !== undefined) params.set('layoutRevision', layoutRevision);
         return params.toString();
     }
+    function admbwPath(context, projectCode, viewId) {
+        var params = new URLSearchParams(query(context, context.commit, null, null, viewId));
+        params.set('projectCode', projectCode);
+        return base + '.admbw.json?' + params;
+    }
     function exactPolicy(context) {
         return context && context.workspaceScopeKey !== undefined ? {pinnedWorkspaceId:context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey} : {};
     }
@@ -45,6 +50,12 @@ window.ArchitectureEditorApi = (function () {
         exportUrl: function (context, format, source, layout, layoutRevision, viewId) {
             if (['svg', 'pdf'].indexOf(format) < 0) throw new Error('Unknown export format');
             return window.TaxonomyI18n.resolveUrl(base + '.' + format + '?' + query(context, source === 'GIT_CHECKPOINT' ? context.commit : context.revision, layout, layoutRevision, viewId));
+        },
+        admbwUrl: function (context, projectCode, viewId) {
+            return window.TaxonomyI18n.resolveUrl(admbwPath(context, projectCode, viewId));
+        },
+        admbwAssessment: function (context, projectCode, viewId) {
+            return window.TaxonomyApiClient.getJson(admbwPath(context, projectCode, viewId), exactPolicy(context));
         },
         createWorkspace: function (context) {
             return window.TaxonomyApiClient.sendJson(base + '/workspaces?' + query(context), {

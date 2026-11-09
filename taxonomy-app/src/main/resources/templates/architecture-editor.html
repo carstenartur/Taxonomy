@@ -40,6 +40,17 @@
         <a id="editorSvg" hidden data-i18n="editor.svg">Download SVG</a>
         <a id="editorPdf" hidden data-i18n="editor.pdf">Download PDF</a>
     </div>
+    <details id="editorAdmbwOptions" hidden>
+        <summary data-i18n="editor.admbw.title">Prepare ADMBw delivery</summary>
+        <p data-i18n="editor.admbw.help">Check C1–S1 and R7 against the public FFFmLV 2.0 profile. The report includes modeling data and the reviews needed for native delivery.</p>
+        <label for="editorAdmbwProjectCode" data-i18n="editor.admbw.projectCode">Project code</label>
+        <input id="editorAdmbwProjectCode" type="text" maxlength="32" autocomplete="off"/>
+        <label for="editorAdmbwView" data-i18n="editor.admbw.view">C1–S1 source view</label>
+        <select id="editorAdmbwView"></select>
+        <button id="editorAdmbwInspect" type="button" disabled data-i18n="editor.admbw.inspect">Check checkpoint</button>
+        <a id="editorAdmbw" hidden data-i18n="editor.admbw.download">Download ADMBw assessment (JSON)</a>
+        <div id="editorAdmbwResult" role="status" aria-live="polite" hidden></div>
+    </details>
     <p id="editorMode"></p>
     <section id="editorCollaboration" aria-labelledby="editorCollaborationTitle" hidden>
         <h2 id="editorCollaborationTitle" data-i18n="editor.collaboration.title">Shared editing</h2>
@@ -131,6 +142,15 @@
                     <label for="editorOrganization" data-i18n="editor.organization">Responsible organization</label><input id="editorOrganization" maxlength="8000"/>
                     <label for="editorProduct" data-i18n="editor.product">Product reference</label><input id="editorProduct" maxlength="8000"/>
                     <label for="editorSystem" data-i18n="editor.system">System reference</label><input id="editorSystem" maxlength="8000"/>
+                    <details>
+                        <summary data-i18n="editor.admbw.element">ADMBw element assignment</summary>
+                        <label for="editorAdmbwType" data-i18n="editor.admbw.stereotype">ADMBw stereotype</label>
+                        <select id="editorAdmbwType"></select>
+                        <label for="editorAdmbwCatalogueGuid" data-i18n="editor.admbw.catalogueGuid">Catalogue element GUID</label>
+                        <input id="editorAdmbwCatalogueGuid" maxlength="38"/>
+                        <label for="editorAdmbwCatalogueReference" data-i18n="editor.admbw.catalogueReference">Catalogue and edition</label>
+                        <input id="editorAdmbwCatalogueReference" maxlength="8000"/>
+                    </details>
                     <div class="editor-toolbar">
                         <button id="editorPreviewElement" type="submit" data-i18n="editor.preview">Preview change</button>
                         <button id="editorDelete" type="button" disabled data-i18n="editor.delete">Preview deletion</button>

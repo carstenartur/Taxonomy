@@ -15,6 +15,7 @@ class Element {
     replaceChildren(...nodes) { this.children = [...nodes]; this._value = ''; }
     addEventListener(type, callback) { this.events[type] = callback.bind(this); }
     setAttribute(key, value) { this.attributes[key] = value; }
+    removeAttribute(key) { delete this.attributes[key]; }
     querySelectorAll() { return this.children.filter(c => c.dataset.planningField); }
     contains(node) { return this === node || this.children.some(child => child.contains(node)); }
     reportValidity() { return true; }

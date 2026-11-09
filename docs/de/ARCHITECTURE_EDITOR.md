@@ -231,3 +231,11 @@ Architekturbeziehungen bleiben unverändert.
 Die Verbindungsübersicht zeigt Werkzeug, externes Projekt, Branch, Arbeitsstand und Datenhoheit. Technische Angaben zur Verbindung und zum Vorgang lassen sich bei Bedarf aufklappen.
 
 Die gemeinsame Anwendungsnavigation bleibt auch auf dieser Seite verfügbar. Beim Wechsel zwischen Architektureditor und Werkzeugintegrationen bleiben Repository, Arbeitsbereich und Branch erhalten; über **Projekte** gelangen Sie zurück zur Projektübersicht.
+
+## ADMBw-Abgabe vorbereiten
+
+Unter **ADMBw-Elementzuordnung** können Sie offizielle Katalogreferenzen und
+Stereotype am Element erfassen. Das Profil **ADMBw R7 Anforderungsherleitung**
+verbindet versionierte Anforderungen mit den zugehörigen Modellelementen.
+Öffnen Sie einen Git-Checkpoint und laden Sie unter **ADMBw-Abgabe vorbereiten**
+den Prüfbericht für C1–S1 und R7. [Regeln und Liefernachweise](../features/admbw-conformance-de.md)
