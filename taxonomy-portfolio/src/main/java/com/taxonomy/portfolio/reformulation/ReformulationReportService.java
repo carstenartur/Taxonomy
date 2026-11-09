@@ -1,6 +1,8 @@
 package com.taxonomy.portfolio.reformulation;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioJsonCodec;
 import com.taxonomy.portfolio.service.PortfolioScope;
@@ -35,7 +37,8 @@ public class ReformulationReportService {
     }
 
     public record Source(long projectId, long requirementId, long versionId, String analysisSnapshotId,
-            String language, String originalText, String originalTextHash) {}
+            String language, String originalText, String originalTextHash,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String analysisProvider) {}
     public record ProposalIdentity(String id, long revision) {}
     public record Report(String schemaVersion, String kind, String proposalId, Source source, ProposalIdentity proposal,
             ReformulationDtos.Revision revision, String reviewedText,
@@ -100,8 +103,14 @@ public class ReformulationReportService {
                 content.finalText(), preview, receipt);
     }
 
-    private static Source source(ReformulationBaseline baseline) {
+    private Source source(ReformulationBaseline baseline) {
+        var summary = json.readField(baseline.frozenContext().get("snapshotDetail"), "summary", SnapshotSummary.class);
+        if (summary != null && (!FrozenReformulationArchitectureAssembler.matchesSnapshotSource(baseline, summary)
+                || !Objects.equals(summary.workspaceId(), baseline.scope().workspaceId()))) {
+            throw PortfolioException.conflict("Frozen analysis snapshot does not match the report source");
+        }
         return new Source(baseline.scope().projectId(), baseline.scope().requirementId(), baseline.sourceVersionId(),
-                baseline.snapshotId(), baseline.language(), baseline.originalText(), baseline.originalTextHash());
+                baseline.snapshotId(), baseline.language(), baseline.originalText(), baseline.originalTextHash(),
+                summary == null ? null : summary.provider());
     }
 }

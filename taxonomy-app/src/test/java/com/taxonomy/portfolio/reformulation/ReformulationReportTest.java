@@ -72,8 +72,11 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
         mvc.perform(get(revision + "/export").param("format", "json"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"reformulation-"
+                        + proposal.id() + "-revision-1.json\""))
                 .andExpect(jsonPath("$.schemaVersion").value("reformulation-report-v1"))
                 .andExpect(jsonPath("$.source.originalText").value(ORIGINAL))
+                .andExpect(jsonPath("$.source.analysisProvider").doesNotExist())
                 .andExpect(jsonPath("$.proposal.revision").value(1));
         assertThat(projects.getRequirement(project.id(), requirement.id(), "architect", context)).isEqualTo(before);
         assertThat(reformulations.get(project.id(), requirement.id(), proposal.id(), "architect", context)).isEqualTo(beforeProposal);

@@ -27,10 +27,7 @@ final class FrozenReformulationArchitectureAssembler {
         ProjectView project = required(frozen, "project", ProjectView.class);
         var summary = detail.summary();
         var scope = baseline.scope();
-        check(summary != null && Objects.equals(summary.id(), baseline.snapshotId())
-                && Objects.equals(summary.projectId(), scope.projectId())
-                && Objects.equals(summary.requirementId(), scope.requirementId())
-                && Objects.equals(summary.requirementVersionId(), baseline.sourceVersionId()), "Snapshot source identity disagrees with the baseline");
+        check(matchesSnapshotSource(baseline, summary), "Snapshot source identity disagrees with the baseline");
         check(Objects.equals(version.id(), baseline.sourceVersionId())
                 && summary.requirementVersionNumber() == version.versionNumber()
                 && Objects.equals(version.text(), baseline.originalText())
@@ -146,6 +143,14 @@ final class FrozenReformulationArchitectureAssembler {
                 new FrozenReformulationArchitecture.SourceIdentity(scope.projectId(), scope.requirementId(),
                         version.id(), version.versionNumber(), summary.taxonomyFingerprint(),
                         summary.provider(), summary.modelName()));
+    }
+
+    static boolean matchesSnapshotSource(ReformulationBaseline baseline, SnapshotSummary summary) {
+        var scope = baseline.scope();
+        return summary != null && Objects.equals(summary.id(), baseline.snapshotId())
+                && Objects.equals(summary.projectId(), scope.projectId())
+                && Objects.equals(summary.requirementId(), scope.requirementId())
+                && Objects.equals(summary.requirementVersionId(), baseline.sourceVersionId());
     }
 
     private <T> T required(Map<String, String> frozen, String key, Class<T> type) {

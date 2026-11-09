@@ -13,8 +13,8 @@ class Element {
 }
 const body = new Element('body');
 const document = { body, createElement: tag => new Element(tag), querySelector: () => null };
-const ok = (type='application/json') => ({ ok:true, status:200,
-    headers: {get: key => ({'content-type':type,'content-disposition':'attachment; filename="report"','x-content-sha256':'a'.repeat(64)}[key.toLowerCase()] ?? null)},
+const ok = (type='application/json', filename='report') => ({ ok:true, status:200,
+    headers: {get: key => ({'content-type':type,'content-disposition':`attachment; filename="${filename}"`,'x-content-sha256':'a'.repeat(64)}[key.toLowerCase()] ?? null)},
     blob: async () => ({type}), json: async () => ({}) });
 let response = () => Promise.resolve(ok());
 const context = vm.createContext({ window:{location:{pathname:'/'}}, document, URLSearchParams, console,
@@ -50,8 +50,9 @@ vm.runInContext(fs.readFileSync(process.argv[2], 'utf8'), context);
     resolve(ok());await pending;
     assert.equal(input.value,'unsaved local wording'); assert.ok(downloads[0].download.includes(proposal));assert.ok(downloads[0].download.includes('revision-3'));
     delayed.splice(0).forEach(fn=>fn());assert.equal(revoked.length,1);
-    response=async()=>ok('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    await buttons[3].click();assert.equal(downloads.length,2);assert.ok(downloads[1].download.endsWith('.docx'));
+    const demoWord='DEMO-reformulation-'+proposal+'-revision-3.docx';
+    response=async()=>ok('application/vnd.openxmlformats-officedocument.wordprocessingml.document',demoWord);
+    await buttons[3].click();assert.equal(downloads.length,2);assert.equal(downloads[1].download,demoWord);
     response=async()=>({ok:true,status:200,headers:{get:k=>k.toLowerCase()==='content-type'?'text/html':null},blob:async()=>({})});
     await buttons[3].click();assert.equal(downloads.length,2,'A login/error page was offered as a Word report');assert.equal(buttons[3].disabled,false);
     assert.ok(controls.children.some(n=>String(n.textContent).includes('fehlgeschlagen')));
