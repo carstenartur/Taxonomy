@@ -29,14 +29,15 @@ final class QeaDatabase {
     private static final List<String> TABLES = List.of("usys_system", "t_package", "t_object", "t_connector",
             "t_diagram", "t_diagramobjects", "t_objectproperties", "t_connectortag", "t_xref");
     private static final List<String> ADMBW_TABLES = List.of("usys_system", "t_package", "t_object",
-            "t_connector", "t_diagram", "t_diagramobjects", "t_objectproperties", "t_connectortag", "t_xref");
+            "t_connector", "t_diagram", "t_diagramobjects", "t_diagramlinks", "t_objectproperties", "t_connectortag", "t_xref");
     private static final Map<String, List<String>> ADMBW_COLUMNS = Map.of(
             "usys_system", List.of("property", "value"),
             "t_package", List.of("package_id", "parent_id", "name", "ea_guid"),
             "t_object", List.of("object_id", "object_type", "ea_guid", "parentid", "stereotype"),
             "t_connector", List.of("connector_id", "start_object_id", "end_object_id", "ea_guid"),
             "t_diagram", List.of("diagram_id", "package_id", "name", "ea_guid"),
-            "t_diagramobjects", List.of("object_id"),
+            "t_diagramobjects", List.of("object_id", "diagram_id"),
+            "t_diagramlinks", List.of("diagramid", "connectorid"),
             "t_objectproperties", List.of("propertyid", "object_id", "property", "ea_guid"),
             "t_connectortag", List.of("elementid"),
             "t_xref", List.of("xrefid", "name", "type", "client", "description"));
@@ -165,7 +166,7 @@ final class QeaDatabase {
 
     private List<Row> table(Connection connection, String table, boolean admbw) throws SQLException {
         var result = new ArrayList<Row>();
-        // Native delivery retains structural fields and orphan IDs that new rows could otherwise reuse.
+        // Native delivery retains structural fields and distinct orphan IDs that new rows could otherwise reuse.
         Collection<String> required = admbw ? ADMBW_COLUMNS.get(table) : COLUMNS.get(table);
         // table is chosen exclusively from TABLES or ADMBW_TABLES.
         String from = " FROM \"" + table + "\"";
@@ -173,9 +174,25 @@ final class QeaDatabase {
             case "t_xref" -> "SELECT xrefid, name, type, client, CASE WHEN lower(name) = 'stereotypes' THEN description END AS description" + from;
             case "usys_system" -> "SELECT property, CASE WHEN lower(property) = 'projectguid' THEN value END AS value" + from;
             case "t_diagramobjects" -> """
-                    SELECT DISTINCT placement.object_id FROM t_diagramobjects placement
+                    SELECT placement.object_id, NULL AS diagram_id FROM t_diagramobjects placement
                     WHERE placement.object_id IS NOT NULL AND NOT EXISTS (
                         SELECT 1 FROM t_object existing WHERE existing.object_id = placement.object_id
+                    )
+                    UNION
+                    SELECT NULL, placement.diagram_id FROM t_diagramobjects placement
+                    WHERE placement.diagram_id IS NOT NULL AND NOT EXISTS (
+                        SELECT 1 FROM t_diagram existing WHERE existing.diagram_id = placement.diagram_id
+                    )
+                    """;
+            case "t_diagramlinks" -> """
+                    SELECT link.diagramid, NULL AS connectorid FROM t_diagramlinks link
+                    WHERE link.diagramid IS NOT NULL AND NOT EXISTS (
+                        SELECT 1 FROM t_diagram existing WHERE existing.diagram_id = link.diagramid
+                    )
+                    UNION
+                    SELECT NULL, link.connectorid FROM t_diagramlinks link
+                    WHERE link.connectorid IS NOT NULL AND NOT EXISTS (
+                        SELECT 1 FROM t_connector existing WHERE existing.connector_id = link.connectorid
                     )
                     """;
             case "t_connectortag" -> """

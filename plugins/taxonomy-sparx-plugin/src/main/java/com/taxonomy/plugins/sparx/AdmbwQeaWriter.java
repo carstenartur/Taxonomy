@@ -64,6 +64,7 @@ final class AdmbwQeaWriter {
         private final Map<String, List<Row>> stereotypes = new HashMap<>();
         private final Set<String> guids = new HashSet<>();
         private final Set<Long> referencedObjectIds = new HashSet<>();
+        private final Set<Long> referencedDiagramIds = new HashSet<>();
         private final Set<Long> referencedConnectorIds = new HashSet<>();
 
         DeliveryCopy(Snapshot basis, QeaWriteDatabase database, UUID namespace) {
@@ -80,7 +81,14 @@ final class AdmbwQeaWriter {
                 referencedObjectIds.add(row.number("parentid"));
             }
             for (Row row : basis.rows("t_objectproperties")) referencedObjectIds.add(row.number("object_id"));
-            for (Row row : basis.rows("t_diagramobjects")) referencedObjectIds.add(row.number("object_id"));
+            for (Row row : basis.rows("t_diagramobjects")) {
+                referencedObjectIds.add(row.number("object_id"));
+                referencedDiagramIds.add(row.number("diagram_id"));
+            }
+            for (Row row : basis.rows("t_diagramlinks")) {
+                referencedDiagramIds.add(row.number("diagramid"));
+                referencedConnectorIds.add(row.number("connectorid"));
+            }
             for (Row row : basis.rows("t_connector")) {
                 referencedObjectIds.add(row.number("start_object_id"));
                 referencedObjectIds.add(row.number("end_object_id"));
@@ -100,7 +108,9 @@ final class AdmbwQeaWriter {
                 if (row.number("package_id") == packageId && row.text("name").equalsIgnoreCase(view.name()))
                     throw fail("QEA_ADMBW_DIAGRAM_EXISTS", "This diagram already exists in the target package. Select the original QEA basis for a fresh delivery");
             }
-            long diagramId = database.next("t_diagram", "diagram_id");
+            long diagramId;
+            do { diagramId = database.next("t_diagram", "diagram_id"); }
+            while (referencedDiagramIds.contains(diagramId));
             database.insert("t_diagram", Map.of("diagram_id", diagramId, "package_id", packageId,
                     "ea_guid", guid("diagram:" + view.viewpoint()), "name", view.name(), "diagram_type", "Custom",
                     "styleex", "MDGDgm=" + AdmbwQeaProfile.DIAGRAM_TYPES.get(view.viewpoint()) + ";",

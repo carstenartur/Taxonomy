@@ -121,6 +121,37 @@ class AdmbwQeaExportTest {
     }
 
     @Test
+    void reservesDiagramIdsReferencedByOrphanDiagramPlacementsAndLinks() throws Exception {
+        try (var basis = basis()) {
+            basis.sql("""
+                    INSERT INTO t_diagramobjects
+                    (Diagram_ID,Object_ID,RectTop,RectLeft,RectRight,RectBottom,Sequence,ObjectStyle,Instance_ID)
+                    VALUES (31,10,-20,400,560,-100,2,'old placement',12)
+                    """);
+            basis.sql("""
+                    INSERT INTO t_diagramlinks (DiagramID,ConnectorID,Geometry,Style,Hidden,Instance_ID)
+                    VALUES (32,20,'old geometry','old link',1,13)
+                    """);
+            byte[] original = basis.bytes();
+            var file = new SparxQeaWriterConnector().exportAdmbw(delivery(), QeaFixture.ROOT, original);
+            assertArrayEquals(original, basis.bytes());
+            Path target = Files.write(temp.resolve("orphan-diagrams.qea"), file.content());
+            try (var read = DriverManager.getConnection("jdbc:sqlite:" + target)) {
+                assertEquals(List.of("31|10|-20|400|560|-100|2|old placement"), column(read, """
+                        select Diagram_ID || '|' || Object_ID || '|' || RectTop || '|' || RectLeft || '|'
+                        || RectRight || '|' || RectBottom || '|' || Sequence || '|' || ObjectStyle
+                        from t_diagramobjects where Instance_ID=12
+                        """));
+                assertEquals(List.of("32|20|old geometry|old link|1"), column(read, """
+                        select DiagramID || '|' || ConnectorID || '|' || Geometry || '|' || Style || '|' || Hidden
+                        from t_diagramlinks where Instance_ID=13
+                        """));
+                assertEquals(List.of(), column(read, "select Diagram_ID from t_diagram where Diagram_ID in (31,32) order by Diagram_ID"));
+            }
+        }
+    }
+
+    @Test
     void reservesConnectorIdsReferencedByOrphanConnectorTags() throws Exception {
         try (var basis = basis()) {
             basis.sql("INSERT INTO t_connectortag (PropertyID,ElementID,Property,Value,Notes) VALUES (10,21,'Orphan','unrelated','')");
@@ -135,7 +166,28 @@ class AdmbwQeaExportTest {
     }
 
     @Test
-    void preservesExistingPlacementsAndTagsBeyondTheNativeReadRowBudget() throws Exception {
+    void reservesConnectorIdsReferencedByOrphanDiagramLinks() throws Exception {
+        try (var basis = basis()) {
+            basis.sql("""
+                    INSERT INTO t_diagramlinks (DiagramID,ConnectorID,Geometry,Style,Hidden,Instance_ID)
+                    VALUES (30,21,'old geometry','old link',1,13)
+                    """);
+            byte[] original = basis.bytes();
+            var file = new SparxQeaWriterConnector().exportAdmbw(delivery(), QeaFixture.ROOT, original);
+            assertArrayEquals(original, basis.bytes());
+            Path target = Files.write(temp.resolve("orphan-link-connector.qea"), file.content());
+            try (var read = DriverManager.getConnection("jdbc:sqlite:" + target)) {
+                assertEquals(List.of("30|21|old geometry|old link|1"), column(read, """
+                        select DiagramID || '|' || ConnectorID || '|' || Geometry || '|' || Style || '|' || Hidden
+                        from t_diagramlinks where Instance_ID=13
+                        """));
+                assertEquals(List.of(), column(read, "select Connector_ID from t_connector where Connector_ID=21"));
+            }
+        }
+    }
+
+    @Test
+    void preservesExistingDiagramReferencesAndTagsBeyondTheNativeReadRowBudget() throws Exception {
         try (var basis = basis()) {
             basis.sql("""
                     WITH RECURSIVE entries(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM entries WHERE n<150)
@@ -153,6 +205,16 @@ class AdmbwQeaExportTest {
                     FROM t_diagram d CROSS JOIN t_object o WHERE d.Diagram_ID>1000 AND o.Object_ID>1000
                     """);
             basis.sql("""
+                    INSERT INTO t_connector (Connector_ID,Connector_Type,Start_Object_ID,End_Object_ID,ea_guid)
+                    SELECT Object_ID,'Dependency',10,Object_ID,printf('{40000000-0000-0000-0000-%012d}',Object_ID)
+                    FROM t_object WHERE Object_ID>1000
+                    """);
+            basis.sql("""
+                    INSERT INTO t_diagramlinks (DiagramID,ConnectorID,Hidden,Instance_ID)
+                    SELECT d.Diagram_ID,c.Connector_ID,1,ROW_NUMBER() OVER (ORDER BY d.Diagram_ID,c.Connector_ID)
+                    FROM t_diagram d CROSS JOIN t_connector c WHERE d.Diagram_ID>1000 AND c.Connector_ID>1000
+                    """);
+            basis.sql("""
                     WITH RECURSIVE entries(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM entries WHERE n<?)
                     INSERT INTO t_connectortag (PropertyID,ElementID,Property,Value)
                     SELECT n,20,'Existing tag '||n,'Original value' FROM entries
@@ -164,6 +226,8 @@ class AdmbwQeaExportTest {
             try (var read = DriverManager.getConnection("jdbc:sqlite:" + target)) {
                 assertEquals(List.of("22502"), column(read, "select count(*) from t_diagramobjects where Diagram_ID<=1150"));
                 assertEquals(List.of("6"), column(read, "select count(*) from t_diagramobjects where Diagram_ID>1150"));
+                assertEquals(List.of("22500"), column(read, "select count(*) from t_diagramlinks where DiagramID<=1150 and Hidden=1"));
+                assertEquals(List.of("4"), column(read, "select count(*) from t_diagramlinks where DiagramID>1150 and Hidden=0"));
                 assertEquals(List.of(Integer.toString(QeaDatabase.MAX_ROWS + 1)), column(read,
                         "select count(*) from t_connectortag where ElementID=20 and Value='Original value'"));
             }
