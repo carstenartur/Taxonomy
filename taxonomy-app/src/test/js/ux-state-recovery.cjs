@@ -981,6 +981,29 @@ test('editor transport pins shared and private contexts independently of another
     }
 });
 
+test('ADMBw assessment pins the exact checkpoint, workspace and C1–S1 view', async()=>{
+    const calls=[];
+    const window={
+        TaxonomyApiClient:{getJson:async (url, policy)=>calls.push({url, policy})},
+        TaxonomyI18n:{resolveUrl:path=>'/Taxonomy'+path}
+    };
+    vm.runInNewContext(source('api/architecture-editor-api.js'),{window,URLSearchParams});
+    const api=window.ArchitectureEditorApi, commit='a1'.repeat(20);
+    const context={repositoryId:'repo-a',workspaceScopeKey:'workspace-a',branch:'main',commit,revision:4};
+    await api.admbwAssessment(context,'WARN','warning');
+    const request=new URL(calls[0].url,'https://example.test');
+    const download=new URL(api.admbwUrl(context,'WARN','warning'),'https://example.test');
+    assert.equal(request.pathname,'/api/architecture/editor.admbw.json');
+    assert.equal(download.pathname,'/Taxonomy/api/architecture/editor.admbw.json');
+    assert.equal(request.search,download.search);
+    assert.equal(request.searchParams.get('commit'),commit);
+    assert.equal(request.searchParams.get('workspaceId'),'workspace-a');
+    assert.equal(request.searchParams.get('projectCode'),'WARN');
+    assert.equal(request.searchParams.get('viewId'),'warning');
+    assert.equal(request.searchParams.has('revision'),false);
+    assert.equal(calls[0].policy.pinnedWorkspaceId,'workspace-a');
+});
+
 test('explicit cancellation releases guidance actions and records a partial result', ()=>{
     const f=guidanceFixture();
     f.state.lastAnalysisStatus='IN_PROGRESS';

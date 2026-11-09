@@ -157,6 +157,7 @@ public final class ApiAccessPolicy {
         add(rules, "GET", ANALYSIS_READ, "/api/projects/*/snapshots/*/decision-report/options");
         // Downloads must precede both saved-analysis reads and the generic architecture read fallback.
         add(rules, "GET", INTEGRATION_EXPORT, "/api/architecture/editor.svg", "/api/architecture/editor.pdf",
+                "/api/architecture/editor.admbw.json",
                 "/api/dsl/export", "/api/projects/git/export", "/api/projects/*/reports/*",
                 "/api/projects/*/snapshots/*/architecture-report/docx",
                 "/api/projects/*/snapshots/*/decision-report/*", "/api/projects/*/architecture-workbench/*.svg",

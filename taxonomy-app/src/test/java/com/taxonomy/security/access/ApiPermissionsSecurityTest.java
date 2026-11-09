@@ -223,7 +223,7 @@ class ApiPermissionsSecurityTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "/api/architecture/editor.svg", "/api/architecture/editor.pdf", "/api/dsl/export",
+            "/api/architecture/editor.svg", "/api/architecture/editor.pdf", "/api/architecture/editor.admbw.json", "/api/dsl/export",
             "/api/projects/git/export",
             "/api/projects/p/reports/docx",
             "/api/projects/p/snapshots/s/architecture-report/docx",
@@ -362,7 +362,8 @@ class ApiPermissionsSecurityTest {
                 "/api/export/mermaid", "/api/dsl/validate", "/api/admin/users", "/api/unclassified-write", "/api/account/me",
                 "/api/analyze-stream", "/api/analyze-node", "/api/workspace/external/push", "/api/workspace/external/full-sync",
                 "/api/workspace/create", "/api/workspace/copy", "/api/workspace/compare", "/api/workspace/unclassified",
-                "/api/projects/p/**", "/api/architecture/editor.svg", "/api/architecture/editor.pdf", "/api/dsl/export",
+                "/api/projects/p/**", "/api/architecture/editor.svg", "/api/architecture/editor.pdf",
+                "/api/architecture/editor.admbw.json", "/api/dsl/export",
                 "/api/projects/git/export", "/api/documents/**", "/api/architecture/focus/suggestions",
                 "/api/architecture/editor/focus/suggestions", "/api/diagram/**", "/api/scores/export",
                 "/api/integrations/c/publish", "/api/integrations/c/operations/o/retry"})

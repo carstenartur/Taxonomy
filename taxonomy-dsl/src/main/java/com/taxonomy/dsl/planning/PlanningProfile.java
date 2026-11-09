@@ -20,6 +20,9 @@ public interface PlanningProfile {
     default Stored store(String dsl, String requirement, String entry, Map<String, String> values) {
         validate(values); return new Stored(dsl, values);
     }
+    default Stored storeImported(String dsl, String requirement, String entry, Map<String, String> values) {
+        return store(dsl, requirement, entry, values);
+    }
     default String remove(String dsl, String requirement, String entry, Map<String, String> stored) { return dsl; }
     default Map<String, String> read(CanonicalArchitectureModel model, String requirement, Map<String, String> stored) {
         validate(stored); return stored;

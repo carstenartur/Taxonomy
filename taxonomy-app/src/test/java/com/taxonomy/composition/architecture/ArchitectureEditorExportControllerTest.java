@@ -44,6 +44,41 @@ class ArchitectureEditorExportControllerTest {
             "repo-a", "workspace-a", "draft", "alice");
 
     @Test
+    void admbwAssessmentUsesAnExplicitAccessibleCheckpoint() throws Exception {
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
+        String dsl = """
+                element service type CoreService {
+                  title: "Warnmeldungsdienst";
+                }
+                """;
+        when(service.read(scope, HEAD)).thenReturn(new ArchitectureEditorService.Document(
+                Context.of(scope, HEAD), dsl, "HISTORICAL", List.of(), List.of(), 0, null, "GIT_CHECKPOINT"));
+        var mvc = standaloneSetup(exports).build();
+        mvc.perform(get("/api/architecture/editor.admbw.json")
+                        .param("repositoryId", "repo-a").param("workspaceScopeKey", "workspace-a")
+                        .param("branch", "draft").param("commit", HEAD).param("projectCode", "WARN"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.commit").value(HEAD))
+                .andExpect(jsonPath("$.assessment.profile").value("admbw-2026.05-fffmlv-2.0-c1-s1-r7"))
+                .andExpect(jsonPath("$.assessment.capabilityToService.status").value("CHANGES_REQUIRED"))
+                .andExpect(jsonPath("$.assessment.capabilityToService.elements[0].name").value("Warnmeldungsdienst"));
+    }
+
+    @Test
+    void admbwAssessmentRejectsMissingCommitAndForeignWorkspace() throws Exception {
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
+        var mvc = standaloneSetup(exports).build();
+        mvc.perform(get("/api/architecture/editor.admbw.json")
+                        .param("repositoryId", "repo-a").param("workspaceScopeKey", "workspace-a")
+                        .param("branch", "draft").param("revision", "4").param("projectCode", "WARN"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/architecture/editor.admbw.json")
+                        .param("repositoryId", "repo-a").param("workspaceScopeKey", "workspace-b")
+                        .param("branch", "draft").param("commit", HEAD).param("projectCode", "WARN"))
+                .andExpect(status().isNotFound());
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void selectedAdoptionViewExportsTheSameServerDerivedMembershipAsTheEditor() throws Exception {
         when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
         var commands = new com.taxonomy.dsl.command.ArchitectureDslCommands();

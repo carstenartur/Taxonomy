@@ -125,7 +125,7 @@ class OpenApiSecurityDocumentationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "/api/architecture/editor.svg", "/api/architecture/editor.pdf", "/api/dsl/export",
+            "/api/architecture/editor.svg", "/api/architecture/editor.pdf", "/api/architecture/editor.admbw.json", "/api/dsl/export",
             "/api/projects/git/export",
             "/api/projects/{projectId}/reports/{format}",
             "/api/projects/{projectId}/snapshots/{snapshotId}/architecture-report/docx",

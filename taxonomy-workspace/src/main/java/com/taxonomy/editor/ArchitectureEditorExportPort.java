@@ -9,12 +9,16 @@ import java.util.Objects;
 /**
  * Workspace/editor-owned read boundary for exact, render-ready architecture exports.
  *
- * <p>The port exposes only neutral scene/provenance data. HTTP composition and
+ * <p>The port exposes canonical source or neutral scene data with provenance. HTTP composition and
  * concrete SVG/PDF rendering remain outside the workspace authority boundary.</p>
  */
 public interface ArchitectureEditorExportPort {
 
     ExportDocument read(RepositoryContext context, String commit, Long revision) throws IOException;
+
+    CheckpointModel readCheckpoint(RepositoryContext context, String commit) throws IOException;
+
+    record CheckpointModel(String commit, String dsl) { }
 
     default ExportDocument read(RepositoryContext context, String commit, Long revision,
             com.taxonomy.diagram.DiagramLayout.Strategy strategy, Long layoutRevision) throws IOException {

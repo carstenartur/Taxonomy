@@ -1,0 +1,73 @@
+# ADMBw-Architekturabgabe vorbereiten
+
+Taxonomy prüft einen ausdrücklich ausgewählten Git-Checkpoint und erzeugt
+Modellierungsdaten mit den zugehörigen Befunden. Das eingebaute Profil
+`admbw-2026.05-fffmlv-2.0-c1-s1-r7` umfasst ausgewählte Strukturregeln für
+ADMBw 2026.05 und den FFFmLV-Leitfaden 2.0 vom 17. April 2026. Für die Abgabe
+sind der im Vorhaben verlangte Stand und der zugehörige Leitfaden maßgeblich.
+Die Bundeswehr veröffentlicht für PBN-Service- und Systemarchitekturen einen
+eigenen Leitfaden. Die verlinkten Anlagen der Leitfäden
+dienen der internen Projektbearbeitung. [Aktuelle Bundeswehr-Downloads](https://www.bundeswehr.de/de/organisation/ausruestung-baainbw/vergabe/methode-architektur)
+
+## Regeln und Liefernachweise
+
+| Thema | In Taxonomy geprüft oder vorbereitet | Für die Abgabe erforderlich |
+|---|---|---|
+| Architekturauftrag und Modellbeschreibung | Checkpoint, Repository, Zweig, Workspace, Projektkürzel und Prüfprofil sind im Bericht festgehalten. | Vorhabenspezifische Leitfadenfassung, geforderte Sichten, A1-Architekturbeschreibung mit Modell- und Projektmetadaten, Startpaket und Lieferformat mit dem Auftraggeber festlegen. |
+| C1–S1, FFFmLV § 3.2.6.1 | Ordnerpfad `Service Specifications/C1-S1/Einordnung Fähigkeitslage`, Diagrammname, `Capability`, `ServiceSpecification` und `Exhibits` vom Dienst zur Fähigkeit. Einbezogen werden akzeptierte `REALIZES`-Beziehungen von Fähigkeit zu Core Service und akzeptierte `FULFILLS`-Beziehungen von Core/COI Service zu Fähigkeit. Bei ausgewählter gespeicherter Sicht gelten deren Element- und aufgezeichnete Beziehungsauswahl. | GUID und Katalogfassung im tatsächlichen Standardelementekatalog prüfen und das vorhandene Element wiederverwenden. Fehlende Fähigkeit als `Issue` erfassen und klären. Falls erforderlich, `Environment` und `EnvironmentalCondition` modellieren. |
+| R7, FFFmLV § 3.2.8.3 | Ordnerpfad `Requirements/R7/Requirement Derivation`. Genau ein R7-Planungseintrag pro gespeicherter Anforderungsversion. `DerivedFrom` zeigt von der funktionalen oder nichtfunktionalen Anforderung zu genau einem `OperationalConstraint`. Ein optionales `ToBeRealizedBy` zeigt zu einer `CapabilityConfiguration` oder `ResourceRole`. Für R7-MK08 wird ein Katalogsubjekt als `OperationalArchitecture` oder `OperationalRole` über `Satisfy` mit der Vorgabe verbunden. | Das `Subjekt` der Anforderung muss mit dem vorgesehenen Systemelement übereinstimmen. Satzschablone und Tagged Values nach Require.7/SAMIT fachlich prüfen und im Zielmodell ergänzen. Das Katalogsubjekt und die Rollen des nativen `Satisfy`-Verbinders im Zielmodell prüfen. |
+| Element- und Diagrammkonventionen | Name und Beschreibung für jedes in der Sicht ausgegebene Element. Die Beschreibung wird als Inhalt für EA-Notes angeboten. | Eindeutige Bezeichnungen und Glossar prüfen. Deutsch ist der Regelfall. Den tatsächlichen ADMBw-Diagrammtyp und Diagrammnotizen im Zielwerkzeug kontrollieren. |
+| Weitere FFFmLV- und PBN-Sichten | Der Bericht enthält C1–S1 und R7. | Die im Vorhaben verlangten Sichten und Regeln separat ergänzen. Der ältere PBN-Service-/Systemleitfaden verwendet beispielsweise für R7 auch eine andere Ableitungsquelle. Die PFK-/Require.7-Übergabe hat einen eigenen Liefervertrag. |
+| Austausch | JSON enthält Typen, gerichtete Beziehungen, Befunde und stabile Modellreferenzen. | Natives Modell oder das vereinbarte Austauschformat mit der passenden ADMBw-MDG und einem autorisierten Referenzmodell aufbauen. Im Zielwerkzeug erneut öffnen und Diagrammtypen, Objekt- und Katalogidentitäten, Rollen der Verbindungen, Notes und Tags gegen die Vorgabe vergleichen. |
+
+Die Profilregeln stützen sich auf die Abschnitte 3.2.6.1 und 3.2.8.3 des
+[FFFmLV-Leitfadens 2.0](https://www.bundeswehr.de/resource/blob/5932800/bc0578b2f8c9e9c132bb7dbf8dfc29ad/leitfaden-architekturen-fuer-die-fff-mit-loesungsvorschlag-pbn--data.pdf).
+Die öffentlichen Metamodellbeschreibungen dokumentieren die Verbindungsrollen.
+[ADMBw-Dokumentation 2024.06](https://www.bundeswehr.de/resource/blob/5572728/0a9c0aa01c45a261bd28079b75160bfc/dokumentation-admbw-version-2024-06-en-data.pdf)
+
+Die Sparx-EA-Anleitung beschreibt ein natives QEAX-Projekt. Das konkrete Lieferformat
+ergibt sich aus dem Vorhaben. [Sparx-EA-Anleitung der Bundeswehr](https://www.bundeswehr.de/resource/blob/5570650/237332d2cb398f280a68c45ebdeea384/dokumentation-verwendung-des-admbw-im-sparx-ea--data.pdf)
+
+## Im Architektureditor
+
+1. Bei einer Fähigkeit unter **ADMBw-Elementzuordnung** die GUID des vorhandenen
+   Katalogelements einschließlich geschweifter Klammern und die Katalogfassung
+   erfassen. Bei den Diensten den Stereotyp `ServiceSpecification` und bei den
+   für R7 benötigten Elementen deren ADMBw-Stereotyp auswählen. Für das Subjekt
+   der operationellen Vorgabe die GUID und Fassung des Modellelementekatalogs
+   erfassen.
+2. Die Beziehungen von Fähigkeit und Dienst im Modell fachlich prüfen und
+   akzeptieren. Unter **Planungsinformationen zur Anforderung** das Profil
+   **ADMBw R7 Anforderungsherleitung** verwenden. Den Anforderungstyp, die
+   Element-ID der operationellen Vorgabe, das zugehörige Katalogsubjekt und
+   gegebenenfalls die Element-ID des vorgesehenen Systemelements angeben. Taxonomy hält die genaue Textversion und
+   ihren SHA-256 fest. Bei einer neuen Textversion den R7-Eintrag erneut prüfen
+   und speichern. Importierte R7-Zuordnungen brauchen diese lokale Prüfung auch
+   bei gleichem Text und gleicher Versionsnummer.
+3. Einen Checkpoint erstellen und ihn in der Versionshistorie öffnen. Unter
+   **ADMBw-Abgabe vorbereiten** das Projektkürzel eintragen und bei Bedarf
+   die Ausgangssicht für C1–S1 wählen. **Checkpoint prüfen** zeigt die Befunde
+   direkt an. Der JSON-Download enthält zusätzlich die Modellierungsdaten. Die Sichten zeigen getrennt `CHANGES_REQUIRED` mit Befunden oder
+   `REVIEW_REQUIRED` mit den offenen fachlichen und technischen Prüfungen.
+4. Die Modellierungsdaten im vereinbarten Zielwerkzeug mit den gelieferten
+   Vorlagen abgleichen und die verbleibenden Prüfungen dokumentieren.
+
+Die GUID wird auf Format und Eindeutigkeit im geprüften Modell kontrolliert.
+Die angegebene Katalogfassung und die darin vorhandene GUID müssen im Katalog
+abgeglichen werden. Der Zugriff auf die Kataloge und eine native EA-Prüfung bleiben
+eigenständige Nachweise. Der bestehende Sparx-XMI-Export hat sein eigenes
+Taxonomy-Austauschprofil. [Sparx-Integration](sparx-integration-de.md)
+
+## API
+
+`GET /api/architecture/editor.admbw.json` erwartet `repositoryId`,
+`workspaceScopeKey`, `branch`, den exakten `commit` und `projectCode`. Optional
+beschränkt `viewId` C1–S1 auf die gespeicherte Sicht. R7 prüft die im
+Checkpoint enthaltenen Anforderungen. Die Route setzt die Exportberechtigung und
+Zugriff auf den ausgewählten Git-Kontext voraus.
+
+Für die native Abnahme mit **ADMBw 2026.05** braucht der Austauschadapter das
+Startpaket, die Katalogidentitäten und ein natives Referenzmodell des
+Auftraggebers. Daran müssen die qualifizierten MDG-Stereotype, Diagrammtypen,
+Verbindungsrollen und Pflichtfelder gemessen werden. Der abschließende Importtest
+verwendet die vereinbarte EA-/MDG-Version und das vereinbarte Lieferformat.

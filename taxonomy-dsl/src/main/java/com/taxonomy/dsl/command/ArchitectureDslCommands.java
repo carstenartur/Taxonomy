@@ -1,5 +1,6 @@
 package com.taxonomy.dsl.command;
 
+import com.taxonomy.dsl.admbw.AdmbwFffmlvProfile;
 import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.ast.PropertyAst;
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
@@ -26,7 +27,8 @@ public final class ArchitectureDslCommands {
     }
 
     public static final Set<String> ELEMENT_PROPERTIES = Set.of("title", "description",
-            "x-editor-status", "x-owner", "x-responsible-organization", "x-product-reference", "x-system-reference");
+            "x-editor-status", "x-owner", "x-responsible-organization", "x-product-reference", "x-system-reference",
+            AdmbwFffmlvProfile.TYPE, AdmbwFffmlvProfile.CATALOGUE_GUID, AdmbwFffmlvProfile.CATALOGUE_REFERENCE);
 
     public record Change(String dsl, List<ArchitectureSemanticPatch.BlockChange> changes) {
         public Change { changes = List.copyOf(changes); }
@@ -576,6 +578,10 @@ public final class ArchitectureDslCommands {
         }
         if ((creating || properties.containsKey("title")) && (properties.get("title") == null || properties.get("title").isBlank())) {
             throw problem("REQUIRED_PROPERTY", "title", "Title is required");
+        }
+        String stereotype = properties.get(AdmbwFffmlvProfile.TYPE);
+        if (stereotype != null && !stereotype.isEmpty() && !AdmbwFffmlvProfile.ELEMENT_STEREOTYPES.contains(stereotype)) {
+            throw problem("INVALID_VALUE", AdmbwFffmlvProfile.TYPE, "Choose a supported ADMBw stereotype");
         }
         String status = properties.get("x-editor-status");
         if (status != null && !Set.of("draft", "active", "retired").contains(status)) throw problem("INVALID_STATUS", "x-editor-status", "Choose draft, active or retired");

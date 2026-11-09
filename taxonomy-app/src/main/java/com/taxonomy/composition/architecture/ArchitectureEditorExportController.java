@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
+import com.taxonomy.dsl.admbw.AdmbwFffmlvProfile;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.editor.ArchitectureEditorExportPort;
 import com.taxonomy.editor.ArchitectureEditorExportPort.ExportDocument;
@@ -16,8 +17,10 @@ import com.taxonomy.model.WorkspaceOverlayScope;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.eclipse.jgit.lib.ObjectId;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -53,6 +56,29 @@ public final class ArchitectureEditorExportController {
         this.resolver = Objects.requireNonNull(resolver, "resolver");
         this.svg = Objects.requireNonNull(svg, "svg");
         this.pdf = Objects.requireNonNull(pdf, "pdf");
+    }
+
+    public record AdmbwAssessment(String repositoryId, String workspaceScopeKey, String branch, String commit,
+                                  AdmbwFffmlvProfile.Report assessment) { }
+
+    @GetMapping(value = "/api/architecture/editor.admbw.json", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Prepare ADMBw C1-S1 and R7 from an exact architecture checkpoint",
+            description = "Exports typed authoring data, structural findings and manual reviews for the public FFFmLV 2.0 and ADMBw 2026.05 subset. Requires a reachable Git checkpoint in the authenticated selected context. Optional viewId scopes C1-S1 only. Native EA delivery and acceptance require separate verification.")
+    public ResponseEntity<AdmbwAssessment> admbw(
+            @RequestParam String repositoryId,
+            @RequestParam String workspaceScopeKey,
+            @RequestParam String branch,
+            @RequestParam String commit,
+            @RequestParam String projectCode,
+            @RequestParam(required = false) String viewId) throws IOException {
+        var context = readContext(repositoryId, workspaceScopeKey, branch);
+        var checkpoint = exports.readCheckpoint(context, commit);
+        var assessment = new AdmbwFffmlvProfile().assess(checkpoint.dsl(), projectCode, viewId);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=admbw-assessment.json")
+                .header("X-Content-Type-Options", "nosniff")
+                .body(new AdmbwAssessment(repositoryId, workspaceScopeKey, branch, checkpoint.commit(), assessment));
     }
 
     @GetMapping(value = "/api/architecture/editor.svg", produces = "image/svg+xml")
