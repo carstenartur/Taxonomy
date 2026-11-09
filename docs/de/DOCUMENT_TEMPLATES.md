@@ -52,7 +52,11 @@ weder beim Neustart noch bei einem Softwareupdate überschrieben. Eigene Logos,
 Organisationsangaben und Layoutänderungen bleiben daher erhalten.
 
 Der DOCX-Bewertungsbericht wird tatsächlich aus der jeweils aktuellen Git-Version
-dieser Vorlage erzeugt. Taxonomy verwendet insbesondere:
+dieser Vorlage erzeugt. Testberichte in der Vorlagenhistorie und beim lokalen
+Bearbeiten verwenden die am Link angezeigte Version. Die DOCX-Datei enthält den
+Git-Commit und die Paketprüfsumme dieser Version.
+
+Taxonomy verwendet insbesondere:
 
 ```text
 {{taxonomy.report.title}}

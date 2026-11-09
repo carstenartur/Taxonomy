@@ -2,6 +2,7 @@ package com.taxonomy.templates;
 
 import com.taxonomy.templates.api.TemplateContribution;
 import com.taxonomy.templates.api.DocumentTemplates;
+import com.taxonomy.templates.api.RevisionPinnedTemplateReportPreview;
 
 import com.taxonomy.templates.api.TemplateConflictException;
 import com.taxonomy.templates.api.TemplateDescriptor;
@@ -61,7 +62,7 @@ public final class DocumentTemplateDetailController {
         }
         model.addAttribute("template", descriptor(original));
         model.addAttribute("maxArchiveBytes", OoxmlTemplatePackageCodec.MAX_ARCHIVE_BYTES);
-        model.addAttribute("templatePreviewAvailable", hasPreview(templateId));
+        addPreviewCapabilities(templateId, model);
         return "document-template-local-edit";
     }
 
@@ -77,7 +78,7 @@ public final class DocumentTemplateDetailController {
         TemplateDescriptor descriptor = descriptor(current);
         model.addAttribute("template", descriptor);
         model.addAttribute("history", templates.history(templateId));
-        model.addAttribute("templatePreviewAvailable", hasPreview(templateId));
+        addPreviewCapabilities(templateId, model);
 
         if (from != null && !from.isBlank()) {
             String right = to == null || to.isBlank() ? current.commitId() : to;
@@ -115,7 +116,7 @@ public final class DocumentTemplateDetailController {
             model.addAttribute("restoreConflict", !expectedHead.equals(current.headCommit()));
             return "document-template-restore";
         } catch (TemplateNotFoundException exception) {
-            throw missingRestoreVersion(exception);
+            throw missingTemplateVersion(exception);
         }
     }
 
@@ -147,7 +148,7 @@ public final class DocumentTemplateDetailController {
             response.setStatus(HttpStatus.PRECONDITION_FAILED.value());
             return view;
         } catch (TemplateNotFoundException exception) {
-            throw missingRestoreVersion(exception);
+            throw missingTemplateVersion(exception);
         }
     }
 
@@ -159,21 +160,34 @@ public final class DocumentTemplateDetailController {
         return revision.toLowerCase(java.util.Locale.ROOT);
     }
 
-    private static ResponseStatusException missingRestoreVersion(TemplateNotFoundException cause) {
+    private static ResponseStatusException missingTemplateVersion(TemplateNotFoundException cause) {
         return new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "The requested template version does not exist", cause);
     }
 
     @GetMapping("/admin/document-templates/{templateId}/test.docx")
     @io.swagger.v3.oas.annotations.Operation(summary = "Render a document-template test report",
-            description = "Generates a DOCX preview using the template family's contributed preview and fixed preview data. Template families without a preview are rejected. Returns a no-store attachment; this test report is not evidence of a user analysis.")
+            description = "Generates a no-store DOCX attachment from fixed preview data. An optional full revision selects an immutable template for families that support pinned previews. Omit the revision for the contributed active-template preview.")
     @ApiResponse(responseCode = "200", description = "Render a document-template test report response")
-    public ResponseEntity<byte[]> testReport(@PathVariable String templateId) {
+    public ResponseEntity<byte[]> testReport(@PathVariable String templateId,
+            @RequestParam(required = false) String revision) throws IOException {
         var contribution = contributions.get(templateId);
-        if (!hasPreview(templateId)) {
+        if (contribution == null || contribution.preview() == null) {
             throw new IllegalArgumentException("A generated test report is unavailable for this template family");
         }
-        byte[] docx = contribution.preview().renderPreview();
+        byte[] docx;
+        if (revision == null) {
+            docx = contribution.preview().renderPreview();
+        } else if (contribution.preview() instanceof RevisionPinnedTemplateReportPreview pinned) {
+            try {
+                docx = pinned.renderPreview(templates.download(templateId, canonicalImmutableRevision(revision)));
+            } catch (TemplateNotFoundException exception) {
+                throw missingTemplateVersion(exception);
+            }
+        } else {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "This template family supports only an active-version test report");
+        }
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .contentType(MediaType.parseMediaType(
@@ -186,9 +200,11 @@ public final class DocumentTemplateDetailController {
                 .body(docx);
     }
 
-    private boolean hasPreview(String templateId) {
+    private void addPreviewCapabilities(String templateId, Model model) {
         var contribution = contributions.get(templateId);
-        return contribution != null && contribution.preview() != null;
+        var preview = contribution == null ? null : contribution.preview();
+        model.addAttribute("templatePreviewAvailable", preview != null);
+        model.addAttribute("templatePreviewPinned", preview instanceof RevisionPinnedTemplateReportPreview);
     }
 
     private static TemplateDescriptor descriptor(TemplateFile file) {

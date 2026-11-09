@@ -1,7 +1,9 @@
 package com.taxonomy.reporting.templates;
 
 import com.taxonomy.reporting.render.decision.DecisionRationaleTemplatePreviewService;
+import com.taxonomy.templates.api.RevisionPinnedTemplateReportPreview;
 import com.taxonomy.templates.api.TemplateContribution;
+import com.taxonomy.templates.api.TemplateFile;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,9 +15,18 @@ public class DecisionTemplateConfiguration {
     @Bean
     TemplateContribution decisionRationaleTemplateContribution(DecisionRationaleTemplateContract contract,
             ObjectProvider<DecisionRationaleTemplatePreviewService> previews) {
+        var preview = new RevisionPinnedTemplateReportPreview() {
+            @Override public byte[] renderPreview() {
+                return previews.getObject().renderPreview();
+            }
+
+            @Override public byte[] renderPreview(TemplateFile template) {
+                return previews.getObject().renderPreview(template);
+            }
+        };
         return new TemplateContribution(DecisionRationaleTemplateContract.TEMPLATE_ID,
                 DecisionRationaleTemplateContract.DISPLAY_NAME,
                 () -> new ClassPathResource(DecisionRationaleTemplateContract.DEFAULT_RESOURCE).getInputStream(),
-                contract, true, () -> previews.getObject().renderPreview(), "decision-rationale-template-test.docx");
+                contract, true, preview, "decision-rationale-template-test.docx");
     }
 }
