@@ -165,15 +165,28 @@ final class QeaDatabase {
 
     private List<Row> table(Connection connection, String table, boolean admbw) throws SQLException {
         var result = new ArrayList<Row>();
-        // Native delivery only reads identities and structural fields. Existing notes and tag values remain opaque.
+        // Native delivery retains structural fields and orphan IDs that new rows could otherwise reuse.
         Collection<String> required = admbw ? ADMBW_COLUMNS.get(table) : COLUMNS.get(table);
-        String projection = !admbw ? "*" : switch (table) {
-            case "t_xref" -> "xrefid, name, type, client, CASE WHEN lower(name) = 'stereotypes' THEN description END AS description";
-            case "usys_system" -> "property, CASE WHEN lower(property) = 'projectguid' THEN value END AS value";
-            default -> String.join(", ", required);
+        // table is chosen exclusively from TABLES or ADMBW_TABLES.
+        String from = " FROM \"" + table + "\"";
+        String query = !admbw ? "SELECT *" + from : switch (table) {
+            case "t_xref" -> "SELECT xrefid, name, type, client, CASE WHEN lower(name) = 'stereotypes' THEN description END AS description" + from;
+            case "usys_system" -> "SELECT property, CASE WHEN lower(property) = 'projectguid' THEN value END AS value" + from;
+            case "t_diagramobjects" -> """
+                    SELECT DISTINCT placement.object_id FROM t_diagramobjects placement
+                    WHERE placement.object_id IS NOT NULL AND NOT EXISTS (
+                        SELECT 1 FROM t_object existing WHERE existing.object_id = placement.object_id
+                    )
+                    """;
+            case "t_connectortag" -> """
+                    SELECT DISTINCT tag.elementid FROM t_connectortag tag
+                    WHERE tag.elementid IS NOT NULL AND NOT EXISTS (
+                        SELECT 1 FROM t_connector existing WHERE existing.connector_id = tag.elementid
+                    )
+                    """;
+            default -> "SELECT " + String.join(", ", required) + from;
         };
-        // table is chosen exclusively from TABLES or ADMBW_TABLES; user-supplied identifiers never enter SQL.
-        try (var statement = connection.createStatement(); var found = statement.executeQuery("SELECT " + projection + " FROM \"" + table + "\" LIMIT " + (MAX_ROWS + 1))) {
+        try (var statement = connection.createStatement(); var found = statement.executeQuery(query + " LIMIT " + (MAX_ROWS + 1))) {
             var metadata = found.getMetaData();
             if (metadata.getColumnCount() > 128) throw fail("QEA_LIMIT", "A supported QEA table exceeds 128 columns");
             var columns = new ArrayList<String>();

@@ -134,6 +134,42 @@ class AdmbwQeaExportTest {
         }
     }
 
+    @Test
+    void preservesExistingPlacementsAndTagsBeyondTheNativeReadRowBudget() throws Exception {
+        try (var basis = basis()) {
+            basis.sql("""
+                    WITH RECURSIVE entries(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM entries WHERE n<150)
+                    INSERT INTO t_diagram (Diagram_ID,Package_ID,Name,ea_guid)
+                    SELECT 1000+n,2,'Existing diagram '||n,printf('{50000000-0000-0000-0000-%012d}',1000+n) FROM entries
+                    """);
+            basis.sql("""
+                    WITH RECURSIVE entries(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM entries WHERE n<150)
+                    INSERT INTO t_object (Object_ID,Object_Type,Name,Package_ID,ea_guid)
+                    SELECT 1000+n,'Class','Existing object '||n,2,printf('{30000000-0000-0000-0000-%012d}',1000+n) FROM entries
+                    """);
+            basis.sql("""
+                    INSERT INTO t_diagramobjects (Diagram_ID,Object_ID,Instance_ID)
+                    SELECT d.Diagram_ID,o.Object_ID,ROW_NUMBER() OVER (ORDER BY d.Diagram_ID,o.Object_ID)
+                    FROM t_diagram d CROSS JOIN t_object o WHERE d.Diagram_ID>1000 AND o.Object_ID>1000
+                    """);
+            basis.sql("""
+                    WITH RECURSIVE entries(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM entries WHERE n<?)
+                    INSERT INTO t_connectortag (PropertyID,ElementID,Property,Value)
+                    SELECT n,20,'Existing tag '||n,'Original value' FROM entries
+                    """, QeaDatabase.MAX_ROWS + 1);
+            byte[] original = basis.bytes();
+            var file = new SparxQeaWriterConnector().exportAdmbw(delivery(), QeaFixture.ROOT, original);
+            assertArrayEquals(original, basis.bytes());
+            Path target = Files.write(temp.resolve("delivery-with-existing-references.qea"), file.content());
+            try (var read = DriverManager.getConnection("jdbc:sqlite:" + target)) {
+                assertEquals(List.of("22502"), column(read, "select count(*) from t_diagramobjects where Diagram_ID<=1150"));
+                assertEquals(List.of("6"), column(read, "select count(*) from t_diagramobjects where Diagram_ID>1150"));
+                assertEquals(List.of(Integer.toString(QeaDatabase.MAX_ROWS + 1)), column(read,
+                        "select count(*) from t_connectortag where ElementID=20 and Value='Original value'"));
+            }
+        }
+    }
+
     private QeaFixture basis() throws Exception {
         var fixture = new QeaFixture(temp);
         fixture.sql("ALTER TABLE t_xref ADD COLUMN Visibility TEXT");
