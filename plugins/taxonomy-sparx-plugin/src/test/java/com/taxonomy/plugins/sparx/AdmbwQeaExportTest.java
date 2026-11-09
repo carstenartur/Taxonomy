@@ -103,6 +103,37 @@ class AdmbwQeaExportTest {
         }
     }
 
+    @Test
+    void reservesObjectIdsReferencedByOrphanDiagramPlacements() throws Exception {
+        try (var basis = basis()) {
+            basis.sql("""
+                    INSERT INTO t_diagramobjects
+                    (Diagram_ID,Object_ID,RectTop,RectLeft,RectRight,RectBottom,Sequence,ObjectStyle,Instance_ID)
+                    VALUES (30,101,-20,400,560,-100,2,'',12)
+                    """);
+            var file = new SparxQeaWriterConnector().exportAdmbw(delivery(), QeaFixture.ROOT, basis.bytes());
+            Path target = Files.write(temp.resolve("orphan-placement.qea"), file.content());
+            try (var read = DriverManager.getConnection("jdbc:sqlite:" + target)) {
+                assertEquals(List.of("0"), column(read, "select count(*) from t_object where Object_ID=101"));
+                assertEquals(List.of("101"), column(read, "select Object_ID from t_diagramobjects where Diagram_ID=30 and Object_ID=101"));
+            }
+        }
+    }
+
+    @Test
+    void reservesConnectorIdsReferencedByOrphanConnectorTags() throws Exception {
+        try (var basis = basis()) {
+            basis.sql("INSERT INTO t_connectortag (PropertyID,ElementID,Property,Value,Notes) VALUES (10,21,'Orphan','unrelated','')");
+            var file = new SparxQeaWriterConnector().exportAdmbw(delivery(), QeaFixture.ROOT, basis.bytes());
+            Path target = Files.write(temp.resolve("orphan-connector-tag.qea"), file.content());
+            try (var read = DriverManager.getConnection("jdbc:sqlite:" + target)) {
+                assertEquals(List.of("0"), column(read, "select count(*) from t_connector where Connector_ID=21"));
+                assertEquals(List.of("21|unrelated"), column(read,
+                        "select ElementID || '|' || Value from t_connectortag where Property='Orphan'"));
+            }
+        }
+    }
+
     private QeaFixture basis() throws Exception {
         var fixture = new QeaFixture(temp);
         fixture.sql("ALTER TABLE t_xref ADD COLUMN Visibility TEXT");

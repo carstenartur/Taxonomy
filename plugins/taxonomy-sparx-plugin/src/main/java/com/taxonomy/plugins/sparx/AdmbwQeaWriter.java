@@ -64,6 +64,7 @@ final class AdmbwQeaWriter {
         private final Map<String, List<Row>> stereotypes = new HashMap<>();
         private final Set<String> guids = new HashSet<>();
         private final Set<Long> referencedObjectIds = new HashSet<>();
+        private final Set<Long> referencedConnectorIds = new HashSet<>();
 
         DeliveryCopy(Snapshot basis, QeaWriteDatabase database, UUID namespace) {
             this.basis = basis;
@@ -79,10 +80,12 @@ final class AdmbwQeaWriter {
                 referencedObjectIds.add(row.number("parentid"));
             }
             for (Row row : basis.rows("t_objectproperties")) referencedObjectIds.add(row.number("object_id"));
+            for (Row row : basis.rows("t_diagramobjects")) referencedObjectIds.add(row.number("object_id"));
             for (Row row : basis.rows("t_connector")) {
                 referencedObjectIds.add(row.number("start_object_id"));
                 referencedObjectIds.add(row.number("end_object_id"));
             }
+            for (Row row : basis.rows("t_connectortag")) referencedConnectorIds.add(row.number("elementid"));
             for (Row row : basis.rows("t_xref")) if (row.text("name").equalsIgnoreCase("Stereotypes"))
                 stereotypes.computeIfAbsent(key(row.text("client")), ignored -> new ArrayList<>()).add(row);
             for (String table : List.of("t_package", "t_object", "t_diagram", "t_connector", "t_objectproperties", "t_xref")) {
@@ -123,7 +126,9 @@ final class AdmbwQeaWriter {
                 String type = AdmbwQeaProfile.connectorType(connector, elements.get(connector.client()), elements.get(connector.supplier()));
                 var from = occurrences.get(connector.client());
                 var to = occurrences.get(connector.supplier());
-                long id = database.next("t_connector", "connector_id");
+                long id;
+                do { id = database.next("t_connector", "connector_id"); }
+                while (referencedConnectorIds.contains(id));
                 String guid = guid("connector:" + view.viewpoint() + ":" + id);
                 database.insert("t_connector", Map.of("connector_id", id, "ea_guid", guid, "connector_type", type,
                         "stereotype", connector.stereotype(), "start_object_id", from.objectId(), "end_object_id", to.objectId(),

@@ -29,14 +29,16 @@ final class QeaDatabase {
     private static final List<String> TABLES = List.of("usys_system", "t_package", "t_object", "t_connector",
             "t_diagram", "t_diagramobjects", "t_objectproperties", "t_connectortag", "t_xref");
     private static final List<String> ADMBW_TABLES = List.of("usys_system", "t_package", "t_object",
-            "t_connector", "t_diagram", "t_objectproperties", "t_xref");
+            "t_connector", "t_diagram", "t_diagramobjects", "t_objectproperties", "t_connectortag", "t_xref");
     private static final Map<String, List<String>> ADMBW_COLUMNS = Map.of(
             "usys_system", List.of("property", "value"),
             "t_package", List.of("package_id", "parent_id", "name", "ea_guid"),
             "t_object", List.of("object_id", "object_type", "ea_guid", "parentid", "stereotype"),
             "t_connector", List.of("connector_id", "start_object_id", "end_object_id", "ea_guid"),
             "t_diagram", List.of("diagram_id", "package_id", "name", "ea_guid"),
+            "t_diagramobjects", List.of("object_id"),
             "t_objectproperties", List.of("propertyid", "object_id", "property", "ea_guid"),
+            "t_connectortag", List.of("elementid"),
             "t_xref", List.of("xrefid", "name", "type", "client", "description"));
     private static final Set<String> REQUIRED = Set.of("usys_system", "t_package", "t_object", "t_connector");
     private static final Map<String, Set<String>> COLUMNS = Map.of(
