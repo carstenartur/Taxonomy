@@ -1,5 +1,7 @@
 package com.taxonomy.architecture.controller;
 
+import com.taxonomy.workspace.controller.ExplicitRepositoryReadSelection;
+
 import com.taxonomy.architecture.service.ArchitecturePatternService;
 import com.taxonomy.dto.PatternDetectionView;
 import org.junit.jupiter.api.Test;
@@ -13,14 +15,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PatternSnapshotApiTest {
     @Test void getRequiresExplicitSavedSource() throws Exception {
         var service = mock(ArchitecturePatternService.class);
-        var mvc = MockMvcBuilders.standaloneSetup(new PatternDetectionApiController(service, mock(ObligationRequestContext.class))).build();
+        var mvc = MockMvcBuilders.standaloneSetup(new PatternDetectionApiController(service, mock(ExplicitRepositoryReadSelection.class))).build();
         mvc.perform(get("/api/patterns/detect").param("nodeCode","anchor"))
                 .andExpect(status().isBadRequest());
         verifyNoInteractions(service);
     }
     @Test void postRequiresExplicitSavedSource() throws Exception {
         var service = mock(ArchitecturePatternService.class);
-        var mvc = MockMvcBuilders.standaloneSetup(new PatternDetectionApiController(service, mock(ObligationRequestContext.class))).build();
+        var mvc = MockMvcBuilders.standaloneSetup(new PatternDetectionApiController(service, mock(ExplicitRepositoryReadSelection.class))).build();
         mvc.perform(post("/api/patterns/detect").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"scores\":{\"anchor\":80},\"minScore\":50}"))
                 .andExpect(status().isBadRequest());
@@ -38,7 +40,7 @@ class PatternSnapshotApiTest {
         view.setEvidence(new com.taxonomy.dto.PatternDetectionEvidence("repo", null, "__shared__", "main", commit,
                 "CANONICAL_SNAPSHOT", "GIT_BRANCH_PROJECTION", "READY", "1.0.0", 50, 0, "NOT_EVALUATED_NO_ANCHORS"));
         when(service.detectForNode(context, commit, "anchor")).thenReturn(view);
-        var mvc = MockMvcBuilders.standaloneSetup(new PatternDetectionApiController(service, new ObligationRequestContext(resolver)))
+        var mvc = MockMvcBuilders.standaloneSetup(new PatternDetectionApiController(service, new ExplicitRepositoryReadSelection(resolver)))
                 .setControllerAdvice(new ObligationApiErrors()).build();
         mvc.perform(get("/api/patterns/detect").param("nodeCode","anchor").param("repositoryId","repo")
                 .param("branch","main").param("commitId",commit).param("workspaceId",""))

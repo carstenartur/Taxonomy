@@ -1,5 +1,7 @@
 package com.taxonomy.architecture.controller;
 
+import com.taxonomy.workspace.controller.ExplicitRepositoryReadSelection;
+
 import com.taxonomy.architecture.service.*;
 import com.taxonomy.dto.*;
 import com.taxonomy.workspace.service.*;
@@ -14,7 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class ObligationApiContractTest {
     @Test void profileDiscoveryPublishesVersionAndAlternativeCardinality() throws Exception {
-        var mvc = MockMvcBuilders.standaloneSetup(new GapAnalysisApiController(mock(ArchitectureGapService.class), mock(ObligationRequestContext.class)))
+        var mvc = MockMvcBuilders.standaloneSetup(new GapAnalysisApiController(mock(ArchitectureGapService.class), mock(ExplicitRepositoryReadSelection.class)))
                 .setControllerAdvice(new ObligationApiErrors()).build();
         mvc.perform(get("/api/gap/profiles")).andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value("compatibility"))
@@ -26,7 +28,7 @@ class ObligationApiContractTest {
     @Test void scopedRequestReturnsJudgmentsWithoutLegacyMissingRelationFields() throws Exception {
         var context = RepositoryContext.centralRead("repo", "main", "user");
         String commit = "a".repeat(40);
-        var contexts = mock(ObligationRequestContext.class);
+        var contexts = mock(ExplicitRepositoryReadSelection.class);
         when(contexts.resolve(eq("repo"), eq("main"), eq(commit), any())).thenReturn(context);
         var gaps = mock(ArchitectureGapService.class);
         var view = ArchitectureGapService.compatibilityAssessment("Fixture");
@@ -42,7 +44,7 @@ class ObligationApiContractTest {
                 .andExpect(jsonPath("$.totalGaps").value(0)).andExpect(jsonPath("$.missingRelations").doesNotExist());
     }
     @Test void unavailableEvidenceNeverReturnsAnEmptySuccessfulAssessment() throws Exception {
-        var contexts = mock(ObligationRequestContext.class);
+        var contexts = mock(ExplicitRepositoryReadSelection.class);
         var context = RepositoryContext.centralRead("repo", "main", "user");
         when(contexts.resolve(anyString(), anyString(), anyString(), any())).thenReturn(context);
         var gaps = mock(ArchitectureGapService.class);

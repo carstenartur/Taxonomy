@@ -1,4 +1,4 @@
-package com.taxonomy.architecture.controller;
+package com.taxonomy.workspace.controller;
 
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -11,9 +11,9 @@ import java.util.Objects;
 
 /** Requires explicit selection and reuses the application's authorized read resolver. */
 @Component
-public class ObligationRequestContext {
+public class ExplicitRepositoryReadSelection {
     private final WorkspaceResolver resolver;
-    public ObligationRequestContext(WorkspaceResolver resolver) { this.resolver = resolver; }
+    public ExplicitRepositoryReadSelection(WorkspaceResolver resolver) { this.resolver = resolver; }
     public RepositoryContext resolve(String repositoryId, String branch, String commitId, HttpServletRequest request) {
         if (repositoryId == null || repositoryId.isBlank() || branch == null || branch.isBlank())
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "repositoryId and branch must be explicit");

@@ -47,7 +47,7 @@ class PortableKnowledgeReferencesTest {
         refs.encoded(record, "recommendationPayload");
         refs.encoded(record, "gapAnalysisPayload");
         // No scores, tree or unrelated record supplies any of these four element identities.
-        assertThat(selectedCodes(refs, java.util.Set.of("FIXTURE-ACCEPTED", "FIXTURE-NESTED", "FIXTURE-JUDGMENT")))
+        assertThat(selectedCodes(refs, java.util.Set.of("FIXTURE-ACCEPTED", "FIXTURE-NESTED", "FIXTURE-JUDGMENT", "BP", "BR", "CR")))
                 .containsExactlyInAnyOrder("FIXTURE-ACCEPTED", "FIXTURE-MATCHED", "FIXTURE-NESTED",
                 "FIXTURE-JUDGMENT", "BP", "BR", "CR");
     }
@@ -65,7 +65,7 @@ class PortableKnowledgeReferencesTest {
         record.put("analysisPayload", com.taxonomy.exchange.backup.PortableJsonPayloads.pack(
                 PortableRows.json().writeValueAsString(java.util.Map.of("copilot", copilot)), 24_000_000));
         var refs = new PortableKnowledgeReferences(); refs.encoded(record, "analysisPayload");
-        assertThat(selectedCodes(refs, java.util.Set.of("FIXTURE-COPILOT", "FIXTURE-COPILOT-GAP")))
+        assertThat(selectedCodes(refs, java.util.Set.of("FIXTURE-COPILOT", "FIXTURE-COPILOT-GAP", "BP", "BR", "CR")))
                 .containsExactlyInAnyOrder("FIXTURE-COPILOT", "FIXTURE-COPILOT-GAP", "BP", "BR", "CR");
     }
 
@@ -118,7 +118,50 @@ class PortableKnowledgeReferencesTest {
                 .containsExactlyInAnyOrder("FIXTURE-ACCEPTED", "FIXTURE-MATCHED", "FIXTURE-PROPOSED", "BP", "BR", "CR");
         // Missing mandatory catalogue dependencies remain selected for strict contributor validation.
         assertThat(selectedCodes(refs, java.util.Set.of()))
-                .containsExactlyInAnyOrder("FIXTURE-MATCHED", "FIXTURE-PROPOSED", "BP", "BR", "CR");
+                .containsExactlyInAnyOrder("FIXTURE-MATCHED", "FIXTURE-PROPOSED", "BR", "CR");
+    }
+
+    @Test void modelTypeRootsRequireExactCatalogueMembership() throws Exception {
+        String systemRoot = com.taxonomy.dsl.model.TaxonomyRootTypes.rootFor("System");
+        String componentRoot = com.taxonomy.dsl.model.TaxonomyRootTypes.rootFor("Component");
+        var recommendation = new com.taxonomy.dto.ArchitectureRecommendation();
+        recommendation.setAcceptedElements(java.util.List.of(
+                new com.taxonomy.dto.RecommendedElement("system", "System", systemRoot, 0, "Canonical member"),
+                new com.taxonomy.dto.RecommendedElement("component", "Component", componentRoot, 0, "Canonical member")));
+        recommendation.setMatchedElements(java.util.List.of(new com.taxonomy.dto.RecommendedElement(
+                "FIXTURE-MATCHED", "Catalogue match", "CR", 90, "Match")));
+        recommendation.setProposedElements(java.util.List.of(new com.taxonomy.dto.RecommendedElement(
+                "FIXTURE-PROPOSED", "Catalogue proposal", "BP", 0, "Proposal")));
+        var gap = new com.taxonomy.dto.GapAnalysisView();
+        gap.setJudgments(java.util.List.of(new com.taxonomy.dto.ObligationJudgment("fixture-model-rule", "system", systemRoot,
+                "RELATED_TO", java.util.Set.of(componentRoot, "BR"), 1, null, 0,
+                com.taxonomy.dto.ObligationProfile.Severity.WARNING,
+                com.taxonomy.dto.ObligationJudgment.Status.INCONCLUSIVE, "Authored model obligation")));
+        recommendation.setGapAnalysis(gap);
+        var record = PortableRows.json().createObjectNode();
+        record.put("recommendationPayload", PortableRows.json().writeValueAsString(recommendation));
+        var refs = new PortableKnowledgeReferences(); refs.encoded(record, "recommendationPayload");
+        assertThat(selectedCodes(refs, java.util.Set.of("FIXTURE-MATCHED", "FIXTURE-PROPOSED", "CR", "BP", "BR")))
+                .containsExactlyInAnyOrder("FIXTURE-MATCHED", "FIXTURE-PROPOSED", "CR", "BP", "BR");
+        // Membership evidence, rather than a hardcoded exclusion of model root names, decides inclusion.
+        assertThat(selectedCodes(refs, java.util.Set.of(systemRoot, componentRoot, "BR")))
+                .containsExactlyInAnyOrder("FIXTURE-MATCHED", "FIXTURE-PROPOSED", "CR", "BP", "BR", systemRoot, componentRoot);
+        // Catalogue-derived roots remain mandatory even if their rows are absent.
+        assertThat(selectedCodes(refs, java.util.Set.of()))
+                .containsExactlyInAnyOrder("FIXTURE-MATCHED", "FIXTURE-PROPOSED", "CR", "BP");
+    }
+
+    @Test void catalogueMembershipLookupFailuresPropagate() throws Exception {
+        var recommendation = new com.taxonomy.dto.ArchitectureRecommendation();
+        recommendation.setAcceptedElements(java.util.List.of(new com.taxonomy.dto.RecommendedElement(
+                "system", "System", com.taxonomy.dsl.model.TaxonomyRootTypes.rootFor("System"), 0, "Canonical member")));
+        var refs = new PortableKnowledgeReferences(); refs.payload(PortableRows.json().valueToTree(recommendation));
+        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                "jdbc:hsqldb:mem:missing-catalogue-" + java.util.UUID.randomUUID(), "sa", ""));
+        try {
+            assertThatThrownBy(() -> ProductionCurrentBackupSource.resolveKnowledgeReferences(refs, jdbc, () -> {}))
+                    .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        } finally { jdbc.execute("shutdown"); }
     }
 
     private static java.util.Set<String> selectedCodes(PortableKnowledgeReferences refs, java.util.Set<String> catalogue) throws Exception {

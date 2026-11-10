@@ -1,9 +1,9 @@
 package com.taxonomy.architecture.controller;
 
+import com.taxonomy.workspace.controller.ExplicitRepositoryReadSelection;
+
 import com.taxonomy.dto.ApqcHierarchyView;
 import com.taxonomy.workspace.service.RepositoryContext;
-import com.taxonomy.workspace.service.WorkspaceResolver;
-import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceDslReadPort;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.server.ResponseStatusException;
@@ -46,15 +46,15 @@ import java.util.*;
 @Tag(name = "Graph Queries", description = "Explicit authorized repository/workspace/branch/commit graph snapshots")
 public class GraphQueryApiController {
 
-    private final WorkspaceResolver workspaceResolver;
+    private final ExplicitRepositoryReadSelection contexts;
     private final ArchitectureGraphQueryService graphQueryService;
     private final EnrichedImpactService enrichedImpactService;
     private final ApqcHierarchyService apqcHierarchyService;
 
     public GraphQueryApiController(ArchitectureGraphQueryService graphQueryService,
                                    EnrichedImpactService enrichedImpactService,
-                                   ApqcHierarchyService apqcHierarchyService, WorkspaceResolver workspaceResolver) {
-        this.workspaceResolver = workspaceResolver;
+                                   ApqcHierarchyService apqcHierarchyService, ExplicitRepositoryReadSelection contexts) {
+        this.contexts = contexts;
         this.graphQueryService = graphQueryService;
         this.enrichedImpactService = enrichedImpactService;
         this.apqcHierarchyService = apqcHierarchyService;
@@ -155,17 +155,8 @@ public class GraphQueryApiController {
         return ResponseEntity.ok(apqcHierarchyService.buildHierarchy(selected(request), commit(request)));
     }
     private RepositoryContext selected(HttpServletRequest request) {
-        String workspace = WorkspaceContextResolver.requestedWorkspaceId(request);
-        String repository = request.getParameter("repositoryId");
-        String branch = request.getParameter("branch");
-        if (workspace == null || repository == null || repository.isBlank() || branch == null || branch.isBlank())
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Explicit repositoryId, workspaceId and branch are required");
-        commit(request);
-        RepositoryContext context = workspaceResolver.resolveCurrentRepositoryContextForRead();
-        if (!repository.equals(context.repositoryId()) || !branch.equals(context.branch())
-                || !workspace.equals(Objects.toString(context.workspaceId(), "")))
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Selected graph context changed");
-        return context;
+        return contexts.resolve(request.getParameter("repositoryId"), request.getParameter("branch"),
+                request.getParameter("commitId"), request);
     }
 
     private String commit(HttpServletRequest request) {
@@ -175,8 +166,7 @@ public class GraphQueryApiController {
         }
     }
 
-    @ExceptionHandler({com.taxonomy.relations.service.RelationProjectionReadService.RelationProjectionUnavailableException.class,
-            IllegalStateException.class})
+    @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, String>> unavailable(IllegalStateException error) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("status", "UNAVAILABLE", "message", error.getMessage()));
     }

@@ -318,13 +318,21 @@ class CompleteCopilotSessionIT {
         String visibleResult = driver.findElement(By.id("snapshotDetail")).getText();
         assertThat(visibleResult)
                 .contains("Copilot result overview")
-                .contains("Open compatibility checks")
+                .contains("Obligation assessment")
+                .contains("No obligations were evaluated; this is not a completeness claim.")
                 .contains("Mean retained relevance")
                 .contains("Assessment matches")
                 .contains("Detected patterns")
                 .contains("Recommendation")
                 .doesNotContain("missingRelations")
                 .doesNotContain("businessText");
+
+        assertThat(driver.findElement(By.id("gapResultSection")).getText())
+                .contains("compatibility")
+                .contains("No obligations were evaluated")
+                .doesNotContain("Open compatibility checks");
+        assertThat(driver.findElements(By.cssSelector("#gapResultSection .text-bg-success")))
+                .isEmpty();
 
         List<WebElement> findingDetails = driver.findElements(
                 By.cssSelector("#snapshotDetail details.portfolio-finding-details"));

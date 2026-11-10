@@ -1,9 +1,15 @@
 package com.taxonomy;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockServletContext;
+import org.thymeleaf.context.WebContext;
+import org.thymeleaf.spring6.SpringTemplateEngine;
+import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
+import org.thymeleaf.web.servlet.JakartaServletWebApplication;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -11,12 +17,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class OfflineWebAssetsTest {
 
     @Test
-    void indexUsesOnlyPackagedBrowserLibraries() throws IOException {
-        String html;
-        try (var stream = getClass().getResourceAsStream("/templates/index.html")) {
-            assertThat(stream).as("index.html must be available on the classpath").isNotNull();
-            html = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-        }
+    void indexUsesOnlyPackagedBrowserLibraries() {
+        String html = renderIndex();
 
         assertThat(html)
                 .doesNotContain("cdn.jsdelivr.net")
@@ -27,7 +29,9 @@ class OfflineWebAssetsTest {
                 .contains("/webjars/d3/7.9.0/dist/d3.min.js")
                 .contains("/webjars/jspdf/4.2.1/dist/jspdf.umd.min.js")
                 .contains("/webjars/svg2pdf.js/2.2.0/dist/svg2pdf.umd.min.js")
-                .contains("/css/taxonomy-ergonomics.css");
+                .contains("/css/taxonomy-ergonomics.css")
+                .containsOnlyOnce("src=\"/webjars/d3/7.9.0/dist/d3.min.js\"")
+                .doesNotContain("th:replace", "<th:block");
     }
 
     @Test
@@ -43,5 +47,23 @@ class OfflineWebAssetsTest {
         assertThat(getClass().getResource(path))
                 .as("versioned browser asset %s must be present in the resolved WebJar", path)
                 .isNotNull();
+    }
+
+    private String renderIndex() {
+        assertThat(getClass().getResource("/templates/index.html"))
+                .as("index.html must be available on the classpath").isNotNull();
+        var resolver = new ClassLoaderTemplateResolver();
+        resolver.setPrefix("templates/");
+        resolver.setSuffix(".html");
+        resolver.setCharacterEncoding("UTF-8");
+        resolver.setCacheable(false);
+        var engine = new SpringTemplateEngine();
+        engine.setTemplateResolver(resolver);
+        var servlet = new MockServletContext();
+        var request = new MockHttpServletRequest(servlet);
+        request.setRequestURI("/");
+        var exchange = JakartaServletWebApplication.buildApplication(servlet)
+                .buildExchange(request, new MockHttpServletResponse());
+        return engine.process("index", new WebContext(exchange, Locale.ENGLISH));
     }
 }

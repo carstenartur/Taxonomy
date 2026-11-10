@@ -1,5 +1,7 @@
 package com.taxonomy.architecture.controller;
 
+import com.taxonomy.workspace.controller.ExplicitRepositoryReadSelection;
+
 import com.taxonomy.dto.ApqcCoverageResult;
 import com.taxonomy.dto.GapAnalysisView;
 import com.taxonomy.architecture.service.ArchitectureGapService;
@@ -25,10 +27,12 @@ public class GapAnalysisApiController {
 
     private final ArchitectureGapService gapService;
 
-    private final ObligationRequestContext contexts;
-    public GapAnalysisApiController(ArchitectureGapService gapService, ObligationRequestContext contexts) {
+    private final ExplicitRepositoryReadSelection contexts;
+    public GapAnalysisApiController(ArchitectureGapService gapService, ExplicitRepositoryReadSelection contexts) {
         this.gapService = gapService; this.contexts = contexts;
     }
+    @Operation(summary = "List obligation profiles",
+            description = "Lists the supported profile identifiers, versions and explicit obligations for scoped gap assessments and recommendations. Selecting a profile does not assert evidence completeness or assess a model.")
     @GetMapping("/profiles")
     public java.util.List<com.taxonomy.dto.ObligationProfile> profiles() {
         return com.taxonomy.architecture.service.ObligationProfiles.all();

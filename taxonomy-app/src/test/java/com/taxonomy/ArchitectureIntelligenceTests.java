@@ -91,12 +91,39 @@ class ArchitectureIntelligenceTests extends GraphSnapshotFixtureSupport {
     }
 
     @Test
-    void gapAnalysisWithNullScoresReturnsEmpty() throws Exception {
+    void gapAnalysisRejectsUnscopedNullScoreBody() throws Exception {
         mockMvc.perform(post("/api/gap/analyze")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scores\":null,\"businessText\":\"test\",\"minScore\":50}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void gapAssessmentWithoutScoresUsesAcceptedSelectedModel() throws Exception {
+        graphElement("CR", "CoreService", Map.of());
+        graphElement("BP", "Process", Map.of());
+        graphRelation("CR", "BP", com.taxonomy.model.RelationType.SUPPORTS,
+                "Authored support", "selected model fixture");
+        mockMvc.perform(graphRequest(post("/api/gap/analyze"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"profileId":"service-support","profileVersion":"1.0.0",
+                                 "evidenceCompleteness":"COMPLETE","businessText":"test"}
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalAnchors").value(0));
+                .andExpect(jsonPath("$.repositoryId").value(graphContext.repositoryId()))
+                .andExpect(jsonPath("$.workspaceScopeKey").value("__shared__"))
+                .andExpect(jsonPath("$.branch").value(graphContext.branch()))
+                .andExpect(jsonPath("$.commitId").value(graphCommit))
+                .andExpect(jsonPath("$.profileId").value("service-support"))
+                .andExpect(jsonPath("$.profileVersion").value("1.0.0"))
+                .andExpect(jsonPath("$.evidenceAuthority").value("CANONICAL_SNAPSHOT"))
+                .andExpect(jsonPath("$.evidenceCompleteness").value("COMPLETE"))
+                .andExpect(jsonPath("$.totalAnchors").value(2))
+                .andExpect(jsonPath("$.judgments.length()").value(1))
+                .andExpect(jsonPath("$.judgments[0].ruleId").value("core-service-support"))
+                .andExpect(jsonPath("$.judgments[0].status").value("SATISFIED"))
+                .andExpect(jsonPath("$.judgments[0].observedCount").value(1));
     }
 
     // ── Pattern Detection Tests ───────────────────────────────────────────────

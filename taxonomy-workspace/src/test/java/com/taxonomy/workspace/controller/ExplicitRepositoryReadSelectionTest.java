@@ -1,4 +1,4 @@
-package com.taxonomy.architecture.controller;
+package com.taxonomy.workspace.controller;
 
 import com.taxonomy.workspace.service.*;
 import org.junit.jupiter.api.Test;
@@ -7,9 +7,9 @@ import org.springframework.web.server.ResponseStatusException;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-class ObligationRequestContextTest {
+class ExplicitRepositoryReadSelectionTest {
     private final WorkspaceResolver resolver = mock(WorkspaceResolver.class);
-    private final ObligationRequestContext contexts = new ObligationRequestContext(resolver);
+    private final ExplicitRepositoryReadSelection contexts = new ExplicitRepositoryReadSelection(resolver);
     @Test void explicitSelectedTupleUsesAuthorizedReadResolver() {
         var selected = RepositoryContext.centralRead("repo", "main", "user");
         when(resolver.resolveCurrentRepositoryContextForRead()).thenReturn(selected);

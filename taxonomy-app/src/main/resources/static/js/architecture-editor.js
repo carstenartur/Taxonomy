@@ -401,9 +401,14 @@
     el('editorRelationForm').append(relationTargets);
     el('editorRelationTarget').setAttribute('list', relationTargets.id);
 
+    function taxonomyRoot(type) {
+        var roots = view.schema.typeRoots || {};
+        return Object.prototype.hasOwnProperty.call(roots, type) ? roots[type]
+            : Object.values(roots).includes(type) ? type : null;
+    }
     function selectedRelationDomain(type) {
         var source = selectedElement();
-        var rootType = source && view.schema.typeRoots && view.schema.typeRoots[source.type];
+        var rootType = source && taxonomyRoot(source.type);
         var declaration = view && view.schema.relationDomains && view.schema.relationDomains[type];
         return declaration && (declaration.sourceDomains && declaration.sourceDomains[rootType] || declaration.defaultDomain)
             || {state:'FORBIDDEN', roots:[]};
@@ -413,7 +418,7 @@
         if (!selectedElement() || domain.state === 'FORBIDDEN') return [];
         return view.model.elements.filter(function (target) {
             return domain.state === 'UNRESTRICTED' || domain.state === 'RESTRICTED'
-                && Array.isArray(domain.roots) && domain.roots.includes(view.schema.typeRoots && view.schema.typeRoots[target.type]);
+                && Array.isArray(domain.roots) && domain.roots.includes(taxonomyRoot(target.type));
         });
     }
     function validateRelationTarget() {

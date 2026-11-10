@@ -63,6 +63,30 @@ and exchange verification does not express every supported editing operation.
   do not copy an unqualified parallel branch wholesale. PR 1440 is integrated
   through main commit `47d94664f`; PR 1438 remains independently owned.
 
+## Reviewed module boundaries
+
+Architecture assessments continue to depend on the existing knowledge and
+workspace modules. Controllers use the workspace-owned HTTP component
+`ExplicitRepositoryReadSelection` for explicit, authorized source selection.
+Services receive `RepositoryContext`, the existing
+read-only `WorkspaceDslReadPort`, and detached relation snapshots. The bound
+repository reader remains available for the final expected-head check, so an
+assessment cannot silently switch to a newly resolved context.
+
+This moves selected-model gap, graph and pattern answers away from global
+catalogue entities and repositories. Impact enrichment reads requirement mappings
+from the selected model. The exact dependency inventory records these removals
+alongside the individually reviewed context, read-port and snapshot dependencies.
+Its classifiers, assertions and module-direction checks remain authoritative.
+The graph controller also reuses the shared request selector and its existing
+exception superclass handler, removing redundant dependencies.
+
+Portable backup composition consumes the existing knowledge contributor's
+selection value. Exact catalogue membership decides whether a model identity or
+type root contributes a catalogue dependency; catalogue-derived references remain
+mandatory. This uses the existing captured backup boundary and lookup failure
+handling.
+
 ## Sources
 
 - [EAM Toolfamilie](https://github.com/Mitchel85/EAM-Toolfamilie), initially reviewed

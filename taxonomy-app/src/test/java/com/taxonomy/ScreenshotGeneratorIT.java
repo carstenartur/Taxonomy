@@ -30,6 +30,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -91,6 +93,9 @@ class ScreenshotGeneratorIT {
 
     /** Actual persisted example version used by the DSL history capture. */
     private static String draftFixtureCommitId;
+
+    private static String graphFixtureCommitId;
+    private static String graphFixtureScope;
 
     /** Guard flag: {@link #buildRichGitHistory()} runs at most once per test class execution. */
     private static boolean richGitHistoryBuilt;
@@ -559,16 +564,21 @@ class ScreenshotGeneratorIT {
     }
 
     private Map<?, ?> requestFixture(String url, String method, String contentType, String body) {
+        return requestFixture(url, method, contentType, body, Map.of());
+    }
+
+    private Map<?, ?> requestFixture(String url, String method, String contentType, String body,
+                                     Map<String, String> headers) {
         Object result = ((JavascriptExecutor) driver).executeAsyncScript(
-                "var url=arguments[0], method=arguments[1], type=arguments[2], body=arguments[3], done=arguments[4];" +
-                "var options={method:method};" +
-                "if (body !== null) { options.headers={'Content-Type':type}; options.body=body; }" +
+                "var url=arguments[0], method=arguments[1], type=arguments[2], body=arguments[3], headers=arguments[4], done=arguments[5];" +
+                "var options={method:method,headers:headers};" +
+                "if (body !== null) { options.headers['Content-Type']=type; options.body=body; }" +
                 "fetch(url, options).then(async function(response) {" +
                 "  var text=await response.text();" +
                 "  if (!response.ok) throw new Error('HTTP '+response.status+': '+text);" +
                 "  done({data:JSON.parse(text)});" +
                 "}).catch(function(error) { done({error:String(error)}); });",
-                url, method, contentType, body);
+                url, method, contentType, body, headers);
         Assertions.assertInstanceOf(Map.class, result, "Fixture request returned no response: " + url);
         Map<?, ?> response = (Map<?, ?>) result;
         Assertions.assertNull(response.get("error"), "Fixture request failed: " + url + " " + response);
@@ -1252,37 +1262,114 @@ class ScreenshotGeneratorIT {
         saveScreenshot("19-stale-results-warning.png");
     }
 
+    /** Build an accepted canonical graph from real catalogue identities, separate from history examples. */
+    private void selectSavedGraphModel(String language) {
+        if (graphFixtureCommitId == null) {
+            buildGitHistory();
+            Object catalogue = ((JavascriptExecutor) driver).executeAsyncScript("""
+                    const done=arguments[arguments.length-1];
+                    fetch('/api/taxonomy').then(async response=>{
+                        if(!response.ok)throw new Error('Catalogue HTTP '+response.status);
+                        const selected={};
+                        function visit(nodes){for(const node of nodes){
+                            if(['CP-1023','CR-1047','BP-1327','BP-1000'].includes(node.code))
+                                selected[node.code]=node.nameEn;
+                            visit(node.children||[]);
+                        }}
+                        visit(await response.json());done(selected);
+                    }).catch(error=>done({error:String(error)}));
+                    """);
+            Assertions.assertInstanceOf(Map.class, catalogue);
+            Map<?, ?> names = (Map<?, ?>) catalogue;
+            Assertions.assertNull(names.get("error"), "Read real catalogue identities: " + names);
+            var types = new LinkedHashMap<String, String>();
+            types.put("CP-1023", "Capability"); types.put("CR-1047", "CoreService");
+            types.put("BP-1327", "Process"); types.put("BP-1000", "Process");
+            StringBuilder dsl = new StringBuilder("meta { language: \"taxdsl\"; version: \"2.0\"; namespace: \"default\"; }\n");
+            types.forEach((code, type) -> {
+                Assertions.assertInstanceOf(String.class, names.get(code), "Catalogue node must exist: " + code);
+                dsl.append("element ").append(code).append(" type ").append(type)
+                        .append(" { title: ").append(JSON.writeValueAsString(names.get(code))).append("; }\n");
+            });
+            dsl.append("relation CP-1023 REALIZES CR-1047 { status: accepted; }\n")
+                    .append("relation CR-1047 SUPPORTS BP-1327 { status: accepted; }\n")
+                    .append("relation CR-1047 SUPPORTS BP-1000 { status: accepted; }\n");
+            createBranch("screenshot-graph", "draft");
+            String commit = commitAndWait("screenshot-graph", "Accepted+catalogue+graph+example", dsl.toString());
+            String scope = "workspaceId=&workspaceScopeKey=__shared__&branch=screenshot-graph";
+            Map<?, ?> initial = requestFixture("/api/architecture/relations/projection/readiness?" + scope,
+                    "GET", null, null);
+            Assertions.assertInstanceOf(String.class, initial.get("repositoryId"));
+            scope += "&repositoryId=" + URLEncoder.encode((String) initial.get("repositoryId"), StandardCharsets.UTF_8);
+            Map<?, ?> projection = requestFixture("/api/architecture/relations/projection/rebuild?" + scope,
+                    "POST", null, null, Map.of("If-Match", "\"" + commit + "\""));
+            Assertions.assertEquals("READY", projection.get("readinessState"));
+            Assertions.assertEquals(commit, projection.get("currentHeadCommit"));
+            Assertions.assertEquals(commit, projection.get("projectedCommit"));
+            Assertions.assertEquals(3, ((Number) projection.get("relationCount")).intValue());
+            graphFixtureScope = scope; graphFixtureCommitId = commit;
+        }
+        // Open the actual saved version in the visible working editor, with exact source pins.
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/?architectureSource=working&" + graphFixtureScope
+                + "&commit=" + graphFixtureCommitId + "&lang=" + language + "#architecture");
+        wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureWorkingSource")));
+        wait(30).until(ExpectedConditions.textToBePresentInElementLocated(
+                By.id("applicationContextSummaryStand"), graphFixtureCommitId.substring(0, 12)));
+        Assertions.assertEquals("working", driver.findElement(By.id("architectureSource")).getAttribute("value"));
+    }
+
+    private void assertSavedGraphEvidence() {
+        WebElement evidence = driver.findElement(By.cssSelector("#graphResultsContent .graph-evidence"));
+        Assertions.assertTrue(evidence.isDisplayed());
+        Assertions.assertTrue(evidence.getText().contains(graphFixtureCommitId));
+        Assertions.assertTrue(evidence.getText().contains("screenshot-graph"));
+        Assertions.assertTrue(driver.findElement(By.id("graphResultsContent")).getText().contains("CR-1047"),
+                "The graph must render the saved accepted relation, not an empty global fallback");
+    }
+
     @Test
     @Order(21)
     void captureGraphExplorerUpstream() throws IOException {
-        navigateToTab("graph");
-        WebElement input = driver.findElement(By.id("graphNodeInput"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
-        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
-        js("arguments[0].value = 'BP-1327'; arguments[0].dispatchEvent(new Event('input'));", input);
-        WebElement upstreamBtn = driver.findElement(By.id("graphUpstreamBtn"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", upstreamBtn);
-        js("arguments[0].click();", upstreamBtn);
+        try {
+            selectSavedGraphModel("en");
+            navigateToTab("graph");
+            WebElement input = driver.findElement(By.id("graphNodeInput"));
+            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
+            js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
+            js("arguments[0].value = 'BP-1327'; arguments[0].dispatchEvent(new Event('input'));", input);
+            WebElement upstreamBtn = driver.findElement(By.id("graphUpstreamBtn"));
+            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", upstreamBtn);
+            js("arguments[0].click();", upstreamBtn);
 
-        waitForResult("graphResultsContent", "#graphViewTable", 30);
-        saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "21-graph-explorer-upstream.png");
+            waitForResult("graphResultsContent", "#graphViewTable", 30);
+            assertSavedGraphEvidence();
+            saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "21-graph-explorer-upstream.png");
+        } finally {
+            resetPageState();
+        }
     }
 
     @Test
     @Order(22)
     void captureGraphExplorerFailure() throws IOException {
-        navigateToTab("graph");
-        WebElement input = driver.findElement(By.id("graphNodeInput"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
-        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
-        js("arguments[0].value = 'BP-1327'; arguments[0].dispatchEvent(new Event('input'));", input);
+        try {
+            selectSavedGraphModel("en");
+            navigateToTab("graph");
+            WebElement input = driver.findElement(By.id("graphNodeInput"));
+            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
+            js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
+            js("arguments[0].value = 'BP-1327'; arguments[0].dispatchEvent(new Event('input'));", input);
 
-        WebElement failureBtn = driver.findElement(By.id("graphFailureBtn"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", failureBtn);
-        js("arguments[0].click();", failureBtn);
+            WebElement failureBtn = driver.findElement(By.id("graphFailureBtn"));
+            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", failureBtn);
+            js("arguments[0].click();", failureBtn);
 
-        waitForResult("graphResultsContent", "#graphViewTable", 30);
-        saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "22-graph-explorer-failure.png");
+            waitForResult("graphResultsContent", "#graphViewTable", 30);
+            assertSavedGraphEvidence();
+            saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "22-graph-explorer-failure.png");
+        } finally {
+            resetPageState();
+        }
     }
 
     @Test
@@ -1941,6 +2028,12 @@ class ScreenshotGeneratorIT {
     void captureCurrentGraphEntry() throws IOException {
         resetPageState("de");
         try {
+            selectSavedGraphModel("de");
+            navigateToTab("analyze");
+            // Catalogue navigation uses the same explicit saved-model action available to users.
+            safeClick(By.id("gapSelectModel"));
+            wait(10).until(ExpectedConditions.textToBePresentInElementLocated(
+                    By.id("gapModelSource"), graphFixtureCommitId.substring(0, 12)));
             safeClick(By.id("viewList"));
             wait(10).until(ExpectedConditions.attributeToBe(
                     By.id("taxonomyTree"), "data-view-rendered", "list"));
@@ -1961,7 +2054,7 @@ class ScreenshotGeneratorIT {
             waitForResult("graphResultsContent", "#graphViewTable", 30);
             Assertions.assertEquals("BP-1000", driver.findElement(By.id("graphNodeInput")).getAttribute("value"));
             wait(5).until(d -> d.findElement(By.id("graphNodeInput")).equals(d.switchTo().activeElement()));
-            // Retain the real catalogue response, including its empty state when no neighbours exist.
+            assertSavedGraphEvidence();
             saveScreenshot("graph-entry-current-de.png");
         } finally {
             resetPageState();

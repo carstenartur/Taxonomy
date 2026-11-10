@@ -357,10 +357,11 @@ public class RelationProjectionReadService {
         }
     }
 
+    /** Detached relation identities and the source revision captured by the authorized read. */
     public record IdentitySnapshot(
             ReadModel readModel,
             ReadinessState readinessState,
-            String authoritativeCommitId,
+            String commitId,
             Set<RelationIdentity> identities) {
         public IdentitySnapshot {
             readModel = Objects.requireNonNull(readModel, "readModel");

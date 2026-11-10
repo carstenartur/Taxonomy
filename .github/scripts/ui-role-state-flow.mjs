@@ -705,14 +705,34 @@ export async function runRoleStateFlow({
   await page.keyboard.press('Alt+Shift+O');
   passed('expert keyboard access to primary task and operational context');
 
-  const overflow = await page.evaluate(() => ({
-    scrollWidth: document.documentElement.scrollWidth,
-    clientWidth: document.documentElement.clientWidth,
-    forcedColors: matchMedia('(forced-colors: active)').matches,
-    reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches
-  }));
+  const overflow = await page.evaluate(() => {
+    const clientWidth = document.documentElement.clientWidth;
+    const overflowingElements = [...document.querySelectorAll('body *')]
+      .filter(element => element.getClientRects().length)
+      .map(element => {
+        const bounds = element.getBoundingClientRect();
+        return {
+          element: element.tagName.toLowerCase()
+            + (element.id ? `#${element.id}` : '')
+            + [...element.classList].slice(0, 3).map(name => `.${name}`).join(''),
+          left: Math.round(bounds.left), right: Math.round(bounds.right),
+          width: Math.round(bounds.width)
+        };
+      })
+      .filter(bounds => bounds.width > 0 && bounds.left < clientWidth
+        && bounds.right > clientWidth + 2)
+      .slice(0, 12);
+    return {
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth,
+      overflowingElements,
+      forcedColors: matchMedia('(forced-colors: active)').matches,
+      reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches
+    };
+  });
   assert(overflow.scrollWidth <= overflow.clientWidth + 2,
-    `Viewport reflow failed at ${zoom}x: ${overflow.scrollWidth} > ${overflow.clientWidth}`);
+    `Viewport reflow failed at ${zoom}x: ${overflow.scrollWidth} > ${overflow.clientWidth}; `
+      + `element bounds: ${JSON.stringify(overflow.overflowingElements)}`);
   assert(overflow.reducedMotion, 'Reduced motion preference was not active');
   assert(forcedColors ? overflow.forcedColors : true, 'Forced-colors profile was not active');
   passed(`reflow at ${zoom}x`);

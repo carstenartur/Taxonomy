@@ -29,7 +29,8 @@ final class PortableKnowledgeReferences {
     }
     void value(JsonNode value)throws IOException {value(value,codes);}
     private void value(JsonNode value,Set<String> destination)throws IOException {if(value==null || value.isNull())return;if(!value.isTextual())throw new IOException("Invalid catalogue reference field");code(value.textValue(),destination);}
-    void array(JsonNode value)throws IOException {if(value==null || value.isNull())return;if(!value.isArray())throw new IOException("Invalid catalogue reference list");for(var item:value)value(item);}
+    void array(JsonNode value)throws IOException {array(value,codes);}
+    private void array(JsonNode value,Set<String> destination)throws IOException {if(value==null || value.isNull())return;if(!value.isArray())throw new IOException("Invalid catalogue reference list");for(var item:value)value(item,destination);}
     void payload(JsonNode value)throws IOException {payload(value,Set.of());}
     private void payload(JsonNode value,Set<String> modelFields)throws IOException {
         if(value==null || value.isNull())return;
@@ -43,17 +44,17 @@ final class PortableKnowledgeReferences {
                 var names=map.fieldNames();while(names.hasNext())code(names.next());
             }
         }
-        for(String field:List.of("evaluatedNodes","candidateCodes","targetRoots"))array(value.get(field));
+        for(String field:List.of("evaluatedNodes","candidateCodes","targetRoots"))array(value.get(field),modelFields.contains(field)?modelCodes:codes);
         var coverage=value.get("analysisCoverage");if(coverage!=null && !coverage.isNull()) {
             var nodes=coverage.get("nodes");if(nodes==null || !nodes.isObject())throw new IOException("Invalid analysis coverage references");
             var names=nodes.fieldNames();while(names.hasNext())code(names.next());
         }
         // Traverse only declared structured evidence, never diagnostics, free text or provider prompts.
         for(String field:List.of("tree","children","discrepancies","architectureView","anchors","includedElements","includedRelationships","provisionalRelations","productCoverageGaps","matchedElements","proposedElements","gapAnalysis","incompletePatterns","matchedPatterns","explanationTrace","analysisResult","copilot","gaps","patterns","recommendation"))payload(value.get(field));
-        // Canonical model identities are catalogue dependencies only when the captured catalogue contains them.
-        payload(value.get("acceptedElements"),Set.of("nodeCode"));
-        payload(value.get("judgments"),Set.of("sourceNodeCode"));
-        payload(value.get("suggestedRelations"),Set.of("sourceCode","targetCode"));
+        // Canonical model identities and type roots depend on the catalogue only when exact membership is recorded.
+        payload(value.get("acceptedElements"),Set.of("nodeCode","taxonomyRoot"));
+        payload(value.get("judgments"),Set.of("sourceNodeCode","sourceRoot","targetRoots"));
+        payload(value.get("suggestedRelations"),Set.of("sourceCode","targetCode","taxonomyRoot","sourceRoot"));
         var report=value.get("relationSearchReport");if(report!=null && !report.isNull())relationReport(report);
         var edges=value.get("requirementEvidence");if(edges!=null && !edges.isNull()) {
             if(!edges.isArray())throw new IOException("Invalid architecture relation evidence");

@@ -91,6 +91,22 @@
     display: inline;
 }
 
+/* Long profile descriptions must not set the native select's intrinsic width
+   beyond the assessment card on narrow viewports. */
+.analysis-assessment-scope {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+.analysis-assessment-scope .form-select {
+    min-width: 0;
+    max-width: 100%;
+}
+.analysis-assessment-scope [role="status"] {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 /* Keep the complete automation visually primary while preserving the focused
    scoring action as an explicit secondary route. */
 .analysis-primary-action:focus-visible,

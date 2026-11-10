@@ -6,6 +6,8 @@ import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.repository.RelationProposalRepository;
 import com.taxonomy.workspace.service.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import java.util.Optional;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -39,5 +41,29 @@ class RelationProposalLegalityTest {
         assertThatThrownBy(() -> service.createFromHypothesisInContext("info", "service", RelationType.REALIZES, 0.99, "fixture", context))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("incompatible");
         verifyNoInteractions(relations, proposals, validation, candidates);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {-1, 0, 5})
+    void readOnlyContextIsRejectedBeforeRequestCanSelectANoOp(int limit) {
+        var readOnly = RepositoryContext.centralRead("repo", "main", "user");
+
+        assertThatThrownBy(() -> service.proposeRelationsInContext(
+                "info", RelationType.REALIZES, limit, readOnly))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("CENTRAL_WRITE");
+
+        verifyNoInteractions(nodes, relations, candidates, validation, proposals);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {-1, 0})
+    void authorizedNoOpDoesNotReadOrCreateRelationEvidence(int limit) {
+        node("service", "CR");
+
+        assertThat(service.proposeRelationsInContext(
+                "service", RelationType.SUPPORTS, limit, context)).isEmpty();
+
+        verifyNoInteractions(relations, candidates, validation, proposals);
     }
 }

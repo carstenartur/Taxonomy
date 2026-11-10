@@ -1,5 +1,7 @@
 package com.taxonomy.architecture.controller;
 
+import com.taxonomy.workspace.controller.ExplicitRepositoryReadSelection;
+
 import com.taxonomy.dto.PatternDetectionView;
 import com.taxonomy.architecture.service.ArchitecturePatternService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,9 +27,9 @@ import java.util.Map;
 public class PatternDetectionApiController {
 
     private final ArchitecturePatternService patternService;
-    private final ObligationRequestContext contexts;
+    private final ExplicitRepositoryReadSelection contexts;
 
-    public PatternDetectionApiController(ArchitecturePatternService patternService, ObligationRequestContext contexts) {
+    public PatternDetectionApiController(ArchitecturePatternService patternService, ExplicitRepositoryReadSelection contexts) {
         this.patternService = patternService; this.contexts = contexts;
     }
 

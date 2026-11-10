@@ -202,7 +202,7 @@
     function summaryCard(icon, label, value, color) {
         return '<div class="graph-stat-card">' +
             '<span class="graph-stat-icon">' + icon + '</span>' +
-            '<div><div class="graph-stat-value text-' + (color || 'dark') + '">' + value + '</div>' +
+            '<div><div class="graph-stat-value text-' + (color || 'dark') + '">' + escapeHtml(String(value)) + '</div>' +
             '<div class="graph-stat-label">' + escapeHtml(label) + '</div></div></div>';
     }
 

@@ -157,7 +157,7 @@ class RelationProjectionReadServiceTest {
 
         assertThat(snapshot.readModel()).isEqualTo(ReadModel.PROJECTION);
         assertThat(snapshot.readinessState()).isEqualTo(ReadinessState.READY);
-        assertThat(snapshot.authoritativeCommitId()).isEqualTo("a".repeat(40));
+        assertThat(snapshot.commitId()).isEqualTo("a".repeat(40));
         assertThat(snapshot.contains("BP", RelationType.SUPPORTS, "CP"))
                 .isTrue();
         assertThat(snapshot.contains("BP", RelationType.SUPPORTS, "CR"))

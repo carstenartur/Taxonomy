@@ -1,10 +1,73 @@
-import { navigateToPage } from './ui-role-fixtures.mjs';
+import { request } from '@playwright/test';
+import { basicAuthorization, ROLE_ACCOUNTS, navigateToPage } from './ui-role-fixtures.mjs';
+import { usingComparisonBranch } from './ui-primary-version-workflow.mjs';
 
-export async function verifyGraphEntry({ page, evidence }) {
+/** Persist real catalogue identities and an accepted relation; no browser graph response is intercepted. */
+export async function seedSavedGraph(api, branch) {
+  async function json(response) {
+    if (!response.ok()) throw new Error(`Graph fixture HTTP ${response.status()}: ${await response.text()}`);
+    return response.json();
+  }
+  const roots = await json(await api.get('/api/taxonomy'));
+  const first = root => roots.find(node => node.code === root)?.children?.[0];
+  const service = first('CR'), process = first('BP');
+  if (!service?.code || !service.nameEn || !process?.code || !process.nameEn)
+    throw new Error('Real service and process catalogue nodes are required');
+  const dsl = 'meta { language: "taxdsl"; version: "2.0"; namespace: "default"; }\n'
+    + `element ${service.code} type CoreService { title: ${JSON.stringify(service.nameEn)}; }\n`
+    + `element ${process.code} type Process { title: ${JSON.stringify(process.nameEn)}; }\n`
+    + `relation ${service.code} SUPPORTS ${process.code} { status: accepted; }\n`;
+  const saved = await json(await api.post('/api/dsl/commit?' + new URLSearchParams({branch,message:'Saved graph entry fixture'}),
+    {data:dsl,headers:{'Content-Type':'text/plain;charset=UTF-8'}}));
+  if (!saved.valid || !/^[a-f0-9]{40}$/.test(saved.commitId || '')) throw new Error('Graph fixture commit was not persisted');
+  const scope = new URLSearchParams({workspaceId:'',workspaceScopeKey:'__shared__',branch});
+  const initial = await json(await api.get('/api/architecture/relations/projection/readiness?' + scope));
+  if (!initial.repositoryId) throw new Error('Graph fixture repository identity is missing');
+  scope.set('repositoryId',initial.repositoryId);
+  const projection = await json(await api.post('/api/architecture/relations/projection/rebuild?' + scope,
+    {headers:{'If-Match':`"${saved.commitId}"`}}));
+  if (projection.readinessState !== 'READY' || projection.currentHeadCommit !== saved.commitId
+      || projection.projectedCommit !== saved.commitId || projection.relationCount !== 1)
+    throw new Error('The saved graph projection does not prove its accepted relation at the selected head');
+  return {repositoryId:initial.repositoryId,workspaceScopeKey:'__shared__',branch,commit:saved.commitId,
+    code:process.code,serviceCode:service.code,scope:String(scope)};
+}
+
+export async function verifyGraphEntry(workflow) {
+  const {page} = workflow;
+  const returnUrl = page.url();
+  // Provision through the same administrator account used by the role fixture. The
+  // browser keeps its original USER/ARCHITECT/ADMIN identity for all reads and actions.
+  const api = await request.newContext({baseURL:new URL(page.url()).origin,extraHTTPHeaders:{Authorization:basicAuthorization(
+    process.env.TAXONOMY_UI_ADMIN_USERNAME || 'admin', process.env.TAXONOMY_UI_ADMIN_PASSWORD || ROLE_ACCOUNTS.ADMIN.password)}});
+  try {
+    await usingComparisonBranch(async branch => {
+      const fixture = await seedSavedGraph(api,branch);
+      const selected = new URL(page.url());
+      selected.search = 'architectureSource=working&' + fixture.scope + '&commit=' + fixture.commit + '&lang=en';
+      selected.hash = 'architecture';
+      await page.goto(selected.href);
+      await page.locator('#architectureWorkingSource').waitFor({state:'visible'});
+      await page.waitForFunction(commit => document.getElementById('applicationContextSummaryStand').textContent.includes(commit.slice(0,12)), fixture.commit);
+      await verifySelectedGraphEntry(workflow,fixture);
+      // Leave the temporary branch before cleanup so later role workflows retain their own scope.
+      await page.goto(returnUrl);
+      await page.waitForFunction(() => Boolean(window.TaxonomyRoleSurface?.getContext()));
+    }, async branch => {
+      const response = await api.delete('/api/dsl/branch?' + new URLSearchParams({name:branch}));
+      if (!response.ok() && response.status() !== 404) throw new Error(`Graph fixture cleanup failed: HTTP ${response.status()}`);
+    });
+  } finally { await api.dispose(); }
+}
+
+async function verifySelectedGraphEntry({ page, evidence }, fixture) {
   await navigateToPage(page, 'analyze');
-  const actions = page.locator('#taxonomyTree .tax-node-actions-toggle:visible').first();
+  await page.locator('#gapSelectModel').click();
+  await page.waitForFunction(commit => document.getElementById('gapModelSource').textContent.includes(commit.slice(0,12)), fixture.commit);
+  await page.locator('#viewList').click();
+  const actions = page.locator(`#taxonomyTree .tax-node[data-code="${fixture.code}"] .tax-node-actions-toggle`).first();
   if (!await actions.isVisible()) {
-    await page.locator('#taxonomyTree .tax-container-toggle:visible').first().click();
+    await page.locator('#taxonomyTree [data-taxonomy-container="BP"] > .tax-container-heading > .tax-container-toggle').click();
   }
   await actions.click();
   const button = page.locator('#taxonomyActionsDialog .graph-explore-btn');
@@ -16,6 +79,13 @@ export async function verifyGraphEntry({ page, evidence }) {
   evidence.assert(result.ok(), `Graph entry failed: HTTP ${result.status()}`);
   const graph = await result.json();
   evidence.assert(graph.originNodeCode === code, 'Graph entry queried a different node');
+  evidence.assert(graph.evidence.repositoryId === fixture.repositoryId
+    && graph.evidence.workspaceScopeKey === '__shared__' && graph.evidence.branch === fixture.branch
+    && graph.evidence.commitId === fixture.commit, 'Graph response must prove the explicitly selected saved model');
+  evidence.assert(graph.neighbors.some(node => node.nodeCode === fixture.serviceCode),
+    'The graph must traverse the accepted saved relation');
+  evidence.assert(graph.traversedRelationships.some(edge => edge.evidence?.status === 'accepted'),
+    'The real canonical relation must retain its accepted provenance');
   await page.locator('#tab-graph').waitFor({ state: 'visible' });
   await page.locator('#graphResultsContent .spinner-border').waitFor({ state: 'hidden' });
   evidence.assert(await page.locator('#graphNodeInput').inputValue() === code, 'Selected code was lost');

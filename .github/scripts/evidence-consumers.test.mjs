@@ -12,11 +12,11 @@ const evidence = {repositoryId:selected.repositoryId, workspaceId:selected.works
     absenceScope:'Only within the selected snapshot and query policy.'};
 const escapeHtml = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const settle = () => new Promise(resolve => setImmediate(resolve));
-function graphFixture() {
+function graphFixture(escaping = escapeHtml) {
     const ids = new Map(), events = new Map(), calls = [];
     function element(id) { if(!ids.has(id)) ids.set(id,{id,value:'',checked:false,style:{},events:{},innerHTML:'',
         addEventListener(kind,cb){this.events[kind]=cb;},querySelectorAll(){return[];},setAttribute(){}}); return ids.get(id); }
-    for (const id of ['graphResultsArea','graphResultsContent','graphResultContext','requirementImpactResults','graphApqcFilter','requirementImpactBtn','businessText','graphMaxHops']) element(id);
+    for (const id of ['graphResultsArea','graphResultsContent','graphResultContext','requirementImpactResults','graphApqcFilter','requirementImpactBtn','businessText','graphMaxHops','graphNodeInput','graphUpstreamBtn']) element(id);
     element('graphMaxHops').value='2'; element('businessText').value='Authored requirement';
     let current = {...selected};
     const document = {addEventListener(kind,cb){if(!events.has(kind))events.set(kind,[]);events.get(kind).push(cb);},
@@ -26,7 +26,7 @@ function graphFixture() {
         apqcHierarchy:async ctx=>{calls.push({kind:'apqc',ctx});return {nodes:[],evidence};},
         requirementImpact:async(payload,ctx)=>{calls.push({kind:'impact',payload,ctx});return {impactedElements:[],traversedRelationships:[],evidence};}};
     const sandbox=vm.createContext({document,console,URL,URLSearchParams,TaxonomyI18n:{t:(key,...args)=>key+' '+args.join(' ')},
-        TaxonomyUtils:{escapeHtml},AnalysisApi:api,TaxonomyState:{currentScores:{A:90}},
+        TaxonomyUtils:{escapeHtml:escaping},AnalysisApi:api,TaxonomyState:{currentScores:{A:90}},
         fetch:async()=>{calls.push({kind:'raw'});return{ok:true,json:async()=>({})};}});
     sandbox.window=sandbox;
     vm.runInContext(source('shared/taxonomy-graph.js'),sandbox);
@@ -94,4 +94,39 @@ test('recorded low mean relevance retains percent units and canonical members ar
     assert.match(html,/1%/);assert.doesNotMatch(html,/100%/);
     assert.match(html,/Elements in the selected model/);assert.match(html,/MATCH/);assert.match(html,/MEMBER/);
     assert.match(html,/No obligations were evaluated/);assert.doesNotMatch(html,/text-bg-success/);
+});
+
+function graphWithProductionEscaping() {
+    const utilities=vm.createContext({document:{readyState:'loading',addEventListener(){}}});
+    utilities.window=utilities;
+    vm.runInContext(source('shared/taxonomy-utils.js'),utilities);
+    return graphFixture(utilities.TaxonomyUtils.escapeHtml);
+}
+test('graph input echoed by the scoped response remains text at the real result HTML sink',async()=>{
+    const f=graphWithProductionEscaping();
+    const code='<img src=x onerror="window.graphInjected=true"> & "node"';
+    f.ids.get('graphNodeInput').value=code;
+    f.api.graphUpstream=async(actual,hops,ctx)=>{
+        f.calls.push({code:actual,hops,ctx});
+        return {originNodeCode:actual,direction:'UPSTREAM',maxHops:hops,totalNeighbors:0,totalRelationships:0,
+            neighbors:[],traversedRelationships:[],evidence};
+    };
+    f.boot();f.ids.get('graphUpstreamBtn').events.click();await settle();
+    assert.equal(f.calls[0].code,code,'The request retains the exact user-selected identifier');
+    const html=f.ids.get('graphResultsContent').innerHTML;
+    assert.ok(html.includes('&lt;img src=x onerror=&quot;window.graphInjected=true&quot;&gt; &amp; &quot;node&quot;'));
+    assert.doesNotMatch(html,/<img|<svg|<script/i);
+    assert.ok(html.includes(commit));assert.ok(html.includes('graphViewTable'));
+    assert.ok(html.includes('&#11014;&#65039;'),'Trusted direction icon remains markup');
+    assert.match(html,/graph-stat-value text-secondary">0<\/div>/,'A numeric zero remains visible with the production escaping helper');
+});
+for(const renderer of ['renderNeighborhoodResult','renderFailureResult']) test(`${renderer} escapes every dynamic summary value`,()=>{
+    const f=graphWithProductionEscaping();
+    const payload='<svg onload="window.graphInjected=true">';
+    const html=f.graph[renderer]({originNodeCode:payload,direction:payload,failedNodeCode:payload,
+        totalNeighbors:payload,totalRelationships:payload,totalAffected:payload,maxHops:payload,
+        neighbors:[],directlyAffected:[],indirectlyAffected:[],traversedRelationships:[],evidence});
+    assert.doesNotMatch(html,/<svg|<script|<img/i);
+    assert.ok(html.includes('&lt;svg onload=&quot;window.graphInjected=true&quot;&gt;'));
+    assert.ok(html.includes(commit));
 });
