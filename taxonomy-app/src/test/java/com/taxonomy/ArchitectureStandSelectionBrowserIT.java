@@ -1,5 +1,11 @@
 package com.taxonomy;
 
+import com.taxonomy.editor.ArchitectureCommandPort;
+import com.taxonomy.editor.ArchitectureEditorProjection;
+import com.taxonomy.editor.ArchitectureEditorService;
+import com.taxonomy.editor.ArchitectureReconciliationProjection;
+import com.taxonomy.export.LayeredDiagramLayoutService;
+
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -431,9 +437,6 @@ class ArchitectureStandSelectionBrowserIT {
             return json(200,Map.of("projectId",1,"requirementId",2,"requirement",fixture.requirement.get(),
                     "publication",Map.of("context",controlContext(),"state",first?"RECONCILIATION_REQUIRED":"CHECKPOINTED")));
         });
-        page.route("POST",RECONCILIATION + "/preview",request -> {
-            var value=new LinkedHashMap<>(reconciliationPreview(request)); value.put("context",controlContext()); return json(200,value);
-        });
         page.route("POST",RECONCILIATION + "/accept",request -> {
             REVISION.set(4); NEEDS_RECONCILIATION.set(false); return json(200,Map.of("context",controlContext(),"state","CHECKPOINTED"));
         });
@@ -629,12 +632,20 @@ class ArchitectureStandSelectionBrowserIT {
     private static Map<String,Object> project() { return Map.of("id",42,"projectKey","PROJECT-42","title","Fixture project","status","ACTIVE"); }
     private static Map<String,Object> requirement() { return Map.of("id",7,"projectId",42,"requirementKey","REQ-7","title","Access requirement","currentVersion",Map.of("id",12,"versionNumber",2,"contentHash","fixture-hash","text","Authored requirement")); }
     private static Map<String,Object> publication(boolean pending) { return Map.of("context",context(3),"state",pending?"CHECKPOINT_PENDING":"CHECKPOINTED"); }
-    private static Map<String,Object> reconciliationPreview(PortfolioClientTestPage.Request request) {
-        var command=JSON.readTree(request.body()); boolean chosen=command.path("resolutions").path("element:fixture").asText().equals("LOCAL");
-        var conflict=new LinkedHashMap<String,Object>(); conflict.put("id","element:fixture");conflict.put("reason","Both sources changed the element title");
-        conflict.put("base","Original title");conflict.put("local","Local title");conflict.put("incoming","Incoming title");conflict.put("resolution",chosen?"LOCAL":null);
-        var value=new LinkedHashMap<String,Object>(); value.put("context",context(2));value.put("headCommit",HEAD);value.put("fingerprint",chosen?"reviewed-local":"unresolved");
-        value.put("baseDsl","Original title");value.put("localDsl","Local title");value.put("incomingDsl","Incoming title");value.put("mergedDsl",chosen?"Local title":null);
-        value.put("changes",List.of());value.put("conflicts",List.of(conflict));value.put("canAccept",chosen);return value;
+    static ArchitectureReconciliationProjection.Preview reconciliationPreview(PortfolioClientTestPage.Request request) {
+        var command = JSON.readTree(request.body());
+        var captured = JSON.treeToValue(command.path("context"), ArchitectureCommandPort.Context.class);
+        boolean chosen = command.path("resolutions").path("element:fixture").asText().equals("LOCAL");
+        String base = "element fixture type CoreService {\n title: \"Original title\";\n}\n";
+        String local = base.replace("Original title", "Local title");
+        String incoming = base.replace("Original title", "Incoming title");
+        var conflict = new ArchitectureEditorService.ReconciliationConflict("element:fixture",
+                "Both sources changed the element title", "Original title", "Local title", "Incoming title",
+                chosen ? ArchitectureEditorService.Resolution.LOCAL : null);
+        var preview = new ArchitectureEditorService.ReconciliationPreview(captured, HEAD,
+                chosen ? "reviewed-local" : "unresolved", base, local, incoming, chosen ? local : null,
+                List.of(), List.of(conflict), chosen);
+        // Exercise the same frozen comparison DTO and diagram projection as the HTTP controller.
+        return new ArchitectureEditorProjection(new LayeredDiagramLayoutService()).compare(preview);
     }
 }

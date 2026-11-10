@@ -3,7 +3,7 @@ import { basicAuthorization, ROLE_ACCOUNTS, navigateToPage } from './ui-role-fix
 import { usingComparisonBranch } from './ui-primary-version-workflow.mjs';
 
 /** Persist real catalogue identities and an accepted relation; no browser graph response is intercepted. */
-export async function seedSavedGraph(api, branch) {
+export async function seedSavedGraph(api, branch, onResources = () => {}) {
   async function json(response) {
     if (!response.ok()) throw new Error(`Graph fixture HTTP ${response.status()}: ${await response.text()}`);
     return response.json();
@@ -13,24 +13,68 @@ export async function seedSavedGraph(api, branch) {
   const service = first('CR'), process = first('BP');
   if (!service?.code || !service.nameEn || !process?.code || !process.nameEn)
     throw new Error('Real service and process catalogue nodes are required');
-  const dsl = 'meta { language: "taxdsl"; version: "2.0"; namespace: "default"; }\n'
-    + `element ${service.code} type CoreService { title: ${JSON.stringify(service.nameEn)}; }\n`
-    + `element ${process.code} type Process { title: ${JSON.stringify(process.nameEn)}; }\n`
-    + `relation ${service.code} SUPPORTS ${process.code} { status: accepted; }\n`;
-  const saved = await json(await api.post('/api/dsl/commit?' + new URLSearchParams({branch,message:'Saved graph entry fixture'}),
-    {data:dsl,headers:{'Content-Type':'text/plain;charset=UTF-8'}}));
+  const dsl = 'meta {\n  language: "taxdsl";\n  version: "2.0";\n  namespace: "default";\n}\n'
+    + `element ${service.code} type CoreService {\n  title: ${JSON.stringify(service.nameEn)};\n}\n`
+    + `element ${process.code} type Process {\n  title: ${JSON.stringify(process.nameEn)};\n}\n`
+    + `relation ${service.code} SUPPORTS ${process.code} {\n  status: accepted;\n}\n`;
+  // The dedicated UI JVM uses an in-memory database. Its PUBLIC repository is
+  // intentionally bounded by that process; only the private working copy has a deletion API.
+  const repository = await json(await api.post('/api/repositories', {data:{
+    displayName:`Saved graph ${branch}`,slug:`graph-${branch}`,
+    description:'Published catalogue graph for native role verification',visibility:'PUBLIC',defaultBranch:branch
+  }}));
+  if (!repository.repositoryId) throw new Error('Graph fixture repository identity is missing');
+  let resources = {repositoryId:repository.repositoryId,branch};
+  onResources(resources);
+  const scope = new URLSearchParams({repositoryId:repository.repositoryId,workspaceId:'',workspaceScopeKey:'__shared__',branch});
+  const centralHeaders = {'X-Taxonomy-Workspace-Id':''};
+  const workspace = await json(await api.post('/api/architecture/editor/workspaces?' + scope,
+    {headers:centralHeaders,data:{repositoryId:repository.repositoryId,branch,displayName:`Graph working copy ${branch}`}}));
+  resources = {...resources,workspaceId:workspace.workspaceId};
+  // Capture the owned workspace before commit/publication, including a lost commit response.
+  onResources(resources);
+  if (!workspace.workspaceId || !workspace.currentBranch || workspace.provisioningStatus !== 'READY'
+      || workspace.sourceRepositoryId !== repository.repositoryId || workspace.sourceBranch !== branch)
+    throw new Error('The exact graph fixture working copy was not provisioned');
+  const privateScope = new URLSearchParams({repositoryId:repository.repositoryId,
+    workspaceId:workspace.workspaceId,branch:workspace.currentBranch});
+  const privateHeaders = {'X-Taxonomy-Workspace-Id':workspace.workspaceId};
+  const saved = await json(await api.post('/api/dsl/commit?' + privateScope + '&message=Saved+graph+entry+fixture',
+    {data:dsl,headers:{...privateHeaders,'Content-Type':'text/plain;charset=UTF-8'}}));
   if (!saved.valid || !/^[a-f0-9]{40}$/.test(saved.commitId || '')) throw new Error('Graph fixture commit was not persisted');
-  const scope = new URLSearchParams({workspaceId:'',workspaceScopeKey:'__shared__',branch});
-  const initial = await json(await api.get('/api/architecture/relations/projection/readiness?' + scope));
-  if (!initial.repositoryId) throw new Error('Graph fixture repository identity is missing');
-  scope.set('repositoryId',initial.repositoryId);
+  const published = await json(await api.post('/api/workspace/publish?' + privateScope
+    + '&userBranch=' + encodeURIComponent(workspace.currentBranch), {headers:privateHeaders}));
+  if (!published.success || !/^[a-f0-9]{40}$/.test(published.mergeCommit || ''))
+    throw new Error('Graph fixture publication was not persisted');
+  const commit = published.mergeCommit;
+  const readiness = await json(await api.get('/api/architecture/relations/projection/readiness?' + scope,
+    {headers:centralHeaders}));
+  if (readiness.repositoryId !== repository.repositoryId || readiness.workspaceId !== null
+      || readiness.branch !== branch || readiness.currentHeadCommit !== commit)
+    throw new Error('Graph fixture publication is not the selected central head');
   const projection = await json(await api.post('/api/architecture/relations/projection/rebuild?' + scope,
-    {headers:{'If-Match':`"${saved.commitId}"`}}));
-  if (projection.readinessState !== 'READY' || projection.currentHeadCommit !== saved.commitId
-      || projection.projectedCommit !== saved.commitId || projection.relationCount !== 1)
+    {headers:{...centralHeaders,'If-Match':`"${commit}"`}}));
+  if (projection.repositoryId !== repository.repositoryId || projection.workspaceId !== null || projection.branch !== branch
+      || projection.readinessState !== 'READY' || projection.currentHeadCommit !== commit
+      || projection.projectedCommit !== commit || projection.relationCount !== 1)
     throw new Error('The saved graph projection does not prove its accepted relation at the selected head');
-  return {repositoryId:initial.repositoryId,workspaceScopeKey:'__shared__',branch,commit:saved.commitId,
+  return {...resources,workspaceScopeKey:'__shared__',commit,
     code:process.code,serviceCode:service.code,scope:String(scope)};
+}
+
+/** Deletes only the owned private working copy; central fixture data ends with the disposable JVM. */
+export async function removeSavedGraph(api, resources) {
+  if (!resources?.repositoryId) throw new Error('The exact graph fixture repository is required for cleanup');
+  if (resources.workspaceId === undefined) return;
+  if (typeof resources.workspaceId !== 'string' || !resources.workspaceId)
+    throw new Error('The exact private graph fixture workspace is required for cleanup');
+  const query = new URLSearchParams({repositoryId:resources.repositoryId,workspaceId:resources.workspaceId});
+  const response = await api.delete('/api/workspace/' + encodeURIComponent(resources.workspaceId) + '?' + query,
+    {headers:{'X-Taxonomy-Workspace-Id':resources.workspaceId}});
+  if (!response.ok()) throw new Error(`Graph fixture cleanup failed: HTTP ${response.status()}`);
+  const deleted = await response.json();
+  if (!deleted.success || deleted.deleted !== resources.workspaceId)
+    throw new Error('Graph fixture workspace cleanup was not confirmed');
 }
 
 export async function verifyGraphEntry(workflow) {
@@ -40,22 +84,25 @@ export async function verifyGraphEntry(workflow) {
   // browser keeps its original USER/ARCHITECT/ADMIN identity for all reads and actions.
   const api = await request.newContext({baseURL:new URL(page.url()).origin,extraHTTPHeaders:{Authorization:basicAuthorization(
     process.env.TAXONOMY_UI_ADMIN_USERNAME || 'admin', process.env.TAXONOMY_UI_ADMIN_PASSWORD || ROLE_ACCOUNTS.ADMIN.password)}});
+  let fixtureResources;
   try {
     await usingComparisonBranch(async branch => {
-      const fixture = await seedSavedGraph(api,branch);
-      const selected = new URL(page.url());
-      selected.search = 'architectureSource=working&' + fixture.scope + '&commit=' + fixture.commit + '&lang=en';
-      selected.hash = 'architecture';
-      await page.goto(selected.href);
-      await page.locator('#architectureWorkingSource').waitFor({state:'visible'});
-      await page.waitForFunction(commit => document.getElementById('applicationContextSummaryStand').textContent.includes(commit.slice(0,12)), fixture.commit);
-      await verifySelectedGraphEntry(workflow,fixture);
-      // Leave the temporary branch before cleanup so later role workflows retain their own scope.
-      await page.goto(returnUrl);
-      await page.waitForFunction(() => Boolean(window.TaxonomyRoleSurface?.getContext()));
-    }, async branch => {
-      const response = await api.delete('/api/dsl/branch?' + new URLSearchParams({name:branch}));
-      if (!response.ok() && response.status() !== 404) throw new Error(`Graph fixture cleanup failed: HTTP ${response.status()}`);
+      const fixture = await seedSavedGraph(api,branch, resources => { fixtureResources = resources; });
+      try {
+        const selected = new URL(page.url());
+        selected.search = 'architectureSource=working&' + fixture.scope + '&commit=' + fixture.commit + '&lang=en';
+        selected.hash = 'architecture';
+        await page.goto(selected.href);
+        await page.locator('#architectureWorkingSource').waitFor({state:'visible'});
+        await page.waitForFunction(commit => document.getElementById('applicationContextSummaryStand').textContent.includes(commit.slice(0,12)), fixture.commit);
+        await verifySelectedGraphEntry(workflow,fixture);
+      } finally {
+        // Leave the temporary branch even when browser assertions fail.
+        await page.goto(returnUrl);
+        await page.waitForFunction(() => Boolean(window.TaxonomyRoleSurface?.getContext()));
+      }
+    }, async () => {
+      if (fixtureResources) await removeSavedGraph(api,fixtureResources);
     });
   } finally { await api.dispose(); }
 }

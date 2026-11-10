@@ -188,6 +188,10 @@ class EmbeddingModelKnnIsolationTest {
     @Test
     void fixtureActuallyIndexesCloserWrongModelAndUntaggedVectors() {
         assertThat(Search.session(entityManager).search(TaxonomyNode.class)
+                .where(f -> f.bool().must(f.match().field("code").matching(CURRENT_NODE))
+                        .must(f.match().field("embeddingModel").matching(CURRENT_KEY)))
+                .fetchTotalHitCount()).isEqualTo(1);
+        assertThat(Search.session(entityManager).search(TaxonomyNode.class)
                 .where(f -> f.bool().must(f.match().field("code").matching(WRONG_NODE))
                         .must(f.match().field("embeddingModel").matching(WRONG_KEY)))
                 .fetchTotalHitCount()).isEqualTo(1);
@@ -404,9 +408,11 @@ class EmbeddingModelKnnIsolationTest {
     }
 
     /** Fixed inference boundary: the production entity binders and all KNN queries remain real. */
-    private static class FixtureEmbeddingService extends LocalEmbeddingService {
+    static class FixtureEmbeddingService extends LocalEmbeddingService {
         private boolean indexing = true;
-        private String documentKey;
+        // The bridge pairs inference and identity on its caller thread. Background mass indexing
+        // can share this fixture service without changing an in-flight document's authored tag.
+        private final ThreadLocal<String> documentKey = new ThreadLocal<>();
         private Runnable onQuery = () -> {};
 
         @Override public boolean isEnabled() { return true; }
@@ -417,24 +423,24 @@ class EmbeddingModelKnnIsolationTest {
             action.run();
             return vector(1, 0);
         }
-        @Override public String embeddingIndexKey() { return indexing ? documentKey : CURRENT_KEY; }
+        @Override public String embeddingIndexKey() { return indexing ? documentKey.get() : CURRENT_KEY; }
 
         @Override
         public float[] embedDocument(String text) {
             if (!indexing) return vector(1, 0);
             if (text.contains("foreign relation")) {
-                documentKey = CURRENT_KEY;
+                documentKey.set(CURRENT_KEY);
                 return vector(1, 0);
             }
             if (text.startsWith("Current profile")) {
-                documentKey = CURRENT_KEY;
+                documentKey.set(CURRENT_KEY);
                 return vector(0.8f, 0.6f);
             }
             if (text.startsWith("Wrong profile")) {
-                documentKey = WRONG_KEY;
+                documentKey.set(WRONG_KEY);
                 return vector(1, 0);
             }
-            documentKey = null;
+            documentKey.remove();
             return text.startsWith("Legacy untagged") ? vector(1, 0) : vector(0, 1);
         }
     }

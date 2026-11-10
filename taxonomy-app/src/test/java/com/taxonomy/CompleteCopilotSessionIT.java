@@ -320,7 +320,7 @@ class CompleteCopilotSessionIT {
                 .contains("Copilot result overview")
                 .contains("Obligation assessment")
                 .contains("No obligations were evaluated; this is not a completeness claim.")
-                .contains("Mean retained relevance")
+                .contains("Mean relevance")
                 .contains("Assessment matches")
                 .contains("Detected patterns")
                 .contains("Recommendation")

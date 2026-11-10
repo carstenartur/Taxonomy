@@ -60,8 +60,22 @@ export function applicationConfiguration(group, baseUrl) {
     url.pathname = contextPath;
     applicationBaseUrl = url.href;
   }
+  const publishedGraphFixtures = group.scenarios?.some(scenario => scenario.suite === 'primary');
   return {
     baseUrl: applicationBaseUrl,
-    environment: contextPath ? { SERVER_SERVLET_CONTEXT_PATH: contextPath } : {}
+    environment: {
+      ...(contextPath ? { SERVER_SERVLET_CONTEXT_PATH: contextPath } : {}),
+      // Primary workflows publish a real PUBLIC repository. Its lifetime is this
+      // disposable application, so inherited persistent datasource settings cannot apply.
+      ...(publishedGraphFixtures ? {
+        SPRING_PROFILES_ACTIVE: 'hsqldb',
+        SPRING_DATASOURCE_URL: 'jdbc:hsqldb:mem:ui-primary-fixtures;shutdown=true',
+        TAXONOMY_DATASOURCE_URL: 'jdbc:hsqldb:mem:ui-primary-fixtures;shutdown=true',
+        SPRING_DATASOURCE_DRIVER_CLASS_NAME: 'org.hsqldb.jdbc.JDBCDriver',
+        SPRING_DATASOURCE_USERNAME: 'sa',
+        SPRING_DATASOURCE_PASSWORD: '',
+        TAXONOMY_FEATURES_MULTI_REPOSITORY_API_ENABLED: 'true'
+      } : {})
+    }
   };
 }

@@ -101,6 +101,9 @@
 .analysis-assessment-scope .form-select {
     min-width: 0;
     max-width: 100%;
+    /* WebKit can include native option text in page overflow even when the
+       select's border box is constrained. Keep that overflow inside the control. */
+    overflow: hidden;
 }
 .analysis-assessment-scope [role="status"] {
     min-width: 0;

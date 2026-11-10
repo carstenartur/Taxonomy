@@ -711,16 +711,18 @@ export async function runRoleStateFlow({
       .filter(element => element.getClientRects().length)
       .map(element => {
         const bounds = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
         return {
           element: element.tagName.toLowerCase()
             + (element.id ? `#${element.id}` : '')
             + [...element.classList].slice(0, 3).map(name => `.${name}`).join(''),
           left: Math.round(bounds.left), right: Math.round(bounds.right),
-          width: Math.round(bounds.width)
+          width: Math.round(bounds.width), clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth, overflowX: style.overflowX
         };
       })
-      .filter(bounds => bounds.width > 0 && bounds.left < clientWidth
-        && bounds.right > clientWidth + 2)
+      .filter(bounds => bounds.width > 0 && (bounds.right > clientWidth + 2
+        || (bounds.overflowX === 'visible' && bounds.scrollWidth > bounds.clientWidth + 2)))
       .slice(0, 12);
     return {
       scrollWidth: document.documentElement.scrollWidth,

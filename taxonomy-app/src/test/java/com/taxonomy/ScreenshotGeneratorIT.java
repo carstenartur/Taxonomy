@@ -96,6 +96,7 @@ class ScreenshotGeneratorIT {
 
     private static String graphFixtureCommitId;
     private static String graphFixtureScope;
+    private static SavedGraphHttpFixture.Saved graphFixture;
 
     /** Guard flag: {@link #buildRichGitHistory()} runs at most once per test class execution. */
     private static boolean richGitHistoryBuilt;
@@ -177,7 +178,9 @@ class ScreenshotGeneratorIT {
         Path modelDirectory = OnnxReferenceEvaluation.modelDirectory();
         network = Network.newNetwork();
 
-        GenericContainer<?> appContainer = ContainerTestUtils.appContainer(network)
+        GenericContainer<?> appContainer = ContainerTestUtils.appContainer(network, "hsqldb",
+                        "jdbc:hsqldb:mem:screenshot-fixtures;shutdown=true", "sa", "")
+                .withEnv("TAXONOMY_FEATURES_MULTI_REPOSITORY_API_ENABLED", "true")
                 .withEnv("LLM_PROVIDER", "LOCAL_ONNX")
                 .withEnv("LLM_MOCK", "true")
                 .withEnv("TAXONOMY_EMBEDDING_ENABLED", "true")
@@ -269,7 +272,14 @@ class ScreenshotGeneratorIT {
 
     @AfterAll
     static void stopContainers() throws Exception {
-        ContainerTestUtils.closeAll(browserSession, app, network);
+        try {
+            if (graphFixture != null) {
+                driver.get(ContainerTestUtils.APP_ORIGIN + "/");
+                SavedGraphHttpFixture.remove(ScreenshotGeneratorIT::requestFixture, graphFixture);
+            }
+        } finally {
+            ContainerTestUtils.closeAll(browserSession, app, network);
+        }
     }
 
     // ── Helper methods ─────────────────────────────────────────────────────────
@@ -563,11 +573,11 @@ class ScreenshotGeneratorIT {
         });
     }
 
-    private Map<?, ?> requestFixture(String url, String method, String contentType, String body) {
+    private static Map<?, ?> requestFixture(String url, String method, String contentType, String body) {
         return requestFixture(url, method, contentType, body, Map.of());
     }
 
-    private Map<?, ?> requestFixture(String url, String method, String contentType, String body,
+    private static Map<?, ?> requestFixture(String url, String method, String contentType, String body,
                                      Map<String, String> headers) {
         Object result = ((JavascriptExecutor) driver).executeAsyncScript(
                 "var url=arguments[0], method=arguments[1], type=arguments[2], body=arguments[3], headers=arguments[4], done=arguments[5];" +
@@ -1285,29 +1295,19 @@ class ScreenshotGeneratorIT {
             var types = new LinkedHashMap<String, String>();
             types.put("CP-1023", "Capability"); types.put("CR-1047", "CoreService");
             types.put("BP-1327", "Process"); types.put("BP-1000", "Process");
-            StringBuilder dsl = new StringBuilder("meta { language: \"taxdsl\"; version: \"2.0\"; namespace: \"default\"; }\n");
+            StringBuilder dsl = new StringBuilder("meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n");
             types.forEach((code, type) -> {
                 Assertions.assertInstanceOf(String.class, names.get(code), "Catalogue node must exist: " + code);
                 dsl.append("element ").append(code).append(" type ").append(type)
-                        .append(" { title: ").append(JSON.writeValueAsString(names.get(code))).append("; }\n");
+                        .append(" {\n  title: ").append(JSON.writeValueAsString(names.get(code))).append(";\n}\n");
             });
-            dsl.append("relation CP-1023 REALIZES CR-1047 { status: accepted; }\n")
-                    .append("relation CR-1047 SUPPORTS BP-1327 { status: accepted; }\n")
-                    .append("relation CR-1047 SUPPORTS BP-1000 { status: accepted; }\n");
-            createBranch("screenshot-graph", "draft");
-            String commit = commitAndWait("screenshot-graph", "Accepted+catalogue+graph+example", dsl.toString());
-            String scope = "workspaceId=&workspaceScopeKey=__shared__&branch=screenshot-graph";
-            Map<?, ?> initial = requestFixture("/api/architecture/relations/projection/readiness?" + scope,
-                    "GET", null, null);
-            Assertions.assertInstanceOf(String.class, initial.get("repositoryId"));
-            scope += "&repositoryId=" + URLEncoder.encode((String) initial.get("repositoryId"), StandardCharsets.UTF_8);
-            Map<?, ?> projection = requestFixture("/api/architecture/relations/projection/rebuild?" + scope,
-                    "POST", null, null, Map.of("If-Match", "\"" + commit + "\""));
-            Assertions.assertEquals("READY", projection.get("readinessState"));
-            Assertions.assertEquals(commit, projection.get("currentHeadCommit"));
-            Assertions.assertEquals(commit, projection.get("projectedCommit"));
-            Assertions.assertEquals(3, ((Number) projection.get("relationCount")).intValue());
-            graphFixtureScope = scope; graphFixtureCommitId = commit;
+            dsl.append("relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n")
+                    .append("relation CR-1047 SUPPORTS BP-1327 {\n  status: accepted;\n}\n")
+                    .append("relation CR-1047 SUPPORTS BP-1000 {\n  status: accepted;\n}\n");
+            SavedGraphHttpFixture.Saved graph = SavedGraphHttpFixture.create(ScreenshotGeneratorIT::requestFixture,
+                    "screenshot-graph", dsl.toString(), 3);
+            graphFixture = graph;
+            graphFixtureScope = graph.scope(); graphFixtureCommitId = graph.commitId();
         }
         // Open the actual saved version in the visible working editor, with exact source pins.
         driver.get(ContainerTestUtils.APP_ORIGIN + "/?architectureSource=working&" + graphFixtureScope
