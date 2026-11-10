@@ -1,5 +1,7 @@
 package com.taxonomy.security.access;
 
+import com.taxonomy.catalog.controller.ApiController;
+import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.security.config.AuthorizationRulesConfigurer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -8,6 +10,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.support.StaticMessageSource;
 import org.springframework.mock.web.MockServletContext;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -21,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.support.AnnotationConfigWebApplicationContext;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 
+import static org.mockito.Mockito.mock;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -54,6 +58,20 @@ class ApiPermissionsSecurityTest {
                 .andExpect(status().isForbidden());
         mvc.perform(post("/api/workspace/provision").with(csrf()).with(user("reader").roles("READER")))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void provisionalCatalogueQueueRequiresTechnicalAdministrationBeforeReadingEvidence() throws Exception {
+        String path = "/api/admin/catalogue/provisional-information-products";
+        mvc.perform(get(path)).andExpect(status().isUnauthorized());
+        for (String filter : java.util.List.of("IP-3", "unknown")) {
+            mvc.perform(get(path).param("q", filter).with(user("reader").roles("READER")))
+                    .andExpect(status().isForbidden());
+        }
+        mvc.perform(get(path).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"),
+                new SimpleGrantedAuthority("SCOPE_architecture:read")))).andExpect(status().isForbidden());
+        mvc.perform(get(path).with(user("operator").roles("ADMIN"))).andExpect(status().isServiceUnavailable());
+        mvc.perform(post(path).with(csrf()).with(user("operator").roles("ADMIN"))).andExpect(status().isMethodNotAllowed());
     }
 
     @Test
@@ -348,6 +366,7 @@ class ApiPermissionsSecurityTest {
     @EnableWebSecurity
     static class Fixture {
         @Bean AuthorizationRulesConfigurer rules() { return new AuthorizationRulesConfigurer(); }
+        @Bean ApiController catalogue() { return new ApiController(mock(TaxonomyService.class), new StaticMessageSource()); }
         @Bean Probe probe() { return new Probe(); }
         @Bean InMemoryUserDetailsManager users() { return new InMemoryUserDetailsManager(); }
         @Bean SecurityFilterChain chain(HttpSecurity http, AuthorizationRulesConfigurer rules) throws Exception {

@@ -120,6 +120,13 @@ hierarchy without inventing artificial groups solely to satisfy prompt-size limi
 `classificationReviewRequired` and the mapping justification. Low-confidence mappings therefore
 remain usable as provisional primary parents while still being identifiable for expert review.
 
+Technical administrators can read the provisional queue at
+`GET /api/admin/catalogue/provisional-information-products`. The optional `q` filter matches a code
+or title. The response identifies the applied catalogue generation and overlay version, and shows
+the original parent reference from the retained workbook alongside the overlay parent. A workbook
+status of `NOT_RETAINED` identifies older generations without recorded source parents. Review and
+promotion continue through the Git overlay workflow.
+
 Changes to the overlay should include:
 
 - an updated `mappingVersion`;

@@ -107,6 +107,7 @@ public class TaxonomyService {
     // ── Startup readiness tracking ────────────────────────────────────────────
     private final AtomicBoolean initialized  = new AtomicBoolean(false);
     private final AtomicBoolean initializing = new AtomicBoolean(false);
+    private ProductSourceParents productSourceParents;
 
     public TaxonomyService(TaxonomyNodeRepository repository,
                            TaxonomyRelationRepository relationRepository,
@@ -119,6 +120,68 @@ public class TaxonomyService {
     /** Returns {@code true} once the taxonomy has been fully loaded and indexed. */
     public boolean isInitialized() {
         return stateService.isReady();
+    }
+
+    public record ProvisionalProductMapping(String productCode, String productTitle, String sourceParentReference,
+            String proposedParentCode, List<String> secondaryClassificationCodes, double confidence,
+            String analysisRole, String state, String sourceState, String justification) { }
+
+    public record ProvisionalProductQueue(String catalogueRevision, Use workbookUse, String workbookSha256,
+            String overlaySha256, String mappingVersion, List<ProvisionalProductMapping> mappings) { }
+
+    /** Reads review evidence from one applied catalogue generation. */
+    @Transactional(readOnly = true)
+    public ProvisionalProductQueue provisionalInformationProducts(String filter) throws IOException {
+        catalogueRuntimePolicy.requireCurrentCatalogueAllowed();
+        var generation = catalogueSourceJournal.current();
+        var overlay = catalogueOverlayService.getOverlayMetadata();
+        Use expectedOverlayUse = overlay.enabled() ? Use.APPLIED : Use.NOT_USED;
+        if (generation == null || generation.overlay().use() != expectedOverlayUse
+                || !Objects.equals(generation.overlay().sha256(), overlay.sha256())) {
+            throw new IllegalStateException("Applied catalogue overlay is unavailable");
+        }
+        var workbook = generation.workbook();
+        List<ProvisionalProductMapping> mappings = new ArrayList<>();
+        if (overlay.enabled()) {
+            boolean retainedWorkbook = workbook.use() == Use.APPLIED;
+            var sourceParents = retainedWorkbook ? sourceProductParents(workbook) : Map.<String, Optional<String>>of();
+            String query = filter.strip().toLowerCase(Locale.ROOT);
+            for (var node : repository.findByTaxonomyRootOrderByLevelAscNameEnAsc("IP")) {
+                var metadata = catalogueOverlayService.getNodeMetadata(node.getCode());
+                if (!metadata.reviewRequired() || (!node.getCode().toLowerCase(Locale.ROOT).contains(query)
+                        && !node.getNameEn().toLowerCase(Locale.ROOT).contains(query))) continue;
+                var sourceParent = sourceParents.get(node.getCode());
+                if (retainedWorkbook && sourceParent == null)
+                    throw new IllegalStateException("Mapping is missing from the retained workbook");
+                mappings.add(new ProvisionalProductMapping(node.getCode(), node.getNameEn(),
+                        sourceParent == null ? null : sourceParent.orElse(null), node.getParentCode(),
+                        metadata.secondaryClassificationCodes(), metadata.confidence(), metadata.analysisRole(),
+                        "PROVISIONAL", node.getState(), metadata.justification()));
+            }
+            mappings.sort(Comparator.comparing(ProvisionalProductMapping::productCode));
+        }
+        if (!catalogueSourceJournal.isCurrent(generation.id()))
+            throw new IllegalStateException("Catalogue generation changed during the review read");
+        return new ProvisionalProductQueue(generation.id(), workbook.use(), workbook.sha256(),
+                overlay.sha256(), overlay.mappingVersion(), List.copyOf(mappings));
+    }
+
+    private record ProductSourceParents(String workbookSha256, Map<String, Optional<String>> parents) { }
+
+    private synchronized Map<String, Optional<String>> sourceProductParents(CatalogueSourceJournal.InputReference reference)
+            throws IOException {
+        if (productSourceParents != null && productSourceParents.workbookSha256().equals(reference.sha256()))
+            return productSourceParents.parents();
+        var retained = catalogueSourceJournal.retainedWorkbook(reference);
+        var rows = new LinkedHashMap<String, TaxonomyNode>();
+        try (InputStream input = retained.openStream(); Workbook workbook = new XSSFWorkbook(input)) {
+            var sheet = workbook.getSheet("Information Products");
+            if (sheet != null) readSheet(sheet, "IP", rows, new HashMap<>());
+        }
+        var parents = new HashMap<String, Optional<String>>();
+        rows.forEach((code, node) -> parents.put(code, Optional.ofNullable(node.getParentCode())));
+        productSourceParents = new ProductSourceParents(reference.sha256(), Map.copyOf(parents));
+        return productSourceParents.parents();
     }
 
     /**
