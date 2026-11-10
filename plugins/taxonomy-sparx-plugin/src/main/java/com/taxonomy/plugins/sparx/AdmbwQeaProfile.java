@@ -4,20 +4,16 @@ import com.taxonomy.extension.api.integration.AdmbwQeaExport.Connector;
 import com.taxonomy.extension.api.integration.AdmbwQeaExport.Element;
 
 import java.util.Map;
+import com.taxonomy.sparx.mapping.AdmbwSourceProfile;
 import java.util.Set;
 
 import static com.taxonomy.plugins.sparx.QeaFailure.fail;
 
 /** EA base types and direction from the ADMBw MDG 2026.05 and native MASC reference. */
 final class AdmbwQeaProfile {
-    static final Map<String, String> DIAGRAM_TYPES = Map.of(
-            "C1-S1", "NAFv4-ADMBw Service Specification Viewpoints::C1-S1 - Capability to Service Mapping",
-            "R7", "NAFv4-ADMBw Requirement Viewpoints::R7 - Requirement Derivation");
-    static final Map<String, String> ELEMENT_TYPES = Map.of(
-            "Capability", "Class", "ServiceSpecification", "Class",
-            "FunctionalRequirement", "Requirement", "NonfunctionalRequirement", "Requirement",
-            "OperationalConstraint", "Class", "OperationalArchitecture", "Class", "OperationalRole", "Part",
-            "CapabilityConfiguration", "Class", "ResourceRole", "Part");
+    static final AdmbwSourceProfile SOURCE_PROFILE = AdmbwSourceProfile.CURRENT;
+    static final Map<String, String> DIAGRAM_TYPES = SOURCE_PROFILE.diagramTypes();
+    static final Map<String, String> ELEMENT_TYPES = SOURCE_PROFILE.elementTypes();
     private static final Set<String> CATALOGUE_TYPES = Set.of("Capability", "OperationalArchitecture", "OperationalRole", "ResourceRole");
     private static final Set<String> C1_S1_TYPES = Set.of("Capability", "ServiceSpecification");
 
@@ -45,15 +41,10 @@ final class AdmbwQeaProfile {
         if (source == null || target == null)
             throw fail("QEA_ADMBW_RELATION", "An ADMBw relation needs both endpoints on its diagram");
         String from = source.stereotype(), to = target.stereotype();
-        boolean valid = switch (connector.stereotype()) {
-            case "Exhibits" -> from.equals("ServiceSpecification") && to.equals("Capability");
-            case "DerivedFrom" -> requirement(from) && to.equals("OperationalConstraint");
-            case "Satisfy" -> Set.of("OperationalArchitecture", "OperationalRole").contains(from) && to.equals("OperationalConstraint");
-            case "ToBeRealizedBy" -> requirement(from) && Set.of("CapabilityConfiguration", "ResourceRole").contains(to);
-            default -> false;
-        };
+        var rule = SOURCE_PROFILE.connectorRules().get(connector.stereotype());
+        boolean valid = rule != null && rule.accepts(from, to);
         if (!valid) throw fail("QEA_ADMBW_RELATION", "The connector stereotypes or direction do not match the ADMBw viewpoint");
-        return connector.stereotype().equals("Exhibits") ? "Abstraction" : "Dependency";
+        return SOURCE_PROFILE.connectorTypes().get(connector.stereotype());
     }
 
     private AdmbwQeaProfile() { }

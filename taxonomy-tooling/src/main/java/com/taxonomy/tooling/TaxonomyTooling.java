@@ -68,6 +68,8 @@ public final class TaxonomyTooling {
                     command, workingDirectory, output, error);
             case "generate-quality-site", "verify-quality-publication" -> QualitySite.run(
                     command, commandArguments, workingDirectory, output, error);
+            case "resolve-product-artifact" -> PinnedArtifactResolver.run(
+                    commandArguments, workingDirectory, output, error);
             case "release-resources" -> ReleaseResourceSampler.run(
                     commandArguments, environment, workingDirectory, output, error);
             case "native-installation" -> NativeInstallationSnapshot.run(

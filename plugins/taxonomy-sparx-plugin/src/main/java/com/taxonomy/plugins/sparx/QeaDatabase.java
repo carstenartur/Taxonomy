@@ -27,9 +27,8 @@ final class QeaDatabase {
     static final int MAX_DEPTH = 128;
     private static final byte[] MAGIC = "SQLite format 3\0".getBytes(StandardCharsets.US_ASCII);
     private static final List<String> TABLES = List.of("usys_system", "t_package", "t_object", "t_connector",
-            "t_diagram", "t_diagramobjects", "t_objectproperties", "t_connectortag", "t_xref");
-    private static final List<String> ADMBW_TABLES = List.of("usys_system", "t_package", "t_object",
-            "t_connector", "t_diagram", "t_diagramobjects", "t_diagramlinks", "t_objectproperties", "t_connectortag", "t_xref");
+            "t_diagram", "t_diagramobjects", "t_diagramlinks", "t_objectproperties", "t_connectortag", "t_xref");
+    private static final List<String> ADMBW_TABLES = TABLES;
     private static final Map<String, List<String>> ADMBW_COLUMNS = Map.of(
             "usys_system", List.of("property", "value"),
             "t_package", List.of("package_id", "parent_id", "name", "ea_guid"),
@@ -49,6 +48,7 @@ final class QeaDatabase {
             "t_connector", Set.of("connector_id", "connector_type", "start_object_id", "end_object_id", "ea_guid"),
             "t_diagram", Set.of("diagram_id", "package_id", "name", "ea_guid"),
             "t_diagramobjects", Set.of("diagram_id", "object_id"),
+            "t_diagramlinks", Set.of("diagramid", "connectorid"),
             "t_objectproperties", Set.of("propertyid", "object_id", "property", "value"),
             "t_connectortag", Set.of("propertyid", "elementid", "property", "value"),
             "t_xref", Set.of("xrefid", "name", "type", "client", "description"));
