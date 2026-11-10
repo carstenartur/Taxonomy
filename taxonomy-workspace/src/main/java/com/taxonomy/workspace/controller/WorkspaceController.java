@@ -91,7 +91,7 @@ public class WorkspaceController {
         }
         if (pinned != null) {
             return ResponseEntity.ok(workspaceManager.getWorkspaceMetadataInfo(
-                    workspaceResolver.resolveCurrentWorkspaceMetadata()));
+                    user, workspaceResolver.resolveCurrentWorkspaceMetadata()));
         }
         WorkspaceInfo info = workspaceManager.getWorkspaceInfo(user);
         if (info == null) {

@@ -67,9 +67,25 @@
 
     window.TaxonomyContextApi = Object.freeze({
         current: function (options) { return get('/api/context/current', options); },
+        open: function (branch, commitId, readOnly, options) {
+            var query = new URLSearchParams({ branch: branch, readOnly: readOnly });
+            if (commitId != null) query.set('commitId', commitId);
+            return post('/api/context/open?' + query, options);
+        },
         back: function (options) { return post('/api/context/back', options); },
         returnToOrigin: function (options) { return post('/api/context/return-to-origin', options); },
-        createVariant: function (name, options) { return post('/api/context/variant?name=' + encodeURIComponent(name), options); }
+        createVariant: function (name, options) { return post('/api/context/variant?name=' + encodeURIComponent(name), options); },
+        listBranches: function (options) { return get('/api/git/branches', options); },
+        compare: function (selection, options) {
+            var query = new URLSearchParams({ leftBranch: selection.leftBranch, rightBranch: selection.rightBranch });
+            if (selection.leftCommit) query.set('leftCommit', selection.leftCommit);
+            if (selection.rightCommit) query.set('rightCommit', selection.rightCommit);
+            return get('/api/context/compare?' + query, options);
+        },
+        searchHistory: function (query, branch, options) {
+            var params = new URLSearchParams({ query: query, currentBranch: branch });
+            return get('/api/dsl/history/search-versioned?' + params, options);
+        }
     });
 
     window.TaxonomyPreferencesApi = Object.freeze({

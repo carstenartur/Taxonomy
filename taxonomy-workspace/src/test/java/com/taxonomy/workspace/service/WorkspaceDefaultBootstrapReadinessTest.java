@@ -78,10 +78,9 @@ class WorkspaceDefaultBootstrapReadinessTest {
             assertEquals(SOURCE, destination.getDslAtHead("draft"));
             assertEquals(List.of("draft"), destination.getBranchNames());
             assertEquals(1, destination.getDslHistory("draft").size());
-            var provenance = destination.getProvenance(ready.getCurrentCommit());
-            assertEquals("fork", provenance.operation());
-            assertEquals(REPOSITORY, provenance.sources().getFirst().repositoryId());
-            assertEquals(sourceCommit, provenance.sources().getFirst().commitId());
+            assertEquals(sourceCommit, ready.getCurrentCommit());
+            assertEquals(REPOSITORY, ready.getSourceRepositoryId());
+            assertEquals("draft", ready.getSourceBranch());
             verify(fixture.rows, times(1)).claimProvisioning(eq(workspaceId), eq(USER),
                     eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection());
         }
@@ -244,6 +243,7 @@ class WorkspaceDefaultBootstrapReadinessTest {
             source.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
             when(catalog.getPrimaryRepository()).thenReturn(source);
             when(catalog.getRepository(REPOSITORY)).thenReturn(source);
+            doReturn(factory.getSystemRepository()).when(factory).getCentralRepository(REPOSITORY);
             manager = new WorkspaceManager(rows, 50, catalog, factory);
             manager.getOrCreateWorkspace(USER, id);
             resolver = new WorkspaceContextResolver(manager, catalog, rows);

@@ -1,22 +1,31 @@
 package com.taxonomy.analysis.cluster;
 
+import com.taxonomy.analysis.controller.AnalysisApiController;
+import com.taxonomy.analysis.controller.AnalysisProgressController;
+import com.taxonomy.analysis.controller.AnalysisSseEventMapper;
 import com.taxonomy.analysis.dag.*;
 import com.taxonomy.analysis.recovery.*;
 import com.taxonomy.analysis.relations.RelationSearchDistribution;
 import com.taxonomy.analysis.relations.RequirementRelationSearch;
 import com.taxonomy.analysis.service.*;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementUseCase;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.catalog.repository.*;
 import com.taxonomy.catalog.service.*;
 import com.taxonomy.catalog.snapshot.*;
 import com.taxonomy.dto.*;
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.core.env.StandardEnvironment;
+import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
 import org.springframework.transaction.interceptor.TransactionInterceptor;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -24,6 +33,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.test.web.client.MockRestServiceServer;
 import tools.jackson.databind.ObjectMapper;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -31,6 +41,9 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /** Real frozen worker and durable continuation authority; provider exchanges are deterministic fixtures. */
 class FrozenClusterContinuationTest {
@@ -544,6 +557,80 @@ class FrozenClusterContinuationTest {
             assertThat(AnalysisCheckpointSession.active()).isFalse();
         }
         fixture.server.verify();
+    }
+
+    @Test void cancelledContinuationReplaysTheAdmittedOperationAndSource() throws Exception {
+        var mapper = new ObjectMapper();
+        var context = ClusterAnalysisStoreTest.context(UUID.randomUUID().toString());
+        var view = new ViewContext("source", "draft", Instant.parse("2026-01-01T00:00:00Z"), false, true, false);
+        var command = ClusterAnalysisStoreTest.command("requirement");
+        var request = new AnalysisRequest(command.businessText());
+        request.setProvider("MOCK");
+        request.setMaxArchitectureNodes(command.maxArchitectureNodes());
+        request.setAnalysisScope(command.analysisScope());
+        request.setResumable(true);
+        request.setContinuationId(UUID.randomUUID().toString());
+        var source = DurableClusterAnalysisExecutionTest.source(context);
+        var roots = List.of(DurableClusterAnalysisExecutionTest.root(source, "CP"),
+                DurableClusterAnalysisExecutionTest.root(source, "IP"));
+        var fixture = new Scoring(mapper, "https://unused.invalid/chat/completions");
+        try (var db = new ClusterAnalysisStoreTest.Database();
+             var catalogue = fixture.snapshots.bind(source, Set.of("CP", "IP"), roots)) {
+            var saved = continuation(db, mapper);
+            var store = new ClusterAnalysisStore(db.em, db.transactions, mapper, db.dispatch, saved);
+            var workspaces = mock(com.taxonomy.workspace.service.WorkspaceManager.class);
+            var workspace = new com.taxonomy.workspace.model.UserWorkspace();
+            workspace.setUsername("alice");
+            when(workspaces.getWorkspaceById("workspace")).thenReturn(workspace);
+            var service = new AnalysisContinuationService(saved, fixture.taxonomy, fixture.llm, workspaces, mapper);
+            ReflectionTestUtils.setField(service, "providers", fixture.providers);
+            ReflectionTestUtils.setField(service, "clusterStore", store);
+            try (var execution = service.beginDistributed(request, "alice", command.workspaceContext(), 20)) {
+                store.admit(context, execution.bind(command), view,
+                        Map.of(TaxonomyShardRoot.of("CP"), mapper.writeValueAsString(roots.getFirst()),
+                                TaxonomyShardRoot.of("IP"), mapper.writeValueAsString(roots.getLast())));
+            }
+
+            var resolver = mock(WorkspaceResolver.class);
+            when(resolver.resolveCurrentUsername()).thenReturn("alice");
+            when(resolver.resolveCurrentContext()).thenReturn(command.workspaceContext());
+            var readyCatalogue = mock(TaxonomyService.class);
+            when(readyCatalogue.isInitialized()).thenReturn(true);
+            when(readyCatalogue.getRootCodes()).thenReturn(Set.of("CP", "IP"));
+            var analysis = mock(AnalyzeRequirementUseCase.class);
+            var controller = new AnalysisApiController(readyCatalogue, null, mapper, analysis, null, null, null,
+                    new AnalysisSseEventMapper(), mock(RepositoryStateService.class), resolver, null);
+            ReflectionTestUtils.setField(controller, "clusterExecution", mock(ClusterAnalysisExecution.class));
+            ReflectionTestUtils.setField(controller, "continuationService", service);
+            try (var observer = new DurableClusterAnalysisObservation(store, new ClusterAnalysisSignals(),
+                    AnalysisEventPublisher.NONE, Runnable::run)) {
+                var progress = new AnalysisProgressController(new AnalysisProgressRegistry(new StandardEnvironment()), resolver, observer);
+                var mvc = MockMvcBuilders.standaloneSetup(controller, progress).build();
+                String operation = context.operationId();
+                String url = "/api/analysis-runs/" + operation;
+                mvc.perform(post(url + "/cancel")).andExpect(status().isOk());
+
+                String operationHeader = "X-Analysis-Operation-Id";
+                for (String offered : Arrays.asList(null, UUID.randomUUID().toString())) {
+                    var replay = post("/api/analyze").contentType(MediaType.APPLICATION_JSON)
+                            .content(mapper.writeValueAsString(request));
+                    if (offered != null) replay.header(operationHeader, offered);
+                    mvc.perform(replay).andExpect(status().isOk())
+                            .andExpect(header().string(operationHeader, operation))
+                            .andExpect(jsonPath("$.analysisOperationId").value(operation))
+                            .andExpect(jsonPath("$.viewContext.basedOnCommit").value("source"))
+                            .andExpect(jsonPath("$.status").value("CANCELLED"));
+                }
+
+                mvc.perform(get(url + "/result")).andExpect(status().isOk())
+                        .andExpect(jsonPath("$.analysisOperationId").value(operation))
+                        .andExpect(jsonPath("$.viewContext.basedOnCommit").value("source"));
+                assertThat(store.snapshot(context).result().getViewContext()).isEqualTo(view);
+                assertThat(store.command(context).username()).isEqualTo("alice");
+                assertThat(db.sent).hasSize(1);
+                verifyNoInteractions(analysis);
+            }
+        }
     }
 
     @Test void simultaneousAdmissionsCannotSkipAnInterveningOperationBinding() throws Exception {

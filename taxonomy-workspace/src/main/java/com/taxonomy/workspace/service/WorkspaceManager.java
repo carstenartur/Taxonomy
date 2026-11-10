@@ -2,7 +2,7 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
-import com.taxonomy.workspace.storage.CommitProvenance;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
 import com.taxonomy.dto.ContextRef;
 import com.taxonomy.dto.WorkspaceInfo;
 import com.taxonomy.workspace.model.RepositoryTopologyMode;
@@ -10,6 +10,8 @@ import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.revwalk.RevWalk;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,6 +56,7 @@ public class WorkspaceManager {
     private final SystemRepositoryService systemRepositoryService;
     private final DslGitRepository gitRepository;
     private final DslGitRepositoryFactory repositoryFactory;
+    private RepositoryMembershipService sourceMemberships;
     private TransactionTemplate provisioningOutsideReadOnlyTransaction;
     private WorkspaceProvisionPermission provisionPermission = actor -> true;
 
@@ -72,6 +75,11 @@ public class WorkspaceManager {
         provisioningOutsideReadOnlyTransaction = new TransactionTemplate(transactions);
         provisioningOutsideReadOnlyTransaction.setPropagationBehavior(
                 TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
+    }
+
+    @Autowired
+    void configureSourceMemberships(RepositoryMembershipService sourceMemberships) {
+        this.sourceMemberships = sourceMemberships;
     }
 
     /** Navigation state belongs to one actor and workspace, including pinned inactive tabs. */
@@ -216,15 +224,14 @@ public class WorkspaceManager {
                     || workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING))) {
                 return null;
             }
-            return getWorkspaceMetadataInfo(workspace);
+            return getWorkspaceMetadataInfo(username, workspace);
         }
         return toWorkspaceInfo(getOrCreateWorkspace(username));
     }
 
     /** Summarize already-authorized metadata without changing the active selection. */
-    public WorkspaceInfo getWorkspaceMetadataInfo(UserWorkspace workspace) {
-        UserWorkspaceState state = workspaceStates.get(new WorkspaceStateKey(
-                workspace.getUsername(), workspace.getWorkspaceId()));
+    public WorkspaceInfo getWorkspaceMetadataInfo(String actor, UserWorkspace workspace) {
+        UserWorkspaceState state = workspaceStates.get(new WorkspaceStateKey(actor, workspace.getWorkspaceId()));
         return new WorkspaceInfo(workspace.getWorkspaceId(), workspace.getUsername(),
                 workspace.getDisplayName(), workspace.getCurrentBranch(), workspace.getBaseBranch(),
                 workspace.isShared(), state == null ? null : state.getCurrentContext(),
@@ -591,7 +598,14 @@ public class WorkspaceManager {
                 throw new IllegalStateException("Source repository is not active: "
                         + systemRepository.getRepositoryId());
             }
+            if (repositoryFactory != null) {
+                requireProvisioningAuthority(systemRepository.getRepositoryId(), username);
+            }
+            String recordedBase = workspace.getBaseCommit();
             String sourceBranch = workspace.getSourceBranch();
+            if ((sourceBranch == null || sourceBranch.isBlank()) && recordedBase != null && !recordedBase.isBlank()) {
+                sourceBranch = workspace.getBaseBranch();
+            }
             String baseBranch = sourceBranch != null && !sourceBranch.isBlank()
                     ? sourceBranch.strip() : systemRepository.getDefaultBranch();
             if (repositoryFactory == null && recordedSource
@@ -605,50 +619,53 @@ public class WorkspaceManager {
             String legacyBranch = username + "/workspace/" + workspace.getWorkspaceId();
             String existingLegacyHead = repositoryFactory == null
                     ? gitRepository.getHeadCommit(legacyBranch) : null;
-            String recordedBase = workspace.getBaseCommit();
             String baseCommit = recordedBase != null && !recordedBase.isBlank()
                     ? recordedBase : systemGit.getHeadCommit(baseBranch);
             String systemDsl = baseCommit == null ? null : systemGit.getDslAtCommit(baseCommit);
             if (baseCommit == null || systemDsl == null || systemDsl.isBlank()) {
                 throw new IllegalStateException("Source repository has no readable checkpoint for " + baseBranch);
             }
-            CommitProvenance provenance = null;
-            if (repositoryFactory == null) {
-                systemGit.verifySnapshot(baseCommit);
-            } else {
-                provenance = CommitProvenance.capture("fork", systemGit,
-                        systemRepository.getRepositoryId(), baseBranch, baseCommit, null);
-            }
+            systemGit.verifySnapshot(baseCommit);
 
             if (repositoryFactory != null) {
-                DslGitRepository workspaceGit =
-                        repositoryFactory.openWorkspaceRepository(workspace.getWorkspaceId());
-                String existingHead = workspaceGit.getHeadCommit(targetBranch);
-                String allocatedCommit;
-                if (existingHead == null) {
-                    allocatedCommit = workspaceGit.commitDslIfHeadMatches(
-                            targetBranch, null, systemDsl, username, "Fork from shared/" + baseBranch, provenance);
-                } else if (recordedBase != null
-                        && existingHead.equals(workspace.getCurrentCommit())
-                        && systemDsl.equals(workspaceGit.getDslAtCommit(existingHead))) {
-                    // A failed READY save may leave the original Git seed intact.
-                    // Adopt only that recorded head AND payload; never reseed user edits.
-                    workspaceGit.verifySnapshot(existingHead);
-                    workspaceGit.verifyExpectedHead(targetBranch, existingHead);
-                    allocatedCommit = existingHead;
-                } else {
-                    throw new IllegalStateException(
-                            "Existing workspace content does not match its recorded allocation");
-                }
-
-                workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
+                // Retain the exact authority and destination before writing any Git objects.
                 workspace.setSourceRepositoryId(systemRepository.getRepositoryId());
+                workspace.setSourceBranch(baseBranch);
                 workspace.setTopologyMode(systemRepository.getTopologyMode());
                 workspace.setBaseBranch(baseBranch);
                 workspace.setBaseCommit(baseCommit);
                 workspace.setCurrentBranch(targetBranch);
-                workspace.setCurrentCommit(allocatedCommit);
                 workspace.setSyncTargetBranch(baseBranch);
+                workspaceRepository.save(workspace);
+
+                DslGitRepository workspaceGit =
+                        repositoryFactory.openWorkspaceRepository(workspace.getWorkspaceId());
+                String existingHead = workspaceGit.getHeadCommit(targetBranch);
+                if (existingHead == null || existingHead.equals(baseCommit)) {
+                    GitHistoryTransfer.copyCommitClosure(systemGit, workspaceGit, baseCommit, List.of());
+                    requireProvisioningAuthority(systemRepository.getRepositoryId(), username);
+                    if (existingHead == null) {
+                        workspaceGit.fastForwardIfHeadMatches(targetBranch, null, baseCommit, username,
+                                "Provision workspace from " + baseBranch);
+                    } else {
+                        workspaceGit.verifyExpectedHead(targetBranch, baseCommit);
+                    }
+                    workspace.setCurrentCommit(baseCommit);
+                } else {
+                    // Upgrades can encounter an interrupted content-only allocation. Retain
+                    // that recorded root if intact so recovery never rewrites an existing ref.
+                    if (recordedBase == null || !existingHead.equals(workspace.getCurrentCommit())
+                            || !isRootCommit(workspaceGit, existingHead)
+                            || !systemDsl.equals(workspaceGit.getDslAtCommit(existingHead))) {
+                        throw new IllegalStateException(
+                                "Existing workspace content does not match its recorded allocation");
+                    }
+                    workspaceGit.verifySnapshot(existingHead);
+                    requireProvisioningAuthority(systemRepository.getRepositoryId(), username);
+                    workspaceGit.verifyExpectedHead(targetBranch, existingHead);
+                }
+
+                workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
                 workspace.setProvisionedAt(Instant.now());
                 workspace.setProvisioningError(null);
                 workspaceRepository.save(workspace);
@@ -686,9 +703,25 @@ public class WorkspaceManager {
             workspace.setProvisioningStatus(WorkspaceProvisioningStatus.FAILED);
             workspace.setProvisioningError(exception.getMessage());
             workspaceRepository.save(workspace);
+            if (exception instanceof AccessDeniedException denied) throw denied;
             throw new RuntimeException(
                     "Could not provision workspace for " + username,
                     exception);
+        }
+    }
+
+    private void requireProvisioningAuthority(String repositoryId, String username) {
+        if (sourceMemberships == null) return; // Direct legacy fixtures have no membership catalogue.
+        systemRepositoryService.readCurrentAuthorization(repositoryId, current -> {
+            if (!sourceMemberships.canContribute(current, username)) {
+                throw new AccessDeniedException("Current source repository CONTRIBUTOR role is required");
+            }
+        });
+    }
+
+    private static boolean isRootCommit(DslGitRepository repository, String commit) throws IOException {
+        try (var walk = new RevWalk(repository.getGitRepository())) {
+            return walk.parseCommit(ObjectId.fromString(commit)).getParentCount() == 0;
         }
     }
 

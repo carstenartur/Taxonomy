@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
+import com.taxonomy.composition.demo.ProductDemoProviderBinding;
 import com.taxonomy.export.reformulation.ReformulationReportRenderer;
 import com.taxonomy.export.reformulation.ReformulationDocxPort;
 import com.taxonomy.identity.StableIdentityHash;
@@ -106,7 +107,8 @@ public class ReformulationReportController {
                 resolver.resolveCurrentUsername(), resolver.resolveCurrentContext()) : null;
         if (baseline != null && baseline.frozenContext().containsKey("inheritedDecisionContext"))
             metadata.put("Inherited decision context", baseline.frozenContext().get("inheritedDecisionContext"));
-        var input = new ReformulationReportRenderer.Input(report.source().language(), report.adoption() != null,
+        boolean demo = ProductDemoProviderBinding.isReplayProvider(report.source().analysisProvider());
+        var input = new ReformulationReportRenderer.Input(report.source().language(), report.adoption() != null, demo,
                 metadata, report.source().originalText(), report.reviewedText(), revision.sections(), revision.statements(),
                 revision.questions(), revision.answers(), revision.validation(), evidence);
         byte[] bytes = switch (format) {
@@ -117,7 +119,7 @@ public class ReformulationReportController {
             default -> throw new IllegalStateException("Validated format changed");
         };
         // Identity comes only from the authorized persisted record; no user-supplied title in headers.
-        String filename = "reformulation-" + report.proposalId() + "-" + identity + "." + format;
+        String filename = (demo ? "DEMO-" : "") + "reformulation-" + report.proposalId() + "-" + identity + "." + format;
         return ResponseEntity.ok().contentType(type).cacheControl(CacheControl.noStore())
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(filename).build().toString())
                 .header("X-Content-Type-Options", "nosniff")

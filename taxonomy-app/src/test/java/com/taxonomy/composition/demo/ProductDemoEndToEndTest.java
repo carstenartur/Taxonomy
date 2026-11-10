@@ -22,6 +22,8 @@ import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceManager;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -32,8 +34,13 @@ import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.client.match.MockRestRequestMatchers;
 import org.springframework.web.client.RestTemplate;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
+import java.io.ByteArrayInputStream;
+import java.security.MessageDigest;
 import java.time.Duration;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 
@@ -41,6 +48,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Complete product demo (issue #1184) through the real product paths: R0, analysis A0,
@@ -68,6 +77,7 @@ class ProductDemoEndToEndTest {
 
     @Autowired DemoScenarioCatalog catalog;
     @Autowired ProductDemoProviderBinding binding;
+    @Autowired ObjectMapper json;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired org.springframework.test.web.servlet.MockMvc mvc;
 
@@ -79,7 +89,7 @@ class ProductDemoEndToEndTest {
     }
 
     @Test
-    void completeDemoRunsWithoutExternalAiAndPassesTheIndependentReference() {
+    void completeDemoRunsWithoutExternalAiAndPassesTheIndependentReference() throws Exception {
         var server = MockRestServiceServer.bindTo(transport).build();
         server.expect(ExpectedCount.never(), MockRestRequestMatchers.anything());
         WorkspaceContext context = workspace();
@@ -187,24 +197,69 @@ class ProductDemoEndToEndTest {
         var a1 = analysis.analyzeRequirement(run.projectId(), run.requirementId(), null, 25,
                 UUID.randomUUID().toString(), USER, context);
         heap("after-A1");
+        String a1Snapshot = a1.items().getFirst().snapshotId();
         assertThat(a1.provider()).isEqualTo("DEMO.TIME-TRACKING-V1.R1");
         assertThat(a1.status()).as(() -> "A1 job " + a1 + " warnings " + analyses.getSnapshot(run.projectId(),
-                a1.items().getFirst().snapshotId(), USER, context).analysis().getWarnings()).isEqualTo(AnalysisStatus.SUCCESS);
+                a1Snapshot, USER, context).analysis().getWarnings()).isEqualTo(AnalysisStatus.SUCCESS);
         var comparison = demos.compare(run.id(), USER, context);
         assertThat(comparison.a0SnapshotId()).isEqualTo(a0Snapshot);
+        assertThat(comparison.a1SnapshotId()).isEqualTo(a1Snapshot);
         assertThat(comparison.report().overall()).as("reference checks %s", comparison.report().checks())
                 .isEqualTo(DemoReferenceEvaluator.Overall.PASS);
 
         // Second generation on the adopted R1: no repeated questions, the rejected addition stays out.
         var r1Requirement = projects.getRequirement(run.projectId(), run.requirementId(), USER, context);
+        String adoptedText = r1Requirement.currentVersion().text();
+        assertThat(adoptedText).isEqualTo(preview.content().finalText());
         var next = reformulations.create(run.projectId(), run.requirementId(), new ReformulationDtos.CreateRequest(
-                r1Requirement.currentVersionId(), a1.items().getFirst().snapshotId(), "de"), USER, context);
+                r1Requirement.currentVersionId(), a1Snapshot, "de"), USER, context);
         assertThat(next.baseline().frozenContext()).containsKeys("adoptedLineage", "inheritedDecisionContext");
         var secondGeneration = runReformulation(run, next, context, "COMPLETED");
         assertThat(secondGeneration.provider()).isEqualTo("DEMO.TIME-TRACKING-V1.R1");
         var nextRevision = reformulations.get(run.projectId(), run.requirementId(), next.id(), USER, context).currentRevision();
         assertThat(nextRevision.text()).doesNotContain(gps);
         assertThat(nextRevision.questions()).isEmpty();
+
+        // Download the actual saved revision and receipt endpoints after both analyses exist.
+        var jobsBeforeExport = analyses.listJobs(run.projectId(), USER, context);
+        var r0RunsBeforeExport = reformulations.runs(run.projectId(), run.requirementId(), proposal.id(), USER, context);
+        var r1RunsBeforeExport = reformulations.runs(run.projectId(), run.requirementId(), next.id(), USER, context);
+        String base = "/api/projects/" + run.projectId() + "/requirements/" + run.requirementId() + "/reformulations/";
+        var original = downloadReports(base + proposal.id() + "/revisions/" + first.number(),
+                proposal.id() + "-revision-" + first.number());
+        assertDemoSource(original, "R0", requirement.currentVersionId(), a0Snapshot, scenario.r0Text());
+        assertThat(original.json().at("/proposal/id").asString()).isEqualTo(proposal.id());
+        assertThat(original.json().at("/proposal/revision").asLong()).isEqualTo(first.number());
+        assertThat(original.json().at("/revision/questions")).hasSize(5);
+        assertThat(original.json().at("/revision/answers")).isEmpty();
+        assertThat(original.word()).contains("DEMO · Neuformulierungsangebot — gespeicherte Revision",
+                scenario.r0Text(), first.questions().getFirst().id() + " — " + first.questions().getFirst().wording());
+
+        var receipt = downloadReports(base + proposal.id() + "/adoptions/" + confirm.commandId(),
+                proposal.id() + "-adoption-" + confirm.commandId());
+        assertDemoSource(receipt, "R0", requirement.currentVersionId(), a0Snapshot, scenario.r0Text());
+        assertThat(receipt.json().at("/adoption/commandId").asString()).isEqualTo(confirm.commandId());
+        assertThat(receipt.json().at("/adoption/targetVersionId").asLong()).isEqualTo(adopted.targetVersionId());
+        assertThat(receipt.json().at("/preview/hash").asString()).isEqualTo(preview.hash());
+        assertThat(receipt.json().path("reviewedText").asString()).isEqualTo(adoptedText);
+        assertThat(receipt.json().at("/revision/answers")).hasSize(scenario.demoDecisions().size());
+        assertThat(receipt.word()).contains("DEMO · Neuformulierung — Übernahmebeleg",
+                "Zielversion: " + adopted.targetVersionId(), "Vorschau-SHA-256: " + preview.hash());
+        assertThat(receipt.word()).anySatisfy(paragraph ->
+                assertThat(paragraph).contains(scenario.demoDecisions().getFirst().rationale()));
+
+        var second = downloadReports(base + next.id() + "/revisions/" + nextRevision.number(),
+                next.id() + "-revision-" + nextRevision.number());
+        assertDemoSource(second, "R1", adopted.targetVersionId(), a1Snapshot, adoptedText);
+        assertThat(second.json().at("/proposal/id").asString()).isEqualTo(next.id());
+        assertThat(second.json().at("/proposal/revision").asLong()).isEqualTo(nextRevision.number());
+        assertThat(second.json().at("/revision/questions")).isEmpty();
+        assertThat(second.word()).contains("DEMO · Neuformulierungsangebot — gespeicherte Revision", adoptedText);
+        assertThat(analyses.listJobs(run.projectId(), USER, context)).isEqualTo(jobsBeforeExport);
+        assertThat(reformulations.runs(run.projectId(), run.requirementId(), proposal.id(), USER, context))
+                .isEqualTo(r0RunsBeforeExport);
+        assertThat(reformulations.runs(run.projectId(), run.requirementId(), next.id(), USER, context))
+                .isEqualTo(r1RunsBeforeExport);
 
         // Exports of the demo project stay labelled as demo output.
         var export = reports.render(run.projectId(), run.requirementId(), PortfolioReportService.Format.MARKDOWN,
@@ -218,6 +273,41 @@ class ProductDemoEndToEndTest {
                 UUID.randomUUID().toString(), USER, context)).isInstanceOf(PortfolioException.class)
                 .extracting(e -> ((PortfolioException) e).getCode()).isEqualTo(ProductDemoProblems.RUN_CLOSED);
         server.verify();
+    }
+
+    private record DemoReports(JsonNode json, List<String> word) { }
+
+    private DemoReports downloadReports(String path, String identity) throws Exception {
+        var jsonResponse = mvc.perform(get(path + "/export").param("format", "json"))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        var wordResponse = mvc.perform(get(path + "/export").param("format", "docx"))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        String filename = "attachment; filename=\"DEMO-reformulation-" + identity;
+        assertThat(jsonResponse.getHeader("Content-Disposition")).isEqualTo(filename + ".json\"");
+        assertThat(wordResponse.getHeader("Content-Disposition")).isEqualTo(filename + ".docx\"");
+        assertThat(wordResponse.getContentType())
+                .isEqualTo("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        try (var word = new XWPFDocument(new ByteArrayInputStream(wordResponse.getContentAsByteArray()))) {
+            return new DemoReports(json.readTree(jsonResponse.getContentAsByteArray()),
+                    word.getParagraphs().stream().map(XWPFParagraph::getText).toList());
+        }
+    }
+
+    private void assertDemoSource(DemoReports downloads, String iteration, long versionId,
+            String snapshotId, String originalText) throws Exception {
+        var source = downloads.json().path("source");
+        String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(originalText.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        assertThat(source.path("versionId").asLong()).isEqualTo(versionId);
+        assertThat(source.path("analysisSnapshotId").asString()).isEqualTo(snapshotId);
+        assertThat(source.path("originalText").asString()).isEqualTo(originalText);
+        assertThat(source.path("originalTextHash").asString()).isEqualTo(hash);
+        assertThat(source.path("language").asString()).isEqualTo("de");
+        String provider = "DEMO.TIME-TRACKING-V1." + iteration;
+        assertThat(source.path("analysisProvider").asString()).isEqualTo(provider);
+        assertThat(downloads.word()).contains("Originalanforderung", "Quellversion: " + versionId,
+                "Quell-SHA-256: " + hash, "Analyse-Snapshot: " + snapshotId);
+        assertThat(downloads.word()).anySatisfy(paragraph -> assertThat(paragraph).contains(provider));
     }
 
     /** Closing waits for an admission that holds the run lock, and no replay is admitted after the close commits. */

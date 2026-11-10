@@ -140,6 +140,19 @@ class KeycloakApplicationBearerTest {
         assertThatThrownBy(() -> decoder.decode(bearer)).isInstanceOf(JwtException.class);
     }
     @Test @DisabledIfSystemProperty(named = "taxonomy.keycloak.test.issuer", matches = ".+")
+    void productionChainRejectsSignedBearerWithoutExpiration() throws Exception {
+        String bearer = audienceToken(ISSUER.origin(), List.of(applicationAudience), ISSUER.key(), null);
+        assertThat(request("/api/account/me", bearer)).isEqualTo(401);
+    }
+    @Test @DisabledIfSystemProperty(named = "taxonomy.keycloak.test.issuer", matches = ".+")
+    void productionChainKeepsExpirationClockSkewBounded() throws Exception {
+        Instant now = Instant.now();
+        String withinSkew = audienceToken(ISSUER.origin(), List.of(applicationAudience), ISSUER.key(), now.minusSeconds(15));
+        String pastSkew = audienceToken(ISSUER.origin(), List.of(applicationAudience), ISSUER.key(), now.minusSeconds(90));
+        assertThat(request("/api/account/me", withinSkew)).isEqualTo(200);
+        assertThat(request("/api/account/me", pastSkew)).isEqualTo(401);
+    }
+    @Test @DisabledIfSystemProperty(named = "taxonomy.keycloak.test.issuer", matches = ".+")
     void productionDecoderPreservesSignatureValidation() throws Exception {
         RSAKey untrustedKey = new RSAKeyGenerator(2048).keyID(ISSUER.key().getKeyID()).generate();
         String bearer = audienceToken(ISSUER.origin(), List.of(applicationAudience),

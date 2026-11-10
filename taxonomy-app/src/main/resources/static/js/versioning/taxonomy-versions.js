@@ -259,8 +259,7 @@ window.TaxonomyVersions = (function () {
                 revertVersion(commitId);
                 break;
             case 'variant':
-                createVariantFromVersion(commitId, btn.getAttribute('data-branch'));
-                break;
+                return createVariantFromVersion(commitId, btn.getAttribute('data-branch'));
         }
     }
 
@@ -441,14 +440,9 @@ window.TaxonomyVersions = (function () {
     // ── Create variant from version ──────────────────────────────────
 
     function createVariantFromVersion(commitId, branch) {
-        fetch('/api/context/open?branch=' + encodeURIComponent(branch || currentBranch)
-            + '&commitId=' + encodeURIComponent(commitId)
-            + '&readOnly=false', { method: 'POST' })
-            .then(function () {
-                if (window.TaxonomyContextBar) {
-                    window.TaxonomyContextBar.fetchAndRender('contextBar');
-                    window.TaxonomyContextBar.showVariantDialog();
-                }
+        return window.TaxonomyContextBar.open(branch || currentBranch, commitId, false)
+            .then(function (context) {
+                if (context) window.TaxonomyContextBar.showVariantDialog();
             });
     }
 

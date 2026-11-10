@@ -28,6 +28,7 @@ class WorkspaceProvisioningSnapshotTest {
         try (var factory = spy(new DslGitRepositoryFactory(null))) {
             var source = spy(factory.getSystemRepository());
             doReturn(source).when(factory).getSystemRepository();
+            String parent = source.commitDsl("draft", "earlier source", "system", "Earlier source");
             String capturedCommit = source.commitDsl("draft", CAPTURED, "system", "Captured source");
             doAnswer(invocation -> {
                 String snapshot = (String) invocation.callRealMethod();
@@ -47,14 +48,13 @@ class WorkspaceProvisioningSnapshotTest {
             assertEquals(capturedCommit, ready.getBaseCommit());
             assertNotEquals(capturedCommit, source.getHeadCommit("draft"));
             assertEquals(CAPTURED, destination.getDslAtHead(branch));
-            assertEquals(destination.getHeadCommit(branch), ready.getCurrentCommit());
+            assertEquals(capturedCommit, ready.getCurrentCommit());
+            assertEquals(capturedCommit, destination.getHeadCommit(branch));
             assertEquals(List.of(branch), destination.getBranchNames(), "No implicit draft branch may be added");
-            assertEquals(1, destination.getDslHistory(branch).size(), "No unreviewed seed commit may precede the snapshot");
-            var provenance = destination.getProvenance(ready.getCurrentCommit());
-            assertEquals("fork", provenance.operation());
-            assertEquals("snapshot-primary", provenance.sources().getFirst().repositoryId());
-            assertEquals("draft", provenance.sources().getFirst().branch());
-            assertEquals(capturedCommit, provenance.sources().getFirst().commitId());
+            assertEquals(List.of(capturedCommit, parent),
+                    destination.getDslHistory(branch).stream().map(com.taxonomy.workspace.storage.DslCommit::commitId).toList());
+            assertEquals("snapshot-primary", ready.getSourceRepositoryId());
+            assertEquals("draft", ready.getSourceBranch());
         }
     }
 

@@ -10,6 +10,12 @@ window.TaxonomyHistorySearch = (function () {
     'use strict';
 
     var t = TaxonomyI18n.t;
+    var pendingSearches = new Map();
+
+    window.addEventListener('pagehide', function () {
+        pendingSearches.forEach(function (controller) { controller.abort(); });
+        pendingSearches.clear();
+    });
 
     /**
      * Execute a versioned search and render results into the given container.
@@ -20,17 +26,22 @@ window.TaxonomyHistorySearch = (function () {
      */
     function search(query, containerId, branch) {
         branch = branch || 'draft';
-        var url = '/api/dsl/history/search-versioned?query=' + encodeURIComponent(query)
-            + '&currentBranch=' + encodeURIComponent(branch);
+        var previous = pendingSearches.get(containerId);
+        if (previous) previous.abort();
+        var controller = new AbortController();
+        pendingSearches.set(containerId, controller);
 
-        fetch(url)
-            .then(function (r) { return r.ok ? r.json() : []; })
+        return window.TaxonomyContextApi.searchHistory(query, branch, { signal: controller.signal })
             .then(function (results) {
-                renderResults(containerId, results, branch);
+                if (pendingSearches.get(containerId) === controller) renderResults(containerId, results, branch);
             })
-            .catch(function () {
+            .catch(function (error) {
+                if (error.code === 'ABORTED' || pendingSearches.get(containerId) !== controller) return;
                 var container = document.getElementById(containerId);
                 if (container) container.innerHTML = '<p class="text-muted">' + escapeHtml(t('history.search.failed')) + '</p>';
+            })
+            .finally(function () {
+                if (pendingSearches.get(containerId) === controller) pendingSearches.delete(containerId);
             });
     }
 
@@ -108,21 +119,11 @@ window.TaxonomyHistorySearch = (function () {
     }
 
     function openReadOnly(branch, commitId) {
-        fetch('/api/context/open?branch=' + encodeURIComponent(branch)
-            + '&commitId=' + encodeURIComponent(commitId)
-            + '&readOnly=true', { method: 'POST' })
-            .then(function () {
-                if (window.TaxonomyContextBar) window.TaxonomyContextBar.fetchAndRender('contextBar');
-            });
+        return window.TaxonomyContextBar.open(branch, commitId, true);
     }
 
     function switchTo(branch, commitId) {
-        fetch('/api/context/open?branch=' + encodeURIComponent(branch)
-            + '&commitId=' + encodeURIComponent(commitId)
-            + '&readOnly=false', { method: 'POST' })
-            .then(function () {
-                if (window.TaxonomyContextBar) window.TaxonomyContextBar.fetchAndRender('contextBar');
-            });
+        return window.TaxonomyContextBar.open(branch, commitId, false);
     }
 
     function createVariant(branch) {

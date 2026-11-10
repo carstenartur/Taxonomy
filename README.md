@@ -10,16 +10,21 @@
 
 **Turn requirements and source documents into reviewable architecture proposals for planning and procurement, with AI assistance and human control.**
 
-Taxonomy Architecture Analyzer uses hierarchical AI-assisted analysis to turn requirements, regulations, and source documents into plausible cross-layer architecture prototypes. It traverses the architecture catalogue, scores relevant paths, proposes elements and relations, and produces inspectable views and exportable models.
-
-The primary goal is to shorten the path from an unstructured need to a useful first architecture model by automating much of the initial catalogue analysis and model construction. The result is deliberately a prototype rather than an authoritative decision: scores, rationales, source mappings, proposals, and accepted changes remain reviewable, attributable, comparable, refinable, versioned, and reversible.
-
-By externalizing taxonomy paths, scores, relations, provenance, and history, the workbench also reduces the amount of architecture context users must reconstruct and keep in mind at once.
+Taxonomy Architecture Analyzer uses hierarchical AI-assisted analysis to turn
+requirements, regulations and source documents into reviewable architecture
+proposals. It traverses the C3 catalogue, records scores and evidence, and
+proposes elements and directed relations across architecture layers. Reviewers
+can adopt a saved analysis into an editable working copy and maintain the
+architecture with an auditable history and explicit Git checkpoints.
 
 Taxonomy is intended for planning and procurement in federal, state and local
 public administration and in larger enterprises worldwide. It helps make needs,
 components, relationships and responsibilities explicit so that participants can
 review a shared model and retain the reasons for changes.
+
+This README describes the current `main` branch. For a released installation,
+use the [published assets](https://github.com/carstenartur/Taxonomy/releases/latest)
+and the documentation for its tag.
 
 ## Why use Taxonomy?
 
@@ -85,13 +90,17 @@ relationship between requirements, projects and enduring architecture models.
 | Rapid architecture prototyping | Derives candidate cross-layer architecture elements, relations, and views from requirements and source documents |
 | Hierarchical analysis trace | Preserves assessed roots, intermediate nodes, leaves, paths and rationales; unvisited or unselected nodes are not negative findings |
 | Selectable analysis and recovery | Select roots and FULL/TAXONOMIES_ONLY mode; retain scope, completed work and validated answers during compatible continuation |
-| Architecture views | Builds cross-layer views from selected elements and typed relations |
+| Architecture workbench | Reopens saved analysis snapshots for review and lets architects explicitly adopt them into an editable working copy with source provenance |
 | Traceable source import | Extracts bounded candidates from PDF and DOCX sources and links accepted requirements to source versions and fragments |
 | Requirement reformulation | Produces a saved wording proposal with traceable decision questions, explicit draft adoption and historical JSON/Markdown/HTML/DOCX exports; see the [workflow](docs/features/requirement-reformulation.md) and [verification boundaries](docs/testing/requirement-reformulation.md) |
-| Versioned architecture DSL | Keeps explicit DSL checkpoints in JGit and durable semantic editor revisions in a separate operation journal; supports branches, diffs, merges, reverts, and selective transfer |
-| Search | Provides full-text search and optional local ONNX vector search through Hibernate Search and Lucene |
-| Multi-user workspaces | Separates personal workspaces from the shared architecture repository |
-| Export | Produces machine-readable architecture outputs and configurable decision reports (Word/HTML/JSON), including selected taxonomies, compact profiles and readable landscape trees; see the illustrated guide ([English](docs/en/USER_GUIDE.md#configurable-decision-report), [Deutsch](docs/de/USER_GUIDE.md#configurable-decision-report)) and [scope and format contracts](docs/testing/contextual-exports.md) |
+| Versioned architecture DSL | Keeps explicit JGit checkpoints and a separate durable journal for editor operations, with branches, diffs, merges, reverts and selective transfer |
+| Shared editing | Owners can share a working copy with authorized repository contributors. Participants work on the same revisions and can undo their own operations |
+| Search and navigation | Full-text and optional local ONNX semantic search link result selection to Graph Explorer. Work areas share navigation and link to their in-app help |
+| Architecture diagrams | Explore the model with reversible focus and export SVG, vector PDF or the experimental bounded Visio 2012 subset. Microsoft Visio desktop certification is pending. Decision trees support A0 and A1 browser printing and one sheet per subtaxonomy. See the [diagram and print guide](docs/en/USER_GUIDE.md#taxonomy-view-decision) and [Visio export details](docs/en/USER_GUIDE.md#experimental-visio-2012-vsdx-subset) |
+| Decision reports | Produce Word, HTML and JSON reports with selected taxonomies, compact profiles and readable landscape trees. See the illustrated guide ([English](docs/en/USER_GUIDE.md#configurable-decision-report), [Deutsch](docs/de/USER_GUIDE.md#configurable-decision-report)) and [scope and format contracts](docs/testing/contextual-exports.md) |
+| Reviewed tool exchange | Supports scoped ArchiMate and Sparx XMI exchange. The optional Sparx plugin imports QEA snapshots and delivers reviewed native QEA copies within its [documented profile](docs/features/sparx-integration.md) |
+| Inventory and variants | Compares saved analyses with scoped product and inventory evidence. Reviewers can compare existing project solutions and retain their selection reasons |
+| ADMBw delivery preparation | Assesses selected C1–S1 and R7 rules for an exact Git checkpoint under FFFmLV 2.0. The JSON assessment includes modeling data, findings and outstanding reviews. Native EA/MDG acceptance has its own evidence requirements in the [delivery guide](docs/features/admbw-conformance-de.md) |
 | Pluggable AI | Supports configured generative providers and optional local ONNX embeddings for search/scoring; local embeddings are not a generative relationship or reformulation model |
 
 ## Typical workflow
@@ -116,11 +125,6 @@ Adoption does not automatically run another analysis or modify the architecture.
 Completing the planned work does not prove semantic completeness. Technical tests
 and retained evidence do not establish superior results against another product.
 Local ONNX cannot complete generative relationship assessment or wording synthesis.
-
-Portable backup/history/restore work is still being integrated; it is not a released
-end-to-end backup or round-trip contribution workflow merely because supporting
-capture adapters exist. Check the exact deployed version and documented support
-boundary before relying on it.
 
 ## Requirement-based architecture example
 
@@ -296,7 +300,7 @@ The local command starts plain HTTP on port 8080. Do not expose that port direct
 
 ## Production deployment
 
-The supported production example places Caddy in front of the application, enables automatic HTTPS, keeps application port 8080 inside the Docker network, and stores application state in named volumes.
+The Docker Compose production example places Caddy in front of the application, enables automatic HTTPS, keeps application port 8080 inside the Docker network, and stores application state in named volumes.
 
 ```bash
 cp .env.example .env
@@ -305,6 +309,23 @@ docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 In local-user mode, production startup rejects missing, placeholder, or short administrator passwords. Keycloak mode has separate identity-provider configuration requirements. Review the complete deployment and security documentation before exposing an instance outside a trusted development machine.
+
+The [Helm chart](deploy/helm/taxonomy/README.md) deploys the same application on
+Kubernetes, including Rancher, with an existing database service. An external
+Artemis broker can distribute analysis to separately configured workers. See the
+[Artemis setup](docs/de/ARTEMIS_SETUP.md) for the broker and worker configuration.
+
+Embedded HSQLDB is the default. Use PostgreSQL for a persistent external production
+database. SQL Server and Oracle have documented compatibility profiles. Under
+**Tools → Database setup**, administrators can test external connections and,
+with explicit confirmation, prepare an application database or account on an
+existing server. See [database setup and persistence](docs/en/DATABASE_SETUP.md).
+
+Same-version native recovery procedures cover [file-backed HSQLDB](docs/testing/native-installation-recovery.md)
+and [PostgreSQL 16](docs/testing/native-postgresql-recovery.md), with a separate
+[Oracle Free rehearsal](docs/testing/native-oracle-recovery.md). For the scope
+of portable exports and the steps to rehearse an installation restore, see the
+[operations guide](docs/en/OPERATIONS_GUIDE.md#backup-and-recovery).
 
 - [Deployment guide](docs/en/DEPLOYMENT_GUIDE.md)
 - [Deployment checklist](docs/en/DEPLOYMENT_CHECKLIST.md)
@@ -351,6 +372,9 @@ CHROME_BIN=/absolute/path/chrome CHROMEDRIVER=/absolute/path/chromedriver ./mvnw
 See [Docker-free tests and GUI preview](docs/testing/docker-free-tests.md) for
 focused runs, screenshots and the coverage retained in the existing CI profiles.
 
+The JUnit-owned documentation screenshot suite runs with
+`./mvnw -B verify -Pscreenshots`.
+
 The whole-repository module-extraction gate is owned by `taxonomy-build`, which
 is ordered after the application, aggregate coverage, and tooling modules. It
 runs in ordinary full-reactor verification and in the root-level
@@ -369,8 +393,8 @@ The build generates:
 ## Architecture
 
 Taxonomy is a **modular monolith built as one executable Spring Boot application**.
-The Maven reactor contains twenty child modules: six framework-free foundations, a plugin runtime, an external plugin,
-eight runtime feature libraries, the application composition root, and three build/tooling modules.
+The Maven reactor separates shared contracts, runtime features, the plugin
+runtime, application composition and build verification.
 
 ### How the application fits together
 
@@ -466,9 +490,9 @@ See [Architecture](docs/en/ARCHITECTURE.md) for component boundaries and [Reposi
 ## Architecture history and collaboration
 
 Accepted semantic editor operations are durable revisions with their own audit
-and undo/redo history. They are **not one Git commit per operation**. A Git commit
-is an explicit, stable checkpoint; an immutable analysis/workbench snapshot is a
-separate result selected for review or snapshot-bound export.
+and undo/redo history. A Git commit is an explicit, stable checkpoint. An
+immutable analysis snapshot is a separate result that can be reviewed, exported
+or adopted into the working copy.
 
 Architecture content is stored as a purpose-built textual DSL rather than as opaque serialized UI state. This enables:
 
@@ -483,7 +507,9 @@ Architecture content is stored as a purpose-built textual DSL rather than as opa
 
 External canonical repositories can be integrated through JGit transport. Synchronization uses commit ancestry and three-way merge semantics; rejected pushes and merge conflicts are reported instead of being presented as success.
 
-See [Git integration](docs/en/GIT_INTEGRATION.md) and [Workspace and versioning guide](docs/en/WORKSPACE_VERSIONING.md).
+See the [architecture editor guide](docs/en/ARCHITECTURE_EDITOR.md),
+[Git integration](docs/en/GIT_INTEGRATION.md) and
+[workspace and versioning guide](docs/en/WORKSPACE_VERSIONING.md).
 
 ## Document import and provenance
 
@@ -511,6 +537,8 @@ general prerequisite for contributing to these application features.
 
 For self-hosted generative analysis, start a compatible model server and configure
 `LLM_PROVIDER=CUSTOM_OPENAI`, `CUSTOM_LLM_URL` and `CUSTOM_LLM_MODEL`.
+For a custom OpenAI-compatible server, the status display shows the result of a
+connection probe. See the [AI status indicator](docs/en/AI_PROVIDERS.md#ai-status-indicator).
 See [AI providers and development evaluation](docs/en/AI_PROVIDERS.md#development-and-result-quality)
 ([Deutsch](docs/de/AI_PROVIDERS.md#entwicklung-und-ergebnisqualität)) and the
 [custom model-server guide](docs/dev/custom-llm.md) for the protocol, context
@@ -547,7 +575,12 @@ For deployment provenance and model-policy details, see:
 
 ## Security model
 
-The application supports local form login and a Keycloak/OIDC profile. Authorization distinguishes read-only users, architects, and administrators. State-changing architecture, provenance, workspace, prompt, and administrative operations are protected independently of UI visibility.
+The application supports local form login and a Keycloak/OIDC profile.
+Authorization uses independent roles for readers (`READER`), analysts (`USER`),
+architects (`ARCHITECT`) and administrators (`ADMIN`). Bearer API calls require
+the operation's OAuth scopes alongside applicable roles and resource permissions.
+Swagger presents these requirements from the same policy used by the server.
+See [REST access and roles](docs/en/SECURITY.md#roles-and-permissions).
 
 Production deployments should:
 
@@ -572,16 +605,22 @@ See [Accessibility](docs/en/ACCESSIBILITY.md) for the evidence matrix, manual ch
 | Document | Purpose |
 |---|---|
 | [User guide](docs/en/USER_GUIDE.md) | Main workflows and UI concepts |
+| [Project and requirement portfolio](docs/en/PROJECT_REQUIREMENT_PORTFOLIO.md) / [Deutsch](docs/de/PROJECT_REQUIREMENT_PORTFOLIO.md) | Versioned requirements, saved analyses and architecture realization reviews |
+| [Architecture editor](docs/en/ARCHITECTURE_EDITOR.md) / [Deutsch](docs/de/ARCHITECTURE_EDITOR.md) | Snapshot adoption, shared working copies and Git checkpoints |
 | [Concepts and planning scope](docs/en/CONCEPTS.md) / [Deutsch](docs/de/CONCEPTS.md) | Requirements, responsibilities, projects and architecture models |
 | [AI providers](docs/en/AI_PROVIDERS.md) / [Deutsch](docs/de/AI_PROVIDERS.md) | Hosted/self-hosted generative models, embeddings and development versus result quality |
 | [API reference](docs/en/API_REFERENCE.md) | REST endpoints and integration details |
 | [Architecture](docs/en/ARCHITECTURE.md) | Components, boundaries, and runtime design |
 | [Configuration reference](docs/en/CONFIGURATION_REFERENCE.md) | Environment variables and profiles |
+| [Customer styles](docs/en/CUSTOM_STYLES.md) | Interface theming and supported diagram and report export colors |
 | [Database setup](docs/en/DATABASE_SETUP.md) | Supported database configurations |
+| [Operations](docs/en/OPERATIONS_GUIDE.md) | Monitoring, persistent installations and recovery |
 | [Artemis Kubernetes setup (Deutsch)](docs/de/ARTEMIS_SETUP.md) | Persistent broker, TLS/Secrets, one coordinator and one worker, installation and verification |
 | [Repository topology](docs/en/REPOSITORY_TOPOLOGY.md) | Shared repository and workspace routing |
 | [Git integration](docs/en/GIT_INTEGRATION.md) | Versioning and external repository behavior |
-| [Sparx EA exchange](docs/features/sparx-integration.md) / [Deutsch](docs/features/sparx-integration-de.md) | Experimental reviewed XMI subset, mapping and explicit compatibility limits |
+| [Sparx EA exchange](docs/features/sparx-integration.md) / [Deutsch](docs/features/sparx-integration-de.md) | Reviewed XMI and optional native QEA workflows, mapping and compatibility limits |
+| [ADMBw delivery preparation (Deutsch)](docs/features/admbw-conformance-de.md) | Checkpoint assessment for C1–S1 and R7 and the evidence needed for delivery |
+| [Inventory comparison](docs/features/inventory-comparison.md) | Scoped product and inventory evidence, variants and review decisions |
 | [Security](docs/en/SECURITY.md) | Authentication, authorization, and deployment controls |
 | [AI transparency](docs/en/AI_TRANSPARENCY.md) | AI usage, limitations, and operator responsibilities |
 | [Accessibility](docs/en/ACCESSIBILITY.md) | Accessibility scope and verification |
@@ -590,7 +629,9 @@ German documentation is available under [`docs/de`](docs/de/).
 
 ## Project status
 
-The project is under active development. Compatibility, persistence, security, and migration behavior should be evaluated against the release notes and the exact version deployed. Do not infer production readiness solely from a successful demonstration or an individual quality badge.
+The project is under active development. The [source release notes](release_notes.md)
+record changes and their acceptance boundaries. Evaluate compatibility, recovery
+and migration using the documentation for the exact version deployed.
 
 Assignable implementation work and reproducible defects are tracked in
 [GitHub Issues](https://github.com/carstenartur/Taxonomy/issues). Missing external

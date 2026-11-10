@@ -39,6 +39,11 @@ public class ProductDemoProviderBinding implements ProjectProviderBinding {
         this.projects = projects;
     }
 
+    /** Recognizes a recorded replay identity without requiring today's scenario catalogue. */
+    public static boolean isReplayProvider(String provider) {
+        return DemoProviderIds.parse(provider).isPresent();
+    }
+
     @Override
     @Transactional
     public Optional<String> admittedProvider(Long projectId, List<Target> targets, String requestedProvider,

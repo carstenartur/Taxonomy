@@ -26,8 +26,7 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
             var graphEdges = new HashSet<String>();
             architecture.graph().edges().forEach(edge -> graphEdges.add(edge.id()));
             boolean de = report.language().equals("de");
-            String title = report.adoptionReceipt() ? t(de, "Neuformulierung — Übernahmebeleg", "Reformulation — adoption receipt")
-                    : t(de, "Neuformulierungsangebot — gespeicherte Revision", "Reformulation offer — saved revision");
+            String title = ReformulationReportRenderer.title(report);
             document.getProperties().getCoreProperties().setTitle(title);
             w.heading(title, 0, null);
             w.paragraph(report.adoptionReceipt()

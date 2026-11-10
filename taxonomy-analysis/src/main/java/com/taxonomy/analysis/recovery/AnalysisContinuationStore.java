@@ -805,12 +805,20 @@ public class AnalysisContinuationStore {
     public Snapshot cancel(String id, WorkspaceContext scope) {
         return cancelLocked(scoped(id, scope), null, null);
     }
-    /** Cluster cancellation supplies only its already committed aggregate relation evidence. */
+    /** Cluster cancellation carries the bound identity and already committed aggregate relation evidence. */
     @Transactional
-    public Snapshot cancel(String id, WorkspaceContext scope, RelationSearchReport report) {
+    public Snapshot cancel(String id, WorkspaceContext scope, AnalysisResult aggregate) {
         var run = scoped(id, scope);
+        String operationId = aggregate.getAnalysisOperationId();
+        if (operationId == null || !operationId.equals(run.clusterOperationId))
+            throw conflict("Operation claim was superseded");
         var result = readResult(run);
-        if (result != null) { retainRelationReport(run, result, report); writeResult(run, result); }
+        if (result != null) {
+            result.setAnalysisOperationId(operationId);
+            if (aggregate.getViewContext() != null) result.setViewContext(aggregate.getViewContext());
+            retainRelationReport(run, result, aggregate.getRelationSearchReport());
+            writeResult(run, result);
+        }
         return cancelLocked(run, null, null);
     }
     private void retainRelationReport(AnalysisContinuationRun run, AnalysisResult result, RelationSearchReport report) {

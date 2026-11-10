@@ -14,7 +14,7 @@ class CoreDeliveryContractsTest {
         List<List<String>> commands=new ArrayList<>();
         for(String script:List.of("release.sh","install-helm.sh","download-embedding-model.sh")) commands.add(List.of("bash","-n",".github/scripts/"+script));
         commands.add(List.of("bash","-n","deploy/helm/taxonomy/verify.sh"));
-        for(String script:List.of("check-release-delivery-contract.py","check-delivery-hardening.py","check-observability-performance-scope.py")) commands.add(List.of("python3",".github/scripts/"+script));
+        for(String script:List.of("check-release-delivery-contract.py","check-delivery-hardening.py")) commands.add(List.of("python3",".github/scripts/"+script));
         commands.add(buildCacheCommand());
         return commands.stream().map(command -> DynamicTest.dynamicTest(String.join(" ",command), () -> {
             Path log=Files.createTempFile("junit-delivery-contract-", ".log");

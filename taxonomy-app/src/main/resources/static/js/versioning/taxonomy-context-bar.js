@@ -16,8 +16,12 @@ window.TaxonomyContextBar = (function () {
     var currentContext = null;
     var pendingRead = null;
     var pageActive = true;
+    var navigationGeneration = 0;
+    var pageGeneration = 0;
+    var navigationTail = Promise.resolve();
     var activeContainer = null;
     window.addEventListener('pagehide', function () {
+        pageGeneration++;
         pageActive = false; clearInterval(pollTimer); pollTimer = null;
         if (pendingRead) pendingRead.abort();
     });
@@ -193,26 +197,58 @@ window.TaxonomyContextBar = (function () {
         }
     }
 
-    /**
-     * Navigate back one step.
-     */
-    function back() {
-        return window.TaxonomyContextApi.back()
-            .then(function (ctx) {
-                currentContext = ctx;
-                return fetchAndRender('contextBar');
-            }).catch(showError);
+    function workspaceId() {
+        return window.__TaxonomyAnalysisSessionContext?.runtime.workspaceId;
     }
 
-    /**
-     * Return to the origin context
-     */
-    function returnToOrigin() {
-        return window.TaxonomyContextApi.returnToOrigin()
+    function queueNavigation(command) {
+        var workspace = workspaceId();
+        var page = pageGeneration;
+        function isCurrentPage() {
+            return pageActive && page === pageGeneration && workspace === workspaceId();
+        }
+
+        // These requests change server state. Wait for each acknowledgement so
+        // navigation history and operations based on the current context stay ordered.
+        var result = navigationTail.then(function () {
+            return isCurrentPage() ? command() : null;
+        }).then(function (response) {
+            return isCurrentPage() ? response : null;
+        }, function (error) {
+            if (isCurrentPage()) throw error;
+            return null;
+        });
+        navigationTail = result.catch(function () {});
+        return result;
+    }
+
+    function navigate(command) {
+        if (!pageActive) return Promise.resolve(null);
+        var generation = ++navigationGeneration;
+        return queueNavigation(command)
             .then(function (ctx) {
+                if (generation !== navigationGeneration || !ctx) return null;
+                if (pendingRead) pendingRead.abort();
                 currentContext = ctx;
-                return fetchAndRender('contextBar');
-            }).catch(showError);
+                render(activeContainer || 'contextBar', ctx);
+                return ctx;
+            }).catch(function (error) {
+                if (generation === navigationGeneration) showError(error);
+            });
+    }
+
+    function open(branch, commitId, readOnly) {
+        return navigate(function () { return window.TaxonomyContextApi.open(branch, commitId, readOnly); });
+    }
+
+    /** Navigate back one step. */
+    function back() {
+        return navigate(window.TaxonomyContextApi.back);
+    }
+
+    /** Return to the origin context. */
+    function returnToOrigin() {
+        return navigate(window.TaxonomyContextApi.returnToOrigin);
     }
 
     /**
@@ -244,8 +280,9 @@ window.TaxonomyContextBar = (function () {
             }
             return;
         }
-        return window.TaxonomyContextApi.createVariant(name)
+        return queueNavigation(function () { return window.TaxonomyContextApi.createVariant(name); })
             .then(function (result) {
+                if (!result) return;
                 if (result.error) {
                     if (statusEl) {
                         statusEl.textContent = t('variants.variant.error', result.error);
@@ -314,6 +351,7 @@ window.TaxonomyContextBar = (function () {
     return {
         init: init,
         fetchAndRender: fetchAndRender,
+        open: open,
         back: back,
         returnToOrigin: returnToOrigin,
         showVariantDialog: showVariantDialog,

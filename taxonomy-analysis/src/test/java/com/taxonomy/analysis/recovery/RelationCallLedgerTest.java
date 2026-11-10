@@ -289,10 +289,16 @@ class RelationCallLedgerTest {
             architecture.setRelationSearchReport(offered.getRelationSearchReport()); offered.setArchitectureView(architecture);
             AnalysisResult completed;
             if (cancelled) {
-                db.tx(em -> { em.find(AnalysisContinuationRun.class, db.id).resultJson = db.json.writeValueAsString(offered); return null; });
+                offered.setAnalysisOperationId("bound-operation");
+                db.tx(em -> {
+                    var run = em.find(AnalysisContinuationRun.class, db.id);
+                    run.clusterOperationId = "bound-operation";
+                    run.resultJson = db.json.writeValueAsString(offered);
+                    return null;
+                });
                 completed = db.tx(em -> db.store(em).cancel(db.id,
                         new com.taxonomy.workspace.service.WorkspaceContext("owner", "workspace", "draft", "repository"),
-                        offered.getRelationSearchReport()).result());
+                        offered).result());
             } else completed = db.tx(em -> db.store(em).complete(db.claim(), offered, List.of()));
             assertEquals(3, completed.getRelationSearchReport().budget().spentCalls());
             assertEquals(1, completed.getRelationSearchReport().budget().newCalls());

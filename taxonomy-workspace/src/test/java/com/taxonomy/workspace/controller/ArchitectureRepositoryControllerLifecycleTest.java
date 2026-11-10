@@ -6,8 +6,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
@@ -102,6 +104,17 @@ class ArchitectureRepositoryControllerLifecycleTest {
         var response = body(controller.createFork("repo-a", fork), 200);
         assertEquals("fork-a", response.get("repositoryId"));
         assertEquals("repo-a", response.get("upstreamRepositoryId"));
+    }
+
+    @Test
+    void forkReportsRecheckedAuthorizationAndRefConflicts() {
+        when(provisioning.createFork("repo-a", "source", "Fork", "fork", "description",
+                RepositoryVisibility.PRIVATE, "alice"))
+                .thenThrow(new AccessDeniedException("Source access changed"),
+                        new ResponseStatusException(HttpStatus.CONFLICT, "Source branch changed"));
+
+        assertEquals(403, controller.createFork("repo-a", fork).getStatusCode().value());
+        assertEquals(409, controller.createFork("repo-a", fork).getStatusCode().value());
     }
 
     @Test

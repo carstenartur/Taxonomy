@@ -28,7 +28,7 @@ RELEASE_PARAMETER_RESOLVER = RELEASE_PLAN_CHECK.with_name(
 VERSION_STATE_CHECK = RELEASE_PLAN_CHECK.with_name("VersionStateVerifier.java")
 TOOLING_CLI = RELEASE_PLAN_CHECK.with_name("TaxonomyTooling.java")
 RELEASE_SCRIPT = ROOT / ".github" / "scripts" / "release.sh"
-RELEASE_IMAGE_GATE = ROOT / ".github" / "scripts" / "check-release-image-gate.py"
+RELEASE_IMAGE_GATE = RELEASE_PLAN_CHECK.with_name("ReleaseImageGate.java")
 RELEASE_GATE_HELPER = ROOT / ".github" / "scripts" / "verify-exact-release-gates.sh"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "deploy-release.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci-cd.yml"
@@ -109,7 +109,7 @@ def main() -> int:
     failures.extend(resource_diagnostic_failures(workflow))
 
     image_gate = subprocess.run(
-        [sys.executable, str(RELEASE_IMAGE_GATE)],
+        ["java", str(RELEASE_IMAGE_GATE), str(RELEASE_WORKFLOW)],
         cwd=ROOT,
         text=True,
         capture_output=True,
@@ -122,7 +122,7 @@ def main() -> int:
             print(image_gate.stderr, end="", file=sys.stderr)
         failures.append(
             "Immutable OCI image verification contract failed; see "
-            "check-release-image-gate.py output"
+            "ReleaseImageGate output"
         )
 
     for needle in (

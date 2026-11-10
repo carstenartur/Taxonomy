@@ -17,10 +17,18 @@ import java.util.TreeMap;
 public final class ReformulationReportRenderer {
     private ReformulationReportRenderer() {}
 
-    public record Input(String language, boolean adoptionReceipt, Map<String, String> metadata,
+    public record Input(String language, boolean adoptionReceipt, boolean demo, Map<String, String> metadata,
             String originalText, String reviewedText, List<Section> sections, List<Statement> statements,
             List<DecisionQuestion> questions, List<DecisionAnswer> answers, ValidationReport validation,
             String evidenceJson) {
+        public Input(String language, boolean adoptionReceipt, Map<String, String> metadata,
+                String originalText, String reviewedText, List<Section> sections, List<Statement> statements,
+                List<DecisionQuestion> questions, List<DecisionAnswer> answers, ValidationReport validation,
+                String evidenceJson) {
+            this(language, adoptionReceipt, false, metadata, originalText, reviewedText, sections, statements,
+                    questions, answers, validation, evidenceJson);
+        }
+
         public Input {
             if (!List.of("de", "en").contains(language)) throw new IllegalArgumentException("Report language must be de or en");
             metadata = Collections.unmodifiableMap(new TreeMap<>(metadata));
@@ -149,9 +157,10 @@ public final class ReformulationReportRenderer {
                 + span.start() + "–" + span.end() + "\n" + span.exactText()));
     }
     private static void section(List<Block> out, String title, String text) { out.add(new Block(2, title)); out.add(new Block(0, text)); }
-    private static String title(Input in) {
-        return in.adoptionReceipt() ? t(in, "Neuformulierung — Übernahmebeleg", "Reformulation — adoption receipt")
+    public static String title(Input in) {
+        String title = in.adoptionReceipt() ? t(in, "Neuformulierung — Übernahmebeleg", "Reformulation — adoption receipt")
                 : t(in, "Neuformulierungsangebot — gespeicherte Revision", "Reformulation offer — saved revision");
+        return in.demo() ? "DEMO · " + title : title;
     }
     private static String t(Input in, String de, String en) { return in.language().equals("de") ? de : en; }
     private static String escape(String value) {
