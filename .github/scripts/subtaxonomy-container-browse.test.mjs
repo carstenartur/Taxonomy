@@ -765,3 +765,49 @@ test('an unconfirmed session lets users browse an unevaluated area without start
     assert.equal(button.getAttribute('aria-expanded'), 'true');
     assert.equal(h.state.evaluatedNodes.has('BP'), false);
 });
+
+test('proposal badge reuses the single authoritative read under each filter without a second navigation-sensitive fetch', async () => {
+    const browseSource = sources[1];
+    const begin = browseSource.indexOf('    function currentProposalRead(controller) {');
+    const finish = browseSource.indexOf('    function renderProposalTable(proposals) {', begin);
+    const badgeBegin = browseSource.indexOf('    function updateProposalBadge(proposals, statusFilter) {');
+    const badgeEnd = browseSource.indexOf('    // Expose accept/reject as global helpers', badgeBegin);
+    assert.ok(begin >= 0 && finish > begin && badgeBegin > finish && badgeEnd > badgeBegin);
+    const functions = browseSource.slice(begin, finish) + browseSource.slice(badgeBegin, badgeEnd);
+    for (const filter of ['PENDING', 'ALL', 'ACCEPTED', 'REJECTED']) {
+        let requests = 0, secondaryRequests = 0, renderCount = 0;
+        const pending = [{id:'p1', status:'PENDING'}, {id:'p2', status:'PENDING'}];
+        const all = [...pending, {id:'a1',status:'ACCEPTED'}, {id:'r1',status:'REJECTED'}];
+        const badge = {textContent:'',className:''};
+        const container = {innerHTML:''};
+        const sandbox = {
+            AbortController, Promise, Array, console,
+            startupPageActive:true, proposalRead:null,
+            document:{getElementById(id) {
+                return id === 'proposalsTableContainer' ? container
+                    : id === 'proposalPendingBadge' ? badge : null;
+            }},
+            window:{TaxonomyProposalsApi:{
+                list(status, options) {
+                    assert.equal(status,filter);
+                    assert.ok(options.signal instanceof AbortSignal);
+                    requests++;
+                    return Promise.resolve({ok:true,json:async()=>filter==='PENDING'?pending:all});
+                },
+                pending() { secondaryRequests++; throw new Error('Redundant badge fetch'); }
+            }},
+            t: (key,n)=>key + ':' + n,
+            renderProposalTable(proposals) {
+                renderCount++;
+                assert.equal(proposals.length,filter==='ALL'?4:filter==='PENDING'?2:1);
+            }
+        };
+        vm.runInNewContext(functions + '\nloadProposals(' + JSON.stringify(filter) + ');', sandbox);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(requests,1,'One authoritative list read suffices for ' + filter);
+        assert.equal(secondaryRequests,0,'No separately cancellable badge read for ' + filter);
+        assert.equal(renderCount,1,'The filtered table is rendered for ' + filter);
+        assert.equal(badge.textContent,'browse.proposals.pending:2');
+        assert.match(badge.className,/bg-warning/);
+    }
+});

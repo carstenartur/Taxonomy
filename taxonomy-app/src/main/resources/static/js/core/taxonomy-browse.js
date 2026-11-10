@@ -2172,7 +2172,7 @@
                     filtered = proposals.filter(function (p) { return p.status === statusFilter; });
                 }
                 renderProposalTable(filtered);
-                updateProposalBadge(controller);
+                updateProposalBadge(proposals, statusFilter);
             })
             .catch(function (err) {
                 if (!currentProposalRead(controller) || err?.code === 'ABORTED') return;
@@ -2490,29 +2490,19 @@
             });
     }
 
-    function updateProposalBadge(controller) {
-        if (!currentProposalRead(controller)) return;
-        window.TaxonomyProposalsApi.pending({ signal: controller.signal })
-            .then(function (r) {
-                if (!currentProposalRead(controller)) return null;
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(function (pending) {
-                if (!currentProposalRead(controller)) return;
-                const badge = document.getElementById('proposalPendingBadge');
-                if (badge) {
-                    const count = Array.isArray(pending) ? pending.length : 0;
-                    badge.textContent = t('browse.proposals.pending', count);
-                    badge.className = count > 0
-                        ? 'badge bg-warning text-dark proposal-pending-badge'
-                        : 'badge bg-secondary proposal-pending-badge';
-                }
-            })
-            .catch(function (err) {
-                if (!currentProposalRead(controller) || err?.code === 'ABORTED') return;
-                console.error('[Taxonomy] Failed to update proposal badge', err);
-            });
+    function updateProposalBadge(proposals, statusFilter) {
+        // Reuse the authoritative list from this same guarded request. A second
+        // /pending read may outlive Firefox navigation and turn a harmless
+        // cancelled page read into a console error.
+        const badge = document.getElementById('proposalPendingBadge');
+        if (!badge || !Array.isArray(proposals)) return;
+        const count = statusFilter === 'PENDING'
+            ? proposals.length
+            : proposals.filter(function (proposal) { return proposal.status === 'PENDING'; }).length;
+        badge.textContent = t('browse.proposals.pending', count);
+        badge.className = count > 0
+            ? 'badge bg-warning text-dark proposal-pending-badge'
+            : 'badge bg-secondary proposal-pending-badge';
     }
 
     // Expose accept/reject as global helpers for onclick handlers in rendered table
