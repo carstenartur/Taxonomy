@@ -9,6 +9,7 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
+import { installBrowserApiFixture } from './canonical-browser-fixture.mjs';
 const resources = process.env.TAXONOMY_TEST_RESOURCE_ROOT || path.resolve('taxonomy-app/src/main/resources');
 let browser;
 before(async () => {
@@ -32,6 +33,8 @@ async function fixture(locale = 'de', width = 1100) {
     });
     for (const css of ['taxonomy.css', 'taxonomy-analysis-recovery.css'])
         await page.addStyleTag({content:await readFile(path.join(resources, 'static/css', css), 'utf8')});
+    // Load real transport and named API boundaries for migrated browse consumers.
+    await installBrowserApiFixture(page, resources);
     await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-state.js')});
     return page;
 }
