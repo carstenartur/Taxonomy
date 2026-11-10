@@ -2,23 +2,37 @@ package com.taxonomy.analysis.cluster;
 
 import com.taxonomy.analysis.dag.*;
 import com.taxonomy.analysis.service.*;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.catalog.service.*;
 import com.taxonomy.catalog.snapshot.*;
+import com.taxonomy.dto.AnalysisCoverage;
 import com.taxonomy.dto.AnalysisMode;
+import com.taxonomy.dto.AnalysisScope;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.client.RestTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 class FrozenClusterAnalysisComputationTest {
     @Test
@@ -154,6 +168,96 @@ class FrozenClusterAnalysisComputationTest {
             });
             assertThat(AnalysisRunControl.active()).isFalse(); verifyNoInteractions(nodes);
         }
+    }
+
+    @Test
+    void timedOutCategoryPreservesThePreviouslyCompletedProductGap() {
+        try (var db = new ClusterAnalysisStoreTest.Database()) {
+            var mapper = new ObjectMapper();
+            var context = ClusterAnalysisStoreTest.context("worker-product-gap");
+            var source = DurableClusterAnalysisExecutionTest.source(context);
+            var ip = TaxonomyShardRoot.of("IP");
+            var root = DurableClusterAnalysisExecutionTest.root(source, ip.code());
+            var nodes = new ArrayList<>(root.nodes());
+            nodes.add(node("IP-A", "IP", 1, "PRODUCT_FAMILY"));
+            nodes.add(node("IP-P", "IP-A", 2, "PRODUCT"));
+            nodes.add(node("IP-Z", "IP", 1, "CATEGORY"));
+            nodes.add(node("IP-C", "IP-Z", 2, "CATEGORY"));
+            var frozen = new RootCatalogueSnapshot(root.schemaVersion(), source, ip.code(), nodes,
+                    root.overlayMetadata(), root.catalogueProvenance());
+            var original = ClusterAnalysisStoreTest.command("requirement");
+            var command = new AnalyzeRequirementCommand(original.businessText(), false, 20, "CUSTOM_OPENAI",
+                    original.username(), original.workspaceContext(), null,
+                    new AnalysisScope(Set.of(ip.code()), AnalysisMode.TAXONOMIES_ONLY));
+            db.store.admit(context, command, null, Map.of(ip, mapper.writeValueAsString(frozen)));
+
+            var catalogueNodes = mock(TaxonomyNodeRepository.class);
+            var overlay = new CatalogueOverlayService(mapper, new DefaultResourceLoader(), false, "unused");
+            var snapshots = new CatalogueSnapshotService(catalogueNodes, overlay, new CatalogueRuntimePolicy("worker", "IP"), mock(CatalogueSourceJournal.class));
+            var taxonomy = new TaxonomyService(catalogueNodes, mock(TaxonomyRelationRepository.class), new AppInitializationStateService());
+            ReflectionTestUtils.setField(taxonomy, "catalogueOverlayService", overlay);
+            var embedding = mock(LocalEmbeddingService.class);
+            var providers = new LlmProviderConfig(embedding);
+            String url = "https://worker.invalid/chat/completions";
+            ReflectionTestUtils.setField(providers, "customLlmUrl", url);
+            ReflectionTestUtils.setField(providers, "customLlmModel", "fixture");
+            var http = new RestTemplate();
+            var server = MockRestServiceServer.bindTo(http).build();
+            for (String reply : List.of("{\"IP\":100}", "{\"IP-A\":50,\"IP-Z\":50}",
+                    "{\"IP-P\":{\"score\":20,\"reason\":\"below threshold\"}}")) {
+                String body = mapper.writeValueAsString(Map.of("choices", List.of(Map.of("message", Map.of("content", reply)))));
+                server.expect(requestTo(url)).andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
+            }
+            var clock = new AtomicLong();
+            server.expect(requestTo(url)).andRespond(request -> {
+                clock.set(10);
+                return withServerError().createResponse(request);
+            });
+            AnalysisRuntimeSettings settings = (key, fallback) -> "llm.retry.max".equals(key) ? 0 : fallback;
+            var gateway = new OpenAiCompatibleGateway(LlmProvider.CUSTOM_OPENAI, url, "fixture", 0, http, mapper,
+                    new LlmResponseParser(mapper), settings, null, null);
+            var gateways = mock(LlmGatewayRegistry.class);
+            when(gateways.getGatewayById(LlmProvider.CUSTOM_OPENAI.id())).thenReturn(gateway);
+            var templates = mock(PromptTemplateService.class);
+            when(templates.renderRootPrompt(anyString(), anyString(), anyString())).thenReturn("ROOT");
+            when(templates.renderPrompt(anyString(), anyString(), anyString(), anyDouble(), anyString())).thenReturn("CATEGORIES");
+            when(templates.renderProductPrompt(anyString(), anyString(), anyString(), anyInt())).thenReturn("PRODUCTS");
+            var llm = new LlmService(providers, gateways, mapper, taxonomy, templates, embedding, mock(SavedAnalysisService.class));
+            ReflectionTestUtils.setField(llm, "catalogueOverlayService", overlay);
+            var computation = new FrozenClusterAnalysisComputation(db.store, snapshots, llm, providers,
+                    () -> new AnalysisMemoryGuard(new AnalysisMemoryGuard.Policy(80, 92, 16 * 1024 * 1024, 5000, 10),
+                            () -> new AnalysisMemoryGuard.Sample(1, 1024L * 1024 * 1024), clock::get), mapper);
+            var worker = new ClusterAnalysisService(db.store, computation, new ClusterAnalysisSignals());
+
+            var completion = (SubtaxonomyAnalysisCompleted) db.completions.commit(worker.prepare(db.task(ip)));
+            assertThat(completion.outcome()).isEqualTo(AnalysisTaskOutcome.STOPPED);
+            assertThat(completion.stopReason()).isEqualTo("TIME_LIMIT");
+            assertThat(completion.scoredNodes()).isEqualTo(4);
+            assertThat(db.store.accept(completion)).isTrue();
+            server.verify();
+
+            var result = db.store.snapshot(context).result();
+            assertThat(result.getStatus()).isEqualTo("PARTIAL");
+            assertThat(result.getWarnings()).filteredOn("TIME_LIMIT"::equals).containsExactly("TIME_LIMIT");
+            assertThat(result.getWarnings()).anyMatch(warning -> warning.startsWith("TIME_LIMIT: analysis stopped"));
+            assertThat(result.getProductCoverageGaps()).singleElement().satisfies(gap -> {
+                assertThat(gap.productFamilyCode()).isEqualTo("IP-A");
+                assertThat(gap.candidateCodes()).containsExactly("IP-P");
+            });
+            assertThat(result.getRawScores()).containsEntry("IP-P", 0d).doesNotContainKey("IP-C");
+            assertThat(result.getAnalysisCoverage().nodes().get("IP-C").state()).isEqualTo(AnalysisCoverage.State.UNKNOWN);
+        }
+    }
+
+    private static RootCatalogueSnapshot.Node node(String code, String parent, int level, String role) {
+        var node = new TaxonomyNode();
+        node.setCode(code);
+        node.setNameEn(code);
+        node.setTaxonomyRoot("IP");
+        node.setParentCode(parent);
+        node.setLevel(level);
+        return RootCatalogueSnapshot.Node.capture(node,
+                new CatalogueOverlayService.NodeMetadata(role, List.of(), 1, false, null), false);
     }
 
     @Test
