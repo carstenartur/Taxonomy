@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import canonical from './canonical-api-fixture.cjs';
+import { createEvidencePolicy, screenshotStrategy } from './ui-evidence-policy.mjs';
 
 const source = await readFile(
   new URL(
@@ -20,6 +22,7 @@ const transportSource = await readFile(new URL(
 const copilotUiSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-copilot-session-ui.js',
   import.meta.url), 'utf8');
+const roleEvidenceSource = await readFile(new URL('./ui-role-state-evidence.mjs', import.meta.url), 'utf8');
 
 function deferred() {
   let resolve;
@@ -50,7 +53,7 @@ function fakeControl(id) {
 }
 
 function createHarness({ inputText = '', payload, request, withUi = false, withTransport = false,
-  withCopilot = false }) {
+  withCopilot = false, beforeTransport }) {
   const scheduled = [];
   const cleared = [];
   const alerts = [];
@@ -190,6 +193,7 @@ function createHarness({ inputText = '', payload, request, withUi = false, withT
       requestUrl: input => new URL(String(input), 'https://taxonomy.example'),
       installWorkspaceFetchRouting() {}, installWorkspaceEventSourceRouting() {}
     });
+    beforeTransport?.({ window, document, context, sandbox });
     vm.runInNewContext(transportSource, { ...sandbox, URL, AbortController },
       { filename: 'taxonomy-analysis-session-transport.js' });
   }
@@ -210,6 +214,7 @@ function createHarness({ inputText = '', payload, request, withUi = false, withT
     alerts,
     clickListeners,
     window,
+    document,
     editInput(value, type = 'input') {
       input.value = value;
       payload.current = { ...payload.current, businessText: value };
@@ -1264,4 +1269,214 @@ test('cancelling during a full draft read cannot acknowledge an unapplied foreig
   await h.context.reconcileDraft();
   assert.equal(h.runtime.version, 8);
   assert.equal(h.state.currentScores.NEW, 100);
+});
+
+function evidenceReceiptHarness({ statusResponse } = {}) {
+  let now = Date.UTC(2026, 10, 10), nextTimer = 0, server = null, heldBody = false;
+  const timers = new Map(), timerDelays = [], requests = [], failures = [], audits = [];
+  const bodyStarted = deferred(), bodyDelivered = deferred();
+  class EvidenceDate extends Date {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+    static now() { return now; }
+  }
+  const setTimer = (callback, delay = 0) => {
+    timerDelays.push(delay);
+    const id = ++nextTimer;
+    timers.set(id, { callback, due: now + delay });
+    return id;
+  };
+  const clearTimer = id => timers.delete(id);
+  function blockingAudit() {
+    audits.push({ heldBody, serverVersion: server?.version,
+      acknowledgedVersion: h.runtime.acknowledgedDraftWrites.at(-1)?.version });
+    // Model one long browser task, then delivery of its overdue native timers.
+    // The actual canonical transport still owns the unchanged 30-second deadline.
+    now += 58_000;
+    for (const [id, timer] of [...timers]) {
+      if (timer.due <= now && timers.delete(id)) timer.callback();
+    }
+    return { violations: [] };
+  }
+  const h = createHarness({ inputText: 'saved requirement',
+    payload: { current: { businessText: 'saved requirement' } }, withUi: true, withTransport: true,
+    beforeTransport({ window, document, context, sandbox }) {
+      window.location = { href: 'https://taxonomy.example/', origin: 'https://taxonomy.example' };
+      window.setTimeout = setTimer;
+      window.clearTimeout = clearTimer;
+      window.console = { warn() {} };
+      sandbox.Date = EvidenceDate;
+      window.fetch = async (input, options = {}) => {
+        const url = new URL(input, window.location.href), method = options.method || 'GET';
+        requests.push({ method, path: url.pathname, body: options.body });
+        assert.match(url.pathname, /^\/api\/analysis-drafts\/ws-1(?:\/status)?$/);
+        if (url.pathname.endsWith('/status') && statusResponse) return statusResponse();
+        if (method === 'PUT') {
+          const command = JSON.parse(options.body);
+          assert.equal(command.expectedVersion, server?.version ?? null);
+          server = { workspaceId: 'ws-1', branch: 'draft', version: (server?.version || 0) + 1,
+            updatedAt: 'saved-' + ((server?.version || 0) + 1), payload: command.payload };
+          if (server.version === 2) {
+            const receipt = JSON.stringify(server);
+            let controller;
+            const response = new Response(new ReadableStream({ start(value) { controller = value; } }),
+              { headers: { 'Content-Type': 'application/json' } });
+            const readBody = response.json.bind(response);
+            response.json = () => {
+              heldBody = true;
+              bodyStarted.resolve();
+              // A real response body is ready on the next event-loop turn. An
+              // awaited save allows it through before Axe monopolizes the page.
+              setImmediate(() => {
+                heldBody = false;
+                controller.enqueue(new TextEncoder().encode(receipt));
+                controller.close();
+                bodyDelivered.resolve();
+              });
+              return readBody();
+            };
+            return response;
+          }
+        }
+        return Response.json(url.pathname.endsWith('/status') ? { ...server, payload: undefined } : server);
+      };
+      canonical.install({ ...sandbox, window, document, Date: EvidenceDate,
+        setTimeout: setTimer, clearTimeout: clearTimer }, ['api/analysis-session-api.js']);
+      context.jsonRequest = (url, options, preserveReceipt) =>
+        window.TaxonomyAnalysisSessionApi.request(url, options,
+          preserveReceipt ? context.runtime.workspaceId : undefined, preserveReceipt === true)
+          .then(response => response.json()).catch(error => { failures.push(error); throw error; });
+    }
+  });
+  h.window.TaxonomyAnalysisSession = { saveNow: h.context.saveCurrentDraft };
+  const pageGlobals = { window: h.window, document: h.document,
+    fetch: (...args) => h.window.fetch(...args) };
+  const page = { evaluate(callback, argument) {
+    return vm.runInNewContext('(' + callback.toString() + ')(__argument)', {
+      ...pageGlobals, __argument: argument
+    });
+  } };
+  const module = { createEvidencePolicy, screenshotStrategy,
+    AxeBuilder: class {
+      withTags() { return this; }
+      analyze() { return Promise.resolve(blockingAudit()); }
+    } };
+  const start = roleEvidenceSource.indexOf('export function createRoleStateEvidence');
+  assert.ok(start >= 0, 'Exercise the existing evidence helper, replacing only its imported Axe boundary');
+  vm.runInNewContext(roleEvidenceSource.slice(start).replace('export function', 'function')
+    + '\nthis.createRoleStateEvidence = createRoleStateEvidence;', module);
+  const checks = [], findings = [];
+  const evidence = module.createRoleStateEvidence({ page, outputDir: '/unused-evidence', checks, findings });
+  return { h, evidence, pageGlobals, bodyStarted, bodyDelivered, audits, failures, requests, timerDelays,
+    blockingAudit, server: () => server };
+}
+
+async function pendingEvidenceReceipt(fixture) {
+  await fixture.evidence.runAxe('analysis-success');
+  assert.equal(fixture.h.runtime.version, 1);
+  assert.equal(fixture.h.runtime.acknowledgedDraftWrites.at(-1).version, 1);
+  fixture.h.editInput('edited requirement after the successful analysis');
+  const saving = fixture.h.context.saveDraft();
+  await fixture.bodyStarted.promise;
+  assert.equal(fixture.server().version, 2, 'The server has already committed the new draft');
+  assert.equal(fixture.h.runtime.version, 1, 'Its response body is not yet acknowledged');
+  return { saving };
+}
+
+test('an unawaited receipt retains the real canonical deadline and later requires a draft choice', async t => {
+  t.after(() => canonical.dispose());
+  const f = evidenceReceiptHarness();
+  const { saving } = await pendingEvidenceReceipt(f);
+  f.blockingAudit();
+  assert.equal(await saving, false);
+  await f.bodyDelivered.promise;
+  assert.equal(f.failures.length, 1);
+  assert.equal(f.failures[0].code, 'TIMEOUT');
+  assert.equal(f.failures[0].status, 0);
+  assert.ok(f.timerDelays.includes(30_000), 'The production deadline was not shortened');
+  await f.h.context.reconcileDraft();
+  assert.equal(f.h.runtime.version, 2);
+  assert.equal(f.h.runtime.acknowledgedDraftWrites.at(-1).version, 1);
+  assert.equal(f.h.runtime.restoring, true);
+  assert.equal(f.h.runtime.draftDecisionPending, true);
+  assert.equal(f.h.alerts.at(-1).marker, 'resume-choice');
+  assert.deepEqual(Array.from(f.h.runtime.draftMutationTrace.slice(-4), row => [row.method, row.phase]),
+    [['PUT', 'started'], ['PUT', 'failed'], ['GET', 'started'], ['GET', 'succeeded']]);
+});
+
+for (const laterState of ['analysis-error', 'analysis-success']) {
+  test(`${laterState}: blocking evidence waits for the current draft receipt after an earlier audit`, async t => {
+    t.after(() => canonical.dispose());
+    const f = evidenceReceiptHarness();
+    const { saving } = await pendingEvidenceReceipt(f);
+    await f.evidence.runAxe(laterState);
+    const saved = await saving;
+    await f.bodyDelivered.promise;
+    await f.h.context.reconcileDraft();
+    assert.equal(saved, true, 'The evidence helper must await the current receipt before its blocking audit; '
+      + JSON.stringify({ errors: f.failures.map(error => error.code), serverVersion: f.server().version,
+        acknowledgedVersion: f.h.runtime.acknowledgedDraftWrites.at(-1)?.version,
+        restoring: f.h.runtime.restoring, decisionPending: f.h.runtime.draftDecisionPending }));
+    assert.equal(f.audits.at(-1).heldBody, false);
+    assert.equal(f.failures.length, 0);
+    assert.equal(f.h.runtime.version, 2);
+    assert.equal(f.h.runtime.acknowledgedDraftWrites.at(-1).version, 2);
+    assert.equal(Boolean(f.h.runtime.restoring), false);
+    assert.equal(Boolean(f.h.runtime.draftDecisionPending), false);
+    assert.equal(f.h.alerts.some(alert => alert.marker === 'resume-choice'), false);
+    assert.equal(f.requests.filter(request => request.method === 'PUT').length, 2,
+      'The barrier drains the existing write without repeating it');
+    assert.equal(f.h.input.value, 'edited requirement after the successful analysis');
+  });
+}
+
+test('evidence before the first analysis does not require an analysis-session contract', async t => {
+  t.after(() => canonical.dispose());
+  const f = evidenceReceiptHarness();
+  f.pageGlobals.window = {};
+  f.pageGlobals.document = { querySelector: () => null };
+  await f.evidence.runAxe('landing');
+  assert.equal(f.audits.length, 1);
+  assert.equal(f.requests.length, 0);
+});
+
+test('a separate destination without an analysis loader skips draft work but a new analysis must confirm it', async t => {
+  t.after(() => canonical.dispose());
+  const f = evidenceReceiptHarness();
+  await f.evidence.runAxe('analysis-success');
+  const requests = f.requests.length;
+  f.pageGlobals.window = {};
+  f.pageGlobals.document = { querySelector: () => null };
+  await f.evidence.runAxe('browser-sessions-en');
+  assert.equal(f.audits.length, 2);
+  assert.equal(f.requests.length, requests, 'A separate page does not own the previous analysis draft');
+  await assert.rejects(f.evidence.runAxe('analysis-success'), /persistence contract is unavailable/);
+  assert.equal(f.audits.length, 2, 'A new analysis cannot reuse the previous page\'s confirmation');
+});
+
+test('an analysis loader without its session contract cannot bypass the later evidence barrier', async t => {
+  t.after(() => canonical.dispose());
+  const f = evidenceReceiptHarness();
+  await f.evidence.runAxe('analysis-success');
+  f.pageGlobals.window = {};
+  f.pageGlobals.document = { querySelector(selector) {
+    assert.equal(selector, 'script[data-taxonomy-analysis-session]');
+    return {};
+  } };
+  await assert.rejects(f.evidence.runAxe('overlay-lane'), /persistence contract is unavailable/);
+  assert.equal(f.audits.length, 1);
+});
+
+test('a pending draft choice blocks evidence without selecting or resaving a draft', async t => {
+  t.after(() => canonical.dispose());
+  const f = evidenceReceiptHarness();
+  await f.evidence.runAxe('analysis-success');
+  const requests = f.requests.length;
+  f.h.runtime.restoring = true;
+  f.h.runtime.draftDecisionPending = true;
+  await assert.rejects(f.evidence.runAxe('analysis-error'), /did not reach a confirmed saved state/);
+  assert.equal(f.h.runtime.restoring, true);
+  assert.equal(f.h.runtime.draftDecisionPending, true);
+  assert.equal(f.requests.length, requests);
+  assert.equal(f.audits.length, 1);
+  assert.equal(f.h.input.value, 'saved requirement');
 });

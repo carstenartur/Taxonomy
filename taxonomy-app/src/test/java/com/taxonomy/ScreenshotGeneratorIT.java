@@ -600,10 +600,11 @@ class ScreenshotGeneratorIT {
 
     /** Runs a standard (non-interactive) analysis and waits up to 120 s for completion. */
     private void runAnalysis() {
+        navigateToTab("analyze");
         // The rendered taxonomy tree precedes the durable analysis workspace's
         // confirmation. An early click is deliberately refused by the scoring
         // guard, so establish and assert the same production readiness first.
-        wait(15).withMessage(() -> "Analysis source never became ready after page load: "
+        wait(20).withMessage(() -> "Analysis source never became ready after page load: "
                 + ((JavascriptExecutor) driver).executeScript("""
                         const session=window.TaxonomyAnalysisSession;
                         return JSON.stringify({state:session?.state?.(),
@@ -615,7 +616,6 @@ class ScreenshotGeneratorIT {
                             && !window.__taxonomyAnalysisSessionLoading
                             && typeof window.TaxonomyAnalysisProgress?.start==='function';
                         """)));
-        navigateToTab("analyze");
         WebElement textarea = driver.findElement(By.id("businessText"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", textarea);
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);

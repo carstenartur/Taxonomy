@@ -30,17 +30,12 @@ window.ArchitectureEditorApi = (function () {
     function exactPolicy(context) {
         return context && context.workspaceScopeKey !== undefined ? {pinnedWorkspaceId:context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey} : {};
     }
-    // The editor freezes an exact workspace/revision and verifies If-Match on the server.
-    // A concurrent accepted edit may change the shared UI model-stand before a 412
-    // response arrives. Preserve that authoritative conflict instead of converting it
-    // to ABORTED. All successful or unrelated replies remain subject to the normal
-    // navigation/authentication fence, and editor generation guards apply as well.
     function write(path, body, context, policy) {
         var headers = { 'Content-Type': 'application/json' };
         headers['If-Match'] = '"workspace-revision-' + context.revision + '"';
         return window.TaxonomyApiClient.request(base + path + '?' + query(context), {
             method: 'POST', headers: headers, body: JSON.stringify(body)
-        }, Object.assign({ retries: 0, preservePreconditionFailure: true }, exactPolicy(context), policy)).then(function (response) { return response.json(); });
+        }, Object.assign({ retries: 0 }, exactPolicy(context), policy)).then(function (response) { return response.json(); });
     }
     return {
         load: function (context, revision, signal, layout, layoutRevision, viewId) {
@@ -51,7 +46,9 @@ window.ArchitectureEditorApi = (function () {
         adoptSnapshot: function (request) { return write('/snapshot-adoptions', request, request.context); },
         preview: function (command) { return write('/preview', command, command.context); },
         setSharing: function (context, enabled) { return write('/collaboration', {context:context, enabled:enabled}, context); },
-        execute: function (command) { return write('/commands', command, command.context); },
+        // Only the command receipt needs a 412 from the preceding revision.
+        // Previews and suggestions always belong to the current displayed stand.
+        execute: function (command) { return write('/commands', command, command.context, {preservePreconditionFailure:true}); },
         checkpoint: function (command) { return write('/checkpoints', command, command.context); },
         resumeCheckpoint: function (context) { return write('/checkpoints/resume', {}, context); },
         recoverVersion: function (context) { return write('/versions/recover', {}, context); },

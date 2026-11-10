@@ -270,25 +270,25 @@ window.TaxonomyApiClient = (function () {
         return true;
     }
 
-    function navigationIdentity() {
+    function navigationIdentity(ignoreModelStand) {
         var value = window.TaxonomyContextBar?.getCurrentContext?.();
         var chrome = window.TaxonomyAppChrome?.getContext?.() || {};
         var source = window.TaxonomyArchitectureWorkflow?.getScope?.() || {};
         return JSON.stringify([value?.contextId, value?.branch, value?.commitId,
             chrome.project?.id, chrome.requirement?.id, chrome.requirement?.version,
             chrome.architecture?.repositoryId, chrome.architecture?.workspaceScopeKey,
-            chrome.architecture?.branch, chrome.architecture?.modelStand,
+            chrome.architecture?.branch, ignoreModelStand ? null : chrome.architecture?.modelStand,
             chrome.source?.repositoryId, chrome.source?.workspaceScopeKey, chrome.source?.branch,
             chrome.source?.modelStand, chrome.source?.snapshotId, chrome.source?.projectId,
             chrome.source?.requirementId, chrome.source?.requirementVersionId, chrome.source?.commit,
             chrome.source?.revision, source.workspaceId, source.repositoryId, source.branch, source.commitId]);
     }
 
-    function captureContext(options, init) {
+    function captureContext(options, init, ignoreModelStand) {
         var runtime = window.__TaxonomyAnalysisSessionContext?.runtime;
         var workspace = runtime?.workspaceId;
         var analysis = runtime?.analysisGeneration;
-        var navigation = navigationIdentity();
+        var navigation = navigationIdentity(ignoreModelStand);
         var authentication = authenticationGeneration;
         var page = pageGeneration;
         return function () {
@@ -297,7 +297,7 @@ window.TaxonomyApiClient = (function () {
                 && (options.contextSensitive === false
                     || (runtime === window.__TaxonomyAnalysisSessionContext?.runtime
                         && workspace === runtime?.workspaceId && analysis === runtime?.analysisGeneration
-                        && navigation === navigationIdentity()));
+                        && navigation === navigationIdentity(ignoreModelStand)));
         };
     }
 
@@ -523,11 +523,17 @@ window.TaxonomyApiClient = (function () {
             acceptedStatuses: Array.isArray(requestOptions.acceptedStatuses) ? requestOptions.acceptedStatuses : [],
             current: captureContext(requestOptions, init), keepalive: init?.keepalive === true};
 
+        // An exact editor command can receive a revision conflict after only the
+        // displayed revision advanced. Authentication, page, workspace, branch
+        // and source selection still have to belong to the original operation.
+        var conflictContext = requestOptions.preservePreconditionFailure === true
+            ? captureContext(requestOptions, init, true) : null;
+
         function attempt(number) {
             var scope = createRequestScope(requestOptions, validated);
             var deadline = validated.timeoutMillis > 0 ? Date.now() + validated.timeoutMillis : null;
             scope.contextSensitive = requestOptions.contextSensitive !== false;
-            scope.current = context.current;
+            scope.current = conflictContext || context.current;
             scope.keepalive = context.keepalive;
             context.scope = scope;
             activeScopes.add(scope);
@@ -555,7 +561,7 @@ window.TaxonomyApiClient = (function () {
                     // even when an independent accepted writer changes the live model-stand.
                     // This exception never publishes a successful stale response or
                     // suppresses cancellation of a different response/error.
-                    var keepRevisionConflict = requestOptions.preservePreconditionFailure === true
+                    var keepRevisionConflict = conflictContext && conflictContext()
                         && error instanceof ApiError && error.status === 412 && error.code === 'HTTP_ERROR';
                     if (!context.current() && !(error instanceof ApiError && [401, 403].includes(error.status))
                             && !keepRevisionConflict) {
