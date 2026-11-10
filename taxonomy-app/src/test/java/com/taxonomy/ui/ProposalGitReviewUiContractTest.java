@@ -47,7 +47,10 @@ class ProposalGitReviewUiContractTest {
 
         assertThat(api)
                 .contains("window.TaxonomyProposalsApi")
-                .contains("fetch('/api/proposals/head'")
+                .contains("domainRequest('/api/proposals/head'")
+                .contains("window.TaxonomyApiClient.request(url, init,")
+                .contains("acceptedStatuses:[400,404,409,412,422]")
+                .doesNotContain("fetch(")
                 .contains("cache: 'no-store'")
                 .contains("function review(proposalId, action, headers)")
                 .contains("method: 'POST'")

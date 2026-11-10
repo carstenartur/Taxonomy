@@ -163,8 +163,7 @@ window.TaxonomyActionGuards = (function () {
         var btn = document.getElementById(buttonId);
         if (!btn) return;
 
-        fetch('/api/dsl/operation/check?branch=' + encodeURIComponent(branch) +
-            '&operationType=' + encodeURIComponent(operationType))
+        window.TaxonomyDslApi.operationCheck(branch, operationType)
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (check) {
                 if (!check) return;
@@ -194,8 +193,10 @@ window.TaxonomyActionGuards = (function () {
      * @param {function} onProceed — callback if user confirms
      */
     function showMergePreview(fromBranch, intoBranch, onProceed) {
-        fetch('/api/dsl/merge/preview?from=' + encodeURIComponent(fromBranch) +
-            '&into=' + encodeURIComponent(intoBranch))
+        var current = window.TaxonomyApiClient.captureContext();
+        var proceed = onProceed;
+        onProceed = proceed ? function () { if (current()) proceed(); } : null;
+        window.TaxonomyDslApi.mergePreview(fromBranch, intoBranch)
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (preview) {
                 if (!preview) {
@@ -234,7 +235,8 @@ window.TaxonomyActionGuards = (function () {
                         'success', fromBranch, intoBranch, onProceed);
                 }
             })
-            .catch(function () {
+            .catch(function (error) {
+                if (!current() || error?.code === 'ABORTED' || [401,403].includes(error?.status)) return;
                 showMergePreviewModal(t('guard.merge.preview.unavailable'), 'warning', fromBranch, intoBranch, onProceed);
             });
     }
@@ -292,8 +294,10 @@ window.TaxonomyActionGuards = (function () {
      * @param {function} onProceed — callback if user confirms
      */
     function showCherryPickPreview(commitId, targetBranch, onProceed) {
-        fetch('/api/dsl/cherry-pick/preview?commitId=' + encodeURIComponent(commitId) +
-            '&targetBranch=' + encodeURIComponent(targetBranch))
+        var current = window.TaxonomyApiClient.captureContext();
+        var proceed = onProceed;
+        onProceed = proceed ? function () { if (current()) proceed(); } : null;
+        window.TaxonomyDslApi.cherryPickPreview(commitId, targetBranch)
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (preview) {
                 if (!preview) {
@@ -324,7 +328,8 @@ window.TaxonomyActionGuards = (function () {
                         'success', commitId, targetBranch, onProceed);
                 }
             })
-            .catch(function () {
+            .catch(function (error) {
+                if (!current() || error?.code === 'ABORTED' || [401,403].includes(error?.status)) return;
                 showCherryPickPreviewModal(t('guard.cherrypick.preview.unavailable'),
                     'warning', commitId, targetBranch, onProceed);
             });

@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import canonical from './canonical-api-fixture.cjs';
+import { createEvidencePolicy, screenshotStrategy } from './ui-evidence-policy.mjs';
 
 const source = await readFile(
   new URL(
@@ -20,6 +22,7 @@ const transportSource = await readFile(new URL(
 const copilotUiSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-copilot-session-ui.js',
   import.meta.url), 'utf8');
+const roleEvidenceSource = await readFile(new URL('./ui-role-state-evidence.mjs', import.meta.url), 'utf8');
 
 function deferred() {
   let resolve;
@@ -50,7 +53,7 @@ function fakeControl(id) {
 }
 
 function createHarness({ inputText = '', payload, request, withUi = false, withTransport = false,
-  withCopilot = false }) {
+  withCopilot = false, beforeTransport }) {
   const scheduled = [];
   const cleared = [];
   const alerts = [];
@@ -190,6 +193,7 @@ function createHarness({ inputText = '', payload, request, withUi = false, withT
       requestUrl: input => new URL(String(input), 'https://taxonomy.example'),
       installWorkspaceFetchRouting() {}, installWorkspaceEventSourceRouting() {}
     });
+    beforeTransport?.({ window, document, context, sandbox });
     vm.runInNewContext(transportSource, { ...sandbox, URL, AbortController },
       { filename: 'taxonomy-analysis-session-transport.js' });
   }
@@ -210,6 +214,7 @@ function createHarness({ inputText = '', payload, request, withUi = false, withT
     alerts,
     clickListeners,
     window,
+    document,
     editInput(value, type = 'input') {
       input.value = value;
       payload.current = { ...payload.current, businessText: value };
@@ -1264,4 +1269,439 @@ test('cancelling during a full draft read cannot acknowledge an unapplied foreig
   await h.context.reconcileDraft();
   assert.equal(h.runtime.version, 8);
   assert.equal(h.state.currentScores.NEW, 100);
+});
+
+function evidenceReceiptHarness({ statusResponse } = {}) {
+  let now = Date.UTC(2026, 10, 10), nextTimer = 0, server = null, heldBody = false;
+  const timers = new Map(), timerDelays = [], requests = [], failures = [], audits = [];
+  const bodyStarted = deferred(), bodyDelivered = deferred();
+  class EvidenceDate extends Date {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+    static now() { return now; }
+  }
+  const setTimer = (callback, delay = 0) => {
+    timerDelays.push(delay);
+    const id = ++nextTimer;
+    timers.set(id, { callback, due: now + delay });
+    return id;
+  };
+  const clearTimer = id => timers.delete(id);
+  function blockingAudit() {
+    audits.push({ heldBody, serverVersion: server?.version,
+      acknowledgedVersion: h.runtime.acknowledgedDraftWrites.at(-1)?.version });
+    // Model one long browser task, then delivery of its overdue native timers.
+    // The actual canonical transport still owns the unchanged 30-second deadline.
+    now += 58_000;
+    for (const [id, timer] of [...timers]) {
+      if (timer.due <= now && timers.delete(id)) timer.callback();
+    }
+    return { violations: [] };
+  }
+  const h = createHarness({ inputText: 'saved requirement',
+    payload: { current: { businessText: 'saved requirement' } }, withUi: true, withTransport: true,
+    beforeTransport({ window, document, context, sandbox }) {
+      window.location = { href: 'https://taxonomy.example/', origin: 'https://taxonomy.example' };
+      window.setTimeout = setTimer;
+      window.clearTimeout = clearTimer;
+      window.console = { warn() {} };
+      sandbox.Date = EvidenceDate;
+      window.fetch = async (input, options = {}) => {
+        const url = new URL(input, window.location.href), method = options.method || 'GET';
+        requests.push({ method, path: url.pathname, body: options.body });
+        assert.match(url.pathname, /^\/api\/analysis-drafts\/ws-1(?:\/status)?$/);
+        if (url.pathname.endsWith('/status') && statusResponse) return statusResponse();
+        if (method === 'PUT') {
+          const command = JSON.parse(options.body);
+          assert.equal(command.expectedVersion, server?.version ?? null);
+          server = { workspaceId: 'ws-1', branch: 'draft', version: (server?.version || 0) + 1,
+            updatedAt: 'saved-' + ((server?.version || 0) + 1), payload: command.payload };
+          if (server.version === 2) {
+            const receipt = JSON.stringify(server);
+            let controller;
+            const response = new Response(new ReadableStream({ start(value) { controller = value; } }),
+              { headers: { 'Content-Type': 'application/json' } });
+            const readBody = response.json.bind(response);
+            response.json = () => {
+              heldBody = true;
+              bodyStarted.resolve();
+              // A real response body is ready on the next event-loop turn. An
+              // awaited save allows it through before Axe monopolizes the page.
+              setImmediate(() => {
+                heldBody = false;
+                controller.enqueue(new TextEncoder().encode(receipt));
+                controller.close();
+                bodyDelivered.resolve();
+              });
+              return readBody();
+            };
+            return response;
+          }
+        }
+        return Response.json(url.pathname.endsWith('/status') ? { ...server, payload: undefined } : server);
+      };
+      canonical.install({ ...sandbox, window, document, Date: EvidenceDate,
+        setTimeout: setTimer, clearTimeout: clearTimer }, ['api/analysis-session-api.js']);
+      context.jsonRequest = (url, options, preserveReceipt) =>
+        window.TaxonomyAnalysisSessionApi.request(url, options,
+          preserveReceipt ? context.runtime.workspaceId : undefined, preserveReceipt === true)
+          .then(response => response.json()).catch(error => { failures.push(error); throw error; });
+    }
+  });
+  h.window.TaxonomyAnalysisSession = { saveNow: h.context.saveCurrentDraft };
+  const pageGlobals = { window: h.window, document: h.document,
+    fetch: (...args) => h.window.fetch(...args) };
+  const page = { evaluate(callback, argument) {
+    return vm.runInNewContext('(' + callback.toString() + ')(__argument)', {
+      ...pageGlobals, __argument: argument
+    });
+  } };
+  const module = { createEvidencePolicy, screenshotStrategy,
+    AxeBuilder: class {
+      withTags() { return this; }
+      analyze() { return Promise.resolve(blockingAudit()); }
+    } };
+  const start = roleEvidenceSource.indexOf('export function createRoleStateEvidence');
+  assert.ok(start >= 0, 'Exercise the existing evidence helper, replacing only its imported Axe boundary');
+  vm.runInNewContext(roleEvidenceSource.slice(start).replace('export function', 'function')
+    + '\nthis.createRoleStateEvidence = createRoleStateEvidence;', module);
+  const checks = [], findings = [];
+  const evidence = module.createRoleStateEvidence({ page, outputDir: '/unused-evidence', checks, findings });
+  return { h, evidence, pageGlobals, bodyStarted, bodyDelivered, audits, failures, requests, timerDelays,
+    blockingAudit, server: () => server };
+}
+
+async function pendingEvidenceReceipt(fixture) {
+  await fixture.evidence.runAxe('analysis-success');
+  assert.equal(fixture.h.runtime.version, 1);
+  assert.equal(fixture.h.runtime.acknowledgedDraftWrites.at(-1).version, 1);
+  fixture.h.editInput('edited requirement after the successful analysis');
+  const saving = fixture.h.context.saveDraft();
+  await fixture.bodyStarted.promise;
+  assert.equal(fixture.server().version, 2, 'The server has already committed the new draft');
+  assert.equal(fixture.h.runtime.version, 1, 'Its response body is not yet acknowledged');
+  return { saving };
+}
+
+// The server has a status response, but Canonical must still own its JSON body when it is consumed.
+function heldDraftStatus() {
+  const started = deferred(), release = deferred();
+  const response = Response.json({ workspaceId: 'ws-1', branch: 'draft', version: 99, updatedAt: 'foreign' });
+  const json = response.json.bind(response);
+  response.json = () => { started.resolve(); return release.promise.then(json); };
+  return { response, started: started.promise, release: release.resolve };
+}
+
+function variantNavigation(window) {
+  const head = 'a'.repeat(40);
+  let current = { contextId: 'variant-context', branch: 'qa-variant', commitId: head };
+  window.TaxonomyContextBar = { getCurrentContext: () => current };
+  return () => { current = { contextId: 'origin-context', branch: 'draft', commitId: head }; };
+}
+
+test('a passive status body superseded by the return to origin cannot lock an acknowledged draft or admit a foreign revision', async t => {
+  t.after(() => canonical.dispose());
+  const held = heldDraftStatus();
+  const f = evidenceReceiptHarness({ statusResponse: () => held.response });
+  const returnToOrigin = variantNavigation(f.h.window);
+  await f.evidence.runAxe('analysis-success');
+  const revision = f.h.runtime.confirmedDraftRevision, saved = f.h.runtime.lastSavedComparable;
+  const checking = f.h.context.reconcileDraft();
+  await held.started;
+  returnToOrigin();
+  held.release();
+  assert.equal(await checking, false);
+  assert.deepEqual(f.failures.map(error => [error.code, error.status]), [['ABORTED', 0]],
+    'The production transport must reject the body captured in the superseded navigation context');
+  assert.equal(f.h.runtime.workspaceId, 'ws-1');
+  assert.equal(f.h.runtime.version, 1);
+  assert.equal(f.h.runtime.acknowledgedDraftWrites.at(-1).version, 1);
+  assert.equal(f.h.runtime.confirmedDraftRevision, revision);
+  assert.equal(f.h.runtime.lastSavedComparable, saved);
+  assert.equal(Boolean(f.h.runtime.serverUnconfirmed), false,
+    'An obsolete status observation must not declare the current confirmed server state unavailable');
+  assert.equal(Boolean(f.h.runtime.draftDecisionPending), false);
+  assert.deepEqual(f.requests.map(r => [r.method, r.path]), [
+    ['PUT', '/api/analysis-drafts/ws-1'], ['GET', '/api/analysis-drafts/ws-1'],
+    ['GET', '/api/analysis-drafts/ws-1/status']
+  ], 'No full read may adopt the stale version, and no mutation may be replayed');
+  await f.evidence.runAxe('dialog-open');
+  assert.equal(f.requests.length, 4, 'The existing evidence barrier performs its authoritative GET only');
+  assert.deepEqual(f.requests.slice(-1).map(r => [r.method, r.path]), [['GET', '/api/analysis-drafts/ws-1']]);
+  assert.equal(f.server().version, 1);
+});
+
+for (const outage of ['HTTP 503', 'TIMEOUT']) {
+  test(`a superseded passive read cannot clear a real ${outage} draft decision`, async t => {
+    t.after(() => canonical.dispose());
+    const initial = heldDraftStatus(), stale = heldDraftStatus();
+    let reads = 0;
+    const f = evidenceReceiptHarness({ statusResponse: () => ++reads > 1 ? stale.response
+      : outage === 'TIMEOUT' ? initial.response : Response.json({ error: 'Service unavailable' }, { status: 503 }) });
+    const returnToOrigin = variantNavigation(f.h.window);
+    await f.evidence.runAxe('analysis-success');
+    const checking = f.h.context.reconcileDraft();
+    if (outage === 'TIMEOUT') {
+      await initial.started;
+      f.blockingAudit(); // Advance past the unchanged Canonical 30-second body deadline.
+    }
+    assert.equal(await checking, false);
+    initial.release();
+    assert.equal(outage === 'TIMEOUT' ? f.failures[0].code : f.failures[0].status,
+      outage === 'TIMEOUT' ? 'TIMEOUT' : 503);
+    assert.equal(f.h.runtime.serverUnconfirmed, true);
+    assert.equal(f.h.runtime.draftDecisionPending, true);
+    const staleCheck = f.h.context.reconcileDraft();
+    await stale.started;
+    returnToOrigin();
+    stale.release();
+    assert.equal(await staleCheck, false);
+    assert.equal(f.failures.at(-1).code, 'ABORTED');
+    assert.equal(f.h.runtime.serverUnconfirmed, true);
+    assert.equal(f.h.runtime.draftDecisionPending, true);
+    assert.equal(await f.h.context.saveCurrentDraft(), false);
+    assert.equal(f.server().version, 1);
+    assert.deepEqual(f.requests.map(r => r.method), ['PUT', 'GET', 'GET', 'GET']);
+  });
+}
+
+test('a held draft status from another workspace cannot supply a revision or acknowledge the new workspace', async t => {
+  t.after(() => canonical.dispose());
+  const held = heldDraftStatus();
+  const f = evidenceReceiptHarness({ statusResponse: () => held.response });
+  await f.evidence.runAxe('analysis-success');
+  const checking = f.h.context.reconcileDraft();
+  await held.started;
+  Object.assign(f.h.runtime, { workspaceId: 'ws-2', version: null, acknowledgedDraftWrites: [],
+    confirmedDraftRevision: null, serverUnconfirmed: true, draftDecisionPending: true });
+  held.release();
+  assert.equal(await checking, false);
+  assert.equal(f.failures.at(-1).code, 'ABORTED');
+  assert.equal(f.h.runtime.workspaceId, 'ws-2');
+  assert.equal(f.h.runtime.version, null);
+  assert.deepEqual(f.h.runtime.acknowledgedDraftWrites, []);
+  assert.equal(f.h.runtime.confirmedDraftRevision, null);
+  assert.equal(f.h.runtime.serverUnconfirmed, true);
+  assert.equal(f.h.runtime.draftDecisionPending, true);
+  assert.deepEqual(f.requests.map(r => r.method), ['PUT', 'GET', 'GET']);
+});
+
+test('an unawaited receipt retains the real canonical deadline and later requires a draft choice', async t => {
+  t.after(() => canonical.dispose());
+  const f = evidenceReceiptHarness();
+  const { saving } = await pendingEvidenceReceipt(f);
+  f.blockingAudit();
+  assert.equal(await saving, false);
+  await f.bodyDelivered.promise;
+  assert.equal(f.failures.length, 1);
+  assert.equal(f.failures[0].code, 'TIMEOUT');
+  assert.equal(f.failures[0].status, 0);
+  assert.ok(f.timerDelays.includes(30_000), 'The production deadline was not shortened');
+  await f.h.context.reconcileDraft();
+  assert.equal(f.h.runtime.version, 2);
+  assert.equal(f.h.runtime.acknowledgedDraftWrites.at(-1).version, 1);
+  assert.equal(f.h.runtime.restoring, true);
+  assert.equal(f.h.runtime.draftDecisionPending, true);
+  assert.equal(f.h.alerts.at(-1).marker, 'resume-choice');
+  assert.deepEqual(Array.from(f.h.runtime.draftMutationTrace.slice(-4), row => [row.method, row.phase]),
+    [['PUT', 'started'], ['PUT', 'failed'], ['GET', 'started'], ['GET', 'succeeded']]);
+});
+
+for (const laterState of ['analysis-error', 'analysis-success']) {
+  test(`${laterState}: blocking evidence waits for the current draft receipt after an earlier audit`, async t => {
+    t.after(() => canonical.dispose());
+    const f = evidenceReceiptHarness();
+    const { saving } = await pendingEvidenceReceipt(f);
+    await f.evidence.runAxe(laterState);
+    const saved = await saving;
+    await f.bodyDelivered.promise;
+    await f.h.context.reconcileDraft();
+    assert.equal(saved, true, 'The evidence helper must await the current receipt before its blocking audit; '
+      + JSON.stringify({ errors: f.failures.map(error => error.code), serverVersion: f.server().version,
+        acknowledgedVersion: f.h.runtime.acknowledgedDraftWrites.at(-1)?.version,
+        restoring: f.h.runtime.restoring, decisionPending: f.h.runtime.draftDecisionPending }));
+    assert.equal(f.audits.at(-1).heldBody, false);
+    assert.equal(f.failures.length, 0);
+    assert.equal(f.h.runtime.version, 2);
+    assert.equal(f.h.runtime.acknowledgedDraftWrites.at(-1).version, 2);
+    assert.equal(Boolean(f.h.runtime.restoring), false);
+    assert.equal(Boolean(f.h.runtime.draftDecisionPending), false);
+    assert.equal(f.h.alerts.some(alert => alert.marker === 'resume-choice'), false);
+    assert.equal(f.requests.filter(request => request.method === 'PUT').length, 2,
+      'The barrier drains the existing write without repeating it');
+    assert.equal(f.h.input.value, 'edited requirement after the successful analysis');
+  });
+}
+
+test('evidence before the first analysis does not require an analysis-session contract', async t => {
+  t.after(() => canonical.dispose());
+  const f = evidenceReceiptHarness();
+  f.pageGlobals.window = {};
+  f.pageGlobals.document = { querySelector: () => null };
+  await f.evidence.runAxe('landing');
+  assert.equal(f.audits.length, 1);
+  assert.equal(f.requests.length, 0);
+});
+
+test('a separate destination without an analysis loader skips draft work but a new analysis must confirm it', async t => {
+  t.after(() => canonical.dispose());
+  const f = evidenceReceiptHarness();
+  await f.evidence.runAxe('analysis-success');
+  const requests = f.requests.length;
+  f.pageGlobals.window = {};
+  f.pageGlobals.document = { querySelector: () => null };
+  await f.evidence.runAxe('browser-sessions-en');
+  assert.equal(f.audits.length, 2);
+  assert.equal(f.requests.length, requests, 'A separate page does not own the previous analysis draft');
+  await assert.rejects(f.evidence.runAxe('analysis-success'), /persistence contract is unavailable/);
+  assert.equal(f.audits.length, 2, 'A new analysis cannot reuse the previous page\'s confirmation');
+});
+
+test('an analysis loader without its session contract cannot bypass the later evidence barrier', async t => {
+  t.after(() => canonical.dispose());
+  const f = evidenceReceiptHarness();
+  await f.evidence.runAxe('analysis-success');
+  f.pageGlobals.window = {};
+  f.pageGlobals.document = { querySelector(selector) {
+    assert.equal(selector, 'script[data-taxonomy-analysis-session]');
+    return {};
+  } };
+  await assert.rejects(f.evidence.runAxe('overlay-lane'), /persistence contract is unavailable/);
+  assert.equal(f.audits.length, 1);
+});
+
+test('a pending draft choice blocks evidence without selecting or resaving a draft', async t => {
+  t.after(() => canonical.dispose());
+  const f = evidenceReceiptHarness();
+  await f.evidence.runAxe('analysis-success');
+  const requests = f.requests.length;
+  f.h.runtime.restoring = true;
+  f.h.runtime.draftDecisionPending = true;
+  await assert.rejects(f.evidence.runAxe('analysis-error'), /did not reach a confirmed saved state/);
+  assert.equal(f.h.runtime.restoring, true);
+  assert.equal(f.h.runtime.draftDecisionPending, true);
+  assert.equal(f.requests.length, requests);
+  assert.equal(f.audits.length, 1);
+  assert.equal(f.h.input.value, 'saved requirement');
+});
+
+const roleFlowSource = await readFile(new URL('./ui-role-state-flow.mjs', import.meta.url), 'utf8');
+for (const scenario of ['confirmed', 'publication pending', 'wrong branch receipt', 'wrong commit receipt', 'same context receipt', 'non-200 receipt', 'changed repository', 'changed workspace', 'pagehide before return', 'conflict', 'server unavailable', 'newer draft with local edits'])
+  test(`architect variant cleanup preserves the visible origin and draft authority (${scenario})`, async () => {
+  const pageLifetime = new EventTarget();
+  const originContext = { contextId: 'origin', branch: 'draft', commitId: 'a'.repeat(40), repositoryId: 'repo-a', workspaceId: 'ws-1' };
+  const visibleScope = {...originContext};
+  const currentContext = {...originContext, contextId: 'variant', branch: 'qa-variant', originBranch: 'draft', originCommitId: originContext.commitId};
+  let selected = scenario === 'publication pending' ? {...originContext} : {...currentContext};
+  let responseWaiter, publicationConfirmed = false, returnReceiptObserved = false;
+  let server = { workspaceId: 'ws-1', branch: 'draft', version: 7,
+    updatedAt: '2026-10-18T10:00:00Z', payload: { businessText: 'saved requirement', scores: { OLD: 100 } } };
+  const requests = [];
+  const h = await savedHarness(null, 'en', { withTransport: true,
+    beforeTransport({window, document, context, sandbox}) {
+      window.addEventListener = pageLifetime.addEventListener.bind(pageLifetime);
+      window.TaxonomyArchitectureWorkflow = { getScope: () => visibleScope };
+      window.TaxonomyI18n = { t: key => key, resolveUrl: value => value };
+      window.fetch = async (input, options = {}) => {
+        const url = new URL(input, 'https://taxonomy.example');
+        requests.push({ path: url.pathname, method: options.method || 'GET',
+          visibleBranch: window.TaxonomyContextBar?.getCurrentContext()?.branch });
+        if (url.pathname === '/api/context/return-to-origin') {
+          assert.equal(publicationConfirmed, true, 'The visible variant publication must precede return');
+          selected = {...originContext};
+          if (scenario === 'wrong branch receipt') selected.branch = 'foreign-branch';
+          if (scenario === 'wrong commit receipt') selected.commitId = 'b'.repeat(40);
+          if (scenario === 'same context receipt') selected.contextId = currentContext.contextId;
+          const response = Response.json(selected, {status: scenario === 'non-200 receipt' ? 201 : 200});
+          const receiptBody = response.clone();
+          const wire = {url: () => url.href, request: () => ({method: () => options.method}),
+            status: () => response.status, json: () => receiptBody.json()};
+          assert.ok(responseWaiter?.predicate(wire), 'Observe the real matching POST response');
+          returnReceiptObserved = true; responseWaiter.resolve(wire);
+          return response;
+        }
+        if (url.pathname === '/api/context/current') return Response.json(selected);
+        assert.match(url.pathname, /^\/api\/analysis-drafts\/ws-1(?:\/status)?$/);
+        if (scenario === 'server unavailable') return Response.json({message: 'Unavailable'}, {status: 503});
+        if (options.method === 'PUT') {
+          const command = JSON.parse(options.body);
+          assert.equal(command.expectedVersion, server.version);
+          server = {...server, version: server.version + 1, updatedAt: 'saved-after-return', payload: command.payload};
+        }
+        return Response.json(url.pathname.endsWith('/status') ? {...server, payload: undefined} : server);
+      };
+      canonical.install({...sandbox, window, document, TaxonomyI18n: window.TaxonomyI18n, TaxonomyUtils: {escapeHtml: String},
+        setInterval() {}, clearInterval() {}}, ['api/analysis-session-api.js', 'api/workspace-api.js', 'versioning/taxonomy-context-bar.js']);
+      context.jsonRequest = (url, options, preserveReceipt) => window.TaxonomyAnalysisSessionApi.request(
+        url, options, preserveReceipt ? context.runtime.workspaceId : undefined, preserveReceipt === true).then(response => response.json());
+    }
+  });
+  await h.window.TaxonomyContextBar.fetchAndRender('contextBar');
+  assert.equal(h.window.TaxonomyContextBar.getCurrentContext().branch, scenario === 'publication pending' ? 'draft' : 'qa-variant');
+  selected = {...currentContext};
+  h.context.retryServerState = () => h.context.reconcileDraft();
+  h.window.TaxonomyAnalysisSession = { saveNow: h.context.saveCurrentDraft,
+    state: () => ({ready: !h.runtime.restoring && !h.runtime.conflict && !h.runtime.serverUnconfirmed}) };
+  const evaluate = (callback, argument) => vm.runInNewContext('(' + callback.toString() + ')(argument)',
+    {window: h.window, argument});
+  const page = {evaluate, url: () => 'https://taxonomy.example/#architecture',
+    async waitForFunction(callback, argument) {
+      if (scenario === 'publication pending') {
+        assert.equal(evaluate(callback, argument), false);
+        assert.equal(requests.some(request => request.method === 'POST'), false);
+        await h.window.TaxonomyContextBar.fetchAndRender('contextBar');
+      }
+      assert.equal(evaluate(callback, argument), true);
+      publicationConfirmed = true;
+      if (scenario === 'pagehide before return') pageLifetime.dispatchEvent(new Event('pagehide'));
+    },
+    waitForResponse(predicate) { return new Promise(resolve => {responseWaiter = {predicate, resolve};}); }
+  };
+  const start = roleFlowSource.indexOf('  assert(currentContext.contextId', roleFlowSource.indexOf('async function measureArchitectTask'));
+  const end = roleFlowSource.indexOf('\n\n  return {', start);
+  assert.ok(start >= 0 && end > start, 'Execute the actual architect role fixture return block');
+  if (scenario === 'changed repository') visibleScope.repositoryId = 'other-repository';
+  if (scenario === 'changed workspace') h.runtime.workspaceId = 'other-workspace';
+  if (scenario === 'conflict') h.runtime.conflict = true;
+  if (scenario === 'newer draft with local edits') {
+    h.editInput('unconfirmed local edit');
+    server = {...server, version: 8, updatedAt: 'newer', payload: {businessText: 'remote edit', scores: {REMOTE: 100}}};
+  }
+  const returning = vm.runInNewContext('(async () => {' + roleFlowSource.slice(start, end) + '})()', {
+    page, originContext, currentContext, URL, assert: (condition, message) => assert.ok(condition, message)
+  });
+  if (!['confirmed', 'publication pending'].includes(scenario)) {
+    if (scenario === 'pagehide before return') {
+      // No POST can complete the response waiter. The browser action must reject on its own.
+      const stalled = new Promise((_, reject) => setImmediate(() => reject(new Error('Still waiting for a cancelled return'))));
+      await assert.rejects(Promise.race([returning, stalled]), {message: 'Variant return did not acknowledge the selected source'});
+    } else {
+      await assert.rejects(returning, /did not confirm the original|still requires confirmation|did not acknowledge|returned 201/);
+    }
+    if (['changed repository', 'changed workspace', 'pagehide before return'].includes(scenario)) {
+      assert.equal(requests.filter(request => request.method === 'POST' && request.path === '/api/context/return-to-origin').length,
+        0, 'A departed source must not receive the return-to-origin command');
+    }
+    assert.equal(requests.some(request => request.method === 'PUT'), false, 'Unconfirmed fixture cannot write or choose a draft');
+    if (scenario === 'conflict') assert.equal(h.runtime.conflict, true);
+    if (scenario === 'server unavailable') assert.equal(h.runtime.serverUnconfirmed, true);
+    if (scenario === 'newer draft with local edits') {
+      assert.equal(h.input.value, 'unconfirmed local edit');
+      assert.equal(h.runtime.draftDecisionPending, true);
+      assert.equal(h.alerts.at(-1).marker, 'resume-choice');
+    }
+    return;
+  }
+  await returning;
+  assert.equal(returnReceiptObserved, true);
+  assert.ok(requests.some(request => request.path.endsWith('/status')), 'Fixture must freshly observe the original draft before continuing');
+  assert.equal(selected.branch, 'draft', 'Server returned to origin');
+  assert.equal(h.window.TaxonomyContextBar.getCurrentContext().branch, 'draft', 'The existing visible context owner must also return');
+  assert.equal(h.runtime.workspaceId, originContext.workspaceId);
+  assert.equal(await h.context.reconcileDraft(), true);
+  h.editInput('local edit after returning to origin');
+  assert.equal(await h.context.saveCurrentDraft(), true);
+  const receipt = await h.window.TaxonomyAnalysisSessionApi.request('/api/analysis-drafts/ws-1', {method:'GET'}).then(response => response.json());
+  assert.equal(receipt.version, h.runtime.version);
+  assert.equal(receipt.payload.businessText, h.input.value);
+  assert.ok(requests.filter(request => request.path.startsWith('/api/analysis-drafts/')).every(request => request.visibleBranch === 'draft'));
 });

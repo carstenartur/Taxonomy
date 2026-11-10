@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
+import canonicalFixture from './canonical-api-fixture.cjs';
 const root=new URL('../../taxonomy-app/src/main/resources/static/js/',import.meta.url);
 for(const basePath of ['', '/taxonomy'])for(const namedRouting of [false,true])test(`event streams retain exact workspace pins under ${basePath || '/'} (named routing ${namedRouting})`,async()=>{
     const calls=[],context=vm.createContext({URL,URLSearchParams});context.window=context;
@@ -66,4 +67,62 @@ for(const basePath of ['', '/taxonomy'])test(`snapshot fetch preserves explicit 
     await context.fetch(basePath+'/api/projects/42/architecture-workbench/s-2?workspaceId=');
     await context.fetch(basePath+'/api/architecture/focus/suggestions',{headers:{'X-Taxonomy-Workspace-Id':'working-C'}});
     assert.deepEqual(calls.map(c=>c.headers.get('X-Taxonomy-Workspace-Id')),['working-B','','working-C']);
+});
+
+
+for (const [operation, change, announce, status, expected] of [
+    ['execute', 'modelStand', false, 412, 'REVISION_MOVED'],
+    ['execute', 'modelStand', true, 412, 'REVISION_MOVED'],
+    ['execute', 'modelStand', true, 200, 'ABORTED'],
+    ['execute', 'modelStand', true, 409, 'ABORTED'],
+    ['execute', 'branch', false, 412, 'ABORTED'],
+    ['execute', 'pagehide', true, 412, 'ABORTED'],
+    ['execute', 'authentication', true, 412, 'ABORTED'],
+    ['execute', 'workspaceScopeKey', true, 412, 'ABORTED'],
+    ['preview', 'modelStand', false, 412, 'ABORTED'],
+    ['previewAdoption', 'branch', true, 200, 'ABORTED']
+]) test(`${operation} after ${change} change (announced ${announce}, HTTP ${status}) yields ${expected}`, async t => {
+    const scope = {repositoryId:'repo', workspaceScopeKey:'private-a', branch:'draft', revision:7};
+    const architecture = {...scope, modelStand:'revision 7'};
+    const listeners = new Map(), windowListeners = new Map();
+    let complete, sent;
+    const context = {
+        location:new URL('https://example.test/architecture/editor'),
+        document:{
+            addEventListener(type, handler) { listeners.set(type, handler); },
+            dispatchEvent(event) { listeners.get(event.type)?.(event); }
+        },
+        addEventListener(type, handler) { windowListeners.set(type, handler); },
+        TaxonomyAppChrome:{getContext:() => ({architecture})},
+        fetch(url, init) {
+            if (new URL(url, context.location).pathname === '/api/account/me') {
+                return Promise.resolve(Response.json({message:'Authentication required'}, {status:403}));
+            }
+            sent = {url:new URL(url, context.location), init};
+            return new Promise(resolve => {complete=resolve;});
+        }
+    };
+    canonicalFixture.install(context, ['api/architecture-editor-api.js']);
+    t.after(() => canonicalFixture.dispose());
+    const result = context.ArchitectureEditorApi[operation]({context:scope, kind:'UPDATE_ELEMENT'})
+        .then(value => ({value}), error => ({error}));
+    assert.equal(sent.url.searchParams.get('workspaceId'), scope.workspaceScopeKey);
+    assert.equal(new Headers(sent.init.headers).get('If-Match'), '"workspace-revision-7"');
+    if (change === 'pagehide') {
+        windowListeners.get('pagehide')({type:'pagehide'});
+    } else if (change === 'authentication') {
+        await assert.rejects(context.TaxonomyApiClient.getJson('/api/account/me'), error => error.status === 403);
+    } else {
+        architecture[change] = change === 'modelStand' ? 'revision 8' : 'departed';
+        if (announce) context.document.dispatchEvent({type:'taxonomy:entity-context-changed'});
+    }
+    complete(Response.json(status === 412 ? {code:'REVISION_MOVED'} : {accepted:true}, {status}));
+    const {error} = await result;
+    assert.ok(error);
+    if (expected === 'REVISION_MOVED') {
+        assert.equal(error.status, 412);
+        assert.equal(error.responseBody.code, expected);
+    } else {
+        assert.equal(error.code, expected);
+    }
 });

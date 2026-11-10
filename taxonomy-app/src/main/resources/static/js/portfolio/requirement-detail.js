@@ -137,6 +137,8 @@
         }
     };
 
+    let pageActive = true;
+    window.addEventListener?.('pagehide', () => { pageActive = false; });
     document.addEventListener('DOMContentLoaded', initialize);
     // Read-only adoption refresh must not reset the separate new-version form.
     // The parsed route is shared so page add-ons never re-implement route parsing.
@@ -149,6 +151,8 @@
 
     async function initialize() {
         await window.TaxonomyI18n.ready();
+        await window.TaxonomyArchitectureLifecycle?.ready?.();
+        if (!pageActive || window.location.pathname !== pathname) return;
         window.TaxonomyAppChrome?.updateContext({project: {id: projectId}});
         translateSurface();
         wireEvents();

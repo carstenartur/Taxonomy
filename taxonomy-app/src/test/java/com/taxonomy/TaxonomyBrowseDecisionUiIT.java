@@ -136,9 +136,9 @@ class TaxonomyBrowseDecisionUiIT {
             S.interactiveMode=true;S.storedBusinessText='fixture requirement';
             S.lastAnalysisProvider='fixture-provider';S.analysisProviderId='fixture-provider';
             S.analysisOperationId='fixture-operation';
-            window.fetch=async()=>({ok:true,json:async()=>({scores:{'fixture-parent':50},
+            window.fixtureApiHandlers['/api/analyze-node']=async()=>Response.json({scores:{'fixture-parent':50},
                 reasons:{'fixture-parent':'Original generated reason'},analysisReasonLength:'detailed',
-                analysisProviderId:'fixture-provider',analysisOperationId:'fixture-operation'})});
+                analysisProviderId:'fixture-provider',analysisOperationId:'fixture-operation'});
             TaxonomyBrowse.renderView(S.taxonomyData,null);
             document.querySelector('[data-taxonomy-container="CP"] .tax-container-toggle').click();
             """);
@@ -360,7 +360,7 @@ class TaxonomyBrowseDecisionUiIT {
             TaxonomyState.interactiveMode=true;TaxonomyState.storedBusinessText='fixture requirement';
             TaxonomyState.lastAnalysisProvider='fixture-provider';TaxonomyState.analysisProviderId='fixture-provider';
             TaxonomyState.analysisOperationId='fixture-operation';
-            window.fetch=url=>new Promise((resolve,reject)=>{window.fixtureRequest=url;window.fixtureResolve=resolve;window.fixtureReject=reject;});
+            window.fixtureApiHandlers['/api/analyze-node']=url=>new Promise((resolve,reject)=>{window.fixtureRequest=url;window.fixtureResolve=resolve;window.fixtureReject=reject;});
             TaxonomyBrowse.renderView(TaxonomyState.taxonomyData,null);
             document.querySelector('[data-taxonomy-container="CP"] .tax-container-toggle').click();
             TaxonomyBrowse.fixtureCollapseAll();
@@ -369,7 +369,7 @@ class TaxonomyBrowseDecisionUiIT {
         assertThat(browser.executeScript("return TaxonomyState.browseExpansion.get('CP')")).isEqualTo(false);
         browser.executeScript(fail
                 ? "window.fixtureReject(new Error('fixture failure'));"
-                : "window.fixtureResolve({ok:true,json:async()=>({scores:{'fixture-parent':50},reasons:{'fixture-parent':'fixture recorded reason'},analysisProviderId:'fixture-provider',analysisOperationId:'fixture-operation'})});");
+                : "window.fixtureResolve(Response.json({scores:{'fixture-parent':50},reasons:{'fixture-parent':'fixture recorded reason'},analysisProviderId:'fixture-provider',analysisOperationId:'fixture-operation'}));");
         new WebDriverWait(browser,Duration.ofSeconds(10)).until(d->Boolean.TRUE.equals(browser.executeScript("return !document.querySelector('[data-taxonomy-container=CP]').classList.contains('tax-evaluating')")));
         assertThat(browser.executeScript("return TaxonomyState.browseExpansion.get('CP')")).as("late response must not record an automatic reopen as a manual choice").isEqualTo(false);
         assertThat(browser.findElement(By.cssSelector("[data-taxonomy-container='CP'] .tax-container-toggle")).getDomAttribute("aria-expanded")).isEqualTo("false");
@@ -627,6 +627,16 @@ class TaxonomyBrowseDecisionUiIT {
                 document.addEventListener=function(type,...args){if(type!=='DOMContentLoaded')nativeAdd(type,...args)};
                 </script>
                 <script data-taxonomy-analysis-session></script><script src="/js/shared/taxonomy-utils.js"></script><script src="/js/core/taxonomy-state.js"></script>
+                <script src="/js/api/taxonomy-api-client.js"></script>
+                <script>
+                window.fixtureApiHandlers=Object.create(null);
+                TaxonomyApiClient.installTransportAdapter('browse-decision-fixture',nextFetch=>(input,init)=>{
+                    const url=new URL(input instanceof Request?input.url:String(input),location.href);
+                    const handler=url.origin===location.origin?window.fixtureApiHandlers[url.pathname]:null;
+                    return handler?handler(input,init):nextFetch(input,init);
+                });
+                </script>
+                <script src="/js/api/analysis-api.js"></script><script src="/js/api/export-api.js"></script>
                 <script src="/js/core/taxonomy-browse.js"></script><script src="/js/core/taxonomy-scoring.js"></script>
                 <script>
                 document.addEventListener=nativeAdd;

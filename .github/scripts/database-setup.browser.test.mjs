@@ -95,11 +95,18 @@ async function fixture({locale = 'en', width = 1000, height = 850, responses = [
                 const result = window.databaseResponses.shift();
                 if (result?.pending) {
                     const stream = new ReadableStream({start(controller) {
+                        let cancelled = false;
                         window.finishDatabaseRequest = () => {
+                            // The simulated producer may finish after the response deadline.
+                            // No bytes may be enqueued into an already errored stream.
+                            if (cancelled) return;
                             controller.enqueue(new TextEncoder().encode(JSON.stringify(result.value)));
                             controller.close();
                         };
-                        init.signal?.addEventListener('abort', () => controller.error(new DOMException('Aborted', 'AbortError')), {once: true});
+                        init.signal?.addEventListener('abort', () => {
+                            cancelled = true;
+                            controller.error(new DOMException('Aborted', 'AbortError'));
+                        }, {once: true});
                     }});
                     window.databaseHeadersReceived = true;
                     return new Response(stream, {status: 200, headers});

@@ -208,7 +208,11 @@
     }
     function renderContext(value) {
         var c = value.context || {};
-        var stand = value.source === 'GIT_CHECKPOINT' ? t('editor.selectedVersion', c.commit?.substring(0, 12) || '') : t('editor.revision', c.revision);
+        // Keep the exact label already published by the editor: confirming
+        // this same stand must not invalidate an in-flight preview.
+        var checkpoint = c.commit ? c.commit.substring(0, 12) : t('editor.emptyBranch');
+        var stand = value.source === 'GIT_CHECKPOINT' ? t('editor.selectedVersion', checkpoint)
+            : t('editor.revision', c.revision) + ' · ' + t('editor.lastCheckpoint', checkpoint);
         var facts = {architecture:{repositoryId:c.repositoryId, title:value.architectureTitle, branch:c.branch,
             workspaceScopeKey:c.workspaceScopeKey, modelStand:stand, commit:c.commit, revision:c.revision}, editable:Boolean(value.mayEdit), publicationState:value.publicationState || value.projectionState};
         var current = window.TaxonomyAppChrome?.getContext() || {};

@@ -1,4 +1,6 @@
-const {test} = require('node:test');
+const canonicalFixture = require('../../../../.github/scripts/canonical-api-fixture.cjs');
+const {test, afterEach} = require('node:test');
+afterEach(() => canonicalFixture.dispose());
 const assert = require('node:assert/strict');
 const {readFileSync} = require('node:fs');
 const path = require('node:path');
@@ -58,7 +60,7 @@ function searchFixture() {
     const highlights = [{classList: {remove(c) {this.removed = c;}}}];
     d.document.querySelectorAll = () => highlights;
     const window = {};
-    vm.runInNewContext(source('shared/taxonomy-search.js'), {window, document: d.document, AbortController,
+    vm.runInNewContext(source('shared/taxonomy-search.js'), canonicalFixture.install({window, document: d.document, AbortController,
         TaxonomyI18n: {t: k => k}, TaxonomyUtils: {escapeHtml: String},
         requestAnimationFrame: callback => callback(),
         CustomEvent: class {constructor(type, init) {this.type = type; this.detail = init.detail;}},
@@ -68,7 +70,7 @@ function searchFixture() {
             }
             options = init;
             return pending.promise;
-        }});
+        }}, ['api/search-api.js']));
     return {...d, window, pending, highlights, signal: () => options?.signal};
 }
 
@@ -587,6 +589,10 @@ function impactFixture() {
         TaxonomyUtils: {escapeHtml: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;')},
         AnalysisApi: {graphUpstream: (code, hops) => request('upstream', {code, hops}), graphDownstream: (code, hops) => request('downstream', {code, hops}),
             graphFailureImpact: (code, hops) => request('failure', {code, hops})}, fetch: request});
+    const graphApi = context.AnalysisApi;
+    canonicalFixture.install(context, ['api/analysis-api.js', 'api/relations-api.js']);
+    Object.assign(window.AnalysisApi, graphApi);
+    context.AnalysisApi = window.AnalysisApi;
     for (const name of ['shared/taxonomy-graph.js', 'relations/taxonomy-relations.js', 'core/taxonomy-analysis.js']) {
         vm.runInContext(source(name), context);
     }
@@ -727,7 +733,8 @@ function projectionFixture() {
         Headers, AbortController, DOMException, CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options?.detail;}},
         TaxonomyI18n: {t: (key, ...args) => [key, ...args].join(' ')}, TaxonomyUtils: {escapeHtml: String},
         fetch: (...args) => window.fetch(...args), setTimeout(fn) {timers.add(fn); return fn;}, clearTimeout: timer => timers.delete(timer)});
-    for (const name of ['api/taxonomy-api-client.js', 'core/taxonomy-analysis-session-api-routing.js',
+    canonicalFixture.install(context);
+    for (const name of ['core/taxonomy-analysis-session-api-routing.js',
         'api/relations-api.js', 'relations/taxonomy-relations.js']) vm.runInContext(source(name), context);
     return {...f, window, requests, table, timers, text: () => {
         function collect(node) {return node.textContent + node.innerHTML + node.children.map(collect).join(' ');}

@@ -171,3 +171,35 @@ test('analysis promotion retains the same accepted attempt while reconciliation 
   assert.equal(preparations,1,'Unpublished acceptance must not become a new intake decision');
   assert.equal(commands[1],commands[0]);
 });
+
+for (const transition of ['stay', 'pagehide', 'other requirement']) {
+  test('detail preserves lifecycle hydration before publishing its project on ' + transition, async () => {
+    const page = new EventTarget(), publications = [], reads = [];
+    const location = new URL('https://example.test/projects/7/requirements/3');
+    let initialize, confirm;
+    const overview = new Promise(resolve => {confirm = resolve;});
+    const pending = new Promise(() => {});
+    const node = {addEventListener(){}, classList:{toggle(){}}};
+    const document = {documentElement:{lang:'en'}, getElementById:() => node, querySelector:() => node,
+      querySelectorAll:() => [node,node],
+      addEventListener(type, fn) {if (type === 'DOMContentLoaded') initialize = fn;}};
+    const window = {location, addEventListener:page.addEventListener.bind(page),
+      TaxonomyI18n:{ready:() => Promise.resolve()}, TaxonomyArchitectureLifecycle:{ready:() => overview},
+      TaxonomyAppChrome:{updateContext(value) {publications.push(value.project.id);}},
+      TaxonomyPortfolioApi:{getProject(id) {reads.push(id);return pending;}, getRequirement:() => pending,
+        listRequirementVersions:() => pending, listRequirementSnapshots:() => pending,
+        getProjectPortfolio:() => pending, getAccount:() => pending}};
+    vm.runInNewContext(detailSource,{window,document,URLSearchParams});
+    const startup = initialize();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(publications, []);
+    assert.deepEqual(reads, []);
+    if (transition === 'pagehide') page.dispatchEvent(new Event('pagehide'));
+    if (transition === 'other requirement') location.pathname = '/projects/7/requirements/4';
+    confirm({context:{repositoryId:'selected-repository'}});
+    if (transition === 'stay') await new Promise(resolve => setImmediate(resolve));
+    else await startup;
+    assert.deepEqual(publications, transition === 'stay' ? [7] : []);
+    assert.deepEqual(reads, transition === 'stay' ? [7] : []);
+  });
+}

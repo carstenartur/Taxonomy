@@ -21,7 +21,7 @@ function assert(condition, message) {
 function isAnalyzeResponseForText(response, expectedText) {
   try {
     const url = new URL(response.url());
-    if (response.request().method() !== 'POST' || url.pathname !== '/api/analyze') {
+    if (response.request().method() !== 'POST' || !url.pathname.endsWith('/api/analyze')) {
       return false;
     }
     return response.request().postDataJSON()?.businessText === expectedText;
@@ -162,7 +162,8 @@ async function testPartialAnalysis() {
       })
     });
   };
-  await page.route('**/api/ai-status', stableAiStatus);
+  const aiStatusEndpoint = url => url.pathname.endsWith('/api/ai-status');
+  await page.route(aiStatusEndpoint, stableAiStatus);
 
   try {
     await navigateToPage(page, 'analyze');
@@ -179,7 +180,7 @@ async function testPartialAnalysis() {
     await page.locator('#businessText').fill(successfulText);
     const fixture = await submitAnalysisAndWaitForPublishedState(successfulText, 'SUCCESS');
 
-    await page.route('**/api/analyze', async route => {
+    await page.route(url => url.pathname.endsWith('/api/analyze'), async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -226,7 +227,7 @@ async function testPartialAnalysis() {
     await runAxe('analysis-partial', '#tab-analyze');
     await screenshot('analysis-partial', '#tab-analyze');
   } finally {
-    await page.unroute('**/api/ai-status', stableAiStatus).catch(() => undefined);
+    await page.unroute(aiStatusEndpoint, stableAiStatus).catch(() => undefined);
   }
 }
 

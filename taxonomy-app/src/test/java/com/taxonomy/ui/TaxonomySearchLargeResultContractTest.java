@@ -151,7 +151,9 @@ class TaxonomySearchLargeResultContractTest {
                 .contains("function isCurrentSearch(request)")
                 .contains("function shouldIgnoreSearchError(error, request)")
                 .contains("error.name === 'AbortError'")
-                .contains("fetch(url, searchFetchOptions(request))")
+                .contains("window.TaxonomySearchApi.search(query, mode, maxResults, searchFetchOptions(request))")
+                .contains("window.TaxonomySearchApi.similar(code, 10, searchFetchOptions(request))")
+                .doesNotContain("fetch(")
                 .contains("if (!isCurrentSearch(request)) return;");
         assertThat(count(search, "var request = beginSearchRequest();"))
                 .as("full-text/semantic search and Find Similar share one authority")

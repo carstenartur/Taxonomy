@@ -452,11 +452,18 @@ async function installRequestGate(page, pattern, method, description = pattern) 
 async function runPreferencesPreservationWorkflow({ page, baseUrl, evidence }, hypotheses) {
   const { assert, passed, saveState, axeState } = evidence;
 
+  // A previously authenticated, ready workspace must survive the deep link;
+  // background status polling is not navigation idleness.
+  const workspaceId = await page.evaluate(() => window.TaxonomyAnalysisSession.state().workspaceId);
   // Exercise a direct deep link, not only tab navigation. This catches the
   // historical case where the pane became visible before its values were loaded.
-  await page.goto(`${baseUrl}/#preferences`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/#preferences`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.locator('#mainContent').waitFor({ state: 'visible', timeout: 60_000 });
   await page.evaluate(() => window.TaxonomyI18n?.ready?.());
+  await page.waitForFunction(id => {
+    const session = window.TaxonomyAnalysisSession?.state?.();
+    return session?.ready === true && session.workspaceId === id;
+  }, workspaceId, { timeout: 30_000 });
   await waitForPreferenceLoad(page);
   assert((await page.locator('#pref-max-arch-nodes').inputValue()).trim().length > 0,
     'Direct #preferences navigation did not load runtime preference values');

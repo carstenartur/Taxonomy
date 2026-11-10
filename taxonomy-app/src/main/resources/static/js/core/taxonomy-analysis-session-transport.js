@@ -38,6 +38,8 @@
         var url = C.requestUrl(input);
         if (!url || url.origin !== window.location.origin) return false;
         var path = url.pathname;
+        var basePath = window.TaxonomyI18n?.getBasePath?.() || '';
+        if (basePath && path.indexOf(basePath + '/') === 0) path = path.substring(basePath.length);
         return path === '/api/analyze'
             || path === '/api/analyze-node'
             || path === '/api/justify-leaf'
@@ -81,10 +83,7 @@
         });
     }
 
-    function installDerivedFetchGuard() {
-        if (window.fetch.__taxonomyAnalysisGenerationGuard === true) return;
-        var nativeFetch = window.fetch.bind(window);
-
+    function createDerivedFetchGuard(nativeFetch) {
         function guardedFetch(input, init) {
             if (!derivedAnalysisRequest(input)) {
                 return nativeFetch(input, init);
@@ -134,7 +133,13 @@
             value: true,
             writable: false
         });
-        window.fetch = guardedFetch;
+        return guardedFetch;
+    }
+
+    function installDerivedFetchGuard() {
+        window.TaxonomyApiClient?.installTransportAdapter?.('analysis-generation', createDerivedFetchGuard);
+        if (window.fetch.__taxonomyAnalysisGenerationGuard === true) return;
+        window.fetch = createDerivedFetchGuard(window.fetch.bind(window));
     }
 
     function installCopilotIntervalGuard() {

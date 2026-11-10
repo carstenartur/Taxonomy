@@ -41,6 +41,9 @@
             return input;
         }
         if (!isSameApplicationApi(resolved)) return input;
+        // A URL pin is already an immutable source selection. Only an explicit
+        // policy may replace it; implicit tab routing must preserve central too.
+        if (!explicitPin && resolved.searchParams.has(WORKSPACE_QUERY_PARAMETER)) return input;
 
         // Database setup manages installation-wide preferences and connection
         // guidance, so it must remain available when the active workspace is
@@ -59,6 +62,8 @@
         if (!client || client.__taxonomyWorkspaceRouting === true) return;
         [
             'request',
+            'requestJson',
+            'requestBlob',
             'getJson',
             'sendJson',
             'sendFormData',
@@ -70,10 +75,12 @@
                 var args = Array.prototype.slice.call(arguments);
                 // Explicitly scoped operation calls (including cancellation after a
                 // tab switch) must retain the same workspace in URL and header.
-                var policy = methodName === 'request' ? args[2]
+                var policy = methodName === 'request' || methodName === 'requestJson' || methodName === 'requestBlob' ? args[2]
                     : methodName === 'getJson' || methodName === 'deleteJson' ? args[1]
                     : typeof args[2] === 'object' ? args[2] : args[3];
-                args[0] = workspaceScopedUrl(args[0], policy ? policy.pinnedWorkspaceId : undefined);
+                if (!policy || policy.workspaceScoped !== false || policy.pinnedWorkspaceId !== undefined) {
+                    args[0] = workspaceScopedUrl(args[0], policy ? policy.pinnedWorkspaceId : undefined);
+                }
                 return original.apply(client, args);
             };
         });

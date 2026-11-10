@@ -28,7 +28,7 @@ function environment(handler = (_, index) => response(index === 0 ? metrics : []
     dispatchEvent(event) { events.push(event); }
   };
   const context = vm.createContext({
-    console, URL, Headers, Request, Response, AbortController, setTimeout, clearTimeout,
+    console, URL, Headers, Request, Response, AbortController, DOMException, setTimeout, clearTimeout,
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     document, location: new URL('https://example.invalid/taxonomy/'),
     TaxonomyI18n: { t: key => key },

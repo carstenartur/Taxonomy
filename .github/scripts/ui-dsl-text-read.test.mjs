@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import canonical from './canonical-api-fixture.cjs';
 import { readFileSync } from 'node:fs';
 const script = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/shared/taxonomy-dsl-editor.js', import.meta.url), 'utf8');
 function harness() {
@@ -14,8 +15,10 @@ function harness() {
     __TaxonomyAnalysisSessionContext: {runtime: {workspaceId:'qa-original', analysisGeneration:1}},
     addEventListener: lifecycle.addEventListener.bind(lifecycle),
     dslReadingTools: { replaceDocument(text, options) { replacements.push(options); view.dispatch({changes:{insert:text}}); } } };
-  vm.runInNewContext(script.replace('}());', 'window.__qaLoadCurrent = loadCurrent; window.__qaLoadCommit = loadCommitById;}());'), { window, document: {addEventListener(){}}, TaxonomyI18n:{t:x=>x},
-    TaxonomyUtils:{escapeHtml:x=>String(x)}, fetch, AbortController, setTimeout, clearTimeout, console });
+  const scope = {window, document: {addEventListener(){}}, TaxonomyI18n:{t:x=>x},
+    TaxonomyUtils:{escapeHtml:x=>String(x)}, fetch, AbortController, setTimeout, clearTimeout, console};
+  canonical.install(scope, ['api/dsl-api.js']);
+  vm.runInNewContext(script.replace('}());', 'window.__qaLoadCurrent = loadCurrent; window.__qaLoadCommit = loadCommitById;}());'), scope);
   return { window, view, calls, replacements, doc, lifecycle, format: () => window.dslFormatContent() };
 }
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
@@ -92,7 +95,7 @@ function startupHarness({ loaderPending = false, editorPending = false } = {}) {
  const loadButton = new EventTarget();
  let currentContext = null, contextReads = 0;
  const request = (url, init, options) => {
-  if (url === '/api/dsl/branches' || url.startsWith('/api/dsl/history')) return Promise.resolve(response('[]',200,'application/json'));
+  if (new URL(url, 'https://example.test').pathname === '/api/dsl/branches' || url.startsWith('/api/dsl/history')) return Promise.resolve(response('[]',200,'application/json'));
   return new Promise(resolve => calls.push({url, init, options, resolve}));
  };
  const window = { dslCmView: editorPending ? null : view, TaxonomyApiClient: { request },
@@ -106,8 +109,10 @@ function startupHarness({ loaderPending = false, editorPending = false } = {}) {
   querySelector: selector => selector === 'script[data-taxonomy-analysis-session]' ? loader : null,
   getElementById: id => ({dslEditorContainer:editorContainer,dslBranchSelect:branch,dslStatusArea:status,dslLoadCurrentBtn:loadButton}[id] || null),
   createElement: () => ({}) };
- vm.runInNewContext(script, {window,document,TaxonomyI18n:{t:key=>key},TaxonomyUtils:{escapeHtml:String},fetch:request,
-  AbortController,setTimeout:()=>1,clearTimeout(){},console});
+ const scope = {window,document,TaxonomyI18n:{t:key=>key},TaxonomyUtils:{escapeHtml:String},fetch:request,
+  AbortController,setTimeout:()=>1,clearTimeout(){},console};
+ canonical.install(scope, ['api/dsl-api.js']);
+ vm.runInNewContext(script, scope);
  dom.dispatchEvent(new Event('DOMContentLoaded'));
  return {window,view,doc,calls,status,lifecycle,loadButton,editorContainer,loader,
   get contextReads(){return contextReads;},
@@ -168,9 +173,7 @@ function contextHarness() {
   document:{getElementById:id=>elements.get(id) || null}, TaxonomyI18n:{t:key=>key}, TaxonomyUtils:{escapeHtml:String},
   fetch:(url,options)=>new Promise(resolve=>calls.push({url,options,resolve})), AbortController, clearInterval, setInterval };
  scope.Headers = Headers;
- scope.window.TaxonomyApiClient = {request: (url, options, policy) => scope.fetch(url, {...options, signal: policy.signal})
-  .then(response => {if (!response.ok) throw new Error('HTTP ' + response.status); return response;})};
- vm.runInNewContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/workspace-api.js', import.meta.url), 'utf8'), scope);
+ canonical.install(scope, ['api/workspace-api.js']);
  vm.runInNewContext(contextSource, scope);
  return {api:scope.window.TaxonomyContextBar,calls,lifecycle,elements,scope};
 }

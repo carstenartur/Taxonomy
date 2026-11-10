@@ -158,13 +158,13 @@
         return (messages[locale] && messages[locale][key]) || messages.en[key] || key;
     }
 
-    function installFetchAdapter() {
-        window.fetch = async function portfolioAwareFetch(input, init) {
+    function createPortfolioFetchAdapter(nextFetch) {
+        return async function portfolioAwareFetch(input, init) {
             const requestUrl = resolveUrl(input);
             const method = String((init && init.method)
                 || (input instanceof Request ? input.method : 'GET')).toUpperCase();
             const sanitizedInit = sanitizeRequest(requestUrl, init);
-            const response = await originalFetch(input, sanitizedInit);
+            const response = await nextFetch(input, sanitizedInit);
 
             if (method !== 'POST' || response.status !== 202 || !isAnalysisSubmission(requestUrl)) {
                 return response;
@@ -193,6 +193,14 @@
                 headers: headers
             });
         };
+    }
+
+    function installFetchAdapter() {
+        window.TaxonomyApiClient?.installTransportAdapter?.('portfolio-background-jobs', createPortfolioFetchAdapter);
+        if (window.fetch.__taxonomyPortfolioBackgroundJobs === true) return;
+        const wrapped = createPortfolioFetchAdapter(originalFetch);
+        Object.defineProperty(wrapped, '__taxonomyPortfolioBackgroundJobs', {value: true});
+        window.fetch = wrapped;
     }
 
     function sanitizeRequest(url, init) {

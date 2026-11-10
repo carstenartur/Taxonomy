@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import canonicalFixture from './canonical-api-fixture.cjs';
 
 const resources = new URL('../../taxonomy-app/src/main/resources/', import.meta.url);
 const index = readFileSync(new URL('templates/index.html', resources), 'utf8');
@@ -26,7 +27,7 @@ function deferred() {
 // Execute the complete production scripts, controlling only their external DOM,
 // clock and HTTP boundaries. Reads deliberately may ignore abort, as an already
 // accepted response/body can arrive after pagehide or a restored page's new read.
-function harness(kind, { translationsPending = false, proposals = false } = {}) {
+function harness(kind, { translationsPending = false, proposals = false, forms = false } = {}) {
     const dom = new EventTarget(), lifecycle = new EventTarget(), translations = deferred();
     const nodes = new Map(), reads = [], timers = new Map(), errors = [];
     let nextTimer = 0;
@@ -53,6 +54,7 @@ function harness(kind, { translationsPending = false, proposals = false } = {}) 
     }
     for (const id of ['systemStatusBar', 'gitStatusBar', 'syncStatePanel', 'analyzeBtn',
         'startupBanner', 'startupBannerStatus', 'taxonomyTree', 'expandAll', 'collapseAll',
+        ...(forms ? ['testLlmConnection', 'proposeRelationsSubmit', 'proposeSpinner', 'proposeRelationType'] : []),
         ...(proposals ? ['proposalsTableContainer', 'proposalPendingBadge'] : [])]) {
         const node = new Element(); node.id = id; nodes.set(id, node);
     }
@@ -90,19 +92,18 @@ function harness(kind, { translationsPending = false, proposals = false } = {}) 
         };
         reads.push(read); return response.promise;
     };
-    window.TaxonomyApiClient = {request: (url, init, policy) => fetch(url, {...init, signal: policy.signal})
-        .then(response => { if (!response.ok) throw new Error('HTTP ' + response.status); return response; })};
+    window.fetch = fetch;
     const scope = { window, document, fetch, ...clock, AbortController, Headers,
         TaxonomyI18n: { t: (key, ...values) => [key, ...values].join(' '), ready: () => translations.promise },
         TaxonomyUtils: { escapeHtml: String }, console: { ...console, error: (...values) => errors.push(values) } };
-    vm.runInNewContext(workspaceApi, scope, {filename: 'workspace-api.js'});
+    canonicalFixture.install(scope, ['api/analysis-api.js', 'api/workspace-api.js', 'api/reference-api.js', 'api/search-api.js', 'api/proposals-api.js']);
     vm.runInNewContext(sources[kind], scope, { filename: `production-${kind}-poll.js` });
     if (!translationsPending) translations.resolve();
     return { window, nodes, reads, state, timers, translations, errors,
         start() { dom.dispatchEvent(new Event('DOMContentLoaded')); },
         hide() { lifecycle.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: true })); },
         show(persisted = true) { lifecycle.dispatchEvent(Object.assign(new Event('pageshow'), { persisted })); },
-        requests(url) { return reads.filter(read => read.url === url); },
+        requests(url) { return reads.filter(read => new URL(read.url, window.location.href).pathname === url); },
         tick(delay) {
             for (const [id, timer] of [...timers]) if (timer.delay === delay && timers.has(id)) {
                 if (!timer.repeat) timers.delete(id);
@@ -247,13 +248,13 @@ test('catalogue startup resumes after BFCache and retains its network retry unti
     assert.equal(h.requests('/api/taxonomy').length, count, 'An already loaded retained catalogue is not discarded or fetched again');
 });
 
-async function proposalRead(stage) {
+// A proposal list is now the *only* authoritative request. The badge consumes
+// that same guarded response, so there is deliberately no second /pending read.
+async function proposalRead() {
     const h = harness('browse', { proposals: true }); h.start(); await settle();
-    if (stage === 'badge') {
-        h.requests('/api/proposals/pending')[0].answer([]); await settle();
-        assert.equal(h.requests('/api/proposals/pending').length, 2);
-    }
-    return { h, read: h.requests('/api/proposals/pending').at(-1) };
+    const reads = h.requests('/api/proposals/pending');
+    assert.equal(reads.length, 1, 'Startup must fetch the pending list exactly once');
+    return { h, read: reads[0] };
 }
 
 function proposalPresentation(h) {
@@ -263,72 +264,133 @@ function proposalPresentation(h) {
     };
 }
 
-for (const stage of ['list', 'badge']) {
-    test(`proposal ${stage} response body cannot render or start another request after pagehide`, async () => {
-        const { h, read } = await proposalRead(stage);
-        const body = read.bodyPending(); await settle();
-        const retained = proposalPresentation(h), count = h.reads.length;
-        h.hide(); body.resolve([]); await settle();
-        assert.equal(h.reads.length, count, 'A departed response cannot start a follow-up badge read');
-        assert.deepEqual(proposalPresentation(h), retained, 'A departed response cannot update the old view');
-        assert.equal(read.init.signal?.aborted, true, 'Page departure must cancel the actual proposal read');
-        assert.deepEqual(h.errors, []);
-    });
-
-    test(`proposal ${stage} body rejection after pagehide cannot report an obsolete error`, async () => {
-        const { h, read } = await proposalRead(stage);
-        const body = read.bodyPending(); await settle();
-        const retained = proposalPresentation(h);
-        h.hide(); body.reject(new TypeError('controlled body rejection after departure')); await settle();
-        assert.deepEqual(h.errors, [], 'Only the active proposal read may report a failure');
-        assert.deepEqual(proposalPresentation(h), retained);
-    });
-
-    for (const failure of ['http', 'json', 'network']) {
-        test(`an active proposal ${stage} ${failure} failure remains visible`, async () => {
-            const { h, read } = await proposalRead(stage);
-            const count = h.requests('/api/proposals/pending').length;
-            if (failure === 'http') read.answer(null, 503);
-            else if (failure === 'network') read.reject(new TypeError('network unavailable'));
-            else { const body = read.bodyPending(); await settle(); body.reject(new SyntaxError('invalid proposal JSON')); }
-            await settle();
-            assert.equal(h.errors.length, 1, 'Active errors must still fail the clean-console gate');
-            assert.equal(h.errors[0][0], stage === 'list'
-                ? '[Taxonomy] Failed to load proposals' : '[Taxonomy] Failed to update proposal badge');
-            assert.match(h.errors[0][1].message, failure === 'http' ? /HTTP 503/
-                : failure === 'network' ? /network unavailable/ : /invalid proposal JSON/);
-            assert.equal(h.requests('/api/proposals/pending').length, count, 'Failure must not start another read');
-            if (stage === 'list') assert.match(h.nodes.get('proposalsTableContainer').innerHTML, /text-danger/);
-        });
-    }
-}
-
-test('BFCache restores proposal loading once and ignores the previous list body', async () => {
-    const { h, read } = await proposalRead('list');
-    const body = read.bodyPending(); await settle();
-    h.hide(); h.show(); await settle();
-    assert.equal(h.requests('/api/proposals/pending').length, 2, 'Return must read current proposals once');
-    const current = h.requests('/api/proposals/pending').at(-1);
-    const retained = proposalPresentation(h);
-    body.resolve([]); await settle();
-    assert.equal(h.requests('/api/proposals/pending').length, 2, 'An old generation cannot start a badge read');
-    assert.deepEqual(proposalPresentation(h), retained);
-    h.show(false); h.show(); await settle();
-    assert.equal(h.requests('/api/proposals/pending').length, 2, 'Repeated pageshow must not duplicate reads');
-    current.answer([]); await settle();
-    h.requests('/api/proposals/pending').at(-1).answer([{}, {}]); await settle();
+test('one accepted proposal list updates table and pending badge without a second request', async () => {
+    const { h, read } = await proposalRead();
+    read.answer([{ id: 17, status: 'PENDING', sourceCode: 'A', targetCode: 'B',
+        relationType: 'DEPENDS_ON', confidence: 0.9 },
+    { id: 18, status: 'PENDING', sourceCode: 'C', targetCode: 'D',
+        relationType: 'DEPENDS_ON', confidence: 0.8 }]);
+    await settle();
+    assert.equal(h.requests('/api/proposals/pending').length, 1,
+        'Rendering the badge must not issue a second, navigation-sensitive request');
+    assert.match(h.nodes.get('proposalsTableContainer').innerHTML, /proposal-table/);
     assert.equal(h.nodes.get('proposalPendingBadge').textContent, 'browse.proposals.pending 2');
     assert.deepEqual(h.errors, []);
 });
 
-test('a pre-navigation badge body cannot replace the restored page count', async () => {
-    const { h, read } = await proposalRead('badge');
+test('proposal response body cannot update either presentation or start another request after pagehide', async () => {
+    const { h, read } = await proposalRead();
     const body = read.bodyPending(); await settle();
-    h.hide(); h.show(); await settle();
-    assert.equal(h.requests('/api/proposals/pending').length, 3, 'Return must start a new proposal list read');
-    h.requests('/api/proposals/pending').at(-1).answer([]); await settle();
-    h.requests('/api/proposals/pending').at(-1).answer([{}, {}]); await settle();
-    body.resolve([]); await settle();
-    assert.equal(h.nodes.get('proposalPendingBadge').textContent, 'browse.proposals.pending 2');
+    const retained = proposalPresentation(h), count = h.reads.length;
+    h.hide(); body.resolve([{ id: 77, status: 'PENDING' }]); await settle();
+    assert.equal(h.reads.length, count, 'A departed response must not initiate a follow-up request');
+    assert.deepEqual(proposalPresentation(h), retained, 'Neither table nor badge may update after departure');
+    assert.equal(read.init.signal?.aborted, true, 'Page departure must cancel the actual proposal read');
     assert.deepEqual(h.errors, []);
+});
+
+test('proposal body rejection after pagehide cannot report an obsolete error', async () => {
+    const { h, read } = await proposalRead();
+    const body = read.bodyPending(); await settle();
+    const retained = proposalPresentation(h);
+    h.hide(); body.reject(new TypeError('controlled body rejection after departure')); await settle();
+    assert.deepEqual(h.errors, [], 'Only the current page may report a proposal failure');
+    assert.deepEqual(proposalPresentation(h), retained);
+});
+
+for (const failure of ['http', 'json', 'network']) {
+    test(`an active authoritative proposal ${failure} failure remains visible`, async () => {
+        const { h, read } = await proposalRead();
+        const count = h.requests('/api/proposals/pending').length;
+        if (failure === 'http') read.answer(null, 503);
+        else if (failure === 'network') read.reject(new TypeError('network unavailable'));
+        else {
+            const body = read.bodyPending(); await settle();
+            body.reject(new SyntaxError('invalid proposal JSON'));
+        }
+        await settle();
+        assert.equal(h.errors.length, 1, 'Active errors must still fail the clean-console gate');
+        assert.equal(h.errors[0][0], '[Taxonomy] Failed to load proposals');
+        const reported = h.errors[0][1];
+        if (failure === 'http') {
+            assert.match(reported.message, /HTTP 503/);
+            assert.equal(reported.status, 503);
+        } else {
+            assert.equal(reported.message, 'Network request failed');
+            assert.equal(reported.code, 'NETWORK_ERROR');
+            assert.equal(reported.cause.name, failure === 'network' ? 'TypeError' : 'SyntaxError');
+            assert.equal(reported.cause.message, failure === 'network' ? 'network unavailable' : 'invalid proposal JSON');
+        }
+        assert.equal(h.requests('/api/proposals/pending').length, count, 'Failure must not re-request the list');
+        assert.match(h.nodes.get('proposalsTableContainer').innerHTML, /text-danger/);
+    });
+}
+
+test('BFCache restores exactly one proposal list read and ignores the previous response body', async () => {
+    const { h, read } = await proposalRead();
+    const oldBody = read.bodyPending(); await settle();
+    h.hide(); h.show(); await settle();
+    assert.equal(h.requests('/api/proposals/pending').length, 2, 'Restore must start one new authoritative list read');
+    const current = h.requests('/api/proposals/pending').at(-1);
+    current.answer([{ id: 33, status: 'PENDING', sourceCode: 'A',
+        targetCode: 'B', relationType: 'DEPENDS_ON' }]);
+    await settle();
+    assert.equal(h.nodes.get('proposalPendingBadge').textContent, 'browse.proposals.pending 1');
+    const accepted = proposalPresentation(h);
+    oldBody.resolve([]); await settle();
+    assert.equal(h.requests('/api/proposals/pending').length, 2, 'Old generation must not initiate another read');
+    assert.deepEqual(proposalPresentation(h), accepted, 'Old body cannot replace the restored table or badge');
+    h.show(false); h.show(); await settle();
+    assert.equal(h.requests('/api/proposals/pending').length, 2, 'Repeated pageshow must not duplicate reads');
+    assert.deepEqual(h.errors, []);
+});
+
+test('a pre-navigation rejected proposal body cannot spoil a successful restored page', async () => {
+    const { h, read } = await proposalRead();
+    const oldBody = read.bodyPending(); await settle();
+    h.hide(); h.show(); await settle();
+    assert.equal(h.requests('/api/proposals/pending').length, 2);
+    h.requests('/api/proposals/pending').at(-1).answer([]); await settle();
+    const accepted = proposalPresentation(h);
+    assert.equal(accepted.badge, 'browse.proposals.pending 0');
+    oldBody.reject(new SyntaxError('obsolete rejected body')); await settle();
+    assert.deepEqual(proposalPresentation(h), accepted);
+    assert.deepEqual(h.errors, []);
+});
+
+test('an invalidated connection test releases its busy button', async () => {
+    const h = harness('browse', {forms:true});
+    h.start(); await settle();
+    const button = h.nodes.get('testLlmConnection');
+    button.dispatchEvent(new Event('click'));
+    assert.equal(button.disabled, true);
+    h.window.__TaxonomyAnalysisSessionContext = {runtime: {workspaceId: 'fresh'}};
+    h.reads.at(-1).answer({provider:'obsolete'});
+    await settle();
+    assert.equal(button.disabled, false);
+    assert.equal(button.textContent, 'browse.test.btn');
+});
+
+test('proposal cleanup respects the newer request and the currently allowed role', async () => {
+    const h = harness('browse', {forms:true});
+    h.start(); await settle();
+    h.window.TaxonomyRoleSurface.canMutateArchitecture = () => true;
+    h.state.pendingProposalNodeCode = 'BP';
+    h.nodes.get('proposeRelationType').value = 'DEPENDS_ON';
+    const button = h.nodes.get('proposeRelationsSubmit'), spinner = h.nodes.get('proposeSpinner');
+    button.dispatchEvent(new Event('click'));
+    const older = h.reads.at(-1);
+    assert.equal(button.disabled, true);
+    h.window.__TaxonomyAnalysisSessionContext = {runtime: {workspaceId: 'fresh'}};
+    button.dispatchEvent(new Event('click'));
+    const newer = h.reads.at(-1);
+    assert.notEqual(older, newer);
+    older.answer([]); await settle();
+    assert.equal(spinner.classList.contains('d-none'), false);
+    assert.equal(button.disabled, true);
+    h.window.TaxonomyRoleSurface.canMutateArchitecture = () => false;
+    h.window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'third';
+    newer.answer([]); await settle();
+    assert.equal(spinner.classList.contains('d-none'), true);
+    assert.equal(button.disabled, true);
 });
