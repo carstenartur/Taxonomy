@@ -161,13 +161,19 @@ The existing Maven-owned installed-product lane now distinguishes the integratio
 profile `archimate-3.1/1` from this workbench profile. A passing integration-profile
 fixture cannot satisfy the workbench outcome. The workbench case calls the actual
 `ArchitectureSnapshotExportService`, retains its ZIP and manifest, and imports the
-exact `model.archimate.xml` bytes into pinned Archi **5.10.0** before exporting them
+exact `model.archimate.xml` bytes into pinned Archi **5.11.0** before exporting them
 again. Its authored frozen projection exercises model provenance, element and
 relationship identities and names, exact property values, endpoints, two views,
 labels, styles, language attributes and geometry.
 It is not a live analysis or an authorization test.
 
-The retained installed-Archi pair from 2026-10-29 contains these observed changes:
+The current product pin must satisfy the existing `taxonomy-archi-5.10-return-v1`
+return profile and its exact comparison rules. Changing the installed product does
+not change that versioned contract or establish compatibility; a passing report for
+the current commit and product version is required.
+
+The retained installed-Archi **5.10.0** pair from 2026-10-29 contains these observed
+changes:
 
 | Affected items | Observed transition |
 | --- | --- |
@@ -213,7 +219,8 @@ and CI artifacts retain separate outcomes for StrictDoc, integration ArchiMate,
 and workbench ArchiMate. The existing evidence artifact includes the exact
 `workbench.zip`, retaining its `manifest.json`, `mapping-profile.tsv` and source
 XML alongside the separate input/returned XML files. The pinned Archi release SHA-256 is
-`f9422455a00a22f5340dc28692ceafe0ad720c8cde839eaafb0fab1cea57287f`.
+`a13f4f058c16d8653c1307a145b9dd6bddd4226abc952f58c586c46d61db219e`, from the
+[official 5.11.0 release](https://github.com/archimatetool/archi.io/releases/tag/5_11).
 
 Before closing #967, complete the acceptance in an independent consumer alongside
 the bounded installed-Archi record, including exact tool versions, Taxonomy source commit,
