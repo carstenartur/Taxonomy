@@ -72,7 +72,8 @@ final class DeploymentVerifier {
     // Disabled is the existing explicit opt-out, never a successful deployment gate.
     if (state.equals("disabled") && result.equals("disabled")) return;
     if (!state.equals("succeeded") || !result.equals("success"))
-      throw new IllegalArgumentException("Deployment receipt is failed, incomplete or inconsistent");
+      throw new IllegalArgumentException(
+          "Deployment receipt is failed, incomplete or inconsistent");
     if (!publication)
       throw new IllegalArgumentException("A non-publishing manifest cannot claim live deployment");
     if (!(receipt.get("attempts") instanceof Number)
@@ -82,7 +83,8 @@ final class DeploymentVerifier {
     if (Boolean.TRUE.equals(receipt.get("renderApiStatusVerification"))) {
       receiptText(receipt, "renderDeployId");
       if (!"live".equals(receipt.get("renderDeployStatus")))
-        throw new IllegalArgumentException("Deployment receipt did not verify a live Render deploy");
+        throw new IllegalArgumentException(
+            "Deployment receipt did not verify a live Render deploy");
     }
   }
 
@@ -400,7 +402,7 @@ final class DeploymentVerifier {
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         if (response.statusCode() < 200 || response.statusCode() >= 300)
           throw new HttpStatusFailure(response.statusCode());
-        return parseJson(response.body());
+        return FlatJson.parseValue(response.body());
       }
 
       public int status(URI uri) throws IOException, InterruptedException {
@@ -435,7 +437,7 @@ final class DeploymentVerifier {
   static String loadDeployId(Path path) throws IOException {
     if (path == null || !Files.isRegularFile(path)) return null;
     try {
-      return deployId(parseJson(Files.readString(path)));
+      return deployId(FlatJson.parseValue(Files.readString(path)));
     } catch (IllegalArgumentException exception) {
       return null;
     }
@@ -471,10 +473,6 @@ final class DeploymentVerifier {
     var match =
         Pattern.compile("(?:^|/)(srv-[A-Za-z0-9]+)(?:/|$)").matcher(URI.create(hook).getPath());
     return match.find() ? match.group(1) : "";
-  }
-
-  private static Object parseJson(String source) {
-    return FlatJson.parseObject("{\"payload\":" + source + "}").get("payload");
   }
 
   private static Path resolve(Path cwd, String path) {

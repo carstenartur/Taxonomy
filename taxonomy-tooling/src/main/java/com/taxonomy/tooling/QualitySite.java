@@ -8,6 +8,8 @@ import java.nio.file.*;
 import java.security.MessageDigest;
 import java.time.*;
 import java.util.*;
+import java.util.regex.Pattern;
+import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
 /**
@@ -215,10 +217,33 @@ final class QualitySite {
     return summary;
   }
 
+  private static final Pattern JACOCO_HEADER =
+      Pattern.compile(
+          "\\A((?:<\\?xml\\s+[^?]*\\?>)?\\s*)"
+              + Pattern.quote(
+                  "<!DOCTYPE report PUBLIC \"-//JACOCO//DTD Report 1.1//EN\" \"report.dtd\">"));
+
+  private static Document readCoverage(Path path) throws IOException {
+    try (var stream = Files.newInputStream(path)) {
+      // JaCoCo emits its fixed DTD directly after the declaration. Keep the original
+      // file (and its digest) untouched and let the hardened parser check the rest.
+      byte[] head = stream.readNBytes(4096);
+      var header = JACOCO_HEADER.matcher(new String(head, StandardCharsets.ISO_8859_1));
+      InputStream prefix = new ByteArrayInputStream(head);
+      if (header.find()) {
+        prefix =
+            new SequenceInputStream(
+                new ByteArrayInputStream(head, 0, header.end(1)),
+                new ByteArrayInputStream(head, header.end(), head.length - header.end()));
+      }
+      return XmlSupport.parse(new SequenceInputStream(prefix, stream));
+    }
+  }
+
   static Map<String, Object> coverage(Path path) throws IOException {
     Map<String, Object> result = new LinkedHashMap<>();
     for (Element counter :
-        XmlSupport.children(XmlSupport.parse(path).getDocumentElement(), "counter")) {
+        XmlSupport.children(readCoverage(path).getDocumentElement(), "counter")) {
       String metric = counter.getAttribute("type").toLowerCase(Locale.ROOT);
       if (metric.isEmpty()) continue;
       long missed = Long.parseLong(counter.getAttribute("missed")),

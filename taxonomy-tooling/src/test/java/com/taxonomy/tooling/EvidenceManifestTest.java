@@ -47,6 +47,8 @@ class EvidenceManifestTest {
         "missing-gate",
         "duplicate",
         "raw-junit",
+        "omitted-junit",
+        "alternate-coverage",
         "raw-coverage",
         "negative-metrics",
         "ui-source",
@@ -206,6 +208,21 @@ class EvidenceManifestTest {
             .getFirst()
             .put("sha256", QualitySite.sha256(root.resolve("quality-summary.json")));
       }
+      case "omitted-junit" -> {
+        Files.copy(root.resolve("tests/TEST-fixture.xml"), root.resolve("tests/TEST-second.xml"));
+        QualitySite.generate(root, SHA, TREE, "123.1", "now", Map.of("java", "25"));
+        artifacts
+            .getFirst()
+            .put("sha256", QualitySite.sha256(root.resolve("quality-summary.json")));
+      }
+      case "alternate-coverage" -> {
+        Files.copy(root.resolve("coverage/jacoco.xml"), root.resolve("other.xml"));
+        artifacts.stream()
+            .filter(a -> "coverage".equals(a.get("kind")))
+            .findFirst()
+            .orElseThrow()
+            .put("path", "other.xml");
+      }
       case "raw-junit" -> {
         Files.writeString(
             root.resolve("tests/TEST-fixture.xml"),
@@ -332,7 +349,8 @@ class EvidenceManifestTest {
     for (Object raw : QualitySite.list(data.get("artifacts")))
       if (QualitySite.object(raw).get("kind").equals(mislabeledKind))
         QualitySite.object(raw)
-            .put("sourceCommit", deploymentFromMain || mislabeledKind.equals("ui") ? release : main);
+            .put(
+                "sourceCommit", deploymentFromMain || mislabeledKind.equals("ui") ? release : main);
     QualitySite.write(root.resolve("manifest.json"), data);
     var mislabeled =
         check(

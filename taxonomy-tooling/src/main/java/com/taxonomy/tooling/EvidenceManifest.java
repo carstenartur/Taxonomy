@@ -138,6 +138,8 @@ final class EvidenceManifest {
             : profile.equals("quality") ? Set.of("quality", "junit", "coverage", "ui") : null;
     if (required == null) throw new IllegalArgumentException("Unknown evidence profile");
     Set<String> kinds = new HashSet<>(), paths = new HashSet<>();
+    Set<Path> reports = new HashSet<>(), expectedReports = new HashSet<>();
+    Set<Path> coverageFiles = new HashSet<>(), expectedCoverage = new HashSet<>();
     Path sbom = null, vex = null;
     for (Object raw : QualitySite.list(manifest.get("artifacts"))) {
       var entry = QualitySite.object(raw);
@@ -182,9 +184,10 @@ final class EvidenceManifest {
       if (Set.of("quality", "ui").contains(kind) && !verification.equals(entry.get("sourceCommit")))
         throw new IllegalArgumentException(
             "Artifact row source differs from its verification payload: " + kind);
-      if (kind.equals("junit"))
-        JunitOutcomeVerifier.validate(XmlSupport.parse(actual).getDocumentElement());
-      if (kind.equals("coverage")) QualitySite.coverage(actual);
+      if (kind.equals("junit") && !reports.add(actual))
+        throw new IllegalArgumentException("Repeated JUnit file: " + path);
+      if (kind.equals("coverage") && !coverageFiles.add(actual))
+        throw new IllegalArgumentException("Repeated coverage file: " + path);
       if (kind.equals("ui")) {
         var ui = QualitySite.read(actual);
         if (!verification.equals(ui.get("sourceCommit"))
@@ -234,7 +237,12 @@ final class EvidenceManifest {
             || passed != executed)
           throw new IllegalArgumentException("quality summary metrics differ");
         Path qualityRoot = actual.getParent();
+        if (!actual.equals(qualityRoot.resolve("quality-summary.json")))
+          throw new IllegalArgumentException("Unexpected quality summary path: " + path);
         QualitySite.verifyLocal(qualityRoot, verification);
+        for (Object report : QualitySite.list(quality.get("testReports")))
+          expectedReports.add(qualityRoot.resolve(QualitySite.reportPath(report)));
+        expectedCoverage.add(qualityRoot.resolve("coverage/jacoco.xml"));
         var recordedCoverage = QualitySite.object(quality.get("coverage"));
         var measuredCoverage = QualitySite.coverage(qualityRoot.resolve("coverage/jacoco.xml"));
         if (!recordedCoverage.keySet().equals(measuredCoverage.keySet()))
@@ -249,6 +257,9 @@ final class EvidenceManifest {
     if (!kinds.containsAll(required))
       throw new IllegalArgumentException(
           "Missing required artifact kinds: " + difference(required, kinds));
+    if (!reports.equals(expectedReports) || !coverageFiles.equals(expectedCoverage))
+      throw new IllegalArgumentException(
+          "Manifest JUnit or coverage inventory differs from validated files");
     Set<String> gates = new HashSet<>();
     for (Object raw : QualitySite.list(manifest.get("gates"))) {
       var gate = QualitySite.object(raw);

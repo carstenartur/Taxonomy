@@ -111,7 +111,8 @@ class DeploymentVerifierTest {
   void toleratesQueuedMissingAndMalformedHookResponses() throws Exception {
     Path response = directory.resolve("hook.json");
     assertThat(DeploymentVerifier.loadDeployId(response)).isNull();
-    for (String content : List.of("{\"message\":\"queued\"}", "not json")) {
+    for (String content :
+        List.of("{\"message\":\"queued\"}", "not json", "{\"id\":\"dep-xyz789\"},\"extra\":null")) {
       Files.writeString(response, content);
       assertThat(DeploymentVerifier.loadDeployId(response)).isNull();
     }

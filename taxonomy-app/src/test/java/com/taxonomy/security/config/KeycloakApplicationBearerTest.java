@@ -5,9 +5,13 @@ import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.nimbusds.jwt.*;
+import com.taxonomy.security.controller.AccountContextController;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfSystemProperty;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -21,6 +25,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 import java.net.*;
 import java.net.http.*;
@@ -31,15 +36,20 @@ import tools.jackson.databind.json.JsonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /** Exercises all servlet filters and database composition with a verified token. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"taxonomy.keycloak.principal-mode=STABLE", "embedding.enabled=false", "llm.mock=true", "taxonomy.security.swagger-public=false",
-        "spring.datasource.url=jdbc:hsqldb:mem:real-keycloak-bearer", "spring.jpa.hibernate.ddl-auto=create"})
+        "taxonomy.security.audit-logging=true", "spring.datasource.url=jdbc:hsqldb:mem:real-keycloak-bearer", "spring.jpa.hibernate.ddl-auto=create"})
 @ActiveProfiles("keycloak") @DirtiesContext
 class KeycloakApplicationBearerTest {
     private static final KeycloakJwtTestIssuer ISSUER = KeycloakJwtTestIssuer.start();
     @LocalServerPort int port;
     @Autowired JwtDecoder decoder;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired com.taxonomy.security.service.PrincipalIdentityService identities;
+    @MockitoSpyBean AccountContextController accountController;
     @Value("${spring.security.oauth2.client.registration.keycloak.client-id}")
     String applicationAudience;
     @DynamicPropertySource static void jwtProperties(DynamicPropertyRegistry properties) {
@@ -48,6 +58,7 @@ class KeycloakApplicationBearerTest {
                 ? ISSUER.origin() + "/keys" : System.getProperty("taxonomy.keycloak.test.issuer") + "/protocol/openid-connect/certs");
     }
     @AfterAll static void stopIssuer() { ISSUER.close(); }
+    @AfterEach void restorePublicKeys() { ISSUER.publish(ISSUER.key()); }
     @Test void verifiedBearerCanReadItsAccountInTheFullApplication() throws Exception {
         String bearer = token(ISSUER.origin());
         JsonNode account = account(bearer);
@@ -66,6 +77,202 @@ class KeycloakApplicationBearerTest {
     }
     @Test void anotherIssuerCannotReuseAValidSignature() throws Exception {
         assertThat(request("/api/account/me", token("https://another-idp.test"))).isEqualTo(401);
+    }
+
+    @Test @DisabledIfSystemProperty(named = "taxonomy.keycloak.test.issuer", matches = ".+")
+    void rejectedBearersRemainUnauthorizedAndAuditedWithoutCredentialDisclosure() throws Exception {
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+        var events = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        events.list = new java.util.concurrent.CopyOnWriteArrayList<>();
+        events.start();
+        logger.addAppender(events);
+        try (var client = HttpClient.newHttpClient()) {
+            var untrusted = new RSAKeyGenerator(2048).keyID(ISSUER.key().getKeyID()).generate();
+            var rejected = List.of(
+                    audienceToken(ISSUER.origin(), List.of(applicationAudience), untrusted, Instant.now().plusSeconds(300)),
+                    audienceToken(ISSUER.origin(), List.of(applicationAudience), ISSUER.key(), Instant.now().minusSeconds(300)));
+            for (String bearer : rejected) {
+                events.list.clear();
+                var response = client.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/account/me"))
+                        .header("Authorization", "Bearer " + bearer).header("Accept", "application/json").GET().build(),
+                        HttpResponse.BodyHandlers.ofString());
+                assertThat(response.statusCode()).isEqualTo(401);
+                assertThat(JsonMapper.builder().build().readTree(response.body()).path("error").asText())
+                        .isEqualTo("Authentication required");
+                assertThat(response.body().contains(bearer)).as("The denial must not echo the bearer credential").isFalse();
+                var failures = events.list.stream().filter(event -> event.getLoggerName().equals(SecurityAuditListener.class.getName())
+                        && event.getFormattedMessage().startsWith("LOGIN_FAILED ")).toList();
+                assertThat(failures).as("The real rejected authentication must remain audited").hasSize(1);
+                assertThat(events.list.stream().anyMatch(event -> event.getFormattedMessage().contains(bearer)
+                        || Arrays.toString(event.getArgumentArray()).contains(bearer)
+                        || event.getThrowableProxy() != null && ch.qos.logback.classic.spi.ThrowableProxyUtil
+                                .asString(event.getThrowableProxy()).contains(bearer)))
+                        .as("Neither audit nor other logs/throwables may contain the rejected bearer").isFalse();
+                assertThat(failures.getFirst().getFormattedMessage().contains("audience-proof"))
+                        .as("Unverified token claims are not an authenticated audit identity").isFalse();
+            }
+        } finally {
+            logger.detachAppender(events);
+            events.stop();
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"principal", "binding"})
+    @DisabledIfSystemProperty(named = "taxonomy.keycloak.test.issuer", matches = ".+")
+    void disabledVerifiedIdentityDoesNotDiscloseBearerInProviderDiagnostics(String disabled) throws Exception {
+        String bearer = audienceToken(ISSUER.origin(), List.of(applicationAudience),
+                ISSUER.key(), Instant.now().plusSeconds(300));
+        var principal = identities.oidc(ISSUER.origin(), "audience-proof-person");
+        assertThat(account(bearer).path("username").asText()).isEqualTo(principal.scopeKey());
+        String sql = disabled.equals("principal")
+                ? "update app_principal set enabled=? where principal_id=?"
+                : "update principal_binding set enabled=? where principal_id=? and issuer=?";
+        Object[] arguments = disabled.equals("principal")
+                ? new Object[] {0, principal.id().value().toString()}
+                : new Object[] {0, principal.id().value().toString(), ISSUER.origin()};
+        var providerLogger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(
+                org.springframework.security.authentication.ProviderManager.class);
+        var previousLevel = providerLogger.getLevel();
+        assertThat(jdbc.update(sql, arguments)).isEqualTo(1);
+        clearInvocations(accountController);
+        try (var audit = new AuditCapture()) {
+            providerLogger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+            var response = accountResponse(bearer);
+            assertThat(response.statusCode()).isEqualTo(401);
+            var body = JsonMapper.builder().build().readTree(response.body());
+            assertThat(body.path("error").asText()).isEqualTo("Authentication required");
+            assertThat(body.path("status").asInt()).isEqualTo(401);
+            assertThat(body.size()).isEqualTo(2);
+            verifyNoInteractions(accountController);
+            assertThat(audit.events.list.stream().anyMatch(event ->
+                    event.getLoggerName().equals(providerLogger.getName())
+                            && event.getLevel() == ch.qos.logback.classic.Level.DEBUG
+                            && event.getThrowableProxy() != null
+                            && event.getThrowableProxy().getClassName().equals(
+                                    org.springframework.security.authentication.DisabledException.class.getName())))
+                    .as("The real ProviderManager account-status diagnostic must be exercised, not suppressed").isTrue();
+            audit.assertNoDisclosure(response, bearer, "audience-proof");
+        } finally {
+            providerLogger.setLevel(previousLevel);
+            arguments[0] = 1;
+            assertThat(jdbc.update(sql, arguments)).isEqualTo(1);
+        }
+        assertThat(account(bearer).path("username").asText()).isEqualTo(principal.scopeKey());
+    }
+
+    @Test @DisabledIfSystemProperty(named = "taxonomy.keycloak.test.issuer", matches = ".+")
+    void productionChainRefreshesRotatedKeysAndRejectsRemovedOrNeverPublishedKeys() throws Exception {
+        RSAKey first = new RSAKeyGenerator(2048).keyID("rotation-first").generate();
+        RSAKey second = new RSAKeyGenerator(2048).keyID("rotation-second").generate();
+        RSAKey replacement = new RSAKeyGenerator(2048).keyID("rotation-replacement").generate();
+        RSAKey unpublished = new RSAKeyGenerator(2048).keyID("rotation-unpublished").generate();
+        String firstBearer = rotatingToken(first), secondBearer = rotatingToken(second);
+        String replacementBearer = rotatingToken(replacement);
+        ISSUER.publish(first);
+        int before = ISSUER.requestCount();
+        assertThat(account(firstBearer).path("username").asText()).startsWith("principal-");
+        assertThat(ISSUER.requestCount()).as("The actual decoder must retrieve the initial public key").isGreaterThan(before);
+
+        ISSUER.publish(first, second);
+        before = ISSUER.requestCount();
+        assertThat(account(secondBearer).path("username").asText()).startsWith("principal-");
+        assertThat(ISSUER.requestCount()).as("A newly published kid must cause an observed JWKS refresh").isGreaterThan(before);
+
+        ISSUER.publish(replacement);
+        before = ISSUER.requestCount();
+        assertThat(account(replacementBearer).path("username").asText()).startsWith("principal-");
+        assertThat(ISSUER.requestCount()).as("Removal is tested only after a real successful JWKS refresh").isGreaterThan(before);
+        try (var audit = new AuditCapture()) {
+            for (String bearer : List.of(firstBearer, secondBearer, rotatingToken(unpublished))) {
+                clearInvocations(accountController);
+                var response = accountResponse(bearer);
+                assertThat(response.statusCode()).isEqualTo(401);
+                assertThat(JsonMapper.builder().build().readTree(response.body()).path("error").asText())
+                        .isEqualTo("Authentication required");
+                verifyNoInteractions(accountController);
+                audit.assertNoDisclosure(response, bearer, "audience-proof");
+            }
+        }
+        assertThat(account(replacementBearer).path("username").asText()).startsWith("principal-");
+    }
+
+    @ParameterizedTest @ValueSource(ints = {503, 200})
+    @DisabledIfSystemProperty(named = "taxonomy.keycloak.test.issuer", matches = ".+")
+    void unknownKidFailsClosedDuringJwksFailureAndRecoversAfterPublication(int jwksStatus) throws Exception {
+        // Each case uses fresh kids; no decoder/cache replacement or TTL wait is needed.
+        RSAKey trusted = new RSAKeyGenerator(2048).keyID("trusted-" + jwksStatus).generate();
+        RSAKey unknown = new RSAKeyGenerator(2048).keyID("unknown-" + jwksStatus).generate();
+        ISSUER.publish(trusted);
+        assertThat(account(rotatingToken(trusted)).path("username").asText()).startsWith("principal-");
+        String bearer = rotatingToken(unknown);
+        ISSUER.respond(jwksStatus, jwksStatus == 503 ? "{\"error\":\"JWKS temporarily unavailable\"}" : "not-a-jwk-set");
+        int before = ISSUER.requestCount();
+        clearInvocations(accountController);
+        try (var audit = new AuditCapture()) {
+            var response = accountResponse(bearer);
+            // Authentication denial and generic infrastructure errors both fail closed.
+            // This says nothing about availability of already cached valid signing keys.
+            assertThat(response.statusCode()).isIn(401, 500, 503);
+            assertThat(ISSUER.requestCount()).as("The unknown kid must actually reach the controlled JWKS failure").isGreaterThan(before);
+            verifyNoInteractions(accountController);
+            var body = JsonMapper.builder().build().readTree(response.body());
+            assertThat(body.path("error").asText()).isEqualTo(switch (response.statusCode()) {
+                case 401 -> "Authentication required";
+                case 503 -> "Service Unavailable";
+                default -> "Internal Server Error";
+            });
+            assertThat(body.has("username")).isFalse();
+            assertThat(body.has("trace")).isFalse();
+            assertThat(body.has("message")).isFalse();
+            audit.assertNoDisclosure(response, bearer, "audience-proof");
+        }
+
+        ISSUER.publish(unknown);
+        before = ISSUER.requestCount();
+        assertThat(account(bearer).path("username").asText()).startsWith("principal-");
+        assertThat(ISSUER.requestCount()).as("Recovery must use the actually restored public JWKS").isGreaterThan(before);
+    }
+
+    private String rotatingToken(RSAKey key) throws Exception {
+        return audienceToken(ISSUER.origin(), List.of(applicationAudience), key, Instant.now().plusSeconds(300));
+    }
+
+    private HttpResponse<String> accountResponse(String bearer) throws Exception {
+        try (var client = HttpClient.newHttpClient()) {
+            return client.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/account/me"))
+                    .header("Authorization", "Bearer " + bearer).header("Accept", "application/json").GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+        }
+    }
+
+    private static final class AuditCapture implements AutoCloseable {
+        private final ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger)
+                org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+        private final ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> events =
+                new ch.qos.logback.core.read.ListAppender<>();
+
+        AuditCapture() {
+            events.list = new java.util.concurrent.CopyOnWriteArrayList<>();
+            events.start();
+            logger.addAppender(events);
+        }
+
+        void assertNoDisclosure(HttpResponse<String> response, String... secrets) {
+            for (String secret : secrets) {
+                assertThat((response.headers().map().toString() + response.body()).contains(secret))
+                        .as("Denied responses must not expose credentials or unverified claims").isFalse();
+                assertThat(events.list.stream().anyMatch(event -> event.getFormattedMessage().contains(secret)
+                        || Arrays.toString(event.getArgumentArray()).contains(secret)
+                        || event.getThrowableProxy() != null && ch.qos.logback.classic.spi.ThrowableProxyUtil
+                                .asString(event.getThrowableProxy()).contains(secret)))
+                        .as("Logs and throwable chains must not expose credentials or unverified claims").isFalse();
+            }
+        }
+
+        @Override public void close() {
+            logger.detachAppender(events);
+            events.stop();
+        }
     }
 
     @Test @DisabledIfSystemProperty(named = "taxonomy.keycloak.test.issuer", matches = ".+")

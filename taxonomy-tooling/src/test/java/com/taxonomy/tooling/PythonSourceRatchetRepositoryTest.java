@@ -13,6 +13,17 @@ class PythonSourceRatchetRepositoryTest {
       Pattern.compile(
           "(^|[\\s\\\"'`=:/<>])(python(?:[0-9]+(?:\\.[0-9]+)*)?|pytest|pip(?:[0-9]+(?:\\.[0-9]+)*)?|unittest)(?=$|[\\s\\\"'`;<>])|actions/setup-python@");
 
+  // Literals and comments consume a whole token so example command strings outside a
+  // process call never become invocations themselves.
+  private static final Pattern CODE_TOKEN =
+      Pattern.compile(
+          "(?s)//[^\\r\\n]*|/\\*.*?\\*/|\"\"\".*?\"\"\"|"
+              + "\"(?:\\\\.|[^\"\\\\])*+\"|'(?:\\\\.|[^'\\\\])*+'|`(?:\\\\.|[^`\\\\])*+`|"
+              + "[\\w$]+|[^\\s]");
+  private static final Set<String> JAVA_CALLS = Set.of("ProcessBuilder", "exec");
+  private static final Set<String> JS_CALLS =
+      Set.of("spawn", "spawnSync", "exec", "execSync", "execFile", "execFileSync");
+
   @Test
   void repositoryContainsNoPythonSources() throws Exception {
     var failures = new ArrayList<String>();
@@ -42,22 +53,60 @@ class PythonSourceRatchetRepositoryTest {
           || name.equals("Makefile")
           || name.startsWith("Dockerfile")
           || name.equals("package.json"))) continue;
-      for (String line : Files.readString(path).lines().toList()) {
-        String text = line.strip();
-        if (text.startsWith("#")
-            || text.startsWith("//")
-            || text.startsWith("*")
-            || text.startsWith("<!--")) continue;
-        // Literal negative fixture/guard strings are not executable Java/JavaScript calls.
-        if (java && !text.matches(".*(?:ProcessBuilder|Runtime\\.getRuntime|\\.exec\\().*"))
-          continue;
-        if (js && !text.matches(".*(?:spawn|exec|setup-python).*")) continue;
-        if (COMMAND.matcher(text).find()) failures.add(relative + ": " + text);
+      String source = Files.readString(path);
+      if (java || js) {
+        if (invokesPython(source, java ? JAVA_CALLS : JS_CALLS)) failures.add(relative);
+      } else {
+        source
+            .lines()
+            .map(String::strip)
+            .filter(
+                line ->
+                    !line.startsWith("#")
+                        && !line.startsWith("//")
+                        && !line.startsWith("*")
+                        && !line.startsWith("<!--"))
+            .filter(line -> COMMAND.matcher(line).find())
+            .forEach(line -> failures.add(relative + ": " + line));
       }
     }
     assertThat(failures)
         .as("Productive tooling must use Java/Maven and existing shell orchestration")
         .isEmpty();
+  }
+
+  private static boolean invokesPython(String source, Set<String> calls) {
+    if (!COMMAND.matcher(source).find()) return false;
+    var tokens = CODE_TOKEN.matcher(source);
+    boolean callName = false;
+    int depth = 0;
+    while (tokens.find()) {
+      String token = tokens.group();
+      if (token.startsWith("//") || token.startsWith("/*")) continue;
+      if (token.equals("(") && (callName || depth > 0)) depth++;
+      else if (token.equals(")") && depth > 0) depth--;
+      else if (depth > 0 && COMMAND.matcher(token).find()) return true;
+      callName = calls.contains(token);
+    }
+    return false;
+  }
+
+  @Test
+  void checksCompleteProcessInvocationsAndSkipsLiteralExamples() {
+    assertThat(invokesPython("new ProcessBuilder(\n  List.of(\"python3\", script));", JAVA_CALLS))
+        .isTrue();
+    assertThat(
+            invokesPython(
+                "Runtime.getRuntime()\n.exec( /* tool */ \"pip install a\");", JAVA_CALLS))
+        .isTrue();
+    assertThat(invokesPython("child.spawnSync(\n 'python3.12', args);", JS_CALLS)).isTrue();
+    assertThat(invokesPython("exec(\n `pytest -q`);", JS_CALLS)).isTrue();
+    assertThat(invokesPython("String example = \"new ProcessBuilder('python3')\";", JAVA_CALLS))
+        .isFalse();
+    assertThat(
+            invokesPython(
+                "// spawn('python')\nspawn('node'); const example = `exec('pytest')`;", JS_CALLS))
+        .isFalse();
   }
 
   @Test

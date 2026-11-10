@@ -206,6 +206,21 @@ class QualitySiteTest {
   }
 
   @Test
+  void readsTheJacocoProducerDeclarationOnlyInCoverageReports() throws Exception {
+    Path report = root.resolve("jacoco.xml");
+    String declaration = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>";
+    String doctype = "<!DOCTYPE report PUBLIC \"-//JACOCO//DTD Report 1.1//EN\" \"report.dtd\">";
+    String counters = "<report><counter type='INSTRUCTION' missed='1' covered='3'/></report>";
+    Files.writeString(report, declaration + doctype + counters);
+    assertThat(QualitySite.coverage(report)).containsEntry("instructionPercent", 75.0);
+    assertThatThrownBy(() -> XmlSupport.parse(report)).isInstanceOf(IOException.class);
+    for (String other : List.of(doctype.replace("report.dtd", "other.dtd"), doctype + doctype)) {
+      Files.writeString(report, declaration + other + counters);
+      assertThatThrownBy(() -> QualitySite.coverage(report)).isInstanceOf(IOException.class);
+    }
+  }
+
+  @Test
   void roundsCoverageAndBadgeNumbersLikeTheRetiredGenerator() throws Exception {
     fixture();
     Files.writeString(
