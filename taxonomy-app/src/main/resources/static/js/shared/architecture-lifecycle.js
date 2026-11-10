@@ -336,7 +336,7 @@
     function option(select, value, label) { var item = node('option', label); item.value = value; select.append(item); }
     // Both reviewed realizations and reconciliation share this stand fence. Reconciliation
     // deliberately permits VERSION_CHANGED, whose mayEdit is false, but never a historical stand.
-    function intentFence(captured, shell, preview, accept, editable) {
+    function intentFence(captured, shell, preview, accept, editable, onInvalid) {
         var pending = null, uncertain = false;
         function recoverable() {
             return Boolean(pending?.context && matchesRetryScope(captured));
@@ -345,6 +345,7 @@
         function ensure() {
             if (valid()) return true;
             preview.disabled = true; accept.disabled = true; accept.hidden = true;
+            if (onInvalid) onInvalid();
             shell.message.textContent = t('lifecycle.stale'); return false;
         }
         function changed() {
@@ -437,22 +438,28 @@
         var captured = captureStand();
         if (!matchesStand(captured, false)) { status.textContent = t('lifecycle.stale'); return; }
         var shell = dialogShell('lifecycleReconciliationDialog', t('lifecycle.reconcile'));
+        shell.dialog.className += ' taxonomy-reconciliation-dialog';
         var reason = field(shell.form, 'lifecycleReconciliationReason', t('lifecycle.reason'), 'textarea'); reason.required = true; reason.maxLength = 1000;
         var conflicts = node('div'); conflicts.dataset.lifecycleConflicts = '';
         var preview = button(t('lifecycle.preview'), previewReconciliation); preview.id = 'lifecycleReconciliationPreview';
         var accept = button(t('lifecycle.accept'), acceptReconciliation); accept.id = 'lifecycleReconciliationAccept'; accept.hidden = true;
-        var changes = node('pre'); shell.form.append(conflicts, preview, changes, accept);
-        var fence = intentFence(captured, shell, preview, accept, false);
-        var prepared = null, choices = {}, headCommit = null, edit = 0, busy = false, locked = false;
+        var changes = node('div'); shell.form.append(conflicts, preview, changes, accept);
+        var comparison = null;
+        function clearComparison() { if (comparison) comparison.destroy(); comparison = null; changes.replaceChildren(); }
+        var fence = intentFence(captured, shell, preview, accept, false, clearComparison);
+        var prepared = null, choices = {}, headCommit = null, edit = 0, busy = false, locked = false, closed = false;
         shell.form.addEventListener('input', invalidate); shell.form.addEventListener('change', invalidate);
-        function invalidate() { if (locked) return; edit++; prepared = null; accept.hidden = true; }
+        shell.dialog.addEventListener('close', function () { closed = true; edit++; prepared = null; clearComparison(); });
+        function invalidate() { if (locked) return; edit++; prepared = null; accept.hidden = true; clearComparison(); }
         async function previewReconciliation() {
-            if (busy || locked || !fence.ensure() || !shell.form.reportValidity()) return;
+            if (closed || busy || locked || !fence.ensure() || !shell.form.reportValidity()) return;
             var ticket = edit; busy = true; preview.disabled = true; accept.hidden = true;
+            prepared = null; clearComparison();
             var request = {context:clone(captured.context), metadata:metadata(reason.value), resolutions:clone(choices), headCommit:headCommit};
             try {
                 var result = await api.previewReconciliation(request);
                 if (!fence.ensure() || ticket !== edit) return;
+                if (contextKey(result.context) !== contextKey(captured.context)) throw staleError();
                 headCommit = result.headCommit; conflicts.replaceChildren();
                 (result.conflicts || []).forEach(function (conflict, index) {
                     var group = node('fieldset'); group.append(node('legend', conflict.id));
@@ -466,14 +473,14 @@
                     select.addEventListener('change', function () { if (select.value) choices[conflict.id] = select.value; else delete choices[conflict.id]; });
                     conflicts.append(group);
                 });
-                changes.textContent = JSON.stringify(result.changes || [], null, 2);
+                comparison = window.TaxonomyArchitectureReconciliation.render(changes, result);
                 if (result.canAccept) { prepared = Object.assign(request,{headCommit:result.headCommit,previewFingerprint:result.fingerprint}); accept.hidden = false; accept.disabled = false; }
                 shell.message.textContent = t(result.canAccept ? 'lifecycle.preview.ready' : 'lifecycle.reconcile.resolve');
             } catch (error) { if (fence.valid()) shell.message.textContent = errorText(error); }
             finally { busy = false; preview.disabled = !fence.valid(); }
         }
         async function acceptReconciliation() {
-            if (busy || !prepared || !fence.ensure()) return;
+            if (closed || busy || !prepared || !fence.ensure()) return;
             busy = true; accept.disabled = true; preview.disabled = true;
             try {
                 var result = await api.acceptReconciliation(prepared);
@@ -481,7 +488,7 @@
                 fence.afterSuccess(result, true);
             } catch (error) {
                 if ([400,403,404,409,412,422].includes(error.status)) {
-                    prepared = null; accept.hidden = true; fence.rejected();
+                    prepared = null; accept.hidden = true; clearComparison(); fence.rejected();
                 } else {
                     locked = true; reason.disabled = true; conflicts.querySelectorAll('select').forEach(function (select) { select.disabled = true; });
                     fence.uncertain();

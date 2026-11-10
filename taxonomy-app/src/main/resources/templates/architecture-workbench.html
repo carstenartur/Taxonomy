@@ -15,7 +15,6 @@
     <link rel="stylesheet" th:href="@{/css/architecture-workflow.css}" href="/css/architecture-workflow.css"/>
     <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
     <th:block th:replace="~{fragments/application-chrome :: styles}"></th:block>
-    <link rel="stylesheet" th:href="@{/css/shared/architecture-diagram.css}" href="/css/shared/architecture-diagram.css"/>
     <th:block th:replace="~{fragments/customer-stylesheet :: link}"></th:block>
 </head>
 <body class="architecture-snapshot-page architecture-snapshot-surface" th:attr="data-project-id=${projectId},
@@ -189,8 +188,6 @@
 </main>
 </section>
 
-<script th:src="@{/webjars/d3/7.9.0/dist/d3.min.js}"
-        src="/webjars/d3/7.9.0/dist/d3.min.js"></script>
 <script th:src="@{/js/taxonomy-i18n.js}"
         src="/js/taxonomy-i18n.js"></script>
 <script th:src="@{/js/shared/architecture-workflow.js}" src="/js/shared/architecture-workflow.js"></script>
@@ -198,7 +195,6 @@
 <th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/api/architecture-workbench-api.js}"
         src="/js/api/architecture-workbench-api.js"></script>
-<script th:src="@{/js/shared/architecture-diagram.js}" src="/js/shared/architecture-diagram.js"></script>
 <script th:src="@{/js/architecture-workbench.js}"
         src="/js/architecture-workbench.js"></script>
 <script th:src="@{/js/architecture-workbench-print.js}"

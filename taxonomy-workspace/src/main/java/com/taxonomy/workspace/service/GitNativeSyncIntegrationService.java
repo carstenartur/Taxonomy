@@ -1,5 +1,6 @@
 package com.taxonomy.workspace.service;
 
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.merge.TaxDslMergeResult;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
@@ -45,6 +46,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     private final WorkspaceContextResolver contextResolver;
     private final WorkspaceArchitectureVersionPort editorVersions;
     private final RepositoryMembershipService sourceMemberships;
+    private final ArchitectureDslCommands architectureCommands = new ArchitectureDslCommands();
 
     /** Compatibility constructor: source operations fail closed without a current policy. */
     public GitNativeSyncIntegrationService(SyncStateRepository syncStateRepository,
@@ -187,6 +189,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                 ? new TaxDslMergeResult(theirs, java.util.List.of())
                 : semanticMergeService.mergeContent(state.baseDsl(), ours, theirs);
         requireSuccess("Pull from source", merge);
+        architectureCommands.validateReconciledSource(merge.mergedText());
         // A deterministic portfolio rejection must precede model and tracking ref publication.
         portfolioGitPort.validatePortfolio(ours, merge.mergedText(), username, context);
         workspaceGit.verifyExpectedHead(TRACKING_BRANCH, state.baseHead());
@@ -259,6 +262,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                 ? new TaxDslMergeResult(workspaceDsl, java.util.List.of())
                 : semanticMergeService.mergeContent(state.baseDsl(), sourceDsl, workspaceDsl);
         requireSuccess("Publish to source", merge);
+        architectureCommands.validateReconciledSource(merge.mergedText());
         WorkspaceContext centralContext = new WorkspaceContext(
                 "shared", null, sourceBranch, requireRepositoryId(sourceMetadata));
         // Check both target databases before either repository accepts the merged history.
@@ -315,6 +319,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         BranchSnapshot destination = snapshot(repository, into);
         String content = requiredSnapshot(chosen, "Selected conflict side has no content: " + from);
         WorkspaceContext target = new WorkspaceContext(username, null, into, context.repositoryId());
+        architectureCommands.validateReconciledSource(content);
         portfolioGitPort.validatePortfolio(destination.dsl(), content, username, target);
         repository.verifyExpectedHead(from, chosen.head());
         requireSourceAuthority(username, metadata, true);

@@ -1,5 +1,6 @@
 package com.taxonomy.workspace.service;
 
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.merge.TaxDslMergeResult;
 import com.taxonomy.versioning.service.SemanticGitMergeService;
 import com.taxonomy.workspace.model.SyncState;
@@ -13,16 +14,75 @@ import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.*;
 
 /** Real source/workspace histories exercise the complete semantic publication path. */
 class GitNativeSyncAncestryTest {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void incompatibleCombinedTypesCannotAdvanceEitherSynchronizationDestination(boolean publish) throws Exception {
+        String base = """
+                element arch-parent type System {
+                  title: Parent;
+                }
+                element arch-child type Component {
+                  title: Child;
+                }
+                relation arch-parent CONTAINS arch-child {
+                  status: accepted;
+                }
+                """;
+        String local = base.replace("arch-parent type System", "arch-parent type Component");
+        String central = base.replace("title: Parent", "title: Reviewed")
+                .replace("arch-child type Component", "arch-child type UserApplication");
+        var commands = new ArchitectureDslCommands();
+        assertThat(commands.model(base).getElements()).extracting("id", "type").containsExactlyInAnyOrder(
+                tuple("arch-parent", "System"), tuple("arch-child", "Component"));
+        assertThat(commands.model(local).getElements()).extracting("id", "type").containsExactlyInAnyOrder(
+                tuple("arch-parent", "Component"), tuple("arch-child", "Component"));
+        assertThat(commands.model(central).getElements()).extracting("id", "type").containsExactlyInAnyOrder(
+                tuple("arch-parent", "System"), tuple("arch-child", "UserApplication"));
+        for (String source : List.of(base, local, central)) {
+            assertThat(commands.model(source).getRelations()).extracting("sourceId", "relationType", "targetId")
+                    .containsExactly(tuple("arch-parent", "CONTAINS", "arch-child"));
+        }
+        commands.validateReconciledSource(base);
+        commands.validateReconciledSource(local);
+        commands.validateReconciledSource(central);
+        assertThatThrownBy(() -> commands.validateReconciledSource(
+                central.replace("arch-parent type System", "arch-parent type Component")))
+                .isInstanceOfSatisfying(ArchitectureDslCommands.CommandProblem.class,
+                        problem -> assertThat(problem.code()).isEqualTo("INCOMPATIBLE_RELATION"));
+        try (var fixture = new Fixture(true)) {
+            fixture.source.commitDsl("main", base, "system", "Valid common model");
+            String tracking = fixture.local.commitDsl("sync-base", base, "system", "Accepted common model");
+            String source = fixture.source.commitDsl("main", central, "bob", "Valid central type change");
+            String target = fixture.local.commitDsl("main", local, "alice", "Valid local type change");
+
+            assertThatThrownBy(() -> {
+                if (publish) fixture.service.publishFromWorkspaceToShared("alice", "workspace");
+                else fixture.service.syncFromSharedToWorkspace("alice", "workspace");
+            }).isInstanceOfSatisfying(ArchitectureDslCommands.CommandProblem.class,
+                    problem -> assertThat(problem.code()).isEqualTo("INCOMPATIBLE_RELATION"));
+
+            assertThat(fixture.source.getHeadCommit("main")).isEqualTo(source);
+            assertThat(fixture.local.getHeadCommit("main")).isEqualTo(target);
+            assertThat(fixture.local.getHeadCommit("sync-base")).isEqualTo(tracking);
+            assertThat(fixture.workspace.getLastIntegratedCommit()).isNull();
+            verify(fixture.portfolio, never()).materializePortfolio(anyString(), anyString(), any());
+        }
+    }
+
     @Test void publicationPreservesOriginalContributionsAndAdoptsTheSameMergeWithoutAnEchoCommit() throws Exception {
         try (var fixture = new Fixture()) {
             String central = fixture.source.getHeadCommit("main");
@@ -78,10 +138,15 @@ class GitNativeSyncAncestryTest {
         final DslGitRepository source = repositories.getCentralRepository("architecture");
         final DslGitRepository local = repositories.openWorkspaceRepository("workspace");
         final UserWorkspace workspace = new UserWorkspace();
-        final SemanticGitMergeService merger = mock(SemanticGitMergeService.class);
+        final SemanticGitMergeService merger;
+        final WorkspacePortfolioGitPort portfolio = mock(WorkspacePortfolioGitPort.class);
         final GitNativeSyncIntegrationService service;
 
         Fixture() throws IOException {
+            this(false);
+        }
+        Fixture(boolean realMerger) throws IOException {
+            merger = realMerger ? new SemanticGitMergeService() : mock(SemanticGitMergeService.class);
             source.commitDsl("main", "# central", "carol", "Central root");
             local.commitDsl("main", "# first request", "alice", "First request version");
             local.commitDsl("sync-base", "# base", "alice", "Accepted semantic base");
@@ -101,7 +166,7 @@ class GitNativeSyncAncestryTest {
                 }
             };
             service = new GitNativeSyncIntegrationService(states, workspaces, catalog, repositories, merger,
-                    mock(WorkspacePortfolioGitPort.class), mock(WorkspaceContextResolver.class), versions,
+                    portfolio, mock(WorkspaceContextResolver.class), versions,
                     mock(RepositoryMembershipService.class, invocation -> true));
         }
         @Override public void close() { repositories.close(); }
