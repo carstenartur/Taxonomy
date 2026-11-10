@@ -36,6 +36,12 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
+      - name: Set up Java 25 delivery tooling
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '25'
+
       - name: Download verified report artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -50,7 +56,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 .github/scripts/verify-quality-publication.py \
+          bash .github/scripts/taxonomy-tooling.sh verify-quality-publication \
             --root quality-reports \
             --expected-commit "$EXPECTED_SHA"
 
@@ -78,7 +84,7 @@ jobs:
             repo_name="${GITHUB_REPOSITORY#*/}"
             base_url="https://${GITHUB_REPOSITORY_OWNER}.github.io/${repo_name}"
           fi
-          python3 .github/scripts/verify-quality-publication.py \
+          bash .github/scripts/taxonomy-tooling.sh verify-quality-publication \
             --base-url "$base_url" \
             --expected-commit "$EXPECTED_SHA" \
             --attempts 60 \
@@ -205,6 +211,18 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Checkout verified delivery tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Set up Java 25 delivery tooling
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '25'
+
       - name: Record explicitly disabled Render delivery
         env:
           BASE_URL: ${{ vars.RENDER_BASE_URL || 'https://taxonomy-analyzer.onrender.com' }}
@@ -212,27 +230,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p target/delivery-evidence
-          python3 - <<'PY'
-          from datetime import datetime, timezone
-          import json
-          import os
-          from pathlib import Path
-
-          now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-          evidence = {
-              "schemaVersion": 2,
-              "deploymentState": "disabled",
-              "result": "disabled",
-              "targetUrl": os.environ["BASE_URL"].rstrip("/"),
-              "expectedCommit": os.environ["EXPECTED_SHA"],
-              "startedAt": now,
-              "endedAt": now,
-              "detail": "Render deployment is explicitly disabled by RENDER_DEPLOY_ENABLED.",
-          }
-          path = Path("target/delivery-evidence/render-disabled.json")
-          path.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          PY
+          bash .github/scripts/taxonomy-tooling.sh render-delivery-state --state disabled
           echo "Render deployment is explicitly disabled; no rollout-success check was emitted."
 
       - name: Archive disabled Render delivery evidence
@@ -263,6 +261,12 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
+      - name: Set up Java 25 delivery tooling
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '25'
+
       - name: Trigger and verify Render deployment
         env:
           HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
@@ -275,103 +279,23 @@ jobs:
           set -euo pipefail
           mkdir -p target/delivery-evidence
           if [[ -z "$HOOK_URL" ]]; then
-            python3 - <<'PY'
-          from datetime import datetime, timezone
-          import json
-          import os
-          from pathlib import Path
-
-          now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-          evidence = {
-              "schemaVersion": 2,
-              "deploymentState": "failed",
-              "result": "failure",
-              "targetUrl": os.environ["BASE_URL"].rstrip("/"),
-              "expectedCommit": os.environ["EXPECTED_SHA"],
-              "startedAt": now,
-              "endedAt": now,
-              "detail": "RENDER_DEPLOY_ENABLED is true but RENDER_DEPLOY_HOOK_URL is missing.",
-          }
-          Path("target/delivery-evidence/render-configuration-failure.json").write_text(
-              json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          PY
+            bash .github/scripts/taxonomy-tooling.sh render-delivery-state --state configuration-failure
             echo "::error::RENDER_DEPLOY_ENABLED is true but RENDER_DEPLOY_HOOK_URL is missing."
             exit 1
           fi
 
-          deploy_url=$(python3 - <<'PY'
-          import os
-          from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
-
-          url = os.environ["HOOK_URL"]
-          expected = os.environ["EXPECTED_SHA"]
-          parts = urlsplit(url)
-          query = dict(parse_qsl(parts.query, keep_blank_values=True))
-          query["ref"] = expected
-          print(urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)))
-          PY
-          )
+          deploy_url=$(bash .github/scripts/taxonomy-tooling.sh render-deploy-url)
           if ! curl --fail --silent --show-error --retry 3 \
             --connect-timeout 15 --max-time 90 \
             --output target/delivery-evidence/render-deploy-hook.json \
             "$deploy_url"; then
-            python3 - <<'PY'
-          from datetime import datetime, timezone
-          import json
-          import os
-          from pathlib import Path
-
-          now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-          evidence = {
-              "schemaVersion": 2,
-              "deploymentState": "failed",
-              "result": "failure",
-              "targetUrl": os.environ["BASE_URL"].rstrip("/"),
-              "expectedCommit": os.environ["EXPECTED_SHA"],
-              "startedAt": now,
-              "endedAt": now,
-              "detail": "Render deploy hook request failed after bounded retries.",
-          }
-          Path("target/delivery-evidence/render-hook-failure.json").write_text(
-              json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          PY
+            bash .github/scripts/taxonomy-tooling.sh render-delivery-state --state hook-failure
             echo "::error::Render deploy hook request failed; archived failure evidence identifies the expected commit and target."
             exit 1
           fi
 
-          python3 - <<'PY'
-          from datetime import datetime, timezone
-          import json
-          import os
-          from pathlib import Path
-
-          now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-          evidence = {
-              "schemaVersion": 2,
-              "deploymentState": "triggered",
-              "result": "in_progress",
-              "targetUrl": os.environ["BASE_URL"].rstrip("/"),
-              "expectedCommit": os.environ["EXPECTED_SHA"],
-              "startedAt": now,
-              "detail": "Render deploy hook accepted the verified commit; live verification follows.",
-          }
-          Path("target/delivery-evidence/render-triggered.json").write_text(
-              json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          PY
-
-          render_service_id="$CONFIGURED_RENDER_SERVICE_ID"
-          if [[ -z "$render_service_id" ]]; then
-            render_service_id=$(python3 - <<'PY'
-          import os
-          import re
-          from urllib.parse import urlsplit
-
-          match = re.search(r"(?:^|/)(srv-[A-Za-z0-9]+)(?:/|$)", urlsplit(os.environ["HOOK_URL"]).path)
-          print(match.group(1) if match else "")
-          PY
-          )
-          fi
-
+          bash .github/scripts/taxonomy-tooling.sh render-delivery-state --state triggered
+          render_service_id=$(bash .github/scripts/taxonomy-tooling.sh render-service-id)
           verify_args=(
             --base-url "$BASE_URL"
             --expected-commit "$EXPECTED_SHA"
@@ -379,17 +303,14 @@ jobs:
             --evidence-file target/delivery-evidence/render-verification.json
           )
           if [[ -n "$RENDER_API_KEY" && -n "$render_service_id" ]]; then
-            verify_args+=(
-              --render-api-key "$RENDER_API_KEY"
-              --render-service-id "$render_service_id"
-            )
+            verify_args+=(--render-service-id "$render_service_id")
             echo "Render API deploy-status verification enabled."
           else
             echo "Render API credentials/service ID not configured; live readiness and commit verification remain authoritative."
           fi
 
           echo "Render deployment triggered for the verified commit; waiting for readiness."
-          python3 .github/scripts/verify-deployment.py "${verify_args[@]}"
+          bash .github/scripts/taxonomy-tooling.sh verify-deployment "${verify_args[@]}"
 
       - name: Archive Render deployment evidence
         if: always()

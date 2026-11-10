@@ -29,8 +29,7 @@ class ReleaseImageGateRepositoryTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"\"attestations\"", "\"provenance\": True", "\"sbom\": True",
-            "\"result\": \"passed\"", "--set-string \"image.digest=${IMAGE_DIGEST}\""})
+    @ValueSource(strings = {"write-release-image-evidence", "--set-string \"image.digest=${IMAGE_DIGEST}\""})
     void legacyImageEvidenceRequirementsFailClosedInMaven(String requirement) throws Exception {
         String workflow = releaseWorkflow();
         assertThat(workflow).contains(requirement);
@@ -258,7 +257,7 @@ class ReleaseImageGateRepositoryTest {
             String block = stepBlock(workflow, bind);
             require(block, "ONNX_IMAGE_DIGEST: ${{ steps.release_onnx_image.outputs.digest }}",
                     "ONNX evidence must consume its own image digest", failures);
-            require(block, "imageVariant=\"onnx\"", "ONNX evidence must identify its variant", failures);
+            require(block, "write-release-image-evidence", "ONNX evidence must identify its variant through the tested Java receipt writer", failures);
             require(block, "taxonomy-${RELEASE_VERSION}-onnx-release.sha256",
                     "ONNX evidence must have its own checksums", failures);
         }

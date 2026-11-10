@@ -12,11 +12,6 @@ if (( BASH_VERSINFO[0] < 4 )); then
   echo "Taxonomy's storage contract requires Bash 4 or newer." >&2
   exit 1
 fi
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "Taxonomy's storage contract requires Python 3." >&2
-  exit 1
-fi
-python3 --version 2>&1 | tee "$evidence_dir/python-version.log"
 
 case "$mode" in
   candidate)
@@ -64,20 +59,7 @@ export TAXONOMY_MODEL_DOWNLOAD_SKIP=true
 # workflow policy. The shell owns only environment checks, Maven orchestration
 # and retained evidence; adding/removing contract tests happens in one place.
 mapfile -t contract_selectors < <(
-  python3 - <<'PY'
-import json
-from pathlib import Path
-
-catalog = json.loads(Path(".mvn/verification-suites.json").read_text(encoding="utf-8"))
-profile = catalog.get("profiles", {}).get("jgit-storage-hibernate-contract")
-if not isinstance(profile, dict):
-    raise SystemExit("verification catalogue is missing jgit-storage-hibernate-contract")
-for key in ("test", "itTest", "excludedGroups"):
-    value = profile.get(key)
-    if not isinstance(value, str) or not value.strip():
-        raise SystemExit(f"jgit-storage-hibernate-contract is missing {key}")
-    print(value)
-PY
+  bash .github/scripts/taxonomy-tooling.sh storage-contract-selectors
 )
 if [[ ${#contract_selectors[@]} -ne 3 ]]; then
   echo "Could not resolve the storage contract from .mvn/verification-suites.json." >&2

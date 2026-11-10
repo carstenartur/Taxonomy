@@ -154,6 +154,109 @@ test('Primary proposal reload retains provisioning and role gates while backgrou
   ]);
 });
 
+function preferencesNavigationHarness({ basePath = '', pendingRestore = false } = {}) {
+  const calls = [];
+  const workspaceId = 'fixture-workspace';
+  let session = { workspaceId, ready: true, restoring: false };
+  let readyObserved = false;
+  let restoringObserved = false;
+  let released = false;
+  const browser = vm.createContext({
+    window: {
+      TaxonomyAnalysisSession: { state: () => session },
+      TaxonomyI18n: { ready: async () => calls.push('translations-ready') },
+      TaxonomyState: {
+        lastAnalyzedText: 'QA preference preservation sentinel',
+        lastAnalysisStatus: 'SUCCESS', lastAnalysisProvider: 'MOCK', currentArchView: { title: 'Retained' }
+      }
+    },
+    document: { getElementById: id => id === 'pref-max-arch-nodes' ? { value: '50' }
+      : id === 'prefResetBtn' ? { disabled: false } : null }
+  });
+  function evaluate(callback, argument) {
+    browser.argument = argument;
+    return vm.runInContext(`(${callback.toString()})(argument)`, browser);
+  }
+  function navigate(options) {
+    assert.notEqual(options.waitUntil, 'networkidle',
+      'Loaded Preferences must not wait for unrelated background traffic to become idle');
+    assert.equal(options.waitUntil, 'domcontentloaded');
+    assert.equal(options.timeout ?? 30_000, 30_000);
+    calls.push('document-ready');
+    session = { workspaceId, ready: false, restoring: true };
+  }
+  const page = {
+    evaluate: async (callback, argument) => evaluate(callback, argument),
+    goto: async (url, options) => {
+      assert.equal(url, `https://qa.example${basePath}/#preferences`);
+      navigate(options);
+    },
+    reload: async options => navigate(options),
+    locator: selector => ({
+      waitFor: async options => {
+        assert.equal(options.state, 'visible');
+        assert.equal(options.timeout, selector === '#mainContent' ? 60_000 : 20_000);
+        assert.ok(['#mainContent', '#tab-preferences'].includes(selector));
+        calls.push(`visible:${selector}`);
+      },
+      inputValue: async () => { assert.equal(selector, '#pref-max-arch-nodes'); return '50'; }
+    }),
+    waitForFunction: async (callback, argument, options) => {
+      if (options.timeout === 20_000) {
+        assert.equal(Boolean(evaluate(callback, argument)), true, 'The existing preference load gate still runs');
+        calls.push('preferences-loaded');
+        return;
+      }
+      assert.equal(options.timeout, 30_000);
+      const awaitingRestore = pendingRestore && !released;
+      const expected = { workspaceId, ready: !awaitingRestore, restoring: awaitingRestore };
+      for (const [label, values] of [
+        ['another workspace', { workspaceId: 'foreign-workspace' }],
+        [awaitingRestore ? 'a draft that is not restoring' : 'an unready source/session',
+          awaitingRestore ? { restoring: false } : { ready: false }]
+      ]) {
+        session = { ...expected, ...values };
+        assert.equal(Boolean(evaluate(callback, argument)), false,
+          `Preferences navigation must remain blocked for ${label}`);
+      }
+      session = expected;
+      assert.equal(Boolean(evaluate(callback, argument)), true);
+      if (awaitingRestore) restoringObserved = true;
+      else readyObserved = true;
+      calls.push(awaitingRestore ? 'same-workspace-restoring' : 'same-workspace-ready');
+    }
+  };
+  const gate = {
+    seen: Promise.resolve(),
+    release() { released = true; calls.push('draft-released'); },
+    async dispose() { calls.push('gate-disposed'); }
+  };
+  return { page, calls, gate, readyObserved: () => readyObserved, restoringObserved: () => restoringObserved };
+}
+
+for (const basePath of ['', '/taxonomy']) {
+  test(`Preferences deep link at ${basePath || 'root'} waits for its original ready workspace without network idle`, async () => {
+    const start = preferencesSource.indexOf('async function runPreferencesPreservationWorkflow(');
+    const end = preferencesSource.indexOf('  // Use the real application state', start);
+    assert.ok(start >= 0 && end > start, 'Run the actual direct-link prefix before any draft mutation');
+    const harness = preferencesNavigationHarness({ basePath });
+    const context = vm.createContext({});
+    vm.runInContext(preferencesSource.replace(/^import .*;\n/m, '').replace(/^export /mg, ''), context);
+    const run = vm.runInContext(`(${preferencesSource.slice(start, end)}\n})`, context);
+    await run({ page: harness.page, baseUrl: `https://qa.example${basePath}`, evidence: {
+      assert(condition, message) {
+        assert.equal(harness.readyObserved(), true, 'The direct-link assertion requires the original ready workspace');
+        assert(condition, message);
+      },
+      passed: value => harness.calls.push(value)
+    } }, []);
+    assert.deepEqual(harness.calls, [
+      'document-ready', 'visible:#mainContent', 'translations-ready', 'same-workspace-ready',
+      'visible:#tab-preferences', 'preferences-loaded', 'preferences direct-link load'
+    ]);
+  });
+}
+
 async function applySessionCommandHarness(authority) {
   const calls = [];
   const context = vm.createContext({

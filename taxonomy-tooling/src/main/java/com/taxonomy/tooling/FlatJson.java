@@ -27,6 +27,16 @@ final class FlatJson {
         return result;
     }
 
+    static Object parseValue(String source) {
+        FlatJson parser = new FlatJson(source);
+        Object result = parser.value();
+        parser.whitespace();
+        if (!parser.end()) {
+            throw parser.error("Unexpected content after JSON value");
+        }
+        return result;
+    }
+
     static String pretty(Object value) {
         StringBuilder output = new StringBuilder();
         writeValue(value, output, 0);

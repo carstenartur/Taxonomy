@@ -100,6 +100,15 @@ async function measureArchitectTask(page, proposal) {
     }, null, { timeout: 20_000 });
   }
 
+  const originContext = await page.evaluate(() => ({
+    branch: window.TaxonomyContextBar.getCurrentContext()?.branch,
+    commitId: window.TaxonomyContextBar.getCurrentContext()?.commitId ?? null,
+    repositoryId: window.TaxonomyArchitectureWorkflow.getScope().repositoryId,
+    workspaceId: window.__TaxonomyAnalysisSessionContext.runtime.workspaceId
+  }));
+  assert(originContext.branch && originContext.repositoryId && originContext.workspaceId,
+    'Variant task requires a confirmed original repository, workspace and branch');
+
   const variantName = `qa-variant-${Date.now().toString(36)}-${Math.random()
     .toString(36).slice(2, 7)}`;
   await page.evaluate(() => window.TaxonomyContextBar.showVariantDialog());
@@ -114,8 +123,61 @@ async function measureArchitectTask(page, proposal) {
   });
   assert(currentContext.branch?.includes(variantName),
     `Variant creation did not switch context to ${variantName}`);
-  const returned = await csrfJson(page, '/api/context/return-to-origin', { body: {} });
-  assert(returned.status === 200, `Return from QA variant returned ${returned.status}`);
+  assert(currentContext.contextId && currentContext.originBranch === originContext.branch
+    && (currentContext.originCommitId ?? null) === originContext.commitId,
+  'QA variant did not retain the original branch and commit');
+  // The modal closes before its context refresh publishes the new variant to the browser.
+  await page.waitForFunction(({ contextId, branch }) => {
+    const current = window.TaxonomyContextBar.getCurrentContext();
+    return current?.contextId === contextId && current.branch === branch;
+  }, { contextId: currentContext.contextId, branch: currentContext.branch }, { timeout: 20_000 });
+  const pageOrigin = new URL(page.url()).origin;
+  const returnPath = new URL(await page.evaluate(() =>
+    window.TaxonomyI18n.resolveUrl('/api/context/return-to-origin')), pageOrigin).pathname;
+  const [receipt, browserContext] = await Promise.all([
+    page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return response.request().method() === 'POST' && url.origin === pageOrigin && url.pathname === returnPath;
+    }),
+    page.evaluate(async ({original, variant}) => {
+      const bar = window.TaxonomyContextBar;
+      const visible = bar.getCurrentContext();
+      if (window.TaxonomyArchitectureWorkflow.getScope().repositoryId !== original.repositoryId
+        || window.__TaxonomyAnalysisSessionContext.runtime.workspaceId !== original.workspaceId
+        || visible?.contextId !== variant.contextId || visible.branch !== variant.branch
+        || (visible.commitId ?? null) !== (variant.commitId ?? null)) {
+        throw new Error('Variant return did not confirm the original repository, workspace and selected variant before dispatch');
+      }
+      const returned = await bar.returnToOrigin();
+      if (!returned) throw new Error('Variant return did not acknowledge the selected source');
+      return { returned, visible: bar.getCurrentContext() };
+    }, {original: originContext, variant: currentContext})
+  ]);
+  assert(receipt.status() === 200, `Return from QA variant returned ${receipt.status()}`);
+  const origin = await receipt.json();
+  assert(origin.contextId && origin.contextId !== currentContext.contextId
+    && origin.branch === originContext.branch
+    && (origin.commitId ?? null) === originContext.commitId,
+  'Return from QA variant did not acknowledge its original branch and commit');
+  assert([browserContext.returned, browserContext.visible].every(context =>
+    context?.contextId === origin.contextId && context.branch === origin.branch
+      && (context.commitId ?? null) === (origin.commitId ?? null)),
+  'Browser did not accept the exact context acknowledged by the return from the QA variant');
+  await page.evaluate(async ({original, acknowledged}) => {
+    function ownsOrigin() {
+      const current = window.TaxonomyContextBar.getCurrentContext();
+      const scope = window.TaxonomyArchitectureWorkflow.getScope();
+      return current?.contextId === acknowledged.contextId && current.branch === original.branch
+        && (current.commitId ?? null) === original.commitId
+        && scope.repositoryId === original.repositoryId
+        && window.__TaxonomyAnalysisSessionContext.runtime.workspaceId === original.workspaceId;
+    }
+    if (!ownsOrigin()) throw new Error('Variant return did not confirm the original repository, workspace and branch');
+    const observed = await window.__TaxonomyAnalysisSessionContext.retryServerState();
+    if (!ownsOrigin() || !observed || !window.TaxonomyAnalysisSession.state().ready) {
+      throw new Error('Original analysis draft still requires confirmation after variant return');
+    }
+  }, {original: originContext, acknowledged: origin});
 
   return {
     id: 'architect-review-and-variant',

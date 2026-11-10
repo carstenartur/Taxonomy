@@ -375,6 +375,11 @@
                 }
                 if (!status) { missingDraft({}, inputEditRevision); return true; }
                 return loadDraft({ reconcile: true, onCurrentFailure: failedObservation });
+            }, function (error) {
+                // A navigation change may supersede this passive status read while the
+                // workspace draft remains unchanged. It says nothing about server availability.
+                if (error?.code === 'ABORTED' && error.status === 0) return false;
+                throw error;
             }).catch(function (error) {
                 if (current()) return failedObservation(error);
                 return false;
