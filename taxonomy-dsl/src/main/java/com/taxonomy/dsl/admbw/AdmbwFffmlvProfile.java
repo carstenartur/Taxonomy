@@ -1,6 +1,7 @@
 package com.taxonomy.dsl.admbw;
 
 import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.sparx.mapping.AdmbwSourceProfile;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
 import com.taxonomy.dsl.mapper.AstToModelMapper;
@@ -30,7 +31,8 @@ import java.util.regex.Pattern;
 /** Structural checks and authoring data for two views of the public FFFmLV V2.0 guide. */
 public final class AdmbwFffmlvProfile {
 
-    public static final String ID = "admbw-2026.05-fffmlv-2.0-c1-s1-r7";
+    public static final AdmbwSourceProfile SOURCE_PROFILE = AdmbwSourceProfile.CURRENT;
+    public static final String ID = SOURCE_PROFILE.id();
     public static final String TYPE = "x-admbw-type";
     public static final String CATALOGUE_GUID = "x-admbw-catalogue-guid";
     public static final String CATALOGUE_REFERENCE = "x-admbw-catalogue-reference";
@@ -41,15 +43,14 @@ public final class AdmbwFffmlvProfile {
     private static final Set<String> SERVICE_TYPES = Set.of("CoreService", "COIService");
     private static final Set<String> REALIZERS = Set.of("CapabilityConfiguration", "ResourceRole");
     private static final Set<String> CONSTRAINT_SUBJECTS = Set.of("OperationalArchitecture", "OperationalRole");
-    public static final List<String> ELEMENT_STEREOTYPES = List.of(SERVICE, CONSTRAINT, "CapabilityConfiguration",
-            "ResourceRole", "OperationalArchitecture", "OperationalRole");
+    public static final List<String> ELEMENT_STEREOTYPES = SOURCE_PROFILE.authoringElementTypes();
     private static final Pattern PROJECT_CODE = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_-]{0,31}");
     private static final Pattern EA_GUID = Pattern.compile(
             "\\{[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}}");
     private static final String ZERO_GUID = "{00000000-0000-0000-0000-000000000000}";
 
     public record Report(String profile, String projectCode, String sourceViewId,
-                         View capabilityToService, View requirementDerivation) { }
+                         View capabilityToService, View requirementDerivation, AdmbwSourceProfile sourceProfile) { }
 
     public record View(String viewpoint, String name, List<String> packagePath, String status,
                        List<Element> elements, List<Connector> connectors, List<Issue> issues,
@@ -81,7 +82,7 @@ public final class AdmbwFffmlvProfile {
         Map<String, String> catalogueIdentities = new HashMap<>();
         return new Report(ID, projectCode, viewId,
                 capabilityToService(model, elements, projectCode, viewId, catalogueIdentities),
-                requirementDerivation(model, elements, projectCode, catalogueIdentities));
+                requirementDerivation(model, elements, projectCode, catalogueIdentities), SOURCE_PROFILE);
     }
 
     private View capabilityToService(CanonicalArchitectureModel model, Map<String, ArchitectureElement> elements,
@@ -357,6 +358,9 @@ public final class AdmbwFffmlvProfile {
         }
 
         void connect(String stereotype, String client, String supplier) {
+            var rule = SOURCE_PROFILE.connectorRules().get(stereotype);
+            if (rule == null || !rule.accepts(elements.get(client).stereotype(), elements.get(supplier).stereotype()))
+                throw new IllegalArgumentException("Connector is outside the declared ADMBw supported subset");
             connectors.add(new Connector(stereotype, client, supplier));
         }
 

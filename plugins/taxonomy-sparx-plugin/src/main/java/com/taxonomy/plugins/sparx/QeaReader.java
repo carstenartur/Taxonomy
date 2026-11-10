@@ -3,6 +3,7 @@ package com.taxonomy.plugins.sparx;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.plugins.sparx.QeaDatabase.Row;
 import com.taxonomy.plugins.sparx.QeaDatabase.Snapshot;
+import com.taxonomy.sparx.mapping.QeaOperationSupport;
 
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -133,6 +134,7 @@ final class QeaReader {
         implicitReferences();
         packagePlacements();
         diagramPlacements(snapshot.rows("t_diagramobjects"));
+        diagramLinks(snapshot.rows("t_diagramlinks"));
         for (String table : snapshot.omittedTables()) loss(model, table, "QEA_TABLE_UNSUPPORTED", LossDisposition.UNSUPPORTED,
                 "This table was not projected; retain the original QEA file for its contents");
         loss(model, "scope", "QEA_PARTIAL_SCOPE", LossDisposition.UNSUPPORTED,
@@ -149,6 +151,8 @@ final class QeaReader {
         var metadata = new TreeMap<>(Map.of("identifier", model, "sourceSha256", snapshot.sha256(), "sourceBytes", Integer.toString(snapshot.bytes()),
                 "sourceFormat", "qea", "mappingProfile", "sparx-qea@" + version, "compatibilityEvidence", "synthetic-fixtures-only"));
         if (version.equals("2")) {
+            metadata.put("operationSupport", QeaOperationSupport.ID);
+            QeaOperationSupport.OUTCOMES.forEach((operation, outcome) -> metadata.put("operation:" + operation, outcome));
             List<Draft> roots = packages.values().stream().filter(p -> p.row.number("parent_id") == 0).toList();
             if (roots.size() == 1) metadata.put("rootIdentifier", roots.getFirst().id);
         }
@@ -388,6 +392,28 @@ final class QeaReader {
             Draft member = artifacts.get(object);
             if (member != null && member.kind != ArtifactKind.ELEMENT) loss(id, "member", "QEA_DIAGRAM_MEMBER_UNSUPPORTED", LossDisposition.PRESERVED_EXTENSION,
                     "Non-element diagram occurrence is retained as evidence; the native architecture view projects elements only");
+        }
+    }
+
+    /** View-scoped native occurrences refer to connector GUIDs, never duplicate semantic relations. */
+    private void diagramLinks(List<Row> rows) {
+        Set<String> identities = new HashSet<>();
+        for (Row row : rows) {
+            Draft view = diagrams.get(row.number("diagramid"));
+            ConnectorDraft connector = connectors.get(row.number("connectorid"));
+            if (view == null || connector == null) {
+                loss(model, "t_diagramlinks:" + row.text("diagramid") + ":" + row.text("connectorid"),
+                        "QEA_UNRESOLVED_REFERENCE", LossDisposition.UNSUPPORTED,
+                        "Diagram link owner or connector is absent; preserve the original source copy");
+                continue;
+            }
+            String identity = row.text("instance_id").isBlank() ? "connector-" + connector.id : Long.toString(row.id("instance_id"));
+            if (!identities.add(view.id + ":" + identity))
+                throw fail("QEA_DUPLICATE_IDENTITY", "Repeated diagram link needs a distinct native Instance_ID");
+            evidence(new EvidenceTarget(view.id, view.attributes, view.extensions), row, identity);
+            view.attributes.put("ea:t_diagramlinks:" + identity + ":connectorGuid", connector.id);
+            loss(view.id, "t_diagramlinks:" + identity, "QEA_DIAGRAM_LINK_PRESERVED", LossDisposition.PRESERVED_EXTENSION,
+                    "Connector identity, visibility and routing are view-scoped native evidence; edits require an explicit link-aware writer");
         }
     }
 

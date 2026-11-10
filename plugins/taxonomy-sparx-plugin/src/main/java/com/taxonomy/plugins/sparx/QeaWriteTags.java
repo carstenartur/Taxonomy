@@ -80,7 +80,7 @@ final class QeaWriteTags {
     }
 
     static String admbwDescription(String stereotype) {
-        return "@STEREO;Name=" + stereotype + ";FQName=NAFv4-ADMBw::" + stereotype + ";@ENDSTEREO;";
+        return "@STEREO;Name=" + stereotype + ";FQName=" + AdmbwQeaProfile.SOURCE_PROFILE.nativeNamespace() + "::" + stereotype + ";@ENDSTEREO;";
     }
 
     static void checkExistingStereotype(String stereotype) {

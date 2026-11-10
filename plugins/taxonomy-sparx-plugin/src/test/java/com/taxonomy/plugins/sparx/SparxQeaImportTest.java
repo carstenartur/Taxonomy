@@ -220,13 +220,17 @@ class SparxQeaImportTest {
         }
     }
 
-    @Test void unsupportedTablesAndDiagramRoutingAreDeclaredLosses() throws Exception {
+    @Test void unsupportedTablesAndRetainedDiagramRoutingAreDeclaredPrecisely() throws Exception {
         try (var fixture = new QeaFixture(directory)) {
             fixture.sql("CREATE TABLE t_diagramlinks (DiagramID INTEGER, ConnectorID INTEGER, Geometry TEXT)");
             fixture.sql("INSERT INTO t_diagramlinks VALUES (30,20,'unmapped routing')");
             fixture.sql("CREATE TABLE vendor_data (payload BLOB)");
             var document = read(fixture.bytes());
-            assertTrue(document.losses().stream().anyMatch(l -> l.code().equals("QEA_TABLE_UNSUPPORTED") && l.field().equals("t_diagramlinks")));
+            assertTrue(document.losses().stream().anyMatch(l -> l.code().equals("QEA_DIAGRAM_LINK_PRESERVED") && l.artifactId().equals(VIEW)));
+            assertFalse(document.losses().stream().anyMatch(l -> l.code().equals("QEA_TABLE_UNSUPPORTED") && l.field().equals("t_diagramlinks")));
+            var view = document.artifacts().stream().filter(a -> a.id().equals(VIEW)).findFirst().orElseThrow();
+            assertEquals("unmapped routing", view.attributes().get("ea:t_diagramlinks:connector-" + C + ":geometry"));
+            assertEquals(C, view.attributes().get("ea:t_diagramlinks:connector-" + C + ":connectorGuid"));
             assertTrue(document.losses().stream().anyMatch(l -> l.code().equals("QEA_TABLE_UNSUPPORTED") && l.field().equals("vendor_data")));
             assertFalse(document.completeScope());
         }

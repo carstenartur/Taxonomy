@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.CsvFileSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Files;
@@ -360,6 +361,125 @@ class SparxQeaWriteTest {
             var result = read(fixture.bytes());
             assertFalse(result.relations().getFirst().extensions().containsKey("canonicalType"));
             assertTrue(result.losses().stream().anyMatch(l -> l.code().equals("QEA_TAXONOMY_DECLARATION_INVALID")));
+        }
+    }
+
+    /** Versioned authored operation corpus; SQL checks do not rely on reader/writer agreement. */
+    @ParameterizedTest
+    @CsvFileSource(resources = "/exchange/qea-operations.csv", numLinesToSkip = 1)
+    void operationCorpus(String operation, String outcome) throws Exception {
+        assertEquals(outcome, com.taxonomy.sparx.mapping.QeaOperationSupport.OUTCOMES.get(operation));
+        try (var fixture = new QeaFixture(directory)) {
+            fixture.sql("ALTER TABLE t_diagramobjects ADD COLUMN Instance_ID INTEGER");
+            fixture.sql("UPDATE t_diagramobjects SET Instance_ID=Object_ID");
+            byte[] basis = fixture.bytes();
+            var before = read(basis);
+            assertEquals(outcome, before.metadata().get("operation:" + operation));
+            var original = artifact(before, A);
+            var occurrence = before.placements().stream().filter(p -> p.containerId().equals(VIEW) && p.artifactId().equals(A)).findFirst().orElseThrow();
+            var artifacts = new ArrayList<Artifact>();
+            var relations = new ArrayList<Relation>();
+            var placements = new ArrayList<Placement>();
+            String error = null;
+            switch (operation) {
+                case "rename" -> artifacts.add(new Artifact(A, original.kind(), original.type(), "Renamed", original.text(), original.attributes(), original.extensions()));
+                case "move-package" -> placements.add(new Placement("package:" + CHILD, MODEL, null, CHILD, 0, Map.of("placementKind", "package")));
+                case "repeated-occurrence" -> placements.add(new Placement("new-occurrence", VIEW, null, A, 2,
+                        Map.of("placementKind", "diagram", "ea:t_diagramobjects:instance_id", "90")));
+                case "remove-occurrence", "geometry-move" -> {
+                    var attributes = new HashMap<>(occurrence.attributes());
+                    if (operation.equals("remove-occurrence")) { attributes.put("operation", "delete"); error = "QEA_OPERATION_UNSUPPORTED"; }
+                    else { attributes.put("ea:t_diagramobjects:rectleft", "55"); error = "QEA_LAYOUT_UNSUPPORTED"; }
+                    placements.add(new Placement(occurrence.id(), VIEW, null, A, occurrence.position(), attributes));
+                }
+                case "endpoint-change" -> relations.add(new Relation(C, "Dependency", B, A, Map.of(), Map.of("canonicalType", "DEPENDS_ON", "direction", "Source -> Destination")));
+                case "concurrent-local-edit" -> { fixture.sql("UPDATE t_object SET Name='Concurrent edit' WHERE Object_ID=10"); error = "QEA_BASIS_CHANGED"; }
+                default -> fail("Unknown corpus operation: " + operation);
+            }
+            var selection = document(MODEL, artifacts, relations, placements);
+            if (error != null) {
+                assertEquals("unsupported", outcome);
+                final String expected = error;
+                byte[] supplied = fixture.bytes();
+                var request = new BasedOutboundRequest(new OutboundRequest(context("2"), selection, null), FileExportMode.UPDATE_COPY,
+                        NAMESPACE, QeaDatabase.digest(basis), "application/vnd.sparx.qea", supplied);
+                var failure = assertThrows(QeaFailure.class, () -> connector().previewOutbound(request));
+                assertTrue(failure.getMessage().contains(expected), failure.getMessage());
+                assertArrayEquals(supplied, fixture.bytes());
+                assertEquals(2, query(supplied, "SELECT Object_ID FROM t_object WHERE Object_Type='Component'").size());
+                return;
+            }
+            assertEquals("faithful", outcome);
+            byte[] result = write(basis, FileExportMode.UPDATE_COPY, selection).content();
+            assertArrayEquals(basis, fixture.bytes());
+            assertEquals(query(basis, "SELECT Object_ID,ea_guid FROM t_object ORDER BY Object_ID"), query(result, "SELECT Object_ID,ea_guid FROM t_object ORDER BY Object_ID"));
+            assertEquals(query(basis, "SELECT Connector_ID,ea_guid FROM t_connector"), query(result, "SELECT Connector_ID,ea_guid FROM t_connector"));
+            switch (operation) {
+                case "rename" -> assertEquals(List.of("Renamed"), query(result, "SELECT Name FROM t_object WHERE Object_ID=10"));
+                case "move-package" -> {
+                    assertEquals(List.of("0"), query(result, "SELECT Parent_ID FROM t_package WHERE Package_ID=2"));
+                    assertEquals(List.of("0"), query(result, "SELECT Package_ID FROM t_object WHERE Object_ID=100"));
+                }
+                case "repeated-occurrence" -> {
+                    assertEquals(List.of("10", "90"), query(result, "SELECT Instance_ID FROM t_diagramobjects WHERE Object_ID=10 ORDER BY Instance_ID"));
+                    assertEquals(query(basis, "SELECT * FROM t_diagramobjects ORDER BY Instance_ID"), query(result, "SELECT * FROM t_diagramobjects WHERE Instance_ID<>90 ORDER BY Instance_ID"));
+                }
+                case "endpoint-change" -> assertEquals(List.of("11|10"), query(result, "SELECT Start_Object_ID,End_Object_ID FROM t_connector WHERE Connector_ID=20"));
+                default -> fail("Missing faithful operation assertion: " + operation);
+            }
+        }
+    }
+
+    @Test void retainsPerViewConnectorIdentityVisibilityAndRoutingWithoutSemanticDuplication() throws Exception {
+        try (var fixture = new QeaFixture(directory)) {
+            fixture.sql("CREATE TABLE t_diagramlinks (DiagramID INTEGER, ConnectorID INTEGER, Geometry TEXT, Hidden INTEGER, Instance_ID INTEGER)");
+            fixture.sql("INSERT INTO t_diagramlinks VALUES (30,20,'route',1,91)");
+            String secondView = "{50000000-0000-0000-0000-000000000002}";
+            fixture.sql("INSERT INTO t_diagram VALUES (31,2,'Other view','Logical',?,'','')", secondView);
+            fixture.sql("INSERT INTO t_diagramlinks VALUES (31,20,'other route',0,92)");
+            byte[] basis = fixture.bytes();
+            var before = read(basis);
+            var view = artifact(before, VIEW);
+            assertEquals(C, view.attributes().get("ea:t_diagramlinks:91:connectorGuid"));
+            assertEquals("1", view.attributes().get("ea:t_diagramlinks:91:hidden"));
+            assertEquals("route", view.attributes().get("ea:t_diagramlinks:91:geometry"));
+            assertEquals(C, artifact(before, secondView).attributes().get("ea:t_diagramlinks:92:connectorGuid"));
+            assertEquals("0", artifact(before, secondView).attributes().get("ea:t_diagramlinks:92:hidden"));
+            assertEquals(1, before.relations().size());
+            byte[] result = write(basis, FileExportMode.UPDATE_COPY, before).content();
+            assertEquals(query(basis, "SELECT * FROM t_diagramlinks"), query(result, "SELECT * FROM t_diagramlinks"));
+            assertEquals(view.attributes(), artifact(read(result), VIEW).attributes());
+            var changed = new HashMap<>(view.attributes()); changed.put("ea:t_diagramlinks:91:hidden", "0");
+            var selection = new Artifact(VIEW, view.kind(), view.type(), view.title(), view.text(), changed, view.extensions());
+            var failure = assertThrows(QeaFailure.class, () -> write(basis, FileExportMode.UPDATE_COPY,
+                    document(MODEL, List.of(selection), List.of(), List.of())));
+            assertTrue(failure.getMessage().contains("QEA_DIAGRAM_LINK_UNSUPPORTED"));
+        }
+    }
+
+    @Test void cannotSilentlyRetainChangedPreserveOnlyEndpoints() throws Exception {
+        try (var fixture = new QeaFixture(directory)) {
+            byte[] basis = fixture.bytes();
+            var original = read(basis).relations().getFirst();
+            var extensions = new HashMap<>(original.extensions()); extensions.put("nativeProjection", "PRESERVE_ONLY");
+            var changed = new Relation(original.id(), original.type(), B, A, original.attributes(), extensions);
+            var failure = assertThrows(QeaFailure.class, () -> write(basis, FileExportMode.UPDATE_COPY,
+                    document(MODEL, List.of(), List.of(changed), List.of())));
+            assertTrue(failure.getMessage().contains("QEA_RELATION_MAPPING_REQUIRED"));
+        }
+    }
+
+    @Test void rejectsExplicitOccurrenceDeletionAndPreservesSemanticModel() throws Exception {
+        try (var fixture = new QeaFixture(directory)) {
+            byte[] basis = fixture.bytes();
+            var occurrence = read(basis).placements().stream().filter(p -> p.containerId().equals(VIEW)).findFirst().orElseThrow();
+            var attributes = new HashMap<>(occurrence.attributes()); attributes.put("operation", "delete");
+            var deletion = new Placement(occurrence.id(), VIEW, null, occurrence.artifactId(), occurrence.position(), attributes);
+            var failure = assertThrows(QeaFailure.class, () -> write(basis, FileExportMode.UPDATE_COPY,
+                    document(MODEL, List.of(), List.of(), List.of(deletion))));
+            assertTrue(failure.getMessage().contains("QEA_OPERATION_UNSUPPORTED"));
+            assertArrayEquals(basis, fixture.bytes());
+            assertEquals(2, query(basis, "SELECT Object_ID FROM t_object WHERE Object_Type='Component'").size());
         }
     }
 

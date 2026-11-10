@@ -114,7 +114,11 @@ final class AdmbwQeaWriter {
             database.insert("t_diagram", Map.of("diagram_id", diagramId, "package_id", packageId,
                     "ea_guid", guid("diagram:" + view.viewpoint()), "name", view.name(), "diagram_type", "Custom",
                     "styleex", "MDGDgm=" + AdmbwQeaProfile.DIAGRAM_TYPES.get(view.viewpoint()) + ";",
-                    "notes", "Taxonomy Git checkpoint " + commit + "\nADMBw 2026.05 / FFFmLV 2.0\nManual review required"));
+                    "notes", "Taxonomy Git checkpoint " + commit + "\nADMBw " + AdmbwQeaProfile.SOURCE_PROFILE.profileVersion() + " / " + AdmbwQeaProfile.SOURCE_PROFILE.guideVersion()
+                            + "\nSource " + AdmbwQeaProfile.SOURCE_PROFILE.sourceUrl()
+                            + "\nMDG SHA-256 " + AdmbwQeaProfile.SOURCE_PROFILE.mdgSha256()
+                            + "\nGenerator " + AdmbwQeaProfile.SOURCE_PROFILE.generatorVersion()
+                            + "\nBasis SHA-256 " + basis.sha256() + "\nManual review required"));
             var elements = new HashMap<String, Element>();
             var occurrences = new HashMap<String, Occurrence>();
             var byObject = new HashMap<Long, Occurrence>();
