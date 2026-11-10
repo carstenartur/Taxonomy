@@ -13,6 +13,11 @@
     <description>Architecture DSL core: parser, serializer, AST, model, mapper, validation, diff — no framework dependencies</description>
     <dependencies>
         <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-sparx-mapping</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>

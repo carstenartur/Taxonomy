@@ -88,10 +88,10 @@ class FrozenClusterAnalysisFinalizerTest {
         finalizer.accept(context);
         verify(store).finalizeResult(eq(context), argThat(result -> {
             var persisted = mapper.readTree(mapper.writeValueAsString(result));
-            assertThat(persisted.path("copilot").path("schemaVersion").asInt()).isEqualTo(1);
+            assertThat(persisted.path("copilot").path("schemaVersion").asInt()).isEqualTo(2);
             assertThat(persisted.path("copilot").path("gaps").path("businessText").asString())
                     .isEqualTo("Frozen original requirement");
-            assertThat(persisted.path("copilot").path("recommendation").path("confirmedElements").size()).isEqualTo(1);
+            assertThat(persisted.path("copilot").path("recommendation").path("matchedElements").size()).isEqualTo(1);
             assertThat(persisted.path("copilot").path("patterns").path("matchedPatterns").isEmpty()).isTrue();
             return true;
         }));

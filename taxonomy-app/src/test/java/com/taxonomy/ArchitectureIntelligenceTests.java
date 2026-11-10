@@ -42,7 +42,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
-class ArchitectureIntelligenceTests {
+class ArchitectureIntelligenceTests extends GraphSnapshotFixtureSupport {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ArchitectureGapService gapService;
@@ -63,35 +63,31 @@ class ArchitectureIntelligenceTests {
 
     @Test
     void gapAnalysisWithEmptyScoresReturnsEmptyResult() {
-        GapAnalysisView view = gapService.analyze(Map.of(), "test requirement", 50);
+        GapAnalysisView view = ArchitectureGapService.compatibilityAssessment("test requirement");
 
         assertThat(view.getBusinessText()).isEqualTo("test requirement");
         assertThat(view.getTotalAnchors()).isZero();
-        assertThat(view.getMissingRelations()).isEmpty();
+        assertThat(view.getJudgments()).isEmpty();
     }
 
     @Test
-    void gapAnalysisWithHighScoredNodeIdentifiesGaps() {
+    void compatibilityAssessmentDoesNotInferObligationsFromScores() {
         Map<String, Double> scores = Map.of("CP-1010", 90d, "BP-1010", 80d);
-        GapAnalysisView view = gapService.analyze(scores, "secure communications", 50);
+        GapAnalysisView view = ArchitectureGapService.compatibilityAssessment("secure communications");
 
-        assertThat(view.getTotalAnchors()).isGreaterThan(0);
+        assertThat(view.getTotalAnchors()).isZero();
+        assertThat(view.getJudgments()).isEmpty();
         assertThat(view.getBusinessText()).isEqualTo("secure communications");
         // Should find gaps since individual nodes may not have all expected relations
         assertThat(view.getNotes()).isNotNull();
     }
 
     @Test
-    void gapAnalysisEndpointReturnsOk() throws Exception {
+    void gapAnalysisEndpointRejectsUnscopedScoreBody() throws Exception {
         mockMvc.perform(post("/api/gap/analyze")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scores\":{\"CP-1010\":90},\"businessText\":\"test\",\"minScore\":50}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.businessText").value("test"))
-                .andExpect(jsonPath("$.totalAnchors").isNumber())
-                .andExpect(jsonPath("$.missingRelations").isArray())
-                .andExpect(jsonPath("$.incompletePatterns").isArray())
-                .andExpect(jsonPath("$.coverageGaps").isArray());
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -107,7 +103,7 @@ class ArchitectureIntelligenceTests {
 
     @Test
     void patternDetectionWithEmptyScoresReturnsEmptyView() {
-        PatternDetectionView view = patternService.detectForScores(Map.of(), 50);
+        PatternDetectionView view = patternService.detectForScores(graphContext, graphCommit, Map.of(), 50);
 
         assertThat(view.getMatchedPatterns()).isEmpty();
         assertThat(view.getIncompletePatterns()).isEmpty();
@@ -115,7 +111,7 @@ class ArchitectureIntelligenceTests {
 
     @Test
     void patternDetectionForSpecificNodeReturnsView() {
-        PatternDetectionView view = patternService.detectForNode("CP-1010");
+        PatternDetectionView view = patternService.detectForNode(graphContext, graphCommit, "CP-1010");
 
         assertThat(view.getNodeCode()).isEqualTo("CP-1010");
         assertThat(view.getNotes()).isNotNull();
@@ -123,18 +119,18 @@ class ArchitectureIntelligenceTests {
 
     @Test
     void patternDetectionEndpointReturnsOk() throws Exception {
-        mockMvc.perform(post("/api/patterns/detect")
+        mockMvc.perform(graphRequest(post("/api/patterns/detect"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scores\":{\"CP-1010\":90,\"BP-1010\":80},\"minScore\":50}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.matchedPatterns").isArray())
                 .andExpect(jsonPath("$.incompletePatterns").isArray())
-                .andExpect(jsonPath("$.patternCoverage").isNumber());
+                .andExpect(jsonPath("$.patternCoverage").value(org.hamcrest.Matchers.nullValue()));
     }
 
     @Test
     void patternDetectionForNodeEndpointReturnsOk() throws Exception {
-        mockMvc.perform(get("/api/patterns/detect")
+        mockMvc.perform(graphRequest(get("/api/patterns/detect"))
                         .param("nodeCode", "CP-1010"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nodeCode").value("CP-1010"));
@@ -144,7 +140,7 @@ class ArchitectureIntelligenceTests {
 
     @Test
     void recommendationWithEmptyScoresReturnsNotes() {
-        ArchitectureRecommendation rec = recommendationService.recommend(
+        ArchitectureRecommendation rec = recommendationService.rankMatches(
                 Map.of(), "test requirement", 50);
 
         assertThat(rec.getBusinessText()).isEqualTo("test requirement");
@@ -154,51 +150,47 @@ class ArchitectureIntelligenceTests {
     @Test
     void recommendationWithScoresReturnsElements() {
         Map<String, Double> scores = Map.of("CP-1010", 90d, "BP-1010", 80d);
-        ArchitectureRecommendation rec = recommendationService.recommend(
+        ArchitectureRecommendation rec = recommendationService.rankMatches(
                 scores, "secure voice communications", 50);
 
         assertThat(rec.getBusinessText()).isEqualTo("secure voice communications");
-        assertThat(rec.getConfirmedElements()).isNotNull();
+        assertThat(rec.getMatchedElements()).isNotNull();
         assertThat(rec.getProposedElements()).isNotNull();
         assertThat(rec.getSuggestedRelations()).isNotNull();
         assertThat(rec.getReasoning()).isNotNull();
     }
 
     @Test
-    void recommendationEndpointReturnsOk() throws Exception {
+    void recommendationEndpointRejectsUnscopedScoreBody() throws Exception {
         mockMvc.perform(post("/api/recommend")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scores\":{\"CP-1010\":90},\"businessText\":\"test\",\"minScore\":50}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.businessText").value("test"))
-                .andExpect(jsonPath("$.confirmedElements").isArray())
-                .andExpect(jsonPath("$.proposedElements").isArray())
-                .andExpect(jsonPath("$.suggestedRelations").isArray())
-                .andExpect(jsonPath("$.confidence").isNumber())
-                .andExpect(jsonPath("$.reasoning").isArray());
+                .andExpect(status().isBadRequest());
     }
 
     // ── Enriched Failure Impact Tests ─────────────────────────────────────────
 
     @Test
     void enrichedFailureImpactReturnsViewWithRiskScore() {
-        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact("BP-1010", 2);
+        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact(graphContext, graphCommit, "BP-1010", 2);
 
         assertThat(view.getFailedNodeCode()).isEqualTo("BP-1010");
         assertThat(view.getMaxHops()).isEqualTo(2);
-        assertThat(view.getRiskScore()).isGreaterThanOrEqualTo(0.0);
+        assertThat(view.getRiskScore()).isNull();
+        assertThat(view.getCorrelationCompleteness()).isEqualTo("INCONCLUSIVE");
         assertThat(view.getDirectlyAffected()).isNotNull();
         assertThat(view.getIndirectlyAffected()).isNotNull();
     }
 
     @Test
     void enrichedFailureImpactEndpointReturnsOk() throws Exception {
-        mockMvc.perform(get("/api/graph/node/BP-1010/enriched-failure-impact")
+        mockMvc.perform(graphRequest(get("/api/graph/node/BP-1010/enriched-failure-impact"))
                         .param("maxHops", "2"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.failedNodeCode").value("BP-1010"))
                 .andExpect(jsonPath("$.maxHops").value(2))
-                .andExpect(jsonPath("$.riskScore").isNumber())
+                .andExpect(jsonPath("$.riskScore").doesNotExist())
+                .andExpect(jsonPath("$.correlationCompleteness").value("INCONCLUSIVE"))
                 .andExpect(jsonPath("$.directlyAffected").isArray())
                 .andExpect(jsonPath("$.indirectlyAffected").isArray())
                 .andExpect(jsonPath("$.affectedRequirements").isArray());

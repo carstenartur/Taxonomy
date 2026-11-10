@@ -64,6 +64,14 @@ class AdmbwFffmlvProfileTest {
             """.formatted(REQUIREMENT, RequirementRealization.textHash(REQUIREMENT));
 
     @Test
+    void assessmentIdentifiesTheExactSharedExternalProfile() {
+        var report = assess(CAPABILITY_VIEW, "warning");
+        assertThat(report.sourceProfile()).isSameAs(com.taxonomy.sparx.mapping.AdmbwSourceProfile.CURRENT);
+        assertThat(report.profile()).isEqualTo(report.sourceProfile().id());
+        assertThat(AdmbwFffmlvProfile.ELEMENT_STEREOTYPES).containsExactlyInAnyOrderElementsOf(report.sourceProfile().authoringElementTypes());
+    }
+
+    @Test
     void mapsTheReviewedCapabilityRelationInTheOfficialClientSupplierDirection() {
         var view = assess(CAPABILITY_VIEW, "warning").capabilityToService();
         assertThat(view.issues()).isEmpty();

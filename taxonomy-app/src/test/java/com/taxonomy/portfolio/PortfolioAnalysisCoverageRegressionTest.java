@@ -105,11 +105,7 @@ class PortfolioAnalysisCoverageRegressionTest {
                 .thenAnswer(invocation -> sha256(invocation.getArgument(0)));
         when(fingerprintService.taxonomyFingerprint()).thenReturn("taxonomy-default");
         when(fingerprintService.promptFingerprint()).thenReturn("prompts-default");
-        when(gapService.analyze(anyMap(), anyString(), anyInt()))
-                .thenAnswer(invocation -> new GapAnalysisView());
-        when(patternService.detectForScores(anyMap(), anyInt()))
-                .thenAnswer(invocation -> new PatternDetectionView());
-        when(recommendationService.recommend(anyMap(), anyString(), anyInt()))
+        when(recommendationService.rankMatches(anyMap(), anyString(), anyInt()))
                 .thenAnswer(invocation -> new ArchitectureRecommendation());
     }
 
@@ -228,11 +224,7 @@ class PortfolioAnalysisCoverageRegressionTest {
                                 80,
                                 false,
                                 true)));
-        when(gapService.analyze(anyMap(), anyString(), anyInt()))
-                .thenThrow(new IllegalStateException("gap unavailable"));
-        when(patternService.detectForScores(anyMap(), anyInt()))
-                .thenThrow(new IllegalStateException());
-        when(recommendationService.recommend(anyMap(), anyString(), anyInt()))
+        when(recommendationService.rankMatches(anyMap(), anyString(), anyInt()))
                 .thenThrow(new IllegalArgumentException("   "));
 
         var job = analysisService.analyzeRequirement(
@@ -258,7 +250,7 @@ class PortfolioAnalysisCoverageRegressionTest {
         assertThat(detail.recommendation().getBusinessText())
                 .isEqualTo("Continue when secondary intelligence fails");
         assertThat(detail.recommendation().getNotes()).isNotEmpty();
-        assertThat(detail.recommendation().getConfirmedElements()).isEmpty();
+        assertThat(detail.recommendation().getMatchedElements()).isEmpty();
     }
 
     @Test

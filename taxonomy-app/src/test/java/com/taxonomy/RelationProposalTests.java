@@ -74,8 +74,8 @@ class RelationProposalTests {
     }
 
     @Test
-    void allowedTargetRootsReturnsCorrectSets() {
-        Set<String> targets = compatibilityMatrix.allowedTargetRoots("CP", RelationType.REALIZES);
+    void restrictedTargetDomainReturnsCorrectRoots() {
+        Set<String> targets = compatibilityMatrix.targetDomain("CP", RelationType.REALIZES).roots();
         assertThat(targets).containsExactly("CR");
     }
 

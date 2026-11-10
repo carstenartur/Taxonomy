@@ -25,10 +25,15 @@ import java.util.Map;
 public class PatternDetectionApiController {
 
     private final ArchitecturePatternService patternService;
+    private final ObligationRequestContext contexts;
 
-    public PatternDetectionApiController(ArchitecturePatternService patternService) {
-        this.patternService = patternService;
+    public PatternDetectionApiController(ArchitecturePatternService patternService, ObligationRequestContext contexts) {
+        this.patternService = patternService; this.contexts = contexts;
     }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseStatus(org.springframework.http.HttpStatus.BAD_REQUEST)
+    public java.util.Map<String,String> invalidPolicy(IllegalArgumentException error) { return java.util.Map.of("message", error.getMessage()); }
 
     /**
      * Request body for pattern detection on scored nodes.
@@ -45,8 +50,10 @@ public class PatternDetectionApiController {
                description = "Checks which standard architecture patterns are present starting from the given node")
     @GetMapping("/detect")
     public ResponseEntity<PatternDetectionView> detectForNode(
-            @Parameter(description = "Taxonomy node code") @RequestParam String nodeCode) {
-        PatternDetectionView view = patternService.detectForNode(nodeCode);
+            @Parameter(description = "Taxonomy node code") @RequestParam String nodeCode,
+            @RequestParam String repositoryId, @RequestParam String branch, @RequestParam String commitId,
+            jakarta.servlet.http.HttpServletRequest http) {
+        PatternDetectionView view = patternService.detectForNode(contexts.resolve(repositoryId, branch, commitId, http), commitId, nodeCode);
         return ResponseEntity.ok(view);
     }
 
@@ -56,8 +63,10 @@ public class PatternDetectionApiController {
     @Operation(summary = "Detect patterns for scores",
                description = "Detects architecture patterns across all nodes above the score threshold")
     @PostMapping("/detect")
-    public ResponseEntity<PatternDetectionView> detectForScores(@RequestBody PatternDetectionRequest request) {
-        PatternDetectionView view = patternService.detectForScores(
+    public ResponseEntity<PatternDetectionView> detectForScores(@RequestBody PatternDetectionRequest request,
+            @RequestParam String repositoryId, @RequestParam String branch, @RequestParam String commitId,
+            jakarta.servlet.http.HttpServletRequest http) {
+        PatternDetectionView view = patternService.detectForScores(contexts.resolve(repositoryId, branch, commitId, http), commitId,
                 request.scores() != null ? request.scores() : Map.of(),
                 request.minScore());
         return ResponseEntity.ok(view);

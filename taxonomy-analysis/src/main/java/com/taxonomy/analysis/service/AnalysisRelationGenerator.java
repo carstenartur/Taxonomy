@@ -99,10 +99,10 @@ public class AnalysisRelationGenerator {
             List<ScoredNode> sourceNodes = nodesByRoot.get(sourceRoot);
 
             for (RelationType relationType : RelationType.values()) {
-                Set<String> allowedTargets = compatibilityMatrix.allowedTargetRoots(sourceRoot, relationType);
+                if (!com.taxonomy.analysis.relations.RelationDiscoveryPolicy.automatic(relationType)) continue;
+                Set<String> allowedTargets = nodesByRoot.keySet().stream().filter(root -> compatibilityMatrix.targetDomain(sourceRoot, relationType).allows(root)).collect(java.util.stream.Collectors.toSet());
                 if (allowedTargets.isEmpty()) {
-                    // Either no restrictions or no rules — skip for auto-generation
-                    // to avoid noise from RELATED_TO
+                    // No compatible endpoints are present in this analysis.
                     continue;
                 }
 

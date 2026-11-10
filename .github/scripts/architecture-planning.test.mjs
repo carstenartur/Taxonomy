@@ -85,7 +85,7 @@ test('malformed namespace is visible and cannot be overwritten through the profi
 
 // Run the production planning, focus and editor modules together: do not replace the panel's stage callback.
 // Only browser rendering and the remote API boundary are fixtures, not retry logic.
-async function editorFixture(conflictAt, history = [], serverUndo = history[0] || null) {
+async function editorFixture(conflictAt, history = [], serverUndo = history[0] || null, configure = () => {}) {
     const html = fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/templates/architecture-editor.html'), 'utf8');
     const ids = Object.fromEntries([...html.matchAll(/<([a-z0-9]+)\b[^>]*\bid="([^"]+)"/gi)]
         .map(([, tag, id]) => [id, new Element(tag)]));
@@ -103,6 +103,7 @@ async function editorFixture(conflictAt, history = [], serverUndo = history[0] |
         model:{views:[], requirements:[{id:'R',title:'Original'}], elements:[], relations:[], evidence:[], packages:[]},
         scene:{nodes:[],edges:[]}, searchIndex:[], planningInformation:{R:[{supported:true, entry:{id:'launch',
             profile:'go-live', version:'1', origin:'MANUAL', values:{precision:'YEAR',value:'2030'}}}]} };
+    configure(view);
     const previews = [], executions = [], loads = [];
     let conflicted = false, sequence = 0;
     function conflict() {
@@ -112,6 +113,7 @@ async function editorFixture(conflictAt, history = [], serverUndo = history[0] |
             responseBody:{code:'REVISION_MOVED',expectedRevision:1,currentRevision:2}});
     }
     const api = {
+        exportUrl: () => "/fixture-export",
         async load(scope, revision) { loads.push({scope:structuredClone(scope),revision}); return structuredClone(view); },
         async preview(command) {
             previews.push(structuredClone(command));
@@ -153,10 +155,10 @@ async function editorFixture(conflictAt, history = [], serverUndo = history[0] |
     vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js/architecture-editor.js'), 'utf8'), sandbox);
     await settleUi();
     assert.equal(loads.length, 1);
-    assert.equal(ids.editorPlanningActions.disabled, false);
+    assert.equal(ids.editorPlanningActions.disabled, false, ids.editorError.textContent);
     ids.editorPlanningEntry.value = 'launch';
     ids.editorPlanningEntry.events.change();
-    return {ids, previews, executions, loads, window};
+    return {ids, previews, executions, loads, window, instance:document.body.__architectureEditor};
 }
 
 // All fixture promises resolve immediately; drain the real handlers without timed sleeps.
@@ -265,3 +267,30 @@ async function checkPlanningRetry(conflictAt, generalReason, deletion) {
     assert.equal(f.ids.editorPreviewDialog.open, false);
     assert.equal(f.loads.length, 3, 'Initial load, conflict refresh and accepted-revision reload');
 }
+
+
+test('editor consumes explicit relation domains and prevents forbidden target previews', async () => {
+    const f = await editorFixture(null, [], null, view => {
+        view.schema.elementTypes=['CoreService','Capability','BusinessProcess'];
+        view.schema.typeRoots={CoreService:'CR',Capability:'CP',BusinessProcess:'BP'};
+        view.schema.relationTypes=['SUPPORTS','REALIZES','RELATED_TO'];
+        view.schema.relationDomains={
+            SUPPORTS:{defaultDomain:{state:'FORBIDDEN',roots:[]},sourceDomains:{CR:{state:'RESTRICTED',roots:['BP']}}},
+            REALIZES:{defaultDomain:{state:'FORBIDDEN',roots:[]},sourceDomains:{CP:{state:'RESTRICTED',roots:['CR']}}},
+            RELATED_TO:{defaultDomain:{state:'UNRESTRICTED',roots:[]},sourceDomains:{}}};
+        view.model.elements=[{id:'S',type:'CoreService',title:'Service'},{id:'C',type:'Capability',title:'Capability'},{id:'P',type:'BusinessProcess',title:'Process'}];
+        view.model.elements.forEach(e=>e.extensions={});
+        view.scene.nodes=view.model.elements;view.searchIndex=view.model.elements.map(e=>({id:e.id,text:e.id}));
+    });
+    f.instance.select('S');
+    assert.deepEqual(f.ids.editorRelationType.children.map(e=>e.value),['SUPPORTS','RELATED_TO']);
+    f.ids.editorRelationType.value='SUPPORTS';f.ids.editorRelationType.events.change();
+    const suggestions=f.ids.editorRelationForm.children.find(e=>e.tagName==='DATALIST');
+    assert.deepEqual(suggestions.children.map(e=>e.value),['P']);
+    f.ids.editorRelationTarget.value='C';f.ids.editorRelationForm.events.submit({preventDefault(){}});await settleUi();
+    assert.equal(f.previews.length,0);assert.ok(f.ids.editorRelationTarget.validationMessage);
+    f.ids.editorRelationTarget.value='P';f.ids.editorRelationForm.events.submit({preventDefault(){}});await settleUi();
+    assert.equal(f.previews.length,1);assert.equal(f.previews[0].targetId,'P');
+    f.ids.editorRelationType.value='RELATED_TO';f.ids.editorRelationType.events.change();
+    assert.deepEqual(suggestions.children.map(e=>e.value),['S','C','P']);
+});

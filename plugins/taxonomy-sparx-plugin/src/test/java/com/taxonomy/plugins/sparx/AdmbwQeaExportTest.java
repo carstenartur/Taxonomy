@@ -23,6 +23,13 @@ class AdmbwQeaExportTest {
     @TempDir Path temp;
 
     @Test
+    void nativeWriterConsumesTheSharedSourceDescriptor() {
+        assertSame(com.taxonomy.sparx.mapping.AdmbwSourceProfile.CURRENT, AdmbwQeaProfile.SOURCE_PROFILE);
+        assertSame(AdmbwQeaProfile.SOURCE_PROFILE.elementTypes(), AdmbwQeaProfile.ELEMENT_TYPES);
+        assertSame(AdmbwQeaProfile.SOURCE_PROFILE.diagramTypes(), AdmbwQeaProfile.DIAGRAM_TYPES);
+    }
+
+    @Test
     void createsNativeViewsAndKeepsCatalogueObjectsInTheirPackages() throws Exception {
         try (var basis = basis()) {
             byte[] original = basis.bytes();
@@ -36,6 +43,12 @@ class AdmbwQeaExportTest {
             Path target = Files.write(temp.resolve("delivery.qea"), file.content());
             try (var read = DriverManager.getConnection("jdbc:sqlite:" + target)) {
                 assertEquals(List.of("ok"), column(read, "pragma quick_check"));
+                for (String notes : column(read, "select Notes from t_diagram where Diagram_ID > 30")) {
+                    assertTrue(notes.contains("6b1baa03bb097d3aa9afc8bde4d56e275e8a0e93"));
+                    assertTrue(notes.contains("e2e8c69281dcc83ad4382bd1b196c23850a847defb33d0a0ffcb429d747f3643"));
+                    assertTrue(notes.contains("taxonomy-admbw-qea/1"));
+                    assertTrue(notes.contains("Basis SHA-256 " + QeaDatabase.digest(original)));
+                }
                 assertEquals(List.of("90000"), column(read, "select length(Description) from t_xref where XrefID='opaque'"));
                 assertEquals(List.of("90000"), column(read, "select length(Note) from t_object where Object_ID=11"));
                 assertEquals(List.of("90000"), column(read, "select length(Notes) from t_objectproperties where Property='Opaque'"));

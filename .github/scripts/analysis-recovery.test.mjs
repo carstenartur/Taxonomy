@@ -4,10 +4,11 @@ import vm from 'node:vm';
 import { webcrypto } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 const analysisSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis.js', import.meta.url), 'utf8');
+const analysisApiSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/analysis-api.js', import.meta.url), 'utf8');
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-recovery.js', import.meta.url), 'utf8');
 function node() {
   const listeners = new Map();
-  return { textContent:'', hidden:false, disabled:false, style:{}, value:'', children:[], classList:{ toggle(){}, add(){}, remove(){} },
+  return { textContent:'', hidden:false, disabled:false, style:{}, dataset:{}, value:'', children:[], classList:{ toggle(){}, add(){}, remove(){} },
     append(...items){ this.children.push(...items); }, prepend(...items){ this.children.unshift(...items); },
     replaceChildren(...items){ this.children=items; }, setAttribute(){},
     addEventListener(name,fn){listeners.set(name,fn);}, fire(name){return listeners.get(name)?.();},
@@ -18,7 +19,7 @@ function harness(language = 'en') {
   const fields = { businessText: Object.assign(node(),{value:'Hospital communications'}),
     copilotBtn:node(),analyzeBtn:node(),copilotSpinner:node(),providerSelect:Object.assign(node(),{value:'CUSTOM_OPENAI'}) };
   const S = {}, runtime = {workspaceId:'ws-a', analysisGeneration:0};
-  const requests=[], analyses=[], saved=[], panels=[], renderedReports=[], derivedRequests=[], readResponses=[]; let openOptions=[], snapshot;
+  const requests=[], analyses=[], saved=[], panels=[], renderedReports=[], derivedRequests=[], derivedBodies=[], readResponses=[]; let openOptions=[], snapshot;
   const ui = { update(message){ this.message=message; }, close(){ this.opened=false; }, error(message){ this.errorText=message; },
     isOpen(){return Boolean(this.opened);}, isDismissed(){return false;},
     open(title,message,build,options){
@@ -40,7 +41,7 @@ function harness(language = 'en') {
     TaxonomyAnalysis:{runCopilotFlow:async()=>{followups++;},renderCopilotResult:value=>renderedReports.push(value),renderPartialCopilot:message=>panels.push(message)} };
   const document={getElementById:id=>fields[id]||null,addEventListener:(name,fn)=>{if(!listeners.has(name))listeners.set(name,[]);listeners.get(name).push(fn);}};
   const context={window,document,crypto:webcrypto,sessionStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
-    setTimeout:fn=>{timers.set(++timer,fn);return timer;},clearTimeout:id=>timers.delete(id), console};
+    setTimeout:fn=>{timers.set(++timer,fn);return timer;},clearTimeout:id=>timers.delete(id), URLSearchParams, console};
   vm.runInNewContext(source,context);
   function complete(state='PAUSED') {
     const q={key:'question-a',nodes:['BP-1327','BP-1481'],error:'Invalid JSON',attempts:1,skipped:state==='COMPLETED_WITH_GAPS'||state==='STOPPED'};
@@ -54,14 +55,26 @@ function harness(language = 'en') {
       'patternDetectionContent', 'patternDetectionPanel', 'recommendationContent', 'recommendationPanel']) fields[id] = node();
     context.TaxonomyI18n = { t:key=>key };
     context.TaxonomyUtils = { escapeHtml:value=>String(value ?? '') };
-    context.fetch = async url => { derivedRequests.push(url); return {ok:true,json:async()=>({totalGaps:0,totalAnchors:1})}; };
+    const architecture = () => ({repositoryId:'model-a',workspaceScopeKey:runtime.workspaceId,branch:'draft',commit:'a'.repeat(40)});
+    window.TaxonomyAppChrome={getContext:()=>({architecture:architecture()})};
+    window.TaxonomyArchitectureLifecycle={ready:async()=>({context:architecture()}),state:()=>({context:architecture()}),selectedContext:architecture};
+    window.TaxonomyApiClient={getJson:async()=>[{id:'compatibility',version:'1.0.0'}],
+      sendJson:async(url,body)=>{const path=new URL(url,'https://fixture.test').pathname;derivedRequests.push(path);derivedBodies.push(body);
+        const proof={...architecture(),workspaceId:runtime.workspaceId,commitId:'a'.repeat(40),businessText:body.businessText,
+          profileId:body.profileId,profileVersion:body.profileVersion,metamodelVersion:'1.0.0',
+          evidenceAuthority:'CANONICAL_SNAPSHOT',evidenceCompleteness:body.evidenceCompleteness,totalGaps:0,totalAnchors:1,judgments:[]};
+        if(path==='/api/patterns/detect')return {evidence:{...architecture(),workspaceId:runtime.workspaceId,commitId:'a'.repeat(40),
+          evidenceAuthority:'CANONICAL_SNAPSHOT',readAuthority:'GIT_BRANCH_PROJECTION',readinessState:'READY',templateVersion:'1.0.0',
+          minimumScore:body.minScore,eligibleAnchors:0,completeness:'NOT_EVALUATED_NO_ANCHORS'},patternCoverage:null,matchedPatterns:[],incompletePatterns:[]};
+        return path==='/api/recommend'?{gapAnalysis:proof,matchedElements:[],acceptedElements:[],meanRelevance:null}:proof;}};
+    vm.runInNewContext(analysisApiSource,context);
     vm.runInNewContext(analysisSource,context);
   }
   function loadRelationsExtension() {
     for(const id of ['analysisRelationsExtension','extendAnalysisRelationsBtn','analysisRelationsExtensionHint'])fields[id]=node();
     vm.runInNewContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-relations-extension.js',import.meta.url),'utf8'),context);
   }
-  return {S,runtime,ui,analyses,requests,saved,panels,fields,timers,window,document,complete,loadAnalysis,loadRelationsExtension,derivedRequests,readResponses,
+  return {S,runtime,ui,analyses,requests,saved,panels,fields,timers,window,document,complete,loadAnalysis,loadRelationsExtension,derivedRequests,derivedBodies,readResponses,
     snapshot:()=>snapshot,
     followups:()=>followups,renderedReports,options:()=>openOptions,
     act:id=>openOptions.find(o=>o.id===id).handler(),emit:(name,detail={})=>(listeners.get(name)||[]).forEach(fn=>fn({detail})),
@@ -122,7 +135,7 @@ test('a changed server result requires an explicit load choice when retained dra
  const saved=h.snapshot();
  saved.recovery={...saved.recovery,version:8,state:'COMPLETED',openQuestions:[]};
  saved.result={...saved.result,recovery:saved.recovery,status:'SUCCESS',reasons:{BP:'New server rationale'},
-   copilot:{schemaVersion:1,state:'COMPLETED',notes:['Saved server report']}};
+   copilot:{schemaVersion:2,state:'COMPLETED',notes:['Saved server report']}};
  await h.recovery.refresh();
  assert.equal(h.S.currentReasons.BP,'Original reason');
  assert.match(h.ui.message,/earlier evidence|local evidence/i);
@@ -257,8 +270,7 @@ test('imported open evidence cannot authorize the public Copilot follow-up flow'
  assert.deepEqual(h.derivedRequests,[], 'Missing assessments must not become global absence claims after import');
  assert.match(h.fields.copilotContent.innerHTML,/partial|unassessed/i);
 });
-for(const [method,panel] of [['runGapAnalysis','gapAnalysisContent'],
- ['runPatternDetection','patternDetectionContent'],['runRecommendation','recommendationContent']]){
+for(const [method,panel] of [['runPatternDetection','patternDetectionContent'],['runRecommendation','recommendationContent']]){
  test(`${method} explains why imported unknown evidence is insufficient, without a journal dialog`,async()=>{
   const h=harness();h.loadAnalysis();h.S.currentScores={BP:100};h.S.analysisCoverage={failedOrBlockedNodes:1};
   h.emit('taxonomy:analysis-evidence-imported');
@@ -269,7 +281,6 @@ for(const [method,panel] of [['runGapAnalysis','gapAnalysisContent'],
  });
 }
 for (const [method, panel, urls] of [
- ['runGapAnalysis', 'gapAnalysisContent', ['/api/gap/analyze']],
  ['runPatternDetection', 'patternDetectionContent', ['/api/patterns/detect']],
  ['runRecommendation', 'recommendationContent', ['/api/recommend']],
  ['runCopilotFlow', 'copilotContent', ['/api/gap/analyze', '/api/patterns/detect', '/api/recommend']]
@@ -298,6 +309,19 @@ for (const [method, panel, urls] of [
   await h.window.TaxonomyAnalysis[method](); await settle();
 
   assert.deepEqual(h.derivedRequests, urls);
+ });
+}
+for (const coverage of [undefined, null, {nodes:{}}, {failedOrBlockedNodes:0,nodes:{}}, {failedOrBlockedNodes:3}]) {
+ test('selected model obligations remain separate from partial relevance evidence', async()=>{
+  const h=harness();h.loadAnalysis();h.S.currentScores={BP:100};h.S.lastAnalysisStatus='PARTIAL';h.S.analysisCoverage=coverage;
+  h.emit('taxonomy:analysis-evidence-imported');
+  await h.window.TaxonomyAnalysis.runGapAnalysis();
+  assert.deepEqual(h.derivedRequests,['/api/gap/analyze']);
+  assert.equal(h.derivedBodies[0].evidenceCompleteness,'INCOMPLETE');
+  assert.equal(h.derivedBodies[0].profileId,'compatibility');
+  assert.equal(h.derivedBodies[0].scores,undefined,'Partial ranked evidence cannot be promoted to model obligations');
+  assert.match(h.fields.gapAnalysisContent.innerHTML,/analysis.evidence.noObligations/);
+  assert.doesNotMatch(h.fields.gapAnalysisContent.innerHTML,/alert-success/);
  });
 }
 test('a failed follow-up checkpoint pauses and retry persists the result without repeating the operation',async()=>{

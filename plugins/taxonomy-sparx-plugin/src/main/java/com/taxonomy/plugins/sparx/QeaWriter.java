@@ -98,7 +98,7 @@ final class QeaWriter {
         return value == null ? 0 : value.length();
     }
     private static void validateTemplate(Snapshot basis) {
-        for (String table : List.of("t_object", "t_connector", "t_diagram", "t_diagramobjects", "t_objectproperties", "t_connectortag", "t_xref"))
+        for (String table : List.of("t_object", "t_connector", "t_diagram", "t_diagramobjects", "t_diagramlinks", "t_objectproperties", "t_connectortag", "t_xref"))
             if (!basis.rows(table).isEmpty()) throw fail("QEA_TEMPLATE_NOT_EMPTY", "NEW_PROJECT requires an empty native template, without model objects, mirrors, tags or references");
         if (basis.rows("t_package").size() != 1 || basis.rows("t_package").getFirst().number("parent_id") != 0)
             throw fail("QEA_TEMPLATE_NOT_EMPTY", "The supported empty template has exactly one root package");
@@ -111,6 +111,13 @@ final class QeaWriter {
     private static void artifact(Artifact artifact, QeaWriteModel model, QeaWriteDatabase database, QeaWriteTags tags) throws SQLException {
         NativeObject nativeObject = model.nativeObjects.get(artifact.id()); Row old = nativeObject.original();
         Artifact before = model.beforeArtifacts.get(artifact.id());
+        if (artifact.kind() == ArtifactKind.VIEW) {
+            for (var entry : artifact.attributes().entrySet()) {
+                if (entry.getKey().startsWith("ea:t_diagramlinks:")
+                        && (before == null || !entry.getValue().equals(before.attributes().get(entry.getKey()))))
+                    throw fail("QEA_DIAGRAM_LINK_UNSUPPORTED", "Changing connector occurrence identity, visibility or routing is unsupported");
+            }
+        }
         if (old != null && unchanged(artifact, before)) return;
         var fields = new LinkedHashMap<String, Object>(); fields.put("name", artifact.title());
         fields.put(artifact.kind() == ArtifactKind.SPECIFICATION || artifact.kind() == ArtifactKind.VIEW ? "notes" : "note", artifact.text());
@@ -181,7 +188,12 @@ final class QeaWriter {
         if (old != null && before != null && relation.type().equals(before.type()) && relation.source().equals(before.source()) && relation.target().equals(before.target())
                 && relation.extensions().equals(before.extensions()) && relation.attributes().equals(before.attributes())) return;
         if (relation.extensions().getOrDefault("nativeProjection", "ARCHITECTURE_RELATION").equals("PRESERVE_ONLY")) {
-            if (old == null) throw fail("QEA_RELATION_MAPPING_REQUIRED", "A new connector cannot be preserve-only");
+            if (old == null || before == null || !relation.type().equals(before.type())
+                    || !relation.source().equals(before.source()) || !relation.target().equals(before.target())
+                    || !relation.attributes().equals(before.attributes())
+                    || relation.extensions().entrySet().stream().filter(e -> !e.getKey().equals("nativeProjection"))
+                            .anyMatch(e -> !e.getValue().equals(before.extensions().get(e.getKey()))))
+                throw fail("QEA_RELATION_MAPPING_REQUIRED", "Preserve-only connectors cannot request changed identity, endpoints or values");
             return;
         }
         String canonical = relation.extensions().get("canonicalType"), direction = relation.extensions().get("direction");

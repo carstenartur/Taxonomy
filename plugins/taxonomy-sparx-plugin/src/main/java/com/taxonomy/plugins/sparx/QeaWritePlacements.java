@@ -29,6 +29,10 @@ final class QeaWritePlacements {
     }
 
     void write(List<Placement> selected) throws SQLException {
+        for (Placement placement : selected) {
+            if (placement.attributes().containsKey("operation"))
+                throw fail("QEA_OPERATION_UNSUPPORTED", "Explicit occurrence operations (including deletion) are unsupported; omission never authorizes deletion");
+        }
         // Reserve the whole selection before automatic allocation can consume a later frozen identity.
         Set<Long> frozenInstances = new HashSet<>();
         if (database.hasColumn("t_diagramobjects", "instance_id")) for (Placement placement : selected) {

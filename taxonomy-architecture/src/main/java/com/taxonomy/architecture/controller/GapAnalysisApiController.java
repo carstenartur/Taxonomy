@@ -8,14 +8,13 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
 
 /**
  * REST API for Architecture Gap Analysis.
  *
  * <p>Endpoints:
  * <ul>
- *   <li>{@code POST /api/gap/analyze} — Perform gap analysis on scored nodes</li>
+ *   <li>{@code POST /api/gap/analyze} — Assess explicit obligations in a selected canonical revision</li>
  *   <li>{@code GET  /api/gap/apqc-coverage} — APQC process coverage analysis</li>
  * </ul>
  */
@@ -26,31 +25,35 @@ public class GapAnalysisApiController {
 
     private final ArchitectureGapService gapService;
 
-    public GapAnalysisApiController(ArchitectureGapService gapService) {
-        this.gapService = gapService;
+    private final ObligationRequestContext contexts;
+    public GapAnalysisApiController(ArchitectureGapService gapService, ObligationRequestContext contexts) {
+        this.gapService = gapService; this.contexts = contexts;
+    }
+    @GetMapping("/profiles")
+    public java.util.List<com.taxonomy.dto.ObligationProfile> profiles() {
+        return com.taxonomy.architecture.service.ObligationProfiles.all();
     }
 
     /**
      * Request body for gap analysis.
      */
-    public record GapAnalysisRequest(
-            Map<String, Double> scores,
-            String businessText,
-            int minScore) {
-    }
+    public record GapAnalysisRequest(String profileId, String profileVersion, com.taxonomy.dto.EvidenceCompleteness evidenceCompleteness,
+            String businessText) {}
 
-    /**
-     * Performs an architecture gap analysis based on requirement scores.
-     */
-    @Operation(summary = "Architecture gap analysis",
-               description = "Identifies missing relations and incomplete patterns for scored nodes")
+    @Operation(summary = "Scoped obligation assessment", description = "Evaluates an explicit profile at an authorized canonical model revision")
     @PostMapping("/analyze")
-    public ResponseEntity<GapAnalysisView> analyze(@RequestBody GapAnalysisRequest request) {
-        GapAnalysisView view = gapService.analyze(
-                request.scores() != null ? request.scores() : Map.of(),
-                request.businessText(),
-                request.minScore());
-        return ResponseEntity.ok(view);
+    public ResponseEntity<GapAnalysisView> analyze(@RequestBody GapAnalysisRequest request,
+            @RequestParam String repositoryId, @RequestParam String branch, @RequestParam String commitId,
+            jakarta.servlet.http.HttpServletRequest httpRequest) throws java.io.IOException {
+        var context = contexts.resolve(repositoryId, branch, commitId, httpRequest);
+        if (request.evidenceCompleteness() == null) throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, "evidenceCompleteness must be explicit");
+        try {
+            return ResponseEntity.ok(gapService.analyze(context, commitId, request.profileId(), request.profileVersion(),
+                    request.evidenceCompleteness(), request.businessText()));
+        } catch (IllegalArgumentException error) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, error.getMessage());
+        }
     }
 
     /**
@@ -58,11 +61,11 @@ public class GapAnalysisApiController {
      * architecture model.
      */
     @Operation(summary = "APQC coverage analysis",
-               description = "Reports which APQC process categories are covered and which have gaps")
+               description = "Observes explicit APQC elements and accepted links within the selected model revision")
     @GetMapping("/apqc-coverage")
-    public ResponseEntity<ApqcCoverageResult> apqcCoverage(
-            @RequestParam(required = false) String businessText) {
-        ApqcCoverageResult result = gapService.analyzeApqcCoverage(businessText);
-        return ResponseEntity.ok(result);
+    public ResponseEntity<ApqcCoverageResult> apqcCoverage(@RequestParam String repositoryId, @RequestParam String branch,
+            @RequestParam String commitId, jakarta.servlet.http.HttpServletRequest http) throws java.io.IOException {
+        var context = contexts.resolve(repositoryId, branch, commitId, http);
+        return ResponseEntity.ok(gapService.analyzeApqcCoverage(context, commitId));
     }
 }

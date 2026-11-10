@@ -214,10 +214,11 @@ test('node Graph action reveals the Graph page and an initial result through the
             left.append(document.getElementById('taxonomyTree'));
             document.body.append(left, right);
             window.graphQueries = [];
-            window.AnalysisApi = { graphUpstream: async (code, hops) => {
+            window.graphContext = {repositoryId:'fixture-repo',workspaceScopeKey:'__shared__',branch:'fixture',commit:'a'.repeat(40)};
+            window.AnalysisApi = { captureContext: async () => graphContext, graphUpstream: async (code, hops) => {
                 window.graphQueries.push({code, hops});
                 return {originNodeCode: code, direction: 'UPSTREAM', maxHops: hops,
-                    neighbors: [], traversedRelationships: [], notes: []};
+                    neighbors: [], traversedRelationships: [], notes: [], evidence: {...graphContext,commitId:graphContext.commit}};
             }};
         }, graph);
         await page.addStyleTag({content: '.d-none { display:none !important; }'});
@@ -286,9 +287,10 @@ async function searchFixture(locale = 'de', withArchitecture = false, delayedTra
         function query(kind, code, hops) {
             graphQueries.push({kind, code, hops});
             return Promise.resolve({originNodeCode: code, direction: kind.toUpperCase(), maxHops: hops,
-                neighbors: [], traversedRelationships: [], notes: []});
+                neighbors: [], traversedRelationships: [], notes: [], evidence: {...graphContext,commitId:graphContext.commit}});
         }
-        window.AnalysisApi = {graphUpstream: (code, hops) => query('upstream', code, hops),
+        window.graphContext = {repositoryId:'fixture-repo',workspaceScopeKey:'__shared__',branch:'fixture',commit:'a'.repeat(40)};
+        window.AnalysisApi = {captureContext: async () => graphContext, graphUpstream: (code, hops) => query('upstream', code, hops),
             graphDownstream: (code, hops) => query('downstream', code, hops)};
     }, {template, messages, locale, delayedTranslations});
     if (!withArchitecture) await page.addScriptTag({path: path.join(resources, 'static/js/core/taxonomy-scoring.js')});
@@ -1023,9 +1025,9 @@ const importedArchitecture = {
 };
 test('portable Copilot import renders and re-exports retained evidence without granting a server reference', async () => {
     const page = await reportFixture();
-    const copilot = {schemaVersion:1,state:'PARTIAL',gaps:{totalAnchors:0,totalGaps:0,notes:[],missingRelations:[]},
+    const copilot = {schemaVersion:2,state:'PARTIAL',gaps:{profileId:'compatibility',profileVersion:'1.0.0',totalAnchors:0,totalGaps:0,notes:[],judgments:[],evidenceCompleteness:'INCOMPLETE'},
         patterns:{matchedPatterns:[],incompletePatterns:[],patternCoverage:0,notes:[]},
-        recommendation:{confirmedElements:[],proposedElements:[],suggestedRelations:[],reasoning:[],notes:[],confidence:0},
+        recommendation:{matchedElements:[],acceptedElements:[],proposedElements:[],suggestedRelations:[],reasoning:[],notes:[],meanRelevance:null},
         notes:['PORTABLE COPILOT EVIDENCE']};
     try {
         await page.evaluate(() => {
@@ -1067,7 +1069,7 @@ for (const edited of [false,true]) test(`report export ${edited ? 'retains manua
         await page.evaluate(edited=>{
             const C=__TaxonomyAnalysisSessionContext,S=TaxonomyState;
             C.runtime.workspaceId='ws-owned';S.currentReasons={'BP-1000':'Retained rationale'};
-            S.currentCopilot={schemaVersion:1,state:'COMPLETED',notes:[]};
+            S.currentCopilot={schemaVersion:2,state:'COMPLETED',notes:[]};
             S.analysisOperationId='owned-operation';S.analysisRecovery=null;
             C.runtime.analysisReference={workspaceId:'ws-owned',operationId:'owned-operation'};
             C.runtime.analysisEvidence=C.currentAnalysisEvidence();

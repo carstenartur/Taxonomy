@@ -58,8 +58,7 @@
         if (context) {
             var label = kind === 'requirement' ? t('graph.result.requirement')
                 : kind === 'apqc' ? t('graph.apqc.title') : t('graph.result.node', code || '—');
-            context.innerHTML = '<strong>' + escapeHtml(label) + '</strong>'
-                + (kind === 'apqc' ? '' : '<div>' + escapeHtml(t('graph.result.catalogue.scope')) + '</div>');
+            context.innerHTML = '<strong>' + escapeHtml(label) + '</strong>';
             context.style.display = '';
         }
         var apqc = document.getElementById('graphApqcFilter');
@@ -93,6 +92,57 @@
 
     // ── Render helpers ────────────────────────────────────────────────────────
 
+    function evidenceTuple(value) {
+        if (!value) return null;
+        var workspace = Object.hasOwn(value, 'workspaceId')
+            ? value.workspaceId || '__shared__' : value.workspaceScopeKey;
+        if (value.workspaceScopeKey && value.workspaceScopeKey !== workspace) return null;
+        return [value.repositoryId, workspace, value.branch, value.commitId || value.commit];
+    }
+
+    async function isCurrentEvidence(context, evidence) {
+        try {
+            var current = evidenceTuple(await AnalysisApi.captureContext());
+            var expected = evidenceTuple(context), returned = evidenceTuple(evidence);
+            return Boolean(current && expected && returned && expected.every(function (value, index) {
+                return typeof value === 'string' && value.length > 0 && value === current[index] && value === returned[index];
+            }));
+        } catch (error) { return false; }
+    }
+
+    function renderEvidence(evidence) {
+        if (!evidence || !evidence.commitId) return '<div class="alert alert-warning small" role="status">'
+            + escapeHtml(t('graph.evidence.unavailable')) + '</div>';
+        var bounds = evidence.effectiveMaxHops > 0 ? '<p class="mb-1">' + escapeHtml(t('graph.evidence.bounds',
+            evidence.effectiveMaxHops, evidence.requestedMaxHops, Math.round(evidence.minimumRelevance * 100), evidence.hopDecay)) + '</p>' : '';
+        var weights = Object.entries(evidence.relationTypeWeights || {}).map(function (entry) {
+            return escapeHtml(entry[0]) + ': ' + escapeHtml(entry[1]);
+        }).join(' · ');
+        var details = '<details><summary>' + escapeHtml(t('graph.evidence.details')) + '</summary><p class="mb-1">'
+            + escapeHtml(t('graph.evidence.policy', evidence.queryPolicy, evidence.readAuthority)) + '</p><p class="mb-1">'
+            + escapeHtml(t('graph.evidence.readiness', evidence.readinessState, evidence.snapshotRelationCount)) + '</p>'
+            + (evidence.effectiveMaxHops > 0 ? '<p class="mb-1">' + escapeHtml(t('graph.evidence.anchors',
+                evidence.anchorHighThreshold, evidence.anchorLowThreshold, evidence.minimumAnchors)) + '</p>' : '')
+            + (weights ? '<p class="mb-1">' + escapeHtml(t('graph.evidence.weights')) + ': ' + weights + '</p>' : '') + '</details>';
+        return '<section class="graph-evidence border rounded p-2 mb-2 small" aria-label="' + escapeHtml(t('graph.evidence.title')) + '">'
+            + '<strong>' + escapeHtml(t('graph.evidence.title')) + '</strong><p class="mb-1 text-break">'
+            + escapeHtml(t('graph.evidence.scope', evidence.repositoryId, evidence.workspaceId || evidence.workspaceScopeKey,
+                evidence.branch, evidence.commitId)) + '</p>' + bounds + '<p class="mb-1">'
+            + escapeHtml(t('graph.evidence.state.' + evidence.completeness)) + '</p><p class="mb-1">'
+            + escapeHtml(t('graph.evidence.scopeLimit')) + '</p>' + details + '</section>';
+    }
+
+    function renderEdgeEvidence(evidence) {
+        if (!evidence) return escapeHtml(t('graph.evidence.notRecorded'));
+        return '<details class="small"><summary>' + escapeHtml(t('graph.evidence.edge')) + '</summary><dl>'
+            + ['provenance', 'status', 'causation', 'commit', 'confidence'].map(function (field) {
+                var value = evidence[{causation:'causationId', commit:'commitId'}[field] || field];
+                if (field === 'confidence' && typeof value === 'number') value = Math.round(value * 100) + '%';
+                return '<dt>' + escapeHtml(t('graph.evidence.' + field)) + '</dt><dd>'
+                    + escapeHtml(value === null || value === undefined || value === '' ? t('graph.evidence.notRecorded') : value) + '</dd>';
+            }).join('') + '</dl></details>';
+    }
+
     function relevanceBadge(relevance) {
         var pct = (relevance * 100).toFixed(0);
         var cls = 'bg-secondary';
@@ -116,7 +166,7 @@
             html += '<tr class="graph-element-row" data-code="' + escapeHtml(e.nodeCode) + '">' +
                 '<td><a href="#" class="graph-node-link" data-code="' + escapeHtml(e.nodeCode) + '">' +
                 escapeHtml(e.nodeCode) + '</a></td>' +
-                '<td>' + escapeHtml(e.title || '') + '</td>' +
+                '<td>' + escapeHtml(e.title || '') + (e.nodeEvidence ? '<small class="d-block text-muted">' + escapeHtml(t('graph.node.source.' + e.nodeEvidence.source)) + '</small>' : '') + '</td>' +
                 '<td><span class="badge bg-light text-dark border">' + escapeHtml(e.taxonomySheet || '') + '</span></td>' +
                 '<td>' + relevanceBadge(e.relevance) + '</td>' +
                 '<td>' + hopBadge(e.hopDistance) + '</td>' +
@@ -132,7 +182,7 @@
         var html = '<h6 class="graph-section-title">' + escapeHtml(t('graph.section.relationships')) +
             ' <span class="badge bg-secondary">' + rels.length + '</span></h6>';
         html += '<div class="table-responsive"><table class="table table-sm table-hover graph-table mb-0">';
-        html += '<thead><tr><th>' + escapeHtml(t('graph.header.source')) + '</th><th></th><th>' + escapeHtml(t('graph.header.target')) + '</th><th>' + escapeHtml(t('graph.header.type')) + '</th><th>' + escapeHtml(t('graph.header.relevance')) + '</th><th>' + escapeHtml(t('graph.header.hop')) + '</th></tr></thead><tbody>';
+        html += '<thead><tr><th>' + escapeHtml(t('graph.header.source')) + '</th><th></th><th>' + escapeHtml(t('graph.header.target')) + '</th><th>' + escapeHtml(t('graph.header.type')) + '</th><th>' + escapeHtml(t('graph.header.relevance')) + '</th><th>' + escapeHtml(t('graph.header.hop')) + '</th><th>' + escapeHtml(t('graph.evidence.edge')) + '</th></tr></thead><tbody>';
         rels.forEach(function (r) {
             html += '<tr>' +
                 '<td>' + escapeHtml(r.sourceCode) + '</td>' +
@@ -140,7 +190,7 @@
                 '<td>' + escapeHtml(r.targetCode) + '</td>' +
                 '<td><span class="badge bg-info text-dark">' + escapeHtml(r.relationType) + '</span></td>' +
                 '<td>' + relevanceBadge(r.propagatedRelevance) + '</td>' +
-                '<td>' + hopBadge(r.hopDistance) + '</td>' +
+                '<td>' + hopBadge(r.hopDistance) + '</td><td>' + renderEdgeEvidence(r.evidence) + '</td>' +
                 '</tr>';
         });
         html += '</tbody></table></div>';
@@ -391,7 +441,7 @@
     /**
      * Wrap graph results with a toggle for Graph/Table view.
      */
-    function wrapWithGraphToggle(nodes, edges, originCode, tableHtml) {
+    function wrapWithGraphToggle(nodes, edges, originCode, tableHtml, evidence) {
         var content = document.getElementById('graphResultsContent');
         if (!content) return;
 
@@ -403,7 +453,7 @@
         var emptyHtml = !nodes || nodes.length === 0
             ? '<div class="alert alert-info py-1 px-2 small" role="status">'
                 + escapeHtml(t('graph.empty')) + '</div>' : '';
-        content.innerHTML = emptyHtml + toggleHtml +
+        content.innerHTML = renderEvidence(evidence) + emptyHtml + toggleHtml +
             '<div id="graphViewGraph"></div>' +
             '<div id="graphViewTable" style="display:none;">' + tableHtml + '</div>';
 
@@ -433,14 +483,14 @@
     // ── Upstream / Downstream renderer ────────────────────────────────────────
 
     function renderNeighborhoodResult(data, inline) {
-        var html = '';
+        var html = inline ? '' : renderEvidence(data.evidence);
 
         // Summary stats
         var dirIcon = data.direction === 'UPSTREAM' ? '&#11014;&#65039;' : '&#11015;&#65039;';
         html += '<div class="graph-stats-row">';
         html += summaryCard(dirIcon, t('graph.summary.direction'), data.direction, 'primary');
         html += summaryCard('&#128205;', t('graph.summary.origin'), data.originNodeCode, 'dark');
-        html += summaryCard('&#128101;', t('graph.summary.neighbors'), data.totalNeighbors, 'success');
+        html += summaryCard('&#128101;', t('graph.summary.neighbors'), data.totalNeighbors, 'secondary');
         html += summaryCard('&#128279;', t('graph.summary.relations'), data.totalRelationships, 'info');
         html += summaryCard('&#128218;', t('graph.summary.maxhops'), data.maxHops, 'secondary');
         html += '</div>';
@@ -459,8 +509,8 @@
 
     // ── Failure Impact renderer ───────────────────────────────────────────────
 
-    function renderFailureResult(data) {
-        var html = '';
+    function renderFailureResult(data, inline) {
+        var html = inline ? '' : renderEvidence(data.evidence);
 
         // Summary stats
         html += '<div class="graph-stats-row">';
@@ -486,29 +536,32 @@
 
     // ── API calls ─────────────────────────────────────────────────────────────
 
-    function fetchGraphData(apiPromise, label, callback) {
+    async function fetchGraphData(request, label, callback) {
         var sequence = resultSequence;
-        return apiPromise
-            .then(function (data) {
-                if (isCurrentResult(sequence)) callback(data);
-            })
-            .catch(function (err) {
-                if (isCurrentResult(sequence)) showGraphError(t('graph.query.failed', label, err.message));
-            });
+        try {
+            var context = await AnalysisApi.captureContext();
+            if (!isCurrentResult(sequence)) return;
+            var data = await request(context);
+            if (!isCurrentResult(sequence)) return;
+            var current = await isCurrentEvidence(context, data.evidence);
+            if (!isCurrentResult(sequence)) return;
+            if (current) callback(data);
+            else showGraphError(t('graph.evidence.changed'));
+        } catch (error) {
+            if (isCurrentResult(sequence)) showGraphError(t('graph.query.failed', label, error.message));
+        }
     }
 
     function fetchUpstream(nodeCode, maxHops, callback) {
-        fetchGraphData(AnalysisApi.graphUpstream(nodeCode, maxHops),
+        return fetchGraphData(function (context) { return AnalysisApi.graphUpstream(nodeCode, maxHops, context); },
             t('graph.label.upstream'), callback);
     }
-
     function fetchDownstream(nodeCode, maxHops, callback) {
-        fetchGraphData(AnalysisApi.graphDownstream(nodeCode, maxHops),
+        return fetchGraphData(function (context) { return AnalysisApi.graphDownstream(nodeCode, maxHops, context); },
             t('graph.label.downstream'), callback);
     }
-
     function fetchFailureImpact(nodeCode, maxHops, callback) {
-        fetchGraphData(AnalysisApi.graphFailureImpact(nodeCode, maxHops),
+        return fetchGraphData(function (context) { return AnalysisApi.graphFailureImpact(nodeCode, maxHops, context); },
             t('graph.label.failure'), callback);
     }
 
@@ -525,7 +578,7 @@
             var tableHtml = renderNeighborhoodResult(data, true);
             var allNodes = data.neighbors || [];
             var edges = data.traversedRelationships || [];
-            wrapWithGraphToggle(allNodes, edges, data.originNodeCode, tableHtml);
+            wrapWithGraphToggle(allNodes, edges, data.originNodeCode, tableHtml, data.evidence);
         });
     }
 
@@ -540,7 +593,7 @@
             var tableHtml = renderNeighborhoodResult(data, true);
             var allNodes = data.neighbors || [];
             var edges = data.traversedRelationships || [];
-            wrapWithGraphToggle(allNodes, edges, data.originNodeCode, tableHtml);
+            wrapWithGraphToggle(allNodes, edges, data.originNodeCode, tableHtml, data.evidence);
         });
     }
 
@@ -552,10 +605,10 @@
         if (!code) { showGraphError(t('graph.enter.code')); return; }
         showGraphLoading();
         fetchFailureImpact(code, getMaxHops(), function (data) {
-            var tableHtml = renderFailureResult(data);
+            var tableHtml = renderFailureResult(data, true);
             var allNodes = (data.directlyAffected || []).concat(data.indirectlyAffected || []);
             var edges = data.traversedRelationships || [];
-            wrapWithGraphToggle(allNodes, edges, data.failedNodeCode, tableHtml);
+            wrapWithGraphToggle(allNodes, edges, data.failedNodeCode, tableHtml, data.evidence);
         });
     }
 
@@ -775,27 +828,15 @@
                     '<div class="spinner-border spinner-border-sm me-1" role="status"></div> ' +
                     'Loading APQC hierarchy&hellip;</div>';
             }
-            AnalysisApi.apqcHierarchy()
-                .then(function (data) {
-                    if (!content || !isCurrentResult(sequence)) return;
-                    if (!data || data.length === 0) {
-                        content.innerHTML = '<div class="alert alert-info py-1 px-2 small mb-0">' +
-                            t('graph.apqc.no.data') + '</div>';
-                        return;
-                    }
-                    content.innerHTML =
-                        '<div class="mb-1"><strong>' + t('graph.apqc.title') + '</strong> ' +
-                        '<span class="badge bg-secondary">' + t('graph.apqc.processes', countNodes(data)) + '</span></div>' +
-                        '<div id="apqcTreeContainer"></div>';
-                    var treeContainer = document.getElementById('apqcTreeContainer');
-                    if (treeContainer) renderApqcTree(treeContainer, data);
-                })
-                .catch(function (err) {
-                    if (content && isCurrentResult(sequence)) {
-                        content.innerHTML = '<div class="alert alert-warning py-1 px-2 small mb-0">' +
-                            t('graph.apqc.load.failed', escapeHtml(err.message)) + '</div>';
-                    }
-                });
+            fetchGraphData(function (context) { return AnalysisApi.apqcHierarchy(context); }, t('graph.apqc.title'), function (data) {
+                if (!content || !isCurrentResult(sequence)) return;
+                var nodes = data.nodes || [];
+                content.innerHTML = renderEvidence(data.evidence) + '<div class="mb-1"><strong>' + escapeHtml(t('graph.apqc.title')) + '</strong> '
+                    + '<span class="badge bg-secondary">' + escapeHtml(t('graph.apqc.processes', countNodes(nodes))) + '</span></div>'
+                    + (nodes.length ? '<div id="apqcTreeContainer"></div>' : '<p role="status">' + escapeHtml(t('graph.apqc.no.data')) + '</p>');
+                var treeContainer = document.getElementById('apqcTreeContainer');
+                if (treeContainer) renderApqcTree(treeContainer, nodes);
+            });
         } else {
             clearResults();
         }
@@ -828,12 +869,17 @@
         selectionPending = false;
         clearResults();
     });
+    ['taxonomy:lifecycle-changed', 'taxonomy:architecture-reconciled', 'taxonomy:architecture-source-changed'].forEach(function (event) {
+        document.addEventListener(event, clearResults);
+    });
     document.addEventListener('taxonomy:page-activated', function (event) {
         if (event.detail?.page === 'graph') refreshSelectedNode();
     });
 
     // ── Public API ────────────────────────────────────────────────────────────
     window.TaxonomyGraph = {
+        renderEvidence: renderEvidence,
+        isCurrentEvidence: isCurrentEvidence,
         beginResult: beginResult,
         isCurrentResult: isCurrentResult,
         clearResults: clearResults,

@@ -1,0 +1,10 @@
+Exact external MDG test fixture, gzip compressed without changing source bytes.
+Repository: https://github.com/Mitchel85/EAM-Toolfamilie
+Revision: 6b1baa03bb097d3aa9afc8bde4d56e275e8a0e93
+Path: packages/rules/NAFv4-ADMBw-MDG-2026.05.xml
+Raw SHA-256: e2e8c69281dcc83ad4382bd1b196c23850a847defb33d0a0ffcb429d747f3643
+Original encoding: windows-1252 (do not transcode before fingerprinting)
+License: MIT, Copyright (c) 2026 Michael Estel; full text in LICENSE.
+Retrieved 2026-11-10 from immutable raw GitHub URL.
+Purpose: offline source fingerprint and native mapping parity regression.
+This source file is not evidence of native Enterprise Architect acceptance.

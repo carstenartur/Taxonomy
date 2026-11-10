@@ -12,7 +12,7 @@ const waitSource = source.slice(start, end);
 
 function harness({ status = 'SUCCESS', lastText = 'requirement', busy = false, summary = true,
   recovery = 'COMPLETED', followup = 'COMPLETED', scores = { BP: 70 }, architecture = {},
-  copilot = { schemaVersion: 1, state: 'COMPLETED', gaps: {}, patterns: {}, recommendation: {} } } = {}) {
+  copilot = { schemaVersion: 2, state: 'COMPLETED', gaps: {}, patterns: {}, recommendation: {} } } = {}) {
   const elements = {
     businessText: { value: 'requirement', classList: { contains: () => false } },
     copilotBtn: { disabled: busy },
@@ -49,8 +49,8 @@ test('a failed follow-up reports its durable stage failure', async () => {
 test('only a populated complete SUCCESS with ready controls satisfies the wait', async () => {
   await harness().wait();
   for (const incomplete of [{ busy: true }, { summary: false }, { scores: {} }, { architecture: null },
-    { copilot: null }, { copilot: { schemaVersion: 1, state: 'PARTIAL' } },
-    { copilot: { schemaVersion: 1, state: 'COMPLETED', gaps: {}, patterns: {} } }]) {
+    { copilot: null }, { copilot: { schemaVersion: 2, state: 'PARTIAL' } },
+    { copilot: { schemaVersion: 2, state: 'COMPLETED', gaps: {}, patterns: {} } }]) {
     await assert.rejects(harness(incomplete).wait(), /STILL_WAITING/);
   }
 });

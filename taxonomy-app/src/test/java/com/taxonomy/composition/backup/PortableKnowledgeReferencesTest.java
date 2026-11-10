@@ -31,6 +31,109 @@ class PortableKnowledgeReferencesTest {
         assertThat(refs.codes).containsExactly("FIXTURE-A","FIXTURE-B","FIXTURE-C","FIXTURE-D","FIXTURE-ROOT");
         assertThat(refs.hypotheses).containsExactly(new SourceRecordId("knowledge.hypothesis","17"));
     }
+    @Test void currentRecommendationAndGapPayloadsCloseEvidenceOnlyCatalogueReferences() throws Exception {
+        var recommendation = new com.taxonomy.dto.ArchitectureRecommendation();
+        recommendation.setAcceptedElements(java.util.List.of(new com.taxonomy.dto.RecommendedElement(
+                "FIXTURE-ACCEPTED", "Display title", "BR", 0, "Reason")));
+        recommendation.setMatchedElements(java.util.List.of(new com.taxonomy.dto.RecommendedElement(
+                "FIXTURE-MATCHED", "Display title", "CR", 95, "Reason")));
+        recommendation.setGapAnalysis(gap("FIXTURE-NESTED"));
+        var record = PortableRows.json().createObjectNode();
+        record.put("recommendationPayload", com.taxonomy.exchange.backup.PortableJsonPayloads.pack(
+                PortableRows.json().writeValueAsString(recommendation), 24_000_000));
+        record.put("gapAnalysisPayload", com.taxonomy.exchange.backup.PortableJsonPayloads.pack(
+                PortableRows.json().writeValueAsString(gap("FIXTURE-JUDGMENT")), 24_000_000));
+        var refs = new PortableKnowledgeReferences();
+        refs.encoded(record, "recommendationPayload");
+        refs.encoded(record, "gapAnalysisPayload");
+        // No scores, tree or unrelated record supplies any of these four element identities.
+        assertThat(selectedCodes(refs, java.util.Set.of("FIXTURE-ACCEPTED", "FIXTURE-NESTED", "FIXTURE-JUDGMENT")))
+                .containsExactlyInAnyOrder("FIXTURE-ACCEPTED", "FIXTURE-MATCHED", "FIXTURE-NESTED",
+                "FIXTURE-JUDGMENT", "BP", "BR", "CR");
+    }
+
+    @Test void retainedCopilotTraversesCurrentEvidenceButNotPatternProseOrProfileNames() throws Exception {
+        var recommendation = new com.taxonomy.dto.ArchitectureRecommendation();
+        recommendation.setAcceptedElements(java.util.List.of(new com.taxonomy.dto.RecommendedElement(
+                "FIXTURE-COPILOT", "Title", "BR", 0, "FIXTURE-REASON-NOT-ID")));
+        var patterns = new com.taxonomy.dto.PatternDetectionView();
+        patterns.setIncompletePatterns(java.util.List.of(new com.taxonomy.dto.DetectedPattern("FIXTURE-PATTERN-NOT-ID",
+                java.util.List.of("FIXTURE-STEP-NOT-ID"), java.util.List.of(), java.util.List.of("FIXTURE-MISSING-PROSE"), 0)));
+        var copilot = new com.taxonomy.dto.AnalysisCopilotResult(2, "COMPLETED", gap("FIXTURE-COPILOT-GAP"),
+                patterns, recommendation, java.util.List.of("FIXTURE-NOTE-NOT-ID"));
+        var record = PortableRows.json().createObjectNode();
+        record.put("analysisPayload", com.taxonomy.exchange.backup.PortableJsonPayloads.pack(
+                PortableRows.json().writeValueAsString(java.util.Map.of("copilot", copilot)), 24_000_000));
+        var refs = new PortableKnowledgeReferences(); refs.encoded(record, "analysisPayload");
+        assertThat(selectedCodes(refs, java.util.Set.of("FIXTURE-COPILOT", "FIXTURE-COPILOT-GAP")))
+                .containsExactlyInAnyOrder("FIXTURE-COPILOT", "FIXTURE-COPILOT-GAP", "BP", "BR", "CR");
+    }
+
+    @Test void obsoleteGapAndRecommendationAliasesAreNotCurrentReferenceContracts() throws Exception {
+        var refs = new PortableKnowledgeReferences();
+        refs.payload(PortableRows.json().readTree("""
+                {"confirmedElements":[{"nodeCode":"OLD-CONFIRMED"}],
+                 "missingRelations":[{"sourceNodeCode":"OLD-MISSING"}],
+                 "coverageGaps":[{"nodeCode":"OLD-COVERAGE"}],"expectedTargetRoot":"OLD-TARGET"}
+                """));
+        assertThat(refs.codes).isEmpty();
+    }
+
+    @Test void malformedJudgmentTargetRootReferencesFailClosed() {
+        for (String targets : java.util.List.of("17", "[17]", "[\" invalid \"]"))
+            assertThatThrownBy(() -> new PortableKnowledgeReferences().payload(PortableRows.json().readTree(
+                    "{\"judgments\":[{\"targetRoots\":" + targets + "}]}")))
+                    .isInstanceOf(java.io.IOException.class);
+    }
+
+    private static com.taxonomy.dto.GapAnalysisView gap(String code) {
+        var gap = new com.taxonomy.dto.GapAnalysisView();
+        gap.setProfileId("FIXTURE-PROFILE-NOT-ID");
+        gap.setJudgments(java.util.List.of(new com.taxonomy.dto.ObligationJudgment("FIXTURE-RULE-NOT-ID", code, "CR",
+                "SUPPORTS", java.util.Set.of("BP", "BR"), 1, null, 0, com.taxonomy.dto.ObligationProfile.Severity.WARNING,
+                com.taxonomy.dto.ObligationJudgment.Status.INCONCLUSIVE, "FIXTURE-DESCRIPTION-NOT-ID")));
+        return gap;
+    }
+
+    @Test void customCanonicalEvidenceDoesNotBecomeMandatoryCatalogueDependencies() throws Exception {
+        var recommendation = new com.taxonomy.dto.ArchitectureRecommendation();
+        recommendation.setAcceptedElements(java.util.List.of(
+                new com.taxonomy.dto.RecommendedElement("service", "Service", "CR", 0, "Canonical member"),
+                new com.taxonomy.dto.RecommendedElement("role", "Role", "BR", 0, "Canonical member"),
+                new com.taxonomy.dto.RecommendedElement("FIXTURE-ACCEPTED", "Catalogue member", "CR", 0, "Canonical member")));
+        recommendation.setMatchedElements(java.util.List.of(new com.taxonomy.dto.RecommendedElement(
+                "FIXTURE-MATCHED", "Catalogue match", "CR", 85, "Match")));
+        recommendation.setProposedElements(java.util.List.of(new com.taxonomy.dto.RecommendedElement(
+                "FIXTURE-PROPOSED", "Catalogue proposal", "BR", 0, "Proposal")));
+        recommendation.setSuggestedRelations(java.util.List.of(
+                new com.taxonomy.dto.SuggestedRelation("service", "role", "SUPPORTS", "Existing members"),
+                new com.taxonomy.dto.SuggestedRelation("service", "FIXTURE-PROPOSED", "SUPPORTS", "New catalogue candidate")));
+        recommendation.setGapAnalysis(gap("service"));
+        var record = PortableRows.json().createObjectNode();
+        record.put("recommendationPayload", PortableRows.json().writeValueAsString(recommendation));
+        var refs = new PortableKnowledgeReferences(); refs.encoded(record, "recommendationPayload");
+        assertThat(refs.codes).contains("FIXTURE-MATCHED", "FIXTURE-PROPOSED")
+                .doesNotContain("service", "role");
+        assertThat(selectedCodes(refs, java.util.Set.of("FIXTURE-ACCEPTED", "FIXTURE-MATCHED", "FIXTURE-PROPOSED", "BP", "BR", "CR")))
+                .containsExactlyInAnyOrder("FIXTURE-ACCEPTED", "FIXTURE-MATCHED", "FIXTURE-PROPOSED", "BP", "BR", "CR");
+        // Missing mandatory catalogue dependencies remain selected for strict contributor validation.
+        assertThat(selectedCodes(refs, java.util.Set.of()))
+                .containsExactlyInAnyOrder("FIXTURE-MATCHED", "FIXTURE-PROPOSED", "BP", "BR", "CR");
+    }
+
+    private static java.util.Set<String> selectedCodes(PortableKnowledgeReferences refs, java.util.Set<String> catalogue) throws Exception {
+        var database = new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                "jdbc:hsqldb:mem:reference-closure-" + java.util.UUID.randomUUID(), "sa", "");
+        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(database);
+        try {
+            jdbc.execute("create table taxonomy_node (code varchar(256) primary key)");
+            for (String code : catalogue) jdbc.update("insert into taxonomy_node(code) values (?)", code);
+            return ProductionCurrentBackupSource.resolveKnowledgeReferences(refs, jdbc, () -> {}).catalogueCodes();
+        } finally {
+            jdbc.execute("shutdown");
+        }
+    }
+
     @Test void malformedCodeAndHypothesisContractsFailClosed() {
         var refs=new PortableKnowledgeReferences();
         assertThatThrownBy(()->refs.payload(PortableRows.json().readTree("{\"scores\":[]}"))).isInstanceOf(java.io.IOException.class);

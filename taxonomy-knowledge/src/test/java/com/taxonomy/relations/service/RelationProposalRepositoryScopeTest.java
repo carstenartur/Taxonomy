@@ -96,7 +96,7 @@ class RelationProposalRepositoryScopeTest {
 
         assertThatIllegalArgumentException().isThrownBy(() ->
                 service.createFromHypothesisInContext(
-                        "BP", "CP", RelationType.SUPPORTS, 0.5, "reason", context))
+                        "BP", "CP", RelationType.RELATED_TO, 0.5, "reason", context))
                 .withMessageContaining("CENTRAL_WRITE");
 
         verify(nodeRepository, never()).findByCode(any());
@@ -113,7 +113,7 @@ class RelationProposalRepositoryScopeTest {
         when(nodeRepository.findByCode("BP")).thenReturn(Optional.of(source));
         when(nodeRepository.findByCode("CP")).thenReturn(Optional.of(target));
         when(proposalRepository.existsInRepositoryWorkspace(
-                        "repo-a", "BP", "CP", RelationType.SUPPORTS, "workspace-a"))
+                        "repo-a", "BP", "CP", RelationType.RELATED_TO, "workspace-a"))
                 .thenReturn(false);
         when(proposalRepository.save(any(RelationProposal.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -121,7 +121,7 @@ class RelationProposalRepositoryScopeTest {
         service.createFromHypothesisInContext(
                 "BP",
                 "CP",
-                RelationType.SUPPORTS,
+                RelationType.RELATED_TO,
                 0.75,
                 "reason",
                 context);
@@ -144,17 +144,17 @@ class RelationProposalRepositoryScopeTest {
         when(nodeRepository.findByCode("BP")).thenReturn(Optional.of(node("BP", "BP")));
         when(nodeRepository.findByCode("CP")).thenReturn(Optional.of(node("CP", "CP")));
         when(proposalRepository.existsInRepositoryWorkspace(
-                        "repo-a", "BP", "CP", RelationType.SUPPORTS, null))
+                        "repo-a", "BP", "CP", RelationType.RELATED_TO, null))
                 .thenReturn(false);
         when(proposalRepository.save(any(RelationProposal.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         assertThat(service.createFromHypothesisInContext(
-                "BP", "CP", RelationType.SUPPORTS, 0.5, "reason", context))
+                "BP", "CP", RelationType.RELATED_TO, 0.5, "reason", context))
                 .isNotNull();
 
         verify(proposalRepository).existsInRepositoryWorkspace(
-                "repo-a", "BP", "CP", RelationType.SUPPORTS, null);
+                "repo-a", "BP", "CP", RelationType.RELATED_TO, null);
         verify(relationReadService).readIdentitySnapshot(context);
         verify(proposalRepository, never()).existsInWorkspace(any(), any(), any(), any());
     }

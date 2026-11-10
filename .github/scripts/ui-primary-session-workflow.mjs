@@ -120,11 +120,11 @@ async function assertControlsUnobscured(page, selectors, label, assert) {
 async function waitForCopilotComplete(page, expectedText) {
   await page.waitForFunction(text => {
     const state = window.TaxonomyState;
-    const scores = window._taxonomyCurrentScores || state?.currentScores;
+    const scores = state?.currentScores;
     const input = document.getElementById('businessText');
     const button = document.getElementById('copilotBtn');
     const spinner = document.getElementById('copilotSpinner');
-    const summary = document.querySelector('#copilotContent .alert-success');
+    const summary = document.querySelector('#copilotContent [data-assessment-state="COMPLETED"]');
     const recovery = state?.analysisRecovery?.state;
     const followup = state?.recoveryContext?.followupState;
     const settled = button && !button.disabled && spinner?.classList.contains('d-none');
@@ -143,7 +143,7 @@ async function waitForCopilotComplete(page, expectedText) {
       && state?.lastAnalysisStatus === 'SUCCESS'
       && scores && Object.keys(scores).length > 0
       && Boolean(state.currentArchView)
-      && state.currentCopilot?.schemaVersion === 1
+      && state.currentCopilot?.schemaVersion === 2
       && state.currentCopilot.state === 'COMPLETED'
       && Boolean(state.currentCopilot.gaps)
       && Boolean(state.currentCopilot.patterns)
@@ -198,7 +198,7 @@ async function assertPersistedCopilot(page, expectedText, assert) {
       matchesRendered: JSON.stringify(result?.copilot) === JSON.stringify(state.currentCopilot) };
   }, expectedText);
   assert(retained.status === 'SUCCESS' && retained.operationMatches
-      && retained.copilot?.schemaVersion === 1 && retained.copilot.state === 'COMPLETED'
+      && retained.copilot?.schemaVersion === 2 && retained.copilot.state === 'COMPLETED'
       && retained.copilot.gaps && retained.copilot.patterns && retained.copilot.recommendation
       && retained.matchesRendered,
   'Displayed Copilot results do not match the completed authoritative server result');

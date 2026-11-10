@@ -22,11 +22,10 @@
     }
 
     function getCurrentScores() {
-        // TaxonomyState is the authoritative browser state. The legacy global is
-        // retained only as a compatibility fallback for older/manual paths.
+        // TaxonomyState owns the current analysis scores.
         var stateScores = window.TaxonomyState && window.TaxonomyState.currentScores;
         return stateScores && typeof stateScores === 'object'
-            ? stateScores : (window._taxonomyCurrentScores || {});
+            ? stateScores : {};
     }
 
     function hasScores() {
@@ -80,163 +79,213 @@
 
     // ── Gap Analysis ──────────────────────────────────────────────────────────
 
-    function runGapAnalysis() {
-        if (warnAboutOpenAssessments('gapAnalysisContent')) return;
-        if (!hasScores()) {
-            showPanelError('gapAnalysisContent', t('analyze.scores.required'));
-            return;
+    var assessmentProfiles = null;
+    var assessmentTickets = {gap:0, recommendation:0, pattern:0, copilot:0};
+    var liveAssessments = {gap:null, recommendation:null, pattern:null, copilot:null};
+    var assessmentPanels = {gap:'gapAnalysisContent', recommendation:'recommendationContent', pattern:'patternDetectionContent', copilot:'copilotContent'};
+    async function loadAssessmentProfiles() {
+        if (!assessmentProfiles) assessmentProfiles = window.AnalysisApi.gapProfiles().catch(function (error) {
+            assessmentProfiles = null; throw error;
+        });
+        var profiles = await assessmentProfiles, select = document.getElementById('gapProfile');
+        if (select && !select.dataset.loaded) {
+            var chosen = select.value || 'compatibility';
+            select.replaceChildren();
+            profiles.forEach(function (profile) {
+                var option = document.createElement('option');
+                option.value = profile.id; option.textContent = profile.description + ' (' + profile.version + ')';
+                select.append(option);
+            });
+            select.value = chosen; select.dataset.loaded = 'true';
         }
-        showPanelLoading('gapAnalysisContent');
-        var panel = document.getElementById('gapAnalysisPanel');
-        if (panel) panel.open = true;
-
-        fetch('/api/gap/analyze', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                scores: getCurrentScores(),
-                businessText: getBusinessText(),
-                minScore: 50
-            })
-        })
-        .then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-        })
-        .then(function (data) {
-            renderGapAnalysis(data);
-        })
-        .catch(function (err) {
-            showPanelError('gapAnalysisContent', t('analyze.gap.failed', err.message));
+        return profiles;
+    }
+    async function assessmentInput(extra) {
+        var selected = document.getElementById('gapProfile')?.value || 'compatibility';
+        var body = Object.assign({businessText:getBusinessText(), profileId:selected,
+            evidenceCompleteness:document.getElementById('gapEvidenceComplete')?.checked ? 'COMPLETE' : 'INCOMPLETE'}, extra || {});
+        if (body.scores) body.scores = Object.assign({}, body.scores);
+        var values = await Promise.all([window.AnalysisApi.captureContext(), loadAssessmentProfiles()]);
+        var profile = values[1].find(function (item) { return item.id === selected; });
+        if (!profile) throw new Error(t('analysis.evidence.selectProfile'));
+        body.profileVersion = profile.version;
+        return {context:values[0], body:body};
+    }
+    async function assessmentCurrent(input) {
+        if (!input?.context) return false;
+        var context;
+        try { context = await window.AnalysisApi.captureContext(); }
+        catch (_) { return false; }
+        return context && ['repositoryId','workspaceScopeKey','branch','commit'].every(function (key) {
+            return context[key] === input.context[key];
+        }) && input.body.businessText === getBusinessText()
+            && (!input.body.profileId || input.body.profileId === (document.getElementById('gapProfile')?.value || 'compatibility'))
+            && (!input.body.evidenceCompleteness || input.body.evidenceCompleteness === (document.getElementById('gapEvidenceComplete')?.checked ? 'COMPLETE' : 'INCOMPLETE'))
+            && (!input.body.scores || JSON.stringify(input.body.scores) === JSON.stringify(getCurrentScores()));
+    }
+    function matchesAssessmentSource(source, evidence) {
+        return evidence && !Array.isArray(evidence)
+            && evidence.repositoryId === source.repositoryId && evidence.workspaceScopeKey === source.workspaceScopeKey
+            && evidence.branch === source.branch && evidence.commitId === source.commit
+            && evidence.evidenceAuthority === 'CANONICAL_SNAPSHOT'
+            && (!Object.hasOwn(evidence, 'workspaceId')
+                || (evidence.workspaceId === null || typeof evidence.workspaceId === 'string')
+                    && (evidence.workspaceId || '__shared__') === source.workspaceScopeKey);
+    }
+    function requireAssessmentProof(input, evidence) {
+        var body = input.body;
+        if (!matchesAssessmentSource(input.context, evidence)
+                || evidence.profileId !== body.profileId || evidence.profileVersion !== body.profileVersion
+                || evidence.businessText !== body.businessText
+                || typeof evidence.metamodelVersion !== 'string' || !evidence.metamodelVersion
+                || !['COMPLETE','INCOMPLETE'].includes(evidence.evidenceCompleteness)
+                || body.evidenceCompleteness === 'INCOMPLETE' && evidence.evidenceCompleteness !== 'INCOMPLETE') {
+            throw new Error(t('analysis.evidence.invalidResponse'));
+        }
+    }
+    function requirePatternProof(input, evidence) {
+        if (!matchesAssessmentSource(input.context, evidence)
+                || evidence.readinessState !== 'READY' || typeof evidence.readAuthority !== 'string' || !evidence.readAuthority
+                || typeof evidence.templateVersion !== 'string' || !evidence.templateVersion
+                || evidence.minimumScore !== input.body.minScore
+                || !Number.isInteger(evidence.eligibleAnchors) || evidence.eligibleAnchors < 0
+                || !['COMPLETE_WITHIN_PATTERN_TEMPLATES','NOT_EVALUATED_NO_ANCHORS','INCOMPLETE_CANONICAL_EVIDENCE'].includes(evidence.completeness)) {
+            throw new Error(t('analysis.evidence.invalidResponse'));
+        }
+    }
+    function invalidateLiveAssessments() {
+        Object.keys(assessmentTickets).forEach(function (kind) {
+            assessmentTickets[kind]++;
+            if (liveAssessments[kind]) {
+                showPanelError(assessmentPanels[kind], t('analysis.evidence.selectionChanged'));
+                if (kind === 'copilot') showPanelError('patternDetectionContent', t('analysis.evidence.selectionChanged'));
+                liveAssessments[kind] = null;
+            }
         });
     }
-
-    function retainedChecksLabel(count) {
-        return String(count) + ((document.documentElement?.lang || 'en').startsWith('de')
-            ? ' offene Kompatibilitätsprüfungen' : ' open compatibility checks');
+    async function updateAssessmentSourceLabel() {
+        var label = document.getElementById('gapModelSource'); if (!label) return;
+        try {
+            var source = await window.AnalysisApi.captureContext();
+            label.textContent = source.repositoryId + ' · ' + source.branch + ' · ' + source.commit.substring(0,12);
+        } catch (_) { label.textContent = t('analysis.evidence.selectVersion'); }
     }
+    async function runGapAnalysis() {
+        var ticket = ++assessmentTickets.gap;
+        liveAssessments.gap = {pending:true};
+        showPanelLoading('gapAnalysisContent');
+        var panel = document.getElementById('gapAnalysisPanel'); if (panel) panel.open = true;
+        var input;
+        try {
+            input = await assessmentInput();
+            if (!await assessmentCurrent(input) || ticket !== assessmentTickets.gap) throw new Error(t('analysis.evidence.selectionChanged'));
+            liveAssessments.gap = input;
+            var data = await window.AnalysisApi.analyzeGap(input.body, input.context);
+            var current = await assessmentCurrent(input);
+            if (ticket === assessmentTickets.gap) {
+                if (current) { requireAssessmentProof(input, data); renderGapAnalysis(data, {live:input}); }
+                else showPanelError('gapAnalysisContent', t('analysis.evidence.selectionChanged'));
+            }
+        } catch (error) {
+            var current = !input || await assessmentCurrent(input);
+            if (ticket === assessmentTickets.gap)
+                showPanelError('gapAnalysisContent', current
+                    ? t('analyze.gap.failed', error.message) : t('analysis.evidence.selectionChanged'));
+        }
+    }
+
     function renderGapAnalysis(data, options) {
-        var retained = options?.retained === true;
-        var el = document.getElementById('gapAnalysisContent');
-        if (!el) return;
-        var html = '';
-
-        // Summary
-        html += '<div class="d-flex gap-3 mb-2 flex-wrap">';
-        html += '<span class="badge bg-primary">' + t('analyze.gap.anchors', data.totalAnchors) + '</span>';
-        html += '<span class="badge ' + (retained ? 'bg-secondary' : data.totalGaps > 0 ? 'bg-danger' : 'bg-success') + '">' + (retained ? retainedChecksLabel(data.totalGaps || 0) : t('analyze.gap.gaps', data.totalGaps)) + '</span>';
-        html += '</div>';
-
-        // Missing Relations
-        if (data.missingRelations && data.missingRelations.length > 0) {
-            html += '<h6 class="small fw-semibold mt-2">' + (retained ? retainedChecksLabel(data.missingRelations.length) : t('analyze.gap.missing.relations')) + ' <span class="badge ' + (retained ? 'bg-secondary' : 'bg-danger') + '">' + data.missingRelations.length + '</span></h6>';
-            html += '<div class="table-responsive"><table class="table table-sm table-hover mb-2" style="font-size:0.82em;">';
-            html += '<thead><tr><th>' + t('analyze.table.source.node') + '</th><th>' + t('analyze.table.source.root') + '</th><th>' + t('analyze.table.expected.relation') + '</th><th>' + t('analyze.table.expected.target') + '</th><th>' + t('analyze.table.description') + '</th></tr></thead><tbody>';
-            data.missingRelations.forEach(function (mr) {
-                html += '<tr>';
-                html += '<td><code>' + escapeHtml(mr.sourceNodeCode) + '</code></td>';
-                html += '<td><span class="badge bg-light text-dark border">' + escapeHtml(mr.sourceRoot) + '</span></td>';
-                html += '<td><span class="badge bg-info text-dark">' + escapeHtml(mr.expectedRelationType) + '</span></td>';
-                html += '<td><span class="badge bg-light text-dark border">' + escapeHtml(mr.expectedTargetRoot) + '</span></td>';
-                html += '<td class="small text-muted">' + escapeHtml(mr.description || '') + '</td>';
-                html += '</tr>';
+        liveAssessments.gap = options?.live || null;
+        var el = document.getElementById('gapAnalysisContent'); if (!el) return;
+        var judgments = Array.isArray(data.judgments) ? data.judgments : [];
+        var violated = judgments.filter(function (item) { return item.status === 'VIOLATED'; });
+        var open = judgments.filter(function (item) { return item.status === 'INCONCLUSIVE'; });
+        var html = '<div class="d-flex gap-3 mb-2 flex-wrap">'
+            + (options?.retained ? '<span class="badge bg-secondary">' + t('analysis.evidence.retained') + '</span>' : '')
+            + '<span class="badge bg-secondary">' + escapeHtml(data.profileId || '') + ' · ' + escapeHtml(data.profileVersion || '') + '</span>'
+            + '<span class="badge bg-primary">' + t('analyze.gap.anchors', data.totalAnchors || 0) + '</span>'
+            + '<span class="badge ' + (violated.length ? 'bg-danger' : 'bg-secondary') + '">' + t('analysis.evidence.violated', violated.length) + '</span>'
+            + '<span class="badge ' + (open.length ? 'bg-warning text-dark' : 'bg-secondary') + '">' + t('analysis.evidence.openCount', open.length) + '</span></div>';
+        if (!judgments.length) html += '<p class="text-muted">' + t('analysis.evidence.noObligations') + '</p>';
+        else {
+            html += '<div class="table-responsive"><table class="table table-sm"><thead><tr>'
+                + '<th>' + t('analyze.table.source.node') + '</th><th>' + t('analysis.evidence.rule') + '</th>'
+                + '<th>' + t('analysis.evidence.cardinality') + '</th><th>' + t('analysis.evidence.result') + '</th></tr></thead><tbody>';
+            judgments.forEach(function (item) {
+                var knownStatus = ['SATISFIED','VIOLATED','INCONCLUSIVE'].includes(item.status) ? item.status : 'INCONCLUSIVE';
+                var label = {SATISFIED:'satisfied',VIOLATED:'violatedLabel',INCONCLUSIVE:'inconclusive'}[knownStatus];
+                var color = {SATISFIED:'success',VIOLATED:'danger',INCONCLUSIVE:'warning text-dark'}[knownStatus];
+                html += '<tr data-assessment-status="' + knownStatus + '"><td><code>' + escapeHtml(item.sourceNodeCode) + '</code></td>'
+                    + '<td>' + escapeHtml(item.ruleId) + '<small class="d-block">' + escapeHtml(item.relationType)
+                    + ' → ' + escapeHtml((item.targetRoots || []).join(' / ')) + '</small></td>'
+                    + '<td>' + escapeHtml(item.observedCount) + ' / ' + escapeHtml(item.minCount) + '–'
+                    + (item.maxCount == null ? '∞' : escapeHtml(item.maxCount)) + '</td>'
+                    + '<td><span class="badge bg-' + color + '">' + t('analysis.evidence.' + label)
+                    + '</span><small class="d-block">' + escapeHtml(item.description || '') + '</small></td></tr>';
             });
             html += '</tbody></table></div>';
         }
-
-        // Incomplete Patterns
-        if (data.incompletePatterns && data.incompletePatterns.length > 0) {
-            html += '<h6 class="small fw-semibold mt-2">' + t('analyze.gap.incomplete.patterns') + ' <span class="badge bg-warning text-dark">' + data.incompletePatterns.length + '</span></h6>';
-            html += '<div class="table-responsive"><table class="table table-sm table-hover mb-2" style="font-size:0.82em;">';
-            html += '<thead><tr><th>' + t('analyze.table.node') + '</th><th>' + t('analyze.table.root') + '</th><th>' + t('analyze.table.pattern') + '</th><th>' + t('analyze.table.missing') + '</th></tr></thead><tbody>';
-            data.incompletePatterns.forEach(function (ip) {
-                html += '<tr>';
-                html += '<td><code>' + escapeHtml(ip.nodeCode) + '</code></td>';
-                html += '<td><span class="badge bg-light text-dark border">' + escapeHtml(ip.taxonomyRoot) + '</span></td>';
-                html += '<td class="small">' + escapeHtml(ip.patternDescription) + '</td>';
-                html += '<td class="small text-danger">' + escapeHtml(ip.missingElement) + '</td>';
-                html += '</tr>';
-            });
-            html += '</tbody></table></div>';
-        }
-
-        // Coverage Gaps
-        if (data.coverageGaps && data.coverageGaps.length > 0) {
-            html += '<h6 class="small fw-semibold mt-2">' + t('analyze.gap.coverage.gaps') + ' <span class="badge bg-secondary">' + data.coverageGaps.length + '</span></h6>';
-            html += '<div class="table-responsive"><table class="table table-sm table-hover mb-2" style="font-size:0.82em;">';
-            html += '<thead><tr><th>' + t('analyze.table.node') + '</th><th>' + t('analyze.table.root') + '</th><th>' + t('analyze.table.score') + '</th><th>' + t('analyze.table.gap') + '</th></tr></thead><tbody>';
-            data.coverageGaps.forEach(function (cg) {
-                html += '<tr>';
-                html += '<td><code>' + escapeHtml(cg.nodeCode) + '</code></td>';
-                html += '<td><span class="badge bg-light text-dark border">' + escapeHtml(cg.taxonomyRoot) + '</span></td>';
-                html += '<td>' + cg.coverageScore + '%</td>';
-                html += '<td class="small text-muted">' + escapeHtml(cg.gapDescription || '') + '</td>';
-                html += '</tr>';
-            });
-            html += '</tbody></table></div>';
-        }
-
-        // Notes
-        if (data.notes && data.notes.length > 0) {
-            html += '<div class="alert alert-info py-1 px-2 small mb-0 mt-2">';
-            html += data.notes.map(function (n) { return escapeHtml(n); }).join('<br>');
-            html += '</div>';
-        }
-
-        if (data.totalGaps === 0) {
-            html += '<div class="alert ' + (retained ? 'alert-secondary' : 'alert-success') + ' py-1 px-2 small mb-0 mt-2">'
-                + (retained ? ((document.documentElement?.lang || 'en').startsWith('de')
-                    ? 'Keine Kompatibilitätsprüfungen angezeigt. Dies belegt keine vollständige Architektur.'
-                    : 'No compatibility checks are displayed. This does not establish architectural completeness.')
-                    : t('analyze.gap.no.gaps')) + '</div>';
-        }
-
+        if (data.commitId) html += '<p class="small text-muted">' + t('analysis.evidence.source') + ' '
+            + escapeHtml(data.repositoryId) + ' · ' + escapeHtml(data.branch) + ' · <code>' + escapeHtml(data.commitId.substring(0,12)) + '</code></p>';
+        if (data.notes?.length) html += '<div class="alert alert-info small py-1 px-2">' + data.notes.map(escapeHtml).join('<br>') + '</div>';
         el.innerHTML = html;
     }
 
     // ── Pattern Detection ─────────────────────────────────────────────────────
 
-    function runPatternDetection() {
+    async function runPatternDetection() {
         if (warnAboutOpenAssessments('patternDetectionContent')) return;
         if (!hasScores()) {
             showPanelError('patternDetectionContent', t('analyze.scores.required'));
             return;
         }
+        var ticket = ++assessmentTickets.pattern, input;
+        liveAssessments.pattern = {pending:true};
         showPanelLoading('patternDetectionContent');
         var panel = document.getElementById('patternDetectionPanel');
         if (panel) panel.open = true;
 
-        fetch('/api/patterns/detect', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                scores: getCurrentScores(),
-                minScore: 50
-            })
-        })
-        .then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-        })
-        .then(function (data) {
-            renderPatternDetection(data);
-        })
-        .catch(function (err) {
-            showPanelError('patternDetectionContent', t('analyze.patterns.failed', err.message));
-        });
+        try {
+            var body = {scores:Object.assign({}, getCurrentScores()), minScore:50, businessText:getBusinessText()};
+            input = {body:body, context:await window.AnalysisApi.captureContext()};
+            if (!await assessmentCurrent(input) || ticket !== assessmentTickets.pattern) throw new Error(t('analysis.evidence.selectionChanged'));
+            liveAssessments.pattern = input;
+            var data = await window.AnalysisApi.detectPatterns({scores:body.scores, minScore:body.minScore}, input.context);
+            var current = await assessmentCurrent(input);
+            if (ticket === assessmentTickets.pattern) {
+                if (current) { requirePatternProof(input, data?.evidence); renderPatternDetection(data, {live:input}); }
+                else showPanelError('patternDetectionContent', t('analysis.evidence.selectionChanged'));
+            }
+        } catch (error) {
+            var current = !input || await assessmentCurrent(input);
+            if (ticket === assessmentTickets.pattern)
+                showPanelError('patternDetectionContent', current
+                    ? t('analyze.patterns.failed', error.message) : t('analysis.evidence.selectionChanged'));
+        }
     }
 
     function renderPatternDetection(data, options) {
+        liveAssessments.pattern = options?.live || null;
         var el = document.getElementById('patternDetectionContent');
         if (!el) return;
         var html = '';
 
         // Summary
         html += '<div class="d-flex gap-3 mb-2 flex-wrap">';
+        if (options?.retained) html += '<span class="badge bg-secondary">' + t('analysis.evidence.retained') + '</span>';
         html += '<span class="badge bg-success">' + t('analyze.patterns.complete', (data.matchedPatterns ? data.matchedPatterns.length : 0)) + '</span>';
         html += '<span class="badge bg-warning text-dark">' + t('analyze.patterns.incomplete.count', (data.incompletePatterns ? data.incompletePatterns.length : 0)) + '</span>';
-        html += '<span class="badge bg-primary">' + t('analyze.patterns.coverage', displayPercent(data.patternCoverage) + '%') + '</span>';
+        var coverage = Number.isFinite(data.patternCoverage) ? displayPercent(data.patternCoverage) + '%' : t('analysis.evidence.notAssessed');
+        html += '<span class="badge bg-secondary">' + t('analyze.patterns.coverage', coverage) + '</span>';
         html += '</div>';
+        if (data.evidence) {
+            var evidence = data.evidence;
+            html += '<p class="small text-muted">' + t('analysis.evidence.source') + ' '
+                + escapeHtml(evidence.repositoryId) + ' · ' + escapeHtml(evidence.branch) + ' · <code>'
+                + escapeHtml(evidence.commitId.substring(0,12)) + '</code></p>';
+            html += '<p class="small text-muted">' + t('analysis.patterns.policy', escapeHtml(evidence.templateVersion), evidence.minimumScore)
+                + ' · ' + t('analysis.patterns.' + evidence.completeness) + '</p>';
+        }
 
         // Matched patterns
         if (data.matchedPatterns && data.matchedPatterns.length > 0) {
@@ -311,51 +360,45 @@
 
     // ── Architecture Recommendation ───────────────────────────────────────────
 
-    function runRecommendation() {
+    async function runRecommendation() {
         if (warnAboutOpenAssessments('recommendationContent')) return;
-        if (!hasScores()) {
-            showPanelError('recommendationContent', t('analyze.scores.required'));
-            return;
-        }
+        if (!hasScores()) { showPanelError('recommendationContent', t('analyze.scores.required')); return; }
+        var ticket = ++assessmentTickets.recommendation, input;
+        liveAssessments.recommendation = {pending:true};
         showPanelLoading('recommendationContent');
-        var panel = document.getElementById('recommendationPanel');
-        if (panel) panel.open = true;
-
-        fetch('/api/recommend', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                scores: getCurrentScores(),
-                businessText: getBusinessText(),
-                minScore: 50
-            })
-        })
-        .then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-        })
-        .then(function (data) {
-            renderRecommendation(data);
-        })
-        .catch(function (err) {
-            showPanelError('recommendationContent', t('analyze.recommendation.failed', err.message));
-        });
+        var panel = document.getElementById('recommendationPanel'); if (panel) panel.open = true;
+        try {
+            input = await assessmentInput({scores:getCurrentScores(), minScore:50});
+            if (!await assessmentCurrent(input) || ticket !== assessmentTickets.recommendation) throw new Error(t('analysis.evidence.selectionChanged'));
+            liveAssessments.recommendation = input;
+            var data = await window.AnalysisApi.recommend(input.body, input.context);
+            var current = await assessmentCurrent(input);
+            if (ticket === assessmentTickets.recommendation) {
+                if (current) { requireAssessmentProof(input, data?.gapAnalysis); renderRecommendation(data, {live:input}); }
+                else showPanelError('recommendationContent', t('analysis.evidence.selectionChanged'));
+            }
+        } catch (error) {
+            var current = !input || await assessmentCurrent(input);
+            if (ticket === assessmentTickets.recommendation)
+                showPanelError('recommendationContent', current
+                    ? t('analyze.recommendation.failed', error.message) : t('analysis.evidence.selectionChanged'));
+        }
     }
 
-    function renderRecommendation(data) {
+    function renderRecommendation(data, options) {
+        liveAssessments.recommendation = options?.live || null;
         var el = document.getElementById('recommendationContent');
         if (!el) return;
         var html = '';
 
-        // Confidence
-        var conf = data.confidence ? data.confidence.toFixed(0) : 0;
-        var confColor = conf >= 70 ? 'success' : (conf >= 40 ? 'warning' : 'danger');
+        var mean = Number.isFinite(data.meanRelevance) ? data.meanRelevance.toFixed(0) + '%' : t('analysis.evidence.notAssessed');
         html += '<div class="d-flex gap-3 mb-2 flex-wrap align-items-center">';
-        html += '<span class="badge bg-' + confColor + (confColor === 'warning' ? ' text-dark' : '') + '" style="font-size:0.9em;">' + t('analyze.recommendation.confidence', conf) + '</span>';
-        html += '<span class="badge bg-success">' + t('analyze.recommendation.confirmed', (data.confirmedElements ? data.confirmedElements.length : 0)) + '</span>';
-        html += '<span class="badge bg-info text-dark">' + t('analyze.recommendation.proposed', (data.proposedElements ? data.proposedElements.length : 0)) + '</span>';
-        html += '<span class="badge bg-secondary">' + t('analyze.recommendation.relations.count', (data.suggestedRelations ? data.suggestedRelations.length : 0)) + '</span>';
-        html += '</div>';
+        if (options?.retained) html += '<span class="badge bg-secondary">' + t('analysis.evidence.retained') + '</span>';
+        html += '<span class="badge bg-secondary">' + t('analysis.recommendation.meanRelevance', mean) + '</span>';
+        html += '<span class="badge bg-info text-dark">' + t('analysis.recommendation.matches', (data.matchedElements || []).length) + '</span>';
+        html += '<span class="badge bg-secondary">' + t('analysis.recommendation.accepted', (data.acceptedElements || []).length) + '</span>';
+        html += '<span class="badge bg-info text-dark">' + t('analyze.recommendation.proposed', (data.proposedElements || []).length) + '</span>';
+        html += '<span class="badge bg-secondary">' + t('analyze.recommendation.relations.count', (data.suggestedRelations || []).length) + '</span></div>';
 
         // Reasoning
         if (data.reasoning && data.reasoning.length > 0) {
@@ -367,10 +410,15 @@
             html += '</ul></div>';
         }
 
-        // Confirmed Elements
-        if (data.confirmedElements && data.confirmedElements.length > 0) {
-            html += '<h6 class="small fw-semibold mt-2">' + t('analyze.recommendation.confirmed.heading') + '</h6>';
-            html += renderRecommendedElementsTable(data.confirmedElements, 'success');
+        // Search relevance is distinct from membership in the selected model.
+        if (data.matchedElements && data.matchedElements.length > 0) {
+            html += '<h6 class="small fw-semibold mt-2">' + t('analysis.recommendation.matchesHeading') + '</h6>';
+            html += renderRecommendedElementsTable(data.matchedElements, 'info');
+        }
+
+        if (data.acceptedElements && data.acceptedElements.length > 0) {
+            html += '<h6 class="small fw-semibold mt-2">' + t('analysis.recommendation.acceptedHeading') + '</h6>';
+            html += renderRecommendedElementsTable(data.acceptedElements, 'secondary', false);
         }
 
         // Proposed Elements
@@ -406,15 +454,17 @@
         el.innerHTML = html;
     }
 
-    function renderRecommendedElementsTable(elements, color) {
+    function renderRecommendedElementsTable(elements, color, showScore) {
+        showScore = showScore !== false;
         var html = '<div class="table-responsive"><table class="table table-sm table-hover mb-2" style="font-size:0.82em;">';
-        html += '<thead><tr><th>' + t('analyze.table.code') + '</th><th>' + t('analyze.table.title') + '</th><th>' + t('analyze.table.root') + '</th><th>' + t('analyze.table.score') + '</th><th>' + t('analyze.table.reasoning') + '</th></tr></thead><tbody>';
+        html += '<thead><tr><th>' + t('analyze.table.code') + '</th><th>' + t('analyze.table.title') + '</th><th>' + t('analyze.table.root') + '</th>'
+            + (showScore ? '<th>' + t('analyze.table.score') + '</th>' : '') + '<th>' + t('analyze.table.reasoning') + '</th></tr></thead><tbody>';
         elements.forEach(function (e) {
             html += '<tr>';
             html += '<td><code>' + escapeHtml(e.nodeCode) + '</code></td>';
             html += '<td>' + escapeHtml(e.title || '') + '</td>';
             html += '<td><span class="badge bg-light text-dark border">' + escapeHtml(layerLabel(e.taxonomyRoot)) + '</span></td>';
-            html += '<td><span class="badge bg-' + color + (color === 'warning' ? ' text-dark' : '') + '">' + e.score + '</span></td>';
+            if (showScore) html += '<td><span class="badge bg-' + color + (color === 'warning' ? ' text-dark' : '') + '">' + escapeHtml(e.score) + '</span></td>';
             html += '<td class="small text-muted">' + escapeHtml(e.reasoning || '') + '</td>';
             html += '</tr>';
         });
@@ -450,13 +500,17 @@
                 t('analyze.graph.enriched.analyzing') + '</div>';
         }
 
-        fetch('/api/graph/node/' + encodeURIComponent(code) + '/enriched-failure-impact?maxHops=' + maxHops)
-            .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
+        var selectedContext;
+        window.AnalysisApi.captureContext().then(function (context) {
+                selectedContext = context;
+                return window.AnalysisApi.enrichedFailureImpact(code, maxHops, context);
             })
-            .then(function (data) {
-                if (content && graph.isCurrentResult(sequence)) content.innerHTML = renderEnrichedFailureImpact(data);
+            .then(async function (data) {
+                var current = await graph.isCurrentEvidence(selectedContext, data.evidence);
+                if (content && graph.isCurrentResult(sequence)) {
+                    content.innerHTML = current ? renderEnrichedFailureImpact(data)
+                        : '<div class="alert alert-warning py-1 px-2 small mb-0">' + t('graph.evidence.changed') + '</div>';
+                }
             })
             .catch(function (err) {
                 if (content && graph.isCurrentResult(sequence)) {
@@ -466,7 +520,7 @@
     }
 
     function renderEnrichedFailureImpact(data) {
-        var html = '';
+        var html = window.TaxonomyGraph?.renderEvidence?.(data.evidence) || '';
 
         // Summary stats
         html += '<div class="d-flex gap-2 mb-2 flex-wrap">';
@@ -474,9 +528,14 @@
         html += '<span class="badge bg-danger">' + t('analyze.graph.direct', (data.directlyAffected ? data.directlyAffected.length : 0)) + '</span>';
         html += '<span class="badge bg-warning text-dark">' + t('analyze.graph.indirect', (data.indirectlyAffected ? data.indirectlyAffected.length : 0)) + '</span>';
         html += '<span class="badge bg-dark">' + t('analyze.graph.total', data.totalAffected) + '</span>';
-        var riskColor = data.riskScore > 5 ? 'danger' : (data.riskScore > 2 ? 'warning' : 'success');
-        html += '<span class="badge bg-' + riskColor + (riskColor === 'warning' ? ' text-dark' : '') + '">' + t('analyze.graph.risk', data.riskScore.toFixed(2)) + '</span>';
+        var riskKnown = Number.isFinite(data.riskScore);
+        var riskColor = !riskKnown ? 'secondary' : data.riskScore > 5 ? 'danger' : (data.riskScore > 2 ? 'warning' : 'success');
+        html += '<span class="badge bg-' + riskColor + (riskColor === 'warning' ? ' text-dark' : '') + '">' + t('analyze.graph.risk', riskKnown ? data.riskScore.toFixed(2) : t('analysis.evidence.notAssessed')) + '</span>';
         html += '</div>';
+        if (data.uncorrelatedElementIds?.length) {
+            html += '<div class="alert alert-warning py-1 px-2 small">' + t('analysis.evidence.correlationOpen', data.uncorrelatedElementIds.length)
+                + '<div>' + data.uncorrelatedElementIds.map(escapeHtml).join(', ') + '</div></div>';
+        }
 
         // Affected Requirements
         if (data.affectedRequirements && data.affectedRequirements.length > 0) {
@@ -523,7 +582,7 @@
                 html += '<span class="badge bg-danger">' + e.requirementCount + ' req(s)</span> ';
                 html += '<span class="small text-muted">' + e.coveredByRequirements.map(function (r) { return escapeHtml(r); }).join(', ') + '</span>';
             } else {
-                html += '<span class="text-muted small">' + t('analyze.table.none') + '</span>';
+                html += '<span class="text-muted small">' + t('analysis.evidence.notAssessed') + '</span>';
             }
             html += '</td>';
             html += '</tr>';
@@ -557,14 +616,7 @@
             statusEl.style.display = '';
         }
 
-        fetch('/api/import/archimate', {
-            method: 'POST',
-            body: formData
-        })
-        .then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-        })
+        window.ImportApi.importArchiMate(formData)
         .then(function (data) {
             if (statusEl) {
                 var html = '<div class="alert alert-success py-1 px-2 small mb-0">';
@@ -586,23 +638,16 @@
     // ── Copilot One-Click Flow ────────────────────────────────────────────────
 
     function renderCopilotResult(copilot) {
+        Object.keys(assessmentTickets).forEach(function (kind) { assessmentTickets[kind]++; liveAssessments[kind] = null; });
         var panel = document.getElementById('copilotPanel'); if (panel) panel.style.display = '';
-        if (!copilot) {
-            var legacy = window.TaxonomyState?.recoveryContext?.followups || {};
-            var retained = {};
-            [['gap', 'gaps'], ['patterns', 'patterns'], ['recommendation', 'recommendation']].forEach(function (entry) {
-                if (legacy[entry[0]]?.state === 'SUCCESS') retained[entry[1]] = legacy[entry[0]].result;
-            });
-            if (Object.keys(retained).length) copilot = Object.assign(retained, { state: 'PARTIAL', notes: [
-                (document.documentElement?.lang || 'en').startsWith('de')
-                    ? 'Gespeicherte historische Teilberichte. Ein vollständiges serverseitiges Copilot-Ergebnis liegt nicht vor.'
-                    : 'Retained historical partial reports. A complete server-owned Copilot result is unavailable.'
-            ] });
-        }
         if (!copilot) {
             renderPartialCopilot((document.documentElement?.lang || 'en').startsWith('de')
                 ? 'Für dieses historische Ergebnis sind keine gespeicherten Copilot-Berichte vorhanden.'
                 : 'This historical result has no saved Copilot reports.');
+            return;
+        }
+        if (copilot.schemaVersion !== 2) {
+            renderPartialCopilot(t('analysis.evidence.unsupportedVersion'));
             return;
         }
         if (copilot.state === 'SKIPPED_PARTIAL' || copilot.state === 'SKIPPED_SCOPE') {
@@ -669,38 +714,46 @@
 
     async function continueCopilotFlow() {
         var results = {};
+        var ticket = ++assessmentTickets.copilot;
+        liveAssessments.copilot = {pending:true};
         var recovery = window.TaxonomyAnalysisRecovery;
-        async function step(key, label, url, body, render, panelId) {
+        var input;
+        async function step(key, label, request, render, panelId) {
             showCopilotStep(label);
             var execute = async function () {
-                var response = await fetch(url, { method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                var result = await response.json();
+                if (!await assessmentCurrent(input) || ticket !== assessmentTickets.copilot) throw new Error(t('analysis.evidence.selectionChanged'));
+                var result = await request();
                 if (!result || typeof result !== 'object' || Array.isArray(result)) {
                     throw new Error('Invalid Copilot response');
                 }
                 return result;
             };
             var data = recovery ? await recovery.stage(key, execute, label) : await execute();
-            render(data);
+            if (!await assessmentCurrent(input) || ticket !== assessmentTickets.copilot) throw new Error(t('analysis.evidence.selectionChanged'));
+            if (key === 'gap') requireAssessmentProof(input, data);
+            if (key === 'patterns') requirePatternProof(input, data.evidence);
+            if (key === 'recommendation') requireAssessmentProof(input, data?.gapAnalysis);
+            render(data, {live:input});
             var panel = document.getElementById(panelId); if (panel) panel.open = true;
             return data;
         }
         try {
-            results.gaps = await step('gap', t('analyze.copilot.step2'), '/api/gap/analyze', {
-                scores: getCurrentScores(), businessText: getBusinessText(), minScore: 50
+            input = await assessmentInput({scores:getCurrentScores(), minScore:50});
+            liveAssessments.copilot = input;
+            results.gaps = await step('gap', t('analyze.copilot.step2'), function () {
+                var body = Object.assign({}, input.body); delete body.scores; delete body.minScore;
+                return window.AnalysisApi.analyzeGap(body, input.context);
             }, renderGapAnalysis, 'gapAnalysisPanel');
-            results.patterns = await step('patterns', t('analyze.copilot.step3'), '/api/patterns/detect', {
-                scores: getCurrentScores(), minScore: 50
+            results.patterns = await step('patterns', t('analyze.copilot.step3'), function () {
+                return window.AnalysisApi.detectPatterns({scores:input.body.scores, minScore:input.body.minScore}, input.context);
             }, renderPatternDetection, 'patternDetectionPanel');
-            results.recommendation = await step('recommendation', t('analyze.copilot.step4'), '/api/recommend', {
-                scores: getCurrentScores(), businessText: getBusinessText(), minScore: 50
+            results.recommendation = await step('recommendation', t('analyze.copilot.step4'), function () {
+                return window.AnalysisApi.recommend(input.body, input.context);
             }, renderRecommendation, 'recommendationPanel');
-            renderCopilotSummary(results);
+            renderCopilotSummary(results, {live:input});
             return results;
         } catch (err) {
-            showCopilotStatus('danger', t('analyze.copilot.failed', err.message));
+            if (ticket === assessmentTickets.copilot) showCopilotStatus('danger', t('analyze.copilot.failed', err.message));
             if (recovery && recovery.isManaged()) throw err;
         } finally { resetCopilotBtn(); }
     }
@@ -734,47 +787,54 @@
     }
 
     function renderCopilotSummary(results, options) {
+        liveAssessments.copilot = options?.live || null;
         var retained = options?.retained === true;
         var el = document.getElementById('copilotContent');
         if (!el) return;
         var html = '';
 
-        html += '<div class="alert alert-success py-2 px-3 mb-2">';
+        html += '<div class="alert alert-info py-2 px-3 mb-2" data-assessment-state="COMPLETED">';
         html += '<strong>' + t('analyze.copilot.complete') + '</strong>';
+        if (options?.retained) html += ' · ' + t('analysis.evidence.retained');
         html += '</div>';
 
         html += '<div class="row g-2">';
 
         // Gaps summary card
-        var gapCount = results.gaps ? results.gaps.totalGaps : 0;
+        var judgments = results.gaps?.judgments || [];
+        var gapCount = judgments.filter(function (item) { return item.status === 'VIOLATED'; }).length;
+        var openCount = judgments.filter(function (item) { return item.status === 'INCONCLUSIVE'; }).length;
+        var gapColor = gapCount ? 'danger' : openCount ? 'warning' : 'secondary';
         html += '<div class="col-4">';
-        html += '<div class="card text-center ' + (retained ? 'border-secondary' : gapCount > 0 ? 'border-danger' : 'border-success') + '">';
+        html += '<div class="card text-center border-' + gapColor + '" data-assessment-summary="obligations">';
         html += '<div class="card-body py-2">';
-        html += '<div class="fs-4">' + (retained ? '\uD83D\uDD0E' : gapCount > 0 ? '\u274C' : '\u2705') + '</div>';
-        html += '<div class="fw-bold">' + (retained ? retainedChecksLabel(gapCount || 0) : t('analyze.copilot.gaps', gapCount)) + '</div>';
+        html += '<div class="fs-4">\uD83D\uDD0E</div>';
+        html += '<div class="fw-bold">' + (judgments.length ? t('analysis.evidence.violated', gapCount) : t('analysis.evidence.noObligations')) + '</div>';
+        if (openCount) html += '<div class="small">' + t('analysis.evidence.openCount', openCount) + '</div>';
         html += '<div class="small text-muted">' + t('analyze.copilot.anchors.analyzed', (results.gaps ? results.gaps.totalAnchors : 0)) + '</div>';
         html += '</div></div></div>';
 
         // Patterns summary card
-        var patternPct = results.patterns ? displayPercent(results.patterns.patternCoverage) : '0';
-        var patternColor = patternPct >= 70 ? 'success' : (patternPct >= 40 ? 'warning' : 'danger');
+        var patternKnown = Number.isFinite(results.patterns?.patternCoverage);
+        var patternPct = patternKnown ? displayPercent(results.patterns.patternCoverage) + '%' : t('analysis.evidence.notAssessed');
+        var patternColor = 'secondary';
         html += '<div class="col-4">';
         html += '<div class="card text-center border-' + patternColor + '">';
         html += '<div class="card-body py-2">';
         html += '<div class="fs-4">\uD83E\uDDE9</div>';
-        html += '<div class="fw-bold">' + t('analyze.copilot.patterns', patternPct) + '</div>';
+        html += '<div class="fw-bold">' + t('analyze.patterns.coverage', patternPct) + '</div>';
         html += '<div class="small text-muted">' + t('analyze.copilot.patterns.complete', (results.patterns && results.patterns.matchedPatterns ? results.patterns.matchedPatterns.length : 0)) + '</div>';
         html += '</div></div></div>';
 
         // Recommendation summary card
-        var conf = results.recommendation && Number.isFinite(results.recommendation.confidence)
-            ? results.recommendation.confidence.toFixed(0) : '—';
-        var confColor = conf >= 70 ? 'success' : (conf >= 40 ? 'warning' : 'danger');
+        var conf = results.recommendation && Number.isFinite(results.recommendation.meanRelevance)
+            ? results.recommendation.meanRelevance.toFixed(0) + '%' : t('analysis.evidence.notAssessed');
+        var confColor = 'secondary';
         html += '<div class="col-4">';
         html += '<div class="card text-center border-' + confColor + '">';
         html += '<div class="card-body py-2">';
         html += '<div class="fs-4">\uD83D\uDCA1</div>';
-        html += '<div class="fw-bold">' + t('analyze.copilot.confidence', conf) + '</div>';
+        html += '<div class="fw-bold">' + t('analysis.recommendation.meanRelevance', conf) + '</div>';
         html += '<div class="small text-muted">' + t('analyze.copilot.proposals', (results.recommendation && results.recommendation.proposedElements ? results.recommendation.proposedElements.length : 0)) + '</div>';
         html += '</div></div></div>';
 
@@ -791,8 +851,37 @@
 
     // ── Event binding ─────────────────────────────────────────────────────────
 
+    ['taxonomy:lifecycle-changed','taxonomy:architecture-reconciled','taxonomy:architecture-source-changed'].forEach(function (event) {
+        document.addEventListener(event, function () { invalidateLiveAssessments(); updateAssessmentSourceLabel(); });
+    });
+    document.addEventListener('taxonomy:entity-context-changed', async function () {
+        for (var kind of Object.keys(liveAssessments)) {
+            var input = liveAssessments[kind];
+            if (input && !await assessmentCurrent(input) && liveAssessments[kind] === input) {
+                invalidateLiveAssessments(); break;
+            }
+        }
+        updateAssessmentSourceLabel();
+    });
+    ['input','change'].forEach(function (event) {
+        document.addEventListener(event, function (value) {
+            if (['gapProfile','gapEvidenceComplete','businessText'].includes(value.target?.id)) invalidateLiveAssessments();
+        });
+    });
+
     document.addEventListener('DOMContentLoaded', function () {
+        updateAssessmentSourceLabel();
+        document.getElementById('gapSelectModel')?.addEventListener('click', async function () {
+            try {
+                var selected = await window.TaxonomyArchitectureWorkspace?.useSelectedModel?.();
+                if (selected) await updateAssessmentSourceLabel();
+                else showPanelError('gapAnalysisContent', t('analysis.evidence.selectSavedModel'));
+            } catch (error) { showPanelError('gapAnalysisContent', error.message); }
+        });
         if (window.TaxonomyState?.currentCopilot) renderCopilotResult(window.TaxonomyState.currentCopilot);
+        if (document.getElementById('gapProfile')) loadAssessmentProfiles().catch(function (error) {
+            showPanelError('gapAnalysisContent', error.message);
+        });
         var gapBtn = document.getElementById('gapAnalyzeBtn');
         if (gapBtn) gapBtn.addEventListener('click', runGapAnalysis);
 

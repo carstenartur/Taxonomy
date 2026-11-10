@@ -54,6 +54,8 @@ public final class TaxonomyTooling {
         String[] commandArguments = java.util.Arrays.copyOfRange(
                 arguments, 1, arguments.length);
         return switch (command) {
+            case "resolve-product-artifact" -> PinnedArtifactResolver.run(
+                    commandArguments, workingDirectory, output, error);
             case "release-resources" -> ReleaseResourceSampler.run(
                     commandArguments, environment, workingDirectory, output, error);
             case "native-installation" -> NativeInstallationSnapshot.run(

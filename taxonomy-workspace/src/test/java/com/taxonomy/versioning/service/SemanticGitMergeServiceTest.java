@@ -339,7 +339,7 @@ class SemanticGitMergeServiceTest {
 
             assertThat(outcome.success()).isFalse();
             assertThat(outcome.conflicts())
-                    .contains("projectRequirement P-001 REQ-001:text");
+                    .contains("projectRequirement:P-001 REQ-001:text");
         }
     }
 

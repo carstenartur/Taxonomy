@@ -42,8 +42,9 @@ and [runtime/persistence views](ARCHITECTURE.md).
 
 ### `taxonomy-sparx-mapping`
 
-Owns the canonical element types and relation transports used by Sparx integrations.
-It depends only on the JDK. `taxonomy-export` consumes these mappings for its existing
+Owns the canonical element types, relation transports and immutable external ADMBw
+source descriptor used by Sparx integrations. The DSL consumes the same pinned
+ADMBw subset and native mapping as the independent QEA plugin. It depends only on the JDK. `taxonomy-export` consumes these mappings for its existing
 XMI facades; the independently built QEA plugin packages a relocated copy without
 pulling host implementation libraries into its private classloader. Transport and
 version-specific compatibility behavior remain with their codecs and connectors.

@@ -118,6 +118,7 @@ public final class DecisionReportLabels {
     public String titleLabel() { return german ? "Titel" : "Title"; }
     public String graphDigest() { return german ? "SHA-256 des Architekturgraphen" : "Architecture graph SHA-256"; }
     public String sourceGraphDigest() { return german ? "SHA-256 des Quellgraphen" : "Source graph SHA-256"; }
+    public String notAssessed() { return german ? "Nicht bewertet" : "Not assessed"; }
     public String unknown() { return german ? "Unbekannt" : "Unknown"; }
     public String noneRecorded() { return german ? "Keine im Snapshot dokumentiert" : "None recorded in snapshot"; }
     public String frozenScope() { return german ? "Gespeicherte Architektur und Entscheidungsevidenz der ausgewählten Anforderungsversion." : "Saved architecture and decision evidence for the selected requirement version."; }
@@ -156,6 +157,8 @@ public final class DecisionReportLabels {
     public String matchedPatterns() { return german ? "Passende Muster" : "Matched Patterns"; }
     public String complete() { return german ? "vollständig" : "complete"; }
     public String completeMissing() { return german ? "vollständig, fehlend: " : "complete, missing: "; }
+    public String acceptedModelElements() { return german ? "Elemente im kanonischen Modell" : "Canonical model elements"; }
+    public String meanRelevance() { return german ? "Mittlere Relevanz" : "Mean relevance"; }
     public String confidence() { return german ? "Konfidenz" : "Confidence"; }
     public String matchedElements() { return german ? "Passende Elemente" : "Matched Elements"; }
     public String matchedElementNotice() { return german ? "Treffer mit hoher Relevanz; eine menschliche Freigabe ist nicht dokumentiert." : "High-score matches; human approval is not recorded."; }

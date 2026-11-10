@@ -308,8 +308,8 @@ public final class ClusterAnalysisBackupRestorer {
                 var type = com.taxonomy.model.RelationType.valueOf(current.type());
                 String origin = current.direction() == RelationSearchModel.Direction.OUTGOING ? sourceRoot : current.targetRoot();
                 String destination = current.direction() == RelationSearchModel.Direction.OUTGOING ? current.targetRoot() : sourceRoot;
-                require(new com.taxonomy.relations.service.RelationCompatibilityMatrix().allowedTargetRoots(origin, type)
-                        .contains(destination), "Foreign archived automatic relation route");
+                require(com.taxonomy.analysis.relations.RelationDiscoveryPolicy.automatic(type)
+                        && new com.taxonomy.relations.service.RelationCompatibilityMatrix().targetDomain(origin, type).allows(destination), "Foreign archived automatic relation route");
             }
         }
     }

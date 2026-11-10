@@ -10,6 +10,10 @@ import java.util.List;
  */
 public class RequirementImpactView {
 
+    private GraphQueryEvidence evidence;
+    public GraphQueryEvidence getEvidence() { return evidence; }
+    public void setEvidence(GraphQueryEvidence evidence) { this.evidence = evidence; }
+
     private String businessText;
     private int maxHops;
     private List<ImpactElement> impactedElements = new ArrayList<>();

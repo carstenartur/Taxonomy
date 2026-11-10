@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "artifacts": [
+    {
+      "id": "archi-linux-x64",
+      "producer": "Archi",
+      "version": "5.11.0",
+      "source": "https://github.com/archimatetool/archi.io/releases/download/5_11/Archi-Linux64-5.11.0.tgz",
+      "sha256": "a13f4f058c16d8653c1307a145b9dd6bddd4226abc952f58c586c46d61db219e",
+      "maxBytes": 536870912
+    }
+  ]
+}

@@ -1,6 +1,13 @@
 package com.taxonomy.architecture.controller;
 
-import com.taxonomy.dto.ApqcHierarchyNode;
+import com.taxonomy.dto.ApqcHierarchyView;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 import com.taxonomy.dto.ChangeImpactView;
 import com.taxonomy.dto.EnrichedChangeImpactView;
 import com.taxonomy.dto.GraphNeighborhoodView;
@@ -19,6 +26,11 @@ import java.util.*;
 /**
  * REST API for graph-based architecture queries.
  *
+ * <p>Every endpoint requires explicit repositoryId, branch and full commitId query
+ * parameters plus workspaceId (blank for central) or X-Taxonomy-Workspace-Id.
+ * The existing workspace resolver owns authorization. Unproved or moved snapshots
+ * fail closed; an empty answer applies only to its declared scope and policy.
+ *
  * <p>Endpoints:
  * <ul>
  *   <li>{@code POST /api/graph/impact} — Requirement impact analysis</li>
@@ -31,16 +43,18 @@ import java.util.*;
  */
 @RestController
 @RequestMapping("/api/graph")
-@Tag(name = "Graph Queries")
+@Tag(name = "Graph Queries", description = "Explicit authorized repository/workspace/branch/commit graph snapshots")
 public class GraphQueryApiController {
 
+    private final WorkspaceResolver workspaceResolver;
     private final ArchitectureGraphQueryService graphQueryService;
     private final EnrichedImpactService enrichedImpactService;
     private final ApqcHierarchyService apqcHierarchyService;
 
     public GraphQueryApiController(ArchitectureGraphQueryService graphQueryService,
                                    EnrichedImpactService enrichedImpactService,
-                                   ApqcHierarchyService apqcHierarchyService) {
+                                   ApqcHierarchyService apqcHierarchyService, WorkspaceResolver workspaceResolver) {
+        this.workspaceResolver = workspaceResolver;
         this.graphQueryService = graphQueryService;
         this.enrichedImpactService = enrichedImpactService;
         this.apqcHierarchyService = apqcHierarchyService;
@@ -54,7 +68,7 @@ public class GraphQueryApiController {
      */
     @Operation(summary = "Requirement impact analysis", description = "Determines which elements are affected by a business requirement")
     @PostMapping("/impact")
-    public ResponseEntity<RequirementImpactView> findImpact(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<RequirementImpactView> findImpact(@RequestBody Map<String, Object> body, HttpServletRequest request) {
         @SuppressWarnings("unchecked")
         Map<String, Object> rawScores = (Map<String, Object>) body.get("scores");
         String businessText = (String) body.get("businessText");
@@ -74,7 +88,7 @@ public class GraphQueryApiController {
         }
 
         RequirementImpactView view = graphQueryService.findImpactForRequirement(
-                scores, businessText, maxHops);
+                selected(request), commit(request), scores, businessText, maxHops);
         return ResponseEntity.ok(view);
     }
 
@@ -85,8 +99,8 @@ public class GraphQueryApiController {
     @GetMapping("/node/{code}/upstream")
     public ResponseEntity<GraphNeighborhoodView> findUpstream(
             @Parameter(description = "Taxonomy node code") @PathVariable String code,
-            @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "2") int maxHops) {
-        GraphNeighborhoodView view = graphQueryService.findUpstream(code, maxHops);
+            @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "2") int maxHops, HttpServletRequest request) {
+        GraphNeighborhoodView view = graphQueryService.findUpstream(selected(request), commit(request), code, maxHops);
         return ResponseEntity.ok(view);
     }
 
@@ -97,8 +111,8 @@ public class GraphQueryApiController {
     @GetMapping("/node/{code}/downstream")
     public ResponseEntity<GraphNeighborhoodView> findDownstream(
             @Parameter(description = "Taxonomy node code") @PathVariable String code,
-            @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "2") int maxHops) {
-        GraphNeighborhoodView view = graphQueryService.findDownstream(code, maxHops);
+            @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "2") int maxHops, HttpServletRequest request) {
+        GraphNeighborhoodView view = graphQueryService.findDownstream(selected(request), commit(request), code, maxHops);
         return ResponseEntity.ok(view);
     }
 
@@ -109,8 +123,8 @@ public class GraphQueryApiController {
     @GetMapping("/node/{code}/failure-impact")
     public ResponseEntity<ChangeImpactView> findFailureImpact(
             @Parameter(description = "Taxonomy node code") @PathVariable String code,
-            @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "3") int maxHops) {
-        ChangeImpactView view = graphQueryService.findFailureImpact(code, maxHops);
+            @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "3") int maxHops, HttpServletRequest request) {
+        ChangeImpactView view = graphQueryService.findFailureImpact(selected(request), commit(request), code, maxHops);
         return ResponseEntity.ok(view);
     }
 
@@ -122,22 +136,48 @@ public class GraphQueryApiController {
     @GetMapping("/node/{code}/enriched-failure-impact")
     public ResponseEntity<EnrichedChangeImpactView> findEnrichedFailureImpact(
             @Parameter(description = "Taxonomy node code") @PathVariable String code,
-            @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "3") int maxHops) {
-        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact(code, maxHops);
+            @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "3") int maxHops, HttpServletRequest request) {
+        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact(selected(request), commit(request), code, maxHops);
         return ResponseEntity.ok(view);
     }
 
     /**
      * Returns the APQC process hierarchy extracted from imported DSL documents.
      *
-     * <p>Scans all stored DSL documents for elements with the
+     * <p>Reads the selected canonical DSL commit for elements with the
      * {@code x-source-framework: "apqc"} extension and reconstructs the
      * parent–child hierarchy using {@code x-apqc-parent} chains.
      */
     @Operation(summary = "APQC hierarchy",
                description = "Returns APQC process elements from imported DSL documents as a hierarchy tree")
     @GetMapping("/apqc-hierarchy")
-    public ResponseEntity<List<ApqcHierarchyNode>> apqcHierarchy() {
-        return ResponseEntity.ok(apqcHierarchyService.buildHierarchy());
+    public ResponseEntity<ApqcHierarchyView> apqcHierarchy(HttpServletRequest request) {
+        return ResponseEntity.ok(apqcHierarchyService.buildHierarchy(selected(request), commit(request)));
+    }
+    private RepositoryContext selected(HttpServletRequest request) {
+        String workspace = WorkspaceContextResolver.requestedWorkspaceId(request);
+        String repository = request.getParameter("repositoryId");
+        String branch = request.getParameter("branch");
+        if (workspace == null || repository == null || repository.isBlank() || branch == null || branch.isBlank())
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Explicit repositoryId, workspaceId and branch are required");
+        commit(request);
+        RepositoryContext context = workspaceResolver.resolveCurrentRepositoryContextForRead();
+        if (!repository.equals(context.repositoryId()) || !branch.equals(context.branch())
+                || !workspace.equals(Objects.toString(context.workspaceId(), "")))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Selected graph context changed");
+        return context;
+    }
+
+    private String commit(HttpServletRequest request) {
+        try { return WorkspaceDslReadPort.normalizeCommitId(request.getParameter("commitId")); }
+        catch (IllegalArgumentException error) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Explicit full commitId is required", error);
+        }
+    }
+
+    @ExceptionHandler({com.taxonomy.relations.service.RelationProjectionReadService.RelationProjectionUnavailableException.class,
+            IllegalStateException.class})
+    public ResponseEntity<Map<String, String>> unavailable(IllegalStateException error) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("status", "UNAVAILABLE", "message", error.getMessage()));
     }
 }

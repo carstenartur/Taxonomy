@@ -570,6 +570,11 @@ test('successful saved requirement custom submit still downloads and reports suc
     assert.equal(f.dialog.open, false);
 });
 
+const selectedGraphContext = {repositoryId:'authored-fixture',workspaceScopeKey:'__shared__',branch:'reviewed',commit:'a'.repeat(40)};
+const graphEvidence = {...selectedGraphContext,commitId:selectedGraphContext.commit,readAuthority:'GIT_BRANCH_PROJECTION',
+    readinessState:'READY',snapshotRelationCount:1,queryPolicy:'git-present-weighted-bfs-v1',requestedMaxHops:2,effectiveMaxHops:2,
+    minimumRelevance:.1,hopDecay:.8,anchorHighThreshold:70,anchorLowThreshold:50,minimumAnchors:1,
+    relationTypeWeights:{SUPPORTS:.8},completeness:'COMPLETE_WITHIN_QUERY_POLICY'};
 function impactFixture() {
     const f = dom(), requests = [], ready = [];
     const addListener = f.document.addEventListener;
@@ -582,11 +587,16 @@ function impactFixture() {
     f.document.getElementById('graphMaxHops').value = '2';
     function request(kind, options) {const gate = deferred(); requests.push({kind, options, ...gate}); return gate.promise;}
     const window = {TaxonomyState: {currentScores: {'CP.1': 82}}, _getCurrentScores: () => ({'CP.1': 82})};
+    window.AnalysisApi = {captureContext:async()=>({...selectedGraphContext}),
+        graphUpstream:(code,hops,context)=>request('upstream',{code,hops,context}),
+        graphDownstream:(code,hops,context)=>request('downstream',{code,hops,context}),
+        graphFailureImpact:(code,hops,context)=>request('failure',{code,hops,context}),
+        enrichedFailureImpact:(code,hops,context)=>request('enriched',{code,hops,context}),
+        requirementImpact:(payload,context)=>request('requirement',{payload,context})};
     const context = vm.createContext({window, document: f.document,
         TaxonomyI18n: {t: (key, ...args) => [key, ...args].join(' ')},
         TaxonomyUtils: {escapeHtml: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;')},
-        AnalysisApi: {graphUpstream: (code, hops) => request('upstream', {code, hops}), graphDownstream: (code, hops) => request('downstream', {code, hops}),
-            graphFailureImpact: (code, hops) => request('failure', {code, hops})}, fetch: request});
+        AnalysisApi:window.AnalysisApi, fetch:()=>{throw new Error('Graph consumers must use their named scoped API');}});
     for (const name of ['shared/taxonomy-graph.js', 'relations/taxonomy-relations.js', 'core/taxonomy-analysis.js']) {
         vm.runInContext(source(name), context);
     }
@@ -608,7 +618,7 @@ function graphEntryFixture() {
     return f;
 }
 
-test('opening a graph reveals its page, focuses the selected code and starts an upstream query', () => {
+test('opening a graph reveals its page, focuses the selected code and starts an upstream query', async () => {
     const f = graphEntryFixture();
     f.window.TaxonomyGraph.openGraphExplorer(' BP-1040 ');
     assert.equal(f.window.location.hash, '#graph');
@@ -616,8 +626,10 @@ test('opening a graph reveals its page, focuses the selected code and starts an 
     assert.equal(f.document.getElementById('tab-analyze').classList.contains('d-none'), true);
     assert.equal(f.document.activeElement, f.document.getElementById('graphNodeInput'));
     assert.equal(f.document.getElementById('graphNodeInput').value, 'BP-1040');
+    await tick();
     assert.equal(f.requests.length, 1);
     assert.equal(f.requests[0].kind, 'upstream');
+    assert.deepEqual({...f.requests[0].options.context},selectedGraphContext);
     assert.notEqual(f.document.getElementById('graphResultsArea').style.display, 'none');
 });
 
@@ -626,7 +638,7 @@ test('graph entry exposes invalid input and backend failures instead of an empty
     f.window.TaxonomyGraph.openGraphExplorer('  ');
     assert.equal(f.requests.length, 0);
     assert.match(f.graph.innerHTML, /role="alert".*graph.enter.code/);
-    f.window.TaxonomyGraph.openGraphExplorer('CP.1');
+    f.window.TaxonomyGraph.openGraphExplorer('CP.1'); await tick();
     f.requests[0].reject(new Error('Graph service unavailable')); await tick();
     assert.match(f.graph.innerHTML, /role="alert"/);
     assert.match(f.graph.innerHTML, /Graph service unavailable/);
@@ -635,33 +647,33 @@ test('graph entry exposes invalid input and backend failures instead of an empty
 
 test('graph entry keeps a later empty result visible when an older query finishes', async () => {
     const f = graphEntryFixture();
-    f.window.TaxonomyGraph.openGraphExplorer('CP.1');
-    f.window.TaxonomyGraph.openGraphExplorer('BP-1040');
+    f.window.TaxonomyGraph.openGraphExplorer('CP.1'); await tick();
+    f.window.TaxonomyGraph.openGraphExplorer('BP-1040'); await tick();
     assert.equal(f.requests.length, 2);
     f.requests[1].resolve({originNodeCode: 'BP-1040', direction: 'UPSTREAM', maxHops: 2,
-        neighbors: [], traversedRelationships: [], notes: []}); await tick();
+        neighbors: [], traversedRelationships: [], notes: [], evidence:graphEvidence}); await tick();
     assert.match(f.graph.innerHTML, /role="status".*graph.empty/);
     assert.match(f.document.getElementById('graphResultContext').innerHTML, /BP-1040/);
     const result = f.graph.innerHTML;
     f.requests[0].resolve({originNodeCode: 'CP.1', direction: 'UPSTREAM', maxHops: 2,
-        neighbors: [], traversedRelationships: [], notes: []}); await tick();
+        neighbors: [], traversedRelationships: [], notes: [], evidence:graphEvidence}); await tick();
     assert.equal(f.graph.innerHTML, result);
 });
 
-const impactDto = () => ({businessText: 'Current requirement', maxHops: 2,
+const impactDto = () => ({evidence:graphEvidence,businessText: 'Current requirement', maxHops: 2,
     impactedElements: Array.from({length: 16}, (_, index) => ({nodeCode: 'CP.' + index,
         title: 'Capability ' + index, taxonomySheet: 'Capabilities', relevance: 0.82,
         hopDistance: index ? 1 : 0, includedBecause: index ? 'SUPPORTS via <origin>' : 'Selected anchor'})),
     traversedRelationships: [{sourceCode: 'CP.0', targetCode: 'CP.1', relationType: 'SUPPORTS',
-        propagatedRelevance: 0.656, hopDistance: 1}], notes: ['Primary catalogue traversal'], totalElements: 16,
+        propagatedRelevance: 0.656, hopDistance: 1}], notes: ['Selected snapshot traversal'], totalElements: 16,
     totalRelationships: 1});
 const jsonResponse = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), {
     status, headers: {'Content-Type': 'application/json', ...headers}});
 
 test('requirement impact renders the real ImpactElement DTO with codes, titles and traversal evidence', async () => {
     const f = impactFixture();
-    f.window.TaxonomyRelations.runRequirementImpact();
-    f.requests[0].resolve(jsonResponse(impactDto())); await tick();
+    f.window.TaxonomyRelations.runRequirementImpact(); await tick();
+    f.requests[0].resolve(impactDto()); await tick();
     assert.equal((f.area.innerHTML.match(/class="graph-element-row"/g) || []).length, 16);
     for (let index = 0; index < 16; index++) {
         assert.match(f.area.innerHTML, new RegExp('data-code="CP\\.' + index + '"'));
@@ -670,33 +682,34 @@ test('requirement impact renders the real ImpactElement DTO with codes, titles a
     assert.match(f.area.innerHTML, /82%/);
     assert.match(f.area.innerHTML, /graph\.badge\.hop 1/);
     assert.match(f.area.innerHTML, /SUPPORTS via &lt;origin>/);
-    assert.match(f.area.innerHTML, /Primary catalogue traversal/);
+    assert.match(f.area.innerHTML, /Selected snapshot traversal/);
     assert.doesNotMatch(f.area.innerHTML, /NaN|<td[^>]*><\/td>/);
     assert.match(f.document.getElementById('graphResultContext').innerHTML, /graph\.result\.requirement/);
-    assert.match(f.document.getElementById('graphResultContext').innerHTML, /graph\.result\.catalogue\.scope/);
+    assert.match(f.area.innerHTML, /aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/);
+    assert.deepEqual({...f.requests[0].options.context},selectedGraphContext);
 });
 
 test('switching requirement and node or enriched impact clears prior results and ignores late success and failure', async () => {
     for (const buttonId of ['graphUpstreamBtn', 'graphDownstreamBtn', 'graphFailureBtn', 'graphEnrichedFailureBtn']) {
         for (const lateFailure of [false, true]) {
             const f = impactFixture();
-            f.window.TaxonomyRelations.runRequirementImpact();
-            await f.document.getElementById(buttonId).click();
+            f.window.TaxonomyRelations.runRequirementImpact(); await tick();
+            await f.document.getElementById(buttonId).click(); await tick();
             assert.equal(f.area.style.display, 'none');
             assert.equal(f.area.innerHTML, '');
             assert.match(f.document.getElementById('graphResultContext').innerHTML, /graph\.result\.node CP\.1/);
             if (lateFailure) f.requests[0].reject(new Error('stale requirement failure'));
-            else f.requests[0].resolve(jsonResponse(impactDto()));
+            else f.requests[0].resolve(impactDto());
             await tick();
             assert.equal(f.area.innerHTML, '');
-            f.window.TaxonomyRelations.runRequirementImpact();
+            f.window.TaxonomyRelations.runRequirementImpact(); await tick();
             assert.equal(f.document.getElementById('graphResultsArea').style.display, 'none');
             assert.equal(f.graph.innerHTML, '');
             if (lateFailure) f.requests[1].reject(new Error('stale node failure'));
             else f.requests[1].resolve(buttonId === 'graphEnrichedFailureBtn'
-                ? jsonResponse({failedNodeCode: 'CP.1', riskScore: 0, totalAffected: 0})
-                : {originNodeCode: 'CP.1', failedNodeCode: 'CP.1', neighbors: [], totalAffected: 0});
-            f.requests[2].resolve(jsonResponse(impactDto())); await tick();
+                ? {failedNodeCode: 'CP.1', riskScore: null, totalAffected: 0,evidence:graphEvidence}
+                : {originNodeCode: 'CP.1', failedNodeCode: 'CP.1', neighbors: [], totalAffected: 0,evidence:graphEvidence});
+            f.requests[2].resolve(impactDto()); await tick();
             assert.equal(f.graph.innerHTML, '');
             assert.match(f.area.innerHTML, /Capability 15/);
         }
@@ -866,22 +879,22 @@ test('taxonomy selection updates the visible graph without navigating or stealin
     await f.document.getElementById('graphDownstreamBtn').fire('click');
     const diagram = f.element('svg'); diagram.focus();
     assert.equal(typeof f.window.TaxonomyGraph.selectNode, 'function');
-    f.window.TaxonomyGraph.selectNode(' BP-1040 ');
+    f.window.TaxonomyGraph.selectNode(' BP-1040 '); await tick();
     assert.equal(f.document.getElementById('graphNodeInput').value, 'BP-1040');
     assert.equal(f.document.activeElement, diagram);
     assert.equal(f.requests.at(-1).kind, 'downstream');
-    assert.deepEqual({...f.requests.at(-1).options}, {code:'BP-1040',hops:3});
+    assert.deepEqual({...f.requests.at(-1).options}, {code:'BP-1040',hops:3,context:selectedGraphContext});
     assert.match(f.document.getElementById('graphResultContext').innerHTML, /BP-1040/);
     const count = f.requests.length;
-    f.window.TaxonomyGraph.selectNode('BP-1040');
+    f.window.TaxonomyGraph.selectNode('BP-1040'); await tick();
     assert.equal(f.requests.length, count, 'Repeated selection must not duplicate a query');
-    f.requests.at(-1).resolve({originNodeCode:'BP-1040',neighbors:[],traversedRelationships:[],notes:[]}); await tick();
+    f.requests.at(-1).resolve({originNodeCode:'BP-1040',neighbors:[],traversedRelationships:[],notes:[],evidence:graphEvidence}); await tick();
     const rendered = f.graph.innerHTML;
-    f.requests[0].resolve({originNodeCode:'CP.1',neighbors:[],traversedRelationships:[],notes:[]}); await tick();
+    f.requests[0].resolve({originNodeCode:'CP.1',neighbors:[],traversedRelationships:[],notes:[],evidence:graphEvidence}); await tick();
     assert.equal(f.graph.innerHTML, rendered, 'An old result must not replace the selected node');
 });
 
-test('selection while graph is hidden defers its query until graph activation', () => {
+test('selection while graph is hidden defers its query until graph activation', async () => {
     const f = graphEntryFixture();
     assert.equal(typeof f.window.TaxonomyGraph.selectNode, 'function');
     f.window.TaxonomyGraph.selectNode('UA-1000');
@@ -889,22 +902,22 @@ test('selection while graph is hidden defers its query until graph activation', 
     assert.equal(f.window.location.hash, '#analyze');
     assert.equal(f.document.getElementById('graphNodeInput').value, 'UA-1000');
     f.document.getElementById('tab-graph').classList.remove('d-none');
-    f.document.fire('taxonomy:page-activated', {detail:{page:'graph'}});
+    f.document.fire('taxonomy:page-activated', {detail:{page:'graph'}}); await tick();
     assert.equal(f.requests.length, 1);
-    assert.deepEqual({...f.requests[0].options}, {code:'UA-1000',hops:2});
-    f.document.fire('taxonomy:page-activated', {detail:{page:'graph'}});
+    assert.deepEqual({...f.requests[0].options}, {code:'UA-1000',hops:2,context:selectedGraphContext});
+    f.document.fire('taxonomy:page-activated', {detail:{page:'graph'}}); await tick();
     assert.equal(f.requests.length, 1);
 });
 
-test('graph selection follows the active result rather than unsent input and retries after invalidation', ()=>{
+test('graph selection follows the active result rather than unsent input and retries after invalidation', async()=>{
     const f=graphEntryFixture();
     f.window.TaxonomyGraph.openGraphExplorer('CP.1');
     f.document.getElementById('graphNodeInput').value='BP-1040';
-    f.window.TaxonomyGraph.selectNode('BP-1040');
+    f.window.TaxonomyGraph.selectNode('BP-1040'); await tick();
     assert.equal(f.requests.at(-1).options.code,'BP-1040');
     f.document.fire('taxonomy:analysis-invalidated');
     const count=f.requests.length;
-    f.window.TaxonomyGraph.selectNode('BP-1040');
+    f.window.TaxonomyGraph.selectNode('BP-1040'); await tick();
     assert.equal(f.requests.length,count+1);
     assert.notEqual(f.document.getElementById('graphResultsArea').style.display,'none');
 });
@@ -913,10 +926,12 @@ test('linked graph selection retains enriched failure mode and its hop depth', a
     const f=graphEntryFixture();
     f.document.getElementById('tab-graph').classList.remove('d-none');
     f.document.getElementById('graphMaxHops').value='3';
-    await f.document.getElementById('graphEnrichedFailureBtn').fire('click');
-    assert.match(f.requests.at(-1).kind,/CP.1\/enriched-failure-impact\?maxHops=3/);
-    f.window.TaxonomyGraph.selectNode('BP-1040');
-    assert.match(f.requests.at(-1).kind,/BP-1040\/enriched-failure-impact\?maxHops=3/);
+    await f.document.getElementById('graphEnrichedFailureBtn').fire('click'); await tick();
+    assert.equal(f.requests.at(-1).kind,'enriched');
+    assert.deepEqual({...f.requests.at(-1).options},{code:'CP.1',hops:3,context:selectedGraphContext});
+    f.window.TaxonomyGraph.selectNode('BP-1040'); await tick();
+    assert.equal(f.requests.at(-1).kind,'enriched');
+    assert.deepEqual({...f.requests.at(-1).options},{code:'BP-1040',hops:3,context:selectedGraphContext});
 });
 
 function guidanceFixture(search = '') {

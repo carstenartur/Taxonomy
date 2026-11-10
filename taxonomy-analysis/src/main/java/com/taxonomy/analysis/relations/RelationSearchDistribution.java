@@ -135,6 +135,7 @@ public final class RelationSearchDistribution {
             String contributionKey, String targetRoot) {
         if (type == null || direction == null || targetRoot != null && !roots.contains(targetRoot)) return false;
         var relation = com.taxonomy.model.RelationType.valueOf(type);
+        if (!RelationDiscoveryPolicy.automatic(relation)) return false;
         for (Contribution contribution : contributions.getOrDefault(sourceId, List.of())) {
             // A missing key in legacy retained reports stays unspecified; a
             // supplied key must identify this exact contribution and route.
@@ -143,7 +144,7 @@ public final class RelationSearchDistribution {
                 if (targetRoot != null && !targetRoot.equals(root)) continue;
                 String origin = direction == Direction.OUTGOING ? contribution.source().root() : root;
                 String destination = direction == Direction.OUTGOING ? root : contribution.source().root();
-                if (rules.allowedTargetRoots(origin, relation).contains(destination)) return true;
+                if (rules.targetDomain(origin, relation).allows(destination)) return true;
             }
         }
         return false;

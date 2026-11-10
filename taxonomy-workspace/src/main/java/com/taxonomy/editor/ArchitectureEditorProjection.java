@@ -26,18 +26,19 @@ public class ArchitectureEditorProjection {
 
     public record Schema(List<String> elementTypes, List<String> elementProperties,
                          List<String> relationTypes, List<String> relationStatuses,
-                         Map<String, Map<String, java.util.Set<String>>> relationRules,
+                         Map<String, com.taxonomy.dsl.validation.RelationMetamodel.RelationDomain> relationDomains,
                          Map<String, String> typeRoots, Map<String, PropertyRule> properties, String layoutMode,
                          String layoutStrategy, Long layoutRevision) {
         public Schema(List<String> elementTypes, List<String> elementProperties, List<String> relationTypes,
-                      List<String> relationStatuses, Map<String, Map<String, java.util.Set<String>>> relationRules,
+                      List<String> relationStatuses, Map<String, com.taxonomy.dsl.validation.RelationMetamodel.RelationDomain> relationDomains,
                       Map<String, String> typeRoots, Map<String, PropertyRule> properties, String layoutMode) {
-            this(elementTypes, elementProperties, relationTypes, relationStatuses, relationRules, typeRoots,
+            this(elementTypes, elementProperties, relationTypes, relationStatuses, relationDomains, typeRoots,
                     properties, layoutMode, "stable", null);
         }
         public List<com.taxonomy.dsl.planning.PlanningProfile.Descriptor> getPlanningProfiles() {
             return new com.taxonomy.dsl.planning.PlanningInformation().descriptors();
         }
+        public String getMetamodelVersion() { return com.taxonomy.dsl.validation.RelationMetamodel.VERSION; }
         public List<String> getPackageProperties() { return List.of("title", "description"); }
         public List<String> getPackageCommands() { return List.of("CREATE_PACKAGE", "UPDATE_PACKAGE", "SET_PACKAGE_PLACEMENTS", "DELETE_PACKAGE"); }
     }
@@ -66,6 +67,11 @@ public class ArchitectureEditorProjection {
         return project(document, mayEdit, Strategy.STABLE, null);
     }
 
+    /** All visual and property evidence comes from the already frozen, fingerprinted preview. */
+    public ArchitectureReconciliationProjection.Preview compare(ArchitectureEditorService.ReconciliationPreview preview) {
+        return new ArchitectureReconciliationProjection(layout).project(preview);
+    }
+
     public View project(ArchitectureEditorService.Document document, boolean mayEdit, Strategy strategy,
                         ArchitectureEditorService.Document layoutReference) {
         return project(document, mayEdit, strategy, layoutReference, null);
@@ -86,7 +92,7 @@ public class ArchitectureEditorProjection {
         DiagramScene scene = layout.layout(diagram, strategy, reference);
         Schema schema = new Schema(types(), ArchitectureDslCommands.ELEMENT_PROPERTIES.stream().sorted().toList(),
                 DslValidator.relationTypes().stream().sorted().toList(), DslValidator.relationStatuses().stream().sorted().toList(),
-                DslValidator.relationTypeRules(), TaxonomyRootTypes.TYPE_TO_ROOT, properties(),
+                com.taxonomy.dsl.validation.RelationMetamodel.relationDomains(), TaxonomyRootTypes.TYPE_TO_ROOT, properties(),
                 strategy == Strategy.STABLE ? "DERIVED_SERVER_LAYOUT" : "DERIVED_SERVER_LAYOUT_REDUCE_CROSSINGS",
                 strategy.id(), layoutRevision);
         return new View(document, model, scene, schema, mayEdit && List.of("PRIVATE_WORKSPACE", "SHARED_WORKSPACE").contains(document.context().writeMode())
@@ -115,7 +121,7 @@ public class ArchitectureEditorProjection {
                         && (recorded == null || relations.contains(edge.id()))).toList(), diagram.layout());
     }
 
-    private DiagramModel diagram(CanonicalArchitectureModel model, String branch) {
+    static DiagramModel diagram(CanonicalArchitectureModel model, String branch) {
         Map<String, String> parents = new java.util.LinkedHashMap<>();
         model.getRelations().stream().filter(relation -> "CONTAINS".equals(relation.getRelationType()))
                 .forEach(relation -> parents.putIfAbsent(relation.getTargetId(), relation.getSourceId()));

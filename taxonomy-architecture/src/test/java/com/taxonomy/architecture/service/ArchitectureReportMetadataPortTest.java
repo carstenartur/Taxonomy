@@ -19,15 +19,10 @@ class ArchitectureReportMetadataPortTest {
         var view = mock(RequirementArchitectureView.class);
         when(views.build(anyMap(), anyString(), anyInt())).thenReturn(view);
         var gaps = mock(ArchitectureGapService.class);
-        when(gaps.analyze(anyMap(), anyString(), anyInt())).thenReturn(mock(GapAnalysisView.class));
-        var patterns = mock(ArchitecturePatternService.class);
-        var patternView = mock(PatternDetectionView.class);
-        when(patternView.getMatchedPatterns()).thenReturn(List.of());
-        when(patterns.detectForScores(anyMap(), anyInt())).thenReturn(patternView);
         var recommendations = mock(ArchitectureRecommendationService.class);
         var recommendation = mock(ArchitectureRecommendation.class);
-        when(recommendation.getConfirmedElements()).thenReturn(List.of());
-        when(recommendations.recommend(anyMap(), anyString(), anyInt())).thenReturn(recommendation);
+        when(recommendation.getMatchedElements()).thenReturn(List.of());
+        when(recommendations.rankMatches(anyMap(), anyString(), anyInt())).thenReturn(recommendation);
         var projection = mock(DiagramProjectionService.class);
         var diagram = mock(DiagramModel.class);
         when(projection.project(any(RequirementArchitectureView.class), anyString())).thenReturn(diagram);
@@ -38,7 +33,7 @@ class ArchitectureReportMetadataPortTest {
         var initial = DiagramViewMetadata.fromConfig(DiagramSelectionConfig.leafOnly(), "leafOnly");
         var updated = DiagramViewMetadata.fromConfig(DiagramSelectionConfig.trace(), "trace");
         var selected = new AtomicReference<>(initial);
-        var service = new ArchitectureReportService(views, gaps, patterns, recommendations,
+        var service = new ArchitectureReportService(views, gaps, recommendations,
                 projection, mermaid, proposals, selected::get);
 
         assertThat(service.generateReport(Map.of("A", 50d), "business", 20).getArchitectureView()).isSameAs(view);
@@ -46,6 +41,9 @@ class ArchitectureReportMetadataPortTest {
         verify(view).setViewDescription(initial.viewDescription());
         verify(view).setContainmentEnabled(initial.containmentEnabled());
         verify(view).setActiveRules(initial.activeRules());
+        var unassessed = service.generateReport(Map.of("A", 50d), "business", 20).getPatternDetection();
+        assertThat(unassessed.getPatternCoverage()).isNull();
+        assertThat(unassessed.getNotes()).anyMatch(note -> note.contains("not assessed"));
         clearInvocations(view);
         selected.set(updated);
         service.generateReport(Map.of("A", 50d), "business", 20);

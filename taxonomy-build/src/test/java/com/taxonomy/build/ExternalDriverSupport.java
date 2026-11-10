@@ -55,6 +55,8 @@ final class ExternalDriverSupport {
         Files.createDirectories(log.getParent());
         var builder=new ProcessBuilder(command).directory(root.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
         builder.environment().putAll(environment);
+        builder.environment().putIfAbsent("TAXONOMY_TOOLING_CLASSPATH", System.getProperty("taxonomy.tooling.classpath",
+                root.resolve("taxonomy-tooling/target/classes").toString()));
         if(!builder.environment().containsKey("GITHUB_SHA")) {
             var revision=new ProcessBuilder("git","rev-parse","HEAD").directory(root.toFile()).start();
             assertTrue(revision.waitFor(10,TimeUnit.SECONDS),"Cannot resolve source commit");

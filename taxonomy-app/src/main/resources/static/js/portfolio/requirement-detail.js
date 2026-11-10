@@ -29,6 +29,11 @@
     const text = {
         en: {
             loading: 'Loading…', matrices: 'Matrices',
+            obligationAssessment: 'Obligation assessment', profile: 'Obligation profile',
+            canonicalMembers: 'Elements in the selected model', meanRelevance: 'Mean relevance',
+            noJudgments: 'No obligations were evaluated; this is not a completeness claim.',
+            SATISFIED: 'Satisfied', VIOLATED: 'Violated', INCONCLUSIVE: 'Inconclusive',
+            observedRequired: 'Observed / required', evidenceScope: 'Recorded evidence scope',
             detail: 'Requirement detail', analyze: 'Analyze current version',
             newVersion: 'New version', open: 'Open decisions', textSource: 'Text & source',
             versions: 'Versions', analyses: 'Analyses', architecture: 'Taxonomy & architecture',
@@ -83,6 +88,11 @@
         },
         de: {
             loading: 'Wird geladen…', matrices: 'Matrizen',
+            obligationAssessment: 'Pflichtenbewertung', profile: 'Pflichtenprofil',
+            canonicalMembers: 'Elemente im gewählten Modell', meanRelevance: 'Mittlere Relevanz',
+            noJudgments: 'Keine Pflichten wurden bewertet; dies ist keine Vollständigkeitsbehauptung.',
+            SATISFIED: 'Erfüllt', VIOLATED: 'Verletzt', INCONCLUSIVE: 'Ungeklärt',
+            observedRequired: 'Beobachtet / erforderlich', evidenceScope: 'Gespeicherter Evidenzbereich',
             detail: 'Anforderungsdetails', analyze: 'Aktuelle Version analysieren',
             newVersion: 'Neue Version', open: 'Offene Entscheidungen', textSource: 'Text & Quelle',
             versions: 'Versionen', analyses: 'Analysen', architecture: 'Taxonomie & Architektur',
@@ -503,24 +513,23 @@
         const analysis = detail.analysis || {};
         const copilot = analysis.copilot;
         const retained = Boolean(copilot);
-        const skipped = copilot?.state === 'SKIPPED_PARTIAL' || copilot?.state === 'SKIPPED_SCOPE';
+        const skipped = (retained && copilot.schemaVersion !== 2) || copilot?.state === 'SKIPPED_PARTIAL' || copilot?.state === 'SKIPPED_SCOPE';
         const warnings = asArray(analysis.warnings).concat(asArray(copilot?.notes));
         const gap = retained ? copilot.gaps || {} : detail.gapAnalysis || {};
         const patterns = retained ? copilot.patterns || {} : detail.patternDetection || {};
         const recommendation = retained ? copilot.recommendation || {} : detail.recommendation || {};
         const mappings = asArray(detail.elementMappings);
         const relations = asArray(detail.relationMappings);
-        const missing = asArray(gap.missingRelations);
-        const coverage = asArray(gap.coverageGaps);
-        const incomplete = asArray(gap.incompletePatterns);
+        const judgments = asArray(gap.judgments);
         const matched = asArray(patterns.matchedPatterns);
-        const confirmed = asArray(recommendation.confirmedElements);
+        const matches = asArray(recommendation.matchedElements);
+        const accepted = asArray(recommendation.acceptedElements);
         const proposed = asArray(recommendation.proposedElements);
         const suggested = asArray(recommendation.suggestedRelations);
         const reasoning = asArray(recommendation.reasoning);
-        const gapCount = safeNumber(gap.totalGaps, missing.length);
-        const patternPercent = percentage(patterns.patternCoverage);
-        const recommendationPercent = percentage(recommendation.confidence);
+        const violated = judgments.filter(item => item.status === 'VIOLATED').length;
+        const inconclusive = judgments.filter(item => item.status === 'INCONCLUSIVE').length;
+        const relevance = recommendation.meanRelevance == null ? null : Math.round(recommendation.meanRelevance * 10) / 10;
 
         const overview = `<section id="snapshotResultOverview" class="portfolio-result-overview mt-3" aria-labelledby="snapshotResultTitle">`
             + `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-2">`
@@ -530,15 +539,15 @@
             + resultMetric(t('mappedElements'), mappings.length,
                 mappings.filter(item => item.selectedForImpact).length + ' ' + t('direct'), 'primary')
             + resultMetric(t('mappedRelations'), relations.length, '', 'info')
-            + resultMetric(t(retained ? 'compatibilityChecks' : 'openGaps'), skipped ? '—' : gapCount,
-                skipped ? t('notEvaluated') : missing.length + ' ' + t(retained ? 'compatibilityChecks' : 'missingRelations'),
-                retained ? 'secondary' : gapCount > 0 ? 'warning' : 'success')
-            + resultMetric(t('patternCoverage'), skipped ? '—' : patternPercent + '%',
-                skipped ? t('notEvaluated') : matched.length + ' ' + t('matchedPatterns'), skipped ? 'secondary' : patternPercent >= 70 ? 'success' : 'warning')
-            + resultMetric(t(retained ? 'meanRetainedRelevance' : 'recommendationConfidence'), skipped ? '—' : recommendationPercent + '%',
-                skipped ? t('notEvaluated') : suggested.length + ' ' + t('suggestedRelations'), skipped ? 'secondary' : recommendationPercent >= 70 ? 'success' : 'warning')
-            + resultMetric(t(retained ? 'assessmentMatches' : 'confirmedElements'), skipped ? '—' : confirmed.length,
-                skipped ? t('notEvaluated') : proposed.length + ' ' + t('proposedElements'), retained ? 'secondary' : 'success')
+            + resultMetric(t('obligationAssessment'), skipped || !judgments.length ? '—' : violated,
+                skipped || !judgments.length ? t('notEvaluated') : inconclusive + ' ' + t('INCONCLUSIVE'),
+                violated ? 'warning' : 'secondary')
+            + resultMetric(t('patternCoverage'), skipped || !matched.length ? '—' : percentage(patterns.patternCoverage) + '%',
+                skipped || !matched.length ? t('notEvaluated') : matched.length + ' ' + t('matchedPatterns'), 'secondary')
+            + resultMetric(t('meanRelevance'), skipped || relevance === null ? '—' : relevance + '%',
+                skipped || relevance === null ? t('notEvaluated') : suggested.length + ' ' + t('suggestedRelations'), 'secondary')
+            + resultMetric(t('assessmentMatches'), skipped ? '—' : matches.length,
+                skipped ? t('notEvaluated') : accepted.length + ' ' + t('canonicalMembers'), 'secondary')
             + `</div></section>`;
 
         const warningHtml = warnings.length
@@ -568,9 +577,9 @@
             ? analysis.relationSearchReport : analysis.architectureView?.relationSearchReport;
         return overview + renderRelationSearchSummary(relationReport) + warningHtml
             + (skipped ? '' : `<div class="portfolio-result-grid mt-3">`
-                + renderGapResult(gap, missing, coverage, incomplete, retained)
+                + renderGapResult(gap, judgments)
                 + renderPatternResult(patterns, matched, retained)
-                + renderRecommendationResult(recommendation, confirmed, proposed, suggested, reasoning, retained)
+                + renderRecommendationResult(recommendation, matches, accepted, proposed, suggested, reasoning)
                 + `</div>`) + technicalHtml;
     }
 
@@ -599,26 +608,25 @@
             + `</article>`;
     }
 
-    function renderGapResult(gap, missing, coverage, incomplete, retained) {
-        const topMissing = missing.slice(0, 5);
-        const findings = topMissing.length
-            ? `<ol class="portfolio-finding-list">${topMissing.map(item => `<li><code>${escapeHtml(item.sourceNodeCode || '—')}</code> `
-                + `<strong>${escapeHtml(humanize(item.expectedRelationType || 'RELATED_TO'))}</strong> `
-                + `→ <span>${escapeHtml(item.expectedTargetRoot || '—')}</span>`
-                + `<small>${escapeHtml(item.description || '')}</small></li>`).join('')}</ol>`
-            : `<p class="text-body-secondary mb-0">—</p>`;
+    function renderGapResult(gap, judgments) {
+        const counts = ['SATISFIED', 'VIOLATED', 'INCONCLUSIVE'].map(status =>
+            `<span class="badge ${status === 'VIOLATED' ? 'text-bg-warning' : 'text-bg-secondary'}">${judgments.filter(item => item.status === status).length} ${escapeHtml(t(status))}</span>`).join(' ');
+        const scope = [gap.repositoryId, gap.workspaceScopeKey || gap.workspaceId, gap.branch, gap.commitId,
+            gap.evidenceAuthority, gap.evidenceCompleteness].filter(value => value != null && value !== '').join(' · ');
+        const findings = judgments.length ? `<ol class="portfolio-finding-list">${judgments.map(item =>
+            `<li><strong>${escapeHtml(item.ruleId || '—')}</strong> · ${escapeHtml(t(item.status))}`
+            + ` · ${escapeHtml(item.severity || '—')}<div><code>${escapeHtml(item.sourceNodeCode || '—')}</code> `
+            + `${escapeHtml(item.relationType || '—')} → ${escapeHtml(asArray(item.targetRoots).join(', '))}</div>`
+            + `<div>${escapeHtml(t('observedRequired'))}: ${escapeHtml(String(item.observedCount ?? '—'))} / `
+            + `${escapeHtml(String(item.minCount ?? '—'))}–${escapeHtml(String(item.maxCount ?? '∞'))}</div>`
+            + `<small>${escapeHtml(item.description || '')}</small></li>`).join('')}</ol>`
+            : `<p class="text-body-secondary">${escapeHtml(t('noJudgments'))}</p>`;
         return `<section id="gapResultSection" class="portfolio-result-panel" aria-labelledby="gapResultTitle">`
-            + `<div class="portfolio-result-panel-header"><h3 id="gapResultTitle" class="h6 mb-0">${escapeHtml(t(retained ? 'compatibilityChecks' : 'gapAnalysis'))}</h3>`
-            + `<div class="d-flex flex-wrap gap-1"><span class="badge text-bg-secondary">${safeNumber(gap.totalAnchors, 0)} ${escapeHtml(t('anchorsEvaluated'))}</span>`
-            + `<span class="badge ${retained ? 'text-bg-secondary' : safeNumber(gap.totalGaps, 0) > 0 ? 'text-bg-warning' : 'text-bg-success'}">${safeNumber(gap.totalGaps, 0)} ${escapeHtml(t(retained ? 'compatibilityChecks' : 'openGaps'))}</span></div></div>`
-            + `<h4 class="small fw-semibold mt-3">${escapeHtml(t('highestPriority'))}</h4>${findings}`
-            + renderFindingDetails(t(retained ? 'compatibilityChecks' : 'missingRelations'), missing,
-                ['sourceNodeCode', 'expectedRelationType', 'expectedTargetRoot', 'description'])
-            + renderFindingDetails(t('coverageGaps'), coverage,
-                ['nodeCode', 'coverageScore', 'gapDescription'])
-            + renderFindingDetails(t('incompletePatterns'), incomplete,
-                ['nodeCode', 'patternDescription', 'missingElement'])
-            + `</section>`;
+            + `<div class="portfolio-result-panel-header"><h3 id="gapResultTitle" class="h6 mb-0">${escapeHtml(t('obligationAssessment'))}</h3>`
+            + `<div class="d-flex flex-wrap gap-1">${counts}</div></div>`
+            + `<p class="small mt-3">${escapeHtml(t('profile'))}: ${escapeHtml(gap.profileId || '—')}@${escapeHtml(gap.profileVersion || '—')}</p>`
+            + `<p class="small text-break">${escapeHtml(t('evidenceScope'))}: ${escapeHtml(scope || t('notEvaluated'))}</p>`
+            + findings + asArray(gap.notes).map(note => `<p class="small">${escapeHtml(note)}</p>`).join('') + `</section>`;
     }
 
     function renderPatternResult(patterns, matched, retained) {
@@ -641,11 +649,11 @@
         }).join('') : `<p class="text-body-secondary mb-0">—</p>`;
         return `<section id="patternResultSection" class="portfolio-result-panel" aria-labelledby="patternResultTitle">`
             + `<div class="portfolio-result-panel-header"><h3 id="patternResultTitle" class="h6 mb-0">${escapeHtml(t('patternDetection'))}</h3>`
-            + `<span class="badge text-bg-success">${percentage(patterns.patternCoverage)}%</span></div>`
+            + `<span class="badge text-bg-secondary">${displayed.length && patterns.patternCoverage != null ? percentage(patterns.patternCoverage) + '%' : escapeHtml(t('notEvaluated'))}</span></div>`
             + `<div class="vstack gap-2 mt-3">${cards}</div></section>`;
     }
 
-    function renderRecommendationResult(recommendation, confirmed, proposed, suggested, reasoning, retained) {
+    function renderRecommendationResult(recommendation, matches, accepted, proposed, suggested, reasoning) {
         const reasoningHtml = reasoning.length
             ? `<ul class="portfolio-reasoning-list">${reasoning.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
             : `<p class="text-body-secondary mb-0">—</p>`;
@@ -661,12 +669,21 @@
             : '';
         return `<section id="recommendationResultSection" class="portfolio-result-panel portfolio-result-panel-wide" aria-labelledby="recommendationResultTitle">`
             + `<div class="portfolio-result-panel-header"><h3 id="recommendationResultTitle" class="h6 mb-0">${escapeHtml(t('recommendation'))}</h3>`
-            + `<span class="badge ${percentage(recommendation.confidence) >= 70 ? 'text-bg-success' : 'text-bg-warning'}">${percentage(recommendation.confidence)}%</span></div>`
+            + `<span class="badge text-bg-secondary">${escapeHtml(t('meanRelevance'))}: ${recommendation.meanRelevance == null ? escapeHtml(t('notEvaluated')) : Math.round(recommendation.meanRelevance * 10) / 10 + '%'}</span></div>`
             + `<div class="d-flex flex-wrap gap-2 mt-3">`
-            + `<span class="badge ${retained ? 'text-bg-secondary' : 'text-bg-success'}">${confirmed.length} ${escapeHtml(t(retained ? 'assessmentMatches' : 'confirmedElements'))}</span>`
+            + `<span class="badge text-bg-secondary">${matches.length} ${escapeHtml(t('assessmentMatches'))}</span><span class="badge text-bg-secondary">${accepted.length} ${escapeHtml(t('canonicalMembers'))}</span>`
             + `<span class="badge text-bg-warning">${proposed.length} ${escapeHtml(t('proposedElements'))}</span>`
             + `<span class="badge text-bg-info">${suggested.length} ${escapeHtml(t('suggestedRelations'))}</span></div>`
+            + renderElementEvidence(t('assessmentMatches'), matches)
+            + renderElementEvidence(t('canonicalMembers'), accepted)
+            + renderElementEvidence(t('proposedElements'), proposed)
             + `<h4 class="small fw-semibold mt-3">${escapeHtml(t('reasoning'))}</h4>${reasoningHtml}${relationDetails}</section>`;
+    }
+
+    function renderElementEvidence(label, elements) {
+        return `<h4 class="small fw-semibold mt-3">${escapeHtml(label)}</h4>`
+            + (elements.length ? `<ul>${elements.map(item => `<li><code>${escapeHtml(item.nodeCode || '—')}</code> `
+                + `${escapeHtml(item.title || item.name || '')}</li>`).join('')}</ul>` : `<p class="text-body-secondary">—</p>`);
     }
 
     function renderFindingDetails(label, items, fields) {

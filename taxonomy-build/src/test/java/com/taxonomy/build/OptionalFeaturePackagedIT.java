@@ -96,7 +96,7 @@ class OptionalFeaturePackagedIT {
             formats.forEach(format -> formatIds.add(format.path("id").asText()));
             assertThat(formatIds).as(exportDiagnostics).contains("svg");
             assertThat(app.request("GET", "/api/admin/document-templates", null).statusCode()).isEqualTo(selected.contains("templates") ? 200 : 404);
-            assertThat(app.request("GET", "/api/graph/apqc-hierarchy", null).statusCode()).isEqualTo(selected.contains("architecture") ? 200 : 404);
+            assertThat(app.request("GET", "/api/graph/apqc-hierarchy", null).statusCode()).isEqualTo(selected.contains("architecture") ? 400 : 404);
             var workspace = app.request("GET", "/api/workspace/current", null);
             assertThat(workspace.statusCode()).as(workspace.body() + "\n" + Files.readString(app.log())).isEqualTo(200);
             String workspaceId = new tools.jackson.databind.json.JsonMapper().readTree(workspace.body()).path("workspaceId").asText();
