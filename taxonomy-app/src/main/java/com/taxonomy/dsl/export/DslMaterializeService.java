@@ -4,6 +4,7 @@ import com.taxonomy.architecture.model.ArchitectureDslDocument;
 import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
 import com.taxonomy.catalog.model.TaxonomyRelation;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
+import com.taxonomy.dsl.ast.DocumentAst;
 import com.taxonomy.dsl.diff.ModelDiff;
 import com.taxonomy.dsl.diff.ModelDiffer;
 import com.taxonomy.dsl.mapper.AstToModelMapper;
@@ -27,7 +28,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -61,6 +65,7 @@ public class DslMaterializeService {
     private final AstToModelMapper astMapper = new AstToModelMapper();
     private final DslValidator validator = new DslValidator();
     private final ModelDiffer differ = new ModelDiffer();
+    private TransactionOperations materializationTransaction = TransactionOperations.withoutTransaction();
 
     @Autowired
     public DslMaterializeService(TaxonomyRelationService relationService,
@@ -92,6 +97,11 @@ public class DslMaterializeService {
                 repositoryStateService, null, contextResolver);
     }
 
+    @Autowired
+    void configureMaterializationTransaction(PlatformTransactionManager transactionManager) {
+        materializationTransaction = new TransactionTemplate(transactionManager);
+    }
+
     public record MaterializeResult(
             boolean valid,
             List<String> errors,
@@ -102,7 +112,6 @@ public class DslMaterializeService {
     ) {}
 
     /** Parse, validate and materialize a complete DSL document. */
-    @Transactional
     public MaterializeResult materialize(
             String dslText, String path, String branch, String commitId) {
         var documentAst = parser.parse(dslText, path);
@@ -114,12 +123,21 @@ public class DslMaterializeService {
                     0, 0, null);
         }
 
+        // Initial workspace resolution can publish to Git in a separate store.
+        // Complete it before the projection writes enter their transaction.
         RepositoryContext context = currentRepositoryContext();
         // The API branch is optional; an explicit branch must still agree with
         // the already-authorized selection used for every projection below.
         if (branch != null) {
             requireSelectedBranch(branch, context);
         }
+        return materializationTransaction.execute(status -> persistMaterialization(
+                dslText, path, commitId, documentAst, model, validation.getWarnings(), context));
+    }
+
+    private MaterializeResult persistMaterialization(
+            String dslText, String path, String commitId, DocumentAst documentAst,
+            CanonicalArchitectureModel model, List<String> warnings, RepositoryContext context) {
         int relationsCreated = 0;
         int hypothesesCreated = 0;
 
@@ -175,7 +193,7 @@ public class DslMaterializeService {
             repositoryStateService.recordProjection(context.username(), commitId, context.branch());
         }
 
-        return new MaterializeResult(true, List.of(), validation.getWarnings(),
+        return new MaterializeResult(true, List.of(), warnings,
                 relationsCreated, hypothesesCreated, saved.getId());
     }
 
