@@ -200,7 +200,7 @@ public class RelationProposalService {
                 tenant.repositoryId(),
                 tenant.workspaceId(),
                 tenant.branch(),
-                existingRelations.authoritativeCommitId());
+                existingRelations.commitId());
         return proposals;
     }
 
