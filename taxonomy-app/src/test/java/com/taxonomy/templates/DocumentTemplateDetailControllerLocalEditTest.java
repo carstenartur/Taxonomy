@@ -18,10 +18,10 @@ import com.taxonomy.templates.api.TemplateManifest;
 import com.taxonomy.templates.api.TemplateNotFoundException;
 import com.taxonomy.templates.api.TemplateFile;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
-import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
-import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -44,6 +44,7 @@ import org.thymeleaf.web.servlet.JakartaServletWebApplication;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -97,11 +98,12 @@ class DocumentTemplateDetailControllerLocalEditTest {
     }
 
     @Test
-    void savedDecisionSamplesRenderTheSelectedTemplateBytesAndProvenance() throws Exception {
+    void savedDecisionSamplesRenderTheSelectedTemplateBytesAndProvenance(@TempDir Path directory) throws Exception {
         String id = DecisionRationaleTemplateContract.TEMPLATE_ID;
         String path = "/admin/document-templates/" + id + "/test.docx";
-        try (var git = new InMemoryRepository(new DfsRepositoryDescription("pinned-template-preview"));
+        try (var git = new FileRepositoryBuilder().setGitDir(directory.toFile()).setBare().build();
              var context = new AnnotationConfigApplicationContext()) {
+            git.create(true);
             var codec = new OoxmlTemplatePackageCodec();
             var contract = new DecisionRationaleTemplateContract();
             var stored = new DocumentTemplateService(new DocumentTemplateGitRepository(git), codec, List.of(contract));
@@ -131,7 +133,9 @@ class DocumentTemplateDetailControllerLocalEditTest {
             assertSample(historical.getContentAsByteArray(), original, "Historical branding", "Current branding");
             var unpinned = mvc.perform(get(path)).andExpect(status().isOk()).andReturn().getResponse();
             assertSample(unpinned.getContentAsByteArray(), current, "Current branding", "Historical branding");
-            mvc.perform(get(path).param("revision", "HEAD")).andExpect(status().isBadRequest());
+            for (String invalidRevision : List.of("", " ", "HEAD")) {
+                mvc.perform(get(path).param("revision", invalidRevision)).andExpect(status().isBadRequest());
+            }
             mvc.perform(get(path).param("revision", "0".repeat(40))).andExpect(status().isNotFound());
             assertThat(stored.history(id)).isEqualTo(history);
             assertThat(stored.describeCurrent(id)).isEqualTo(current);

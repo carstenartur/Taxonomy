@@ -10,6 +10,8 @@ import com.taxonomy.templates.api.TemplateDiff;
 import com.taxonomy.templates.api.TemplateNotFoundException;
 import com.taxonomy.templates.api.TemplateFile;
 import com.taxonomy.templates.api.TemplatePartView;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
@@ -169,7 +171,11 @@ public final class DocumentTemplateDetailController {
     @io.swagger.v3.oas.annotations.Operation(summary = "Render a document-template test report",
             description = "Generates a no-store DOCX attachment from fixed preview data. An optional full revision selects an immutable template for families that support pinned previews. Omit the revision for the contributed active-template preview.")
     @ApiResponse(responseCode = "200", description = "Render a document-template test report response")
+    @ApiResponse(responseCode = "400", description = "Invalid revision or unsupported test report for this template family")
+    @ApiResponse(responseCode = "404", description = "The requested template revision does not exist")
     public ResponseEntity<byte[]> testReport(@PathVariable String templateId,
+            @Parameter(description = "Full 40-character hexadecimal commit ID. Omit it to use the active template.",
+                    schema = @Schema(pattern = "^[0-9a-fA-F]{40}$"))
             @RequestParam(required = false) String revision) throws IOException {
         var contribution = contributions.get(templateId);
         if (contribution == null || contribution.preview() == null) {

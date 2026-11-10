@@ -108,11 +108,15 @@ export async function editDownloadedTemplate(original, edited, marker) {
 }
 
 export async function readDocumentPart(archive) {
+  return readArchivePart(archive, 'word/document.xml');
+}
+
+async function readArchivePart(archive, part) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'taxonomy-local-inspect-'));
   try {
-    await exec('jar', ['--extract', '--file', path.resolve(archive), 'word/document.xml'],
+    await exec('jar', ['--extract', '--file', path.resolve(archive), part],
       { cwd: directory });
-    return await readFile(path.join(directory, 'word/document.xml'), 'utf8');
+    return await readFile(path.join(directory, part), 'utf8');
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -206,14 +210,34 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     // Verify the positive branch without modifying the bundled decision template.
     const decisionTag = source.headers()['etag'];
     assert.match(decisionTag, /^"[a-f0-9]{40}"$/);
+    const decisionRevision = decisionTag.slice(1, -1);
     await first.goto(endpoint('/admin/document-templates/decision-rationale-report/local-edit')
-      + '?revision=' + decisionTag.slice(1, -1) + '&lang=' + language);
+      + '?revision=' + decisionRevision + '&lang=' + language);
     await expect(first.locator('#localTemplateSample')).toHaveCount(1);
     await expect(first.locator('#localTemplateSampleHelp')).toHaveCount(1);
     await expect(first.locator('#localTemplateSample')).toHaveAttribute(
       'aria-describedby', 'localTemplateSampleHelp');
     await expect(first.locator('#localTemplateSampleHelp')).toContainText(language === 'de'
-      ? 'keine Prüfung vor der Veröffentlichung' : 'not a pre-publication check');
+      ? 'die oben angezeigte Version und Beispieldaten'
+      : 'the exact version shown above and sample data');
+    const startingSample = first.locator('#localTemplateStartingSample');
+    const sampleUrl = endpoint('/admin/document-templates/decision-rationale-report/test.docx')
+      + '?revision=' + decisionRevision;
+    assert.equal(new URL(await startingSample.getAttribute('href'), first.url()).href, sampleUrl);
+    const [sampleDownload] = await Promise.all([
+      first.waitForEvent('download'), startingSample.click()
+    ]);
+    assert.equal(await sampleDownload.failure(), null);
+    const sampleFile = path.join(directory, 'starting-decision-sample.docx');
+    await sampleDownload.saveAs(sampleFile);
+    const customProperties = await readArchivePart(sampleFile, 'docProps/custom.xml');
+    const sampleRevision = await first.evaluate(xml => {
+      const properties = new DOMParser().parseFromString(xml, 'application/xml').getElementsByTagNameNS(
+        'http://schemas.openxmlformats.org/officeDocument/2006/custom-properties', 'property');
+      return Array.from(properties)
+        .find(property => property.getAttribute('name') === 'Taxonomy.Template.Commit')?.textContent.trim();
+    }, customProperties);
+    assert.equal(sampleRevision, decisionRevision, 'The downloaded DOCX must identify the starting revision');
     await first.goto(endpoint('/admin/document-templates?lang=' + language));
     const seeded = await context.request.put(api + '?displayName=Local-edit-QA-' + language, {
       data: await source.body(), headers: { 'Content-Type': mediaType, [csrf.name]: csrf.value }
@@ -284,6 +308,7 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     assert.notEqual(head, initial);
     await expect(first.locator('#localTemplateResult')).toBeVisible();
     // Generic templates have neither a sample action nor an explanation for it.
+    await expect(first.locator('#localTemplateStartingSample')).toHaveCount(0);
     await expect(first.locator('#localTemplateSample')).toHaveCount(0);
     await expect(first.locator('#localTemplateSampleHelp')).toHaveCount(0);
     await expect(first.locator('#localTemplateSavedRevision')).toHaveText(head);
@@ -352,6 +377,7 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     return { ...configuration, templateId: id, initial, head, uploads, routeStatuses, restoration,
       saveReceiptSource: 'HTTP_201_ETAG_AND_RENDERED_JSON_RESULT',
       selectedFileSha256: expectedBodies.map(sha256),
+      startingDecisionSampleRevision: sampleRevision,
       sampleHelpScopedToDecisionTemplate: true,
       storedDocumentMatchesSelectedFile: true, storedDocumentSha256: sha256(storedXml),
       historyEntries: beforeHistory.length, winnerSha256: sha256(beforeConflict),
