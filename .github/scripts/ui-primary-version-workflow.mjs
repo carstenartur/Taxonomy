@@ -1,16 +1,53 @@
 import { randomUUID } from 'node:crypto';
 import { navigateToPage } from './ui-role-fixtures.mjs';
 
+const driverFailureReasons = new Map([
+  ['Invalid isolated comparison fixture', 'invalid fixture'],
+  ['Comparison fixture identity already exists', 'fixture identity collision'],
+  ['A real DSL baseline is required', 'missing DSL baseline'],
+  ['Invalid baseline commit result', 'invalid baseline commit'],
+  ['Invalid relation change commit result', 'invalid relation change commit'],
+  ['Expected exactly one changed relation', 'unexpected relation diff'],
+  ['Comparison commits changed the active draft', 'active draft changed'],
+  ['No branch selected on the loaded Versions page', 'no selected branch'],
+  ['The relation-only restore preview must report its change', 'incomplete restore preview'],
+  ['Valid preview must enable confirmation', 'valid restore disabled'],
+  ['Failed comparisons must not be blank', 'blank comparison error'],
+  ['Failed previews must not enable restore', 'invalid restore enabled'],
+  ['QA branch inventory is unavailable', 'inventory unavailable'],
+  ['QA branch cleanup was not confirmed', 'ref still present'],
+]);
+
+// Only known categories go into the reported aggregate: browser messages can include response bodies and URLs.
+function failureReason(error) {
+  const message = typeof error?.message === 'string' ? error.message.slice(0, 160)
+    .split(/\r?\n/, 1)[0].replace(/^(?:page|locator)\.\w+: /, '').replace(/^(?:ApiError|Error): /, '') : '';
+  if (driverFailureReasons.has(message)) return driverFailureReasons.get(message);
+  if (message.startsWith('Real version comparison omitted ')) return 'incomplete comparison evidence';
+  const http = /^HTTP ([1-5]\d{2})\b/.exec(message);
+  if (http) return 'HTTP ' + http[1];
+  if (error?.name === 'TimeoutError' || /^(?:Timeout \d+ms exceeded|Request timed out after \d+ ms)\b/.test(message)) return 'timeout';
+  if (message === 'Network request failed') return 'network failure';
+  if (message === 'Request was cancelled' || message === 'Request context was superseded') return 'cancelled';
+  if (error?.name === 'AssertionError') return 'assertion';
+  return 'other failure';
+}
+
 /** Allocate the ref before setup so partial failures cannot lose its cleanup identity. */
-export async function usingComparisonBranch(run, cleanup) {
+export async function usingComparisonBranch(run, cleanup, restoreSelection) {
   const branch = 'qa-compare-' + randomUUID();
-  let failure, result;
-  try { result = await run(branch); } catch (error) { failure = error; }
-  try { await cleanup(branch); } catch (error) {
-    if (failure) throw new AggregateError([failure, error], 'Comparison and branch cleanup failed');
-    throw error;
+  const failures = [];
+  let result;
+  try { result = await run(branch); } catch (error) { failures.push(['comparison', error]); }
+  try { await cleanup(branch); } catch (error) { failures.push(['branch cleanup', error]); }
+  if (restoreSelection) {
+    try { await restoreSelection(); } catch (error) { failures.push(['selection restore', error]); }
   }
-  if (failure) throw failure;
+  if (failures.length === 1) throw failures[0][1];
+  if (failures.length > 1) {
+    throw new AggregateError(failures.map(([, error]) => error),
+      failures.map(([phase, error]) => phase + ': ' + failureReason(error)).join('; '));
+  }
   return result;
 }
 
@@ -33,7 +70,7 @@ export function comparisonDocuments(original, branch) {
 export async function removeComparisonBranch(name, api = window.TaxonomyApiClient) {
   const inventory = async () => {
     const data = await api.getJson('/api/git/branches', { retries: 0 });
-    const branches = data.branches || data;
+    const branches = data?.branches || data;
     if (!Array.isArray(branches)) throw new Error('QA branch inventory is unavailable');
     return branches;
   };
@@ -47,13 +84,13 @@ export async function removeComparisonBranch(name, api = window.TaxonomyApiClien
 /** Full application acceptance. The happy path compares real Git versions; no LLM calls. */
 export async function runVersionComparisonWorkflow({ page, role, evidence }) {
   if (role !== 'ADMIN') return;
-  const previousBranch = await page.locator('#versionsBranchSelect').inputValue();
+  let previousBranch;
   await usingComparisonBranch(async branch => {
     const fixture = comparisonDocuments('', branch);
     const versions = await page.evaluate(async ({ branch, fixture }) => {
       const api = window.TaxonomyApiClient;
       const head = await api.getJson('/api/dsl/git/head?branch=draft');
-      const original = head.dslText;
+      const original = head?.dslText;
       if (!original) throw new Error('A real DSL baseline is required');
       if (original.includes(fixture.sourceId) || original.includes(fixture.targetId)) throw new Error('Comparison fixture identity already exists');
       const { before, after } = fixture;
@@ -63,11 +100,12 @@ export async function runVersionComparisonWorkflow({ page, role, evidence }) {
           method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: text
         });
         const result = await response.json();
-        if (!result.valid || !result.commitId) throw new Error('QA version commit failed');
-        return result.commitId;
+        return result?.valid && result.commitId;
       }
       const left = await commit(original + fixture.left, 'QA isolated comparison baseline');
+      if (!left) throw new Error('Invalid baseline commit result');
       const right = await commit(original + fixture.right, 'QA isolated relation status change');
+      if (!right) throw new Error('Invalid relation change commit result');
       const diff = await api.getJson('/api/dsl/diff/' + left + '/' + right);
       if (diff.changedRelations !== 1 || diff.totalChanges !== 1) throw new Error('Expected exactly one changed relation');
       const unchanged = await api.getJson('/api/dsl/git/head?branch=draft');
@@ -77,7 +115,12 @@ export async function runVersionComparisonWorkflow({ page, role, evidence }) {
     await navigateToPage(page,'versions');
     await page.evaluate(() => window.TaxonomyVersions.loadTimeline());
     await page.locator(`#versionsBranchSelect option[value="${versions.branch}"]`).waitFor({ state: 'attached' });
-    await page.locator('#versionsBranchSelect').selectOption(versions.branch);
+    const select = page.locator('#versionsBranchSelect');
+    const selected = await select.inputValue();
+    if (!selected) throw new Error('No branch selected on the loaded Versions page');
+    // selectOption may change the DOM before its promise rejects.
+    if (selected !== branch) previousBranch = selected;
+    await select.selectOption(versions.branch);
     const compare = page.locator(`[data-action="compare"][data-commit="${versions.left}"]`);
     await compare.click();
     const result = page.locator('#versionComparisonResults');
@@ -122,13 +165,10 @@ export async function runVersionComparisonWorkflow({ page, role, evidence }) {
     } finally {
       await page.unroute(diffRoute, fail);
     }
-  }, async branch => {
-    try {
-      await page.evaluate(removeComparisonBranch, branch);
-    } finally {
-      await page.locator('#versionsBranchSelect').selectOption(previousBranch || 'draft');
-      await page.evaluate(() => window.TaxonomyVersions.loadTimeline());
-    }
+  }, branch => page.evaluate(removeComparisonBranch, branch), async () => {
+    if (!previousBranch) return;
+    await page.locator('#versionsBranchSelect').selectOption(previousBranch);
+    await page.evaluate(() => window.TaxonomyVersions.loadTimeline());
   });
   evidence.passed('Real relation-only version comparison, correct restore direction, visible failures and QA branch cleanup');
 }

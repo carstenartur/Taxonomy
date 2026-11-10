@@ -77,7 +77,7 @@ window.AnalysisApi = (function () {
                 headers: {'Content-Type': 'application/json'}, body: jsonText}, options);
         },
         captureContext:captureContext,
-        gapProfiles:function () { return client.getJson('/api/gap/profiles'); },
+        gapProfiles:function () { return client.getJson('/api/gap/profiles', {contextSensitive: false}); },
         analyzeGap:function (payload, context) { return assess('/api/gap/analyze', payload, context); },
         recommend:function (payload, context) { return assess('/api/recommend', payload, context); },
         detectPatterns:function (payload, context) { return assess('/api/patterns/detect', payload, context); },

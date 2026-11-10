@@ -6,6 +6,7 @@ import vm from 'node:vm';
 const root = new URL('../../taxonomy-app/src/main/resources/static/js/', import.meta.url);
 const sources = new Map();
 for (const path of ['api/taxonomy-api-client.js', 'api/analysis-api.js', 'api/portfolio-api.js',
+  'api/workspace-api.js', 'versioning/taxonomy-context-bar.js',
   'api/import-api.js', 'api/analysis-session-api.js', 'core/taxonomy-analysis-session-core.js',
   'core/taxonomy-analysis-session-transport.js', 'portfolio/taxonomy-portfolio-async.js',
   'core/taxonomy-analysis.js', 'shared/taxonomy-document-import.js', 'shared/taxonomy-import.js', 'api/export-api.js',
@@ -375,6 +376,61 @@ function startImportProfiles(fetchImpl) {
 
 const profileFixture = [{profileId: 'archimate', displayName: 'ArchiMate', acceptedFileFormat: 'xml',
   supportedElementTypes: ['ApplicationComponent'], supportedRelationTypes: ['Serving']}];
+
+for (const boundary of ['source hydration', 'page exit', 'other request loses authorization', 'HTTP 503', 'deadline']) {
+  test(`initial obligation-profile selector handles ${boundary} before any assessment`, async () => {
+    const held = deferred(), calls = [];
+    const profiles = [{id:'compatibility', version:'1.0.0', description:'Compatibility'},
+      {id:'service-support', version:'1.0.0', description:'Service support'}];
+    const select = {dataset:{}, value:'compatibility', options:[{value:'compatibility', textContent:'Loading profiles…'}],
+      replaceChildren() {this.options = [];}, append(option) {this.options.push(option);}};
+    const panel = node(); panel.innerHTML = 'Previous panel content';
+    const app = boot((url, init) => {
+      const path = new URL(url, 'https://taxonomy.example').pathname;
+      calls.push({path, init});
+      if (path === '/taxonomy/api/gap/profiles') return held.promise;
+      assert.equal(path, '/taxonomy/api/context/current');
+      return boundary === 'other request loses authorization' ? Response.json({}, {status:403})
+        : Response.json({contextId:'selected', branch:'draft', commitId:'a'.repeat(40)});
+    }, {nodes:new Map([['gapProfile', select], ['gapAnalysisContent', panel]])});
+    app.context.clearInterval = app.window.clearInterval;
+    app.load('api/workspace-api.js');
+    app.load('versioning/taxonomy-context-bar.js');
+    app.load('core/taxonomy-analysis.js');
+    app.document.dispatchEvent({type:'DOMContentLoaded'});
+    await flush();
+    assert.deepEqual(calls.map(c=>[c.init.method,c.path]), [['GET','/taxonomy/api/gap/profiles']]);
+    if (boundary === 'source hydration') {
+      const result = await app.window.TaxonomyContextBar.fetchAndRender('contextBar', {joinCurrent:true});
+      assert.equal(result?.contextId, 'selected');
+    } else if (boundary === 'page exit') {
+      app.window.dispatchEvent({type:'pagehide'});
+    } else if (boundary === 'other request loses authorization') {
+      await assert.rejects(app.window.TaxonomyContextApi.current(), error => error.status === 403);
+    } else if (boundary === 'deadline') {
+      const timer = [...app.timers.values()].find(t=>t.delay === 30_000);
+      assert.ok(timer, 'The canonical profile read keeps its existing 30-second deadline');
+      timer.callback();
+    }
+    held.resolve(boundary === 'HTTP 503' ? Response.json({}, {status:503}) : Response.json(profiles));
+    await flush(); await flush();
+    if (boundary === 'source hydration') {
+      assert.deepEqual(select.options.map(o=>[o.value,o.textContent]),
+        profiles.map(p=>[p.id,p.description+' ('+p.version+')']));
+      assert.equal(select.dataset.loaded, 'true');
+    } else {
+      assert.equal(select.dataset.loaded, undefined);
+      assert.deepEqual(select.options.map(o=>o.textContent), ['Loading profiles…']);
+    }
+    if (boundary === 'HTTP 503') assert.match(panel.innerHTML, /HTTP 503/);
+    else if (boundary === 'deadline') assert.match(panel.innerHTML, /timed out after 30000 ms/);
+    else assert.equal(panel.innerHTML, 'Previous panel content');
+    assert.deepEqual(calls.map(c=>[c.init.method,c.path]), [
+      ['GET','/taxonomy/api/gap/profiles'],
+      ...(['source hydration','other request loses authorization'].includes(boundary) ? [['GET','/taxonomy/api/context/current']] : [])
+    ], 'No assessment, fallback or automatic metadata retry was sent');
+  });
+}
 
 test('the import selector publishes global capabilities after initial workspace and source hydration', async () => {
   const response = deferred(), requests = [];

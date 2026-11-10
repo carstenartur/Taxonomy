@@ -900,6 +900,7 @@
         });
         if (window.TaxonomyState?.currentCopilot) renderCopilotResult(window.TaxonomyState.currentCopilot);
         if (document.getElementById('gapProfile')) loadAssessmentProfiles().catch(function (error) {
+            if (error.code === 'ABORTED' && error.status === 0) return;
             showPanelError('gapAnalysisContent', error.message);
         });
         var gapBtn = document.getElementById('gapAnalyzeBtn');

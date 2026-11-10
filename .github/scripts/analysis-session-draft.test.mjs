@@ -1585,8 +1585,9 @@ test('a pending draft choice blocks evidence without selecting or resaving a dra
 });
 
 const roleFlowSource = await readFile(new URL('./ui-role-state-flow.mjs', import.meta.url), 'utf8');
-for (const scenario of ['confirmed', 'publication pending', 'wrong branch receipt', 'wrong commit receipt', 'same context receipt', 'non-200 receipt', 'changed repository', 'changed workspace', 'conflict', 'server unavailable', 'newer draft with local edits'])
+for (const scenario of ['confirmed', 'publication pending', 'wrong branch receipt', 'wrong commit receipt', 'same context receipt', 'non-200 receipt', 'changed repository', 'changed workspace', 'pagehide before return', 'conflict', 'server unavailable', 'newer draft with local edits'])
   test(`architect variant cleanup preserves the visible origin and draft authority (${scenario})`, async () => {
+  const pageLifetime = new EventTarget();
   const originContext = { contextId: 'origin', branch: 'draft', commitId: 'a'.repeat(40), repositoryId: 'repo-a', workspaceId: 'ws-1' };
   const visibleScope = {...originContext};
   const currentContext = {...originContext, contextId: 'variant', branch: 'qa-variant', originBranch: 'draft', originCommitId: originContext.commitId};
@@ -1597,6 +1598,7 @@ for (const scenario of ['confirmed', 'publication pending', 'wrong branch receip
   const requests = [];
   const h = await savedHarness(null, 'en', { withTransport: true,
     beforeTransport({window, document, context, sandbox}) {
+      window.addEventListener = pageLifetime.addEventListener.bind(pageLifetime);
       window.TaxonomyArchitectureWorkflow = { getScope: () => visibleScope };
       window.TaxonomyI18n = { t: key => key, resolveUrl: value => value };
       window.fetch = async (input, options = {}) => {
@@ -1650,6 +1652,7 @@ for (const scenario of ['confirmed', 'publication pending', 'wrong branch receip
       }
       assert.equal(evaluate(callback, argument), true);
       publicationConfirmed = true;
+      if (scenario === 'pagehide before return') pageLifetime.dispatchEvent(new Event('pagehide'));
     },
     waitForResponse(predicate) { return new Promise(resolve => {responseWaiter = {predicate, resolve};}); }
   };
@@ -1667,7 +1670,17 @@ for (const scenario of ['confirmed', 'publication pending', 'wrong branch receip
     page, originContext, currentContext, URL, assert: (condition, message) => assert.ok(condition, message)
   });
   if (!['confirmed', 'publication pending'].includes(scenario)) {
-    await assert.rejects(returning, /did not confirm the original|still requires confirmation|did not acknowledge|returned 201/);
+    if (scenario === 'pagehide before return') {
+      // No POST can complete the response waiter. The browser action must reject on its own.
+      const stalled = new Promise((_, reject) => setImmediate(() => reject(new Error('Still waiting for a cancelled return'))));
+      await assert.rejects(Promise.race([returning, stalled]), {message: 'Variant return did not acknowledge the selected source'});
+    } else {
+      await assert.rejects(returning, /did not confirm the original|still requires confirmation|did not acknowledge|returned 201/);
+    }
+    if (['changed repository', 'changed workspace', 'pagehide before return'].includes(scenario)) {
+      assert.equal(requests.filter(request => request.method === 'POST' && request.path === '/api/context/return-to-origin').length,
+        0, 'A departed source must not receive the return-to-origin command');
+    }
     assert.equal(requests.some(request => request.method === 'PUT'), false, 'Unconfirmed fixture cannot write or choose a draft');
     if (scenario === 'conflict') assert.equal(h.runtime.conflict, true);
     if (scenario === 'server unavailable') assert.equal(h.runtime.serverUnconfirmed, true);

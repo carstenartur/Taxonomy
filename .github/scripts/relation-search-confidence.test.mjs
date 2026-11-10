@@ -213,7 +213,9 @@ test('retained recommendation identity, title, root and reasoning are escaped in
   }] }));
   assert.equal(details.length, 1);
   const html = details[0].html;
-  assert.doesNotMatch(html, /<img|<script|<svg|<b>/);
+  for (const rawOpening of ['<img', '<script', '<svg', '<b>']) {
+    assert.ok(!html.toLowerCase().includes(rawOpening), `Raw markup must not reach the rendered fragment: ${rawOpening}`);
+  }
   assert.deepEqual([...html.matchAll(/<td>([\s\S]*?)<\/td>/g)].map(match => match[1]), [
     '&lt;img src=x onerror=alert(1)&gt;', 'Title &quot;quoted&quot; &amp; &lt;script&gt;bad()&lt;/script&gt;',
     '&lt;svg onload=alert(1)&gt;', 'Recorded &lt;b&gt;reason&lt;/b&gt; &amp; &#39;quotation&#39;'

@@ -136,10 +136,19 @@ async function measureArchitectTask(page, proposal) {
       const url = new URL(response.url());
       return response.request().method() === 'POST' && url.origin === pageOrigin && url.pathname === returnPath;
     }),
-    page.evaluate(async () => {
-      const returned = await window.TaxonomyContextBar.returnToOrigin();
-      return { returned, visible: window.TaxonomyContextBar.getCurrentContext() };
-    })
+    page.evaluate(async ({original, variant}) => {
+      const bar = window.TaxonomyContextBar;
+      const visible = bar.getCurrentContext();
+      if (window.TaxonomyArchitectureWorkflow.getScope().repositoryId !== original.repositoryId
+        || window.__TaxonomyAnalysisSessionContext.runtime.workspaceId !== original.workspaceId
+        || visible?.contextId !== variant.contextId || visible.branch !== variant.branch
+        || (visible.commitId ?? null) !== (variant.commitId ?? null)) {
+        throw new Error('Variant return did not confirm the original repository, workspace and selected variant before dispatch');
+      }
+      const returned = await bar.returnToOrigin();
+      if (!returned) throw new Error('Variant return did not acknowledge the selected source');
+      return { returned, visible: bar.getCurrentContext() };
+    }, {original: originContext, variant: currentContext})
   ]);
   assert(receipt.status() === 200, `Return from QA variant returned ${receipt.status()}`);
   const origin = await receipt.json();
