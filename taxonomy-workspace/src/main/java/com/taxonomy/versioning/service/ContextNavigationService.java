@@ -371,7 +371,7 @@ public class ContextNavigationService {
         DslGitRepository repository = resolveRepository(ctx);
         String newCommitId = current.commitId() == null
                 ? repository.createBranch(variantName, sourceBranch)
-                : repository.createBranchAtCommit(variantName, current.commitId());
+                : repository.createBranchAtVerifiedCommit(variantName, current.commitId());
 
         ContextRef variantCtx = new ContextRef(
                 UUID.randomUUID().toString(),

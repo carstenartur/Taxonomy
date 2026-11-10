@@ -2,16 +2,17 @@ package com.taxonomy.reporting.render.decision;
 
 import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
 
-import com.taxonomy.templates.api.DocumentTemplateReportPreview;
+import com.taxonomy.templates.api.RevisionPinnedTemplateReportPreview;
+import com.taxonomy.templates.api.TemplateFile;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.List;
 
-/** Creates a deterministic, non-sensitive sample DOCX for validating the active template. */
+/** Creates a deterministic, non-sensitive sample DOCX for reviewing a template. */
 @Service
 public final class DecisionRationaleTemplatePreviewService
-        implements DocumentTemplateReportPreview {
+        implements RevisionPinnedTemplateReportPreview {
 
     private final DecisionRationaleTemplateRenderer templateRenderer;
     private final DecisionRationaleDocxRenderer docxRenderer;
@@ -25,6 +26,15 @@ public final class DecisionRationaleTemplatePreviewService
 
     @Override
     public byte[] renderPreview() {
+        return templateRenderer.render(docxRenderer, sampleReport());
+    }
+
+    @Override
+    public byte[] renderPreview(TemplateFile template) {
+        return templateRenderer.renderArtifact(docxRenderer, sampleReport(), template).bytes();
+    }
+
+    private static DecisionRationaleReport sampleReport() {
         Instant generatedAt = Instant.parse("2026-01-01T12:00:00Z");
         DecisionRationaleReport.ReportMetadata metadata =
                 new DecisionRationaleReport.ReportMetadata(
@@ -65,7 +75,7 @@ public final class DecisionRationaleTemplatePreviewService
                         3,
                         2,
                         100.0);
-        DecisionRationaleReport report = new DecisionRationaleReport(
+        return new DecisionRationaleReport(
                 "Taxonomy template test report",
                 "en",
                 "Verify branding, page setup, headers, footers and generated report content.",
@@ -74,7 +84,7 @@ public final class DecisionRationaleTemplatePreviewService
                 new DecisionRationaleReport.ExecutiveSummary(
                         null,
                         List.of(),
-                        "The active Word template was opened and materialized successfully.",
+                        "The Word template was opened and materialized successfully.",
                         "This preview uses synthetic, non-sensitive data."),
                 List.of(),
                 List.of(),
@@ -82,6 +92,5 @@ public final class DecisionRationaleTemplatePreviewService
                 List.of(),
                 List.of(),
                 null);
-        return templateRenderer.render(docxRenderer, report);
     }
 }

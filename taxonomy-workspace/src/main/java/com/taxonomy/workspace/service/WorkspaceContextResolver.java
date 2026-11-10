@@ -96,7 +96,7 @@ public class WorkspaceContextResolver {
             return WorkspaceContext.SHARED;
         }
 
-        UserWorkspace workspace = resolveWorkspace(username);
+        UserWorkspace workspace = resolveWorkspace(username, true);
         if (workspace != null && hasText(workspace.getWorkspaceId())) {
             String branch = hasText(workspace.getCurrentBranch())
                     ? workspace.getCurrentBranch().strip()
@@ -128,10 +128,18 @@ public class WorkspaceContextResolver {
      * an unspecified repository.</p>
      */
     public RepositoryContext resolveRepositoryContextForUser(String username) {
+        return resolveRepositoryContextForUser(username, true);
+    }
+
+    RepositoryContext resolveRepositoryContextForRead(String username) {
+        return resolveRepositoryContextForUser(username, false);
+    }
+
+    private RepositoryContext resolveRepositoryContextForUser(String username, boolean provisionDefault) {
         String user = normalizeUsername(username);
         UserWorkspace workspace = WorkspaceManager.DEFAULT_USER.equals(user)
                 ? null
-                : resolveWorkspace(user);
+                : resolveWorkspace(user, provisionDefault);
 
         if (workspace != null && hasText(workspace.getWorkspaceId())) {
             SystemRepository repository = resolveWorkspaceSource(workspace);
@@ -185,20 +193,20 @@ public class WorkspaceContextResolver {
         return RepositoryContext.centralRead(requireRepositoryId(repository),selectedBranch,user);
     }
 
-    private UserWorkspace resolveWorkspace(String username) {
+    private UserWorkspace resolveWorkspace(String username, boolean provisionDefault) {
         UserWorkspace workspace = resolveWorkspaceMetadataForUser(username);
-        // Keep the existing first-use experience for automatically created default
-        // workspaces, but finish initialization before exposing a usable context.
-        // Join this manager's ongoing initialization before re-reading readiness.
-        // Explicit pins and failed attempts still require lifecycle recovery.
+        // Keep central reads for ineligible users with an unused default.
+        // Only callers permitting provisioning may finish default initialization.
         if (workspace != null && workspace.isDefault() && requestedWorkspaceId() == null
                 && (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED
                 || workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING)) {
             if (!workspaceManager.mayProvisionDefaultWorkspace(username)) {
                 return null;
             }
-            workspace = workspaceManager.provisionDefaultWorkspaceRepository(
-                    username, workspace.getWorkspaceId());
+            if (provisionDefault) {
+                workspace = workspaceManager.provisionDefaultWorkspaceRepository(
+                        username, workspace.getWorkspaceId());
+            }
         }
         if (workspace != null
                 && workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY) {

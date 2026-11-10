@@ -1,25 +1,43 @@
 package com.taxonomy.composition.architecture;
 
+import com.taxonomy.dsl.planning.PlanningEntry;
+import com.taxonomy.dsl.planning.PlanningInformation;
+import com.taxonomy.dsl.requirements.RequirementRealization;
 import com.taxonomy.editor.ArchitectureCommandPort.Context;
 import com.taxonomy.editor.ArchitectureEditorController;
 import com.taxonomy.editor.ArchitectureEditorExportAdapter;
 import com.taxonomy.editor.ArchitectureEditorProjection;
 import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.export.ArchitecturePdfRenderer;
+import com.taxonomy.extension.api.integration.AdmbwQeaExport;
+import com.taxonomy.extension.api.integration.IntegrationConnectorExtension;
+import com.taxonomy.extension.api.integration.IntegrationContracts.ExchangeFile;
+import com.taxonomy.extension.api.plugin.ExtensionCatalog;
+import com.taxonomy.extension.api.plugin.ExtensionLease;
+import com.taxonomy.extension.api.plugin.ExtensionUnavailableException;
 import com.taxonomy.export.LayeredDiagramLayoutService;
 import com.taxonomy.export.SvgDiagramRenderer;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
@@ -27,8 +45,11 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 class ArchitectureEditorExportControllerTest {
 
     private static final String HEAD = "a1".repeat(20);
+    private static final String ROOT = "{20000000-0000-0000-0000-000000000001}";
+    private static final byte[] BASIS = {1, 2, 3};
 
     private final ArchitectureEditorService service = mock(ArchitectureEditorService.class);
+    private final ExtensionCatalog catalog = mock(ExtensionCatalog.class);
     private final WorkspaceResolver resolver = mock(WorkspaceResolver.class);
     private final ArchitectureEditorProjection projection =
             new ArchitectureEditorProjection(new LayeredDiagramLayoutService());
@@ -39,7 +60,7 @@ class ArchitectureEditorExportControllerTest {
                     new ArchitectureEditorExportAdapter(service, projection),
                     resolver,
                     new SvgDiagramRenderer(),
-                    new ArchitecturePdfRenderer());
+                    new ArchitecturePdfRenderer(), catalog);
     private final RepositoryContext scope = RepositoryContext.workspace(
             "repo-a", "workspace-a", "draft", "alice");
 
@@ -76,6 +97,133 @@ class ArchitectureEditorExportControllerTest {
                         .param("branch", "draft").param("commit", HEAD).param("projectCode", "WARN"))
                 .andExpect(status().isNotFound());
         verifyNoInteractions(service);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void sendsOnlyTheAuthorizedCheckpointAndBasisToTheNativeExporter() throws Exception {
+        loadCheckpoint(deliverableDsl());
+        var writer = mock(AdmbwQeaExport.class);
+        ExtensionLease<IntegrationConnectorExtension> lease = mock(ExtensionLease.class);
+        when(catalog.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class)).thenReturn(lease);
+        when(lease.extension()).thenReturn(writer);
+        byte[] nativeBytes = {4, 5, 6};
+        when(writer.exportAdmbw(any(), eq(ROOT), any())).thenReturn(
+                new ExchangeFile(AdmbwQeaExport.MEDIA_TYPE, "WARN-admbw.qea", nativeBytes, List.of()));
+
+        standaloneSetup(exports).build().perform(nativeRequest("workspace-a"))
+                .andExpect(status().isOk()).andExpect(content().contentType(AdmbwQeaExport.MEDIA_TYPE))
+                .andExpect(header().string("X-Taxonomy-Commit", HEAD))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"WARN-admbw.qea\""))
+                .andExpect(content().bytes(nativeBytes));
+        var delivery = ArgumentCaptor.forClass(AdmbwQeaExport.Delivery.class);
+        var bytes = ArgumentCaptor.forClass(byte[].class);
+        verify(writer).exportAdmbw(delivery.capture(), eq(ROOT), bytes.capture());
+        assertThat(bytes.getValue()).containsExactly(BASIS);
+        assertThat(delivery.getValue().commit()).isEqualTo(HEAD);
+        assertThat(delivery.getValue().views()).extracting(AdmbwQeaExport.View::viewpoint).containsExactly("C1-S1", "R7");
+        assertThat(delivery.getValue().views().get(1).elements()).anySatisfy(element -> {
+            assertThat(element.ref()).isEqualTo("requirement:REQ-1");
+            assertThat(element.requirementVersion()).isEqualTo(2);
+        });
+        verify(lease).close();
+    }
+
+    @Test
+    void refusesForeignContextAndStructuralFindingsBeforeInvokingThePlugin() throws Exception {
+        loadCheckpoint("");
+        var mvc = standaloneSetup(exports).build();
+        mvc.perform(nativeRequest("workspace-b")).andExpect(status().isNotFound());
+        mvc.perform(nativeRequest("workspace-a")).andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("ADMBW_CHANGES_REQUIRED"));
+        verifyNoInteractions(catalog);
+    }
+
+    @Test
+    void flagsTheNativePartBindingBeforeReadingTheBasis() throws Exception {
+        String dsl = deliverableDsl() + """
+                element realizer type Component {
+                  title: "Warning role";
+                  description: "Delivers warnings";
+                  x-admbw-type: "ResourceRole";
+                }
+                """;
+        dsl = new PlanningInformation().upsert(dsl, "REQ-1", new PlanningEntry("r7", "admbw-r7", "1", "MANUAL", Map.of(
+                "requirementType", "FunctionalRequirement", "derivedFrom", "operation", "constraintSubject", "subject",
+                "realizer", "realizer")), false);
+        loadCheckpoint(dsl);
+        var mvc = standaloneSetup(exports).build();
+        mvc.perform(get("/api/architecture/editor.admbw.json").param("repositoryId", "repo-a")
+                        .param("workspaceScopeKey", "workspace-a").param("branch", "draft")
+                        .param("commit", HEAD).param("projectCode", "WARN"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.assessment.requirementDerivation.status").value("REVIEW_REQUIRED"))
+                .andExpect(jsonPath("$.qeaIssues[0].object").value("element:realizer"));
+        mvc.perform(nativeRequest("workspace-a")).andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("ADMBW_QEA_PART_OWNER"));
+        verifyNoInteractions(catalog);
+    }
+
+    @Test
+    void reportsAnUnavailableNativePlugin() throws Exception {
+        loadCheckpoint(deliverableDsl());
+        when(catalog.acquire(AdmbwQeaExport.KEY, IntegrationConnectorExtension.class)).thenThrow(
+                new ExtensionUnavailableException(AdmbwQeaExport.KEY, ExtensionUnavailableException.Reason.UNKNOWN));
+        standaloneSetup(exports).build().perform(nativeRequest("workspace-a"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("ADMBW_QEA_UNAVAILABLE"));
+    }
+
+    private void loadCheckpoint(String dsl) throws Exception {
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
+        when(service.read(scope, HEAD)).thenReturn(new ArchitectureEditorService.Document(
+                Context.of(scope, HEAD), dsl, "HISTORICAL", List.of(), List.of(), 0, null, "GIT_CHECKPOINT"));
+    }
+
+    private static MockHttpServletRequestBuilder nativeRequest(String workspace) {
+        return post("/api/architecture/editor.admbw.qea").param("repositoryId", "repo-a")
+                .param("workspaceScopeKey", workspace).param("branch", "draft").param("commit", HEAD)
+                .param("projectCode", "WARN").param("rootPackageGuid", ROOT)
+                .contentType(AdmbwQeaExport.MEDIA_TYPE).content(BASIS);
+    }
+
+    private static String deliverableDsl() {
+        String requirement = "The service must deliver warnings.";
+        String dsl = """
+                element capability type Capability {
+                  title: "Warning";
+                  description: "Send warnings";
+                  x-admbw-catalogue-guid: "{67AEAD63-403A-48FD-A022-174DC3037CE2}";
+                  x-admbw-catalogue-reference: "Example catalogue";
+                }
+                element service type CoreService {
+                  title: "Warning service";
+                  description: "Issues warnings";
+                  x-admbw-type: "ServiceSpecification";
+                }
+                relation capability REALIZES service {
+                  status: "accepted";
+                }
+                element operation type Component {
+                  title: "Operation";
+                  description: "Operating constraint";
+                  x-admbw-type: "OperationalConstraint";
+                }
+                element subject type Component {
+                  title: "Role";
+                  description: "Operating role";
+                  x-admbw-type: "OperationalRole";
+                  x-admbw-catalogue-guid: "{55AEAD63-403A-48FD-A022-174DC3037CE2}";
+                  x-admbw-catalogue-reference: "Example catalogue";
+                }
+                requirement REQ-1 {
+                  title: "Warn";
+                  text: "%s";
+                  x-version: "2";
+                  x-content-hash: "%s";
+                }
+                """.formatted(requirement, RequirementRealization.textHash(requirement));
+        return new PlanningInformation().upsert(dsl, "REQ-1", new PlanningEntry("r7", "admbw-r7", "1", "MANUAL", Map.of(
+                "requirementType", "FunctionalRequirement", "derivedFrom", "operation", "constraintSubject", "subject")), false);
     }
 
     @Test

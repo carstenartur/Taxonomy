@@ -140,6 +140,26 @@ class CurrentPrincipalAuthoritySecurityTest {
         http.perform(get("/api/projects/p").session(session)).andExpect(status().isForbidden());
     }
 
+    @Test void localRoleRemovalDeniesTheNextRetainedRequestAcrossApplicationContexts() throws Exception {
+        start(false, KeycloakPrincipalMode.LEGACY);
+        var principal = identities.local(1);
+        var retainedArchitect = session(local(principal));
+        var first = http;
+        start(false, KeycloakPrincipalMode.LEGACY, database);
+
+        first.perform(post("/api/projects/p").session(retainedArchitect).with(csrf())).andExpect(status().isOk());
+        http.perform(post("/api/projects/p").session(retainedArchitect).with(csrf())).andExpect(status().isOk());
+        jdbc.update("update user_roles set role_id=2 where user_id=1 and role_id=1");
+        first.perform(post("/api/projects/p").session(retainedArchitect).with(csrf())).andExpect(status().isForbidden());
+        http.perform(post("/api/projects/p").session(retainedArchitect).with(csrf())).andExpect(status().isForbidden());
+
+        var reader = session(local(principal, List.of(new SimpleGrantedAuthority("ROLE_READER"))));
+        http.perform(get("/api/projects/p").session(reader)).andExpect(status().isOk());
+        http.perform(post("/api/projects/p").session(reader).with(csrf())).andExpect(status().isForbidden());
+        jdbc.update("insert into user_roles values (1, 1)");
+        http.perform(post("/api/projects/p").session(reader).with(csrf())).andExpect(status().isForbidden());
+    }
+
     @ParameterizedTest @ValueSource(strings = {"principal", "binding"})
     void retainedOidcSessionUsesItsExactCurrentBinding(String disabled) throws Exception {
         start(true, KeycloakPrincipalMode.STABLE);
@@ -235,8 +255,12 @@ class CurrentPrincipalAuthoritySecurityTest {
     }
 
     private Authentication local(AppPrincipal principal) {
-        var details = new PrincipalUserDetails(principal.id(), principal.scopeKey(), "unused", true, ROLES);
-        return UsernamePasswordAuthenticationToken.authenticated(details, null, ROLES);
+        return local(principal, ROLES);
+    }
+
+    private Authentication local(AppPrincipal principal, List<SimpleGrantedAuthority> roles) {
+        var details = new PrincipalUserDetails(principal.id(), principal.scopeKey(), "unused", true, roles);
+        return UsernamePasswordAuthenticationToken.authenticated(details, null, roles);
     }
 
     private Authentication oidc(AppPrincipal principal, String issuer, String subject, boolean stable) {
@@ -304,7 +328,11 @@ class CurrentPrincipalAuthoritySecurityTest {
             delegate.setUrl("jdbc:hsqldb:mem:current-authority-" + UUID.randomUUID()); delegate.setUser("sa");
             var jdbc = new JdbcTemplate(delegate);
             jdbc.execute("create table app_user(id bigint primary key, username varchar(255), enabled boolean)");
+            jdbc.execute("create table app_role(id bigint primary key, name varchar(255) not null unique)");
+            jdbc.execute("create table user_roles(user_id bigint not null, role_id bigint not null, primary key(user_id, role_id))");
             jdbc.update("insert into app_user values (1, 'alice', true)");
+            jdbc.update("insert into app_role values (1, 'ROLE_ARCHITECT'), (2, 'ROLE_READER')");
+            jdbc.update("insert into user_roles values (1, 1)");
             PrincipalSchemaMigration.migrate(delegate);
         }
         @Override public Connection getConnection() throws SQLException {

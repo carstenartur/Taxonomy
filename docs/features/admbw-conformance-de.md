@@ -18,7 +18,7 @@ dienen der internen Projektbearbeitung. [Aktuelle Bundeswehr-Downloads](https://
 | R7, FFFmLV § 3.2.8.3 | Ordnerpfad `Requirements/R7/Requirement Derivation`. Genau ein R7-Planungseintrag pro gespeicherter Anforderungsversion. `DerivedFrom` zeigt von der funktionalen oder nichtfunktionalen Anforderung zu genau einem `OperationalConstraint`. Ein optionales `ToBeRealizedBy` zeigt zu einer `CapabilityConfiguration` oder `ResourceRole`. Für R7-MK08 wird ein Katalogsubjekt als `OperationalArchitecture` oder `OperationalRole` über `Satisfy` mit der Vorgabe verbunden. | Das `Subjekt` der Anforderung muss mit dem vorgesehenen Systemelement übereinstimmen. Satzschablone und Tagged Values nach Require.7/SAMIT fachlich prüfen und im Zielmodell ergänzen. Das Katalogsubjekt und die Rollen des nativen `Satisfy`-Verbinders im Zielmodell prüfen. |
 | Element- und Diagrammkonventionen | Name und Beschreibung für jedes in der Sicht ausgegebene Element. Die Beschreibung wird als Inhalt für EA-Notes angeboten. | Eindeutige Bezeichnungen und Glossar prüfen. Deutsch ist der Regelfall. Den tatsächlichen ADMBw-Diagrammtyp und Diagrammnotizen im Zielwerkzeug kontrollieren. |
 | Weitere FFFmLV- und PBN-Sichten | Der Bericht enthält C1–S1 und R7. | Die im Vorhaben verlangten Sichten und Regeln separat ergänzen. Der ältere PBN-Service-/Systemleitfaden verwendet beispielsweise für R7 auch eine andere Ableitungsquelle. Die PFK-/Require.7-Übergabe hat einen eigenen Liefervertrag. |
-| Austausch | JSON enthält Typen, gerichtete Beziehungen, Befunde und stabile Modellreferenzen. | Natives Modell oder das vereinbarte Austauschformat mit der passenden ADMBw-MDG und einem autorisierten Referenzmodell aufbauen. Im Zielwerkzeug erneut öffnen und Diagrammtypen, Objekt- und Katalogidentitäten, Rollen der Verbindungen, Notes und Tags gegen die Vorgabe vergleichen. |
+| Austausch | Der JSON-Bericht enthält Typen, gerichtete Beziehungen und Befunde. Das optionale Sparx-Plugin schreibt beide Sichten als native ADMBw-Diagramme in eine QEA-Kopie. | Die Kopie im Zielwerkzeug mit der vereinbarten ADMBw-MDG öffnen. Diagrammtypen, Objekt- und Katalogidentitäten, Verbindungsrollen, Notes und Tags gegen die Vorgabe vergleichen. Das vereinbarte Lieferformat verwenden. |
 
 Die Profilregeln stützen sich auf die Abschnitte 3.2.6.1 und 3.2.8.3 des
 [FFFmLV-Leitfadens 2.0](https://www.bundeswehr.de/resource/blob/5932800/bc0578b2f8c9e9c132bb7dbf8dfc29ad/leitfaden-architekturen-fuer-die-fff-mit-loesungsvorschlag-pbn--data.pdf).
@@ -49,14 +49,32 @@ ergibt sich aus dem Vorhaben. [Sparx-EA-Anleitung der Bundeswehr](https://www.bu
    die Ausgangssicht für C1–S1 wählen. **Checkpoint prüfen** zeigt die Befunde
    direkt an. Der JSON-Download enthält zusätzlich die Modellierungsdaten. Die Sichten zeigen getrennt `CHANGES_REQUIRED` mit Befunden oder
    `REVIEW_REQUIRED` mit den offenen fachlichen und technischen Prüfungen.
-4. Die Modellierungsdaten im vereinbarten Zielwerkzeug mit den gelieferten
-   Vorlagen abgleichen und die verbleibenden Prüfungen dokumentieren.
+4. Wenn die Strukturprüfung für beide Sichten durchgelaufen ist, für
+   **ADMBw-QEA-Kopie herunterladen** eine geschlossene `.qea` bis 32 MiB und die
+   GUID des gewünschten Modellwurzelpakets angeben. Die Basis muss die
+   vereinbarten Kataloge enthalten. Für eine `ResourceRole` als Systemelement
+   in Taxonomy die GUID und Fassung des vorhandenen EA-Parts hinterlegen.
+   Der Export benötigt das [Sparx-Plugin](sparx-integration-de.md) mit Host-SPI 1.5.
+5. Die erzeugte Kopie in Enterprise Architect mit ADMBw 2026.05 öffnen,
+   die im Prüfbericht genannten Kontrollen durchführen und die offenen
+   vorhabenspezifischen Anforderungen ergänzen.
 
-Die GUID wird auf Format und Eindeutigkeit im geprüften Modell kontrolliert.
-Die angegebene Katalogfassung und die darin vorhandene GUID müssen im Katalog
-abgeglichen werden. Der Zugriff auf die Kataloge und eine native EA-Prüfung bleiben
-eigenständige Nachweise. Der bestehende Sparx-XMI-Export hat sein eigenes
-Taxonomy-Austauschprofil. [Sparx-Integration](sparx-integration-de.md)
+Der Export erstellt die Paketpfade unter der ausgewählten Modellwurzel.
+Eindeutige vorhandene Pakete werden wiederverwendet. Ein bereits vorhandenes
+Diagramm mit demselben Namen im Zielpaket führt zum Abbruch. Die QEA-Basis und
+ihre Katalogelemente werden unverändert übernommen. Der Export prüft für jede
+Katalogreferenz die GUID, den nativen Elementtyp und den qualifizierten
+ADMBw-Stereotyp in der Basis. Die Prüfung der tatsächlichen Katalogfassung
+gehört zur fachlichen Abnahme. Die Diagrammnotizen halten den Git-Commit fest.
+Die Anforderungsobjekte enthalten die ursprüngliche Modellreferenz, Textversion
+und SHA-256 als Taxonomy-Tags.
+
+Die nativen Typen und Verbindungen wurden mit der öffentlichen
+[MASC-Musterarchitektur](https://github.com/Mitchel85/EAM-Toolfamilie/blob/6b1baa03bb097d3aa9afc8bde4d56e275e8a0e93/packages/core/fixtures/Musterarchitektur_MASC.qea)
+und der [MDG 2026.05](https://github.com/Mitchel85/EAM-Toolfamilie/blob/6b1baa03bb097d3aa9afc8bde4d56e275e8a0e93/packages/rules/NAFv4-ADMBw-MDG-2026.05.xml)
+abgeglichen. Die SQLite-Prüfung deckt Modellstruktur und Kopiererhalt ab.
+Das Öffnen und Prüfen in der vereinbarten EA-Version, die Require.7-Pflichtfelder
+und die projektbezogene Abnahme stehen separat an.
 
 ## API
 
@@ -66,8 +84,10 @@ beschränkt `viewId` C1–S1 auf die gespeicherte Sicht. R7 prüft die im
 Checkpoint enthaltenen Anforderungen. Die Route setzt die Exportberechtigung und
 Zugriff auf den ausgewählten Git-Kontext voraus.
 
-Für die native Abnahme mit **ADMBw 2026.05** braucht der Austauschadapter das
-Startpaket, die Katalogidentitäten und ein natives Referenzmodell des
-Auftraggebers. Daran müssen die qualifizierten MDG-Stereotype, Diagrammtypen,
-Verbindungsrollen und Pflichtfelder gemessen werden. Der abschließende Importtest
-verwendet die vereinbarte EA-/MDG-Version und das vereinbarte Lieferformat.
+`POST /api/architecture/editor.admbw.qea` verwendet dieselben Parameter und
+zusätzlich `rootPackageGuid`. Der Request-Body enthält die geschlossene QEA-Datei
+als `application/vnd.sparx.qea` oder `application/octet-stream`. Der Server
+wiederholt die Strukturprüfung für den angegebenen Commit. Die Antwort enthält
+die QEA-Kopie als Download und den Quellcommit im Header `X-Taxonomy-Commit`.
+Die Berechtigung `integration:export` und der Zugriff auf den Git-Kontext
+gelten auch für diesen Download.

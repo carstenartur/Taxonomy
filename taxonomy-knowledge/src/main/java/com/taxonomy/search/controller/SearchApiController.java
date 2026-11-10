@@ -4,9 +4,7 @@ import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.search.service.SearchFacade;
 import com.taxonomy.error.SearchUnavailableException;
-import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.RepositoryContext;
-import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -22,6 +20,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,16 +36,13 @@ public class SearchApiController {
     private final SearchFacade searchFacade;
     private final MessageSource messageSource;
     private final WorkspaceResolver workspaceResolver;
-    private final RepositoryStateService repositoryStateService;
 
     public SearchApiController(SearchFacade searchFacade,
                                MessageSource messageSource,
-                               WorkspaceResolver workspaceResolver,
-                               RepositoryStateService repositoryStateService) {
+                               WorkspaceResolver workspaceResolver) {
         this.searchFacade = searchFacade;
         this.messageSource = messageSource;
         this.workspaceResolver = workspaceResolver;
-        this.repositoryStateService = repositoryStateService;
     }
 
     @Operation(summary = "Full-text search", description = "Search taxonomy nodes using full-text Lucene search", tags = {"Search"})
@@ -102,7 +98,7 @@ public class SearchApiController {
         return ResponseEntity.ok(searchFacade.getEmbeddingStatus());
     }
 
-    @Operation(summary = "Graph-semantic search", description = "Checks the canonical selected branch source. Legacy fallback supports relation KNN; proven empty projections support node results. Unsupported or unready scopes return 503. graphReady reports global prerequisites only.", tags = {"Search"})
+    @Operation(summary = "Graph-semantic search", description = "Checks the canonical selected branch source without provisioning workspaces. An unready selected workspace returns 409. Unsupported or unavailable search authority returns 503. graphReady reports global prerequisites only.", tags = {"Search"})
     @GetMapping("/search/graph")
     public ResponseEntity<GraphSearchResult> graphSearch(
             @Parameter(description = "Natural-language query") @RequestParam String q,
@@ -138,17 +134,11 @@ public class SearchApiController {
 
     private RepositoryContext currentRepositoryContext() {
         try {
-            String username = workspaceResolver.resolveCurrentUsername();
-            RepositoryContext context = workspaceResolver.resolveCurrentRepositoryContext();
+            RepositoryContext context = workspaceResolver.resolveCurrentRepositoryContextForRead();
             if (context == null) throw new SearchUnavailableException();
-            // The interceptor validates explicit central reads before this lookup.
-            // Reading that canonical source must not create workspace state.
-            if (context.scope() != RepositoryScope.CENTRAL_READ) {
-                repositoryStateService.ensureWorkspaceState(username);
-            }
             return context;
-        } catch (AccessDeniedException denied) {
-            throw denied;
+        } catch (AccessDeniedException | ResponseStatusException error) {
+            throw error;
         } catch (Exception error) {
             log.warn("Search workspace resolution failed (code=SEARCH_CONTEXT_UNAVAILABLE)");
             throw new SearchUnavailableException();

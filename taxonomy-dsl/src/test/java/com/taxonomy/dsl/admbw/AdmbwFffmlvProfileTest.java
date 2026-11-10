@@ -203,6 +203,22 @@ class AdmbwFffmlvProfileTest {
     }
 
     @Test
+    void retainsTheOptionalNativeResourceRoleBinding() {
+        String guid = "{FFAEAD63-403A-48FD-A022-174DC3037CE2}";
+        String dsl = plan("operation", "warning-office").replace("x-admbw-type: \"ResourceRole\";", """
+                x-admbw-type: "ResourceRole";
+                x-admbw-catalogue-guid: "%s";
+                x-admbw-catalogue-reference: "Modellelementekatalog, Fassung 1";
+                """.formatted(guid));
+        var view = assess(dsl, null).requirementDerivation();
+        assertThat(view.issues()).isEmpty();
+        assertThat(view.elements()).anySatisfy(element -> {
+            assertThat(element.stereotype()).isEqualTo("ResourceRole");
+            assertThat(element.catalogueGuid()).isEqualTo(guid);
+        });
+    }
+
+    @Test
     void preventsTheSameOfficialCapabilityFromBecomingAnOperationalConstraint() {
         String dsl = plan("capability", "warning-office")
                 .replace("title: \"Warnungen bereitstellen\";", """

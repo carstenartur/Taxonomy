@@ -1059,6 +1059,41 @@ test('ADMBw assessment pins the exact checkpoint, workspace and C1–S1 view', a
     assert.equal(calls[0].policy.pinnedWorkspaceId,'workspace-a');
 });
 
+test('native ADMBw export uploads the basis for the same exact checkpoint and checks download provenance', async()=>{
+    const calls=[];
+    const commit='a1'.repeat(20), basis=new Uint8Array([1,2,3]), output=new Uint8Array([4,5,6]);
+    const mediaType='application/vnd.sparx.qea';
+    const headers=new Map([['X-Taxonomy-Commit',commit],['Content-Type',mediaType]]);
+    const window={
+        TaxonomyApiClient:{requestBlob:async (url, init, policy)=>{
+            calls.push({url,init,policy});
+            return {response:{headers},blob:output};
+        }},
+        TaxonomyI18n:{t:key=>key}
+    };
+    vm.runInNewContext(source('api/architecture-editor-api.js'),{window,URLSearchParams});
+    const api=window.ArchitectureEditorApi, root='{20000000-0000-0000-0000-000000000001}';
+    const context={repositoryId:'repo-a',workspaceScopeKey:'workspace-a',branch:'draft',commit,revision:4};
+    assert.equal(await api.admbwQea(context,'WARN','warning',root,basis),output);
+    const request=new URL(calls[0].url,'https://example.test');
+    assert.equal(request.pathname,'/api/architecture/editor.admbw.qea');
+    assert.equal(request.searchParams.get('repositoryId'),'repo-a');
+    assert.equal(request.searchParams.get('commit'),commit);
+    assert.equal(request.searchParams.get('workspaceId'),'workspace-a');
+    assert.equal(request.searchParams.get('branch'),'draft');
+    assert.equal(request.searchParams.get('projectCode'),'WARN');
+    assert.equal(request.searchParams.get('viewId'),'warning');
+    assert.equal(request.searchParams.get('rootPackageGuid'),root);
+    assert.equal(request.searchParams.has('revision'),false);
+    assert.equal(calls[0].init.method,'POST');
+    assert.equal(calls[0].init.headers['Content-Type'],mediaType);
+    assert.equal(calls[0].init.body,basis);
+    assert.equal(calls[0].policy.pinnedWorkspaceId,'workspace-a');
+    assert.equal(calls[0].policy.retries,0);
+    headers.set('X-Taxonomy-Commit','b2'.repeat(20));
+    await assert.rejects(api.admbwQea(context,'WARN','warning',root,basis),/editor.admbw.qeaUnexpected/);
+});
+
 test('explicit cancellation releases guidance actions and records a partial result', ()=>{
     const f=guidanceFixture();
     f.state.lastAnalysisStatus='IN_PROGRESS';

@@ -11,7 +11,7 @@ Unterstützung einer bestimmten EA-Version.
 Das eigenständige [Sparx-QEA-Plugin](../../plugins/taxonomy-sparx-plugin/README.md)
 ergänzt das Profil **Sparx EA QEA** (`sparx-qea@1`) in derselben
 Integrationsoberfläche. Es liest SQLite-basierte QEA-Snapshots. Das aktuelle Plugin
-benötigt Java 25 und die Host-SPI ab 1.4.0 innerhalb der Hauptversion 1; sein Profil
+benötigt Java 25 und die Host-SPI ab 1.5.0 innerhalb der Hauptversion 1; sein Profil
 in Version 1 bleibt rein lesend. Es wird separat gebaut und installiert:
 
 ```bash

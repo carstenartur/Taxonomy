@@ -91,7 +91,7 @@ class ExternalPluginPackagedIT {
             var manifest = jar.getManifest().getMainAttributes();
             assertThat(manifest.getValue("Plugin-Id")).isEqualTo("taxonomy.sparx");
             assertThat(manifest.getValue("Taxonomy-Plugin-Mode")).isEqualTo("STARTUP");
-            assertThat(manifest.getValue("Plugin-Requires")).contains("1.4.0");
+            assertThat(manifest.getValue("Plugin-Requires")).contains("1.5.0");
             pluginVersion = manifest.getValue("Plugin-Version");
             assertThat(pluginVersion).isNotBlank();
             assertThat(jar.getJarEntry("META-INF/services/com.taxonomy.extension.api.plugin.TaxonomyPlugin")).isNotNull();
@@ -150,7 +150,7 @@ class ExternalPluginPackagedIT {
             var manifest = jar.getManifest().getMainAttributes();
             assertThat(manifest.getValue("Plugin-Id")).isEqualTo("taxonomy.sparx");
             assertThat(manifest.getValue("Taxonomy-Plugin-Mode")).isEqualTo("STARTUP");
-            assertThat(manifest.getValue("Plugin-Requires")).contains("1.4.0");
+            assertThat(manifest.getValue("Plugin-Requires")).contains("1.5.0");
             pluginVersion = manifest.getValue("Plugin-Version");
             assertThat(pluginVersion).isNotBlank();
         }

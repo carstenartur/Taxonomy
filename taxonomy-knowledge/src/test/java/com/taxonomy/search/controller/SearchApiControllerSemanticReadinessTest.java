@@ -2,7 +2,6 @@ package com.taxonomy.search.controller;
 
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.search.service.SearchFacade;
-import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,7 +32,6 @@ class SearchApiControllerSemanticReadinessTest {
     @Mock private SearchFacade searchFacade;
     @Mock private MessageSource messageSource;
     @Mock private WorkspaceResolver workspaceResolver;
-    @Mock private RepositoryStateService repositoryStateService;
 
     private SearchApiController controller;
 
@@ -42,8 +40,7 @@ class SearchApiControllerSemanticReadinessTest {
         controller = new SearchApiController(
                 searchFacade,
                 messageSource,
-                workspaceResolver,
-                repositoryStateService);
+                workspaceResolver);
         when(searchFacade.isInitialized()).thenReturn(true);
     }
 

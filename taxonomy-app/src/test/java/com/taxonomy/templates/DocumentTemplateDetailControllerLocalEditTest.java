@@ -1,29 +1,54 @@
 package com.taxonomy.templates;
 
 import com.taxonomy.templates.api.DocumentTemplateReportPreview;
+import com.taxonomy.templates.api.DocumentTemplates;
+import com.taxonomy.templates.api.TemplateContribution;
 
+import com.taxonomy.reporting.render.decision.DecisionChapterDiagramRenderer;
+import com.taxonomy.reporting.render.decision.DecisionRationaleDocxRenderer;
+import com.taxonomy.reporting.render.decision.DecisionRationaleTemplatePreviewService;
+import com.taxonomy.reporting.render.decision.DecisionRationaleTemplateRenderer;
 import com.taxonomy.reporting.templates.DecisionRationaleTemplateContract;
+import com.taxonomy.reporting.templates.DecisionTemplateConfiguration;
 
 import com.taxonomy.shared.config.GlobalExceptionHandler;
+import com.taxonomy.shared.config.I18nConfig;
 import com.taxonomy.templates.api.TemplateDescriptor;
 import com.taxonomy.templates.api.TemplateManifest;
 import com.taxonomy.templates.api.TemplateNotFoundException;
 import com.taxonomy.templates.api.TemplateFile;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.support.StaticMessageSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockServletContext;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.ui.ConcurrentModel;
 import org.springframework.web.server.ResponseStatusException;
+import org.thymeleaf.context.WebContext;
+import org.thymeleaf.spring6.SpringTemplateEngine;
+import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
+import org.thymeleaf.web.servlet.JakartaServletWebApplication;
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -54,6 +79,7 @@ class DocumentTemplateDetailControllerLocalEditTest {
             assertThat(descriptor.headCommit()).isEqualTo(REVISION);
             assertThat(descriptor.templateId()).isEqualTo(id);
             assertThat(model.getAttribute("templatePreviewAvailable")).isEqualTo(true);
+            assertThat(model.getAttribute("templatePreviewPinned")).isEqualTo(false);
             assertThat(model.getAttribute("maxArchiveBytes"))
                     .isEqualTo(OoxmlTemplatePackageCodec.MAX_ARCHIVE_BYTES);
         }
@@ -69,6 +95,97 @@ class DocumentTemplateDetailControllerLocalEditTest {
         new DocumentTemplateDetailController(templates, contributions())
                 .localEdit("organisation", REVISION, model);
         assertThat(model.getAttribute("templatePreviewAvailable")).isEqualTo(false);
+    }
+
+    @Test
+    void savedDecisionSamplesRenderTheSelectedTemplateBytesAndProvenance(@TempDir Path directory) throws Exception {
+        String id = DecisionRationaleTemplateContract.TEMPLATE_ID;
+        String path = "/admin/document-templates/" + id + "/test.docx";
+        try (var git = new FileRepositoryBuilder().setGitDir(directory.toFile()).setBare().build();
+             var context = new AnnotationConfigApplicationContext()) {
+            git.create(true);
+            var codec = new OoxmlTemplatePackageCodec();
+            var contract = new DecisionRationaleTemplateContract();
+            var stored = new DocumentTemplateService(new DocumentTemplateGitRepository(git), codec, List.of(contract));
+            context.registerBean(DocumentTemplates.class, () -> stored);
+            context.registerBean(DecisionRationaleTemplateContract.class, () -> contract);
+            context.register(DecisionTemplateConfiguration.class, DecisionRationaleTemplatePreviewService.class,
+                    DecisionRationaleTemplateRenderer.class, DecisionRationaleDocxRenderer.class, DecisionChapterDiagramRenderer.class);
+            context.refresh();
+
+            var original = uploadBranded(stored, codec, "Historical branding", null);
+            var current = uploadBranded(stored, codec, "Current branding", original.headCommit());
+            var history = stored.history(id);
+            var controller = new DocumentTemplateDetailController(stored, List.of(context.getBean(TemplateContribution.class)));
+            var mvc = MockMvcBuilders.standaloneSetup(controller).build();
+            var localModel = new ConcurrentModel();
+            controller.localEdit(id, original.headCommit(), localModel);
+            assertThat(renderPage("document-template-local-edit", localModel))
+                    .contains("href=\"/taxonomy" + path + "?revision=" + original.headCommit() + "\"");
+            var detailModel = new ConcurrentModel();
+            controller.detail(id, null, null, null, null, detailModel);
+            assertThat(renderPage("document-template-detail", detailModel))
+                    .contains("href=\"/taxonomy" + path + "?revision=" + current.headCommit() + "\"",
+                            "href=\"/taxonomy" + path + "?revision=" + original.headCommit() + "\"");
+
+            var historical = mvc.perform(get(path).param("revision", original.headCommit().toUpperCase(Locale.ROOT)))
+                    .andExpect(status().isOk()).andReturn().getResponse();
+            assertSample(historical.getContentAsByteArray(), original, "Historical branding", "Current branding");
+            var unpinned = mvc.perform(get(path)).andExpect(status().isOk()).andReturn().getResponse();
+            assertSample(unpinned.getContentAsByteArray(), current, "Current branding", "Historical branding");
+            for (String invalidRevision : List.of("", " ", "HEAD")) {
+                mvc.perform(get(path).param("revision", invalidRevision)).andExpect(status().isBadRequest());
+            }
+            mvc.perform(get(path).param("revision", "0".repeat(40))).andExpect(status().isNotFound());
+            assertThat(stored.history(id)).isEqualTo(history);
+            assertThat(stored.describeCurrent(id)).isEqualTo(current);
+        }
+    }
+
+    private static String renderPage(String page, ConcurrentModel model) {
+        var resolver = new ClassLoaderTemplateResolver();
+        resolver.setPrefix("templates/");
+        resolver.setSuffix(".html");
+        resolver.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        var engine = new SpringTemplateEngine();
+        engine.setTemplateResolver(resolver);
+        engine.setMessageSource(new I18nConfig().messageSource());
+        var servletContext = new MockServletContext();
+        servletContext.setContextPath("/taxonomy");
+        var request = new MockHttpServletRequest(servletContext);
+        request.setContextPath("/taxonomy");
+        request.setRequestURI("/taxonomy/admin/document-templates/decision-rationale-report");
+        var application = JakartaServletWebApplication.buildApplication(servletContext);
+        var exchange = application.buildExchange(request, new MockHttpServletResponse());
+        var context = new WebContext(exchange, Locale.ENGLISH);
+        model.forEach(context::setVariable);
+        return engine.process(page, context);
+    }
+
+    private static TemplateDescriptor uploadBranded(DocumentTemplateService stored, OoxmlTemplatePackageCodec codec,
+            String branding, String expectedVersion) throws Exception {
+        try (var seed = DocumentTemplateDetailControllerLocalEditTest.class.getResourceAsStream(
+                "/" + DecisionRationaleTemplateContract.DEFAULT_RESOURCE)) {
+            assertThat(seed).isNotNull();
+            var parts = new LinkedHashMap<>(codec.unpack(seed).parts());
+            String header = new String(parts.get("word/header1.xml"), StandardCharsets.UTF_8);
+            parts.put("word/header1.xml", header.replace("<w:t>", "<w:t>" + branding + " · ")
+                    .getBytes(StandardCharsets.UTF_8));
+            return stored.upload(DecisionRationaleTemplateContract.TEMPLATE_ID, DecisionRationaleTemplateContract.DISPLAY_NAME,
+                    new ByteArrayInputStream(codec.pack(parts)), expectedVersion, "admin", branding);
+        }
+    }
+
+    private static void assertSample(byte[] bytes, TemplateDescriptor revision, String branding, String otherBranding) throws Exception {
+        try (var doc = new XWPFDocument(new ByteArrayInputStream(bytes))) {
+            assertThat(doc.getPackagePart().getContentType()).isEqualTo(
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml");
+            var properties = doc.getProperties().getCustomProperties();
+            assertThat(properties.getProperty("Taxonomy.Template.Commit").getLpwstr()).isEqualTo(revision.headCommit());
+            assertThat(properties.getProperty("Taxonomy.Template.PackageSha256").getLpwstr()).isEqualTo(revision.packageSha256());
+            assertThat(doc.getHeaderList()).singleElement().satisfies(header ->
+                    assertThat(header.getText()).contains(branding).doesNotContain(otherBranding));
+        }
     }
 
     @Test

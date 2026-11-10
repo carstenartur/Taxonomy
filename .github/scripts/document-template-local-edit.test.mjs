@@ -38,6 +38,7 @@ function boot(fetch, overrides = {}) {
     const form = node('localTemplateForm');
     form.reportValidity = () => !file.validationMessage;
     node('localTemplateCompare').href = 'https://example.test/taxonomy/admin/document-templates/' + id;
+    node('localTemplateSample').href = 'https://example.test/taxonomy/admin/document-templates/' + id + '/test.docx';
     const context = { URL, Headers, console,
         document: { getElementById: node, querySelector: selector => ({ content:
             selector.includes('_csrf_header') ? 'X-CSRF-TOKEN' : 'browser-csrf' }) },
@@ -111,6 +112,21 @@ test('mixed-case immutable revisions remain valid optimistic preconditions', asy
     assert.equal(request.init.headers.get('If-Match'), '"' + upperRevision + '"');
     assert.equal(app.node('localTemplateMessage').textContent, 'saved');
     assert.equal(app.node('localTemplateSavedRevision').textContent, upperNext);
+});
+
+test('a supported sample download uses the exact saved revision behind the context path', async () => {
+    const app = boot(async () => response());
+    app.node('localTemplateSample').dataset.pinRevision = 'true';
+    await app.submit();
+    const sample = new URL(app.node('localTemplateSample').href);
+    assert.equal(sample.pathname, '/taxonomy/admin/document-templates/' + id + '/test.docx');
+    assert.equal(sample.searchParams.get('revision'), next);
+});
+
+test('an older preview contribution still downloads an unpinned sample', async () => {
+    const app = boot(async () => response());
+    await app.submit();
+    assert.equal(new URL(app.node('localTemplateSample').href).searchParams.has('revision'), false);
 });
 
 test('double submit while busy and after success never sends another upload', async () => {

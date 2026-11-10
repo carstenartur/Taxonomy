@@ -3,6 +3,7 @@ package com.taxonomy.workspace.controller;
 import org.junit.jupiter.api.Tag;
 
 import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -75,13 +76,16 @@ class WorkspaceScopedEndpointIsolationTest {
 
     @Test
     @WithMockUser(username = "architect", roles = "USER")
-    void graphSearchStopsBeforeControllerCanReadSharedRelations() throws Exception {
+    void graphSearchUsesTheSelectedContextEvenWhenWorkspaceSetupFails() throws Exception {
+        when(workspaceResolver.resolveCurrentRepositoryContextForRead()).thenReturn(
+                RepositoryContext.workspace("selected-repository", "selected-workspace", "draft", "architect"));
         mockMvc.perform(get("/api/search/graph")
-                        .queryParam("q", "secure communication"))
-                .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.message").isString())
-                .andExpect(jsonPath("$.message").isNotEmpty());
+                        .queryParam("q", "secure communication")
+                        .queryParam("maxResults", "0"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.matchedNodes").isEmpty());
 
+        verify(repositoryStateService, never()).ensureWorkspaceState("architect");
         verify(workspaceResolver, never()).resolveCurrentContext();
     }
 }

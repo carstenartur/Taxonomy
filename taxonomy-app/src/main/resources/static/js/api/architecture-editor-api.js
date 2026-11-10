@@ -18,9 +18,13 @@ window.ArchitectureEditorApi = (function () {
         if (layoutRevision !== null && layoutRevision !== undefined) params.set('layoutRevision', layoutRevision);
         return params.toString();
     }
-    function admbwPath(context, projectCode, viewId) {
+    function admbwPath(context, projectCode, viewId, rootPackageGuid) {
         var params = new URLSearchParams(query(context, context.commit, null, null, viewId));
         params.set('projectCode', projectCode);
+        if (rootPackageGuid != null) {
+            params.set('rootPackageGuid', rootPackageGuid);
+            return base + '.admbw.qea?' + params;
+        }
         return base + '.admbw.json?' + params;
     }
     function exactPolicy(context) {
@@ -56,6 +60,18 @@ window.ArchitectureEditorApi = (function () {
         },
         admbwAssessment: function (context, projectCode, viewId) {
             return window.TaxonomyApiClient.getJson(admbwPath(context, projectCode, viewId), exactPolicy(context));
+        },
+        admbwQea: function (context, projectCode, viewId, rootPackageGuid, basis, signal) {
+            var mediaType = 'application/vnd.sparx.qea';
+            return window.TaxonomyApiClient.requestBlob(admbwPath(context, projectCode, viewId, rootPackageGuid), {
+                method: 'POST', headers: { 'Content-Type': mediaType }, body: basis
+            }, Object.assign({ retries: 0, timeoutMillis: 120000, signal: signal }, exactPolicy(context))).then(function (result) {
+                var headers = result.response.headers;
+                if (headers.get('X-Taxonomy-Commit') !== context.commit || headers.get('Content-Type') !== mediaType) {
+                    throw new Error(window.TaxonomyI18n.t('editor.admbw.qeaUnexpected'));
+                }
+                return result.blob;
+            });
         },
         createWorkspace: function (context) {
             return window.TaxonomyApiClient.sendJson(base + '/workspaces?' + query(context), {

@@ -51,6 +51,9 @@ restart nor a software update overwrites it, so organisation-specific logos,
 identity data, and layout changes remain intact.
 
 The DOCX decision report is rendered from the current Git version of this template.
+Test reports in the template history and local editing pages use the version shown
+by their link. The DOCX records that version's Git commit and package checksum.
+
 Taxonomy recognizes, among others, these tokens:
 
 ```text

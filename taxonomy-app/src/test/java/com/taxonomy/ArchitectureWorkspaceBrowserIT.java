@@ -794,7 +794,8 @@ class ArchitectureWorkspaceBrowserIT {
 
         page.driver().findElement(By.cssSelector("#architectureSourceLensReview [data-focus-action='adopt']")).click();
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotAdoption")));
-        assertThat(page.driver().findElement(By.id("adoptionPreview")).isDisplayed()).isTrue();
+        // The adoption panel can become visible before the working editor finishes loading.
+        wait.until(ExpectedConditions.elementToBeClickable(By.id("adoptionPreview")));
         assertThat(page.driver().findElement(By.id("adoptionAccept")).isDisplayed()).isFalse();
         assertThat(page.driver().getCurrentUrl()).contains("architectureSource=working", "sourceSnapshotId=snapshot-B",
                 "sourceWorkspaceScopeKey=__shared__", "sourceRepositoryId=repository-B", "sourceRequirementVersionId=11");

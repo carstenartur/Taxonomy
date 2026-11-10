@@ -46,7 +46,7 @@
                    th:href="@{/api/admin/document-templates/{id}/download(id=${template.templateId})}"
                    th:text="#{document.template.detail.download}">Download current DOTX</a>
                 <a th:if="${templatePreviewAvailable}" class="btn btn-outline-primary"
-                   th:href="@{/admin/document-templates/{id}/test.docx(id=${template.templateId})}"
+                   th:href="${templatePreviewPinned} ? @{/admin/document-templates/{id}/test.docx(id=${template.templateId},revision=${template.headCommit})} : @{/admin/document-templates/{id}/test.docx(id=${template.templateId})}"
                    th:text="#{document.template.detail.test}">Generate test report</a>
             </div>
         </div>
@@ -158,6 +158,10 @@
                         <a class="btn btn-sm btn-outline-secondary"
                            th:href="@{/api/admin/document-templates/{id}/download(id=${template.templateId},revision=${revision.commitId})}"
                            th:text="#{document.template.detail.download.version}">Download</a>
+                        <a th:if="${templatePreviewPinned and revision.commitId != template.headCommit}" class="btn btn-sm btn-outline-primary"
+                           th:href="@{/admin/document-templates/{id}/test.docx(id=${template.templateId},revision=${revision.commitId})}"
+                           th:aria-label="#{document.template.detail.test} + ' ' + ${#strings.substring(revision.commitId,0,12)}"
+                           th:text="#{document.template.detail.test}">Generate test report</a>
                         <a th:if="${revision.commitId != template.headCommit}" class="btn btn-sm btn-outline-danger"
                            th:href="@{/admin/document-templates/{id}/restore(id=${template.templateId},revision=${revision.commitId},expectedHead=${template.headCommit})}"
                            th:text="#{document.template.detail.restore}">Restore as new version</a>

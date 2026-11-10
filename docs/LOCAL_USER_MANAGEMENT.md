@@ -68,11 +68,15 @@ Die Seite weist auf eine deaktivierte Wechselpflicht hin. Das betrifft neu angel
 und zurückgesetzte Kennwörter; bestehende normale Kennwörter werden nicht ersetzt.
 `TAXONOMY_ADMIN_PASSWORD` dient weiterhin nur der initialen Administratoranlage.
 
-**Bestehende Browsersitzungen werden durch die vorhandene Kontenverwaltung nicht
-widerrufen.** Deaktivierung verhindert neue Anmeldungen; Rollenänderungen und
-Passwortzurücksetzen sind keine garantierte, sofortige Abmeldung aller Sitzungen.
-Die Bestätigungsseite weist beim Deaktivieren ausdrücklich darauf hin. Verteilter
-Sitzungswiderruf und eine neue Verzeichnisanbindung gehören nicht zu dieser Erweiterung.
+Bei jeder geschützten Anfrage prüft die Anwendung Principal, Installationsbindung,
+Kontostatus und die bei der Anmeldung vergebenen Rollen in der gemeinsamen
+Datenbank. Wird das Konto deaktiviert oder eine dieser Rollen entzogen, wird die
+nächste geschützte Anfrage auf jeder Anwendungsinstanz verweigert. Nach erneuter
+Anmeldung gelten die aktuellen Rollen. Eine bestehende Sitzung kann fortgesetzt
+werden, sobald das Konto aktiv ist und alle Rollen der ursprünglichen Anmeldung
+wieder vorliegen. Ist der Identitätsspeicher nicht verfügbar, wird der Zugriff
+verweigert. Bereits zugelassene Anfragen dürfen noch abgeschlossen werden.
+Wartende Hintergrundaufträge benötigen eigene Berechtigungsprüfungen.
 
 Für dauerhafte Konten eine persistente Datenbank und eine nicht destruktive
 Schemaeinstellung verwenden. Die HSQLDB-Entwicklungseinstellung im Arbeitsspeicher
@@ -105,14 +109,14 @@ The last enabled administrator remains protected by the service. The opt-in prof
 requires replacement of newly created/reset passwords by default; the existing
 `TAXONOMY_REQUIRE_PASSWORD_CHANGE` override is respected and displayed.
 
-Account disabling prevents new logins and denies the next protected request from
-an existing local browser session. Every protected request checks the current
-principal, its local installation binding and the account in the shared database;
-other application instances observe committed disabling without a session cache
-refresh. An unavailable identity store denies access. Re-enabling the same account
-allows an otherwise valid retained session to continue. A request admitted before
-the change may finish; queued work and changes to cached login roles require their
-own authority checks. Use persistent storage, deployment secrets and HTTPS.
+Every protected request from a local session checks the current principal, its
+installation binding, account status and roles held at sign-in in the shared
+database. Disabling the account or removing one of those roles denies the next
+protected request across application instances. Sign in again to use updated
+roles. A retained session can continue once the account is active and all its
+original roles are present again. An unavailable identity store denies access.
+Requests admitted before the change may finish. Queued work requires separate
+authority checks. Use persistent storage, deployment secrets and HTTPS.
 
 ## Verification
 

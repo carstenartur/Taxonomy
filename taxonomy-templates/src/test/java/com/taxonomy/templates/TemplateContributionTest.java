@@ -123,7 +123,7 @@ class TemplateContributionTest {
     }
 
     @Test
-    void previewsAreSelectedByFamilyAndTemplatesWorkWithoutAnyPreview() {
+    void previewsAreSelectedByFamilyAndTemplatesWorkWithoutAnyPreview() throws Exception {
         var first = contribution("first", true, false);
         var second = contribution("second", true, false);
         var firstPreview = new TemplateContribution(first.templateId(), first.displayName(), first.content(),
@@ -132,11 +132,11 @@ class TemplateContributionTest {
                 second.contract(), second.required(), () -> new byte[]{2}, "second.docx");
         var templates = mock(DocumentTemplates.class);
         var controller = new DocumentTemplateDetailController(templates, List.of(firstPreview, secondPreview));
-        assertArrayEquals(new byte[]{1}, controller.testReport("first").getBody());
-        assertArrayEquals(new byte[]{2}, controller.testReport("second").getBody());
-        assertTrue(controller.testReport("second").getHeaders().getContentDisposition().getFilename().equals("second.docx"));
+        assertArrayEquals(new byte[]{1}, controller.testReport("first", null).getBody());
+        assertArrayEquals(new byte[]{2}, controller.testReport("second", null).getBody());
+        assertTrue(controller.testReport("second", null).getHeaders().getContentDisposition().getFilename().equals("second.docx"));
         var withoutPreview = new DocumentTemplateDetailController(templates, List.of());
-        assertThrows(IllegalArgumentException.class, () -> withoutPreview.testReport("first"));
+        assertThrows(IllegalArgumentException.class, () -> withoutPreview.testReport("first", null));
         verifyNoInteractions(templates);
     }
 }

@@ -22,6 +22,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.transaction.AfterTransaction;
+import org.springframework.test.context.transaction.BeforeTransaction;
+import org.springframework.test.context.transaction.TestTransaction;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
@@ -64,14 +67,17 @@ class WorkspaceProvisioningBoundaryIT {
     @Autowired private RepositoryMembershipService memberships;
     @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Autowired private com.taxonomy.security.repository.UserRepository users;
+    @Autowired private com.taxonomy.security.repository.RoleRepository roles;
     private SystemRepository source;
     private String sourceCommit;
     private final List<String> workspaceIds = new ArrayList<>();
 
-    @BeforeEach
+    @BeforeTransaction
     void createOwnedSourceCheckpoint() throws Exception {
         // A prior Spring context may already have consumed the JVM-wide bootstrap.
         // Own a unique real source instead of depending on the primary's test order.
+        // Commit it before the test transaction: current authorization deliberately
+        // uses a separate transaction, just as it does for an earlier HTTP creation.
         source = repositories.createCentralRepository("Provisioning boundary source",
                 "provisioning-boundary-" + UUID.randomUUID(), null,
                 RepositoryVisibility.PRIVATE, USER, "draft");
@@ -80,6 +86,18 @@ class WorkspaceProvisioningBoundaryIT {
         sourceCommit = git.commitDsl("draft", SOURCE_DSL, USER, "Provisioning test source");
         repositories.markProvisioningReady(source.getRepositoryId());
         assertThat(git.getDslAtCommit(sourceCommit)).isEqualTo(SOURCE_DSL);
+    }
+
+    @BeforeEach
+    void attachOwnedSourceCheckpoint() throws Exception {
+        if (source == null) {
+            // The collaboration journey disables the test transaction so each HTTP
+            // request commits independently; @BeforeTransaction does not run there.
+            createOwnedSourceCheckpoint();
+        } else {
+            // Tests that archive the source still mutate a managed catalogue entity.
+            source = repositories.getRepository(source.getRepositoryId());
+        }
     }
 
     @AfterEach
@@ -91,9 +109,25 @@ class WorkspaceProvisioningBoundaryIT {
                 // JPA rollback does not replace deletion of separately persisted Git state.
                 workspaceIds.forEach(gitRepositories::deleteWorkspaceRepository);
             } finally {
-                if (source != null) gitRepositories.deleteCentralRepository(source.getRepositoryId());
+                if (source != null) {
+                    try {
+                        gitRepositories.deleteCentralRepository(source.getRepositoryId());
+                    } finally {
+                        if (!TestTransaction.isActive()) deleteCommittedSourceMetadata();
+                    }
+                }
             }
         }
+    }
+
+    @AfterTransaction
+    void deleteCommittedSourceMetadata() {
+        if (source == null) return;
+        // Test rollback removes workspace mutations, but the separately committed
+        // source fixture must be removed explicitly after that rollback completes.
+        jdbc.update("delete from repository_membership where repository_id=?", source.getRepositoryId());
+        jdbc.update("delete from system_repository where repository_id=?", source.getRepositoryId());
+        source = null;
     }
 
     @ParameterizedTest
@@ -308,6 +342,8 @@ class WorkspaceProvisioningBoundaryIT {
 
     private com.taxonomy.security.model.PrincipalUserDetails activeActor(String username,String role) {
         var account=new com.taxonomy.security.model.AppUser(); account.setUsername(username); account.setPasswordHash("unused");
+        account.getRoles().add(roles.findByName("ROLE_"+role)
+                .orElseGet(() -> roles.saveAndFlush(new com.taxonomy.security.model.AppRole("ROLE_"+role))));
         users.saveAndFlush(account);
         String principal=account.getPrincipalId();
         jdbc.update("insert into app_principal(principal_id,scope_key,enabled) values(?,?,1)",principal,username);
@@ -316,7 +352,8 @@ class WorkspaceProvisioningBoundaryIT {
         jdbc.update("insert into principal_binding(binding_key,principal_id,binding_kind,issuer,subject_id,enabled) values(?,?,'LOCAL',?,?,1)",
                 com.taxonomy.security.model.PrincipalBinding.key(binding),principal,installation,principal);
         return new com.taxonomy.security.model.PrincipalUserDetails(new com.taxonomy.backup.PrincipalId(UUID.fromString(principal)),
-                username,"unused",true,List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_"+role)));
+                username,"unused",true,account.getRoles().stream()
+                        .map(granted -> new org.springframework.security.core.authority.SimpleGrantedAuthority(granted.getName())).toList());
     }
 
     private static java.util.Map<String,Object> editorCreate(Object context,String title) {

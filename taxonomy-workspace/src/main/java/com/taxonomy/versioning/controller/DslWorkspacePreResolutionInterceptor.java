@@ -27,13 +27,11 @@ import java.util.regex.Pattern;
  * <p>Provisioning and context resolution failures propagate before controller
  * code runs. Successful results are request-cached by the corresponding
  * services, so repeated controller lookups cannot later switch repository or
- * workspace. Despite the historical class name, the interceptor is also used
- * by analysis and graph-search endpoints whose results carry workspace-scoped
- * hypotheses or relation visibility.</p>
+ * workspace. The interceptor also covers analysis endpoints whose results
+ * carry workspace-scoped hypotheses.</p>
  *
  * <p>An explicit central selection, or a reader without provisioning capability,
- * may read historical portfolio records or the supported central graph source
- * through GET/HEAD. Its repository, branch and
+ * may read historical portfolio records through GET/HEAD. Its repository, branch and
  * actor must still match the request-bound context; writes, analysis and Git
  * operations require an isolated workspace.</p>
  */
@@ -43,14 +41,14 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
     // Keep this list explicit: GET handlers outside these observational routes
     // may schedule work or promote snapshots and therefore require isolation.
     private static final List<Pattern> CENTRAL_READ_PATHS = List.of(
+            "/api/search/graph",
             "/api/(?:projects|solutions|products)(?:/[0-9]+)?/?",
             "/api/projects/[0-9]+/requirements(?:/[0-9]+(?:/(?:versions|snapshots))?)?/?",
             "/api/projects/[0-9]+/(?:analysis-jobs(?:/[^/]+)?|snapshots/[^/]+|portfolio|conflicts|reports/[^/]+)/?",
             "/api/projects/[0-9]+/copilot-operations/[^/]+/?",
             "/api/projects/[0-9]+/requirements/[0-9]+/copilot/latest/?",
             "/api/projects/[0-9]+/solutions(?:/[0-9]+/products)?/?",
-            "/api/projects/[0-9]+/architecture-workbench/[^/]+/?",
-            "/api/search/graph")
+            "/api/projects/[0-9]+/architecture-workbench/[^/]+/?")
             .stream().map(Pattern::compile).toList();
 
     private final WorkspaceResolver workspaceResolver;
@@ -75,7 +73,7 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
         String username = workspaceResolver.resolveCurrentUsername();
         boolean mayProvision = provisionPermission.mayProvision(username);
         boolean explicitCentral = "".equals(WorkspaceContextResolver.requestedWorkspaceId(request));
-        // 1.3 portfolios and the legacy graph source belong to the central repository.
+        // 1.3 portfolios belong to the central repository.
         // An explicit central selection may read them without creating workspace
         // state or turning historical data into a personal workspace.
         // Git operations and every mutation retain the isolation contract below.
