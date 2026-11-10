@@ -54,6 +54,20 @@ public final class TaxonomyTooling {
         String[] commandArguments = java.util.Arrays.copyOfRange(
                 arguments, 1, arguments.length);
         return switch (command) {
+            case "check-evidence-manifest", "write-quality-manifest" -> EvidenceManifest.run(
+                    command, commandArguments, workingDirectory, output, error);
+            case "verify-deployment" -> DeploymentVerifier.run(
+                    commandArguments, environment, workingDirectory, output, error);
+            case "render-delivery-state", "render-deploy-url", "render-service-id" ->
+                    DeploymentVerifier.renderCommand(
+                            command, commandArguments, environment, workingDirectory, output, error);
+            case "write-release-image-evidence", "read-evidence-digest", "check-trivy-sarif",
+                    "storage-contract-selectors" -> ReleaseEvidence.run(
+                            command, commandArguments, environment, workingDirectory, output, error);
+            case "check-release-delivery-contract", "check-delivery-hardening" -> DeliveryGuards.run(
+                    command, workingDirectory, output, error);
+            case "generate-quality-site", "verify-quality-publication" -> QualitySite.run(
+                    command, commandArguments, workingDirectory, output, error);
             case "release-resources" -> ReleaseResourceSampler.run(
                     commandArguments, environment, workingDirectory, output, error);
             case "native-installation" -> NativeInstallationSnapshot.run(

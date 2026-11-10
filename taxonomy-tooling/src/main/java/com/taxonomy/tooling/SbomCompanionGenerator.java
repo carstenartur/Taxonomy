@@ -135,6 +135,34 @@ public final class SbomCompanionGenerator {
         }
     }
 
+    /** Reuses the generator's exact source identity to verify an archived companion. */
+    static void verifyBinding(Path sbom, Path vex) throws IOException {
+        if (!"CycloneDX".equals(
+                FlatJson.parseObject(Files.readString(sbom)).get("bomFormat"))) {
+            throw new IllegalArgumentException("SBOM format differs");
+        }
+        SourceData source = readSource(sbom);
+        Map<String, Object> companion = FlatJson.parseObject(Files.readString(vex));
+        if (!"CycloneDX".equals(companion.get("bomFormat"))) {
+            throw new IllegalArgumentException("VEX format differs");
+        }
+        var properties = QualitySite.list(
+                QualitySite.object(companion.get("metadata")).get("properties"));
+        Map<String, Object> observed = new LinkedHashMap<>();
+        for (Object raw : properties) {
+            var property = QualitySite.object(raw);
+            String name = Objects.toString(property.get("name"), "");
+            if (observed.putIfAbsent(name, property.get("value")) != null) {
+                throw new IllegalArgumentException("Repeated VEX property");
+            }
+        }
+        if (!source.sha256().equals(observed.get("taxonomy:sbom-sha256"))
+                || !source.serialNumber().equals(observed.get("taxonomy:sbom-ref"))
+                || !source.version().equals(observed.get("taxonomy:sbom-version"))) {
+            throw new IllegalArgumentException("VEX does not bind the exact archived SBOM");
+        }
+    }
+
     private static SourceData readSource(Path sbom) throws IOException {
         if (!Files.isRegularFile(sbom)) {
             throw new IllegalArgumentException(

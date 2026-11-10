@@ -17,7 +17,6 @@
       "requires": [
         "Java 25",
         "Docker",
-        "Python 3",
         "POSIX shell"
       ]
     },
@@ -137,7 +136,6 @@
       "requires": [
         "Java 25",
         "Docker",
-        "Python 3",
         "Bash 4+"
       ]
     }

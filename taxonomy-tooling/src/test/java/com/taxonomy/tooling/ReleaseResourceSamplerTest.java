@@ -284,34 +284,17 @@ class ReleaseResourceSamplerTest {
     @Test
     void deliveryGuardRejectsWrappedBuildMissingCancelAndUnsafeArchives(@TempDir Path temporary) throws Exception {
         Path root = ReleaseOrchestrationChecks.repositoryRoot();
-        Path log = temporary.resolve("guard.log");
-        String script = """
-                import importlib.util
-                from pathlib import Path
-                spec = importlib.util.spec_from_file_location('guard', '.github/scripts/check-release-delivery-contract.py')
-                guard = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(guard)
-                original = Path('.github/workflows/deploy-release.yml').read_text()
-                assert guard.resource_diagnostic_failures(original) == []
-                changes = [
-                    ('cancel: release_resources', 'run: echo missing-cancel'),
-                    ('cancel: release_resources', 'if: always()\\n        cancel: release_resources'),
-                    ('run: "$RUNNER_TEMP/release.sh"', 'run: "$RUNNER_TEMP/release.sh" | tee output.log'),
-                    ('/metrics.jsonl', '/**'),
-                    ('if: always()', 'if: success()'),
-                    ('background: true', 'background: false'),
-                    ('retention-days: 7', 'retention-days: 90'),
-                ]
-                for before, after in changes:
-                    assert before in original
-                    assert guard.resource_diagnostic_failures(original.replace(before, after)), before
-                """;
-        Process process = new ProcessBuilder("python3", "-c", script).directory(root.toFile())
-                .redirectErrorStream(true).redirectOutput(log.toFile()).start();
-        try {
-            assertThat(process.waitFor(10, TimeUnit.SECONDS)).isTrue();
-            assertThat(process.exitValue()).as(Files.readString(log)).isZero();
-        } finally { if (process.isAlive()) process.destroyForcibly(); }
+        String original=Files.readString(root.resolve(".github/workflows/deploy-release.yml"));
+        assertThat(DeliveryGuards.resourceDiagnosticFailures(original)).isEmpty();
+        for(String[] change:new String[][]{
+            {"cancel: release_resources","run: echo missing-cancel"},
+            {"cancel: release_resources","if: always()\n        cancel: release_resources"},
+            {"run: \"$RUNNER_TEMP/release.sh\"","run: \"$RUNNER_TEMP/release.sh\" | tee output.log"},
+            {"/metrics.jsonl","/**"},{"if: always()","if: success()"},
+            {"background: true","background: false"},{"retention-days: 7","retention-days: 90"}}) {
+            assertThat(original).contains(change[0]);
+            assertThat(DeliveryGuards.resourceDiagnosticFailures(original.replace(change[0],change[1]))).as(change[0]).isNotEmpty();
+        }
     }
 
     private static int command(Path root, Path output, String mode, String... extra) {

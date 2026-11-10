@@ -137,7 +137,7 @@ jobs:
           bash -n .github/scripts/validate-reviewed-release-notes.sh
           bash -n .github/scripts/install-helm.sh
           bash -n deploy/helm/taxonomy/verify.sh
-          python3 .github/scripts/check-release-delivery-contract.py
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-release-delivery-contract
 
       - name: Prepare numeric release diagnostics
         continue-on-error: true
@@ -472,41 +472,7 @@ jobs:
           mkdir -p "$artifact_dir" target
           evidence_file="target/release-image-evidence.json"
           export RELEASE_VERSION IMAGE_DIGEST RELEASE_SOURCE_SHA immutable_image evidence_file
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          payload = {
-              "schemaVersion": 1,
-              "releaseVersion": os.environ["RELEASE_VERSION"],
-              "sourceCommit": os.environ["RELEASE_SOURCE_SHA"],
-              "image": os.environ["immutable_image"],
-              "digest": os.environ["IMAGE_DIGEST"],
-              "scan": {
-                  "tool": "trivy",
-                  "severityGate": ["HIGH", "CRITICAL"],
-                  "result": "passed",
-              },
-              "attestations": {
-                  "provenance": True,
-                  "sbom": True,
-              },
-          }
-          Path(os.environ["evidence_file"]).write_text(
-              json.dumps(payload, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
-          onnx_payload = dict(payload,
-              imageVariant="onnx",
-              image=f"{os.environ['immutable_image'].split('@')[0]}@{os.environ['ONNX_IMAGE_DIGEST']}",
-              digest=os.environ["ONNX_IMAGE_DIGEST"],
-          )
-          Path("target/release-onnx-image-evidence.json").write_text(
-              json.dumps(onnx_payload, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
-          PY
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" write-release-image-evidence
           cp target/release-onnx-image-evidence.json \
             "$artifact_dir/taxonomy-${RELEASE_VERSION}-onnx-image-evidence.json"
           cp release-onnx-image-trivy.sarif \
@@ -636,12 +602,7 @@ jobs:
           fi
 
           docker buildx imagetools inspect "$image" >/dev/null
-          evidence_digest=$(python3 - <<'PY'
-          import json
-          from pathlib import Path
-          print(json.loads(Path('target/release-image-evidence.json').read_text())['digest'])
-          PY
-          )
+          evidence_digest=$(java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" read-evidence-digest --file target/release-image-evidence.json)
           if [[ "$evidence_digest" != "$IMAGE_DIGEST" ]]; then
             echo "::error::Release image evidence records $evidence_digest, expected $IMAGE_DIGEST"
             exit 1
