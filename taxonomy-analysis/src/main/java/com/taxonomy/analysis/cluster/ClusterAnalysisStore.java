@@ -453,7 +453,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         if (binding == null) return result;
         var claim = new com.taxonomy.analysis.recovery.AnalysisContinuationStore.Claim(binding.id(), binding.token(), null);
         if (!continuations.owns(claim, run.id)) return result;
-        return cancelled ? continuations.cancel(binding.id(), command.workspaceContext(), result.getRelationSearchReport()).result()
+        return cancelled ? continuations.cancel(binding.id(), command.workspaceContext(), result).result()
                 : continuations.complete(claim, result, result.getTree());
     }
 
