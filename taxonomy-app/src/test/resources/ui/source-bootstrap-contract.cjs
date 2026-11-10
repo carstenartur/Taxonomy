@@ -61,14 +61,20 @@ function element(tag = 'div') {
 function fixture(page, fetcher, {lifecycle = false} = {}) {
     const nodes = new Map(), timers = new Map(), requests = [], stored = new Map();
     let timerId = 0;
-    const templates = page === 'portfolio' ? ['projects.html', ...(lifecycle ? ['fragments/application-chrome.html'] : [])] : ['index.html', 'architecture-workbench.html',
+    const templates = page === 'versioning' ? ['portfolio-versioning.html', 'fragments/application-chrome.html'] : page === 'portfolio' ? ['projects.html', ...(lifecycle ? ['fragments/application-chrome.html'] : [])] : ['index.html', 'architecture-workbench.html',
         'fragments/architecture-workflow.html', 'fragments/application-chrome.html'];
+    let templateMarkup = '';
+    const labels = new Map();
     for (const template of templates) {
         const text = fs.readFileSync(path.join(resources, 'templates', template), 'utf8');
+        templateMarkup += text;
+        for (const match of text.matchAll(/<label\b[^>]*for="([^"]+)"/gi)) labels.set(match[1], element('label'));
         for (const match of text.matchAll(/<([a-z][\w-]*)\b[^>]*\bid="([^"]+)"/gi)) {
             nodes.set(match[2], element(match[1]));
         }
     }
+    const skipLink = /class="[^"]*\bskip-link\b/.test(templateMarkup) ? element('a') : null;
+    if (page === 'versioning') nodes.get('dslPreview').previousElementSibling = element('summary');
     // Chrome still publishes its real context; navigation presentation is not part of this contract.
     for (const id of ['applicationContext', 'applicationNavigation', 'applicationNavigationMenu']) nodes.delete(id);
     const submitButtons = [...nodes.values()].filter(node => node.tagName === 'FORM').map(form => {
@@ -80,6 +86,11 @@ function fixture(page, fetcher, {lifecycle = false} = {}) {
     const document = events({documentElement: {lang: 'en'}, body: element('body'), cookie: '',
         getElementById: id => nodes.get(id) || null,
         querySelector(selector) {
+            if (selector === '.skip-link') return skipLink;
+            const label = selector.match(/^label\[for="([^"]+)"\]$/);
+            if (label) return labels.get(label[1]) || null;
+            const submit = selector.match(/^#([\w-]+) button\[type="submit"\]$/);
+            if (submit) return nodes.get(submit[1])?.children.find(child => child.type === 'submit') || null;
             if (selector === '#requirementsTable tbody') return requirementsBody;
             if (selector.startsWith('meta[')) return null;
             return /^#[\w-]+$/.test(selector) ? nodes.get(selector.slice(1)) || null : null;
@@ -93,7 +104,9 @@ function fixture(page, fetcher, {lifecycle = false} = {}) {
         },
         createElement: element, createTextNode: text => ({textContent: String(text)})
     });
-    const href = page === 'portfolio' ? 'https://example.test/taxonomy/projects?lang=en'
+    const href = page === 'versioning' ? 'https://example.test/taxonomy/projects/42/versioning?lang=en&projectId=42'
+        + '&repositoryId=repository-A&workspaceId=workspace-A&workspaceScopeKey=workspace-A&branch=draft&revision=1&sourceSnapshotId=frozen-source#retained'
+        : page === 'portfolio' ? 'https://example.test/taxonomy/projects?lang=en'
         : 'https://example.test/taxonomy/?architectureSource=snapshot&projectId=1&snapshotId=snapshot-A'
           + '&repositoryId=repository-A&workspaceId=workspace-A&workspaceScopeKey=workspace-A&branch=draft#architecture';
     const context = events({document, location: new URL(href), console, URL, URLSearchParams,
@@ -130,6 +143,119 @@ function fixture(page, fetcher, {lifecycle = false} = {}) {
         {filename: 'taxonomy-api-client.js'});
     load('shared/application-chrome.js');
     return {context, document, nodes, requests, timers, load};
+}
+
+
+async function standaloneVersioning(transition) {
+    const hydration = deferred();
+    let initialRead;
+    const project = {id: 42, projectKey: 'PROJECT-42', title: 'Fixture project', status: 'ACTIVE'};
+    const selectedContext = revision => ({repositoryId: 'repository-A', workspaceScopeKey: 'workspace-A',
+        branch: 'draft', commit: 'a'.repeat(40), revision, actor: 'fixture-user', writeMode: 'PRIVATE_WORKSPACE'});
+    const overview = revision => ({context: selectedContext(revision), source: 'WORKSPACE_REVISION',
+        projectionState: revision === 1 ? 'HISTORICAL' : 'READY', mayEdit: revision !== 1,
+        architectureTitle: 'Selected architecture', projects: [project], requirements: [], dependencies: []});
+    const app = fixture('versioning', request => {
+        const endpoint = request.url.pathname.replace(/^\/taxonomy/, '');
+        if (endpoint === '/api/architecture/lifecycle') {
+            const revision = Number(request.url.searchParams.get('revision') || 2);
+            if (!initialRead) {initialRead = request; return hydration.promise;}
+            return Response.json(overview(revision));
+        }
+        if (endpoint === '/api/projects/42') return Response.json(project);
+        if (endpoint === '/api/git/state') return Response.json({currentBranch: 'draft', branches: ['draft'], headCommit: 'a'.repeat(40)});
+        if (endpoint === '/api/projects/git/export') return Response.json({repositoryId: 'repository-A', workspaceId: 'workspace-A',
+            activeBranch: 'draft', headCommit: 'a'.repeat(40), dsl: '', projectCount: 1, requirementCount: 0, solutionCount: 0, productCount: 0});
+        if (endpoint === '/api/account/me') return Response.json({username: 'fixture-user', architectureMutationAllowed: true});
+        throw new Error('Unexpected standalone versioning request: ' + request.url);
+    });
+    const projectPublications = [];
+    const chrome = app.context.TaxonomyAppChrome;
+    app.context.TaxonomyAppChrome = Object.assign({}, chrome, {
+        updateContext(value, owner) {
+            if (value.project) projectPublications.push({project: value.project, owner});
+            return chrome.updateContext(value, owner);
+        }
+    });
+    app.load('api/architecture-lifecycle-api.js');
+    app.load('shared/architecture-lifecycle.js');
+    const sourceReady = app.context.TaxonomyArchitectureLifecycle.ready();
+    await settle();
+    assert.ok(initialRead, 'The actual lifecycle must have started its selected initial overview');
+    assert.equal(initialRead.url.searchParams.get('revision'), '1');
+    app.load('api/portfolio-api.js');
+    app.load('portfolio/portfolio-versioning.js');
+    const start = {type: 'DOMContentLoaded'};
+    app.document.dispatchEvent(start);
+    let startupError;
+    const initialized = Promise.all(start.results).catch(error => {startupError = error;});
+    await settle();
+    const portfolioReads = () => app.requests.filter(request => /\/api\/(?:projects|git\/state)(?:\/|$)/.test(request.url.pathname));
+    let refreshed = Promise.resolve();
+    if (transition === 'initial') {
+        for (const id of ['commitMessage', 'mergeMessage']) {
+            const input = app.nodes.get(id);
+            input.value = 'Deliberately cleared while initial metadata is pending';
+            input.value = '';
+            input.dispatchEvent({type: 'input'});
+        }
+        const refresh = {type: 'click'};
+        app.nodes.get('refreshPreview').dispatchEvent(refresh);
+        refreshed = Promise.all(refresh.results).catch(error => {startupError = error;});
+        await settle();
+    }
+    const readsBeforeConfirmation = portfolioReads().length;
+    if (transition === 'history') {
+        const target = new URL(app.context.location); target.searchParams.set('revision', '2');
+        app.context.history.pushState(null, '', target);
+        app.context.dispatchEvent({type: 'popstate'});
+        await settle();
+    } else if (transition === 'pagehide') {
+        app.context.dispatchEvent({type: 'pagehide'});
+        await settle();
+    }
+    hydration.resolve(Response.json(overview(1)));
+    await Promise.all([sourceReady, initialized, refreshed]);
+    await settle();
+    if (startupError) throw startupError;
+    const state = app.context.TaxonomyArchitectureLifecycle.state();
+    if (transition === 'pagehide') {
+        assert.equal(portfolioReads().length, 0,
+            'Leaving during the initial lifecycle must not admit portfolio reads after the page has departed');
+        assert.equal(initialRead.options.signal.aborted, true);
+        return;
+    }
+    if (transition === 'history') {
+        assert.equal(state?.context.revision, 2, 'The actual newer history selection must own the standalone lifecycle');
+        assert.equal(initialRead.options.signal.aborted, true, 'The old initial response must remain cancelled');
+        assert.equal(app.requests.filter(request => request.url.pathname.endsWith('/api/architecture/lifecycle')).length, 2);
+        assert.equal(portfolioReads().length, 0, 'An initial continuation cannot publish its project after a real history departure');
+        // The accepted current lifecycle may publish project facts itself. Only
+        // the departed Versioning continuation must remain silent.
+        assert.equal(projectPublications.filter(publication => publication.owner === undefined).length, 0,
+            'A historical departure must not resume Versioning project publication');
+        assert.ok(projectPublications.some(publication => publication.owner === 'working' && publication.project.id === 42),
+            'The actual current lifecycle may still publish its accepted project facts');
+    } else {
+        assert.equal(initialRead.options.signal.aborted, false,
+            'The actual portfolio startup must not cancel its own selected lifecycle overview');
+        assert.equal(state?.context.revision, 1, 'The initial historical selection must not remain unavailable after its valid response');
+        assert.equal(state.projectionState, 'HISTORICAL');
+        assert.equal(readsBeforeConfirmation, 0, 'Neither initial load nor early Refresh may bypass lifecycle readiness');
+        assert.equal(app.context.TaxonomyAppChrome.getContext().project.id, 42);
+        for (const id of ['commitMessage', 'mergeMessage']) {
+            assert.equal(app.nodes.get(id).value, '', 'Early deliberate clearing must remain owned by the real input listener');
+        }
+    }
+    assert.equal(state.context.repositoryId, 'repository-A');
+    assert.equal(state.context.workspaceScopeKey, 'workspace-A');
+    assert.equal(state.context.branch, 'draft');
+    assert.equal(app.context.location.searchParams.get('revision'), transition === 'history' ? '2' : '1');
+    assert.equal(app.context.location.searchParams.get('sourceSnapshotId'), 'frozen-source');
+    assert.equal(app.context.location.hash, '#retained');
+    assert.ok(app.requests.filter(request => !request.url.pathname.endsWith('/api/account/me')).every(request =>
+        request.options.headers.get('X-Taxonomy-Workspace-Id') === 'workspace-A'), 'Actual named requests retain the selected workspace');
+    assert.equal(app.requests.filter(request => request.options.method !== 'GET').length, 0, 'Bootstrap never publishes a mutation');
 }
 
 async function portfolio(early, leavePage = false, selectionPending = false, inspectStartup = false) {
@@ -572,7 +698,8 @@ async function snapshot(mode) {
 }
 
 (async () => {
-    if (scenario === 'portfolio-early-submit') await portfolio(true);
+    if (scenario.startsWith('versioning-')) await standaloneVersioning(scenario.slice('versioning-'.length));
+    else if (scenario === 'portfolio-early-submit') await portfolio(true);
     else if (scenario === 'portfolio-ready-submit') await portfolio(false);
     else if (scenario === 'portfolio-selection-pending-submit') await portfolio(true, false, true);
     else if (scenario === 'portfolio-startup-busy') await portfolio(true, false, false, true);

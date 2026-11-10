@@ -21,8 +21,17 @@ after(async () => { await browser?.close(); });
 async function fixture(unresolved = false) {
     const page = await browser.newPage({viewport:{width:1400,height:1000},reducedMotion:'reduce'});
     page.setDefaultTimeout(4000);
-    await page.route('http://reconciliation.test/**', route => route.fulfill({contentType:'text/html',body:'<html><body><section id="architectureLifecycle"></section></body></html>'}));
-    await page.goto('http://reconciliation.test/?repositoryId=repo&workspaceId=copy&branch=draft');
+    page.fixtureErrors = [];
+    page.on('pageerror', error => {
+        const diagnostic = error.stack || error.message;
+        page.fixtureErrors.push(diagnostic);
+        console.error('[architecture-reconciliation fixture] ' + diagnostic);
+    });
+    await page.route('https://reconciliation.test/**', route => route.fulfill({contentType:'text/html',body:'<html><body><section id="architectureLifecycle"></section></body></html>'}));
+    await page.goto('https://reconciliation.test/?repositoryId=repo&workspaceId=copy&branch=draft');
+    assert.deepEqual(await page.evaluate(() => ({secure: window.isSecureContext,
+        randomUUID: typeof window.crypto?.randomUUID})), {secure: true, randomUUID: 'function'},
+    'The real lifecycle requires native secure-context command identity generation');
     await page.addScriptTag({content:d3Source});
     await page.evaluate(unresolved => {
         const context = {repositoryId:'repo', workspaceScopeKey:'copy', branch:'draft', commit:'a'.repeat(40), revision:4, actor:'alice', writeMode:'PRIVATE_WORKSPACE'};
@@ -39,7 +48,9 @@ async function fixture(unresolved = false) {
             conflicts:unresolved?[{id:'element:one',reason:'Choose the retained source',base:'original',local:'local',incoming:null}]:[]};
         window.writes = [];
         window.TaxonomyI18n = {ready:()=>Promise.resolve(),t:key=>key,resolveUrl:value=>value};
-        window.TaxonomyAppChrome = {updateContext(){},getContext:()=>({})};
+        window.navigationRefreshes = 0;
+        window.TaxonomyAppChrome = {updateContext(){},getContext:()=>({}),
+            refreshNavigation(){window.navigationRefreshes++;}};
         window.TaxonomyArchitectureWorkflow = {getScope:()=>scope,setScope:value=>{scope=structuredClone(value);}};
         window.TaxonomyApiClient = {getJson:async()=>structuredClone(overview),request:async(url,options,policy)=>{
             const request = {url,options:structuredClone(options),policy:structuredClone(policy),body:JSON.parse(options.body)};
@@ -59,6 +70,11 @@ async function fixture(unresolved = false) {
     return page;
 }
 
+async function closeFixture(page) {
+    await page.close();
+    assert.deepEqual(page.fixtureErrors, [], 'Unexpected reconciliation page errors remain blocking');
+}
+
 test('one preview renders frozen property evidence and four real diagrams with stable identities', async () => {
     const page = await fixture();
     try {
@@ -76,6 +92,7 @@ test('one preview renders frozen property evidence and four real diagrams with s
         await page.locator('[data-reconciliation-scene="local"] [data-node-id="one"]').click();
         assert.equal(await page.locator('[data-reconciliation-properties] [data-block-id="element:one"][aria-selected="true"]').count(),2);
         await page.locator('#lifecycleReconciliationAccept').click();
+        await page.waitForFunction(() => window.navigationRefreshes === 1);
         const request = await page.evaluate(()=>writes.find(write=>write.url.includes('/accept')));
         assert.equal(request.body.previewFingerprint,'frozen-preview-one');
         assert.equal(request.body.headCommit,'b'.repeat(40));
@@ -83,7 +100,7 @@ test('one preview renders frozen property evidence and four real diagrams with s
         assert.equal(request.options.headers['If-Match'],'"workspace-revision-4"');
         assert.equal(request.policy.pinnedWorkspaceId,'copy');
         assert.equal(request.policy.retries,0);
-    } finally { await page.close(); }
+    } finally { await closeFixture(page); }
 });
 
 test('editing the intent clears its visual evidence until another matching preview arrives', async () => {
@@ -98,7 +115,7 @@ test('editing the intent clears its visual evidence until another matching previ
         await page.locator('#lifecycleReconciliationPreview').click();
         await page.locator('#lifecycleReconciliationAccept').waitFor({state:'visible'});
         assert.equal(await page.locator('[data-reconciliation-preview]').getAttribute('data-preview-fingerprint'),'frozen-preview-two');
-    } finally { await page.close(); }
+    } finally { await closeFixture(page); }
 });
 
 test('changing workspace removes a displayed comparison and rejects late preview evidence', async () => {
@@ -119,7 +136,7 @@ test('changing workspace removes a displayed comparison and rejects late preview
             assert.equal(await page.locator('#lifecycleReconciliationAccept').isHidden(),true);
             assert.equal(await page.locator('#lifecycleReconciliationPreview').isDisabled(),true);
             assert.equal(await page.evaluate(()=>writes.filter(write=>write.url.includes('/accept')).length),0);
-        } finally { await page.close(); }
+        } finally { await closeFixture(page); }
     }
 });
 
@@ -132,5 +149,5 @@ test('unresolved choices show their sources without inventing an empty proposed 
         assert.equal(await page.locator('[data-reconciliation-scene="proposed"]').count(),0);
         assert.match(await page.locator('[data-reconciliation-preview]').textContent(),/lifecycle.reconcile.proposedUnavailable/);
         assert.equal(await page.locator('#lifecycleReconciliationAccept').isHidden(),true);
-    } finally { await page.close(); }
+    } finally { await closeFixture(page); }
 });

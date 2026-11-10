@@ -264,9 +264,9 @@
         if (!validationOutput) return;
         var html = '';
         if (data.valid) {
-            html = '<span class="text-success">' + t('views.valid') + '</span>';
+            html = '<span class="text-success">' + escapeHtml(t('views.valid')) + '</span>';
             if (data.elements !== undefined) {
-                html += ' — ' + data.elements + ' elements, ' + data.relations + ' relations';
+                html += escapeHtml(' — ' + data.elements + ' elements, ' + data.relations + ' relations');
             }
         } else {
             html = '<span class="text-danger">❌ Invalid</span><ul class="mb-0 mt-1">';
@@ -495,7 +495,7 @@
                 showStatus(t('dsl.diff.changes', data.totalChanges), 'success');
             })
             .catch(function (e) { if (e?.code === 'ABORTED') return;
-                diffOutput.innerHTML = '<span class="text-danger">' + t('dsl.diff.failed', e.message) + '</span>';
+                diffOutput.innerHTML = '<span class="text-danger">' + escapeHtml(t('dsl.diff.failed', e.message)) + '</span>';
                 showStatus(t('dsl.diff.error', e.message), 'error');
             });
     }
@@ -521,7 +521,7 @@
                 showStatus(t('dsl.textdiff.loaded'), 'success');
             })
             .catch(function (e) { if (e?.code === 'ABORTED') return;
-                diffOutput.innerHTML = '<span class="text-danger">' + t('dsl.textdiff.failed', e.message) + '</span>';
+                diffOutput.innerHTML = '<span class="text-danger">' + escapeHtml(t('dsl.textdiff.failed', e.message)) + '</span>';
                 showStatus(t('dsl.diff.text.error', e.message), 'error');
             });
     }

@@ -51,7 +51,7 @@ for (const prefix of ['', '/taxonomy']) test(`native status fixture owns its par
     context.document.querySelector = selector => selector === 'script[data-taxonomy-analysis-session]'
         ? parsedScripts.find(attributes => /\bdata-taxonomy-analysis-session(?:\s|=|$)/.test(attributes)) || null : null;
     // Model parser order: a marker on a later script cannot own an earlier state bootstrap.
-    for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)) {
+    for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
         const attributes = match[1]; parsedScripts.push(attributes);
         const file = attributes.match(/src="[^"]*\/js\/(.*?)"/)?.[1];
         if (file === 'api/taxonomy-api-client.js') canonicalFixture.install(context);

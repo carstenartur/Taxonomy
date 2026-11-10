@@ -93,6 +93,12 @@ class SourceBootstrapBrowserContractTest {
         run("snapshot-page-exit");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"initial", "history", "pagehide"})
+    void standaloneVersioningKeepsItsSelectedLifecycleStand(String transition) throws Exception {
+        run("versioning-" + transition);
+    }
+
     private void run(String scenario) throws Exception {
         Path script = temporary.resolve("source-bootstrap.cjs");
         try (var input = getClass().getResourceAsStream("/ui/source-bootstrap-contract.cjs")) {

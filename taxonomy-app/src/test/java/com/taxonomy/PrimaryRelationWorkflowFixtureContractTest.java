@@ -100,6 +100,12 @@ class PrimaryRelationWorkflowFixtureContractTest {
                 const vm = require('node:vm');
                 const assert = require('node:assert/strict');
                 const source = fs.readFileSync(process.argv[1], 'utf8');
+                const template = fs.readFileSync(process.argv[3], 'utf8');
+                const select = template.match(/<select\\b[^>]*id="newRelType"[^>]*>([\\s\\S]*?)<\\/select>/i);
+                assert.ok(select, 'Use the actual manual relation type control');
+                const offeredTypes = [...select[1].matchAll(/<option\\b[^>]*value="([^"]+)"[^>]*>/gi)]
+                  .map(match => match[1]);
+                assert.ok(offeredTypes.length > 0, 'The actual type control must offer its declared choices');
                 const writes = [], events = [], fields = {}, commit = 'c'.repeat(40);
                 let present = false, responseWaiter = null;
                 const relation = () => ({sourceCode: fields['#newRelSource'], targetCode: fields['#newRelTarget'],
@@ -127,7 +133,11 @@ class PrimaryRelationWorkflowFixtureContractTest {
                   return {
                     selector, options, getAttribute: async () => 'open', waitFor: async () => {},
                     fill: async value => {fields[selector] = value;},
-                    selectOption: async value => {fields[selector] = value;},
+                    selectOption: async value => {
+                      assert.equal(selector, '#newRelType');
+                      assert.ok(offeredTypes.includes(value), 'Actual manual relation type option is not offered: ' + value);
+                      fields[selector] = value;
+                    },
                     click: async () => {
                       if (selector === '#createRelationBtn') return;
                       if (selector === '.relation-delete-btn') {assert.equal(present, true); present = false; return;}
@@ -179,7 +189,8 @@ class PrimaryRelationWorkflowFixtureContractTest {
                 """;
         String node = System.getProperty("taxonomy.node.executable");
         assertThat(node).as("Maven supplies the pinned JavaScript runtime").isNotBlank();
-        Process process = new ProcessBuilder(node, "-e", script, source.toString(), requests.toString())
+        Process process = new ProcessBuilder(node, "-e", script, source.toString(), requests.toString(),
+                root.resolve("taxonomy-app/src/main/resources/templates/index.html").toString())
                 .redirectErrorStream(true).redirectOutput(log.toFile()).start();
         try {
             assertThat(process.waitFor(15, TimeUnit.SECONDS)).as("Manual relation generation: " + log).isTrue();
