@@ -1,28 +1,64 @@
 package com.taxonomy.security.webdav;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.transaction.TransactionSystemException;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import javax.sql.DataSource;
 import java.security.SecureRandom;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class WebDavApplicationCredentialServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-08-23T00:00:00Z");
+
+    private final Logger logger =
+            (Logger) LoggerFactory.getLogger(WebDavApplicationCredentialService.class);
+    private final ListAppender<ILoggingEvent> audit = new ListAppender<>();
+    private Level previousLogLevel;
+
+    @BeforeEach
+    void captureAudit() {
+        previousLogLevel = logger.getLevel();
+        logger.setLevel(Level.INFO);
+        audit.start();
+        logger.addAppender(audit);
+    }
+
+    @AfterEach
+    void releaseAudit() {
+        logger.detachAppender(audit);
+        audit.stop();
+        logger.setLevel(previousLogLevel);
+    }
 
     @Test
     void createsAOneTimeSecretStoresOnlyItsHashAndAuthenticatesIt() {
@@ -47,6 +83,7 @@ class WebDavApplicationCredentialServiceTest {
         assertThat(encoder.matches(created.secret(), stored.get().getSecretHash())).isTrue();
         assertThat(created.credential().scopes())
                 .containsExactly("template:read", "template:write");
+        assertCreatedAudit(created);
 
         var principal = service.authenticate("admin", created.secret()).orElseThrow();
         assertThat(principal.username()).isEqualTo("admin");
@@ -55,6 +92,54 @@ class WebDavApplicationCredentialServiceTest {
                 authority -> authority.getAuthority())
                 .contains("ROLE_ADMIN", "ROLE_WEBDAV_APPLICATION",
                         "SCOPE_template:read", "SCOPE_template:write");
+    }
+
+    @Test
+    void createdAuditWaitsForSuccessfulCommitAndRetainsOnlyItsSafeMetadata() throws SQLException {
+        CreationTransaction fixture = new CreationTransaction();
+        AtomicInteger eventsBeforeCommit = new AtomicInteger();
+
+        var created = fixture.transaction.execute(status -> {
+            var result = fixture.create();
+            eventsBeforeCommit.set(createdAudits().size());
+            return result;
+        });
+
+        verify(fixture.repository).save(fixture.stored.get());
+        verify(fixture.connection).commit();
+        verify(fixture.connection, never()).rollback();
+        assertThat(eventsBeforeCommit.get()).as("created audit before commit").isZero();
+        assertCreatedAudit(created);
+    }
+
+    @Test
+    void successfulSaveFollowedByRollbackDoesNotAuditCreated() throws SQLException {
+        CreationTransaction fixture = new CreationTransaction();
+
+        fixture.transaction.executeWithoutResult(status -> {
+            fixture.create();
+            status.setRollbackOnly();
+        });
+
+        verify(fixture.repository).save(fixture.stored.get());
+        verify(fixture.connection).rollback();
+        verify(fixture.connection, never()).commit();
+        assertThat(createdAudits()).as("created audit for a rolled-back credential").isEmpty();
+    }
+
+    @Test
+    void successfulSaveFollowedByCommitFailureDoesNotAuditCreated() throws SQLException {
+        CreationTransaction fixture = new CreationTransaction();
+        doThrow(new SQLException("synthetic credential-store commit failure"))
+                .when(fixture.connection).commit();
+
+        assertThatThrownBy(() -> fixture.transaction.execute(status -> fixture.create()))
+                .isInstanceOf(TransactionSystemException.class)
+                .hasCauseInstanceOf(SQLException.class);
+
+        verify(fixture.repository).save(fixture.stored.get());
+        verify(fixture.connection).commit();
+        assertThat(createdAudits()).as("created audit for an unsuccessful commit").isEmpty();
     }
 
     @Test
@@ -112,6 +197,53 @@ class WebDavApplicationCredentialServiceTest {
 
         assertThat(credential.getRevokedAt()).isEqualTo(NOW);
         verify(repository).save(credential);
+    }
+
+    private List<ILoggingEvent> createdAudits() {
+        return audit.list.stream()
+                .filter(event -> event.getMessage().startsWith("audit.webdav_credential.created"))
+                .toList();
+    }
+
+    private void assertCreatedAudit(WebDavApplicationCredentialService.CreatedCredential created) {
+        assertThat(createdAudits()).singleElement().satisfies(event -> {
+            assertThat(event.getLevel()).isEqualTo(Level.INFO);
+            assertThat(event.getFormattedMessage()).isEqualTo(
+                    "audit.webdav_credential.created id=" + created.credential().id()
+                            + " user=admin read=true write=true expires="
+                            + created.credential().expiresAt());
+            assertThat(event.getArgumentArray()).containsExactly(
+                    created.credential().id(), "admin", true, true,
+                    created.credential().expiresAt());
+            assertThat(event.getThrowableProxy()).isNull();
+        });
+    }
+
+    /** Exercise Spring's completion callbacks while controlling the JDBC commit outcome. */
+    private static final class CreationTransaction {
+        private final WebDavApplicationCredentialRepository repository =
+                mock(WebDavApplicationCredentialRepository.class);
+        private final AtomicReference<WebDavApplicationCredential> stored = new AtomicReference<>();
+        private final Connection connection = mock(Connection.class);
+        private final TransactionTemplate transaction;
+        private final WebDavApplicationCredentialService service;
+
+        private CreationTransaction() throws SQLException {
+            when(repository.save(any())).thenAnswer(invocation -> {
+                WebDavApplicationCredential credential = invocation.getArgument(0);
+                stored.set(credential);
+                return credential;
+            });
+            DataSource dataSource = mock(DataSource.class);
+            when(dataSource.getConnection()).thenReturn(connection);
+            when(connection.getAutoCommit()).thenReturn(true);
+            transaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+            service = service(repository, new BCryptPasswordEncoder(4));
+        }
+
+        private WebDavApplicationCredentialService.CreatedCredential create() {
+            return service.create(owner("admin", "ROLE_ADMIN"), "Word laptop", false, true, 30);
+        }
     }
 
     private static WebDavApplicationCredentialService service(
