@@ -8,7 +8,7 @@ const sources = new Map();
 for (const path of ['api/taxonomy-api-client.js', 'api/analysis-api.js', 'api/portfolio-api.js',
   'api/import-api.js', 'api/analysis-session-api.js', 'core/taxonomy-analysis-session-core.js',
   'core/taxonomy-analysis-session-transport.js', 'portfolio/taxonomy-portfolio-async.js',
-  'core/taxonomy-analysis.js', 'shared/taxonomy-document-import.js', 'api/export-api.js',
+  'core/taxonomy-analysis.js', 'shared/taxonomy-document-import.js', 'shared/taxonomy-import.js', 'api/export-api.js',
   'api/copilot-api.js', 'api/architecture-workbench-api.js', 'api/document-templates-api.js', 'shared/architecture-workflow.js', 'portfolio/taxonomy-portfolio.js', 'core/taxonomy-scoring.js', 'api/proposals-api.js', 'api/hypotheses-api.js', 'shared/taxonomy-database-setup.js']) {
   sources.set(path, await readFile(new URL(path, root), 'utf8'));
 }
@@ -21,7 +21,7 @@ function deferred() {
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
 function boot(fetchImpl, {analysis = false, portfolio = false, beforeCanonical = false, workflow = false, search = '', nodes = new Map()} = {}) {
-  const events = [], listeners = new Map(), timers = new Map(), stored = new Map();
+  const events = [], listeners = new Map(), windowListeners = new Map(), timers = new Map(), stored = new Map();
   let timerId = 0;
   const runtime = {workspaceId: 'workspace-a', analysisGeneration: 0, invalidating: false};
   const window = {
@@ -30,7 +30,8 @@ function boot(fetchImpl, {analysis = false, portfolio = false, beforeCanonical =
     TaxonomyI18n: {t: (key, ...args) => key + args.join(' '), getBasePath: () => '/taxonomy', resolveUrl: path => String(path).startsWith('/api/') ? '/taxonomy' + path : path},
     localStorage: {getItem: key => stored.get(key) || null, setItem: (key, value) => stored.set(key, value), removeItem: key => stored.delete(key)},
     sessionStorage: {getItem: () => null, setItem() {}, removeItem() {}},
-    addEventListener() {},
+    addEventListener(type, listener) {if (!windowListeners.has(type)) windowListeners.set(type, []); windowListeners.get(type).push(listener);},
+    dispatchEvent(event) {for (const listener of windowListeners.get(event.type) || []) listener(event); return true;},
     setTimeout: (callback, delay) => {timers.set(++timerId, {callback, delay}); return timerId;},
     clearTimeout: id => timers.delete(id),
     setInterval: () => 1, clearInterval() {},
@@ -342,6 +343,83 @@ test('the actual Import FormData client retains the upload body and fences a lat
   assert.equal(new Headers(calls[0].init.headers).has('Content-Type'), false);
   assert.deepEqual(rendered, []);
 });
+
+function startImportProfiles(fetchImpl) {
+  const select = {options: [], addEventListener() {},
+    set innerHTML(value) {this.options = [{value: '', textContent: value}];},
+    appendChild(option) {this.options.push(option);}};
+  select.innerHTML = '<option value="">Select an import profile</option>';
+  const app = boot(fetchImpl, {nodes: new Map([['importProfileSelect', select]])});
+  app.runtime.workspaceId = null;
+  app.context.ImportApi = app.window.ImportApi;
+  app.context.console = {warn() {}};
+  app.load('shared/taxonomy-import.js');
+  app.document.dispatchEvent({type: 'DOMContentLoaded'});
+  return {...app, select};
+}
+
+const profileFixture = [{profileId: 'archimate', displayName: 'ArchiMate', acceptedFileFormat: 'xml',
+  supportedElementTypes: ['ApplicationComponent'], supportedRelationTypes: ['Serving']}];
+
+test('the import selector publishes global capabilities after initial workspace and source hydration', async () => {
+  const response = deferred(), requests = [];
+  const app = startImportProfiles((url, init) => {requests.push({url, init}); return response.promise;});
+  await flush();
+  assert.equal(requests.length, 1);
+  app.runtime.workspaceId = 'hydrated-workspace';
+  app.runtime.analysisGeneration++;
+  app.window.TaxonomyContextBar = {getCurrentContext: () => ({contextId: 'hydrated', branch: 'draft', commitId: 'a'.repeat(40)})};
+  app.document.dispatchEvent({type: 'taxonomy:entity-context-changed'});
+  app.document.dispatchEvent({type: 'taxonomy:analysis-invalidated'});
+  response.resolve(Response.json(profileFixture));
+  await flush(); await flush();
+  assert.deepEqual(app.select.options.map(option => option.value), ['', 'archimate'],
+    'The real import UI must retain its available formats during initial source selection');
+  assert.equal(app.select.options[1].textContent, 'ArchiMate (xml)');
+  assert.equal(requests[0].url, '/taxonomy/api/import/profiles');
+  assert.equal(new Headers(requests[0].init.headers).has('X-Taxonomy-Workspace-Id'), false);
+  assert.equal(requests[0].init.signal.aborted, false);
+  assert.equal(app.timers.size, 0);
+});
+
+for (const boundary of ['authentication failure', 'page exit']) {
+  test(`the import selector does not publish capabilities after ${boundary}`, async () => {
+    const response = deferred(), requests = [];
+    const app = startImportProfiles((url, init) => {
+      if (url.endsWith('/api/account/me')) return Promise.resolve(Response.json({}, {status: 401}));
+      requests.push({url, init});
+      return response.promise;
+    });
+    await flush();
+    if (boundary === 'page exit') app.window.dispatchEvent({type: 'pagehide'});
+    else await assert.rejects(app.window.TaxonomyApiClient.getJson('/api/account/me'), error => error.status === 401);
+    response.resolve(Response.json(profileFixture));
+    await flush(); await flush();
+    assert.deepEqual(app.select.options.map(option => option.value), ['']);
+    assert.equal(requests[0].init.signal.aborted, true);
+    assert.equal(app.timers.size, 0);
+  });
+}
+
+for (const operation of ['preview', 'execute']) {
+  test(`import ${operation} still rejects a response from the workspace left behind`, async () => {
+    const response = deferred();
+    const app = boot(() => response.promise);
+    const data = new FormData();
+    data.set('file', new Blob(['fixture']), 'fixture.xml');
+    const pending = operation === 'preview' ? app.window.ImportApi.preview('archimate', data)
+      : app.window.ImportApi.execute('archimate', 'draft', data);
+    const outcome = Promise.allSettled([pending]);
+    await flush();
+    app.runtime.workspaceId = 'workspace-b';
+    app.document.dispatchEvent({type: 'taxonomy:entity-context-changed'});
+    response.resolve(Response.json({success: true}));
+    const result = (await outcome)[0];
+    assert.equal(result.status, 'rejected');
+    assert.equal(result.reason.code, 'ABORTED');
+    assert.equal(app.timers.size, 0);
+  });
+}
 
 function node() {
   const classes = new Set(['d-none']), handlers = new Map();

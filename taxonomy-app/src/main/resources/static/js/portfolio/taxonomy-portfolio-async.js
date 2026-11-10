@@ -495,6 +495,11 @@
                 }
                 if (previousStatus !== current.job.status) announce(statusLabel(current.job.status));
             } catch (error) {
+                // The canonical transport can cancel before our pagehide listener runs.
+                if (error?.code === 'ABORTED') {
+                    retryDelay = null;
+                    return;
+                }
                 if (!stillCurrent()) return;
                 current.lastPollError = String(error && error.message || error);
                 current.updatedAt = Date.now();

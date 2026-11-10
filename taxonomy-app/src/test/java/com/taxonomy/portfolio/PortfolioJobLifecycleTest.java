@@ -41,6 +41,11 @@ class PortfolioJobLifecycleTest {
     }
 
     @Test
+    void nativeDepartureCheckpointsCannotPersistCancellationOrScheduleAnotherPoll() throws Exception {
+        run("departureCheckpointsDoNotPublishCancellation");
+    }
+
+    @Test
     void lateResponseFromDepartedDocumentCannotRewriteRetainedJobState() throws Exception {
         run("departedResponseCannotRewriteHistory");
     }

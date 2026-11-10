@@ -16,7 +16,9 @@ window.ImportApi = (function () {
      * @returns {Promise<Array>}
      */
     function loadProfiles() {
-        return client.getJson('/api/import/profiles');
+        // Registered formats are application capabilities, independent of the
+        // selected repository. Keep authentication and page-lifetime guards.
+        return client.getJson('/api/import/profiles', {contextSensitive: false, workspaceScoped: false});
     }
 
     /**

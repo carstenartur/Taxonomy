@@ -117,6 +117,9 @@ class AnalysisContinuationUiIT {
                             && Boolean(context?.S && context?.runtime)
                             && ['analysisRelationsExtension', 'extendAnalysisRelationsBtn',
                                 'analysisRelationsExtensionHint'].every(id => document.getElementById(id))
+                            && typeof window.TaxonomyApiClient?.captureContext === 'function'
+                            && typeof window.AnalysisApi?.main === 'function'
+                            && typeof window.TaxonomyAnalysisSessionApi?.request === 'function'
                             && typeof window.TaxonomyScoring?.runAnalysis === 'function'
                             && typeof window.TaxonomyAnalysisRecovery?.extendRelations === 'function'
                             && typeof window.TaxonomyAnalysisRecovery?.nodeEvidenceMatches === 'function'
@@ -152,8 +155,9 @@ class AnalysisContinuationUiIT {
                 window.TaxonomyBrowse={renderView:()=>document.dispatchEvent(new Event('taxonomy:view-rendered')),clearStatus:()=>{},showStatus:()=>{}};
                 window.TaxonomyAnalysisProgress={start:()=>({acceptsResult:()=>true,finish:()=>{}})};
                 window.fixtureFollowups=0;window.TaxonomyAnalysis={runCopilotFlow:async()=>{window.fixtureFollowups++;},renderPartialCopilot:()=>{}};
-                window.TaxonomyAnalysisSessionApi={request:async(url,options)=>fetch(url,options)};
-                </script><script src="/scoring.js"></script><script src="/viewport.js"></script><script src="/recovery.js"></script>%s
+                </script><script src="/js/api/taxonomy-api-client.js"></script><script src="/js/api/analysis-api.js"></script>
+                <script src="/js/api/analysis-session-api.js"></script><script src="/scoring.js"></script>
+                <script src="/viewport.js"></script><script src="/recovery.js"></script>%s
                 </body></html>
                 """.formatted(language, control.group(), language, language, extensionScript)); return;
         }
@@ -175,7 +179,8 @@ class AnalysisContinuationUiIT {
         if (path.equals("/recovery.css")) {
             send(exchange, "text/css", new ClassPathResource("static/css/taxonomy-analysis-recovery.css").getContentAsString(StandardCharsets.UTF_8)); return;
         }
-        String script = path.equals("/viewport.js") ? "static/js/core/taxonomy-recovery-viewport.js"
+        String script = path.startsWith("/js/") ? "static" + path
+                : path.equals("/viewport.js") ? "static/js/core/taxonomy-recovery-viewport.js"
                 : path.equals("/recovery.js") ? "static/js/core/taxonomy-analysis-recovery.js"
                 : path.equals("/scoring.js") ? "static/js/core/taxonomy-scoring.js"
                 : path.equals("/extension.js") ? "static/js/core/taxonomy-relations-extension.js" : null;

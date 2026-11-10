@@ -44,13 +44,15 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
-import org.springframework.context.ApplicationContext;
+import org.mockito.MockedStatic;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.orm.jpa.hibernate.SpringBeanContainer;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
@@ -75,7 +77,7 @@ class EmbeddingModelKnnIsolationTest {
     private final RelationProjectionRecoveryService recovery = mock(RelationProjectionRecoveryService.class);
     private final FixtureEmbeddingService embeddings = new FixtureEmbeddingService();
     private GenericApplicationContext context;
-    private ApplicationContext previousBridgeContext;
+    private MockedStatic<SpringContextHolder> bridgeBeans;
     private EntityManagerFactory factory;
     private EntityManager entityManager;
     private GraphSearchService graphSearch;
@@ -83,13 +85,15 @@ class EmbeddingModelKnnIsolationTest {
 
     @BeforeAll
     void createMixedModelIndex() {
-        previousBridgeContext = (ApplicationContext) ReflectionTestUtils.getField(SpringContextHolder.class, "context");
         context = new GenericApplicationContext();
         context.getBeanFactory().registerSingleton("localEmbeddingService", embeddings);
         context.registerBean(PrimaryRepositorySeedRelationListener.class,
                 () -> new PrimaryRepositorySeedRelationListener(context.getBeanProvider(SystemRepositoryService.class)));
         context.refresh();
-        new SpringContextHolder().setApplicationContext(context);
+        // Other cached application contexts may still be indexing asynchronously.
+        // Only this fixture's indexing thread may see its authored vectors/model keys.
+        bridgeBeans = mockStatic(SpringContextHolder.class);
+        bridgeBeans.when(() -> SpringContextHolder.getBean(LocalEmbeddingService.class)).thenReturn(embeddings);
 
         Configuration configuration = new Configuration()
                 .addAnnotatedClass(TaxonomyNode.class)
@@ -181,8 +185,22 @@ class EmbeddingModelKnnIsolationTest {
             if (factory != null) factory.close();
             if (context != null) context.close();
         } finally {
-            ReflectionTestUtils.setField(SpringContextHolder.class, "context", previousBridgeContext);
+            if (bridgeBeans != null) bridgeBeans.close();
         }
+    }
+
+    @Test
+    void syntheticEmbeddingBeanIsConfinedToTheFixtureThread() throws Exception {
+        assertThat(SpringContextHolder.getBean(LocalEmbeddingService.class)).isSameAs(embeddings);
+        Thread fixtureThread = Thread.currentThread();
+        var backgroundLookup = CompletableFuture.supplyAsync(() -> {
+            assertThat(Thread.currentThread()).isNotSameAs(fixtureThread);
+            return SpringContextHolder.getBean(LocalEmbeddingService.class);
+        });
+
+        assertThat(backgroundLookup.get(5, TimeUnit.SECONDS))
+                .as("Concurrent background indexers must not receive this fixture's authored vectors or mutable model key")
+                .isNotSameAs(embeddings);
     }
 
     @Test

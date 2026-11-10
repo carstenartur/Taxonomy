@@ -6,6 +6,9 @@ import vm from 'node:vm';
 const draftSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-draft.js',
   import.meta.url), 'utf8');
+const projectsSource = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-projects.js',
+  import.meta.url), 'utf8');
 
 import { isolateRoleStateScenario } from './ui-role-state-isolation.mjs';
 
@@ -23,7 +26,6 @@ function installHarness(options = {}) {
     ? 'workspace-42' : options.workspaceId;
   const remoteStatus = options.remoteStatus === undefined
     ? 204 : options.remoteStatus;
-  let evaluateCount = 0;
 
   const input = {
     value: 'Restored requirement from another browser profile',
@@ -117,15 +119,26 @@ function installHarness(options = {}) {
   };
 
   const page = {
-    async waitForFunction(predicate) {
-      if (!await predicate() && options.waitForReady) await options.waitForReady();
-      assert.equal(await predicate(), true);
+    waitForFunction(predicate, argument, waitOptions = {}) {
+      const deadline = Date.now() + (waitOptions.timeout ?? 1_000);
+      // Match Playwright 1.61.1 frames.ts: the immediate predicate result is
+      // tested for truthiness before its promise, if any, is assimilated.
+      return new Promise((resolve, reject) => {
+        function poll() {
+          try {
+            const result = predicate(argument);
+            if (result) { resolve(result); return; }
+            if (Date.now() >= deadline) throw new Error('Readiness predicate timed out');
+            setImmediate(poll);
+          } catch (error) { reject(error); }
+        }
+        poll();
+      });
     },
     async evaluate(callback, argument) {
-      evaluateCount++;
-      // Evaluation 1 reloads, evaluation 2 captures the authoritative identity,
-      // and evaluation 3 performs the mutation. Inject races immediately before 3.
-      if (evaluateCount === 3) {
+      // Only the mutation receives the captured workspace string. Other browser
+      // evaluations may await initialization or read the authoritative identity.
+      if (typeof argument === 'string') {
         if (options.conflictBeforeMutation) conflict = true;
         if (options.conflictMarkerBeforeMutation) visibleConflict = true;
         if (options.workspaceIdBeforeMutation !== undefined) {
@@ -149,6 +162,121 @@ function installHarness(options = {}) {
     }
   };
 }
+
+function deferred() {
+  let resolve;
+  const promise = new Promise(complete => { resolve = complete; });
+  return { promise, resolve };
+}
+
+function installProductionSessionHarness({ unavailableBeforeMutation = false } = {}) {
+  const harness = installHarness();
+  const commands = window.TaxonomyAnalysisSession;
+  const workspaceSource = deferred();
+  const repositoryContext = deferred();
+  const runtime = {
+    initialized: false, workspaceResolved: false, workspaceId: null, version: null,
+    restoring: false, invalidating: false, resetting: false, conflict: false,
+    serverUnconfirmed: false
+  };
+  const context = {
+    S: harness.taxonomyState, runtime, CHANGE_POLL_MS: 1500,
+    language: () => 'en', text: key => key,
+    businessTextElement: () => null, statusArea: () => null,
+    currentPayload: () => ({ businessText: harness.input.value }),
+    comparable: JSON.stringify, isStale: () => false,
+    rememberedWorkspaceId: () => null, rememberWorkspaceId() {},
+    installWorkspaceFetchRouting() {}, installWorkspaceEventSourceRouting() {},
+    async jsonRequest(path, options) {
+      assert.equal(path, '/api/workspace/current');
+      assert.equal(options.method, 'GET');
+      return { workspaceId: 'workspace-42' };
+    },
+    async loadDraft(options = {}) {
+      if (options.force) harness.calls.push('reload');
+      runtime.restoring = false;
+      return null;
+    },
+    invalidate: commands.invalidate, saveDraft: commands.saveNow,
+    setDraftDecisionPending(value) { runtime.draftDecisionPending = value; },
+    queueSave() {}, queueStaleActions() {}, showActionAlert() {},
+    serverUnavailable() { runtime.serverUnconfirmed = true; }
+  };
+  Object.assign(document, {
+    readyState: 'complete', visibilityState: 'visible',
+    addEventListener() {}, dispatchEvent() {}
+  });
+  Object.assign(window, {
+    __TaxonomyAnalysisSessionContext: context,
+    TaxonomyArchitectureLifecycle: { ready: async () => true },
+    TaxonomyArchitectureWorkspace: { ready: () => workspaceSource.promise },
+    TaxonomyContextBar: { fetchAndRender: () => repositoryContext.promise },
+    setInterval() {}, addEventListener() {}, console
+  });
+  vm.runInNewContext(projectsSource, {
+    window, document, console,
+    MutationObserver: class { observe() {} },
+    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } }
+  }, { filename: 'taxonomy-analysis-session-projects.js' });
+  const evaluate = harness.page.evaluate;
+  harness.page.evaluate = async (callback, argument) => {
+    if (unavailableBeforeMutation && typeof argument === 'string') {
+      runtime.serverUnconfirmed = true;
+    }
+    return evaluate(callback, argument);
+  };
+  return { ...harness, runtime, session: window.TaxonomyAnalysisSession,
+    releaseWorkspace: () => workspaceSource.resolve(true),
+    releaseContext: () => repositoryContext.resolve({ contextId: 'ctx-42', branch: 'draft/current' }) };
+}
+
+test('the real draft-only session cannot be reloaded or cleared before its source is confirmed', async () => {
+  const harness = installProductionSessionHarness();
+  const isolation = isolateRoleStateScenario(harness.page, 1_000).then(
+    () => ({ error: null }), error => ({ error }));
+  try {
+    assert.equal(await harness.session.whenInitialized(), true);
+    assert.equal(harness.session.state().workspaceId, 'workspace-42');
+    assert.equal(harness.session.state().ready, false);
+    await new Promise(resolve => setImmediate(resolve));
+    const beforeWorkspace = [...harness.calls];
+    harness.releaseWorkspace();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(harness.session.state().ready, false);
+    const beforeContext = [...harness.calls];
+    harness.releaseContext();
+    const outcome = await isolation;
+
+    assert.deepEqual(beforeWorkspace, [], 'Draft-only initialization cannot admit reload or destructive cleanup');
+    assert.deepEqual(beforeContext, [], 'Workspace initialization still requires the authoritative repository context');
+    assert.equal(outcome.error, null);
+    assert.equal(harness.session.state().ready, true);
+    assert.equal(harness.calls.filter(call => call === 'reload').length, 1);
+    assert.equal(harness.calls.filter(call => call === 'save').length, 1);
+    assert.equal(harness.input.value, '');
+    assert.equal(harness.tree.dataset.viewRendered, 'list');
+  } finally {
+    harness.releaseWorkspace(); harness.releaseContext();
+    await isolation;
+    harness.restore();
+  }
+});
+
+test('real session readiness lost after polling still blocks authoritative cleanup', async () => {
+  const harness = installProductionSessionHarness({ unavailableBeforeMutation: true });
+  try {
+    harness.releaseWorkspace(); harness.releaseContext();
+    await harness.session.whenInitialized();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(harness.session.state().ready, true);
+    await assert.rejects(() => isolateRoleStateScenario(harness.page, 1_000),
+      /source became unavailable before authoritative cleanup/);
+    assert.equal(harness.session.state().ready, false);
+    assert.deepEqual(harness.calls, ['reload']);
+  } finally {
+    harness.restore();
+  }
+});
 
 test(
   'reloads an absent draft and verifies its uncached authoritative absence',
@@ -228,12 +356,14 @@ test('initial source readiness settles before isolation reload can invalidate it
   const source = new Promise(resolve => { release = resolve; });
   const harness = installHarness({ready: () => sourceReady, waitForReady: () => source});
   try {
-    const isolation = isolateRoleStateScenario(harness.page, 1_000);
+    const isolation = isolateRoleStateScenario(harness.page, 1_000).then(
+      () => ({ error: null }), error => ({ error }));
     await new Promise(resolve => setImmediate(resolve));
     const earlyCalls = [...harness.calls];
     sourceReady = true; release();
-    await isolation;
+    const outcome = await isolation;
     assert.deepEqual(earlyCalls, [], 'The fixture cannot reload, invalidate or write while first source publication is pending');
+    assert.equal(outcome.error, null);
     assert.equal(harness.calls.filter(call => call === 'reload').length, 1);
     assert.equal(harness.calls.filter(call => call === 'save').length, 1);
     assert.equal(harness.input.value, '');

@@ -1,12 +1,10 @@
 const DEFAULT_TIMEOUT_MS = 90_000;
 
 async function waitForAnalysisSessionReady(page, timeout) {
-  await page.waitForFunction(async () => {
+  // Playwright tests the immediate predicate value; a Promise is already truthy.
+  await page.waitForFunction(() => {
     const session = window.TaxonomyAnalysisSession;
     if (typeof session?.whenInitialized !== 'function') return false;
-    if (await session.whenInitialized() !== true) {
-      throw new Error('Role-state isolation could not initialize the authoritative workspace');
-    }
     const state = session?.state?.();
     const conflictMessage = document.querySelector(
       '#statusArea[data-analysis-session-message="conflict"]');

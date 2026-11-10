@@ -56,6 +56,15 @@ function fixture(fetcher=async()=>({ok:true,json:async()=>({projectId:1,workspac
     const register=()=>window.taxonomyPortfolioRegisterJob('/api/projects/1/analysis-jobs/retained-job',{projectId:1,workspaceId:null,id:'retained-job',status:'RUNNING'});
     return {register,requests,timers,storage,window,
         event(name,value={}) {for(const handler of events.get(name)||[])handler(value);},
+        async eventWithMicrotaskCheckpoints(name,value={},afterListener=()=>{}) {
+            for(const handler of events.get(name)||[]) {
+                handler(value);
+                // Native callbacks can drain promises before the next listener;
+                // the synchronous event helper deliberately keeps its existing contract.
+                await new Promise(resolve=>setImmediate(resolve));
+                afterListener();
+            }
+        },
         selecting(projectId) {storage.set('taxonomy.portfolio.projectId',String(projectId));this.event('taxonomy:portfolio-project-selecting',{detail:{projectId}});},
         select(projectId) {storage.set('taxonomy.portfolio.projectId',String(projectId));this.event('taxonomy:portfolio-project-selected',{detail:{projectId}});},
         runNext() {const entry=timers.entries().next().value;if(!entry)return Promise.resolve();clearTimer(entry[0]);return entry[1].callback();},
@@ -140,6 +149,39 @@ async function departureAbortsInFlightPoll() {
     } finally {finish();await poll;}
     assert.equal(f.timers.size,0);assert.equal(f.saved()[0].lastPollError,undefined);
     assert.equal(f.saved()[0].job.status,'RUNNING');
+}
+
+async function departureCheckpointsDoNotPublishCancellation() {
+    let finishBody;
+    const f=fixture(async()=>({ok:true,json:()=>new Promise(resolve=>{finishBody=resolve;})}));
+    assert.equal(f.register(),true);
+    const poll=f.runNext();
+    const scheduledAtCheckpoints=[];
+    try {
+        await new Promise(resolve=>setImmediate(resolve));
+        assert.equal(typeof finishBody,'function','The actual canonical request must be consuming its held JSON body');
+        assert.equal(f.requests.length,1);
+        assert.equal(f.requests[0].options.signal.aborted,false);
+        assert.equal(f.saved()[0].lastPollError,undefined,'The admitted read starts without an earlier polling error');
+
+        await f.eventWithMicrotaskCheckpoints('pagehide',{persisted:false},()=>{
+            scheduledAtCheckpoints.push(f.timers.size);
+        });
+        await poll;
+
+        assert.equal(f.requests[0].options.signal.aborted,true,'Departure aborts the real transport while its body is pending');
+        assert.equal(f.saved()[0].job.id,'retained-job');
+        assert.equal(f.saved()[0].job.status,'RUNNING');
+        assert.equal(f.saved()[0].lastPollError,undefined,'A canonical departure cancellation must not become a persisted polling error');
+        assert.equal(f.requests.length,1,'Cancellation must not begin another request');
+        assert.equal(f.timers.size,0);
+        assert.ok(scheduledAtCheckpoints.every(count=>count===0),
+            'Canonical cancellation must not schedule another poll before the portfolio departure listener runs');
+    } finally {
+        f.event('pagehide',{persisted:false});
+        finishBody?.({projectId:1,workspaceId:null,id:'retained-job',status:'SUCCESS'});
+        await poll;
+    }
 }
 
 async function departedResponseCannotRewriteHistory() {
@@ -279,6 +321,7 @@ const cases = {
     restoredJobUsesValidatedProjectIdentity,
     departureCancelsScheduledPoll,
     departureAbortsInFlightPoll,
+    departureCheckpointsDoNotPublishCancellation,
     departedResponseCannotRewriteHistory,
     backForwardCacheResumesOnce,
     activeFailureRetainsBoundedRetry,

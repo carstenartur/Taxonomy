@@ -359,9 +359,12 @@ async function assertPendingReloadPreservesEdits(page, assert) {
         && saved.payload.provisionalRelations?.[1]?.appliedInCurrentAnalysis === true,
     'Keeping newer input lost persisted score or manual-decision authority');
 
+    const reloadWorkspaceId = await page.evaluate(() => window.TaxonomyAnalysisSession.state().workspaceId);
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.TaxonomyAnalysisSession?.state?.().ready === true,
-      null, { timeout: 30_000 });
+    await page.waitForFunction(id => {
+      const session = window.TaxonomyAnalysisSession?.state?.();
+      return session?.ready === true && session.workspaceId === id;
+    }, reloadWorkspaceId, { timeout: 30_000 });
     assert(await page.evaluate(workingStateExpression()) === edited,
       'Reload after keeping newer input restored an older or incomplete working state');
 
@@ -451,12 +454,17 @@ async function installRequestGate(page, pattern, method, description = pattern) 
 
 async function runPreferencesPreservationWorkflow({ page, baseUrl, evidence }, hypotheses) {
   const { assert, passed, saveState, axeState } = evidence;
+  const workspaceId = await page.evaluate(() => window.TaxonomyAnalysisSession.state().workspaceId);
 
   // Exercise a direct deep link, not only tab navigation. This catches the
   // historical case where the pane became visible before its values were loaded.
-  await page.goto(`${baseUrl}/#preferences`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/#preferences`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.locator('#mainContent').waitFor({ state: 'visible', timeout: 60_000 });
   await page.evaluate(() => window.TaxonomyI18n?.ready?.());
+  await page.waitForFunction(id => {
+    const session = window.TaxonomyAnalysisSession?.state?.();
+    return session?.ready === true && session.workspaceId === id;
+  }, workspaceId, { timeout: 30_000 });
   await waitForPreferenceLoad(page);
   assert((await page.locator('#pref-max-arch-nodes').inputValue()).trim().length > 0,
     'Direct #preferences navigation did not load runtime preference values');
@@ -465,8 +473,6 @@ async function runPreferencesPreservationWorkflow({ page, baseUrl, evidence }, h
   // Use the real application state and real draft lifecycle. This is not a
   // detached fixture: the sentinel is persisted through the same optimistic
   // working-draft endpoint used by an ordinary completed analysis.
-  await page.waitForFunction(() => window.TaxonomyAnalysisSession?.state?.().ready === true,
-    null, { timeout: 30_000 });
   const originalState = await page.evaluate(workingStateExpression());
   await page.evaluate(hypotheses => {
     const text = 'QA preference preservation sentinel';
@@ -684,24 +690,25 @@ async function runPreferencesPreservationWorkflow({ page, baseUrl, evidence }, h
       await page.reload({ waitUntil: 'domcontentloaded' });
       await restoreGate.seen;
       await page.evaluate(() => window.TaxonomyI18n?.ready?.());
-      await page.waitForFunction(() =>
-        window.TaxonomyAnalysisSession?.state?.().restoring === true,
-      null, { timeout: 30_000 });
+      await page.waitForFunction(id => {
+        const session = window.TaxonomyAnalysisSession?.state?.();
+        return session?.restoring === true && session.workspaceId === id;
+      }, workspaceId, { timeout: 30_000 });
       await waitForPreferenceLoad(page);
 
       await saveArchitectureLimit(page, changedLimit);
       preferenceRestored = false;
 
       restoreGate.release();
-      await page.waitForFunction(() => {
-        const session = window.TaxonomyAnalysisSession;
+      await page.waitForFunction(id => {
+        const session = window.TaxonomyAnalysisSession?.state?.();
         const state = window.TaxonomyState;
-        return session?.state?.().ready === true
+        return session?.ready === true && session.workspaceId === id
           && state?.lastAnalyzedText === 'QA preference preservation sentinel'
           && state?.lastAnalysisStatus === 'SUCCESS'
           && state?.lastAnalysisProvider === 'MOCK'
           && Boolean(state?.currentArchView);
-      }, null, { timeout: 30_000 });
+      }, workspaceId, { timeout: 30_000 });
     } finally {
       await restoreGate.dispose();
     }
