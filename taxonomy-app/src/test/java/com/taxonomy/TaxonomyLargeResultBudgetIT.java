@@ -29,7 +29,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Real-browser budgets for representative and 1,000-result taxonomy searches. */
+/** Real-browser budgets for controlled taxonomy search workloads. */
 @Tag("ui-acceptance")
 @Tag("docker-required")
 @Tag("ci-app-shard-runtime")
@@ -126,6 +126,8 @@ class TaxonomyLargeResultBudgetIT {
             Map<String, Object> metrics = exerciseScenario(
                     scenario, initialTaxonomyNodes, deferredContainers);
             evidence.add(metrics);
+            // The runtime shard archives the original Failsafe XML with its source identity.
+            System.out.println("Large-result budget evidence " + JSON.writeValueAsString(metrics));
             writeEvidence();
             assertScenario(metrics, scenario);
         }
@@ -527,6 +529,10 @@ class TaxonomyLargeResultBudgetIT {
         Map<String, Object> metrics = new LinkedHashMap<>();
         metrics.put("scenario", scenario.id());
         metrics.put("resultCount", scenario.resultCount());
+        metrics.put("workload", "synthetic-api-search-response");
+        var capabilities = driver.getCapabilities();
+        metrics.put("browser", capabilities.getBrowserName());
+        metrics.put("browserVersion", capabilities.getBrowserVersion());
         metrics.put("realTaxonomyCode", realTaxonomyCode);
         metrics.put("initialTaxonomyDomNodes", initialTaxonomyNodes);
         metrics.put("deferredTaxonomyContainers", deferredContainers);

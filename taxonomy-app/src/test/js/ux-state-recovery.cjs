@@ -52,13 +52,23 @@ function dom() {
 function searchFixture() {
     const d = dom(), pending = deferred(); let options;
     for (const id of ['searchInput', 'searchBtn', 'searchClearBtn', 'searchModeSelect', 'searchMaxResults',
-        'searchResultsArea', 'analysisSecondaryTools', 'searchPanel']) d.element('div', id);
+        'searchResultsArea', 'analysisSecondaryTools', 'searchPanel']) {
+        d.element(id === 'searchModeSelect' ? 'select' : 'div', id);
+    }
     const highlights = [{classList: {remove(c) {this.removed = c;}}}];
     d.document.querySelectorAll = () => highlights;
     const window = {};
     vm.runInNewContext(source('shared/taxonomy-search.js'), {window, document: d.document, AbortController,
         TaxonomyI18n: {t: k => k}, TaxonomyUtils: {escapeHtml: String},
-        fetch(url, init) {options = init; return pending.promise;}});
+        requestAnimationFrame: callback => callback(),
+        CustomEvent: class {constructor(type, init) {this.type = type; this.detail = init.detail;}},
+        fetch(url, init) {
+            if (url === '/api/embedding/status') {
+                return Promise.resolve({ok: true, json: async () => ({available: false})});
+            }
+            options = init;
+            return pending.promise;
+        }});
     return {...d, window, pending, highlights, signal: () => options?.signal};
 }
 
@@ -83,6 +93,51 @@ test('search errors and empty results are announced with translated messages', a
         assert.match(html, failed ? /search.failed/ : /search.no.results/);
         assert.doesNotMatch(html, /Search failed \(/);
     }
+});
+
+test('the 100-result budget workload fills two complete windows and stops at the final result', async () => {
+    const policyPath = path.resolve(__dirname, '../../../../.github/large-result-budget.json');
+    const policy = JSON.parse(readFileSync(policyPath, 'utf8'));
+    const scenario = policy.scenarios.find(entry => entry.id === 'boundary-100');
+    assert.equal(scenario?.resultCount, 100, 'Maven browser budget must run the 100-result boundary');
+
+    const f = searchFixture();
+    const area = f.document.getElementById('searchResultsArea');
+    const status = f.element('div', 'a11yStatus');
+    const next = f.element('button');
+    next.dataset.searchResultNav = 'next';
+    area.querySelector = selector => selector === '[data-search-result-nav="next"]'
+        && area.innerHTML.includes('data-search-result-nav="next"') ? next : null;
+    f.document.documentElement.lang = 'en';
+    f.document.fire('DOMContentLoaded');
+
+    const positions = () => Array.from(area.innerHTML.matchAll(/aria-posinset="(\d+)" aria-setsize="100"/g),
+        match => Number(match[1]));
+    const click = (selector, dataset) => area.fire('click', {
+        target: {closest: candidate => candidate === selector ? {dataset} : null}
+    });
+    const select = index => {
+        assert.ok(area.innerHTML.includes(`data-result-index="${index}"`));
+        return click('.search-result-item[data-result-index]', {resultIndex: String(index)});
+    };
+
+    f.window.TaxonomySearch.performSearch('budget-100', 'fulltext', scenario.resultCount);
+    const results = Array.from({length: scenario.resultCount}, (_, index) => ({code: `N-${index + 1}`}));
+    f.pending.resolve({ok: true, json: async () => results});
+    await tick();
+    assert.deepEqual(positions(), Array.from({length: 50}, (_, index) => index + 1));
+    assert.match(area.innerHTML, /100 results\. Showing 1–50\./);
+
+    await select(49);
+    assert.equal(next.disabled, false);
+    await click('[data-search-result-nav]', next.dataset);
+    assert.deepEqual(positions(), Array.from({length: 50}, (_, index) => index + 51));
+    assert.match(area.innerHTML, /100 results\. Showing 51–100\./);
+    assert.equal(status.textContent, 'Result 51 of 100.');
+
+    await select(99);
+    assert.equal(status.textContent, 'Result 100 of 100.');
+    assert.equal(next.disabled, true);
 });
 
 test('Find Similar exposes the same local clear control while pending', () => {
