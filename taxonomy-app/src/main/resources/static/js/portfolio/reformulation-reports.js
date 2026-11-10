@@ -32,8 +32,9 @@ window.TaxonomyReformulationReports = (function () {
                         : await api.downloadReformulationReport(captured.projectId, captured.requirementId, captured.proposalId, captured.revision, format);
                     const expected = {json:'application/json',md:'text/markdown',html:'text/html',
                         docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}[format];
+                    const disposition = response.headers.get('Content-Disposition') || '';
                     if ((response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() !== expected
-                            || !(response.headers.get('Content-Disposition') || '').startsWith('attachment;')
+                            || !disposition.startsWith('attachment;')
                             || !/^[a-f0-9]{64}$/.test(response.headers.get('X-Content-SHA256') || ''))
                         throw new Error(de ? 'Keine gültige Berichtsausgabe erhalten.' : 'No valid report response received.');
                     const blob = await response.blob();
@@ -41,8 +42,9 @@ window.TaxonomyReformulationReports = (function () {
                     const url = URL.createObjectURL(blob);
                     const link = document.createElement('a');
                     const identity = captured.commandId ? 'adoption-' + captured.commandId : 'revision-' + captured.revision;
+                    const filename = 'reformulation-' + captured.proposalId + '-' + identity + '.' + format;
                     link.href = url;
-                    link.download = 'reformulation-' + captured.proposalId + '-' + identity + '.' + format;
+                    link.download = disposition === `attachment; filename="DEMO-${filename}"` ? 'DEMO-' + filename : filename;
                     try { document.body.append(link); link.click(); }
                     finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000); }
                     status.textContent = de ? 'Gespeicherter Stand exportiert.' : 'Saved record exported.';
