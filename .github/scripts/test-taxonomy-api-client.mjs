@@ -954,6 +954,119 @@ for (const [initialWorkspace, hydratedWorkspace] of [[null, 'workspace-A'], [nul
   });
 }
 
+async function loadWorkspaceBadgeStartup() {
+  const calls = [], writes = [], classes = new Set(['d-none']);
+  let finishSource;
+  const sourceReady = new Promise(resolve => { finishSource = resolve; });
+  const app = await loadWorkspaceFeatures((url, init) => new Promise(resolve => calls.push({url, init, resolve})), scope => {
+    for (const target of [scope.window, scope.document]) {
+      const listeners = new Map(), originalDispatch = target.dispatchEvent?.bind(target);
+      target.addEventListener = (type, callback) => {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type).add(callback);
+      };
+      target.removeEventListener = (type, callback) => listeners.get(type)?.delete(callback);
+      target.dispatchEvent = event => {
+        originalDispatch?.(event);
+        for (const callback of listeners.get(event.type) || []) callback(event);
+        return true;
+      };
+    }
+  });
+  const w = app.context.window;
+  w.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'workspace-A';
+  w.TaxonomyArchitectureWorkspace = {ready: () => sourceReady};
+  app.context.setInterval = () => 1;
+  app.context.clearInterval = () => {};
+  app.context.TaxonomyI18n = {ready: () => Promise.resolve(), t: key => key, formatBranch: branch => branch};
+  app.context.TaxonomyUtils = {escapeHtml: String};
+  const badge = {title: '', classList: {remove: name => classes.delete(name)}, set textContent(value) { writes.push(value); }};
+  app.context.document.getElementById = id => id === 'workspaceUserBadge' ? badge : null;
+  vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/versioning/taxonomy-context-bar.js', import.meta.url), 'utf8'), app.context);
+  const index = await readFile(new URL('../../taxonomy-app/src/main/resources/templates/index.html', import.meta.url), 'utf8');
+  const marker = index.indexOf('// Load workspace info for the user badge');
+  const start = index.lastIndexOf('<script>', marker) + '<script>'.length;
+  vm.runInContext(index.slice(start, index.indexOf('</script>', marker)), app.context);
+  const settle = async () => { for (let turn = 0; turn < 5; turn++) await new Promise(resolve => setImmediate(resolve)); };
+  app.context.document.dispatchEvent({type: 'DOMContentLoaded'});
+  await settle();
+  const reads = path => calls.filter(call => new URL(call.url, w.location.href).pathname.endsWith(path));
+  return {...app, w, reads, writes, classes, badge, finishSource, settle};
+}
+
+async function confirmWorkspaceBadgeSource(f, status = 200) {
+  f.finishSource(true);
+  await f.settle();
+  assert.equal(f.reads('/api/context/current').length, 1, 'Initial readiness consumers share the current repository read');
+  f.reads('/api/context/current')[0].resolve(Response.json(status === 200
+    ? {contextId: 'current-A', branch: 'draft/current', commitId: '1234567', mode: 'EDITABLE'}
+    : {detail: 'Repository context is unavailable'}, {status}));
+  await f.settle();
+}
+
+test('the live workspace badge waits for the initial repository context in the same workspace', async () => {
+  const f = await loadWorkspaceBadgeStartup();
+  assert.equal(f.reads('/api/workspace/current').length, 0, 'Do not admit the badge read before source readiness');
+  await confirmWorkspaceBadgeSource(f);
+  assert.equal(f.w.TaxonomyContextBar.getCurrentContext().contextId, 'current-A');
+  assert.equal(f.reads('/api/workspace/current').length, 1, 'Initial readiness admits one current workspace read');
+  const read = f.reads('/api/workspace/current')[0];
+  read.resolve(Response.json({workspaceId: 'workspace-A', username: 'current-user', displayName: 'Current A', currentBranch: 'draft/current'}));
+  await f.settle();
+  assert.equal(f.classes.has('d-none'), false, 'The first repository context must not leave the current user badge permanently hidden');
+  assert.deepEqual(f.writes, ['👤 current-user']);
+  assert.ok(f.badge.title.includes('Current A'));
+  assert.ok(f.badge.title.includes('draft/current'));
+  assert.equal(read.init.signal.aborted, false);
+  assert.equal(new URL(read.url, f.w.location.href).searchParams.get('workspaceId'), 'workspace-A');
+  assert.equal(read.init.headers.get('X-Taxonomy-Workspace-Id'), 'workspace-A');
+});
+
+for (const departure of ['workspace', 'pagehide', 'authentication']) {
+  test(`the live workspace badge does not start after ${departure} during initial readiness`, async () => {
+    const f = await loadWorkspaceBadgeStartup();
+    assert.equal(f.reads('/api/workspace/current').length, 0);
+    if (departure === 'workspace') f.w.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'workspace-B';
+    else if (departure === 'pagehide') f.w.dispatchEvent({type: 'pagehide'});
+    else {
+      const denied = f.client.getJson('/api/denied');
+      f.reads('/api/denied')[0].resolve(Response.json({detail: 'Access revoked'}, {status: 403}));
+      await assert.rejects(denied, error => error.status === 403);
+    }
+    f.finishSource(true);
+    await f.settle();
+    for (const read of f.reads('/api/context/current')) read.resolve(Response.json({contextId: 'current-B', branch: 'other', commitId: '7654321', mode: 'EDITABLE'}));
+    await f.settle();
+    assert.equal(f.reads('/api/workspace/current').length, 0, 'A departed owner cannot start a fresh badge read');
+    assert.equal(f.classes.has('d-none'), true);
+    assert.deepEqual(f.writes, []);
+  });
+}
+
+test('the live workspace badge remains strict after the initial repository context is confirmed', async () => {
+  const f = await loadWorkspaceBadgeStartup();
+  await confirmWorkspaceBadgeSource(f);
+  const read = f.reads('/api/workspace/current')[0];
+  assert.ok(read, 'Initial confirmation admits the current workspace read');
+  const moved = f.w.TaxonomyContextBar.fetchAndRender('contextBar');
+  f.reads('/api/context/current').at(-1).resolve(Response.json({contextId: 'other-A', branch: 'other', commitId: '7654321', mode: 'READ_ONLY'}));
+  await moved;
+  read.resolve(Response.json({workspaceId: 'workspace-A', username: 'obsolete-user', displayName: 'Old A', currentBranch: 'draft/current'}));
+  await f.settle();
+  assert.equal(read.init.signal.aborted, true);
+  assert.equal(f.reads('/api/workspace/current').length, 1, 'A real source departure must not retry the badge');
+  assert.equal(f.classes.has('d-none'), true);
+  assert.deepEqual(f.writes, []);
+});
+
+test('the live workspace badge requires a confirmed initial repository context', async () => {
+  const f = await loadWorkspaceBadgeStartup();
+  await confirmWorkspaceBadgeSource(f, 503);
+  assert.equal(f.reads('/api/workspace/current').length, 0);
+  assert.equal(f.classes.has('d-none'), true);
+  assert.deepEqual(f.writes, []);
+});
+
 test('workspace current still rejects a resolved workspace departure and an aborted hydration read', async () => {
   for (const aborted of [false, true]) {
     let releaseBody;

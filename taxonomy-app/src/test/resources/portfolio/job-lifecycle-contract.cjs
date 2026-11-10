@@ -13,8 +13,9 @@ const deadlineScopes = [];
 const jobUrl='https://example.test/taxonomy/api/projects/1/analysis-jobs/retained-job';
 const storageKey='taxonomy.portfolio.analysisJobs.v2';
 
-function fixture(fetcher=async()=>({ok:true,json:async()=>({projectId:1,workspaceId:null,id:'retained-job',status:'RUNNING'})}), discover=false) {
+function fixture(fetcher=async()=>({ok:true,json:async()=>({projectId:1,workspaceId:null,id:'retained-job',status:'RUNNING'})}), discover=false, history=[]) {
     const timers=new Map(),deadlines=new Map(),allTimers=new Map(),events=new Map(),storage=new Map(),requests=[];
+    if(history.length)storage.set(storageKey,JSON.stringify(history));
     deadlineScopes.push({timers,deadlines,allTimers});
     let nextTimer=0;
     function schedule(callback,delay,kind) {
@@ -60,6 +61,57 @@ function fixture(fetcher=async()=>({ok:true,json:async()=>({projectId:1,workspac
         runNext() {const entry=timers.entries().next().value;if(!entry)return Promise.resolve();clearTimer(entry[0]);return entry[1].callback();},
         saved() {return JSON.parse(storage.get(storageKey)||'[]');}
     };
+}
+
+function invalidJobUrls() {
+    return [
+        'https://other.example.test/taxonomy/api/projects/1/analysis-jobs/retained-job',
+        'https://example.test/taxonomy-other/api/projects/1/analysis-jobs/retained-job',
+        jobUrl+'?unexpected=1',
+        jobUrl+'#fragment'
+    ];
+}
+
+function assertValidatedJobCompleted(f) {
+    assert.equal(f.requests.length,1,'Only the validated job resource may be polled');
+    const request=f.requests[0];
+    assert.equal(new URL(request.url,f.window.location.href).href,jobUrl+'?workspaceId=');
+    assert.equal(request.options.method,'GET');
+    assert.equal(request.options.credentials,'same-origin');
+    assert.equal(new Headers(request.options.headers).get('X-Taxonomy-Workspace-Id'),'');
+    const saved=f.saved();
+    assert.equal(saved.length,1,'Invalid locations must not survive persisted job history');
+    assert.equal(saved[0].url,jobUrl);
+    assert.equal(saved[0].projectId,1);
+    assert.equal(saved[0].job.status,'SUCCESS');
+    assert.equal(saved[0].lastPollError,undefined);
+    assert.equal(f.timers.size,0,'A completed job must not schedule another poll');
+}
+
+async function registeredJobUsesValidatedProjectIdentity() {
+    const job={id:'retained-job',status:'RUNNING',items:[]};
+    const f=fixture(async()=>({ok:true,json:async()=>({...job,status:'SUCCESS'})}));
+    for(const url of invalidJobUrls()) {
+        assert.equal(f.window.taxonomyPortfolioRegisterJob(url,job),false);
+    }
+    assert.equal(f.timers.size,0);
+    assert.deepEqual(f.saved(),[]);
+    assert.equal(f.window.taxonomyPortfolioRegisterJob('/api/projects/1/analysis-jobs/retained-job',job),true);
+    assert.equal(f.saved()[0].projectId,1,'Registration recovers the project from its validated URL');
+    assert.equal(f.saved()[0].job.projectId,undefined);
+    await f.runNext();
+    assertValidatedJobCompleted(f);
+}
+
+async function restoredJobUsesValidatedProjectIdentity() {
+    const job={id:'retained-job',status:'RUNNING',items:[]};
+    const history=[{url:jobUrl,projectId:null,job},...invalidJobUrls().map(url=>({url,job}))];
+    const f=fixture(async()=>({ok:true,json:async()=>({...job,status:'SUCCESS'})}),false,history);
+    // Loading the real adapter restores history; its page lifecycle hook resumes polling.
+    f.event('pageshow',{persisted:true});
+    assert.equal(f.timers.size,1,'Only the validated restored job may schedule a poll');
+    await f.runNext();
+    assertValidatedJobCompleted(f);
 }
 
 async function departureCancelsScheduledPoll() {
@@ -223,6 +275,8 @@ async function activeDiscoveryFailureRetainsBoundedRetries() {
 }
 
 const cases = {
+    registeredJobUsesValidatedProjectIdentity,
+    restoredJobUsesValidatedProjectIdentity,
     departureCancelsScheduledPoll,
     departureAbortsInFlightPoll,
     departedResponseCannotRewriteHistory,

@@ -580,3 +580,76 @@ test('confirmed source readiness is handed off once the existing draft-confirmat
   await h.context.retryServerState();
   assert.equal(notifications.length, 1); assert.equal(reads, 1, 'Confirming the draft does not repeat successful source reads');
 });
+
+test('the first ContextBar publication does not discard the authoritative initial workspace', async () => {
+  const initialContext = deferred(), initialWorkspace = deferred(), requests = [];
+  let h, actualBar, contextReads = 0;
+  h = createStartupHarness(() => Promise.resolve().then(async () => {
+    const response = await h.window.TaxonomyAnalysisSessionApi.request('/api/workspace/current', {method: 'GET'});
+    return response.status === 204 ? null : response.json();
+  }), async () => null, {
+    TaxonomyContextBar: {fetchAndRender: () => actualBar.fetchAndRender('absent-context-container')},
+    TaxonomyArchitectureWorkspace: {ready: () => h.session.whenInitialized()}
+  });
+  const sandbox = {
+    window: h.window, document: h.document, console,
+    TaxonomyI18n: {t: key => key}, TaxonomyUtils: {escapeHtml: String},
+    setInterval: () => 1, clearInterval() {},
+    fetch: async (url, options) => {
+      const route = new URL(url, 'https://example.test').pathname;
+      requests.push({route, options});
+      if (route === '/api/workspace/current') return initialWorkspace.promise;
+      assert.equal(route, '/api/context/current');
+      if (++contextReads === 1) return initialContext.promise;
+      return Response.json({contextId: 'initial-context', branch: 'draft', commitId: null, mode: 'EDITABLE'});
+    }
+  };
+  canonicalFixture.install(sandbox, ['api/analysis-session-api.js', 'api/workspace-api.js', 'versioning/taxonomy-context-bar.js']);
+  actualBar = h.window.TaxonomyContextBar;
+  actualBar.init('absent-context-container');
+  await new Promise(resolve => setImmediate(resolve));
+  initialContext.resolve(Response.json({contextId: 'initial-context', branch: 'draft', commitId: null, mode: 'EDITABLE'}));
+  await new Promise(resolve => setImmediate(resolve));
+  initialWorkspace.resolve(Response.json({workspaceId: 'workspace-initial'}));
+  assert.equal(await h.session.whenInitialized(), true,
+    'Publishing the initial repository context must not lose the authoritative private workspace');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.session.state().workspaceId, 'workspace-initial');
+  assert.equal(h.session.state().ready, true);
+  assert.equal(h.observations.includes('unavailable'), false);
+});
+
+test('current ContextBar readiness observers share a read while a departed source still aborts it', async () => {
+  const responses = [], requests = [], source = {branch: 'draft'}, listeners = new Map();
+  const window = {location: new URL('https://example.test/'),
+    TaxonomyArchitectureWorkflow: {getScope: () => source}, addEventListener() {}};
+  const document = {getElementById: () => null,
+    addEventListener(type, listener) {if (!listeners.has(type)) listeners.set(type, []); listeners.get(type).push(listener);},
+    dispatchEvent(event) {for (const listener of listeners.get(event.type) || []) listener(event);}};
+  const sandbox = {window, document, console, TaxonomyI18n: {t: key => key}, TaxonomyUtils: {escapeHtml: String},
+    setInterval: () => 1, clearInterval() {}, fetch: (url, options) => {
+      const response = deferred(); responses.push(response); requests.push({url, options}); return response.promise;
+    }};
+  canonicalFixture.install(sandbox, ['api/workspace-api.js', 'versioning/taxonomy-context-bar.js']);
+  const bar = window.TaxonomyContextBar;
+  const first = bar.fetchAndRender('absent-context-container', {joinCurrent: true});
+  const sameSource = bar.fetchAndRender('absent-context-container', {joinCurrent: true});
+  const firstRequestCount = requests.length;
+  const initial = {contextId: 'initial-context', branch: 'draft', commitId: null, mode: 'EDITABLE'};
+  for (const response of responses) response.resolve(Response.json(initial));
+  assert.deepEqual(await Promise.all([first, sameSource]), [initial, initial],
+    'Initial source confirmation must receive the same authoritative result as the polling caller');
+  assert.equal(firstRequestCount, 1, 'Concurrent current-source observers must not cancel one another');
+
+  const old = bar.fetchAndRender('absent-context-container', {joinCurrent: true});
+  source.branch = 'other';
+  document.dispatchEvent({type: 'taxonomy:repository-context-changed'});
+  const next = bar.fetchAndRender('absent-context-container', {joinCurrent: true});
+  responses.at(-2).resolve(Response.json(initial));
+  const changed = {...initial, contextId: 'other-context', branch: 'other'};
+  responses.at(-1).resolve(Response.json(changed));
+  assert.equal(await old, null, 'A genuinely departed source still cannot publish its response');
+  assert.equal(requests.at(-2).options.signal.aborted, true);
+  assert.deepEqual(await next, changed);
+  assert.deepEqual(bar.getCurrentContext(), changed);
+});

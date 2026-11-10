@@ -15,6 +15,9 @@ window.TaxonomyContextBar = (function () {
     var pollTimer = null;
     var currentContext = null;
     var pendingRead = null;
+    var pendingResult = null;
+    var pendingOwner = null;
+    var pendingContainer = null;
     var pageActive = true;
     var navigationGeneration = 0;
     var pageGeneration = 0;
@@ -43,11 +46,20 @@ window.TaxonomyContextBar = (function () {
      */
     function init(containerId) {
         activeContainer = containerId;
-        fetchAndRender(containerId);
         if (pollTimer) clearInterval(pollTimer);
-        pollTimer = setInterval(function () {
-            fetchAndRender(containerId);
-        }, POLL_INTERVAL);
+        pollTimer = null;
+        var page = pageGeneration;
+        // The first repository publication must follow draft/source hydration;
+        // publishing it sooner revokes their protected bootstrap responses.
+        return Promise.resolve(window.TaxonomyArchitectureWorkspace?.ready?.()).then(function () {
+            if (!pageActive || page !== pageGeneration || activeContainer !== containerId) return null;
+            var result = fetchAndRender(containerId, {joinCurrent: true});
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = setInterval(function () {
+                fetchAndRender(containerId, {joinCurrent: true});
+            }, POLL_INTERVAL);
+            return result;
+        });
     }
 
     /**
@@ -55,12 +67,16 @@ window.TaxonomyContextBar = (function () {
      *
      * @param {string} containerId — DOM ID
      */
-    function fetchAndRender(containerId) {
+    function fetchAndRender(containerId, options) {
         if (!pageActive) return Promise.resolve(null);
+        if (options?.joinCurrent && pendingResult && pendingContainer === containerId
+                && pendingOwner() && !pendingRead.signal.aborted) return pendingResult;
         if (pendingRead) pendingRead.abort();
         var controller = new AbortController();
         pendingRead = controller;
-        return window.TaxonomyContextApi.current({ signal: controller.signal })
+        pendingOwner = window.TaxonomyApiClient.captureContext();
+        pendingContainer = containerId;
+        pendingResult = window.TaxonomyContextApi.current({ signal: controller.signal })
             .then(function (ctx) {
                 if (!ctx || !pageActive || controller.signal.aborted || pendingRead !== controller) return null;
                 acceptContext(ctx);
@@ -70,7 +86,12 @@ window.TaxonomyContextBar = (function () {
             .catch(function () {
                 // The global git-status bar shows errors; readiness callers must still fail closed.
                 return null;
+            }).finally(function () {
+                if (pendingRead === controller) {
+                    pendingRead = null; pendingResult = null; pendingOwner = null; pendingContainer = null;
+                }
             });
+        return pendingResult;
     }
 
     /**

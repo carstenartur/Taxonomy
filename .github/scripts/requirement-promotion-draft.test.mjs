@@ -81,6 +81,31 @@ function detailStartup({holdOffers=false,forbidden=false,copilot=false,probe=fal
 }
 const settleStartup=async()=>{for(let i=0;i<6;i++)await new Promise(resolve=>setImmediate(resolve));};
 
+test('a version draft opened during the first detail read retains its text and binds the first authoritative base',async()=>{
+  let releaseRequirement, prepared;
+  const contentHash='a'.repeat(64);
+  const h=detailStartup({probe:true,lifecycleFetch:async url=>{
+    if(url.pathname==='/api/projects/7/requirements/11')return new Promise(resolve=>{releaseRequirement=resolve;});
+  }});
+  const started=h.start();h.releaseLifecycle();await settleStartup();
+  assert.equal(typeof releaseRequirement,'function');
+  h.get('newVersionModal').classList.add('show');
+  h.get('versionText').value='An authored clarification entered while the current version loads';
+  h.get('changeReason').value='Clarify the retained evidence';
+  await h.get('newVersionForm').fire('input');
+  releaseRequirement(Response.json({id:11,requirementKey:'REQ',title:'Requirement',currentVersionId:44,
+    currentVersion:{id:44,versionNumber:1,text:'Original',contentHash},status:'APPROVED',reviewStatus:'CONFIRMED'}));
+  await started;await settleStartup();
+  h.window.TaxonomyRequirementIntake={attach(){},prepareVersion:async(...args)=>{prepared=args;return null;}};
+  await h.window.publicationProbe.createVersion({preventDefault(){}});
+  assert.equal(h.get('versionText').value,'An authored clarification entered while the current version loads');
+  assert.equal(h.get('changeReason').value,'Clarify the retained evidence');
+  assert.ok(prepared,'The loaded detail must allow an explicit new-version review');
+  assert.deepEqual(prepared.slice(2),[7,11,44,contentHash],
+    'Review must use the first loaded version rather than leaving the early draft without a base');
+  assert.equal(h.requests.some(request=>request.init.method==='POST'),false,'No choice or mutation is inferred from loading');
+});
+
 for(const transition of ['own-publication','changed-draft','history','branch','pagehide','authentication','foreign-publication',
   'CHECKPOINT_PENDING','RECONCILIATION_REQUIRED','failed-confirmation']) {
   test(`actual version save applies only its own current publication across ${transition}`,async()=>{

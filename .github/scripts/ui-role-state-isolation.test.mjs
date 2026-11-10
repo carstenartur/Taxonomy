@@ -74,8 +74,9 @@ function installHarness(options = {}) {
       }
     },
     TaxonomyAnalysisSession: {
+      whenInitialized: () => Promise.resolve(true),
       state: () => ({ restoring, conflict, workspaceId: currentWorkspaceId,
-        version: options.version ?? null }),
+        version: options.version ?? null, ready: options.ready ? options.ready() : true }),
       async reload() {
         calls.push('reload');
         restoring = true;
@@ -117,7 +118,8 @@ function installHarness(options = {}) {
 
   const page = {
     async waitForFunction(predicate) {
-      assert.equal(predicate(), true);
+      if (!await predicate() && options.waitForReady) await options.waitForReady();
+      assert.equal(await predicate(), true);
     },
     async evaluate(callback, argument) {
       evaluateCount++;
@@ -218,6 +220,25 @@ test('fails before mutation without an authoritative workspace identity', async 
     assert.deepEqual(harness.calls, ['reload']);
   } finally {
     harness.restore();
+  }
+});
+
+test('initial source readiness settles before isolation reload can invalidate its protected reads', async () => {
+  let sourceReady = false, release;
+  const source = new Promise(resolve => { release = resolve; });
+  const harness = installHarness({ready: () => sourceReady, waitForReady: () => source});
+  try {
+    const isolation = isolateRoleStateScenario(harness.page, 1_000);
+    await new Promise(resolve => setImmediate(resolve));
+    const earlyCalls = [...harness.calls];
+    sourceReady = true; release();
+    await isolation;
+    assert.deepEqual(earlyCalls, [], 'The fixture cannot reload, invalidate or write while first source publication is pending');
+    assert.equal(harness.calls.filter(call => call === 'reload').length, 1);
+    assert.equal(harness.calls.filter(call => call === 'save').length, 1);
+    assert.equal(harness.input.value, '');
+  } finally {
+    sourceReady = true; release(); harness.restore();
   }
 });
 
@@ -390,7 +411,7 @@ test('isolates successive profiles using the production versioned draft writer',
   const harness = installHarness();
   let persisted = null;
   const writes = [];
-  const runtime = { workspaceId: 'workspace-42', version: null, conflict: false,
+  const runtime = { workspaceId: 'workspace-42', version: null, conflict: false, ready: true,
     restoring: false, saveInFlight: null, saveQueued: false };
   const context = {
     S: {}, runtime,

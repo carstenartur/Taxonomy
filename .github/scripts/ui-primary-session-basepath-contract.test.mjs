@@ -7,6 +7,8 @@ const source = await readFile(new URL(
   './ui-primary-session-workflow.mjs', import.meta.url), 'utf8');
 const preferencesSource = await readFile(new URL(
   './ui-primary-preferences-workflow.mjs', import.meta.url), 'utf8');
+const proposalSource = await readFile(new URL(
+  './ui-primary-proposal-workflows.mjs', import.meta.url), 'utf8');
 const i18nSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/taxonomy-i18n.js', import.meta.url), 'utf8');
 
@@ -15,6 +17,142 @@ const workflowContext = vm.createContext({ URL });
 vm.runInContext(preferencesSource.replace(/^import .*;\n/m, '').replace(/^export /mg, ''),
   workflowContext);
 const selectAnalysisWorkspace = vm.runInContext('selectAnalysisWorkspace', workflowContext);
+
+function primaryReloadHarness({ reset = false } = {}) {
+  const calls = [];
+  const empty = {
+    ready: true, workspaceId: 'fixture-workspace', restoring: false,
+    businessText: '', scores: null, architecture: null, legacyScores: null, describeCurrent: true
+  };
+  let state = { ...empty };
+  let readyGateObserved = false;
+  const browser = vm.createContext({
+    window: {
+      TaxonomyAnalysisSession: { state: () => state },
+      TaxonomyState: {
+        get currentScores() { return state.scores; },
+        get currentArchView() { return state.architecture; }
+      },
+      get _taxonomyCurrentScores() { return state.legacyScores; },
+      TaxonomyI18n: { ready: async () => calls.push('translations-ready') },
+      TaxonomyRoleSurface: { ready: { then(resolve) { calls.push('roles-ready'); resolve(); } } }
+    },
+    document: {
+      getElementById(id) {
+        assert.equal(id, 'businessText');
+        return { value: state.businessText };
+      },
+      querySelector(selector) {
+        assert.equal(selector, '#taskStageDescribe[data-state="current"]');
+        return state.describeCurrent ? {} : null;
+      }
+    }
+  });
+  function evaluate(callback, argument) {
+    browser.argument = argument;
+    return vm.runInContext(`(${callback.toString()})(argument)`, browser);
+  }
+  const page = {
+    evaluate: async (callback, argument) => evaluate(callback, argument),
+    reload: async options => {
+      // Model a completed document whose allowed background polling never
+      // supplies Playwright's separate network-idle navigation condition.
+      assert.notEqual(options.waitUntil, 'networkidle',
+        'A ready application must not wait for background polling to become idle');
+      assert.equal(options.waitUntil, 'domcontentloaded');
+      assert.equal(options.timeout ?? 30_000, 30_000);
+      calls.push('document-reloaded');
+      state = { ...empty, ready: false, workspaceId: 'loading-workspace', restoring: true };
+    },
+    locator: selector => ({
+      waitFor: async options => {
+        assert.equal(selector, reset ? '#analysisTaskProgress' : '#mainContent');
+        assert.equal(options.state, 'visible');
+        calls.push('required-dom-visible');
+      },
+      isVisible: async () => {
+        assert.equal(selector, '#onboardingDismiss');
+        return false;
+      }
+    }),
+    waitForFunction: async (callback, argument, options) => {
+      if (options.timeout === 20_000) {
+        assert.equal(Boolean(evaluate(callback, argument)), true);
+        return;
+      }
+      assert.equal(options.timeout, 30_000);
+      const invalidStates = [
+        ['unresolved session', { ready: false }],
+        ['another ready workspace', { workspaceId: 'another-workspace' }]
+      ];
+      if (reset) invalidStates.push(
+        ['restoring session', { restoring: true }],
+        ['restored text', { businessText: 'previous analysis' }],
+        ['restored scores', { scores: { BP: 91 } }],
+        ['restored architecture', { architecture: { title: 'previous architecture' } }],
+        ['restored legacy scores', { legacyScores: { BP: 91 } }],
+        ['wrong task stage', { describeCurrent: false }]
+      );
+      for (const [label, invalid] of invalidStates) {
+        state = { ...empty, ...invalid };
+        assert.equal(Boolean(evaluate(callback, argument)), false,
+          `Reload must remain blocked for ${label}`);
+      }
+      state = { ...empty };
+      assert.equal(Boolean(evaluate(callback, argument)), true,
+        'The original ready workspace must complete the reload gate');
+      readyGateObserved = true;
+      calls.push('original-session-ready');
+    }
+  };
+  return { page, calls, readyGateObserved: () => readyGateObserved };
+}
+
+test('Primary reset reload waits for its empty ready workspace while background polling continues', async () => {
+  const marker = "  passed('visible reset command clears browser and authoritative server draft');";
+  const start = source.indexOf(marker);
+  const end = source.indexOf("  await page.locator('.analysis-command-grid').scrollIntoViewIfNeeded();", start);
+  assert.ok(start >= 0 && end > start, 'The real reset reload segment must exist');
+  const harness = primaryReloadHarness({ reset: true });
+  const context = vm.createContext({ page: harness.page });
+
+  await vm.runInContext(`(async () => {${source.slice(start + marker.length, end)}})()`, context);
+
+  assert.equal(harness.readyGateObserved(), true,
+    'DOM visibility alone must not admit the reset workflow');
+  assert.deepEqual(harness.calls, [
+    'document-reloaded', 'translations-ready', 'required-dom-visible', 'original-session-ready'
+  ]);
+});
+
+test('Primary proposal reload retains provisioning and role gates while background polling continues', async () => {
+  const harness = primaryReloadHarness();
+  const endpoints = [];
+  const context = vm.createContext({
+    csrfJson: async (_page, endpoint, options = {}) => {
+      endpoints.push([endpoint, options.method || 'POST']);
+      if (endpoint === '/api/taxonomy') return { status: 200 };
+      if (endpoint === '/api/workspace/provision') return { status: 200, json: { status: 'READY' } };
+      assert.equal(endpoint, '/api/architecture/relations/projection/readiness');
+      return { status: 200, json: { readinessState: 'READY' } };
+    }
+  });
+  vm.runInContext(proposalSource.replace(/^import .*;\n/m, '').replace(/^export /mg, ''), context);
+
+  await vm.runInContext('ensureWorkspaceProjection', context)(harness.page, assert);
+
+  assert.deepEqual(endpoints, [
+    ['/api/taxonomy', 'GET'], ['/api/workspace/provision', 'POST'],
+    ['/api/architecture/relations/projection/readiness', 'GET'],
+    ['/api/architecture/relations/projection/readiness', 'GET']
+  ]);
+  assert.equal(harness.readyGateObserved(), true,
+    'Visible version history and roles must not admit another or unresolved session');
+  assert.deepEqual(harness.calls, [
+    'document-reloaded', 'required-dom-visible', 'translations-ready',
+    'original-session-ready', 'roles-ready'
+  ]);
+});
 
 async function applySessionCommandHarness(authority) {
   const calls = [];

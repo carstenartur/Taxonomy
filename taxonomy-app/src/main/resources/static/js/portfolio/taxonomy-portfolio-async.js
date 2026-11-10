@@ -479,7 +479,7 @@
                 return pageActive && jobPolls.get(url) === poll && jobs.get(url) === current && !poll.controller.signal.aborted;
             }
             try {
-                const nextJob = await window.TaxonomyPortfolioApi.getAnalysisJob(current.job.projectId,
+                const nextJob = await window.TaxonomyPortfolioApi.getAnalysisJob(current.projectId,
                     current.job.id, durableJobOptions(current.job, {signal: poll.controller.signal}));
                 if (!stillCurrent()) return;
                 const previousStatus = current.job.status;

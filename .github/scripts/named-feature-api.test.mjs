@@ -6,7 +6,8 @@ import vm from 'node:vm';
 const root = new URL('../../taxonomy-app/src/main/resources/static/js/', import.meta.url);
 const sources = new Map();
 for (const path of ['api/taxonomy-api-client.js', 'api/analysis-api.js', 'api/portfolio-api.js',
-  'api/import-api.js', 'core/taxonomy-analysis-session-transport.js', 'portfolio/taxonomy-portfolio-async.js',
+  'api/import-api.js', 'api/analysis-session-api.js', 'core/taxonomy-analysis-session-core.js',
+  'core/taxonomy-analysis-session-transport.js', 'portfolio/taxonomy-portfolio-async.js',
   'core/taxonomy-analysis.js', 'shared/taxonomy-document-import.js', 'api/export-api.js',
   'api/copilot-api.js', 'api/architecture-workbench-api.js', 'api/document-templates-api.js', 'shared/architecture-workflow.js', 'portfolio/taxonomy-portfolio.js', 'core/taxonomy-scoring.js', 'api/proposals-api.js', 'api/hypotheses-api.js', 'shared/taxonomy-database-setup.js']) {
   sources.set(path, await readFile(new URL(path, root), 'utf8'));
@@ -74,6 +75,122 @@ function boot(fetchImpl, {analysis = false, portfolio = false, beforeCanonical =
   if (portfolio && !beforeCanonical) load('portfolio/taxonomy-portfolio-async.js');
   return {window, context, C, runtime, document, events, timers, stored, nodes, load};
 }
+
+function bootDraftSession(fetchImpl) {
+  const app = boot(fetchImpl);
+  delete app.window.__TaxonomyAnalysisSessionContext;
+  app.window.TaxonomyState = {};
+  app.load('core/taxonomy-analysis-session-core.js');
+  const session = app.window.__TaxonomyAnalysisSessionContext;
+  Object.assign(session.runtime, {workspaceId: 'workspace-a', version: 7});
+  app.load('api/analysis-session-api.js');
+  app.load('core/taxonomy-analysis-session-transport.js');
+  return {...app, session};
+}
+
+for (const transition of ['reanalysis', 'architecture navigation']) {
+test(`the canonical transport preserves an admitted draft acknowledgement across ${transition}`, async () => {
+  const first = deferred(), requests = [];
+  const app = bootDraftSession(async (url, init) => {
+    requests.push({url, init, body: JSON.parse(init.body)});
+    return requests.length === 1 ? first.promise
+      : Response.json({workspaceId: 'workspace-a', branch: 'draft', version: 9,
+        payload: {businessText: 'partial results'}});
+  });
+  const {session} = app;
+  const saving = session.jsonRequest('/api/analysis-drafts/workspace-a', {
+    method: 'PUT', body: JSON.stringify({payload: {businessText: 'before reanalysis'}})
+  });
+  const outcome = Promise.allSettled([saving]);
+  await flush();
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].body.expectedVersion, 7);
+  assert.equal(new Headers(requests[0].init.headers).get('X-Taxonomy-Workspace-Id'), 'workspace-a');
+  if (transition === 'reanalysis') session.cancelDerivedRequests('reanalysis');
+  else {
+    app.window.TaxonomyAppChrome = {getContext: () => ({architecture: {
+      repositoryId: 'displayed-repository', workspaceScopeKey: 'displayed-workspace', branch: 'review'
+    }})};
+    app.document.dispatchEvent({type: 'taxonomy:entity-context-changed'});
+  }
+  first.resolve(Response.json({workspaceId: 'workspace-a', branch: 'draft', version: 8,
+    payload: {businessText: 'before reanalysis'}}));
+  const result = (await outcome)[0];
+  assert.equal(result.status, 'fulfilled',
+    `A committed draft revision must reach its queue owner: ${result.reason?.message}`);
+  assert.equal(session.runtime.version, 8);
+  await session.jsonRequest('/api/analysis-drafts/workspace-a', {
+    method: 'PUT', body: JSON.stringify({payload: {businessText: 'partial results'}})
+  });
+  assert.equal(requests[1].body.expectedVersion, 8);
+  assert.deepEqual(requests.map(request => request.init.method), ['PUT', 'PUT']);
+  assert.equal(session.runtime.version, 9);
+  assert.equal(app.timers.size, 0);
+});
+}
+
+for (const transition of ['workspace replacement', 'draft discard']) {
+test(`an admitted draft acknowledgement stays fenced after ${transition}`, async () => {
+  const response = deferred(), requests = [];
+  const app = bootDraftSession(async (url, init) => {
+    requests.push({url, init});
+    return response.promise;
+  });
+  const {session} = app;
+  const saving = session.jsonRequest('/api/analysis-drafts/workspace-a', {
+    method: 'PUT', body: JSON.stringify({payload: {businessText: 'previous draft'}})
+  });
+  const outcome = Promise.allSettled([saving]);
+  await flush();
+  if (transition === 'workspace replacement') session.runtime.workspaceId = 'workspace-b';
+  else {
+    session.runtime.draftGeneration++;
+    session.runtime.draftAcknowledgementGeneration++;
+  }
+  response.resolve(Response.json({workspaceId: 'workspace-a', branch: 'draft', version: 8,
+    payload: {businessText: 'previous draft'}}));
+  assert.equal((await outcome)[0].status, 'rejected');
+  assert.equal(session.runtime.version, 7, 'An obsolete acknowledgement must not advance the current draft');
+  assert.equal(requests.length, 1, 'A stale draft must not be resubmitted');
+  assert.equal(app.timers.size, 0);
+});
+}
+
+test('a draft status read remains fenced when the selected source changes', async () => {
+  const response = deferred();
+  const app = bootDraftSession(() => response.promise);
+  const reading = app.session.jsonRequest('/api/analysis-drafts/workspace-a/status', {method: 'GET'});
+  const outcome = Promise.allSettled([reading]);
+  await flush();
+  app.window.TaxonomyAppChrome = {getContext: () => ({architecture: {branch: 'different'}})};
+  app.document.dispatchEvent({type: 'taxonomy:entity-context-changed'});
+  response.resolve(Response.json({workspaceId: 'workspace-a', branch: 'draft', version: 8}));
+  const result = (await outcome)[0];
+  assert.equal(result.status, 'rejected');
+  assert.equal(result.reason.code, 'ABORTED');
+  assert.equal(app.session.runtime.version, 7);
+  assert.equal(app.timers.size, 0);
+});
+
+test('an admitted draft receipt cannot cross an authentication failure', async () => {
+  const response = deferred();
+  const app = bootDraftSession((url, init) => init.method === 'PUT' ? response.promise
+    : Promise.resolve(Response.json({detail: 'Session expired'}, {status: 401})));
+  const saving = app.session.jsonRequest('/api/analysis-drafts/workspace-a', {
+    method: 'PUT', body: JSON.stringify({payload: {businessText: 'previous session'}})
+  });
+  const outcome = Promise.allSettled([saving]);
+  await flush();
+  await assert.rejects(app.window.TaxonomyApiClient.getJson('/api/account/me'),
+    error => error.status === 401);
+  response.resolve(Response.json({workspaceId: 'workspace-a', branch: 'draft', version: 8,
+    payload: {businessText: 'previous session'}}));
+  const result = (await outcome)[0];
+  assert.equal(result.status, 'rejected');
+  assert.equal(result.reason.code, 'ABORTED');
+  assert.equal(app.session.runtime.version, 7);
+  assert.equal(app.timers.size, 0);
+});
 
 test('global database onboarding survives initial workspace hydration without acquiring a workspace pin',async()=>{
   const status=deferred(),requests=[];

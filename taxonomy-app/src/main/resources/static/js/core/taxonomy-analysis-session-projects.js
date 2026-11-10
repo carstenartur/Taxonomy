@@ -589,7 +589,7 @@
             .then(function () { return window.TaxonomyArchitectureWorkspace?.ready?.(retry === true); })
             .then(function (ready) {
                 if (ready === false) throw new Error('Initial architecture source is unavailable');
-                return window.TaxonomyContextBar?.fetchAndRender?.('contextBar');
+                return window.TaxonomyContextBar?.fetchAndRender?.('contextBar', {joinCurrent: true});
             }).then(function (context) {
                 if (window.TaxonomyContextBar?.fetchAndRender && !context) {
                     throw new Error('Initial repository context is unavailable');

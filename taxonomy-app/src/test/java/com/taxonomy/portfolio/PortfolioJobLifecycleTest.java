@@ -21,6 +21,16 @@ class PortfolioJobLifecycleTest {
     Path directory;
 
     @Test
+    void registeredJobWithoutDtoProjectIdPollsItsValidatedResource() throws Exception {
+        run("registeredJobUsesValidatedProjectIdentity");
+    }
+
+    @Test
+    void restoredJobWithoutDtoProjectIdPollsOnlyItsValidatedResource() throws Exception {
+        run("restoredJobUsesValidatedProjectIdentity");
+    }
+
+    @Test
     void leavingPortfolioCancelsScheduledPollWithoutDeletingServerJobHistory() throws Exception {
         run("departureCancelsScheduledPoll");
     }

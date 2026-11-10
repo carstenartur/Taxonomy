@@ -84,9 +84,15 @@ async function ensureWorkspaceProjection(page, assert) {
 
   // Reload so a provisioning modal opened during login observes READY and cannot
   // obscure the controls exercised by the remainder of the workflow.
-  await page.reload({ waitUntil: 'networkidle' });
+  const reloadWorkspaceId = await page.evaluate(() =>
+    window.TaxonomyAnalysisSession.state().workspaceId);
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.locator('#mainContent').waitFor({ state: 'visible', timeout: 60_000 });
   await page.evaluate(() => window.TaxonomyI18n?.ready?.());
+  await page.waitForFunction(workspaceId => {
+    const session = window.TaxonomyAnalysisSession?.state?.();
+    return session?.ready === true && session.workspaceId === workspaceId;
+  }, reloadWorkspaceId, { timeout: 30_000 });
   await page.waitForFunction(
     () => Boolean(window.TaxonomyRoleSurface?.ready),
     null,

@@ -2091,21 +2091,34 @@
 
     // Load workspace info for the user badge
     document.addEventListener('DOMContentLoaded', function () {
-        TaxonomyI18n.ready().then(function () {
-            var context = window.__TaxonomyAnalysisSessionContext;
-            var initialWorkspace = context && context.runtime.workspaceId;
-            return window.TaxonomyWorkspaceApi.current().catch(function (error) {
-                var runtime = window.__TaxonomyAnalysisSessionContext?.runtime;
-                // Hydration can supersede this one-shot bootstrap read. Read
-                // once more with its resolved pin; never adopt the stale body.
-                if (error.code === 'ABORTED' && initialWorkspace == null && runtime?.workspaceId != null) {
-                    return window.TaxonomyWorkspaceApi.current();
-                }
-                throw error;
-            });
-        })
+        var activePage = window.TaxonomyApiClient.captureContext({contextSensitive: false});
+        var workspaceAtStart = window.__TaxonomyAnalysisSessionContext?.runtime?.workspaceId;
+        function startupCurrent() {
+            return activePage() && (workspaceAtStart == null
+                || workspaceAtStart === window.__TaxonomyAnalysisSessionContext?.runtime?.workspaceId);
+        }
+        TaxonomyI18n.ready()
+            .then(function () { return window.TaxonomyArchitectureWorkspace?.ready?.(); })
+            .then(async function (ready) {
+                if (ready === false || !startupCurrent()) return null;
+                // The initial source and repository publications precede this
+                // workspace-owned read; later source changes still cancel it.
+                if (window.TaxonomyContextBar && !await window.TaxonomyContextBar.fetchAndRender('contextBar', {joinCurrent: true})) return null;
+                if (!startupCurrent()) return null;
+                var context = window.__TaxonomyAnalysisSessionContext;
+                var initialWorkspace = context && context.runtime.workspaceId;
+                return window.TaxonomyWorkspaceApi.current().catch(function (error) {
+                    var runtime = window.__TaxonomyAnalysisSessionContext?.runtime;
+                    // Hydration can supersede this one-shot bootstrap read. Read
+                    // once more with its resolved pin; never adopt the stale body.
+                    if (startupCurrent() && error.code === 'ABORTED' && initialWorkspace == null && runtime?.workspaceId != null) {
+                        return window.TaxonomyWorkspaceApi.current();
+                    }
+                    throw error;
+                });
+            })
             .then(function (ws) {
-                if (!ws) return;
+                if (!ws || !startupCurrent()) return;
                 var badge = document.getElementById('workspaceUserBadge');
                 if (badge) {
                     badge.textContent = '\uD83D\uDC64 ' + (ws.username || 'anonymous');

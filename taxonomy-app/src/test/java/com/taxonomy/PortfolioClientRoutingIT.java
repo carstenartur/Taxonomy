@@ -458,8 +458,12 @@ class PortfolioClientRoutingIT {
         assertThat(readJobs().get(0).path("url").asText()).isEqualTo(page.origin() + prefix + "/api/projects/42/analysis-jobs/job-7");
         assertThat(readJobs().get(0).path("projectId").asInt()).isEqualTo(42);
         wait.until(ignored -> readJobs().get(0).path("job").path("status").asText().equals("SUCCESS"));
-        assertThat(requests("GET", prefix + "/api/projects/42/analysis-jobs/job-7")).hasSize(1);
-        assertSameOriginCredentials(page.origin() + prefix + "/api/projects/42/analysis-jobs/job-7");
+        assertThat(requests("GET", prefix + "/api/projects/42/analysis-jobs/job-7"))
+                .singleElement().satisfies(request -> {
+                    assertThat(request.query()).isEqualTo("workspaceId=");
+                    assertThat(request.header("X-Taxonomy-Workspace-Id")).isEmpty();
+                });
+        assertSameOriginCredentials(prefix + "/api/projects/42/analysis-jobs/job-7?workspaceId=");
     }
 
     @Test void leavingPortfolioAbortsItsPendingJobReadAndRetainsTheServerJob() {

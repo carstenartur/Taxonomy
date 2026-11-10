@@ -76,9 +76,9 @@ function overview(context, projection='READY', source='WORKSPACE_REVISION') {
 
 // Real canonical delivery and the real domain fence must agree: a completed exact
 // command still has a receipt after navigation, without applying it to the new stand.
-async function receiptFixture() {
-    const events = [], handlers = new Map(), windowHandlers = new Map(), writes = [], timers = new Map();
-    let timerId = 0, release, current = overview(originalContext), activeScope = copy(originalContext);
+async function receiptFixture({holdProjects=false}={}) {
+    const events = [], handlers = new Map(), windowHandlers = new Map(), writes = [], reads = [], timers = new Map();
+    let timerId = 0, release, releaseProjects, current = overview(originalContext), activeScope = copy(originalContext);
     let chrome = {architecture:{repositoryId:'architecture',workspaceScopeKey:'copy',branch:'draft',modelStand:'revision 2'}};
     const location = new URL('https://example.test/projects/1/requirements/2?repositoryId=architecture&workspaceId=copy&branch=draft');
     const document = {
@@ -109,22 +109,25 @@ async function receiptFixture() {
                 writes.push({url,init});
                 return new Promise(resolve=>{release=resolve;});
             }
+            reads.push({url,init});
+            if (holdProjects && url.pathname === '/api/projects') return new Promise(resolve=>{releaseProjects=resolve;});
             return Response.json(copy(current));
         }
     };
     context.window=context;
     canonicalFixture.install(context);
     vm.runInContext(apiSource,context);
-    vm.runInContext(lifecycleSource.replace(/\}\(\)\);\s*$/, 'window.receiptDomain={captureStand,intentFence};}());'),context);
+    vm.runInContext(lifecycleSource.replace(/\}\(\)\);\s*$/, 'window.receiptDomain={captureStand,intentFence,openReview};}());'),context);
     await context.TaxonomyArchitectureLifecycle.refresh(originalContext,null);
     const shell={message:{textContent:'',querySelector:()=>null},dialog:{addEventListener() {},close(){shell.closed++;}},closed:0};
     const fence=context.receiptDomain.intentFence(context.receiptDomain.captureStand(),shell,{}, {},true);
     const request={context:copy(originalContext),metadata:{commandId:'00000000-0000-4000-8000-000000000123',correlationId:'00000000-0000-4000-8000-000000000123',causationId:'00000000-0000-4000-8000-000000000123',rationale:'Reviewed'},
         choice:'CHANGE',projectId:1,requirementId:2,requirement:{text:'The reviewed requirement',changeReason:'Reviewed'}};
     return {
-        context,events,writes,timers,shell,fence,request,location,
+        context,events,writes,reads,timers,shell,fence,request,location,
         api:context.TaxonomyArchitectureLifecycleApi,lifecycle:context.TaxonomyArchitectureLifecycle,
         release:response=>release(response),
+        releaseProjects:response=>releaseProjects(response),
         async selectHistorical() {
             location.searchParams.set('revision','1');
             chrome={architecture:{...chrome.architecture,modelStand:'revision 1'}};
@@ -137,6 +140,35 @@ async function receiptFixture() {
 }
 const flushReceipt = () => new Promise(resolve=>setImmediate(resolve));
 const publishedReceipt = () => ({requirementId:2,requirement:{id:2},publication:{state:'CHECKPOINTED',context:{...copy(originalContext),revision:3,commit:'b'.repeat(40)}}});
+
+test('a held review lookup is aborted before the historical stand can open its dialog or follow-up request',async()=>{
+    const h=await receiptFixture({holdProjects:true});
+    const created=[];
+    h.context.document.createElement=tag=>{created.push(tag);return {};};
+    let outcome;
+    const operation=h.context.receiptDomain.openReview({projectId:1,requirementId:2})
+        .then(value=>{outcome={value};},error=>{outcome={error};});
+    await flushReceipt();
+    const lookup=h.reads.find(value=>value.url.pathname==='/api/projects');
+    assert.ok(lookup,'The current editable stand must admit its project lookup');
+    assert.equal(lookup.init.signal.aborted,false);
+    try {
+        await h.selectHistorical();await flushReceipt();
+        assert.equal(lookup.init.signal.aborted,true);
+        assert.equal(outcome?.error?.code,'ABORTED','Navigation must settle the lookup before the held response is released');
+        assert.equal(outcome.error.message,'Request context was superseded');
+    } finally {
+        h.releaseProjects(Response.json([{id:1,projectKey:'PROJECT',title:'Old reviewed project'}]));
+    }
+    await operation;await flushReceipt();
+    assert.equal(h.reads.filter(value=>value.url.pathname==='/api/projects').length,1);
+    assert.equal(h.reads.some(value=>value.url.pathname==='/api/projects/1/requirements/2'),false);
+    assert.deepEqual(created,[],'An obsolete lookup cannot create a review dialog');
+    assert.deepEqual(h.writes,[],'No preview or acceptance is admitted under the historical selection');
+    assert.equal(h.lifecycle.state().context.revision,1);
+    assert.equal(h.lifecycle.state().projectionState,'HISTORICAL');
+    assert.equal(h.lifecycle.state().mayEdit,false);
+});
 
 test('editor-owned completed commands do not require standalone publication proof for the next admitted intent',async()=>{
     const h=await fixture('completed',true);

@@ -316,8 +316,8 @@
                 currentVersion: remoteVersion,
                 requestId: originalError.requestId || null
             });
-            return C.nativeJsonRequest(url, retryRequest).then(function (view) {
-                assertCurrent();
+            return C.nativeJsonRequest(url, retryRequest, true).then(function (view) {
+                assertCurrent(true);
                 runtime.version = view && view.version !== undefined
                     ? numericVersion(view.version) : runtime.version;
                 rememberAcknowledgedDraft(view);
@@ -364,7 +364,7 @@
             currentVersion: expectedVersion,
             requestId: null
         });
-        return C.nativeJsonRequest(url, request).then(function (view) {
+        return C.nativeJsonRequest(url, request, method === 'PUT').then(function (view) {
             // A successful PUT already changed the server revision. Reanalysis
             // may discard its old scores, but must retain that write's acknowledgement.
             assertCurrent(method === 'PUT');

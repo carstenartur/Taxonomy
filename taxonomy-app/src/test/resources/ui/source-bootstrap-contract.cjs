@@ -450,7 +450,7 @@ async function snapshot(mode) {
         elements: {}, relations: {}, warnings: []};
     const app = fixture('snapshot', request => {
         if (request.url.pathname === '/taxonomy/api/context/current') return delayed
-            ? contextBody.promise : Response.json(contextRef);
+            ? contextBody.promise.then(value => Response.json(value)) : Response.json(contextRef);
         if (request.url.pathname === '/taxonomy/api/projects/1/architecture-workbench/snapshot-A') return body.promise;
         throw new Error('Unexpected snapshot request ' + request.url.pathname);
     });
@@ -518,7 +518,7 @@ async function snapshot(mode) {
     const readsBeforeDraft = app.requests.length;
     if (delayed && !loaderFailure) {hydrate(); await settle();}
     const readsBeforeContext = app.requests.filter(request => request.url.pathname.includes('/architecture-workbench/')).length;
-    contextBody.resolve(Response.json(contextRef));
+    contextBody.resolve(contextRef);
     await settle();
     if (changeSource) {
         app.context.TaxonomyArchitectureWorkflow.replaceScope({repositoryId: 'repository-A',
@@ -526,20 +526,22 @@ async function snapshot(mode) {
         app.document.dispatchEvent(new app.context.CustomEvent('taxonomy:entity-context-changed'));
     }
     body.resolve(Response.json(projection));
-    await ready;
+    const sourceReady = await ready;
     const reads = app.requests.filter(request => request.url.pathname.includes('/architecture-workbench/'));
     if (delayedLoader) {
         assert.equal(readsBeforeLoader, 0, 'Snapshot metadata must wait for the injected session loader');
         assert.equal(readsBeforeDraft, 0, 'The load event must adopt the loader-owned draft initialization promise');
     }
     if (loaderFailure) {
+        assert.equal(sourceReady, false);
         assert.equal(app.requests.length, 0, 'A failed required session loader cannot admit source reads');
         assert.equal(app.context.TaxonomyArchitectureWorkspace.getData(), null);
-        assert.equal(app.nodes.get('architectureStatus').textContent, 'workbench.ui.loadFailed');
-        assert.equal(app.nodes.get('architectureAlert').classList.contains('d-none'), false);
+        assert.equal(app.nodes.get('architectureWorkspaceError').textContent, 'sourceLens.unavailable');
+        assert.equal(app.nodes.get('architectureWorkspaceError').hidden, false);
         return;
     }
     if (leavePage) {
+        assert.equal(sourceReady, false);
         assert.equal(reads.length, 0, 'Snapshot preparation cannot outlive its page');
         assert.equal(app.context.TaxonomyArchitectureWorkspace.getData(), null);
         return;

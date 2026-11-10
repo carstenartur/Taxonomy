@@ -513,24 +513,28 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
   await saveRequiredViewportState('session-reset-complete-mobile');
   passed('visible reset command clears browser and authoritative server draft');
 
-  await page.reload({ waitUntil: 'networkidle' });
+  const reloadWorkspaceId = await page.evaluate(() =>
+    window.TaxonomyAnalysisSession.state().workspaceId);
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.evaluate(() => window.TaxonomyI18n?.ready?.());
   await page.locator('#analysisTaskProgress').waitFor({ state: 'visible', timeout: 30_000 });
   const onboardingDismiss = page.locator('#onboardingDismiss');
   if (await onboardingDismiss.isVisible().catch(() => false)) {
     await onboardingDismiss.click();
   }
-  await page.waitForFunction(() => {
-    const session = window.TaxonomyAnalysisSession;
+  await page.waitForFunction(workspaceId => {
+    const session = window.TaxonomyAnalysisSession?.state?.();
     const state = window.TaxonomyState;
-    return session?.state().workspaceId
-      && session.state().restoring === false
+    return session?.workspaceId
+      && session.workspaceId === workspaceId
+      && session.ready === true
+      && session.restoring === false
       && document.getElementById('businessText')?.value === ''
       && !state?.currentScores
       && !state?.currentArchView
       && !window._taxonomyCurrentScores
       && document.querySelector('#taskStageDescribe[data-state="current"]');
-  }, null, { timeout: 30_000 });
+  }, reloadWorkspaceId, { timeout: 30_000 });
   await page.locator('.analysis-command-grid').scrollIntoViewIfNeeded();
   await assertControlsUnobscured(page,
     ['#providerSelect', '#copilotBtn', '#analyzeBtn'], 'reloaded mobile reset state', assert);

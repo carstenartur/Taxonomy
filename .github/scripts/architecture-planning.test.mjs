@@ -93,6 +93,11 @@ async function editorFixture(conflictAt, history = [], serverUndo = history[0] |
     const ids = Object.fromEntries([...html.matchAll(/<([a-z0-9]+)\b[^>]*\bid="([^"]+)"/gi)]
         .map(([, tag, id]) => [id, new Element(tag)]));
     if (lifecycleOptions) ids.architectureLifecycle = new Element('section');
+    if (lifecycleOptions?.startup) {
+        for (const id of ['architectureWorkspace', 'architectureWorkingSource', 'architectureSnapshotSource',
+            'architectureAnalysisSource', 'architectureSource', 'architectureWorkflow', 'architectureWorkspaceError',
+            'architectureSourceDescription', 'workflowIdentity', 'workflowState', 'workflowExplanation']) ids[id] = new Element();
+    }
     for (const node of Object.values(ids)) {
         node.scrollIntoView = () => {};
         node.showModal = function () { this.open = true; };
@@ -107,8 +112,8 @@ async function editorFixture(conflictAt, history = [], serverUndo = history[0] |
         model:{views:[], requirements:[{id:'R',title:'Original'}], elements:[], relations:[], evidence:[], packages:[]},
         scene:{nodes:[],edges:[]}, searchIndex:[], planningInformation:{R:[{supported:true, entry:{id:'launch',
             profile:'go-live', version:'1', origin:'MANUAL', values:{precision:'YEAR',value:'2030'}}}]} };
-    const previews = [], executions = [], loads = [], lifecycleReads = [];
-    let finishLifecycle;
+    const previews = [], executions = [], loads = [], lifecycleReads = [], contextReads = [];
+    let finishLifecycle, finishAdoptionPreview;
     const lifecycleResponse = lifecycleOptions?.deferred ? new Promise(resolve => { finishLifecycle = resolve; }) : null;
     const overview = {context:structuredClone(context), architectureTitle:'Reviewed architecture', source:'WORKSPACE_REVISION',
         projectionState:'READY', publicationState:'CHECKPOINTED', mayEdit:true, projects:[], requirements:[], dependencies:[]};
@@ -141,13 +146,17 @@ async function editorFixture(conflictAt, history = [], serverUndo = history[0] |
         removeEventListener(type, callback) { documentEvents.get(type)?.delete(callback); },
         dispatchEvent(event) { for (const callback of documentEvents.get(event.type) || []) callback(event); return true; },
         getElementById:id => {
-        if(id==='architectureWorkspace')return null; // Standalone fixture deliberately has no application shell.
+        if(id==='architectureWorkspace' && !lifecycleOptions?.startup)return null; // Standalone fixture deliberately has no application shell.
         if(lifecycleOptions && !ids[id])return null;
         assert.ok(ids[id], `Production template is missing ${id}`);
         return ids[id];
     }, createElement:tag => new Element(tag), createTextNode:text => ({textContent:text}), querySelectorAll:() => [], documentElement:{lang:'en'}, activeElement:null};
     document.body={querySelector:selector=>document.getElementById(selector.slice(1)),
         querySelectorAll:selector=>selector.startsWith('#editorForm input') ? [ids.editorTitle,ids.editorRationale] : []};
+    if (lifecycleOptions?.startup) {
+        ids.architectureWorkingSource.querySelector = document.body.querySelector;
+        ids.architectureWorkingSource.querySelectorAll = document.body.querySelectorAll;
+    }
     const window = {confirm:() => true, addEventListener:() => {}, ArchitectureEditorApi:api,
         TaxonomyI18n:{t:key => key, ready:() => Promise.resolve(), resolveUrl:value=>value, getLocale:()=> 'en'},
         ArchitectureEditorRenderer:() => ({render(){},select(){},focus(){},fit(){},presentFocus(){},setActive(){}})};
@@ -156,13 +165,40 @@ async function editorFixture(conflictAt, history = [], serverUndo = history[0] |
         crypto:{randomUUID:() => `00000000-0000-4000-8000-${String(++sequence).padStart(12,'0')}`},
         location:{href:'https://example.invalid/architecture/editor',search:''},
         history:{replaceState(){},pushState(){}}});
+    let finishSession, finishContext;
+    const repositoryContext = {contextId:'repository-context', branch:'main', commitId:null, mode:'EDITABLE'};
     if (lifecycleOptions) {
-        window.location = sandbox.location = new URL('https://example.invalid/architecture/editor?repositoryId=test-repository&workspaceScopeKey=test-workspace&workspaceId=test-workspace&branch=main');
+        window.location = sandbox.location = new URL('https://example.invalid/'
+            + (lifecycleOptions.startup ? '?architectureSource=working&' : 'architecture/editor?')
+            + 'repositoryId=test-repository&workspaceScopeKey=test-workspace&workspaceId=test-workspace&branch=main'
+            + (lifecycleOptions.startup ? '#architecture' : ''));
+        if (lifecycleOptions.adoption) {
+            for (const [key, value] of Object.entries({sourceRepositoryId:'test-repository',
+                sourceWorkspaceScopeKey:'__shared__',sourceBranch:'historical-source',sourceProjectId:'7',
+                sourceRequirementId:'11',sourceRequirementVersionId:'44',sourceSnapshotId:'retained-snapshot'})) {
+                window.location.searchParams.set(key,value);
+            }
+        }
+        if (lifecycleOptions.startup) {
+            window.__TaxonomyAnalysisSessionContext = {runtime:{workspaceId:null}};
+            window.TaxonomyAnalysisSessionReady = new Promise(resolve => {finishSession=resolve;});
+            sandbox.history.replaceState = sandbox.history.pushState = (_state,_title,url) => {
+                window.location = sandbox.location = new URL(url,window.location);
+            };
+        }
         window.fetch = async (url, init) => {
             const target = new URL(url, window.location);
             if (target.pathname === '/api/architecture/editor') {
                 loads.push({url:target, init});
                 return Response.json(structuredClone(view));
+            }
+            if (target.pathname === '/api/context/current') {
+                contextReads.push({url:target, init});
+                return contextReads.length === 1 ? new Promise(resolve => {finishContext=resolve;}) : Response.json(repositoryContext);
+            }
+            if (target.pathname === '/api/architecture/editor/snapshot-adoptions/preview') {
+                previews.push({url:target,init});
+                return new Promise(resolve=>{finishAdoptionPreview=resolve;});
             }
             assert.equal(target.pathname, '/api/architecture/lifecycle');
             lifecycleReads.push({url:target, init});
@@ -172,18 +208,41 @@ async function editorFixture(conflictAt, history = [], serverUndo = history[0] |
         for (const script of ['shared/architecture-workflow.js', 'shared/application-chrome.js', 'shared/architecture-lifecycle.js']) {
             vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js', script), 'utf8'), sandbox);
         }
+        if (lifecycleOptions.startup) {
+            sandbox.TaxonomyI18n = window.TaxonomyI18n;
+            sandbox.TaxonomyUtils = {escapeHtml:String};
+            sandbox.setInterval = () => 1; sandbox.clearInterval = () => {};
+            for (const script of ['api/workspace-api.js', 'versioning/taxonomy-context-bar.js']) {
+                vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js', script), 'utf8'), sandbox);
+            }
+        }
     }
     vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js/architecture-focus.js'), 'utf8'), sandbox);
     vm.runInContext(source, sandbox);
     vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js/analysis-snapshot-adoption.js'), 'utf8'), sandbox);
     vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js/architecture-editor.js'), 'utf8'), sandbox);
+    if (lifecycleOptions?.startup) {
+        vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js/shared/architecture-workspace.js'), 'utf8'), sandbox);
+        window.TaxonomyContextBar.init('contextBar');
+        await settleUi();
+        return {ids, loads, lifecycleReads, contextReads, window, document,
+            finishSession() {
+                window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'test-workspace';
+                window.TaxonomyAnalysisSession = {whenInitialized:() => Promise.resolve(true),state:() => ({workspaceId:'test-workspace'})};
+                finishSession(true);
+            },
+            finishContext:() => finishContext(Response.json(repositoryContext)),
+            finishLifecycle:() => finishLifecycle(Response.json(overview))};
+    }
     await settleUi();
     assert.equal(loads.length, 1);
     assert.equal(ids.editorPlanningActions.disabled, false);
     ids.editorPlanningEntry.value = 'launch';
     ids.editorPlanningEntry.events.change();
     return {ids, previews, executions, loads, window, lifecycleReads,
-        finishLifecycle:() => finishLifecycle?.(Response.json(overview)), document};
+        finishLifecycle:() => finishLifecycle?.(Response.json(overview)),
+        finishAdoptionPreview:() => finishAdoptionPreview(Response.json({fingerprint:'retained-preview',
+            summary:{addedElements:[],reusedElements:[],addedRelations:[],reusedRelations:[],conflicts:[],differences:[]}})), document};
 }
 
 // All fixture promises resolve immediately; drain the real handlers without timed sleeps.
@@ -205,6 +264,32 @@ test('publishing the loaded editor stand preserves its matching canonical lifecy
     assert.equal(f.lifecycleReads[0].url.searchParams.get('revision'), '1');
 });
 
+test('confirming the same editor revision keeps its pending snapshot adoption preview current', async () => {
+    const f=await editorFixture(null,[],null,{deferred:true,adoption:true});
+    assert.equal(f.ids.adoptionPreview.disabled,false,'The editable target exposes its frozen-source preview');
+    const preview=f.ids.adoptionPreview.events.click();
+    await settleUi();
+    assert.equal(f.previews.length,1);
+    assert.equal(f.previews[0].init.signal.aborted,false);
+    f.finishLifecycle();await settleUi();
+    assert.equal(f.window.TaxonomyArchitectureLifecycle.state()?.context.revision,1);
+    assert.equal(f.previews[0].init.signal.aborted,false,
+        'Confirming the same exact revision must not invalidate the preview by relabeling its stand');
+    f.finishAdoptionPreview();await preview;
+    assert.equal(f.ids.adoptionAccept.disabled,false,'The retained preview can be accepted explicitly');
+});
+
+test('a real branch departure still cancels a pending snapshot adoption preview', async () => {
+    const f=await editorFixture(null,[],null,{adoption:true});
+    const preview=f.ids.adoptionPreview.events.click();
+    await settleUi();
+    assert.equal(f.previews.length,1);
+    f.window.TaxonomyAppChrome.updateContext({architecture:{branch:'other',modelStand:null}},'working');
+    assert.equal(f.previews[0].init.signal.aborted,true);
+    f.finishAdoptionPreview();await preview;
+    assert.equal(f.ids.adoptionAccept.disabled,true,'A preview from the departed stand cannot be accepted');
+});
+
 test('a later branch change still aborts the editors pending canonical lifecycle read', async () => {
     const f = await editorFixture(null, [], null, {deferred:true});
     assert.equal(f.lifecycleReads.length, 1);
@@ -216,6 +301,22 @@ test('a later branch change still aborts the editors pending canonical lifecycle
     await settleUi();
     assert.equal(f.window.TaxonomyArchitectureLifecycle.state(), null, 'Late evidence cannot restore the departed stand');
     assert.equal(f.window.TaxonomyAppChrome.getContext().architecture.branch, 'other');
+});
+
+test('the first repository context is confirmed before Working publishes its pending lifecycle overview', async () => {
+    const f = await editorFixture(null, [], null, {startup:true, deferred:true});
+    assert.equal(f.loads.length, 0);
+    f.finishSession(); await settleUi();
+    assert.equal(f.contextReads.length, 1, 'The first repository context must be requested after the retained session');
+    f.finishContext(); await settleUi();
+    assert.equal(f.loads.length, 1);
+    assert.equal(f.lifecycleReads.length, 1);
+    f.finishLifecycle(); await settleUi();
+    assert.equal(f.window.TaxonomyArchitectureLifecycle.state()?.context.revision, 1,
+        'The initial ContextRef must not revoke the lifecycle read started by the actual editor publication');
+    assert.equal(f.window.TaxonomyAppChrome.getContext().architecture.modelStand, 'editor.revision · editor.lastCheckpoint');
+    assert.equal(f.ids.editorNew.disabled, false);
+    assert.equal(f.ids.architectureLifecycle.hidden, false);
 });
 
 test('quick undo uses the existing server preview and waits for explicit acceptance', async () => {
