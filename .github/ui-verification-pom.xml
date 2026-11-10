@@ -162,6 +162,7 @@
 
         <profile>
             <id>interoperability</id>
+            <properties><taxonomy.ui.source.directory>${project.basedir}/../taxonomy-tooling/src/main/java</taxonomy.ui.source.directory></properties>
             <build><plugins>
                 <plugin><groupId>com.github.eirslett</groupId><artifactId>frontend-maven-plugin</artifactId><version>${frontend-maven-plugin.version}</version>
                     <configuration><workingDirectory>${project.basedir}</workingDirectory><installDirectory>${project.basedir}/../.cache/ui-frontend</installDirectory></configuration>
@@ -171,7 +172,7 @@
                     <executions><execution><goals><goal>integration-test</goal><goal>verify</goal></goals></execution></executions>
                     <configuration><skipITs>false</skipITs><includes><include>**/InteroperabilityProductsIT.java</include></includes>
                         <failIfNoTests>true</failIfNoTests><failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
-                        <systemPropertyVariables><taxonomy.interoperability.skip>false</taxonomy.interoperability.skip><taxonomy.node.executable>${project.basedir}/../.cache/ui-frontend/node/node</taxonomy.node.executable></systemPropertyVariables>
+                        <systemPropertyVariables><taxonomy.interoperability.skip>false</taxonomy.interoperability.skip><taxonomy.node.executable>${project.basedir}/../.cache/ui-frontend/node/node</taxonomy.node.executable><taxonomy.tooling.classpath>${project.build.outputDirectory}</taxonomy.tooling.classpath></systemPropertyVariables>
                     </configuration>
                 </plugin>
             </plugins></build>

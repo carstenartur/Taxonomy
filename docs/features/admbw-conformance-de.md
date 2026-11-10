@@ -91,3 +91,6 @@ wiederholt die Strukturprüfung für den angegebenen Commit. Die Antwort enthäl
 die QEA-Kopie als Download und den Quellcommit im Header `X-Taxonomy-Commit`.
 Die Berechtigung `integration:export` und der Zugriff auf den Git-Kontext
 gelten auch für diesen Download.
+
+Die genaue Quellrevision, SHA-256-Fingerprints und die unterstützten QEA-Operationen
+sind im [Austauschvertrag](qea-exchange-operation-evidence.md) dokumentiert.

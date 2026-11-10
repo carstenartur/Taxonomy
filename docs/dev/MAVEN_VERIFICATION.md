@@ -16,6 +16,31 @@ and Maven remains open: Docker, Helm and the native document/product runtimes mu
 be available on the host. Remote deployment, publication and hosted security
 services also require their corresponding endpoints and CI credentials.
 
+## Pinned product artifacts
+
+The real interoperability driver reads Archi's producer, version, immutable URL,
+SHA-256 and maximum size from [product-artifacts.json](../../.mvn/product-artifacts.json).
+The Maven-built Java `resolve-product-artifact` command verifies every local,
+cached or downloaded byte stream before publishing an atomic cache entry.
+An interrupted or incorrect download never becomes a usable entry. An explicitly
+selected local file with the wrong digest fails instead of silently choosing a
+different input. Product receipts record the actual version, digest, byte count,
+original source and whether the input came from a local file, cache or download.
+
+CI retains `.cache/product-artifacts` using the manifest digest as its cache key.
+For a preseeded or disconnected environment, use `TAXONOMY_ARCHI_ARCHIVE` to select
+the exact archive, `TAXONOMY_PRODUCT_CACHE` to select a persistent cache directory,
+and `TAXONOMY_PRODUCT_OFFLINE=true` to forbid artifact downloads. A missing cache
+entry fails with an explicit preseed instruction. A checksum alone does not make
+upstream bytes available. StrictDoc remains the independently installed pinned
+external product; its resolved dependency inventory is retained with the product
+evidence. The offline switch concerns pinned artifact resolution and does not
+claim to provision StrictDoc, Xvfb or every other native prerequisite offline.
+
+The historical `taxonomy-archi-5.10-return-v1` comparison contract keeps its name
+and bounded transformation checks when a newer pinned producer executes it.
+The receipt's producer version always comes from the selected artifact manifest.
+
 ## JUnit ownership of script contracts
 
 `./mvnw -B verify -Pci -DrunOnnxTests=true` is the local entry point for the

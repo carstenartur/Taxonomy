@@ -15,6 +15,7 @@ __pycache__/
 # Maven-owned browser tooling is installed locally from package-lock.json
 .github/node_modules/
 .cache/ui-frontend/
+.cache/product-artifacts/
 .cache/playwright-system-packages/
 # Generated, checksum-verified bundles from download-embedding-model.sh.
 /models/multilingual-minilm/

@@ -1,0 +1,8 @@
+operation,outcome
+rename,faithful
+move-package,faithful
+repeated-occurrence,faithful
+remove-occurrence,unsupported
+geometry-move,unsupported
+endpoint-change,faithful
+concurrent-local-edit,unsupported
