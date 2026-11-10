@@ -33,13 +33,14 @@ window.ArchitectureEditorApi = (function () {
     // The editor freezes an exact workspace/revision and verifies If-Match on the server.
     // A concurrent accepted edit may change the shared UI model-stand before a 412
     // response arrives. Preserve that authoritative conflict instead of converting it
-    // to ABORTED; editor generation guards still discard obsolete UI continuations.
+    // to ABORTED. All successful or unrelated replies remain subject to the normal
+    // navigation/authentication fence, and editor generation guards apply as well.
     function write(path, body, context, policy) {
         var headers = { 'Content-Type': 'application/json' };
         headers['If-Match'] = '"workspace-revision-' + context.revision + '"';
         return window.TaxonomyApiClient.request(base + path + '?' + query(context), {
             method: 'POST', headers: headers, body: JSON.stringify(body)
-        }, Object.assign({ retries: 0, contextSensitive: false }, exactPolicy(context), policy)).then(function (response) { return response.json(); });
+        }, Object.assign({ retries: 0, preservePreconditionFailure: true }, exactPolicy(context), policy)).then(function (response) { return response.json(); });
     }
     return {
         load: function (context, revision, signal, layout, layoutRevision, viewId) {

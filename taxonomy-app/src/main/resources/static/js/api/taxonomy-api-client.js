@@ -551,7 +551,14 @@ window.TaxonomyApiClient = (function () {
                 .then(function (result) { assertCurrent(context); return result; })
                 .catch(function (error) {
                     if (context.authError && !(error instanceof ApiError && [401, 403].includes(error.status))) throw context.authError;
-                    if (!context.current() && !(error instanceof ApiError && [401, 403].includes(error.status))) {
+                    // A server-rejected exact-revision write must remain a genuine 412
+                    // even when an independent accepted writer changes the live model-stand.
+                    // This exception never publishes a successful stale response or
+                    // suppresses cancellation of a different response/error.
+                    var keepRevisionConflict = requestOptions.preservePreconditionFailure === true
+                        && error instanceof ApiError && error.status === 412 && error.code === 'HTTP_ERROR';
+                    if (!context.current() && !(error instanceof ApiError && [401, 403].includes(error.status))
+                            && !keepRevisionConflict) {
                         throw cancelled(context);
                     }
                     throw normalizeTransportError(error, context, scope, validated);
