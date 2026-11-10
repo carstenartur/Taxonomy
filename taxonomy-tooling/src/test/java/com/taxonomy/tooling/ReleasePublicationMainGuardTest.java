@@ -55,6 +55,7 @@ class ReleasePublicationMainGuardTest {
     }
 
     private static Fixture fixture(Path root, String problem) throws Exception {
+        ToolingJarFixture.create(root.resolve("taxonomy-tooling.jar"));
         Path remote = root.resolve("origin.git");
         Path work = Files.createDirectories(root.resolve("release source"));
         GitSupport.require(root, "init", "--bare", "--initial-branch=main", remote.toString());

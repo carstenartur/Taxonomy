@@ -11,7 +11,7 @@ if [[ -z "$tooling_jar" || ! -f "$tooling_jar" ]]; then
 fi
 
 # Regression callbacks and repository guard commands are owned by root Maven:
-# PythonContractTest, JavascriptContractTest and CoreDeliveryContractsTest.
+# QualitySiteTest, JavascriptContractTest and CoreDeliveryContractsTest.
 # No separate test runner may diverge from that JUnit inventory.
 
 current_version=$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)

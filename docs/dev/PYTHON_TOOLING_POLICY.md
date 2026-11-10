@@ -1,130 +1,103 @@
-# Python tooling migration policy
+# Java tooling and the zero-Python policy
 
-Taxonomy uses Maven as the canonical verification entry point and JUnit/Failsafe as the authority for executable tests and repository pass/fail policies. Dependency-free Java tooling owns structured release transformations where a real program is required. Shell and GitHub Actions orchestrate external tools but must not duplicate policy logic.
+Maven is the canonical verification entry point. JUnit/Failsafe owns executable
+acceptance and repository pass/fail policies. Dependency-free Java owns structured
+release and delivery transformations; shell and GitHub Actions orchestrate the
+existing external tools.
 
-The long-term goal remains a repository with no tracked Python files and no executable Python setup or invocation. On 24 August 2026, complete removal moved from the Taxonomy 1.4.0 release scope to post-release maintenance. The bounded adapters retained in 1.4.0 are not product runtime dependencies and remain protected by Maven/JUnit-owned positive and negative contracts.
+## Absolute source and runtime boundary
 
-## Taxonomy 1.4.0 boundary
+The remaining eight Python adapters and duplicate test programs from #629 have
+been replaced together with their callers. There is no permanent Python allowlist,
+historical-diff exception or Python fallback.
 
-Taxonomy 1.4.0 may retain only the Python files already listed by the removal-only source ratchet. This is a temporary migration boundary, not an invitation to add new Python tooling and not a permanent exception list.
+`PythonSourceRatchetRepositoryTest` checks the current source tree, including
+untracked source files, and rejects Python source and productive interpreter,
+installer or setup invocations. Generated files under `target/`, installed Node
+dependencies and Git metadata are excluded from this source inventory. Java test
+fixtures may quote prohibited commands to prove that the recognizer rejects them;
+this does not authorize executing them in productive tooling.
 
-The release remains acceptable only while all of the following hold:
+The canonical full verification command remains:
 
-1. Maven remains the canonical verification command.
-2. JUnit/Failsafe or dependency-free Java owns deterministic pass/fail policy.
-3. No new `.py` file, `python`, `python3`, `pytest`, `pip`, `unittest`, or `actions/setup-python` reference is introduced.
-4. Every retained adapter continues to pass its existing process, output, failure, retry, provenance, and security contracts.
-5. Release notes disclose the retained bounded adapters and the post-1.4.0 migration plan truthfully.
-6. Any retained adapter shown to cause a concrete correctness or security defect becomes a release issue in its own right.
+```bash
+./mvnw -B verify -Pci -DrunOnnxTests=true
+```
 
-Issue #673 delivered the Java release core and Maven/JUnit policy foundations. Issue #629 tracks the remaining migration and source-bound release evidence.
+A focused tooling run is useful during development:
 
-## Permanent architecture rules
+```bash
+./mvnw -B -pl taxonomy-tooling -am test
+```
 
-- Deterministic repository policy belongs in JUnit, Maven Enforcer, another Maven-native plugin, or the frontend toolchain that owns the source format.
-- Structured artifact generation belongs in Java/Maven-native tooling when a real program is required.
-- Shell and GitHub Actions may invoke Git, Helm, containers, scanners, and publication clients, but must not become a second implementation of repository policy.
-- A productive adapter is removed only after its positive, negative, malformed-input, retry, and output contracts are preserved at the real boundary.
-- Adapter deletion and relocation of tests that execute it form one atomic transition.
-- Every migration slice must pass the exact-head CI, database, CodeQL, Security, and relevant consumer matrix required by its scope.
+It does not replace application, browser, PostgreSQL, SQL Server, Oracle,
+CodeQL or Security Scan acceptance on the unchanged source revision.
 
-## Policies already owned by Maven/JUnit or dependency-free Java
+## Productive command ownership
 
-| Concern | Integration |
+| Concern | Java/Maven owner |
 |---|---|
-| Workflow test authority | #674 |
-| Documentation and image links | #675 |
-| Reactor-wide JaCoCo ratchet | #680 |
-| Hibernate Search/ORM/Lucene alignment | #681 |
-| Action and production-image pinning | #683 |
-| Packaged CycloneDX dependency hygiene | #685 |
-| Frontend API transport boundaries | #687 |
-| Release request ancestry and revision | #716 / #757 |
-| Exact release-gate behaviour | #737 |
-| Version-state implementation | #756 |
-| Release parameters and request anchoring | #757 |
-| Declared-reactor release-plan validation | #767 |
-| Productive release/version workflow routing | #769 |
-| Release metadata transformation and routing | #771 / #774 |
-| CycloneDX SBOM/VEX companion generation | #804 / #846 |
-| CodeQL SARIF high-severity enforcement | #846 |
-| Observability performance lane scope | #629 (`ObservabilityPerformanceScopeRepositoryTest`) |
-| Immutable release image gate | #629 (`ReleaseImageGate`, `ReleaseImageGateRepositoryTest`) |
+| Release parameters, ancestry, reactor versions and metadata | Existing `TaxonomyTooling` release commands |
+| Immutable image workflow requirements | `ReleaseImageGate` and JUnit repository/mutation tests |
+| Release and delivery repository policies | `DeliveryGuards`, `CoreDeliveryContractsTest`, `DeliveryGuardRejectionTest` |
+| Raw JUnit execution outcomes | Shared strict `JunitOutcomeVerifier` and secured `XmlSupport` parser |
+| Quality summary, badges and HTML | `generate-quality-site` |
+| Local/remote publication and original report verification | `verify-quality-publication` |
+| Readiness, live commit and Render rollout evidence | `verify-deployment`, `DeploymentVerifierTest` |
+| Disabled/failed/triggered Render receipts and exact hook pin | `render-delivery-state`, `render-deploy-url`, `render-service-id` |
+| Standard and ONNX immutable image receipts | `write-release-image-evidence`, `read-evidence-digest` |
+| Trivy HIGH/CRITICAL enforcement | `check-trivy-sarif` |
+| Storage consumer selectors from the existing catalogue | `storage-contract-selectors` |
+| Source/artifact evidence inventory | `write-quality-manifest`, `check-evidence-manifest` |
 
-## Completed Java release-core migration
+`.github/scripts/taxonomy-tooling.sh` launches the exact checked-out Java 25
+sources. Where the release workflow has already built and preserved its immutable
+tooling JAR, it invokes that JAR directly. An explicitly supplied `TOOLING_JAR`
+selects the same packaged entry point. There is no downloading of newer tooling
+or substitution of the current main revision during evidence verification.
 
-The dependency-free `taxonomy-tooling` executable JAR owns the release boundary before and after immutable checkout changes. It replaced the former Python release-parameter, release-plan, version-state, release-metadata, CodeQL SARIF, and SBOM/VEX companion implementations.
+## Preserved acceptance boundaries
 
-Its Java and JUnit contracts cover:
+Generator and verifier tests retain positive and negative XML/JSON, missing input,
+wrong source, inconsistent badges, raw outcome recounts, malformed input, repeated
+attempt identities, original plugin/application shard digests, dedicated test
+ownership, cache headers and bounded retries. Rerun/flaky outcomes and XML
+DTD/entities are rejected. Coverage rounding and badge formatting preserve the
+retired generator's binary floating-point, ties-to-even behavior.
 
-- workflow-dispatch derivation and explicit major, minor, patch, or exact next-version choices;
-- exact-first-parent release-request anchoring, one-file request commits, and sequential request revisions;
-- staged-release ancestry and resume behaviour;
-- declared Maven reactor traversal, inherited properties, duplicate coordinates, and internal versus external snapshots;
-- worktree cleanliness and transactional release metadata updates;
-- release, development, and advanced version-state agreement;
-- deterministic JSON output and actionable failure diagnostics;
-- CodeQL SARIF rules stored in drivers or extensions, unknown-rule and malformed-input rejection, high-severity thresholds, and stale-evidence cleanup;
-- SBOM/VEX companion generation without an obsolete Python fallback.
+Deployment acceptance exercises actual loopback HTTP responses and the checked-in
+workflow shell blocks. It retains the readiness/commit/root-smoke sequence,
+Render terminal-failure handling, bounded polling and explicit
+`disabled`, `triggered`, `verifying`, `succeeded`, `failed` evidence. Credentials
+stay in the existing environment mechanism; errors do not copy HTTP payloads,
+authorization headers or hook URLs into diagnostics.
 
-Workflows call the same immutable JAR rather than recreating those rules in YAML or shell.
+Repository guards preserve both sides of existing shell/workflow delegation.
+Mutation tests reject weakened immutable scans, stale-main publication,
+unbounded diagnostics, stale report publication, missing Render evidence and
+weakened resource profiles. Structured policy remains in Java/JUnit.
 
-## Removal-only source ratchet
+## Source/artifact manifest
 
-The current Python inventory is an upper bound. Later slices may delete an allowed path but cannot introduce another Python source file. Productive XML, workflow YAML, shell, Java main source, JavaScript build scripts, properties, Dockerfiles, Makefiles, and package metadata are diffed against the immutable release-core-removal baseline. New executable Python or setup references fail the Maven/JUnit build.
+See [the manifest contract](EVIDENCE_MANIFEST.md) and
+[version 1 schema](evidence-manifest-v1.schema.json). The existing CI finalizer
+writes the quality profile only after generating and verifying the original
+quality evidence. Its manifest binds raw JUnit, aggregate coverage, UI summary
+and the generated summary by file digest and immutable source identity.
 
-The exact file inventory runs in every checkout. Complete-history checkouts also enforce ancestry and productive-diff rules. Shallow specialised jobs do not pretend to own history they were deliberately not given; canonical CI remains the authority for those assertions.
+The release profile requires the wider artifact and gate inventory. A verifier
+checks an assembled archive; it never creates a release, tag, container image,
+deployment or DOI. The recorded release-to-main mapping is verified with the
+existing `ReleaseHistoryVerifier` when artifact source and final verification
+source differ. A manifest cannot turn a fixture into public delivery evidence.
 
-## Remaining post-1.4.0 inventory
+## Permanent rules
 
-The following files remain temporarily and may only be removed in contract-preserving slices:
-
-### Artifact generation
-
-- `.github/scripts/generate-quality-site.py`
-
-### Release, delivery, and external-boundary verification
-
-- `.github/scripts/check-release-delivery-contract.py`
-- `.github/scripts/check-delivery-hardening.py`
-- `.github/scripts/verify-deployment.py`
-- `.github/scripts/verify-quality-publication.py`
-
-### Duplicate Python test programs
-
-- `.github/scripts/test-generate-quality-site.py`
-- `.github/scripts/test-verify-deployment.py`
-- `.github/scripts/test-verify-quality-publication.py`
-
-No item is accepted as a permanent exception.
-
-## Post-release migration order
-
-1. Move the remaining release-delivery policy to Java/JUnit authority.
-2. Move delivery-hardening policy to Java/JUnit authority.
-3. Replace quality-site generation and publication verification with Java/Maven-native tooling and deterministic output tests.
-4. Replace deployment verification at its real HTTP/Helm boundary.
-5. Delete the final Python file and executable/setup reference.
-6. Replace the shrinking allow-list with an absolute zero-Python source contract.
-
-Draft PRs #851 and #852 were closed unmerged when 1.4.0 publication was prioritised. Their ideas may be reconstructed on the post-release `main`; stale stacked branches are not release evidence.
-
-## Prohibited patterns
-
-- any new `.py` file or Python setup/install step;
-- translating Python unit tests into shell tests;
-- duplicating a Java/JUnit rule in workflow YAML;
-- silent JSON/YAML allow-lists without owner, rationale, and expiry semantics;
-- deleting a productive adapter before its exact behaviour is covered;
-- keeping Java and Python implementations of the same policy as fallbacks.
-
-## Python removal criteria for #629
-
-The Python removal in #629 is complete when all of the following hold.
-
-- repository search returns zero tracked Python files;
-- repository-wide search finds no executable Python or setup reference;
-- `./mvnw -B verify -Pci` remains the canonical verification command;
-- every migrated generator and adapter has positive and negative JUnit coverage;
-- an absolute source contract prevents Python from returning; and
-- CI/CD, PostgreSQL, Oracle, SQL Server, CodeQL, Security Scan, and relevant consumer contracts are green on one unchanged exact head.
+- Do not introduce Python source, setup or execution into productive tooling.
+- Do not replace Java/JUnit policy with shell tests or workflow expressions.
+- Preserve output, malformed-input, failure, retry, exact-source and security
+  behavior when changing a productive adapter.
+- Keep generated raw reports and migration/parity diagnostics under `target/`
+  or existing CI artifacts.
+- Require the existing exact-head CI and relevant consumer matrix before merging;
+  local focused verification alone is not release certification.
