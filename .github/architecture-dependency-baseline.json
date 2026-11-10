@@ -1405,15 +1405,8 @@
       "fromContext": "knowledge",
       "fromPackage": "com.taxonomy.search.controller",
       "toContext": "workspace",
-      "toPackage": "com.taxonomy.versioning.service",
-      "classDependencyCount": 1
-    },
-    {
-      "fromContext": "knowledge",
-      "fromPackage": "com.taxonomy.search.controller",
-      "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 3
+      "classDependencyCount": 2
     },
     {
       "fromContext": "knowledge",

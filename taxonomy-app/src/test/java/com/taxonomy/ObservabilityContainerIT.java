@@ -213,6 +213,18 @@ class ObservabilityContainerIT {
         }
 
         int start = Math.max(0, lastLogs.length() - 12_000);
+        // Keep span identities from the complete, privacy-filtered export. A
+        // busy startup can move the request's evidence outside the collector
+        // tail; retaining identities distinguishes missing export from parser
+        // or correlation failures without logging SQL or application content.
+        System.out.println("Complete collector span identities:\n" + lastLogs.lines()
+                .filter(line -> line.matches("\\s*(Trace ID|Parent ID|ID|Name|Kind)\\s*:.*"))
+                .collect(java.util.stream.Collectors.joining("\n")));
+        System.out.println("Safe observed-operation and agent-export diagnostics:\n"
+                + application.getLogs().lines()
+                .filter(line -> line.contains(SAFE_OPERATION_LOG)
+                        || line.contains("io.opentelemetry.exporter"))
+                .collect(java.util.stream.Collectors.joining("\n")));
         throw new AssertionError(
                 "No correlated HTTP and Taxonomy spans were exported. Collector tail:\n"
                         + lastLogs.substring(start));
