@@ -9,6 +9,7 @@ CHART_DIR="${ROOT_DIR}/deploy/helm/taxonomy"
 NAMESPACE=taxonomy-smoke
 RELEASE=${TAXONOMY_SMOKE_RELEASE:-taxonomy}
 KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME:-taxonomy-smoke}
+KUBE_CONTEXT="kind-${KIND_CLUSTER_NAME}"
 SOURCE_SHA=${SOURCE_SHA:-$(git -C "${ROOT_DIR}" rev-parse HEAD)}
 IMAGE_REPOSITORY=${IMAGE_REPOSITORY:-taxonomy-smoke}
 IMAGE_TAG=${IMAGE_TAG:-sha-${SOURCE_SHA}}
@@ -18,6 +19,8 @@ KEEP_RESOURCES=${KEEP_RESOURCES:-false}
 SMOKE_SECRET=taxonomy-smoke-credentials
 RESOURCE_SELECTOR="app.kubernetes.io/instance=${RELEASE},app.kubernetes.io/name=taxonomy"
 PORT_FORWARD_PID=""
+NAMESPACE_UID=""
+FIXTURE_KUBECONFIG=""
 
 fail() {
   echo "::error::$*" >&2
@@ -29,12 +32,20 @@ cleanup() {
     kill "${PORT_FORWARD_PID}" >/dev/null 2>&1 || true
     wait "${PORT_FORWARD_PID}" >/dev/null 2>&1 || true
   fi
-  if [[ "${KEEP_RESOURCES}" != "true" ]]; then
-    helm uninstall "${RELEASE}" --namespace "${NAMESPACE}" >/dev/null 2>&1 || true
-    kubectl delete namespace "${NAMESPACE}" --wait=false >/dev/null 2>&1 || true
+  if [[ "${KEEP_RESOURCES}" != "true" && -n "${NAMESPACE_UID}" ]]; then
+    # The API checks the UID when deleting. A replacement namespace with the
+    # same name is outside this run's ownership, including during cleanup.
+    printf '{"apiVersion":"v1","kind":"DeleteOptions","preconditions":{"uid":"%s"}}\n' "${NAMESPACE_UID}" \
+      | kubectl delete --request-timeout=10s --raw "/api/v1/namespaces/${NAMESPACE}" -f - >/dev/null 2>&1 || true
+  fi
+  if [[ -n "${FIXTURE_KUBECONFIG}" ]]; then
+    rm -f -- "${FIXTURE_KUBECONFIG}"
   fi
 }
 trap cleanup EXIT
+
+mkdir -p "${EVIDENCE_DIR}"
+rm -f -- "${EVIDENCE_DIR}/evidence.json"
 
 for command in docker kind kubectl helm curl jq od; do
   command -v "${command}" >/dev/null 2>&1 \
@@ -50,7 +61,20 @@ if [[ "${KEEP_RESOURCES}" != "true" && "${KEEP_RESOURCES}" != "false" ]]; then
   fail "KEEP_RESOURCES must be true or false"
 fi
 
-mkdir -p "${EVIDENCE_DIR}"
+FIXTURE_KUBECONFIG=$(mktemp)
+kind get kubeconfig --name "${KIND_CLUSTER_NAME}" >"${FIXTURE_KUBECONFIG}" \
+  || fail "Cannot obtain kubeconfig for kind cluster ${KIND_CLUSTER_NAME}"
+[[ -s "${FIXTURE_KUBECONFIG}" ]] || fail "kind returned an empty fixture kubeconfig"
+kubectl() { command kubectl --kubeconfig "${FIXTURE_KUBECONFIG}" --context "${KUBE_CONTEXT}" "$@"; }
+helm() { command helm --kubeconfig "${FIXTURE_KUBECONFIG}" --kube-context "${KUBE_CONTEXT}" "$@"; }
+existing_namespace=$(kubectl get namespace "${NAMESPACE}" --ignore-not-found --request-timeout=10s -o name)
+[[ -z "${existing_namespace}" ]] || fail "namespace ${NAMESPACE} already exists in ${KUBE_CONTEXT}"
+NAMESPACE_UID=$(kubectl create namespace "${NAMESPACE}" --request-timeout=10s -o jsonpath='{.metadata.uid}')
+if ! [[ "${NAMESPACE_UID}" =~ ^[A-Za-z0-9-]+$ ]]; then
+  NAMESPACE_UID=""
+  fail "Could not establish ownership of fixture namespace ${NAMESPACE}"
+fi
+
 STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 SMOKE_START_EPOCH=$(date +%s)
 BUILD_DATE=$(git -C "${ROOT_DIR}" show -s --format=%cI "${SOURCE_SHA}")
@@ -70,8 +94,6 @@ if ! [[ "${IMAGE_ID}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   fail "Docker did not return an immutable local image ID"
 fi
 
-kind get clusters | grep -Fxq "${KIND_CLUSTER_NAME}" \
-  || fail "kind cluster ${KIND_CLUSTER_NAME} does not exist"
 kind load docker-image "${IMAGE_REFERENCE}" --name "${KIND_CLUSTER_NAME}"
 
 kubectl apply -f "${CHART_DIR}/constrained-smoke-prerequisites.yaml"
@@ -179,21 +201,29 @@ fi
 grep -Fq 'Created configured administrator account' \
   "${EVIDENCE_DIR}/application.log"
 
-kubectl port-forward --namespace "${NAMESPACE}" \
-  "service/${SERVICE}" 18080:80 \
+command kubectl --kubeconfig "${FIXTURE_KUBECONFIG}" --context "${KUBE_CONTEXT}" \
+  port-forward --namespace "${NAMESPACE}" --address 127.0.0.1 \
+  "service/${SERVICE}" :80 \
   >"${EVIDENCE_DIR}/port-forward.log" 2>&1 &
 PORT_FORWARD_PID=$!
+WEB_READY=false
 for _ in $(seq 1 60); do
-  if curl --fail --silent --show-error \
-      http://127.0.0.1:18080/actuator/health/readiness \
+  kill -0 "${PORT_FORWARD_PID}" 2>/dev/null || fail "Fixture port-forward exited before readiness"
+  WEB_PORT=$(sed -nE 's/^Forwarding from 127\.0\.0\.1:([0-9]+) -> [0-9]+$/\1/p' "${EVIDENCE_DIR}/port-forward.log")
+  if [[ "${WEB_PORT}" =~ ^[0-9]{1,5}$ ]] && curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
+      "http://127.0.0.1:${WEB_PORT}/actuator/health/readiness" \
       >"${EVIDENCE_DIR}/readiness.json"; then
+    WEB_READY=true
     break
   fi
   sleep 2
 done
+[[ "${WEB_READY}" == true ]] || fail "Fixture service did not become ready through its port-forward"
+kill -0 "${PORT_FORWARD_PID}" 2>/dev/null || fail "Fixture port-forward exited before the login request"
 curl --fail --location --silent --show-error \
+  --connect-timeout 2 --max-time 10 \
   --header 'Accept: text/html' \
-  http://127.0.0.1:18080/ \
+  "http://127.0.0.1:${WEB_PORT}/" \
   >"${EVIDENCE_DIR}/home.html"
 [[ -s "${EVIDENCE_DIR}/home.html" ]] \
   || fail "Taxonomy root redirect did not produce a login page"
@@ -224,6 +254,8 @@ jq -n \
   --arg imageId "${IMAGE_ID}" \
   --arg podImageId "${POD_IMAGE_ID}" \
   --arg namespace "${NAMESPACE}" \
+  --arg namespaceUid "${NAMESPACE_UID}" \
+  --arg context "${KUBE_CONTEXT}" \
   --arg deployment "${DEPLOYMENT}" \
   --arg service "${SERVICE}" \
   --arg pod "${POD}" \
@@ -245,7 +277,9 @@ jq -n \
       kind: $kindVersion,
       kubernetes: $kubernetesVersion,
       helm: $helmVersion,
+      context: $context,
       namespace: $namespace,
+      namespaceUid: $namespaceUid,
       node: $node
     },
     workload: {
