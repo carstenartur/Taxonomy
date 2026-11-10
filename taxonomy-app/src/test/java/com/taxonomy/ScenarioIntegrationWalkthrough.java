@@ -285,13 +285,12 @@ final class ScenarioIntegrationWalkthrough {
                     || after.path("kind").asText().equals("VIEW")
                     || after.path("kind").asText().equals("PLACEMENT");
             if (after.path("kind").asText().equals("RELATION")) {
-                var rules = com.taxonomy.dsl.validation.DslValidator.relationTypeRules()
-                        .get(after.path("extensions").path("canonicalType").asText());
+                String type = after.path("extensions").path("canonicalType").asText();
                 String source = types.get(after.path("extensions").path("source").asText());
                 String target = types.get(after.path("extensions").path("target").asText());
-                if (rules != null) reject |= !rules.getOrDefault(
-                        com.taxonomy.dsl.model.TaxonomyRootTypes.rootFor(source), Set.of()).contains(
-                        com.taxonomy.dsl.model.TaxonomyRootTypes.rootFor(target));
+                reject |= !com.taxonomy.dsl.validation.RelationMetamodel.isCompatible(
+                        com.taxonomy.dsl.model.TaxonomyRootTypes.rootFor(source),
+                        com.taxonomy.dsl.model.TaxonomyRootTypes.rootFor(target), type);
             }
             decisions.put(id, reject ? "REJECT" : "ACCEPT");
         }

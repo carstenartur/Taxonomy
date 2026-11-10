@@ -10,39 +10,36 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-async function createReviewCandidate(page, role) {
+export async function createReviewCandidate(page, role, submit = csrfJson) {
   const rationalePrefix = `Role acceptance ${Date.now().toString(36)}`;
   if (role === 'USER') {
-    return csrfJson(page, '/api/proposals/from-hypothesis', {
+    return submit(page, '/api/proposals/from-hypothesis', {
       body: { sourceCode: 'BP', targetCode: 'BR', relationType: 'RELATED_TO',
         confidence: 0.72, rationale: rationalePrefix }
     });
   }
 
-  const codes = await page.locator('#taxonomyTree [data-code]').evaluateAll(nodes =>
+  const codes = await page.locator('#taxonomyTree .tax-node[data-code]').evaluateAll(nodes =>
     [...new Set(nodes.map(node => node.dataset.code).filter(Boolean))].slice(0, 14));
-  const relationTypes = [
-    'RELATED_TO', 'SUPPORTS', 'REALIZES', 'USES', 'DEPENDS_ON', 'CONSUMES',
-    'FULFILLS', 'PRODUCES', 'COMMUNICATES_WITH', 'CONTAINS', 'ASSIGNED_TO'
-  ];
+  // RELATED_TO is the metamodel's unrestricted relation. On a duplicate,
+  // move to another real pair instead of guessing a restricted relation type.
+  const relationType = 'RELATED_TO';
   let lastConflict = null;
   for (let sourceIndex = 0; sourceIndex < codes.length; sourceIndex += 1) {
     for (let targetIndex = sourceIndex + 1; targetIndex < codes.length; targetIndex += 1) {
-      for (const relationType of relationTypes) {
-        const rationale = `${rationalePrefix} ${sourceIndex}-${targetIndex}-${relationType}`;
-        const response = await csrfJson(page, '/api/proposals/from-hypothesis', {
-          body: {
-            sourceCode: codes[sourceIndex], targetCode: codes[targetIndex], relationType,
-            confidence: 0.72, rationale
-          }
-        });
-        if (response.status === 200) return { ...response, rationale };
-        if (response.status === 409) {
-          lastConflict = response;
-          continue;
+      const rationale = `${rationalePrefix} ${sourceIndex}-${targetIndex}-${relationType}`;
+      const response = await submit(page, '/api/proposals/from-hypothesis', {
+        body: {
+          sourceCode: codes[sourceIndex], targetCode: codes[targetIndex], relationType,
+          confidence: 0.72, rationale
         }
-        return response;
+      });
+      if (response.status === 200) return { ...response, rationale };
+      if (response.status === 409) {
+        lastConflict = response;
+        continue;
       }
+      return response;
     }
   }
   return lastConflict || { status: 409, json: null, text: 'No unique proposal candidate' };

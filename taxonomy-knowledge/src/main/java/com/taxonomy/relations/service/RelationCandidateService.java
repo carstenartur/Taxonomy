@@ -45,6 +45,8 @@ public class RelationCandidateService {
     public List<TaxonomyNodeDto> findCandidates(TaxonomyNode source,
                                                  RelationType relationType,
                                                  int limit) {
+        var domain = compatibilityMatrix.targetDomain(source.getTaxonomyRoot(), relationType);
+        if (domain.state() == com.taxonomy.dsl.validation.RelationMetamodel.DomainState.FORBIDDEN || limit <= 0) return List.of();
         String queryText = buildQueryText(source);
         log.debug("Finding candidates for {} [{}] with query: '{}'",
                 source.getCode(), relationType, queryText);
@@ -52,13 +54,9 @@ public class RelationCandidateService {
         // Use hybrid search for high recall
         List<TaxonomyNodeDto> hybridResults = hybridSearchService.hybridSearch(queryText, limit * 2);
 
-        // Filter by allowed target taxonomy roots for this relation type
-        Set<String> allowedRoots = compatibilityMatrix.allowedTargetRoots(
-                source.getTaxonomyRoot(), relationType);
-
         List<TaxonomyNodeDto> filtered = hybridResults.stream()
                 .filter(dto -> !dto.getCode().equals(source.getCode())) // exclude self
-                .filter(dto -> allowedRoots.isEmpty() || allowedRoots.contains(dto.getTaxonomyRoot()))
+                .filter(dto -> domain.allows(dto.getTaxonomyRoot()))
                 .limit(limit)
                 .collect(Collectors.toList());
 

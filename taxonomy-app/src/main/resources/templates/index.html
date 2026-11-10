@@ -577,18 +577,8 @@
                     <div class="mt-2">
                         <div class="d-flex gap-2 align-items-center mb-2">
                             <select id="relationsTypeFilter" class="form-select form-select-sm" style="max-width:180px;" th:attr="aria-label=#{ui.aria.filter_by_relation_type}" aria-label="Filter by relation type">
-                                <option value="" th:text="#{relations.filter.all.types}">All types</option>
-                                <option value="REALIZES">REALIZES</option>
-                                <option value="SUPPORTS">SUPPORTS</option>
-                                <option value="CONSUMES">CONSUMES</option>
-                                <option value="USES">USES</option>
-                                <option value="FULFILLS">FULFILLS</option>
-                                <option value="ASSIGNED_TO">ASSIGNED_TO</option>
-                                <option value="DEPENDS_ON">DEPENDS_ON</option>
-                                <option value="PRODUCES">PRODUCES</option>
-                                <option value="COMMUNICATES_WITH">COMMUNICATES_WITH</option>
-                                <option value="CONTAINS">CONTAINS</option>
-                                <option value="RELATED_TO">RELATED_TO</option>
+                                <option value="" selected th:text="#{relations.filter.all.types}">All types</option>
+                                <option th:each="relationType : ${relationTypes}" th:value="${relationType}" th:text="${relationType}"></option>
                             </select>
                             <button id="createRelationBtn" class="btn btn-sm btn-outline-primary" th:text="#{browse.relations.btn.new}">&#10133; New Relation</button>
                         </div>
@@ -1652,17 +1642,7 @@
                 <p class="mb-2"><span th:text="#{propose.modal.description}">Generate relation proposals for node</span> <strong id="proposeNodeCode"></strong>:</p>
                 <label for="proposeRelationType" class="form-label" th:text="#{propose.modal.type.label}">Relation Type</label>
                 <select id="proposeRelationType" class="form-select" th:attr="aria-label=#{ui.aria.select_relation_type}" aria-label="Select relation type">
-                    <option value="REALIZES">REALIZES</option>
-                    <option value="SUPPORTS">SUPPORTS</option>
-                    <option value="CONSUMES">CONSUMES</option>
-                    <option value="USES">USES</option>
-                    <option value="FULFILLS">FULFILLS</option>
-                    <option value="ASSIGNED_TO">ASSIGNED_TO</option>
-                    <option value="DEPENDS_ON">DEPENDS_ON</option>
-                    <option value="PRODUCES">PRODUCES</option>
-                    <option value="COMMUNICATES_WITH">COMMUNICATES_WITH</option>
-                    <option value="CONTAINS">CONTAINS</option>
-                    <option value="RELATED_TO">RELATED_TO</option>
+                    <option th:each="relationType : ${relationTypes}" th:value="${relationType}" th:text="${relationType}" th:selected="${relationType == 'REALIZES'}"></option>
                 </select>
             </div>
             <div class="modal-footer">
@@ -1779,17 +1759,7 @@
                 <div class="mb-2">
                     <label for="newRelType" class="form-label small" th:text="#{relation.type.label}">Relation Type</label>
                     <select id="newRelType" class="form-select form-select-sm">
-                        <option value="REALIZES">REALIZES</option>
-                        <option value="SUPPORTS">SUPPORTS</option>
-                        <option value="CONSUMES">CONSUMES</option>
-                        <option value="USES">USES</option>
-                        <option value="FULFILLS">FULFILLS</option>
-                        <option value="ASSIGNED_TO">ASSIGNED_TO</option>
-                        <option value="DEPENDS_ON">DEPENDS_ON</option>
-                        <option value="PRODUCES">PRODUCES</option>
-                        <option value="COMMUNICATES_WITH">COMMUNICATES_WITH</option>
-                        <option value="CONTAINS">CONTAINS</option>
-                        <option value="RELATED_TO">RELATED_TO</option>
+                        <option th:each="relationType : ${relationTypes}" th:value="${relationType}" th:text="${relationType}" th:selected="${relationType == 'REALIZES'}"></option>
                     </select>
                 </div>
                 <div class="mb-2">

@@ -362,8 +362,8 @@ public final class ScenarioArchitectureQuality {
             String id = text(node, "id"), sourceRoot = text(node, "root");
             check(roots.contains(sourceRoot), "Source has an unknown catalogue root: " + id);
             for (String root : roots) for (RelationType type : RelationType.values()) {
-                if (rules.allowedTargetRoots(sourceRoot, type).contains(root)
-                        || rules.allowedTargetRoots(root, type).contains(sourceRoot)) {
+                if (type != RelationType.RELATED_TO && (rules.targetDomain(sourceRoot, type).allows(root)
+                        || rules.targetDomain(root, type).allows(sourceRoot))) {
                     keys.add(id + "|" + root); break;
                 }
             }
