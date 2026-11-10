@@ -56,22 +56,25 @@ class AnalysisBrowserFollowUpTest {
         var script = temporary.resolve("browser.cjs");
         Files.writeString(script, """
             const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
+            const canonicalFixture = require(process.argv[4]);
             const S = {}, requests = [];
             const elements = {exportGroup: {style: {}}, exportHint: {classList: {toggle() {}}}};
             const context = {window: Object.assign(new EventTarget(), {TaxonomyState: S}), console: {log() {}, error() {}},
                 TaxonomyI18n: {t: v => v}, TaxonomyUtils: {escapeHtml: v => v},
                 document: {addEventListener() {}, getElementById: id => elements[id] || null},
                 fetch: (url, options) => {requests.push({url, options}); return new Promise(() => {});}};
-            vm.createContext(context);
+            canonicalFixture.install(context, ['api/analysis-api.js']);
             vm.runInContext(fs.readFileSync(process.argv[2], 'utf8'), context);
             vm.runInContext(fs.readFileSync(process.argv[3], 'utf8').replace('runAnalysis: runAnalysis,',
                 'applyAnalysisResult: applyAnalysisResult, runAnalysis: runAnalysis,'), context);
             const window = context.window;
-            """ + assertions);
+            try {
+            """ + assertions + "\n} finally { canonicalFixture.dispose(); }\n");
         Path base = Path.of("..").toAbsolutePath().normalize().resolve("taxonomy-app/src/main/resources/static/js/core");
         var log = temporary.resolve("node.log");
         var process = new ProcessBuilder(List.of(System.getProperty("taxonomy.node.executable"), script.toString(),
-                base.resolve("taxonomy-browse.js").toString(), base.resolve("taxonomy-scoring.js").toString()))
+                base.resolve("taxonomy-browse.js").toString(), base.resolve("taxonomy-scoring.js").toString(),
+                Path.of("..").toAbsolutePath().normalize().resolve(".github/scripts/canonical-api-fixture.cjs").toString()))
                 .redirectErrorStream(true).redirectOutput(log.toFile()).start();
         try {
             assertThat(process.waitFor(30, TimeUnit.SECONDS)).as("browser checks completed").isTrue();

@@ -27,7 +27,8 @@ class TaxonomyApiClientContractTest {
                 .contains("code: 'ABORTED'")
                 .contains("taxonomy-api-auth-failure")
                 .contains("Automatic API retry requires idempotent: true")
-                .contains("return request(url, { method: 'GET' }, requestOptions).then(parseJson)")
+                .contains("return requestJson(url, { method: 'GET' }, requestOptions)")
+                .contains("return performRequest(url, init, options, parseJson)")
                 .doesNotContain("function getJson(url) {\n        return fetch(url)")
                 .doesNotContain("function sendJson(url, body, method) {\n        return fetch(url");
     }
@@ -42,7 +43,8 @@ class TaxonomyApiClientContractTest {
                 .contains("this.detail = details.detail || null")
                 .contains("this.instance = details.instance || null")
                 .contains("this.requestId = details.requestId || null")
-                .contains("problem.detail || problem.message || problem.error");
+                .contains("[problem.detail, problem.message, problem.error, body].find")
+                .contains("typeof value === 'string' && value.trim()");
     }
 
     private static String resource(String path) throws IOException {

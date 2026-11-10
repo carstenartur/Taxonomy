@@ -9,6 +9,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.support.StaticApplicationContext;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.config.Customizer;
@@ -68,7 +69,9 @@ class ProtocolClientSecurityConfigTest {
     @Test
     void keycloakChainConfiguresBearerWebDavAndBrowserCallbackRules() throws Exception {
         StaticApplicationContext context = new StaticApplicationContext();
+        context.refresh();
         HttpSecurity http = mock(HttpSecurity.class, Answers.RETURNS_SELF);
+        when(http.getSharedObject(ApplicationContext.class)).thenReturn(context);
         DefaultSecurityFilterChain chain = mock(DefaultSecurityFilterChain.class);
 
         CsrfConfigurer<HttpSecurity> csrf = new CsrfConfigurer<>(context);

@@ -264,3 +264,138 @@ test('browser report includes HTTP evidence without weakening the clean-console 
   assert.match(source, /externalRequests, consoleErrors, httpFailures, auditError/);
   assert.match(source, /assert\(consoleErrors.length === 0,/);
 });
+
+
+test('full acceptance blocks the actual first analysis keypress until public source readiness',async()=>{
+  const source=await readFile(new URL('./ui-acceptance.mjs',import.meta.url),'utf8');
+  const start=source.indexOf("if (mode === 'full') {")+"if (mode === 'full') {".length;
+  const end=source.indexOf("await page.locator('#statusArea')",start);
+  assert.ok(start>0&&end>start);
+  let ready=false, waits=0, submitted=0;
+  const window={TaxonomyAnalysisSession:{state:()=>({ready})}};
+  const page={
+    locator:()=>({isChecked:async()=>true,uncheck:async()=>{},check:async()=>{},fill:async()=>{},focus:async()=>{}}),
+    keyboard:{press:async key=>{assert.equal(key,'Enter');assert.equal(ready,true,'Analysis keypress preceded full source readiness');submitted++;}},
+    waitForFunction:async(predicate,arg,options)=>{
+      waits++;assert.equal(predicate(),false,'Draft-only readiness must not admit the first analysis');
+      ready=true;assert.equal(predicate(),true);assert.equal(options.timeout,20_000);
+    }
+  };
+  const {default:vm}=await import('node:vm');
+  await vm.runInNewContext(`(async()=>{${source.slice(start,end)}})()`,{page,window});
+  assert.equal(waits,1);assert.equal(submitted,1);
+});
+
+async function specialModeStartupHarness(observations, { sourceReady = true } = {}) {
+  const source=await readFile(new URL('./ui-special-modes-acceptance.mjs',import.meta.url),'utf8');
+  const start=source.indexOf('async function waitForTaxonomyReady(');
+  const end=source.indexOf('\nasync function selectSynchronousAnalysisView',start);
+  assert.ok(start >= 0 && end > start, 'Exercise the actual special-mode startup helper');
+  const {default:vm}=await import('node:vm');
+  const requests = [], calls = [];
+  let confirmed = false, sourceBlocked = false, expireStartup;
+  const window={TaxonomyAnalysisSession:{state:()=>({ready:sourceReady})}};
+  const page={
+    evaluate: async (callback, argument) => callback(argument),
+    locator: selector => ({waitFor: async options => {
+      assert.equal(selector, '#analyzeBtn');
+      assert.equal(options.state, 'visible');
+      assert.equal(options.timeout, 30_000);
+      assert.equal(confirmed, true, 'The client gate must not precede positive server startup evidence');
+      calls.push('visible');
+    }}),
+    waitForFunction(predicate, argument, options) {
+      if (options.timeout === 30_000) {
+        assert.equal(confirmed, true);
+        if (!sourceReady) {
+          assert.equal(predicate(argument), false, 'An enabled button alone does not prove its source is ready');
+          sourceBlocked = true;
+          sourceReady = true;
+        }
+        assert.equal(predicate(argument), true);
+        calls.push('client-ready');
+        return Promise.resolve(true);
+      }
+      assert.equal(options.timeout, 180_000);
+      assert.equal(options.polling, 1_000);
+      calls.push('startup-poll');
+      let stopped = false;
+      const deadline = new Promise((_resolve, reject) => {
+        expireStartup = () => reject(new Error('Startup polling deadline exceeded'));
+      });
+      const result = new Promise((resolve, reject) => {
+        function poll() {
+          if (stopped) return;
+          try {
+            // Playwright tests truthiness before assimilating a returned Promise.
+            const value = predicate(argument);
+            if (value) { stopped = true; resolve(value); return; }
+            setImmediate(poll);
+          } catch (error) { stopped = true; reject(error); }
+        }
+        poll();
+      });
+      return Promise.race([result, deadline]).finally(() => { stopped = true; });
+    }
+  };
+  const context=vm.createContext({page,window,AbortController,
+    document:{querySelector:()=>({disabled:false})},
+    fetch:async(url, options)=>{
+      assert.equal(url, '/api/status/startup');
+      assert.equal(options.credentials, 'same-origin');
+      assert.equal(options.headers.Accept, 'application/json');
+      const index = requests.length;
+      requests.push({url, options});
+      assert.ok(index < observations.length, 'No extra startup read is authorized');
+      const observation = observations[index];
+      const value = typeof observation === 'function' ? await observation(options) : observation;
+      if (value instanceof Error) throw value;
+      return {ok: value.status === undefined || value.status === 200,
+        json: async () => {confirmed = value.initialized === true; return value;}};
+    }});
+  vm.runInContext(source.slice(start,end),context);
+  return {run: () => context.waitForTaxonomyReady(), requests, calls,
+    sourceBlocked: () => sourceBlocked,
+    expire: () => {assert.equal(typeof expireStartup, 'function'); expireStartup();}};
+}
+
+test('special-mode startup waits for public source readiness as well as server startup and an enabled button',async()=>{
+  const harness = await specialModeStartupHarness([{initialized: true}], {sourceReady: false});
+  await harness.run();
+  assert.equal(harness.sourceBlocked(), true);
+  assert.equal(harness.requests.length, 1);
+  assert.deepEqual(harness.calls, ['startup-poll', 'visible', 'client-ready']);
+});
+
+for (const [label, observation] of [
+  ['initialized false', {initialized: false}],
+  ['HTTP 503', {status: 503}],
+  ['network failure', new TypeError('Startup network unavailable')]
+]) {
+  test(`special-mode ${label} cannot advance before a later authoritative startup confirmation`, async () => {
+    const harness = await specialModeStartupHarness([observation, {initialized: true}]);
+    await harness.run();
+    assert.equal(harness.requests.length, 2, 'A false startup observation must be retried before client readiness');
+    assert.deepEqual(harness.calls, ['startup-poll', 'visible', 'client-ready']);
+  });
+}
+
+test('special-mode startup deadline aborts a held read without entering the client gate', async () => {
+  let release;
+  const held = new Promise(resolve => {release = resolve;});
+  const harness = await specialModeStartupHarness([() => held]);
+  const outcome = harness.run().then(() => null, error => error);
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(harness.requests.length, 1, 'Only one pending startup observation may be in flight');
+    harness.expire();
+    const error = await outcome;
+    assert.match(String(error), /Taxonomy server did not become ready/);
+    assert.equal(harness.requests[0].options.signal?.aborted, true,
+      'The existing startup deadline must cancel its pending read');
+    assert.deepEqual(harness.calls, ['startup-poll']);
+  } finally {
+    release({initialized: true});
+    await outcome;
+  }
+});

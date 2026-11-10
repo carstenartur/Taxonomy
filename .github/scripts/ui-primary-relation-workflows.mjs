@@ -3,7 +3,7 @@ import { navigateArchitectureSubtab } from './ui-role-fixtures.mjs';
 const MANUAL_RELATION = {
   sourceCode: 'CP',
   targetCode: 'IP',
-  relationType: 'CONSUMES'
+  relationType: 'REQUIRES'
 };
 
 export async function runRelationWorkflows({ page, evidence }) {
@@ -34,10 +34,10 @@ export async function runRelationWorkflows({ page, evidence }) {
     }).filter({
       has: page.locator('td:nth-child(2)', { hasText: /^IP$/ })
     }).filter({
-      has: page.locator('td:nth-child(3)', { hasText: /^CONSUMES$/ })
+      has: page.locator('td:nth-child(3)', { hasText: /^REQUIRES$/ })
     });
     if (await matching.count() !== 1) {
-      throw new Error(`Expected exactly one CP -> IP CONSUMES row, found ${await matching.count()}`);
+      throw new Error(`Expected exactly one CP -> IP REQUIRES row, found ${await matching.count()}`);
     }
     return matching.first();
   }
@@ -52,7 +52,7 @@ export async function runRelationWorkflows({ page, evidence }) {
         && item.relationType === relation.relationType).length;
     }, MANUAL_RELATION);
     if (count !== expected) {
-      throw new Error(`Expected ${expected} persisted CP -> IP CONSUMES relation(s), found ${count}`);
+      throw new Error(`Expected ${expected} persisted CP -> IP REQUIRES relation(s), found ${count}`);
     }
   }
 
@@ -69,7 +69,7 @@ export async function runRelationWorkflows({ page, evidence }) {
     const responsePromise = page.waitForResponse(response => {
       const pathname = new URL(response.url()).pathname;
       return response.request().method() === 'PUT'
-        && pathname.endsWith('/api/architecture/relations/CP/CONSUMES/IP');
+        && pathname.endsWith('/api/architecture/relations/CP/REQUIRES/IP');
     }, { timeout: 15_000 });
     await page.locator('#createRelationSubmit').click();
     const response = await responsePromise;

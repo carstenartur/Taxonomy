@@ -52,7 +52,30 @@ window.AnalysisApi = (function () {
         return read('/api/graph/node/' + encodeURIComponent(nodeCode) + '/' + direction, context, {maxHops:maxHops});
     }
 
+    function rawJson(path, payload, options) {
+        return client.request(path, {method: 'POST', headers: Object.assign({'Content-Type': 'application/json'}, options?.headers),
+            body: JSON.stringify(payload)}, options);
+    }
+    function analyzeNode(params, options) {
+        var query = new URLSearchParams();
+        Object.keys(params || {}).forEach(function (key) {
+            if (params[key] !== undefined && params[key] !== null) query.set(key, params[key]);
+        });
+        return client.request('/api/analyze-node?' + query, {}, options);
+    }
     return Object.freeze({
+        // The reserved main operation owns its server deadline; keep explicit caller deadlines.
+        main: function (payload, options) {
+            return rawJson('/api/analyze', payload, Object.assign({}, options, {
+                timeoutMillis: options?.timeoutMillis === undefined ? 0 : options.timeoutMillis
+            }));
+        },
+        analyzeNode: analyzeNode,
+        justifyLeaf: function (payload, options) { return rawJson('/api/justify-leaf', payload, options); },
+        importScores: function (jsonText, options) {
+            return client.request('/api/scores/import', {method: 'POST',
+                headers: {'Content-Type': 'application/json'}, body: jsonText}, options);
+        },
         captureContext:captureContext,
         gapProfiles:function () { return client.getJson('/api/gap/profiles'); },
         analyzeGap:function (payload, context) { return assess('/api/gap/analyze', payload, context); },

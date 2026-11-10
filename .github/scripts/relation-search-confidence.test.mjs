@@ -84,6 +84,50 @@ test('retained portfolio reports use neutral compatibility labels and retain evi
   assert.match(html, /Assessment matches/); assert.match(html, /Search policy does not prove completeness/);
   assert.doesNotMatch(html, /Open gaps|Confirmed elements/);
 });
+test('retained element evidence stays available in closed details without invented relation proposals', () => {
+  const h = harness(true);
+  const caveat = 'Candidate ranking and mean relevance use only retained effective relevance scores.';
+  const copilot = { schemaVersion: 2, state: 'COMPLETED',
+    gaps: { profileId: 'compatibility', profileVersion: '1.0.0', judgments: [],
+      evidenceAuthority: 'RETAINED_ANALYSIS', evidenceCompleteness: 'INCOMPLETE' },
+    patterns: {}, recommendation: { meanRelevance: 72.5,
+      matchedElements: [{ nodeCode: 'CP-RETAINED', title: 'Retained capability', taxonomyRoot: 'CP', score: 85, reasoning: 'Retained assessment reason.' }],
+      acceptedElements: [],
+      proposedElements: [{ nodeCode: 'CR-RETAINED', title: 'Retained service candidate', taxonomyRoot: 'CR', score: 60, reasoning: 'Retained assessment reason.' }],
+      suggestedRelations: [], reasoning: [caveat] },
+    notes: ['Search policy does not prove completeness.'] };
+  const html = h.renderAnalysisSummary({ analysis: { copilot } }).split('<details id="technicalSnapshotData"')[0];
+  const details = [...html.matchAll(/<details\b([^>]*)>([\s\S]*?)<\/details>/g)]
+    .filter(match => /\bportfolio-finding-details\b/.test(match[1]));
+  assert.equal(details.length, 2, 'Both nonempty retained element groups must expose closed evidence details');
+  for (const [label, code, title] of [
+    ['Assessment matches', 'CP-RETAINED', 'Retained capability'],
+    ['Proposed elements', 'CR-RETAINED', 'Retained service candidate']
+  ]) {
+    const detail = details.find(match => match[2].includes(label));
+    assert.ok(detail, `Missing evidence details for ${label}`);
+    assert.doesNotMatch(detail[1], /(?:^|\s)open(?:\s|=|$)/);
+    assert.match(detail[2], new RegExp(`<summary[^>]*>${label}(?:\\s|<)`));
+    assert.ok(detail[2].includes(`<code>${code}</code>`));
+    assert.ok(detail[2].includes(title));
+  }
+  assert.match(html, /<h4[^>]*>Elements in the selected model<\/h4><p[^>]*>—<\/p>/);
+  assert.match(html, /Recorded evidence scope: RETAINED_ANALYSIS · INCOMPLETE/);
+  assert.ok(html.includes(caveat));
+  assert.match(html, /No obligations were evaluated; this is not a completeness claim\./);
+  assert.match(html, /Search policy does not prove completeness\./);
+  assert.doesNotMatch(html, /Open compatibility checks|Confirmed elements/);
+});
+test('empty retained element groups remain unavailable without fabricated evidence details', () => {
+  const h = harness(true);
+  const copilot = { schemaVersion: 2, state: 'COMPLETED', gaps: {}, patterns: {},
+    recommendation: { matchedElements: [], acceptedElements: [], proposedElements: [], suggestedRelations: [] } };
+  const html = h.renderAnalysisSummary({ analysis: { copilot } }).split('<details id="technicalSnapshotData"')[0];
+  assert.doesNotMatch(html, /portfolio-finding-details/);
+  for (const label of ['Assessment matches', 'Elements in the selected model', 'Proposed elements']) {
+    assert.match(html, new RegExp(`<h4[^>]*>${label}</h4><p[^>]*>—</p>`));
+  }
+});
 test('portfolio patterns preserve concrete evidence, conditional applicability and incomplete chains', () => {
   const h = harness(true);
   const copilot = { schemaVersion: 2, state: 'PARTIAL', gaps: {}, recommendation: {}, notes: [], patterns: { patternCoverage: 0,

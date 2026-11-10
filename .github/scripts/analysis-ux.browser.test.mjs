@@ -1,3 +1,4 @@
+import {installBrowserApiFixture} from './canonical-browser-fixture.mjs';
 /** Native-browser regressions for the approved analysis UX fixes.
  * Run: CHROMIUM_EXECUTABLE=/usr/bin/chromium node --test .github/scripts/analysis-ux.browser.test.mjs
  * Uses the project's Playwright dependency; no provider/network calls are made.
@@ -19,6 +20,9 @@ after(async () => { await browser?.close(); });
 async function fixture(locale = 'de', width = 1100) {
     const page = await browser.newPage({viewport: {width, height: 768}});
     page.uiErrors=[]; page.on('pageerror',error=>page.uiErrors.push(error.message));
+    await page.route('http://taxonomy.fixture/',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><html></html>'}));
+    await page.route('http://taxonomy.fixture/api/**',route=>route.fulfill({contentType:'application/json',body:'[]'}));
+    await page.goto('http://taxonomy.fixture/');
     await page.setContent(`<html lang="${locale}"><body><nav><span id="analysisStatusActions"></span></nav>
         <main id="tab-analyze"><textarea id="businessText">Zeiterfassung</textarea>
         <button id="analyzeBtn">Analyse</button><div id="analysisRecoveryHost"></div>
@@ -32,6 +36,7 @@ async function fixture(locale = 'de', width = 1100) {
     });
     for (const css of ['taxonomy.css', 'taxonomy-analysis-recovery.css'])
         await page.addStyleTag({content:await readFile(path.join(resources, 'static/css', css), 'utf8')});
+    await installBrowserApiFixture(page,resources);
     await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-state.js')});
     return page;
 }
@@ -279,7 +284,7 @@ async function searchFixture(locale = 'de', withArchitecture = false, delayedTra
         window.embeddingStatus = {available: true, graphReady: true};
         window.searchNodes = [{code: 'BP-1000', nameEn: 'Time capture'},
             {code: 'BP-1001', nameEn: 'Safety reporting'}, {code: 'BP-1002', nameEn: 'Outside architecture'}];
-        window.fetch = async url => {
+        window.__taxonomyFixtureFetch = async url => {
             if (url === '/api/embedding/status') return {ok: true, json: async () => embeddingStatus};
             searchRequests.push(url);
             return {ok: true, json: async () => searchNodes};
@@ -813,7 +818,7 @@ for(const currentView of ['list','tree']) test(`a completed architecture analysi
             window.TaxonomyBrowse={clearStatus(){},showStatus(){},renderView(){},switchView(view){switchedViews.push(view);TaxonomyState.currentView=view;}};
             window.TaxonomyAnalysisSession={state:()=>({ready:true,workspaceId:'test-workspace'})};
             window.TaxonomyAnalysisProgress={start:()=>({acceptsResult:()=>true,finish(){}})};
-            window.fetch=async()=>({ok:true,json:async()=>({status:'SUCCESS',scores:{'BP-1':70},rawScores:{'BP-1':70},
+            window.__taxonomyFixtureFetch=async()=>({ok:true,json:async()=>({status:'SUCCESS',scores:{'BP-1':70},rawScores:{'BP-1':70},
                 reasons:{},warnings:[],architectureView:{includedElements:[],includedRelationships:[],anchors:[]}})});
             await TaxonomyScoring.runAnalysis();
             return {current:TaxonomyState.currentView,switched:switchedViews,hasArchitecture:!!TaxonomyState.currentArchView};
@@ -835,7 +840,7 @@ test('an explicitly selected summary renders the newly accepted architecture on 
             window.TaxonomyBrowse={clearStatus(){},showStatus(){},renderView(){renderedViews.push(TaxonomyState.currentArchView);},switchView(view){TaxonomyState.currentView=view;}};
             window.TaxonomyAnalysisSession={state:()=>({ready:true,workspaceId:'test-workspace'})};
             window.TaxonomyAnalysisProgress={start:()=>({acceptsResult:()=>true,finish(){}})};
-            window.fetch=async()=>({ok:true,json:async()=>({status:'SUCCESS',scores:{'BP-1':70},rawScores:{'BP-1':70},
+            window.__taxonomyFixtureFetch=async()=>({ok:true,json:async()=>({status:'SUCCESS',scores:{'BP-1':70},rawScores:{'BP-1':70},
                 reasons:{},warnings:[],architectureView:{includedElements:[],includedRelationships:[],anchors:[],viewTitle:'new-result'}})});
             await TaxonomyScoring.runAnalysis({continuation:{continuationAction:'CONTINUE'},recoveryManaged:true});
             return {current:TaxonomyState.currentView,last:renderedViews.at(-1)?.viewTitle};
@@ -852,14 +857,22 @@ test('full analysis result pipeline retains relations with the architecture opti
             TaxonomyState.taxonomyData=[{code:'BP-1000',name:'Zeiterfassung',children:[]}];
             window.TaxonomyAnalysisSession={state:()=>({ready:true,workspaceId:'test-workspace'})};
             window.TaxonomyAnalysisSessionApi={getRunStatus:async id=>({status:200,json:async()=>({operationId:id,status:'COMPLETED',phase:'FINISHED',sequence:1,serverTime:3000,lastActivityAt:3000,elapsedMillis:1000,calls:[],evaluatedNodes:1})})};
-            window.fetch=async(url,options)=>{
-                if(url!=='/api/analyze')throw new Error('Unexpected request '+url);
-                window.analysisRequest=JSON.parse(options.body);
+            window.__taxonomyFixtureFetch=async(url,options)=>{
+                if(new URL(url,location.href).pathname!=='/api/analyze')throw new Error('Unexpected request '+url);
+                window.analysisRequest={url:String(url),method:options.method,
+                    headers:Object.fromEntries(new Headers(options.headers)),body:JSON.parse(options.body)};
                 return {ok:true,json:async()=>({status:'SUCCESS',scores:{'BP-1000':70},rawScores:{'BP-1000':70},reasons:{},warnings:[],architectureView:null,relationSearchReport:report})};
             };
         },relationReport);
         await page.evaluate(()=>TaxonomyScoring.runAnalysis());
-        assert.equal(await page.evaluate(()=>analysisRequest.includeArchitectureView),false);
+        const request=await page.evaluate(()=>window.analysisRequest);
+        assert.ok(request,'The actual named analysis request must reach the captured transport');
+        const url=new URL(request.url,'http://taxonomy.fixture');
+        assert.equal(url.pathname,'/api/analyze');
+        assert.deepEqual([...url.searchParams],[['workspaceId','test-workspace']]);
+        assert.equal(request.headers['x-taxonomy-workspace-id'],'test-workspace');
+        assert.equal(request.method,'POST');
+        assert.equal(request.body.includeArchitectureView,false);
         assert.deepEqual(await page.evaluate(()=>TaxonomyState.currentRelationSearchReport),relationReport);
         assert.equal(await page.locator('#relationSearchReportPanel').isVisible(),true);
     }finally{await finish(page);}
@@ -881,7 +894,7 @@ test('same-operation START recovery retains its existing architecture and relati
             window.TaxonomyAnalysisProgress={start:()=>({
                 acceptsResult:()=>true,finish(){},transportFailed(){}
             })};
-            window.fetch=async()=>({ok:true,json:async()=>({
+            window.__taxonomyFixtureFetch=async()=>({ok:true,json:async()=>({
                 status:'SUCCESS',scores:{},reasons:{},warnings:[]
             })});
         },relationReport);
@@ -948,7 +961,7 @@ async function bootBrowseWithReport(page) {
         const info = document.createElement('div'); info.id = 'aiProviderInfo'; document.body.append(info);
         const provider = document.createElement('select'); provider.id = 'providerSelect';
         provider.innerHTML = '<option value="">Default</option>'; document.body.append(provider);
-        window.fetch = async url => ({ok: true, json: async () => String(url).includes('ai-status')
+        window.__taxonomyFixtureFetch = async url => ({ok: true, json: async () => String(url).includes('ai-status')
             ? {available: false, availableProviders: []}
             : String(url).includes('/account/me') ? {administrator: false, roles: ['USER']} : []});
     });
@@ -979,7 +992,7 @@ async function bootScoreImport(page, importedResult) {
         `);
         window.importResult = result;
         window.importRequestBody = null;
-        window.fetch = async (url, options = {}) => {
+        window.__taxonomyFixtureFetch = async (url, options = {}) => {
             if (url === '/api/scores/import') {
                 window.importRequestBody = options.body;
                 const imported = options.body === 'not-json'
@@ -1050,7 +1063,7 @@ test('portable Copilot import renders and re-exports retained evidence without g
         assert.deepEqual(await page.evaluate(() => TaxonomyState.currentCopilot),copilot);
         assert.equal(await page.evaluate(() => __TaxonomyAnalysisSessionContext.runtime.analysisReference),null);
         await page.evaluate(() => {
-            window.fetch=async (url,options)=>{window.portableExport={url,body:JSON.parse(options.body)};
+            window.__taxonomyFixtureFetch=async (url,options)=>{window.portableExport={url,body:JSON.parse(options.body)};
                 return {ok:true,json:async()=>window.portableExport.body};};
             TaxonomyExport.exportJson(TaxonomyState.currentScores,TaxonomyState.currentReasons,'Imported requirement','IMPORTED');
         });
@@ -1074,15 +1087,20 @@ for (const edited of [false,true]) test(`report export ${edited ? 'retains manua
             C.runtime.analysisReference={workspaceId:'ws-owned',operationId:'owned-operation'};
             C.runtime.analysisEvidence=C.currentAnalysisEvidence();
             if(edited)S.currentReasons['BP-1000']='Manual rationale';
-            window.fetch=async(url,options)=>{window.reportRequest={url,headers:options.headers,body:JSON.parse(options.body)};
+            window.__taxonomyFixtureFetch=async(url,options)=>{window.reportRequest={url:String(url),method:options.method,
+                headers:Object.fromEntries(new Headers(options.headers)),body:JSON.parse(options.body)};
                 return {ok:true,blob:async()=>new Blob(['report'],{type:'text/markdown'})};};
         },edited);
         await page.locator('#exportReportMd').click();await page.waitForFunction(()=>window.reportRequest);
         const request=await page.evaluate(()=>window.reportRequest);
-        assert.equal(request.url,'/api/report/markdown');
+        const url=new URL(request.url,'http://taxonomy.fixture');
+        assert.equal(url.pathname,'/api/report/markdown');
+        assert.deepEqual([...url.searchParams],[['workspaceId','ws-owned']]);
+        assert.equal(request.headers['x-taxonomy-workspace-id'],'ws-owned');
+        assert.equal(request.method,'POST');
         if(edited){assert.equal(request.body.analysisReference,undefined);assert.equal(request.body.reasons['BP-1000'],'Manual rationale');}
-        else {assert.equal(request.body.analysisReference.operationId,'owned-operation');
-            assert.equal(request.headers['X-Taxonomy-Workspace-Id'],'ws-owned');assert.equal(request.body.scores,undefined);}
+        else {assert.deepEqual(request.body.analysisReference,{workspaceId:'ws-owned',operationId:'owned-operation'});
+            assert.equal(request.body.scores,undefined);}
     } finally {await finish(page);}
 });
 for (const [label, architectureFields] of [

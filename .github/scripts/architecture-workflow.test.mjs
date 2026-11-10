@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import canonicalFixture from './canonical-api-fixture.cjs';
 import {readFile} from 'node:fs/promises';
 
 const source = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/architecture-workflow.js', import.meta.url), 'utf8').catch(() => '');
@@ -31,11 +32,52 @@ function boot(search = '', prefix = '') {
 }
 function url(value) {return new URL(value, 'https://example.test');}
 
+for (const prefix of ['', '/taxonomy']) test(`native status fixture owns its partial lifecycle before state bootstrap (${prefix || '/'})`, async () => {
+    const native = await readFile(new URL('./git-sync-status.browser.test.mjs', import.meta.url), 'utf8');
+    const pathsStart = native.indexOf('    const paths = '), pathsEnd = native.indexOf(';', pathsStart);
+    const htmlStart = native.indexOf("            return route.fulfill({contentType:'text/html', body:");
+    const htmlEnd = native.indexOf('        });', htmlStart);
+    assert.ok(pathsStart >= 0 && pathsEnd > pathsStart && htmlStart >= 0 && htmlEnd > htmlStart,
+        'Execute the actual native fixture script list and HTML producer');
+    let html;
+    const producer = vm.createContext({prefix, statusMarkup: '<div id="contextBar"></div>',
+        route: {fulfill: value => {html = value.body;}}});
+    vm.runInContext(native.slice(pathsStart, pathsEnd + 1), producer);
+    await vm.runInContext('(async () => {' + native.slice(htmlStart, htmlEnd) + '})()', producer);
+    const {context, requests} = boot('?workspaceId=workspace-1&workspaceScopeKey=workspace-1&repositoryId=repository-1&branch=draft', prefix);
+    const parsedScripts = [], appended = [];
+    context.document.head = {appendChild: node => appended.push(node)};
+    context.document.createElement = () => ({dataset: {}});
+    context.document.querySelector = selector => selector === 'script[data-taxonomy-analysis-session]'
+        ? parsedScripts.find(attributes => /\bdata-taxonomy-analysis-session(?:\s|=|$)/.test(attributes)) || null : null;
+    // Model parser order: a marker on a later script cannot own an earlier state bootstrap.
+    for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)) {
+        const attributes = match[1]; parsedScripts.push(attributes);
+        const file = attributes.match(/src="[^"]*\/js\/(.*?)"/)?.[1];
+        if (file === 'api/taxonomy-api-client.js') canonicalFixture.install(context);
+        else if (['api/workspace-api.js', 'core/taxonomy-state.js',
+            'core/taxonomy-analysis-session-core.js', 'core/taxonomy-analysis-session-api-routing.js'].includes(file)) {
+            vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/' + file,
+                import.meta.url), 'utf8'), context);
+        }
+    }
+    assert.equal(appended.filter(node => node.dataset.taxonomyAnalysisSession === 'true').length, 0,
+        'A status-only fixture must not silently start the full analysis loader and resolve its empty workspace stub');
+    assert.equal(context.__TaxonomyAnalysisSessionContext.runtime.workspaceId, null);
+    assert.equal(context.__TaxonomyAnalysisSessionContext.runtime.workspaceResolved, false);
+    assert.equal(context.TaxonomyAnalysisSession, undefined);
+    await context.TaxonomyVersioningApi.state('draft').then(response => response.json());
+    await context.TaxonomyContextApi.current();
+    assert.equal(requests.length, 2);
+    assert.deepEqual(requests.map(request => request.options.headers.get('X-Taxonomy-Workspace-Id')),
+        ['workspace-1', 'workspace-1']);
+});
+
 test('named context status retains the original page workspace before session hydration', async () => {
     const {context, requests} = boot('?workspaceId=original&repositoryId=repo&branch=draft');
     context.TaxonomyState = {};
     vm.runInContext(sessionCore, context);
-    context.TaxonomyApiClient = {request: (path, options) => context.fetch(path, options)};
+    canonicalFixture.install(context);
     vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/api/workspace-api.js', import.meta.url), 'utf8'), context);
     await context.TaxonomyContextApi.current();
     assert.equal(requests[0].url, '/api/context/current');
@@ -556,7 +598,7 @@ test('Archi return uploads retain explicit repository, branch and central/worksp
         const context = vm.createContext({URL, URLSearchParams, window: {
             location: {href: 'https://example.test/?workspaceId=' + workspace + '&repositoryId=repo-b&branch=retained'},
             TaxonomyApiClient: {
-                request: async (...args) => {calls.push(args); return {json: async () => ({preview: true})};},
+                requestJson: async (...args) => {calls.push(args); return {preview: true};},
                 sendFormData: async (...args) => {calls.push(args); return {};}
             }
         }});

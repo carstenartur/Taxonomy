@@ -23,6 +23,7 @@
         account: null,
         busy: 0,
         readGeneration: 0,
+        readError: null,
         versionFormDirty: false
     };
 
@@ -147,29 +148,58 @@
         }
     };
 
+    let resolveReady, rejectReady, readinessContext;
+    let pageActive = true;
+    const readiness = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
+    // The primary page can fail before any optional add-on requests readiness.
+    readiness.catch(() => {});
+    window.addEventListener?.('pagehide', () => { pageActive = false; rejectReady(superseded()); });
     document.addEventListener('DOMContentLoaded', initialize);
     // Read-only adoption refresh must not reset the separate new-version form.
     // The parsed route is shared so page add-ons never re-implement route parsing.
     window.TaxonomyRequirementDetail = {
         route: Object.freeze({projectId: projectId, requirementId: requirementId}),
+        whenReady: () => readiness.then(route => {
+            if (!pageActive || window.location.pathname !== pathname || !readinessContext()) throw superseded();
+            return route;
+        }),
         refreshAfterAdoption: () => loadAll(true)
     };
 
     function t(key) { return (text[locale] && text[locale][key]) || text.en[key] || key; }
 
     async function initialize() {
-        await window.TaxonomyI18n.ready();
-        window.TaxonomyAppChrome?.updateContext({project: {id: projectId}});
-        translateSurface();
-        wireEvents();
-        await loadAll();
-        const requestedSnapshot = new URLSearchParams(window.location.search).get('snapshot');
-        if (requestedSnapshot) {
-            await selectSnapshot(requestedSnapshot);
-            activateDetailTab('analyses-tab');
-        } else if (state.snapshots.length) {
-            await selectSnapshot(state.snapshots[0].id);
+        try {
+            await window.TaxonomyI18n.ready();
+            await window.TaxonomyArchitectureLifecycle?.ready?.();
+            if (!pageActive || window.location.pathname !== pathname) throw superseded();
+            window.TaxonomyAppChrome?.updateContext({project: {id: projectId}});
+            translateSurface();
+            wireEvents();
+            await loadAll();
+            if (state.readError) throw state.readError;
+            if (state.project?.id !== projectId || state.requirement?.id !== requirementId) {
+                throw new Error('The selected requirement detail is unavailable');
+            }
+            const requestedSnapshot = new URLSearchParams(window.location.search).get('snapshot');
+            if (requestedSnapshot) {
+                await selectSnapshot(requestedSnapshot);
+                activateDetailTab('analyses-tab');
+            } else if (state.snapshots.length) {
+                await selectSnapshot(state.snapshots[0].id);
+            }
+            if (state.readError) throw state.readError;
+            if (!pageActive || window.location.pathname !== pathname) throw superseded();
+            readinessContext = window.TaxonomyApiClient.captureContext();
+            resolveReady(window.TaxonomyRequirementDetail.route);
+        } catch (error) {
+            rejectReady(error);
+            if (!state.readError && error.code !== 'ABORTED') showError(error);
         }
+    }
+
+    function superseded() {
+        return Object.assign(new Error('Requirement detail context was superseded'), {code: 'ABORTED'});
     }
 
     function translateSurface() {
@@ -230,6 +260,7 @@
 
     async function loadAll(preserveVersionForm = false) {
         const generation = ++state.readGeneration;
+        state.readError = null;
         setBusy(true);
         try {
             const [project, requirement, versions, snapshots, portfolio, account] = await Promise.all([
@@ -250,7 +281,10 @@
                 || document.getElementById('newVersionModal').classList.contains('show');
             renderAll(keepDraft);
         } catch (error) {
-            if (generation === state.readGeneration) showError(error);
+            if (generation === state.readGeneration) {
+                state.readError = error;
+                if (error.code !== 'ABORTED') showError(error);
+            }
         } finally {
             setBusy(false);
         }
@@ -287,8 +321,10 @@
         const version = state.requirement.currentVersion;
         document.getElementById('currentText').textContent = version ? version.text : '—';
         const source = version && version.source;
+        // An early-opened form retains its text, but still needs the first
+        // authoritative version as its base. Later refreshes retain that base.
+        if (!preserveVersionForm || !state.versionDraftBase) captureVersionDraftBase(version);
         if (!preserveVersionForm) {
-            captureVersionDraftBase(version);
             document.getElementById('versionText').value = version ? version.text : '';
             document.getElementById('sourceSection').value = source?.sectionReference || '';
             document.getElementById('sourcePage').value = source?.pageNumber || '';
@@ -457,7 +493,8 @@
             renderDecisions();
             renderTasks();
         } catch (error) {
-            showError(error);
+            state.readError = error;
+            if (error.code !== 'ABORTED') showError(error);
         } finally {
             setBusy(false);
         }
@@ -681,9 +718,13 @@
     }
 
     function renderElementEvidence(label, elements) {
-        return `<h4 class="small fw-semibold mt-3">${escapeHtml(label)}</h4>`
-            + (elements.length ? `<ul>${elements.map(item => `<li><code>${escapeHtml(item.nodeCode || '—')}</code> `
-                + `${escapeHtml(item.title || item.name || '')}</li>`).join('')}</ul>` : `<p class="text-body-secondary">—</p>`);
+        if (!elements.length) return `<h4 class="small fw-semibold mt-3">${escapeHtml(label)}</h4>`
+            + `<p class="text-body-secondary">—</p>`;
+        return `<details class="portfolio-finding-details"><summary>${escapeHtml(label)} <span class="badge text-bg-secondary">${elements.length}</span></summary>`
+            + `<div class="portfolio-result-table portfolio-result-table-sm"><ul class="mb-0">`
+            + elements.map(item => `<li><code>${escapeHtml(item.nodeCode || '—')}</code> `
+                + `${escapeHtml(item.title || item.name || '')}</li>`).join('')
+            + `</ul></div></details>`;
     }
 
     function renderFindingDetails(label, items, fields) {
@@ -887,6 +928,8 @@
         event.preventDefault();
         if (state.versionSaveInFlight) return;
         state.versionSaveInFlight = true;
+        const current = window.TaxonomyApiClient.captureContext();
+        const activePage = window.TaxonomyApiClient.captureContext({contextSensitive:false});
         clearNewVersionError();
         let saving = false;
         try {
@@ -912,13 +955,14 @@
                 };
                 const command = await window.TaxonomyRequirementIntake.prepareVersion(form,payload,projectId,requirementId,
                     base?.requirementVersionId,base?.contentHash);
-                if (!command || beforeReview !== versionDraftFingerprint()) return;
+                if (!command || !current() || beforeReview !== versionDraftFingerprint()) return;
                 state.versionAttempt = {command:command,captured:versionDraftFingerprint()};
             }
             const {command,captured} = state.versionAttempt;
             saving = true;
             setBusy(true);
             const saved = await window.TaxonomyArchitectureLifecycle.saveRequirement(command);
+            if (!activePage() || !window.TaxonomyArchitectureLifecycle.isCurrentRequirementPublication(saved)) return;
             if (['CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(saved.publication?.state)) {
                 versionRetryLabel(true);
                 const target=document.getElementById('newVersionError');target.textContent='';target.classList.remove('d-none');
@@ -940,6 +984,7 @@
                 (locale==='de'?'Eine neue Anforderung wurde angelegt.':'A new requirement was created.'));
             await loadAll(!unchanged);
         } catch (error) {
+            if (!current() || error?.code === 'ABORTED') return;
             if ([400,403,404,409,412,422].includes(error?.status)) { state.versionAttempt=null;versionRetryLabel(false); }
             else if (state.versionAttempt) versionRetryLabel(true);
             const target = document.getElementById('newVersionError');

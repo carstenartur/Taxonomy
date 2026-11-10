@@ -6,30 +6,7 @@
 
     function request(path, init, options) {
         var client = window.TaxonomyApiClient;
-        var context = window.__TaxonomyAnalysisSessionContext;
-        var workspace = context && context.runtime.workspaceId;
-        var policy = Object.assign({}, options || {}, { retries: 0 });
-        // Before session hydration, the existing source-aware bootstrap owns
-        // status scope. An unresolved workspace is not an explicit central pin.
-        if (policy.pinnedWorkspaceId === undefined && workspace != null) policy.pinnedWorkspaceId = workspace;
-        var headers = new Headers(init && init.headers || {});
-        if (policy.pinnedWorkspaceId !== undefined) {
-            var pin = policy.pinnedWorkspaceId == null ? '' : policy.pinnedWorkspaceId;
-            path += (path.indexOf('?') < 0 ? '?' : '&') + 'workspaceId=' + encodeURIComponent(pin);
-            headers.set('X-Taxonomy-Workspace-Id', pin);
-        }
-        function current() {
-            if (policy.signal && policy.signal.aborted || context && context.runtime.workspaceId !== workspace) {
-                throw new client.ApiError('Request was cancelled', 0, path, null, { code: 'ABORTED' });
-            }
-        }
-        return client.request(path, Object.assign({}, init || {}, { headers: headers }), policy)
-            .then(function (response) { current(); return response.json(); })
-            .then(function (body) { current(); return body; })
-            .catch(function (error) {
-                if (error?.code !== 'ABORTED') current();
-                throw error;
-            });
+        return client.requestJson(path, init || {}, Object.assign({}, options || {}, { retries: 0 }));
     }
 
     function get(path, options) { return request(path, { method: 'GET' }, options); }
@@ -86,6 +63,42 @@
             var params = new URLSearchParams({ query: query, currentBranch: branch });
             return get('/api/dsl/history/search-versioned?' + params, options);
         }
+    });
+
+    // Response-returning operations retain domain conflict handling in their UI.
+    // The canonical client still owns status/authentication and guarded body readers.
+    function versionRequest(path, init, options) {
+        return window.TaxonomyApiClient.request(path, init || {}, Object.assign({
+            acceptedStatuses: [400, 404, 409, 412, 422, 423]
+        }, options || {}, { retries: 0 }));
+    }
+    function query(params) { var value = new URLSearchParams(params).toString(); return value ? '?' + value : ''; }
+    function versionPost(path, params, body, contentType) {
+        var init = { method: 'POST' };
+        if (body !== undefined) { init.body = body; init.headers = { 'Content-Type': contentType }; }
+        return versionRequest(path + query(params), init);
+    }
+    window.TaxonomyVersioningApi = Object.freeze({
+        branches: function () { return versionRequest('/api/git/branches'); },
+        state: function (branch, options) { return versionRequest('/api/git/state' + query({branch: branch}), {cache:'no-store'}, options); },
+        history: function (branch) { return versionRequest('/api/dsl/history' + query({branch: branch})); },
+        commitById: function (id) { return versionRequest('/api/dsl/git/commit/' + encodeURIComponent(id)); },
+        head: function (branch) { return versionRequest('/api/dsl/git/head' + query({branch: branch})); },
+        diff: function (left, right) { return versionRequest('/api/dsl/diff/' + encodeURIComponent(left) + '/' + encodeURIComponent(right)); },
+        restore: function (id, branch) { return versionPost('/api/dsl/restore', {commitId:id,branch:branch}); },
+        revert: function (id, branch) { return versionPost('/api/dsl/revert', {commitId:id,branch:branch}); },
+        undo: function (branch) { return versionPost('/api/dsl/undo', {branch:branch}); },
+        commit: function (branch, author, message, text) { return versionPost('/api/dsl/commit', {branch:branch,author:author,message:message}, text, 'text/plain'); },
+        compare: function (left, right) { return versionRequest('/api/context/compare' + query({leftBranch:left,rightBranch:right})); },
+        merge: function (from, into) { return versionPost('/api/dsl/merge', {fromBranch:from,intoBranch:into}); },
+        deleteBranch: function (name) { return versionRequest('/api/dsl/branch' + query({name:name}), {method:'DELETE'}); },
+        mergeConflicts: function (from, into) { return versionRequest('/api/dsl/merge/conflicts' + query({from:from,into:into})); },
+        cherryPickConflicts: function (id, target) { return versionRequest('/api/dsl/cherry-pick/conflicts' + query({commitId:id,targetBranch:target})); },
+        resolveMerge: function (from, into, text) { return versionPost('/api/dsl/merge/resolve', {fromBranch:from,intoBranch:into}, text, 'text/plain'); },
+        resolveCherryPick: function (id, target, text) { return versionPost('/api/dsl/cherry-pick/resolve', {commitId:id,targetBranch:target}, text, 'text/plain'); },
+        resolveDiverged: function (strategy, branch) { return versionPost('/api/workspace/resolve-diverged', {strategy:strategy,userBranch:branch}); },
+        copyBackPreview: function (selection) { return versionPost('/api/context/copy-back/preview', {}, JSON.stringify(selection), 'application/json'); },
+        copyBackApply: function (selection, contextId) { return versionPost('/api/context/copy-back/apply', contextId ? {expectedContextId:contextId} : {}, JSON.stringify(selection), 'application/json'); }
     });
 
     window.TaxonomyPreferencesApi = Object.freeze({

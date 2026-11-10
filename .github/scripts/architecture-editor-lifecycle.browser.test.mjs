@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {chromium} from 'playwright';
 import {createNavigationPollEvidence} from './ui-navigation-poll-evidence.mjs';
+import {installBrowserApiFixture} from './canonical-browser-fixture.mjs';
 const resources=process.env.TAXONOMY_TEST_RESOURCE_ROOT||path.resolve('taxonomy-app/src/main/resources');
 let browser;
 before(async()=>{browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE?{executablePath:process.env.CHROMIUM_EXECUTABLE}:{}),args:['--no-sandbox','--disable-dev-shm-usage']});});
@@ -41,6 +42,7 @@ for(const canonicalization of ['stable','after-response','workspace-before-respo
             localStorage.setItem('taxonomy.portfolio.projectId','1');
             window.TaxonomyI18n={getBasePath:()=>'',resolveUrl:value=>value,getLocale:()=>'en'};
         });
+        await installBrowserApiFixture(page,resources);
         await page.addScriptTag({path:path.join(resources,'static/js/shared/architecture-workflow.js')});
         await page.addScriptTag({path:path.join(resources,'static/js/api/portfolio-api.js')});
         await page.addScriptTag({path:path.join(resources,'static/js/portfolio/taxonomy-portfolio-async.js')});
@@ -57,6 +59,7 @@ for(const canonicalization of ['stable','after-response','workspace-before-respo
         const initialUrl=baseUrl+'?architectureSource=snapshot&projectId=1&snapshotId=snapshot-1&'+destinationPins+'&lang=en#architecture';
         await page.goto(initialUrl);
         await page.evaluate(()=>{window.TaxonomyI18n={resolveUrl:value=>value};});
+        await installBrowserApiFixture(page,resources);
         await page.addScriptTag({path:path.join(resources,'static/js/shared/architecture-workspace.js')});
         await page.addScriptTag({path:path.join(resources,'static/js/api/architecture-workbench-api.js')});
         const navigation=await page.evaluate(async({scope,canonicalization})=>{

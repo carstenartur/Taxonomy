@@ -1,7 +1,9 @@
-import test from 'node:test';
+import test, {afterEach} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import canonicalFixture from './canonical-api-fixture.cjs';
+afterEach(() => canonicalFixture.dispose());
 const base = new URL('../../taxonomy-app/src/main/resources/static/js/', import.meta.url);
 const source = path => fs.readFileSync(new URL(path, base), 'utf8');
 const commit = 'a'.repeat(40);
@@ -21,14 +23,32 @@ function graphFixture(escaping = escapeHtml) {
     let current = {...selected};
     const document = {addEventListener(kind,cb){if(!events.has(kind))events.set(kind,[]);events.get(kind).push(cb);},
         getElementById:id=>ids.get(id)||null,querySelectorAll:()=>[]};
-    const api = {captureContext:async()=>({...current}),
-        graphUpstream:async(code,hops,ctx)=>{calls.push({code,hops,ctx});return {originNodeCode:code,direction:'UPSTREAM',neighbors:[],traversedRelationships:[],evidence};},
-        apqcHierarchy:async ctx=>{calls.push({kind:'apqc',ctx});return {nodes:[],evidence};},
-        requirementImpact:async(payload,ctx)=>{calls.push({kind:'impact',payload,ctx});return {impactedElements:[],traversedRelationships:[],evidence};}};
     const sandbox=vm.createContext({document,console,URL,URLSearchParams,TaxonomyI18n:{t:(key,...args)=>key+' '+args.join(' ')},
-        TaxonomyUtils:{escapeHtml:escaping},AnalysisApi:api,TaxonomyState:{currentScores:{A:90}},
-        fetch:async()=>{calls.push({kind:'raw'});return{ok:true,json:async()=>({})};}});
+        TaxonomyUtils:{escapeHtml:escaping},TaxonomyState:{currentScores:{A:90}},
+        __TaxonomyAnalysisSessionContext:{runtime:{workspaceId:selected.workspaceScopeKey,analysisGeneration:0}},
+        TaxonomyAppChrome:{getContext:()=>({architecture:current})},
+        TaxonomyArchitectureLifecycle:{ready:async()=>({context:current}),selectedContext:()=>current},
+        fetch:async input=>{
+            const url=new URL(String(input),'https://fixture.test/');
+            const upstream=url.pathname.match(/^\/api\/graph\/node\/(.+)\/upstream$/);
+            if(upstream)return Response.json({originNodeCode:decodeURIComponent(upstream[1]),direction:'UPSTREAM',
+                neighbors:[],traversedRelationships:[],evidence});
+            if(url.pathname==='/api/graph/apqc-hierarchy')return Response.json({nodes:[],evidence});
+            if(url.pathname==='/api/graph/impact')return Response.json({impactedElements:[],traversedRelationships:[],evidence});
+            throw new Error('Unexpected request: '+url);
+        }});
     sandbox.window=sandbox;
+    canonicalFixture.install(sandbox,['api/analysis-api.js']);
+    const actualApi=sandbox.AnalysisApi;
+    // Observe the real named boundaries while allowing tests to inject a deliberately late domain response.
+    const api={...actualApi,
+        graphUpstream:(code,hops,ctx)=>{calls.push({code,hops,ctx});return actualApi.graphUpstream(code,hops,ctx);},
+        apqcHierarchy:ctx=>{calls.push({kind:'apqc',ctx});return actualApi.apqcHierarchy(ctx);},
+        requirementImpact:(payload,ctx)=>{calls.push({kind:'impact',payload,ctx});return actualApi.requirementImpact(payload,ctx);}};
+    sandbox.AnalysisApi=api;
+    // Canonical owns its captured transport; a consumer bypass remains observable as a raw call.
+    const directFetch=sandbox.fetch;
+    sandbox.fetch=(...args)=>{calls.push({kind:'raw'});return directFetch(...args);};
     vm.runInContext(source('shared/taxonomy-graph.js'),sandbox);
     return {sandbox,ids,events,calls,api,graph:sandbox.TaxonomyGraph,setCurrent:value=>{current=value;},boot:()=>events.get('DOMContentLoaded')?.forEach(cb=>cb())};
 }

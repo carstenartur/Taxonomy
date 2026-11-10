@@ -1,3 +1,4 @@
+import canonicalFixture from './canonical-api-fixture.cjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -31,6 +32,8 @@ function fixture(options = {}) {
     if (Object.hasOwn(options, 'crypto')) sandbox.crypto = options.crypto;
     if (options.analysisScope) window.TaxonomyAnalysisScope = {read: () => options.analysisScope};
     if (options.invalidScope) window.TaxonomyAnalysisScope = {read: () => { throw new Error('Select a taxonomy'); }};
+    sandbox.setTimeout = () => 1; sandbox.clearTimeout = () => {};
+    canonicalFixture.install(sandbox, ['api/analysis-api.js']);
     vm.runInNewContext(source, sandbox);
     function progress() { window.TaxonomyAnalysisProgress = { start: (...args) => {
         observations.push(args); order.push('monitor');
@@ -55,7 +58,9 @@ function fixture(options = {}) {
         return window.TaxonomyAnalysisRecovery;
     }
     return { window, state, sessionState, statuses, calls, observations, progress, renders, order, loadRecovery,
-        requests, progressActions, rejectRequest: error => rejectRequest(error) };
+        requests, progressActions, sandbox, rejectRequest: error => error.httpStatus
+            ? requests.at(-1).resolve(Response.json({detail: error.message}, {status: error.httpStatus}))
+            : rejectRequest(error) };
 }
 
 for (const phase of ['no lifecycle', 'progress loaded before lifecycle', 'loader still running']) {
@@ -94,9 +99,9 @@ test('once lifecycle is ready full analysis always starts observation before its
     f.window.TaxonomyScoring.runAnalysis();
     assert.equal(f.observations.length, 1);
     assert.equal(f.calls.length, 1);
-    assert.equal(f.calls[0][0], '/api/analyze');
-    assert.equal(f.calls[0][1].headers['X-Taxonomy-Workspace-Id'], 'workspace-a');
-    assert.equal(f.calls[0][1].headers['X-Analysis-Operation-Id'], f.observations[0][0]);
+    assert.equal(f.calls[0][0], '/api/analyze?workspaceId=workspace-a');
+    assert.equal(new Headers(f.calls[0][1].headers).get('X-Taxonomy-Workspace-Id'), 'workspace-a');
+    assert.equal(new Headers(f.calls[0][1].headers).get('X-Analysis-Operation-Id'), f.observations[0][0]);
     assert.equal(JSON.parse(f.calls[0][1].body).includeArchitectureView, true);
 });
 
@@ -105,7 +110,7 @@ test('ordinary architecture analysis requests a real retained server continuatio
     f.window.TaxonomyScoring.runAnalysis();
     const request=JSON.parse(f.calls[0][1].body);
     assert.equal(request.resumable,true);assert.equal(request.continuationAction,'START');
-    assert.equal(request.continuationId,f.calls[0][1].headers['X-Analysis-Operation-Id']);
+    assert.equal(request.continuationId,new Headers(f.calls[0][1].headers).get('X-Analysis-Operation-Id'));
     assert.equal(request.businessText,'communications');assert.equal(request.includeArchitectureView,true);
     assert.equal(f.calls.length,1);
 });
@@ -327,7 +332,7 @@ test('secure random-values fallback supplies the same canonical version-four ID 
     f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
     assert.doesNotThrow(() => f.window.TaxonomyScoring.runAnalysis());
     assert.equal(f.calls.length, 1);
-    const id = f.calls[0][1].headers['X-Analysis-Operation-Id'];
+    const id = new Headers(f.calls[0][1].headers).get('X-Analysis-Operation-Id');
     assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     assert.equal(id, f.observations[0][0]);
 });
@@ -378,7 +383,7 @@ for (const transport of ['POST', 'resume']) {
         f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
         if (transport === 'POST') {
             f.window.TaxonomyScoring.runAnalysis();
-            assert.equal(f.calls[0][0], '/api/analyze');
+            assert.equal(f.calls[0][0], '/api/analyze?workspaceId=workspace-a');
         } else {
             f.window.TaxonomyAnalysisSessionApi = { getRunInput: async () => ({ json: async () => ({
                 operationId: 'saved-operation', businessText: 'communications', scope: { workspaceId: 'workspace-a' }
@@ -612,3 +617,94 @@ test('an unconfirmed analysis session blocks leaf-justification model requests w
     assert.equal(f.calls.length, 0);
     assert.equal(button.disabled, false);
 });
+
+
+test('main HTTP completion survives the production generation and operation transport adapters', async () => {
+    const f = readyFixture();
+    const C = f.window.__TaxonomyAnalysisSessionContext = { S: f.state,
+        runtime: {workspaceId: 'workspace-a', analysisGeneration: 1}, language: () => 'en',
+        requestUrl: input => new URL(typeof input === 'string' ? input : input.url, 'https://example.test/'),
+        installWorkspaceFetchRouting() {}, installWorkspaceEventSourceRouting() {} };
+    f.window.setInterval = () => 1; f.window.clearInterval = () => {};
+    f.window.setTimeout = () => 1; f.window.clearTimeout = () => {};
+    for (const file of ['taxonomy-analysis-session-transport.js', 'taxonomy-operation-coordinator.js']) {
+        vm.runInContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/' + file, import.meta.url), 'utf8'), f.sandbox);
+    }
+    const pending = f.window.TaxonomyScoring.runAnalysis();
+    f.requests[0].resolve(Response.json({...completedResult({CP: 80}), analysisDurationMillis: 1200}));
+    await pending;
+    assert.equal(C.runtime.activeAnalysisControllers.size, 0);
+    assert.equal(f.state.lastAnalysisStatus, 'SUCCESS');
+    assert.equal(f.state.lastAnalysisDurationMillis, 1200);
+    assert.equal(f.state.currentScores.CP, 80);
+});
+
+
+
+for (const change of ['branch', 'commit']) {
+    test(`an accepted ${change} navigation still rejects the old main analysis response after startup`, async () => {
+        const f = readyFixture();
+        f.window.__TaxonomyAnalysisSessionContext = {S: f.state,
+            runtime: {workspaceId: 'workspace-a', analysisGeneration: 1}};
+        for (const file of ['api/workspace-api.js', 'versioning/taxonomy-context-bar.js']) {
+            vm.runInContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/' + file, import.meta.url), 'utf8'), f.sandbox);
+        }
+        const bar = f.window.TaxonomyContextBar;
+        const initial = bar.fetchAndRender('absent-context-container');
+        f.requests[0].resolve(Response.json({contextId: 'initial', branch: 'draft', commitId: 'a'.repeat(40)}));
+        await initial;
+        const pending = f.window.TaxonomyScoring.runAnalysis();
+        const branch = change === 'branch' ? 'other' : 'draft';
+        const commit = change === 'commit' ? 'b'.repeat(40) : 'a'.repeat(40);
+        const navigation = bar.open(branch, commit, true);
+        await flushResults();
+        f.requests[2].resolve(Response.json({contextId: 'new-selection', branch, commitId: commit}));
+        await navigation;
+        f.state.lastAnalysisStatus = 'IMPORTED'; f.state.lastAnalysisDurationMillis = 700;
+        f.state.currentScores = {BP: 25};
+        const rendered = f.renders.length;
+        f.requests[1].resolve(Response.json({...completedResult({CP: 80}), analysisDurationMillis: 1200}));
+        await pending;
+        assert.equal(f.state.lastAnalysisStatus, 'IMPORTED');
+        assert.equal(f.state.lastAnalysisDurationMillis, 700);
+        assert.deepEqual(f.state.currentScores, {BP: 25});
+        assert.equal(f.renders.length, rendered);
+    });
+}
+
+
+for (const restored of ['PARTIAL', 'stale']) {
+    test(`source confirmation updates the real Guidance controls for a restored ${restored} draft`, async () => {
+        const f = fixture(), fields = new Map(), listeners = new Map();
+        let focused, starts = 0;
+        const field = id => {
+            if (!fields.has(id)) fields.set(id, {value: '', textContent: '', hidden: false, disabled: false,
+                setAttribute() {}, addEventListener(type, action) {this[type] = action;},
+                scrollIntoView() {}, focus() {focused = id;}});
+            return fields.get(id);
+        };
+        field('businessText').value = restored === 'stale' ? 'New requirement' : 'Original requirement';
+        field('relationSearchReportPanel').hidden = true;
+        field('analyzeBtn').click = () => starts++;
+        Object.assign(f.state, {lastAnalysisStatus: restored === 'PARTIAL' ? 'PARTIAL' : 'SUCCESS',
+            lastAnalyzedText: 'Original requirement'});
+        f.sessionState.ready = false;
+        f.window.TaxonomyAnalysisSession = {state: () => f.sessionState};
+        f.window.TaxonomyAnalysisSessionReady = Promise.resolve(true);
+        f.window.TaxonomyI18n.ready = () => Promise.resolve();
+        Object.assign(f.sandbox.document, {readyState: 'complete', getElementById: field,
+            addEventListener(type, action) {if (!listeners.has(type)) listeners.set(type, []); listeners.get(type).push(action);}});
+        f.sandbox.MutationObserver = class {observe() {}};
+        vm.runInContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-guidance.js', import.meta.url), 'utf8'), f.sandbox);
+        await flushResults();
+        const control = field(restored === 'PARTIAL' ? 'analysisClarifyAction' : 'analysisReanalyzeAction');
+        assert.equal(control.hidden, false); assert.equal(control.disabled, true);
+        f.sessionState.ready = true;
+        for (const action of listeners.get('taxonomy:analysis-source-ready') || []) action({detail: {workspaceId: 'workspace-a'}});
+        assert.equal(control.disabled, false);
+        control.click();
+        if (restored === 'PARTIAL') assert.equal(focused, 'statusArea');
+        else assert.equal(starts, 1);
+        assert.equal(f.calls.length, 0, 'Readiness notification does not start analysis automatically');
+    });
+}

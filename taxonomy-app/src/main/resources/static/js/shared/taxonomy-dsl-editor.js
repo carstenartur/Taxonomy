@@ -104,12 +104,12 @@
 
     // The canonical transport rejects HTTP failures before a command can report
     // success. Mutations must not be retried automatically.
-    function requestDslJson(url, options) {
-        return window.TaxonomyApiClient.request(url, options, { retries: 0 })
-            .then(function (response) { return response.json(); });
+    function requestDslJson(pending) {
+        return pending.then(function (response) { return response.json(); });
     }
 
     function showCommandFailure(error, messageKey, validationKey, resultTitleKey) {
+        if (error?.code === 'ABORTED') return;
         var data = error.responseBody;
         if (data && data.valid === false) {
             renderValidation(data);
@@ -180,11 +180,12 @@
             await loadBranches();
             if (current() && workspace === workspaceScope()) await loadCurrent();
         } catch (error) {
+            if (error?.code === 'ABORTED') return;
             if (current()) showStatus(t('dsl.load.failed', error.message), 'error');
         }
     }
 
-    async function readEditorText(url, options, labels, preserve, json) {
+    async function readEditorText(read, labels, preserve, json) {
         var view = window.dslCmView;
         if (!view || textSuspended) return;
         var original = view.state.doc, scope = editorScope(), request = ++textRequest;
@@ -196,8 +197,7 @@
                 && window.dslCmView === view && editorScope() === scope;
         }
         try {
-            var response = await window.TaxonomyApiClient.request(url, options,
-                { signal: controller.signal, timeoutMillis: 10000 });
+            var response = await read({signal:controller.signal, timeoutMillis:10000});
             if (!response.ok) throw new Error('HTTP ' + response.status);
             var contentType = response.headers.get('Content-Type') || '';
             var text;
@@ -218,6 +218,7 @@
             setEditorContent(text, preserve);
             showStatus(labels.success(text), 'success');
         } catch (error) {
+            if (error?.code === 'ABORTED') return;
             if (current()) showStatus(t(labels.failure, error.message), 'error');
         } finally {
             if (request === textRequest) textAbort = null;
@@ -225,7 +226,7 @@
     }
 
     function loadCurrent() {
-        return readEditorText('/api/dsl/export', {}, {
+        return readEditorText(options => window.TaxonomyDslApi.exportText(options), {
             loading: t('dsl.loading'), success: text => t('dsl.loaded', text.length), failure: 'dsl.load.failed'
         }, false, false);
     }
@@ -233,40 +234,30 @@
     // ── Parse ───────────────────────────────────────────────────────
     function parseDsl() {
         showStatus(t('dsl.parsing'), 'info');
-        fetch('/api/dsl/parse', {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: getEditorContent()
-        })
+        window.TaxonomyDslApi.parse(getEditorContent())
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 renderValidation(data);
                 showStatus(t('dsl.parsed', data.elements, data.relations), 'success');
             })
-            .catch(function (e) { showStatus(t('dsl.parse.error', e.message), 'error'); });
+            .catch(function (e) { if (e?.code === 'ABORTED') return; showStatus(t('dsl.parse.error', e.message), 'error'); });
     }
 
     // ── Validate ────────────────────────────────────────────────────
     function validateDsl() {
         showStatus(t('dsl.validating'), 'info');
-        fetch('/api/dsl/validate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: getEditorContent()
-        })
+        window.TaxonomyDslApi.validate(getEditorContent())
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 renderValidation(data);
                 showStatus(data.valid ? t('dsl.valid') : t('dsl.invalid'), data.valid ? 'success' : 'error');
             })
-            .catch(function (e) { showStatus(t('dsl.validate.error', e.message), 'error'); });
+            .catch(function (e) { if (e?.code === 'ABORTED') return; showStatus(t('dsl.validate.error', e.message), 'error'); });
     }
 
     // ── Format ──────────────────────────────────────────────────────
     function formatDsl() {
-        return readEditorText('/api/dsl/format', {
-            method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: getEditorContent()
-        }, { loading: t('dsl.formatting'), success: () => t('dsl.formatted'), failure: 'dsl.format.error' }, true, false);
+        return readEditorText(options => window.TaxonomyDslApi.format(getEditorContent(), options), { loading: t('dsl.formatting'), success: () => t('dsl.formatted'), failure: 'dsl.format.error' }, true, false);
     }
 
     function renderValidation(data) {
@@ -301,13 +292,7 @@
         var message = submittedMessage.trim();
         if (!message) { message = t('dsl.commit.default.message'); }
         showStatus(t('dsl.committing', branch), 'info');
-        var url = '/api/dsl/commit?branch=' + encodeURIComponent(branch);
-        if (message) url += '&message=' + encodeURIComponent(message);
-        return requestDslJson(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: getEditorContent()
-        })
+        return requestDslJson(window.TaxonomyDslApi.commit(branch, message, getEditorContent()))
             .then(function (data) {
                 if (data.valid === false) {
                     showStatus(t('dsl.commit.rejected'), 'error');
@@ -318,20 +303,14 @@
                 if (messageInput && messageInput.value === submittedMessage) messageInput.value = '';
                 loadHistory(branch);
             })
-            .catch(function (e) { showCommandFailure(e, 'dsl.commit.error', 'dsl.commit.rejected'); });
+            .catch(function (e) { if (e?.code === 'ABORTED') return; showCommandFailure(e, 'dsl.commit.error', 'dsl.commit.rejected'); });
     }
 
     // ── Materialize (full) ──────────────────────────────────────────
     function materializeDsl() {
         var branch = branchSelect ? branchSelect.value : '';
         showStatus(t('dsl.materializing'), 'info');
-        var url = '/api/dsl/materialize';
-        if (branch) url += '?branch=' + encodeURIComponent(branch);
-        return requestDslJson(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: getEditorContent()
-        })
+        return requestDslJson(window.TaxonomyDslApi.materialize(branch, getEditorContent()))
             .then(function (data) {
                 if (data.valid === false) {
                     showStatus(t('dsl.materialize.validation.failed'), 'error');
@@ -340,7 +319,7 @@
                 }
                 showStatus(t('dsl.materialized', data.relationsCreated, data.hypothesesCreated), 'success');
             })
-            .catch(function (e) {
+            .catch(function (e) { if (e?.code === 'ABORTED') return;
                 showCommandFailure(e, 'dsl.materialize.error', 'dsl.materialize.validation.failed');
             });
     }
@@ -350,7 +329,7 @@
         // Get the last two documents from history to do an incremental materialization
         var branch = branchSelect ? branchSelect.value : 'draft';
         showStatus(t('dsl.incremental.loading'), 'info');
-        return requestDslJson('/api/dsl/history?branch=' + encodeURIComponent(branch))
+        return requestDslJson(window.TaxonomyDslApi.history(branch))
             .then(function (response) {
                 var docs = response.commits || response;
                 if (docs.length < 2) {
@@ -359,9 +338,7 @@
                 }
                 var afterId = docs[0].documentId;
                 var beforeId = docs[1].documentId;
-                return requestDslJson('/api/dsl/materialize-incremental?afterDocId=' + afterId + '&beforeDocId=' + beforeId, {
-                    method: 'POST'
-                });
+                return requestDslJson(window.TaxonomyDslApi.materializeIncremental(afterId, beforeId));
             })
             .then(function (data) {
                 if (!data) return;
@@ -372,14 +349,14 @@
                 }
                 showStatus(t('dsl.incremental.done', data.relationsCreated, data.hypothesesCreated), 'success');
             })
-            .catch(function (e) {
+            .catch(function (e) { if (e?.code === 'ABORTED') return;
                 showCommandFailure(e, 'dsl.incremental.error', 'dsl.materialize.validation.failed');
             });
     }
 
     // ── Branches ────────────────────────────────────────────────────
     function loadBranches() {
-        return fetch('/api/dsl/branches')
+        return window.TaxonomyDslApi.branches()
             .then(function (r) { return r.json(); })
             .then(function (branches) {
                 if (!branchSelect) return;
@@ -422,9 +399,7 @@
         name = name.trim();
         var fromBranch = branchSelect ? branchSelect.value : 'draft';
         showStatus(t('dsl.branch.creating', name, fromBranch), 'info');
-        return requestDslJson('/api/dsl/branches?name=' + encodeURIComponent(name) + '&fromBranch=' + encodeURIComponent(fromBranch), {
-            method: 'POST'
-        })
+        return requestDslJson(window.TaxonomyDslApi.createBranch(name, fromBranch))
             .then(function (data) {
                 if (data.error) {
                     showStatus(t('dsl.branch.create.failed', data.error), 'error');
@@ -434,13 +409,13 @@
                 loadBranches();
                 if (branchSelect) branchSelect.value = name;
             })
-            .catch(function (e) { showCommandFailure(e, 'dsl.branch.error'); });
+            .catch(function (e) { if (e?.code === 'ABORTED') return; showCommandFailure(e, 'dsl.branch.error'); });
     }
 
     // ── History ─────────────────────────────────────────────────────
     function loadHistory(branch) {
         if (!historyBody) return;
-        fetch('/api/dsl/history?branch=' + encodeURIComponent(branch || 'draft'))
+        window.TaxonomyDslApi.history(branch)
             .then(function (r) { return r.json(); })
             .then(function (response) {
                 var docs = response.commits || response;
@@ -503,7 +478,7 @@
     }
 
     function loadCommitById(commitId) {
-        return readEditorText('/api/dsl/git/commit/' + encodeURIComponent(commitId), {}, {
+        return readEditorText(options => window.TaxonomyDslApi.gitCommit(commitId, options), {
             loading: t('dsl.commit.loading', commitId.substring(0, 8)),
             success: () => t('dsl.commit.loaded', commitId.substring(0, 8)), failure: 'dsl.load.error'
         }, false, true);
@@ -513,13 +488,13 @@
     function loadDiff(beforeId, afterId) {
         if (!diffOutput) return;
         showStatus(t('dsl.diff.computing'), 'info');
-        fetch('/api/dsl/diff/' + encodeURIComponent(beforeId) + '/' + encodeURIComponent(afterId))
+        window.TaxonomyDslApi.diff(beforeId, afterId)
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 renderDiff(data, beforeId, afterId);
                 showStatus(t('dsl.diff.changes', data.totalChanges), 'success');
             })
-            .catch(function (e) {
+            .catch(function (e) { if (e?.code === 'ABORTED') return;
                 diffOutput.innerHTML = '<span class="text-danger">' + t('dsl.diff.failed', e.message) + '</span>';
                 showStatus(t('dsl.diff.error', e.message), 'error');
             });
@@ -528,7 +503,7 @@
     function loadTextDiff(beforeId, afterId) {
         if (!diffOutput) return;
         showStatus(t('dsl.diff.text.computing'), 'info');
-        fetch('/api/dsl/diff/text/' + encodeURIComponent(beforeId) + '/' + encodeURIComponent(afterId))
+        window.TaxonomyDslApi.textDiff(beforeId, afterId)
             .then(function (r) {
                 if (!r.ok) throw new Error('Text diff failed');
                 return r.text();
@@ -545,7 +520,7 @@
                 });
                 showStatus(t('dsl.textdiff.loaded'), 'success');
             })
-            .catch(function (e) {
+            .catch(function (e) { if (e?.code === 'ABORTED') return;
                 diffOutput.innerHTML = '<span class="text-danger">' + t('dsl.textdiff.failed', e.message) + '</span>';
                 showStatus(t('dsl.diff.text.error', e.message), 'error');
             });
@@ -638,9 +613,7 @@
 
     function executeCherryPick(commitId, targetBranch) {
         showStatus(t('dsl.cherrypick.progress', commitId.substring(0, 8), targetBranch), 'info');
-        return requestDslJson('/api/dsl/cherry-pick?commitId=' + encodeURIComponent(commitId) + '&targetBranch=' + encodeURIComponent(targetBranch), {
-            method: 'POST'
-        })
+        return requestDslJson(window.TaxonomyDslApi.cherryPick(commitId, targetBranch))
             .then(function (data) {
                 if (data.error) {
                     showStatus(t('dsl.cherrypick.failed', data.error), 'error');
@@ -656,7 +629,7 @@
                 }
                 loadBranches();
             })
-            .catch(function (e) {
+            .catch(function (e) { if (e?.code === 'ABORTED') return;
                 showCommandFailure(e, 'dsl.cherrypick.error', null, 'dsl.cherrypick.failed.title');
             });
     }
@@ -680,9 +653,7 @@
 
     function executeMerge(fromBranch, intoBranch) {
         showStatus(t('dsl.merge.progress', fromBranch, intoBranch), 'info');
-        return requestDslJson('/api/dsl/merge?fromBranch=' + encodeURIComponent(fromBranch) + '&intoBranch=' + encodeURIComponent(intoBranch), {
-            method: 'POST'
-        })
+        return requestDslJson(window.TaxonomyDslApi.merge(fromBranch, intoBranch))
             .then(function (data) {
                 if (data.error) {
                     showStatus(t('dsl.merge.failed', data.error), 'error');
@@ -698,7 +669,7 @@
                 }
                 loadBranches();
             })
-            .catch(function (e) { showCommandFailure(e, 'dsl.merge.error', null, 'dsl.merge.failed.title'); });
+            .catch(function (e) { if (e?.code === 'ABORTED') return; showCommandFailure(e, 'dsl.merge.error', null, 'dsl.merge.failed.title'); });
     }
 
     // ── Util ────────────────────────────────────────────────────────

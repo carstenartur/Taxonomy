@@ -23,6 +23,7 @@ class ReformulationReportHistoryTest {
             Path target=directory.resolve(Path.of(resource).getFileName());
             try(var in=getClass().getResourceAsStream(resource)){assertNotNull(in,resource);Files.copy(in,target);}command.add(target.toString());
         }
+        command.add(Path.of("..").toAbsolutePath().normalize().resolve(".github/scripts/canonical-api-fixture.cjs").toString());
         execute(command,"downloads",30,"REFORMULATION_REPORT_DOWNLOAD_OK");
     }
     private void runApplication(String mode) throws Exception {

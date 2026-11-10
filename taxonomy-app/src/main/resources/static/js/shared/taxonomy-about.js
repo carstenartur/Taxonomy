@@ -79,7 +79,7 @@ window.TaxonomyAbout = (function () {
     }
 
     function loadAboutInfo() {
-        fetch('/api/about')
+        window.TaxonomyReferenceApi.about()
             .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
             .then(function (data) {
                 aboutInfo = data;

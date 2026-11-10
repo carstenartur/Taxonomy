@@ -260,6 +260,9 @@ export async function runRoleStateFlow({
   await navigateToPage(page, 'analyze');
   await page.locator('#taxonomyTree [role="treeitem"]').first()
     .waitFor({ state: 'visible', timeout: 90_000 });
+  await page.waitForFunction(() =>
+    window.TaxonomyAnalysisSession?.state?.().ready === true,
+  null, { timeout: 20_000 });
 
   const taskSurface = await page.evaluate(() => {
     const progress = document.getElementById('analysisTaskProgress');
@@ -544,7 +547,7 @@ export async function runRoleStateFlow({
   await sunburst.scrollIntoViewIfNeeded();
   await sunburst.click();
   await page.waitForFunction(() => window.TaxonomyState.currentView === 'sunburst');
-  await page.route('**/api/analyze', route => route.fulfill({
+  await page.route(url => url.pathname.endsWith('/api/analyze'), route => route.fulfill({
     status: 503,
     contentType: 'application/json',
     body: JSON.stringify({ error: 'QA_PROVIDER_UNAVAILABLE', message: 'Deterministic QA failure' })
@@ -707,6 +710,7 @@ export async function runRoleStateFlow({
 
   const overflow = await page.evaluate(() => {
     const clientWidth = document.documentElement.clientWidth;
+    const scrollWidth = document.documentElement.scrollWidth;
     const overflowingElements = [...document.querySelectorAll('body *')]
       .filter(element => element.getClientRects().length)
       .map(element => {
@@ -724,17 +728,65 @@ export async function runRoleStateFlow({
       .filter(bounds => bounds.width > 0 && (bounds.right > clientWidth + 2
         || (bounds.overflowX === 'visible' && bounds.scrollWidth > bounds.clientWidth + 2)))
       .slice(0, 12);
+    let diagnostics = null;
+    if (scrollWidth > clientWidth + 2) {
+      const identify = element => element.tagName.toLowerCase()
+        + (element.id ? `#${element.id}` : '')
+        + [...element.classList].slice(0, 3).map(name => `.${name}`).join('');
+      const measure = element => {
+        if (!element) return null;
+        const bounds = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        let clippingAncestor = null;
+        for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+          const overflowX = getComputedStyle(parent).overflowX;
+          if (overflowX !== 'visible') {
+            clippingAncestor = {element: identify(parent), overflowX,
+              clientWidth: parent.clientWidth, scrollWidth: parent.scrollWidth};
+            break;
+          }
+        }
+        return {
+          element: identify(element),
+          left: Math.round(bounds.left + window.scrollX),
+          right: Math.round(bounds.right + window.scrollX),
+          width: Math.round(bounds.width),
+          clientWidth: element.clientWidth, scrollWidth: element.scrollWidth,
+          offsetWidth: element.offsetWidth,
+          overflowX: style.overflowX, position: style.position,
+          whiteSpace: style.whiteSpace, transform: style.transform,
+          minWidth: style.minWidth, maxWidth: style.maxWidth, clippingAncestor
+        };
+      };
+      diagnostics = {
+        scrollX: window.scrollX,
+        visualViewport: window.visualViewport ? {
+          width: window.visualViewport.width, offsetLeft: window.visualViewport.offsetLeft,
+          pageLeft: window.visualViewport.pageLeft, scale: window.visualViewport.scale
+        } : null,
+        root: measure(document.documentElement), body: measure(document.body),
+        comparisonPoints: ['.analysis-assessment-scope', '#gapProfile', '#taxonomyTree']
+          .map(selector => ({selector, measurement: measure(document.querySelector(selector))})),
+        candidates: [...document.querySelectorAll('body *')]
+          .filter(element => element.getClientRects().length)
+          .filter(element => element.getBoundingClientRect().right + window.scrollX > clientWidth + 2
+            || element.scrollWidth > element.clientWidth + 2)
+          .slice(0, 12).map(measure)
+      };
+    }
     return {
-      scrollWidth: document.documentElement.scrollWidth,
+      scrollWidth,
       clientWidth,
       overflowingElements,
+      diagnostics,
       forcedColors: matchMedia('(forced-colors: active)').matches,
       reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches
     };
   });
   assert(overflow.scrollWidth <= overflow.clientWidth + 2,
     `Viewport reflow failed at ${zoom}x: ${overflow.scrollWidth} > ${overflow.clientWidth}; `
-      + `element bounds: ${JSON.stringify(overflow.overflowingElements)}`);
+      + `element bounds: ${JSON.stringify(overflow.overflowingElements)}; `
+      + `diagnostics: ${JSON.stringify(overflow.diagnostics)}`);
   assert(overflow.reducedMotion, 'Reduced motion preference was not active');
   assert(forcedColors ? overflow.forcedColors : true, 'Forced-colors profile was not active');
   passed(`reflow at ${zoom}x`);

@@ -1,4 +1,5 @@
 # Every callback declaration is executed by JavascriptContractTest.
+.github/scripts/large-result-budget-harness.test.mjs
 .github/scripts/analysis-cluster-recovery.test.mjs
 .github/scripts/analysis-live-progress.test.mjs
 .github/scripts/analysis-llm-log.test.mjs
@@ -67,6 +68,7 @@
 .github/scripts/taxonomy-impact-map.test.mjs
 .github/scripts/taxonomy-state.test.mjs
 .github/scripts/test-taxonomy-api-client.mjs
+.github/scripts/named-feature-api.test.mjs
 .github/scripts/test-taxonomy-base-path.mjs
 .github/scripts/ui-application-readiness.test.mjs
 .github/scripts/ui-copilot-completion.test.mjs
@@ -76,6 +78,7 @@
 .github/scripts/ui-localization-regression.test.mjs
 .github/scripts/ui-navigation-poll-evidence.test.mjs
 .github/scripts/ui-primary-account-workflows.test.mjs
+.github/scripts/ui-primary-import-workflows.test.mjs
 .github/scripts/ui-primary-evidence.test.mjs
 .github/scripts/ui-primary-session-basepath-contract.test.mjs
 .github/scripts/ui-qa-polish.test.mjs
@@ -108,6 +111,7 @@ taxonomy-app/src/test/js/contextual-help.cjs
 .github/scripts/git-sync-status.browser.test.mjs
 .github/scripts/user-management-navigation.browser.test.mjs
 .github/scripts/integrations.browser.test.mjs
+.github/scripts/named-workspace-versioning.test.mjs
 .github/scripts/analysis-evidence-contract.test.mjs
 .github/scripts/evidence-consumers.test.mjs
 .github/scripts/visible-analysis-context.test.mjs

@@ -39,9 +39,6 @@ window.TaxonomyInventoryComparison = (function () {
         variantFindings:'Retained solution variants', variantDecision:'Variant decision', saveVariant:'Save variant decision', acknowledge:'Explicitly acknowledge remaining unknown evidence', exclusions:'Hard exclusions', questions:'Open questions', directed:'Directed relationship findings'
     });
     const label = key => words[key] || key;
-    const url = path => window.TaxonomyI18n?.resolveUrl?.(path) || path;
-    const read = path => window.TaxonomyApiClient.getJson(url(path));
-    const write = (path, body) => window.TaxonomyApiClient.sendJson(url(path), body, 'POST', {timeoutMillis:125000});
     function node(tag, text, className) { const n=document.createElement(tag); if(text!==undefined)n.textContent=String(text);if(className)n.className=className;return n; }
     function button(text, action) {const n=node('button',text,'btn btn-outline-primary btn-sm');n.type='button';n.addEventListener('click',action);return n;}
     function input(type='text') {const n=node('input');n.type=type;n.className=type==='checkbox'?'form-check-input ms-2':'form-control form-control-sm';return n;}
@@ -84,26 +81,26 @@ window.TaxonomyInventoryComparison = (function () {
         }));
         const output=node('div');output.dataset.inventoryResult='';
         const previous=field(panel,label('retained'),select([['',label('choose')]]));
-        async function run(action) {status.textContent='';try {await action();}catch(error){status.textContent=error.detail||error.message||label('error');}}
+        async function run(action) {const current=window.TaxonomyApiClient.captureContext();status.textContent='';try {await action();}catch(error){if(current()&&error.code!=='ABORTED')status.textContent=error.detail||error.message||label('error');}}
         function request(nodes,question,sourceProfiles) {if(!nodes.length)throw new Error(label('selectNodes'));return {selectedNodes:nodes,question,sourceProfiles,
             relationships:relationshipRows.map(r=>({id:r.id,sourceCandidateId:r.source.value.trim(),targetCandidateId:r.target.value.trim(),kind:r.kind.value,qualifier:r.qualifier.value.trim()||null,required:r.required.checked})),
             variants:variantRows.map(v=>({projectSolutionId:Number(v.solution.value),action:v.action.value,candidateIds:v.candidates.value.split(',').map(x=>x.trim()).filter(Boolean),prerequisites:v.prerequisites.map(n=>({text:n.text.value,status:n.status.value,citation:n.citation.value})),risks:v.risks.map(n=>({text:n.text.value,status:n.status.value,citation:n.citation.value})),costs:v.costs.map(c=>({amount:c.amount.value.trim(),currency:c.currency.value.trim().toUpperCase(),basis:c.basis.value,citation:c.citation.value}))}))};}
-        async function refreshList() {const values=await read(`/api/projects/${options.projectId}/snapshots/${options.snapshot.summary.id}/inventory-comparisons`);previous.replaceChildren();for(const value of [{id:'',createdAt:label('choose')},...values]){const o=node('option',value.createdAt+' '+(value.demand?.question?.organization||''));o.value=value.id;previous.append(o);}}
+        async function refreshList() {const values=await window.TaxonomyPortfolioApi.listInventoryComparisons(options.projectId, options.snapshot.summary.id);previous.replaceChildren();for(const value of [{id:'',createdAt:label('choose')},...values]){const o=node('option',value.createdAt+' '+(value.demand?.question?.organization||''));o.value=value.id;previous.append(o);}}
         async function compare() {
             const question={mode:mode.value,start:start.value,endExclusive:mode.value==='EXACT_DATE'?null:end.value,organization:organization.value.trim(),environment:environment.value.trim()||null};
             if(!question.start||!question.organization||(question.mode!=='EXACT_DATE'&&!question.endExclusive))throw new Error(de?'Organisation und Zeitfrage vervollständigen':'Complete the organization and time question');
-            const comparison=await write(`/api/projects/${options.projectId}/snapshots/${options.snapshot.summary.id}/inventory-comparisons`,request(checks.filter(c=>c.checked).map(c=>c.value),question,profiles.value.split(',').map(v=>v.trim()).filter(Boolean)));
+            const comparison=await window.TaxonomyPortfolioApi.createInventoryComparison(options.projectId, options.snapshot.summary.id,request(checks.filter(c=>c.checked).map(c=>c.value),question,profiles.value.split(',').map(v=>v.trim()).filter(Boolean)));
             render(comparison);await refreshList();return comparison;
         }
         setup.append(button(label('compare'),()=>run(compare)));
         panel.append(button(label('reopen'),()=>run(()=>open(previous.value))),output);
-        async function open(id) {if(!id)return;render(await read('/api/inventory-comparisons/'+encodeURIComponent(id)));}
+        async function open(id) {if(!id)return;render(await window.TaxonomyPortfolioApi.getInventoryComparison(id));}
         function render(comparison) {
             output.replaceChildren();const demand=comparison.demand;
             output.append(node('h4',label('frozen'),'h6'),node('p',`${demand.snapshotId} · v${demand.requirementVersionId} · ${demand.taxonomyFingerprint}`,'small text-break'),node('p',JSON.stringify(demand.question)),node('p',demand.selectedNodes.join(', ')),node('p',label('unknown'),'small'));
             if(demand.requirementText)output.append(node('blockquote',demand.requirementText));
             const source=node('details');source.append(node('summary',label('source')),node('pre',JSON.stringify(comparison.sources,null,2),'text-break'));output.append(source);
-            output.append(button(label('export'),()=>run(async()=>{const retained=await read('/api/inventory-comparisons/'+encodeURIComponent(comparison.id));const a=node('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(retained,null,2)],{type:'application/json'}));a.download='inventory-comparison-'+comparison.id+'.json';a.click();URL.revokeObjectURL(a.href);})));
+            output.append(button(label('export'),()=>run(async()=>{const retained=await window.TaxonomyPortfolioApi.getInventoryComparison(comparison.id);const a=node('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(retained,null,2)],{type:'application/json'}));a.download='inventory-comparison-'+comparison.id+'.json';a.click();URL.revokeObjectURL(a.href);})));
             const table=node('table',undefined,'table table-sm mt-3');const head=node('tr');for(const text of [label('candidate'),label('finding'),label('next')])head.append(node('th',text));const thead=node('thead');thead.append(head);table.append(thead);const body=node('tbody');table.append(body);const tableScroll=node('div',undefined,'table-responsive');tableScroll.append(table);output.append(tableScroll);
             for(const candidate of comparison.candidates) {
                 const identity=node('td');identity.className='align-top';identity.append(node('strong',candidate.name),node('p',candidate.kind+' · '+candidate.id,'small text-break'));
@@ -121,12 +118,12 @@ window.TaxonomyInventoryComparison = (function () {
                 const solution=field(details,label('solution'),select([['',label('noSolution')],...(options.solutions||[]).map(s=>[String(s.id),s.title||s.solution?.title||String(s.id)])]));
                 const coverage=field(details,label('coverage'),input('number'));coverage.min='0';coverage.max='100';
                 const choose=field(details,label('select'),input('checkbox'));choose.dataset.inventorySelect='';choose.disabled=!candidate.productId||findings.some(f=>f.hardExclusion||f.outcome==='CONTRADICTED'||f.outcome==='CONFLICT');
-                const reviewId=crypto.randomUUID();details.append(button(label('review'),()=>run(async()=>{if(!rationale.value.trim())throw new Error(label('rationale'));await write('/api/inventory-comparisons/'+comparison.id+'/reviews',{id:reviewId,comparisonFingerprint:comparison.fingerprint,candidateId:candidate.id,rationale:rationale.value,projectSolutionId:solution.value?Number(solution.value):null,selectProduct:choose.checked,coveragePercent:coverage.value===''?null:Number(coverage.value)});status.textContent=label('saved');})));
+                const reviewId=crypto.randomUUID();details.append(button(label('review'),()=>run(async()=>{if(!rationale.value.trim())throw new Error(label('rationale'));await window.TaxonomyPortfolioApi.reviewInventoryComparison(comparison.id,{id:reviewId,comparisonFingerprint:comparison.fingerprint,candidateId:candidate.id,rationale:rationale.value,projectSolutionId:solution.value?Number(solution.value):null,selectProduct:choose.checked,coveragePercent:coverage.value===''?null:Number(coverage.value)});status.textContent=label('saved');})));
                 if(candidate.productId) assertionForm(details,candidate,demand);
                 if(candidate.metadata?.sourceProfile) {
                     const mapping=node('details');mapping.append(node('summary',label('mapped')));details.append(mapping);const product=field(mapping,label('product'),select([['',label('choose')]]));
-                    run(async()=>{for(const p of await read('/api/products')){const o=node('option',p.productName+' · '+p.productKey);o.value=String(p.id);product.append(o);}});
-                    const mappingId=crypto.randomUUID();mapping.append(button(label('map'),()=>run(async()=>{if(!product.value||!rationale.value.trim())throw new Error(label('rationale'));await write('/api/inventory-comparisons/'+comparison.id+'/candidates/'+encodeURIComponent(candidate.id)+'/mappings',{id:mappingId,productId:Number(product.value),comparisonFingerprint:comparison.fingerprint,rationale:rationale.value});status.textContent=label('saved');})));
+                    run(async()=>{for(const p of await window.TaxonomyPortfolioApi.listProducts()){const o=node('option',p.productName+' · '+p.productKey);o.value=String(p.id);product.append(o);}});
+                    const mappingId=crypto.randomUUID();mapping.append(button(label('map'),()=>run(async()=>{if(!product.value||!rationale.value.trim())throw new Error(label('rationale'));await window.TaxonomyPortfolioApi.mapInventoryCandidate(comparison.id, candidate.id,{id:mappingId,productId:Number(product.value),comparisonFingerprint:comparison.fingerprint,rationale:rationale.value});status.textContent=label('saved');})));
                 }
             }
             if(comparison.relationshipFindings?.length) {
@@ -147,11 +144,11 @@ window.TaxonomyInventoryComparison = (function () {
                 const acknowledge=field(form,label('acknowledge'),input('checkbox'));const reviewId=crypto.randomUUID();
                 form.append(button(label('saveVariant'),()=>run(async()=>{
                     if(!rationale.value.trim()||coverage.value==='')throw new Error(label('rationale')+' / '+label('coverage'));
-                    await write('/api/inventory-comparisons/'+comparison.id+'/reviews',{id:reviewId,comparisonFingerprint:comparison.fingerprint,candidateId:null,rationale:rationale.value,projectSolutionId:variant.projectSolutionId,selectProduct:false,coveragePercent:Number(coverage.value),variantDecision:{projectSolutionId:variant.projectSolutionId,outcome:decision.value,acknowledgeUnknowns:acknowledge.checked}});status.textContent=label('saved');
+                    await window.TaxonomyPortfolioApi.reviewInventoryComparison(comparison.id,{id:reviewId,comparisonFingerprint:comparison.fingerprint,candidateId:null,rationale:rationale.value,projectSolutionId:variant.projectSolutionId,selectProduct:false,coveragePercent:Number(coverage.value),variantDecision:{projectSolutionId:variant.projectSolutionId,outcome:decision.value,acknowledgeUnknowns:acknowledge.checked}});status.textContent=label('saved');
                 })));
             }
             const history=node('details');history.append(node('summary',label('history')));output.append(history);
-            run(async()=>{for(const item of await read('/api/inventory-comparisons/'+comparison.id+'/reviews'))history.append(node('p',item.actor+' · '+item.reviewedAt+' · '+item.review.rationale));});
+            run(async()=>{for(const item of await window.TaxonomyPortfolioApi.listInventoryReviews(comparison.id))history.append(node('p',item.actor+' · '+item.reviewedAt+' · '+item.review.rationale));});
             output.focus();
         }
         function assertionForm(parent,candidate,demand) {
@@ -163,7 +160,7 @@ window.TaxonomyInventoryComparison = (function () {
             const from=field(form,label('start')+' (YYYY / YYYY-MM-DD)',input());const until=field(form,label('end')+' (YYYY / YYYY-MM-DD)',input());
             const org=field(form,label('organization'),input());org.value=demand.question.organization;const env=field(form,label('environment'),input());env.value=demand.question.environment||'';
             const nodeCode=field(form,label('assertionNode'),select([['',label('choose')],...demand.selectedNodes.map(v=>[v,v])]));const citation=field(form,label('citation'),node('textarea'));
-            const assertionId=crypto.randomUUID();form.append(button(label('saveAssertion'),()=>run(async()=>{if(!citation.value?.trim())throw new Error(label('citation'));await write('/api/products/'+candidate.productId+'/inventory-assertions',{id:assertionId,candidateId:'product:'+candidate.productId,criterion:criterion.value,nodeCode:criterion.value==='CAPABILITY'?nodeCode.value:null,positive:polarity.value==='true',start:boundary(from.value),endExclusive:boundary(until.value),organization:org.value,environment:env.value||null,kind:kind.value,citation:citation.value,recordedAt:new Date().toISOString(),relationship:criterion.value==='RELATIONSHIPS'?{targetCandidateId:edgeTarget.value.trim(),kind:edgeKind.value,qualifier:edgeQualifier.value.trim()||null}:null});status.textContent=label('saved');})));
+            const assertionId=crypto.randomUUID();form.append(button(label('saveAssertion'),()=>run(async()=>{if(!citation.value?.trim())throw new Error(label('citation'));await window.TaxonomyPortfolioApi.addInventoryAssertion(candidate.productId,{id:assertionId,candidateId:'product:'+candidate.productId,criterion:criterion.value,nodeCode:criterion.value==='CAPABILITY'?nodeCode.value:null,positive:polarity.value==='true',start:boundary(from.value),endExclusive:boundary(until.value),organization:org.value,environment:env.value||null,kind:kind.value,citation:citation.value,recordedAt:new Date().toISOString(),relationship:criterion.value==='RELATIONSHIPS'?{targetCandidateId:edgeTarget.value.trim(),kind:edgeKind.value,qualifier:edgeQualifier.value.trim()||null}:null});status.textContent=label('saved');})));
         }
         run(refreshList);return {open,compare,request,element:panel};
     }

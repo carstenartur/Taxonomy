@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
+import canonical from './canonical-api-fixture.cjs';
 
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/shared/taxonomy-search.js', import.meta.url), 'utf8');
 
@@ -13,7 +14,7 @@ function harness() {
     const badge = { classList: { add() {}, remove() {} }, textContent: '', title: '' };
     let response = { ok: true, json: async () => ({ available: false, graphReady: false }) };
     const window = {};
-    runInNewContext(source, {
+    const scope = {
         window,
         document: {
             addEventListener() {},
@@ -25,7 +26,9 @@ function harness() {
             if (response instanceof Error) throw response;
             return response;
         }
-    });
+    };
+    canonical.install(scope, ['api/search-api.js']);
+    runInNewContext(source, scope);
     return {
         select, badge,
         disabled(mode) { return select.options.find(option => option.value === mode).disabled; },

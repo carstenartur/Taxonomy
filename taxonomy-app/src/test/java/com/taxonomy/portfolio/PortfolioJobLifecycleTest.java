@@ -21,6 +21,16 @@ class PortfolioJobLifecycleTest {
     Path directory;
 
     @Test
+    void registeredJobWithoutDtoProjectIdPollsItsValidatedResource() throws Exception {
+        run("registeredJobUsesValidatedProjectIdentity");
+    }
+
+    @Test
+    void restoredJobWithoutDtoProjectIdPollsOnlyItsValidatedResource() throws Exception {
+        run("restoredJobUsesValidatedProjectIdentity");
+    }
+
+    @Test
     void leavingPortfolioCancelsScheduledPollWithoutDeletingServerJobHistory() throws Exception {
         run("departureCancelsScheduledPoll");
     }
@@ -28,6 +38,11 @@ class PortfolioJobLifecycleTest {
     @Test
     void leavingPortfolioAbortsInFlightPollWithoutSchedulingErrorRetry() throws Exception {
         run("departureAbortsInFlightPoll");
+    }
+
+    @Test
+    void nativeDepartureCheckpointsCannotPersistCancellationOrScheduleAnotherPoll() throws Exception {
+        run("departureCheckpointsDoNotPublishCancellation");
     }
 
     @Test
@@ -92,6 +107,7 @@ class PortfolioJobLifecycleTest {
 
     private void run(String contract) throws Exception {
         Path script = copyResource("/portfolio/job-lifecycle-contract.cjs");
+        Path canonical = copyResource("/static/js/api/taxonomy-api-client.js");
         Path api = copyResource("/static/js/api/portfolio-api.js");
         Path adapter = copyResource("/static/js/portfolio/taxonomy-portfolio-async.js");
         Path discovery = copyResource("/static/js/portfolio/portfolio-analysis-job-synchronizer.js");
@@ -99,7 +115,7 @@ class PortfolioJobLifecycleTest {
         assertNotNull(node, "Maven must provide its pinned Node runtime");
         Path log = directory.resolve(contract + ".log");
         Process process = new ProcessBuilder(List.of(node, script.toString(), contract,
-                api.toString(), adapter.toString(), discovery.toString()))
+                api.toString(), adapter.toString(), discovery.toString(), canonical.toString()))
                 .redirectErrorStream(true)
                 .redirectOutput(log.toFile())
                 .start();

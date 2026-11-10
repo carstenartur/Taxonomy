@@ -20,13 +20,18 @@ window.TaxonomyArchitectureLifecycleApi = (function () {
         });
         return window.TaxonomyApiClient.getJson(path + '?' + params, policy(params));
     }
-    function write(path, body, exact, context) {
+    function write(path, body, exact, context, preserveReceipt) {
         var headers = {'Content-Type': 'application/json'};
         if (exact) headers['If-Match'] = '"workspace-revision-' + body.context.revision + '"';
         var params = query(context || body.context);
+        var options = Object.assign({retries:0},policy(params));
+        // An admitted exact mutation may already be saved after source navigation.
+        // Its domain fence decides whether the receipt can update the visible stand;
+        // canonical authentication, page and body-deadline guards still apply.
+        if (preserveReceipt) options.contextSensitive = false;
         return window.TaxonomyApiClient.request(path + '?' + params, {
             method:'POST', headers:headers, body:JSON.stringify(body)
-        }, Object.assign({retries:0},policy(params))).then(function (response) { return response.json(); });
+        }, options).then(function (response) { return response.json(); });
     }
     return {
         architectures:function () { return read(base + '/architectures', {}); },
@@ -41,10 +46,10 @@ window.TaxonomyArchitectureLifecycleApi = (function () {
         projects:function (context) { return read('/api/projects', context); },
         requirement:function (context, projectId, requirementId) { return read('/api/projects/' + projectId + '/requirements/' + requirementId, context); },
         previewReview:function (request) { return write(base + '/realizations/preview', request, true); },
-        acceptReview:function (request) { return write(base + '/realizations', request, true); },
-        saveRequirement:function (request) { return write('/api/architecture/editor/requirements', request, true); },
+        acceptReview:function (request) { return write(base + '/realizations', request, true, null, true); },
+        saveRequirement:function (request) { return write('/api/architecture/editor/requirements', request, true, null, true); },
         reviewRequirementIntake:function (request) { return write(base + '/intake-review', request, false); },
         previewReconciliation:function (request) { return write('/api/architecture/editor/versions/reconciliation/preview', request, true); },
-        acceptReconciliation:function (request) { return write('/api/architecture/editor/versions/reconciliation/accept', request, true); }
+        acceptReconciliation:function (request) { return write('/api/architecture/editor/versions/reconciliation/accept', request, true, null, true); }
     };
 }());

@@ -1,4 +1,6 @@
-const {test} = require('node:test');
+const {test, afterEach} = require('node:test');
+const canonicalFixture = require('../../../../.github/scripts/canonical-api-fixture.cjs');
+afterEach(() => canonicalFixture.dispose());
 const assert = require('node:assert/strict');
 const {readFileSync} = require('node:fs');
 const path = require('node:path');
@@ -161,6 +163,7 @@ function fixture({deferDraftRead = false, checkboxPreference = false, reasonLeng
         }};
     window.__TaxonomyAnalysisSessionContext = C;
     const fetch = (url, options = {}) => {
+        url = new URL(url, window.location.href).pathname;
         requests.push({url, method: options.method || 'GET', body: options.body});
         if (url !== '/api/preferences' && url !== '/api/preferences/reset') throw Error('Unexpected request: ' + url);
         if (options.method === 'PUT') {
@@ -187,21 +190,8 @@ function fixture({deferDraftRead = false, checkboxPreference = false, reasonLeng
         CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options.detail;}},
         console: window.console};
     vm.runInNewContext(draftScript, context, {filename: 'taxonomy-analysis-session-draft.js'});
-    context.Headers = Headers;
-    window.TaxonomyApiClient = {
-        ApiError: class extends Error {
-            constructor(message, status, url, body, options) {
-                super(message);
-                this.status = status;
-                this.code = options.code;
-            }
-        },
-        request: (url, init) => fetch(url.split('?')[0], init).then(response => {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            return response;
-        })
-    };
-    vm.runInNewContext(readFileSync(path.join(resources, 'static/js/api/workspace-api.js'), 'utf8'), context);
+    window.fetch = fetch;
+    canonicalFixture.install(context, ['api/workspace-api.js']);
     vm.runInNewContext(preferencesScript, context, {filename: 'index.html Preferences script'});
     document.dispatchEvent({type: 'DOMContentLoaded'});
     return {C, state, runtime, nodes, maxNodes, checkbox, reasonLength, relationControls,

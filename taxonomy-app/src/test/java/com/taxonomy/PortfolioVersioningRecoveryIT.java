@@ -115,6 +115,8 @@ class PortfolioVersioningRecoveryIT {
         page.openHtml(PREFIX, "/signature-history", """
                 <!doctype html><html lang="%s"><head><meta charset="UTF-8">
                 <script src="/taxonomy/js/taxonomy-i18n.js"></script>
+                <script src="/taxonomy/js/api/taxonomy-api-client.js"></script>
+                <script src="/taxonomy/js/api/workspace-api.js"></script>
                 <script src="/taxonomy/js/shared/taxonomy-utils.js"></script>
                 <script src="/taxonomy/js/versioning/taxonomy-versions.js"></script>
                 </head><body><div id="versionsTimeline"></div>
@@ -202,7 +204,7 @@ class PortfolioVersioningRecoveryIT {
         assertDrafts(DRAFTS);
         assertSelections(SELECTIONS);
         assertThat(text("versioningError"))
-                .isEqualTo(label(locale, "refreshFailed") + " Repository read unavailable");
+                .isEqualTo(label(locale, "refreshFailed") + " HTTP 503: Repository read unavailable");
         assertThat(hidden("versioningInfo")).isTrue();
     }
 
@@ -253,7 +255,7 @@ class PortfolioVersioningRecoveryIT {
         awaitError("Repository read unavailable");
         assertSuccess(locale, operation);
         assertThat(text("versioningError"))
-                .isEqualTo(label(locale, "refreshFailed") + " Repository read unavailable");
+                .isEqualTo(label(locale, "refreshFailed") + " HTTP 503: Repository read unavailable");
         assertThat(text("versioningLive")).isEqualTo(text("versioningError"));
         assertDrafts(DRAFTS);
         assertSelections(SELECTIONS);
@@ -270,7 +272,7 @@ class PortfolioVersioningRecoveryIT {
         awaitError(responses.mutationFailure);
         assertThat(hidden("versioningInfo")).isTrue();
         assertThat(text("versioningInfo")).isEmpty();
-        assertThat(text("versioningError")).isEqualTo(responses.mutationFailure);
+        assertThat(text("versioningError")).isEqualTo("HTTP 409: " + responses.mutationFailure);
         assertThat(driver.switchTo().activeElement()).isEqualTo(element("versioningError"));
         assertThat(responses.readCount.get()).as("A rejected mutation cannot launch a success refresh").isEqualTo(reads);
         assertDrafts(DRAFTS);
@@ -289,7 +291,7 @@ class PortfolioVersioningRecoveryIT {
         else responses.mutationFailure = "Merge conflict";
         int mutations = responses.mutationCount.get();
         trigger(Operation.MERGE);
-        String expected = sameBranch ? label(locale, "sourceTargetDiffer") : "Merge conflict";
+        String expected = sameBranch ? label(locale, "sourceTargetDiffer") : "HTTP 409: Merge conflict";
         awaitError(expected);
         assertThat(text("mergeResult")).as("An earlier merge cannot label this attempt successful").isEmpty();
         assertThat(hidden("versioningInfo")).isTrue();

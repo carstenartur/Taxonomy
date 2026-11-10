@@ -12,11 +12,15 @@ const coreSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/s
 const id = 'cb2a3d71-e849-4a50-9855-1f9cb8f81402';
 function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
     let scope;
-    const timers = new Map(), calls = [], snapshots = [], unavailable = [], streams = [], results = [];
+    const timers = new Map(), transportTimers = new Map(), calls = [], snapshots = [], unavailable = [], streams = [], results = [];
     let serial = 0;
     const authFailures = [];
     const schedule = (fn, delay) => { const key = ++serial; timers.set(key, { fn, delay }); return key; };
     const unschedule = key => timers.delete(key);
+    // The monitor owns polling/cleanup timers through window/options. The
+    // canonical transport owns a distinct deadline through the VM globals.
+    const transportSchedule = (fn, delay) => {const key = ++serial; transportTimers.set(key, {fn, delay}); return key;};
+    const transportUnschedule = key => transportTimers.delete(key);
     const elements = new Map(), listeners = new Map();
     class Element {
         constructor(tag) { this.tag = tag; this.children = []; this.ownText = ''; this.attributes = {}; this.isConnected = true; }
@@ -72,7 +76,8 @@ function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
         }
     };
     const sandbox = vm.createContext({ window, document, AbortController, console,
-        URL, Request, Headers, Response, CustomEvent, queueMicrotask, setTimeout: schedule, clearTimeout: unschedule });
+        URL, Request, Headers, Response, DOMException, CustomEvent, queueMicrotask,
+        setTimeout: transportSchedule, clearTimeout: transportUnschedule });
     vm.runInContext(coreSource, sandbox);
     scope = window.__TaxonomyAnalysisSessionContext.runtime;
     Object.assign(scope, { workspaceId, generation: 1, analysisGeneration: 1, invalidating: false });
@@ -88,18 +93,20 @@ function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
         onUnavailable: message => unavailable.push(message),
         onResult: value => results.push(value)
     });
-    async function step(delay) {
-        const entry = [...timers].find(([, item]) => item.delay === delay);
-        assert.ok(entry, `Expected timer ${delay}; got ${[...timers.values()].map(v => v.delay)}`);
-        timers.delete(entry[0]);
+    async function advance(ownedTimers, delay) {
+        const entry = [...ownedTimers].find(([, item]) => item.delay === delay);
+        assert.ok(entry, `Expected timer ${delay}; got ${[...ownedTimers.values()].map(v => v.delay)}`);
+        ownedTimers.delete(entry[0]);
         await entry[1].fn();
         await new Promise(resolve => setImmediate(resolve));
     }
+    const step = delay => advance(timers, delay);
+    const transportStep = delay => advance(transportTimers, delay);
     function statistics(state) {
         window.TaxonomyState = state;
         vm.runInContext(statisticsSource, sandbox);
     }
-    return { window, document, scope, timers, calls, snapshots, unavailable, authFailures, elements, streams, results, api: window.TaxonomyAnalysisSessionApi, monitor, step, statistics };
+    return { window, document, scope, timers, transportTimers, transportStep, calls, snapshots, unavailable, authFailures, elements, streams, results, api: window.TaxonomyAnalysisSessionApi, monitor, step, statistics };
 }
 function descendants(element) { return element.children.flatMap(child => [child, ...descendants(child)]); }
 function workBar(fixture, kind, root = '') {
@@ -240,6 +247,8 @@ test('departure from an observed cluster run sends one scoped cancellation witho
     assert.equal(f.calls[1].options.method, 'POST');
     assert.match(f.calls[1].url, /\/cancel\?workspaceId=workspace-a$/);
     assert.equal(f.timers.size, 0, 'cluster cleanup must not restart periodic status reads');
+    assert.deepEqual([...f.transportTimers.values()].map(timer => timer.delay), [30000],
+        'only the retained cancellation response-body deadline remains');
     assert.equal(f.streams[0].closed, true);
 });
 
@@ -972,6 +981,22 @@ test('all three telemetry operations use canonical CSRF, request IDs and no-stor
     assert.equal(f.timers.size, 0);
 });
 
+test('an unread cancellation body keeps one bounded transport deadline without restarting observation', async () => {
+    const f = fixture(async () => response(snapshot(2, 'CANCELLING')));
+    await f.monitor.cancel();
+    f.monitor.stop();
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.calls[0].options.method, 'POST');
+    assert.equal(f.calls[0].options.headers['x-taxonomy-workspace-id'], 'workspace-a');
+    assert.equal(f.timers.size, 0, 'stopped observation must not retain polling or cleanup timers');
+    assert.deepEqual([...f.transportTimers.values()].map(timer => timer.delay), [30000]);
+    assert.equal(f.calls[0].options.signal.aborted, false);
+    await f.transportStep(30000);
+    assert.equal(f.calls[0].options.signal.aborted, true, 'the unread body must be bounded by its original deadline');
+    assert.equal(f.transportTimers.size, 0);
+    assert.equal(f.calls.length, 1, 'a deadline must not retry cancellation or restart observation');
+});
+
 test('the polling deadline aborts the canonical request and reports a timeout', async () => {
     const f = fixture((url, options) => new Promise((resolve, reject) => {
         options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
@@ -981,6 +1006,7 @@ test('the polling deadline aborts the canonical request and reports a timeout', 
     await pending;
     assert.equal(f.calls[0].options.signal.aborted, true);
     assert.deepEqual(f.unavailable, ['CONNECTION_TIMEOUT']);
+    assert.equal(f.transportTimers.size, 0, 'monitor deadline must release the canonical request scope');
     f.monitor.stop();
     assert.equal(f.timers.size, 0);
 });
@@ -995,6 +1021,7 @@ test('stopping the monitor aborts the actual transport without a late UI error',
     assert.equal(f.calls[0].options.signal.aborted, true);
     assert.equal(f.snapshots.length, 0);
     assert.equal(f.unavailable.length, 0);
+    assert.equal(f.transportTimers.size, 0, 'stopping must release canonical request deadlines');
     assert.equal(f.timers.size, 0);
 });
 

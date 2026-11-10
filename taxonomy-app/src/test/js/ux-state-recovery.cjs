@@ -1,4 +1,6 @@
-const {test} = require('node:test');
+const canonicalFixture = require('../../../../.github/scripts/canonical-api-fixture.cjs');
+const {test, afterEach} = require('node:test');
+afterEach(() => canonicalFixture.dispose());
 const assert = require('node:assert/strict');
 const {readFileSync} = require('node:fs');
 const path = require('node:path');
@@ -58,7 +60,7 @@ function searchFixture() {
     const highlights = [{classList: {remove(c) {this.removed = c;}}}];
     d.document.querySelectorAll = () => highlights;
     const window = {};
-    vm.runInNewContext(source('shared/taxonomy-search.js'), {window, document: d.document, AbortController,
+    vm.runInNewContext(source('shared/taxonomy-search.js'), canonicalFixture.install({window, document: d.document, AbortController,
         TaxonomyI18n: {t: k => k}, TaxonomyUtils: {escapeHtml: String},
         requestAnimationFrame: callback => callback(),
         CustomEvent: class {constructor(type, init) {this.type = type; this.detail = init.detail;}},
@@ -68,7 +70,7 @@ function searchFixture() {
             }
             options = init;
             return pending.promise;
-        }});
+        }}, ['api/search-api.js']));
     return {...d, window, pending, highlights, signal: () => options?.signal};
 }
 
@@ -336,10 +338,11 @@ test('German decision download validation explains invalid response, snapshot an
 test('portfolio report adapter forwards cancellation to fetch', async () => {
     let seen;
     const window = {location: {pathname: '/'}}, controller = new AbortController();
-    vm.runInNewContext(source('api/portfolio-api.js'), {window, URLSearchParams,
-        document: {querySelector: () => null}, fetch: async (url, init) => {seen = init; return {ok: true};}});
+    vm.runInNewContext(source('api/portfolio-api.js'), canonicalFixture.install({window, URLSearchParams,
+        document: {querySelector: () => null}, fetch: async (url, init) => {seen = init; return {ok: true};}}, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']));
     await window.TaxonomyPortfolioApi.downloadDecisionReport(1, 'snap', 'html', 'de', {}, {signal: controller.signal});
-    assert.equal(seen.signal, controller.signal);
+    controller.abort();
+    assert.equal(seen.signal.aborted, true, 'caller cancellation reaches the composed transport signal');
 });
 
 test('new requirement writes capture AI language for automatic analysis without leaking it across origins', async () => {
@@ -380,7 +383,7 @@ test('live-analysis export cancellation reaches the real API client transport', 
         setTimeout(fn) {timers.add(fn); return fn;}, clearTimeout: timer => timers.delete(timer),
         S: {currentScores: {CP: 80}, taxonomyData: [{code: 'CP', name: 'Capabilities'}],
             lastAnalysisProvider: 'MOCK', lastAnalysisStatus: 'SUCCESS'}});
-    vm.runInContext(source('api/taxonomy-api-client.js'), context);
+    canonicalFixture.install(context, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']);
     installReportCapabilities(window);
     vm.runInContext(source('shared/decision-export-dialog.js'), context);
     const browse = source('core/taxonomy-browse.js');
@@ -439,7 +442,7 @@ async function liveReportBodyFixture() {
         setTimeout(fn) {timers.add(fn); return fn;}, clearTimeout: timer => timers.delete(timer),
         S: {currentScores: {CP: 80}, taxonomyData: [{code: 'CP', name: 'Capabilities'}],
             lastAnalysisProvider: 'MOCK', lastAnalysisStatus: 'SUCCESS'}});
-    vm.runInContext(source('api/taxonomy-api-client.js'), context);
+    canonicalFixture.install(context, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']);
     installReportCapabilities(window);
     vm.runInContext(source('shared/decision-export-dialog.js'), context);
     const browse = source('core/taxonomy-browse.js');
@@ -468,6 +471,8 @@ test('live export cancellation after headers aborts the pending body transport',
 
 async function savedRequirementExportFixture(options = {}) {
     const f = dom(), transfer = pendingReportBody({...options, snapshotId: 'snapshot-1'});
+    const lifecycle = new EventTarget(), transfers = [transfer], submitSignals = [];
+    let reportIndex = 0, savedSubmit;
     f.document.readyState = 'loading';
     f.element('section', 'requirementCopilotCard');
     const button = f.element('button');
@@ -475,35 +480,50 @@ async function savedRequirementExportFixture(options = {}) {
     const container = f.element('div');
     button.closest = selector => selector === '[data-decision-report-format]' ? button : container;
     f.document.querySelectorAll = selector => selector === '[data-decision-report-format]' ? [button] : [];
-    const fetch = (url, init) => url.includes('/decision-report/options')
+    const fetch = (url, init) => url.includes('/api/account/me')
+        ? Promise.resolve({ok:true,status:200,json:async()=>({})})
+        : url.includes('/decision-report/options')
         ? Promise.resolve({ok: true, status: 200, json: async () => ({roots: [{code: 'CP', title: 'Capabilities'}]})})
-        : transfer.fetch(url, init);
-    const window = {location: {pathname: '/projects/1/requirements/2', search: '?lang=de&snapshot=snapshot-1'},
+        : (transfers[reportIndex++] || transfer).fetch(url, init);
+    const window = {addEventListener: lifecycle.addEventListener.bind(lifecycle), location: {pathname: '/projects/1/requirements/2', search: '?lang=de&snapshot=snapshot-1'},
         TaxonomyCopilotApi: {status: async () => ({}), latest: async () => null},
         setTimeout: fn => fn()};
     f.document.currentScript = {src: 'http://localhost/js/api/portfolio-api.js'};
     class FixtureURL extends URL {}
     Object.assign(FixtureURL, f.urls);
     const context = vm.createContext({window, document: f.document, URL: FixtureURL, URLSearchParams,
-        fetch, AbortController, DOMException, Headers, setTimeout: fn => fn(),
+        fetch, AbortController, DOMException, Headers, setTimeout: (fn, delay) => delay > 0 ? 1 : fn(), clearTimeout() {},
         CustomEvent: class {constructor(type, init) {this.type = type; this.detail = init.detail;}}});
+    canonicalFixture.install(context);
     vm.runInContext(source('api/portfolio-api.js'), context);
     installReportCapabilities(window);
     vm.runInContext(source('shared/decision-export-dialog.js'), context);
+    const decisionExport = window.TaxonomyDecisionExport;
+    window.TaxonomyDecisionExport = {...decisionExport, openSaved(config) {
+        savedSubmit = config.submit;
+        return decisionExport.openSaved({...config, submit(selection) {
+            submitSignals.push(selection.signal);
+            return savedSubmit(selection);
+        }});
+    }};
     vm.runInContext(source('portfolio/requirement-copilot.js'), context);
     await f.document.fire('DOMContentLoaded');
     await f.document.fire('click', {target: button, preventDefault() {}, stopImmediatePropagation() {}});
     await tick();
     const dialog = f.document.body.querySelector('dialog');
     assert.ok(dialog, 'real delegated requirement export handler opens the dialog');
-    return {...f, transfer, button, dialog};
+    return {...f, transfer, button, dialog, submitSignals,
+        pagehide() {lifecycle.dispatchEvent(new Event('pagehide'));},
+        pageshow() {lifecycle.dispatchEvent(Object.assign(new Event('pageshow'), {persisted:true}));},
+        queueTransfer() {const next=pendingReportBody({...options,snapshotId:'snapshot-1'});transfers.push(next);return next;},
+        submitExport(selection) {return savedSubmit(selection);}};
 }
 
 test('saved requirement custom submit cancels the adapter body transfer', async () => {
     const f = await savedRequirementExportFixture();
     const pending = f.dialog.querySelector('form').fire('submit');
     await tick();
-    assert.equal(f.transfer.reading(), true);
+    assert.equal(f.transfer.reading(), true, JSON.stringify(f.events));
     assert.equal(f.button.disabled, true);
     await f.dialog.querySelectorAll('button').find(button => button.textContent === 'Abbrechen').click();
     const aborted = f.transfer.aborted();
@@ -519,7 +539,7 @@ test('saved requirement custom submit suppresses a body arriving after cancellat
     const f = await savedRequirementExportFixture({ignoreAbort: true});
     const pending = f.dialog.querySelector('form').fire('submit');
     await tick();
-    assert.equal(f.transfer.reading(), true);
+    assert.equal(f.transfer.reading(), true, JSON.stringify(f.events));
     await f.dialog.querySelectorAll('button').find(button => button.textContent === 'Abbrechen').click();
     f.transfer.body.resolve({size: 10});
     await pending;
@@ -528,11 +548,43 @@ test('saved requirement custom submit suppresses a body arriving after cancellat
     assert.equal(f.events.at(-1).detail.status, 'CANCELLED');
 });
 
+test('saved requirement pagehide restores its own export controls without stale result feedback', async () => {
+    const f = await savedRequirementExportFixture({ignoreAbort:true});
+    const pending = f.dialog.querySelector('form').fire('submit');
+    await tick();
+    assert.equal(f.transfer.reading(),true,JSON.stringify(f.events));assert.equal(f.button.disabled,true);
+    const caller = f.submitSignals[0];assert.equal(caller.aborted,false);
+    f.pagehide();assert.equal(caller.aborted,false,'Page cancellation is independent of the dialog caller');
+    await pending;f.pageshow();
+    assert.equal(f.transfer.aborted(),true);assert.equal(f.button.disabled,false);
+    assert.equal(f.button.getAttribute('aria-busy'),'false');assert.equal(f.downloads.length,0);
+    assert.deepEqual(f.events.filter(event=>event.type==='taxonomy:export-operation-state').map(event=>event.detail.status),['RUNNING']);
+    f.transfer.body.resolve({size:10});await tick();assert.equal(f.downloads.length,0);
+});
+
+test('an older saved export completion never downloads or unlocks a newer owner', async () => {
+    const f = await savedRequirementExportFixture({ignoreAbort:true});
+    const next = f.queueTransfer();
+    const older = f.submitExport({format:'docx',options:{},signal:new AbortController().signal});
+    await tick();assert.equal(f.transfer.reading(),true,JSON.stringify(f.events));
+    const newer = f.submitExport({format:'docx',options:{},signal:new AbortController().signal});
+    await tick();assert.equal(next.reading(),true);assert.equal(f.button.disabled,true);
+    f.transfer.body.resolve({size:10});await older;
+    assert.equal(f.downloads.length,0,'Superseded local export must not publish its result');
+    assert.equal(f.button.disabled,true,'Only the new operation owns the busy controls');
+    assert.equal(f.button.getAttribute('aria-busy'),'true');
+    assert.equal(f.events.filter(event=>event.detail?.status==='SUCCESS').length,0);
+    next.body.resolve({size:12});await newer;
+    assert.equal(f.downloads.length,1);assert.equal(f.button.disabled,false);
+    assert.equal(f.button.getAttribute('aria-busy'),'false');
+    assert.equal(f.events.filter(event=>event.detail?.status==='SUCCESS').length,1);
+});
+
 test('blob transport timeout remains active after headers and cancels the body', async () => {
     const f = await liveReportBodyFixture();
     const pending = f.window.TaxonomyApiClient.requestBlob('/api/decision-report/docx', {method: 'POST'}, {timeoutMillis: 25});
     await tick();
-    assert.equal(f.transfer.reading(), true);
+    assert.equal(f.transfer.reading(), true, JSON.stringify(f.events));
     assert.equal(f.timers.size, 1, 'receiving headers must not clear the body timeout');
     const rejection = assert.rejects(pending, error => error.code === 'TIMEOUT' && error.retryable === true);
     [...f.timers][0]();
@@ -546,7 +598,7 @@ test('successful live export downloads the body consumed inside the transport sc
     const f = await liveReportBodyFixture();
     const pending = f.dialog.querySelector('form').fire('submit');
     await tick();
-    assert.equal(f.transfer.reading(), true);
+    assert.equal(f.transfer.reading(), true, JSON.stringify(f.events));
     f.transfer.body.resolve({size: 10});
     await pending;
     assert.equal(f.downloads.length, 1);
@@ -587,16 +639,29 @@ function impactFixture() {
     f.document.getElementById('graphMaxHops').value = '2';
     function request(kind, options) {const gate = deferred(); requests.push({kind, options, ...gate}); return gate.promise;}
     const window = {TaxonomyState: {currentScores: {'CP.1': 82}}, _getCurrentScores: () => ({'CP.1': 82})};
-    window.AnalysisApi = {captureContext:async()=>({...selectedGraphContext}),
-        graphUpstream:(code,hops,context)=>request('upstream',{code,hops,context}),
-        graphDownstream:(code,hops,context)=>request('downstream',{code,hops,context}),
-        graphFailureImpact:(code,hops,context)=>request('failure',{code,hops,context}),
-        enrichedFailureImpact:(code,hops,context)=>request('enriched',{code,hops,context}),
-        requirementImpact:(payload,context)=>request('requirement',{payload,context})};
+    window.TaxonomyAppChrome = {getContext:()=>({architecture:{...selectedGraphContext}})};
+    window.TaxonomyArchitectureLifecycle = {ready:async()=>({context:{...selectedGraphContext}}),
+        selectedContext:()=>({...selectedGraphContext})};
     const context = vm.createContext({window, document: f.document,
         TaxonomyI18n: {t: (key, ...args) => [key, ...args].join(' ')},
         TaxonomyUtils: {escapeHtml: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;')},
-        AnalysisApi:window.AnalysisApi, fetch:()=>{throw new Error('Graph consumers must use their named scoped API');}});
+        fetch: (url, init) => {
+            const selected = new URL(url, 'https://fixture.test');
+            if (selected.pathname === '/api/gap/profiles') return Promise.resolve(Response.json([]));
+            assert.equal(selected.searchParams.get('repositoryId'), selectedGraphContext.repositoryId);
+            assert.equal(selected.searchParams.get('workspaceId'), '');
+            assert.equal(selected.searchParams.get('branch'), selectedGraphContext.branch);
+            assert.equal(selected.searchParams.get('commitId'), selectedGraphContext.commit);
+            assert.equal(new Headers(init.headers).get('X-Taxonomy-Workspace-Id'), '');
+            const source = {...selectedGraphContext};
+            const suffix = selected.pathname.split('/').at(-1);
+            const kind = {'failure-impact':'failure','enriched-failure-impact':'enriched',impact:'requirement'}[suffix] || suffix;
+            const options = kind === 'requirement' ? {payload:JSON.parse(init.body),context:source}
+                : {code:decodeURIComponent(selected.pathname.split('/').at(-2)),hops:Number(selected.searchParams.get('maxHops')),context:source};
+            return request(kind, options).then(value => value instanceof Response ? value : Response.json(value));
+        }});
+    canonicalFixture.install(context, ['api/analysis-api.js', 'api/relations-api.js']);
+    context.AnalysisApi = window.AnalysisApi;
     for (const name of ['shared/taxonomy-graph.js', 'relations/taxonomy-relations.js', 'core/taxonomy-analysis.js']) {
         vm.runInContext(source(name), context);
     }
@@ -609,7 +674,7 @@ function graphEntryFixture() {
     const f = impactFixture();
     for (const id of ['leftPanel', 'rightPanel', 'tab-analyze', 'tab-architecture', 'tab-graph', 'graphExplorerPanel']) f.element('div', id);
     f.document.getElementById('tab-graph').classList.add('d-none');
-    f.window.location = {hash: '#analyze'};
+    f.window.location = new URL('https://example.test/#analyze');
     f.window.addEventListener = () => {};
     f.context.history = {replaceState: (state, title, hash) => {f.window.location.hash = hash;}};
     f.context.CustomEvent = class {constructor(type, init) {this.type = type; this.detail = init.detail;}};
@@ -635,13 +700,27 @@ test('opening a graph reveals its page, focuses the selected code and starts an 
 
 test('graph entry exposes invalid input and backend failures instead of an empty hidden result', async () => {
     const f = graphEntryFixture();
+    const actualApi = f.window.AnalysisApi;
+    let observedError;
+    f.context.AnalysisApi = f.window.AnalysisApi = {...actualApi,
+        graphUpstream: (...args) => actualApi.graphUpstream(...args).catch(error => {
+            observedError = error;
+            throw error;
+        })};
     f.window.TaxonomyGraph.openGraphExplorer('  ');
     assert.equal(f.requests.length, 0);
     assert.match(f.graph.innerHTML, /role="alert".*graph.enter.code/);
     f.window.TaxonomyGraph.openGraphExplorer('CP.1'); await tick();
-    f.requests[0].reject(new Error('Graph service unavailable')); await tick();
+    const networkFailure = new Error('Graph service unavailable');
+    f.requests[0].reject(networkFailure); await tick();
+    assert.equal(observedError?.code, 'NETWORK_ERROR');
+    assert.equal(observedError.message, 'Network request failed');
+    assert.equal(observedError.cause, networkFailure);
+    assert.equal(observedError.cause.name, 'Error');
+    assert.equal(observedError.cause.message, 'Graph service unavailable');
     assert.match(f.graph.innerHTML, /role="alert"/);
-    assert.match(f.graph.innerHTML, /Graph service unavailable/);
+    assert.match(f.graph.innerHTML, /Network request failed/);
+    assert.doesNotMatch(f.graph.innerHTML, /graph\.empty/);
     assert.notEqual(f.document.getElementById('graphResultsArea').style.display, 'none');
 });
 
@@ -740,7 +819,8 @@ function projectionFixture() {
         Headers, AbortController, DOMException, CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options?.detail;}},
         TaxonomyI18n: {t: (key, ...args) => [key, ...args].join(' ')}, TaxonomyUtils: {escapeHtml: String},
         fetch: (...args) => window.fetch(...args), setTimeout(fn) {timers.add(fn); return fn;}, clearTimeout: timer => timers.delete(timer)});
-    for (const name of ['api/taxonomy-api-client.js', 'core/taxonomy-analysis-session-api-routing.js',
+    canonicalFixture.install(context);
+    for (const name of ['core/taxonomy-analysis-session-api-routing.js',
         'api/relations-api.js', 'relations/taxonomy-relations.js']) vm.runInContext(source(name), context);
     return {...f, window, requests, table, timers, text: () => {
         function collect(node) {return node.textContent + node.innerHTML + node.children.map(collect).join(' ');}
@@ -1164,7 +1244,7 @@ test('reformulation promotion preserves draft evidence and stops before creation
                 return {projectId:7,requirementId:9,requirement:{id:9,projectId:7,currentVersion:{id:1,text:command.requirement.text}},
                     publication:{state:'CURRENT',context:{repositoryId:'fixture-architecture',workspaceScopeKey:'fixture-copy',branch:'draft',revision:2}}};
             }}};
-        vm.runInNewContext(source('core/taxonomy-analysis-session-projects.js'),{window,document:f.document,URLSearchParams});
+        vm.runInContext(source('core/taxonomy-analysis-session-projects.js'),canonicalFixture.install({window,document:f.document,URLSearchParams}));
         window.TaxonomyAnalysisSession.addAsRequirement({preserveDraft:true});await tick();
         const form=f.all.find(node=>node.tagName==='form');form.reportValidity=()=>true;
         const select=f.all.find(node=>node.tagName==='select');if(select)select.value='7';

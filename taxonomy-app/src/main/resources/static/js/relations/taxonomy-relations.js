@@ -73,6 +73,7 @@
                 renderRelationsTable(relations);
             })
             .catch(function (error) {
+                if (error?.code === 'ABORTED') return;
                 if (sequence === relationLoadSequence) return renderRelationsLoadError(content, error, allowReadyRefresh);
             });
     }
@@ -171,8 +172,8 @@
             });
     }
 
-    function inspectProjection(api, workspaceId) {
-        return api.readProjectionReadiness(workspaceId).then(function (response) {
+    function inspectProjection(api, workspaceId, options) {
+        return api.readProjectionReadiness(workspaceId, options).then(function (response) {
             if (!response.ok) throw projectionReadError(response);
             return response.json().then(function (status) {
                 if (!status || !status.repositoryId || !status.branch
@@ -213,13 +214,15 @@
         content.appendChild(progress);
         projectionRebuildPromise = relationApiReady()
             .then(function (api) {
-                return inspectProjection(api, snapshot.status.workspaceId).then(function (current) {
+                // Keep the explicitly admitted command on its inspected source;
+                // success starts a fresh authorized read for the current tab.
+                return inspectProjection(api, snapshot.status.workspaceId, {contextSensitive:false}).then(function (current) {
                     if (!sameProjectionContext(snapshot.status, current.status)) throw projectionContextChanged();
                     if (current.status.readinessState === 'READY') return { reload: true };
                     if (!canRebuildProjection(current)) throw projectionContextChanged();
                     return api.rebuildProjection(current.status, current.etag).then(function (response) {
                         if (!response.ok) throw projectionReadError(response);
-                        if (response.status === 202) return { pending: true };
+                        if (response.status === 202) return response.text().then(function () { return {pending:true}; });
                         return response.json().then(function (status) {
                             if (!status || status.operationStatus !== 'REBUILT' || status.readinessState !== 'READY'
                                     || !sameProjectionContext(current.status, status)
@@ -232,6 +235,7 @@
                 });
             })
             .catch(function (error) {
+                if (error?.code === 'ABORTED') return;
                 if (sequence !== relationLoadSequence) return;
                 var message = error.contextChanged || error.status === 412 || error.httpStatus === 412
                     ? t('relations.projection.changed') : t('relations.projection.rebuild.failed', error.message);
@@ -311,16 +315,12 @@
         var spinner = document.getElementById('createRelationSpinner');
         if (spinner) spinner.classList.remove('d-none');
 
-        fetch('/api/relations', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+        window.TaxonomyRelationsApi.createLegacy({
                 sourceCode: sourceCode,
                 targetCode: targetCode,
                 relationType: relationType,
                 description: description,
                 provenance: 'MANUAL'
-            })
         })
         .then(function (r) {
             if (!r.ok) throw new Error('Failed (' + r.status + ')');
@@ -334,6 +334,7 @@
             if (window.TaxonomyQuality) window.TaxonomyQuality.loadQualityDashboard();
         })
         .catch(function (err) {
+                if (err?.code === 'ABORTED') return;
             if (spinner) spinner.classList.add('d-none');
             if (errorEl) { errorEl.textContent = t('relations.create.error', err.message); errorEl.classList.remove('d-none'); }
         });
@@ -344,13 +345,14 @@
     /* ------------------------------------------------------------------ */
     function deleteRelation(id) {
         if (!confirm(t('relations.delete.confirm'))) return;
-        fetch('/api/relations/' + id, { method: 'DELETE' })
+        window.TaxonomyRelationsApi.deleteLegacy(id)
             .then(function (r) {
                 if (!r.ok) throw new Error('Failed');
                 loadRelations();
                 if (window.TaxonomyQuality) window.TaxonomyQuality.loadQualityDashboard();
             })
-            .catch(function () {
+            .catch(function (error) {
+                if (error?.code === 'ABORTED') return;
                 var content = document.getElementById('relationsTableContainer');
                 if (content) {
                     var errDiv = document.createElement('div');
@@ -395,16 +397,18 @@
 
         var maxHops = document.getElementById('graphMaxHops') ? parseInt(document.getElementById('graphMaxHops').value, 10) : 2;
 
+        var isCurrent = window.TaxonomyApiClient.captureContext();
         try {
             var context = await AnalysisApi.captureContext();
-            if (!graph.isCurrentResult(sequence)) return;
+            if (!isCurrent() || !graph.isCurrentResult(sequence)) return;
             var data = await AnalysisApi.requirementImpact({scores:scores, businessText:businessText, maxHops:maxHops}, context);
-            if (!graph.isCurrentResult(sequence)) return;
+            if (!isCurrent() || !graph.isCurrentResult(sequence)) return;
             var current = await graph.isCurrentEvidence(context, data.evidence);
-            if (!graph.isCurrentResult(sequence)) return;
+            if (!isCurrent() || !graph.isCurrentResult(sequence)) return;
             if (!current) throw new Error(t('graph.evidence.changed'));
             renderImpactResults(data);
         } catch (error) {
+            if (!isCurrent() || error.code === 'ABORTED') return;
             if (graph.isCurrentResult(sequence)) area.innerHTML = '<div class="text-danger small p-2" role="alert">'
                 + escapeHtml(error.message) + '</div>';
         }

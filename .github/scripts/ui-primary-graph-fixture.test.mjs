@@ -1,11 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
+import { usingComparisonBranch } from './ui-primary-version-workflow.mjs';
 import { seedSavedGraph, removeSavedGraph } from './ui-primary-basic-workflows.mjs';
 
 const privateCommit = 'a'.repeat(40), publishedCommit = 'c'.repeat(40);
 const repositoryId = 'fixture-repository', workspaceId = 'fixture-workspace', workspaceBranch = 'actual-private-branch';
 function fixture(overrides = {}) {
   const requests = [];
+  const branch = overrides.branch ?? 'qa-isolated';
   const catalogue = [{code:'CR',children:[{code:'CR-321',nameEn:'Catalogue "service"'}]},
     {code:'BP',children:[{code:'BP-654',nameEn:'Catalogue process'}]}];
   const persisted = new Map([['active-workspace/qa-isolated','unrelated-private-head']]);
@@ -20,50 +24,50 @@ function fixture(overrides = {}) {
     assert.equal(selected.get('repositoryId'),repositoryId);
     return {selected,selectedWorkspace,key:(selectedWorkspace||'central')+'/'+selected.get('branch')};
   };
-  const centralState = () => ({repositoryId,workspaceId:null,branch:'qa-isolated',
-    currentHeadCommit:persisted.get('central/qa-isolated')});
+  const centralState = () => ({repositoryId,workspaceId:null,branch,
+    currentHeadCommit:persisted.get('central/'+branch)});
   const api = {
     get:async(url,options)=>{
       requests.push({method:'GET',url,options});
-      if(url==='/api/taxonomy') return response(overrides.catalogue??catalogue);
-      assert.ok(url.startsWith('/api/architecture/relations/projection/readiness?'));
+      if(url==='taxonomy') return response(overrides.catalogue??catalogue);
+      assert.ok(url.startsWith('architecture/relations/projection/readiness?'));
       assert.equal(scope(url,options).selectedWorkspace,'');
       return response({...centralState(),...overrides.readiness});
     },
     post:async(url,options)=>{
       requests.push({method:'POST',url,options});
-      if(url==='/api/repositories') {
+      if(url==='repositories') {
         assert.equal(options.data.visibility,'PUBLIC');
-        assert.equal(options.data.defaultBranch,'qa-isolated');
-        persisted.set('central/qa-isolated','b'.repeat(40));
+        assert.equal(options.data.defaultBranch,branch);
+        persisted.set('central/'+branch,'b'.repeat(40));
         return response({repositoryId});
       }
       const selected = scope(url,options);
-      if(url.startsWith('/api/architecture/editor/workspaces?')) {
+      if(url.startsWith('architecture/editor/workspaces?')) {
         assert.equal(selected.selectedWorkspace,'');
         assert.equal(options.data.repositoryId,repositoryId);
-        assert.equal(options.data.branch,'qa-isolated');
+        assert.equal(options.data.branch,branch);
         workspaces.add(workspaceId);
         persisted.set(workspaceId+'/'+workspaceBranch,'b'.repeat(40));
         return response({workspaceId,currentBranch:workspaceBranch,provisioningStatus:'READY',
-          sourceRepositoryId:repositoryId,sourceBranch:'qa-isolated'});
+          sourceRepositoryId:repositoryId,sourceBranch:branch});
       }
-      if(url.startsWith('/api/dsl/commit?')) {
+      if(url.startsWith('dsl/commit?')) {
         if(selected.selectedWorkspace==='') return response({error:'Central selection is read-only'},403);
         persisted.set(selected.key,overrides.commit??privateCommit);
         if(overrides.lostCommitResponse) return response({error:'Commit response lost after storage'},503);
         return response({valid:true,commitId:overrides.commit??privateCommit});
       }
-      if(url.startsWith('/api/workspace/publish?')) {
+      if(url.startsWith('workspace/publish?')) {
         assert.equal(selected.selectedWorkspace,workspaceId);
         assert.equal(selected.selected.get('userBranch'),workspaceBranch);
         assert.equal(persisted.get(selected.key),privateCommit);
         if(overrides.publishFailure) return response({error:'Publication failed'},409);
-        persisted.set('central/qa-isolated',publishedCommit);
+        persisted.set('central/'+branch,publishedCommit);
         if(overrides.lostPublishResponse) return response({error:'Publication response lost after storage'},503);
         return response({success:true,mergeCommit:overrides.publishedCommit??publishedCommit});
       }
-      assert.ok(url.startsWith('/api/architecture/relations/projection/rebuild?'));
+      assert.ok(url.startsWith('architecture/relations/projection/rebuild?'));
       assert.equal(selected.selectedWorkspace,'');
       if(options.headers['If-Match']!=='"'+persisted.get(selected.key)+'"')
         return response({operationStatus:'PRECONDITION_FAILED',actualHeadCommit:persisted.get(selected.key)??null},412);
@@ -72,7 +76,7 @@ function fixture(overrides = {}) {
     },
     delete:async(url,options)=>{
       requests.push({method:'DELETE',url,options});
-      assert.ok(url.startsWith('/api/workspace/'+workspaceId+'?'));
+      assert.ok(url.startsWith('workspace/'+workspaceId+'?'));
       assert.equal(scope(url,options).selectedWorkspace,workspaceId);
       assert.equal(workspaces.delete(workspaceId),true);
       for(const key of persisted.keys()) if(key.startsWith(workspaceId+'/')) persisted.delete(key);
@@ -94,7 +98,7 @@ test('graph fixture publishes a private catalogue model and rebuilds the returne
   assert.deepEqual(captured,[{repositoryId,branch:'qa-isolated'},{repositoryId,branch:'qa-isolated',workspaceId}]);
   const writes=f.requests.filter(request=>request.method==='POST');
   assert.equal(writes.length,5);
-  const save=writes.find(request=>request.url.startsWith('/api/dsl/commit?'));
+  const save=writes.find(request=>request.url.startsWith('dsl/commit?'));
   assert.ok(save.options.data.includes('title: '+JSON.stringify('Catalogue "service"')+';\n'));
   assert.match(save.options.data,/relation CR-321 SUPPORTS BP-654 \{\n  status: accepted;\n\}/);
   const privateScope=new URL(save.url,'https://example.test').searchParams;
@@ -129,19 +133,19 @@ test('missing real catalogue nodes prevent graph fixture writes',async()=>{
 test('an invalid private commit never reaches publication',async()=>{
   const f=fixture({commit:'invented'});
   await assert.rejects(seedSavedGraph(f.api,'qa-isolated'),/not persisted/);
-  assert.equal(f.requests.some(request=>request.url.startsWith('/api/workspace/publish?')),false);
+  assert.equal(f.requests.some(request=>request.url.startsWith('workspace/publish?')),false);
 });
 
 test('an invalid publication commit never reaches central projection recovery',async()=>{
   const f=fixture({publishedCommit:'invented'});
   await assert.rejects(seedSavedGraph(f.api,'qa-isolated'),/publication was not persisted/);
-  assert.equal(f.requests.some(request=>request.url.startsWith('/api/architecture/relations/')),false);
+  assert.equal(f.requests.some(request=>request.url.startsWith('architecture/relations/')),false);
 });
 
 test('a different central head cannot be silently adopted for the saved graph',async()=>{
   const f=fixture({readiness:{currentHeadCommit:'e'.repeat(40)}});
   await assert.rejects(seedSavedGraph(f.api,'qa-isolated'),/not the selected central head/);
-  assert.equal(f.requests.some(request=>request.url.startsWith('/api/architecture/relations/projection/rebuild?')),false);
+  assert.equal(f.requests.some(request=>request.url.startsWith('architecture/relations/projection/rebuild?')),false);
 });
 
 for(const failure of [{projection:{readinessState:'STALE'}},{lostCommitResponse:true},
@@ -169,3 +173,98 @@ test('cleanup requires the exact owned resource and makes no central deletion re
   await removeSavedGraph(f.api,{repositoryId,branch:'qa-isolated'});
   assert.equal(f.requests.length,0);
 });
+
+
+const workflowSource = await readFile(new URL('./ui-primary-basic-workflows.mjs', import.meta.url), 'utf8');
+
+async function runScopedGraphWorkflow(basePath, {rejectProjection = false, rejectBrowser = false} = {}) {
+  const origin = 'https://taxonomy.example', requests = [], inspected = [];
+  const returnUrl = `${origin}${basePath}/?workspaceId=reader-workspace&lang=de#analyze`;
+  let currentUrl = returnUrl, disposed = false, savedFixture = fixture();
+  const window = {TaxonomyI18n: {resolveUrl: path => basePath + path},
+    location: {href: currentUrl}, TaxonomyRoleSurface: {getContext: () => ({roles: ['USER']})}};
+  const sandbox = vm.createContext({window, URL, URLSearchParams, process: {env: {}},
+    document: {getElementById: () => ({textContent: publishedCommit})},
+    basicAuthorization: () => 'Basic fixture-admin', ROLE_ACCOUNTS: {ADMIN: {password: 'fixture'}},
+    usingComparisonBranch, navigateToPage: async () => {},
+    request: {newContext: async options => {
+      async function perform(method, path, init = {}) {
+        const url = new URL(path, options.baseURL);
+        const headers = new Headers({...options.extraHTTPHeaders, ...init.headers});
+        const workspace = url.searchParams.has('workspaceId') ? url.searchParams.get('workspaceId')
+          : headers.has('X-Taxonomy-Workspace-Id') ? headers.get('X-Taxonomy-Workspace-Id') : 'admin-private';
+        requests.push({method, url, headers, workspace});
+        assert.ok(url.pathname.startsWith(basePath + '/api/'), 'Every fixture request must retain its application prefix');
+        const endpoint = url.pathname.slice((basePath + '/api/').length);
+        if (endpoint === 'repositories' && method === 'POST') savedFixture = fixture({branch: init.data.defaultBranch});
+        if (endpoint.endsWith('/projection/rebuild') && rejectProjection)
+          return {ok: () => false, status: () => 412, text: async () => 'Expected head changed'};
+        return savedFixture.api[method.toLowerCase()](endpoint + url.search, {...init,
+          headers: {...options.extraHTTPHeaders, ...init.headers}});
+      }
+      return {get: (url, init) => perform('GET', url, init), post: (url, init) => perform('POST', url, init),
+        delete: (url, init) => perform('DELETE', url, init), dispose: async () => {disposed = true;}};
+    }}
+  });
+  vm.runInContext(workflowSource.replace(/^import .*;\n/gm, '').replace(/^export /gm, ''), sandbox);
+  // Exercise the real HTTP producer, selected URL and cleanup; native acceptance
+  // independently retains graph rendering, accepted evidence and keyboard focus.
+  sandbox.verifySelectedGraphEntry = async (_workflow, saved) => {
+    inspected.push(saved);
+    if (rejectBrowser) throw new Error('Graph rendering failed');
+  };
+  const page = {url: () => currentUrl,
+    evaluate: async callback => callback(),
+    goto: async url => {currentUrl = url; window.location.href = url;},
+    locator: () => ({waitFor: async () => {}}),
+    waitForFunction: async (callback, argument) => {assert.ok(callback(argument));}};
+  let error;
+  try {await sandbox.verifyGraphEntry({page});} catch (caught) {error = caught;}
+  return {requests, savedFixture, inspected, currentUrl, returnUrl, disposed, error};
+}
+
+for (const basePath of ['', '/taxonomy', '/teams/blue/taxonomy']) {
+  test(`the real graph workflow publishes and cleans its private working copy at ${basePath || '/'}`, async () => {
+    const result = await runScopedGraphWorkflow(basePath);
+    assert.equal(result.error, undefined, 'The authorized private publication must preserve its application prefix');
+    assert.equal(result.inspected.length, 1);
+    assert.equal(result.inspected[0].commit, publishedCommit);
+    assert.notEqual(result.inspected[0].commit, privateCommit);
+    assert.equal(result.inspected[0].workspaceScopeKey, '__shared__');
+    assert.equal(result.currentUrl, result.returnUrl);
+    assert.equal(result.disposed, true);
+    assert.deepEqual([...result.savedFixture.workspaces], ['active-workspace']);
+    assert.equal(result.savedFixture.persisted.get('active-workspace/qa-isolated'), 'unrelated-private-head');
+    assert.equal(result.savedFixture.persisted.get('central/'+result.inspected[0].branch), publishedCommit);
+    for (const request of result.requests) {
+      assert.ok(request.url.pathname.startsWith(basePath + '/api/'));
+      if (request.url.pathname.endsWith('/api/dsl/commit') || request.url.pathname.endsWith('/api/workspace/publish')
+          || request.method === 'DELETE') {
+        assert.equal(request.workspace, workspaceId, 'Only the owned private working copy may be mutated or deleted');
+        assert.equal(request.headers.get('X-Taxonomy-Workspace-Id'), workspaceId);
+        assert.equal(request.url.searchParams.get('repositoryId'), repositoryId);
+      }
+      if (request.url.pathname.includes('/projection/')) {
+        assert.equal(request.workspace, '');
+        assert.equal(request.headers.get('X-Taxonomy-Workspace-Id'), '');
+        assert.equal(request.url.searchParams.get('repositoryId'), repositoryId);
+      }
+    }
+  });
+}
+
+for (const failure of [{rejectProjection: true}, {rejectBrowser: true}]) {
+  test('failed graph setup or rendering still removes only its owned private working copy '+JSON.stringify(failure), async () => {
+    const result = await runScopedGraphWorkflow('/taxonomy', failure);
+    assert.match(String(result.error), failure.rejectProjection ? /412/ : /Graph rendering failed/);
+    assert.equal(result.currentUrl, result.returnUrl);
+    assert.equal(result.disposed, true);
+    assert.deepEqual([...result.savedFixture.workspaces], ['active-workspace']);
+    assert.equal(result.savedFixture.persisted.get('active-workspace/qa-isolated'), 'unrelated-private-head');
+    const cleanup = result.requests.filter(request => request.method === 'DELETE');
+    assert.equal(cleanup.length, 1);
+    assert.equal(cleanup[0].url.pathname, '/taxonomy/api/workspace/'+workspaceId);
+    assert.equal(cleanup[0].workspace, workspaceId);
+    assert.equal(cleanup[0].url.searchParams.get('repositoryId'), repositoryId);
+  });
+}

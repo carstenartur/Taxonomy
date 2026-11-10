@@ -7,6 +7,13 @@
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     var escapeHtml = TaxonomyUtils.escapeHtml;
+    var panelRequests = Object.create(null);
+    function beginPanelRequest(panelId) {
+        var sequence = (panelRequests[panelId] || 0) + 1;
+        panelRequests[panelId] = sequence;
+        var context = window.TaxonomyApiClient.captureContext();
+        return function () { return panelRequests[panelId] === sequence && context(); };
+    }
 
     // Layer label lookup for human-readable display of 2-letter taxonomy roots
     var LAYER_LABELS = {
@@ -171,6 +178,7 @@
         } catch (_) { label.textContent = t('analysis.evidence.selectVersion'); }
     }
     async function runGapAnalysis() {
+        var isCurrent = beginPanelRequest('gapAnalysisContent');
         var ticket = ++assessmentTickets.gap;
         liveAssessments.gap = {pending:true};
         showPanelLoading('gapAnalysisContent');
@@ -178,17 +186,18 @@
         var input;
         try {
             input = await assessmentInput();
-            if (!await assessmentCurrent(input) || ticket !== assessmentTickets.gap) throw new Error(t('analysis.evidence.selectionChanged'));
+            if (!await assessmentCurrent(input) || !isCurrent() || ticket !== assessmentTickets.gap) throw new Error(t('analysis.evidence.selectionChanged'));
             liveAssessments.gap = input;
             var data = await window.AnalysisApi.analyzeGap(input.body, input.context);
             var current = await assessmentCurrent(input);
-            if (ticket === assessmentTickets.gap) {
+            if (isCurrent() && ticket === assessmentTickets.gap) {
                 if (current) { requireAssessmentProof(input, data); renderGapAnalysis(data, {live:input}); }
                 else showPanelError('gapAnalysisContent', t('analysis.evidence.selectionChanged'));
             }
         } catch (error) {
+            if (!isCurrent() || error.code === 'ABORTED') return;
             var current = !input || await assessmentCurrent(input);
-            if (ticket === assessmentTickets.gap)
+            if (isCurrent() && ticket === assessmentTickets.gap)
                 showPanelError('gapAnalysisContent', current
                     ? t('analyze.gap.failed', error.message) : t('analysis.evidence.selectionChanged'));
         }
@@ -239,6 +248,7 @@
             showPanelError('patternDetectionContent', t('analyze.scores.required'));
             return;
         }
+        var isCurrent = beginPanelRequest('patternDetectionContent');
         var ticket = ++assessmentTickets.pattern, input;
         liveAssessments.pattern = {pending:true};
         showPanelLoading('patternDetectionContent');
@@ -248,17 +258,18 @@
         try {
             var body = {scores:Object.assign({}, getCurrentScores()), minScore:50, businessText:getBusinessText()};
             input = {body:body, context:await window.AnalysisApi.captureContext()};
-            if (!await assessmentCurrent(input) || ticket !== assessmentTickets.pattern) throw new Error(t('analysis.evidence.selectionChanged'));
+            if (!await assessmentCurrent(input) || !isCurrent() || ticket !== assessmentTickets.pattern) throw new Error(t('analysis.evidence.selectionChanged'));
             liveAssessments.pattern = input;
             var data = await window.AnalysisApi.detectPatterns({scores:body.scores, minScore:body.minScore}, input.context);
             var current = await assessmentCurrent(input);
-            if (ticket === assessmentTickets.pattern) {
+            if (isCurrent() && ticket === assessmentTickets.pattern) {
                 if (current) { requirePatternProof(input, data?.evidence); renderPatternDetection(data, {live:input}); }
                 else showPanelError('patternDetectionContent', t('analysis.evidence.selectionChanged'));
             }
         } catch (error) {
+            if (!isCurrent() || error.code === 'ABORTED') return;
             var current = !input || await assessmentCurrent(input);
-            if (ticket === assessmentTickets.pattern)
+            if (isCurrent() && ticket === assessmentTickets.pattern)
                 showPanelError('patternDetectionContent', current
                     ? t('analyze.patterns.failed', error.message) : t('analysis.evidence.selectionChanged'));
         }
@@ -363,23 +374,25 @@
     async function runRecommendation() {
         if (warnAboutOpenAssessments('recommendationContent')) return;
         if (!hasScores()) { showPanelError('recommendationContent', t('analyze.scores.required')); return; }
+        var isCurrent = beginPanelRequest('recommendationContent');
         var ticket = ++assessmentTickets.recommendation, input;
         liveAssessments.recommendation = {pending:true};
         showPanelLoading('recommendationContent');
         var panel = document.getElementById('recommendationPanel'); if (panel) panel.open = true;
         try {
             input = await assessmentInput({scores:getCurrentScores(), minScore:50});
-            if (!await assessmentCurrent(input) || ticket !== assessmentTickets.recommendation) throw new Error(t('analysis.evidence.selectionChanged'));
+            if (!await assessmentCurrent(input) || !isCurrent() || ticket !== assessmentTickets.recommendation) throw new Error(t('analysis.evidence.selectionChanged'));
             liveAssessments.recommendation = input;
             var data = await window.AnalysisApi.recommend(input.body, input.context);
             var current = await assessmentCurrent(input);
-            if (ticket === assessmentTickets.recommendation) {
+            if (isCurrent() && ticket === assessmentTickets.recommendation) {
                 if (current) { requireAssessmentProof(input, data?.gapAnalysis); renderRecommendation(data, {live:input}); }
                 else showPanelError('recommendationContent', t('analysis.evidence.selectionChanged'));
             }
         } catch (error) {
+            if (!isCurrent() || error.code === 'ABORTED') return;
             var current = !input || await assessmentCurrent(input);
-            if (ticket === assessmentTickets.recommendation)
+            if (isCurrent() && ticket === assessmentTickets.recommendation)
                 showPanelError('recommendationContent', current
                     ? t('analyze.recommendation.failed', error.message) : t('analysis.evidence.selectionChanged'));
         }
@@ -500,20 +513,23 @@
                 t('analyze.graph.enriched.analyzing') + '</div>';
         }
 
+        var isCurrent = beginPanelRequest('graphResultsContent');
         var selectedContext;
         window.AnalysisApi.captureContext().then(function (context) {
+                if (!isCurrent() || !graph.isCurrentResult(sequence)) { var stale = new Error('Analysis context changed'); stale.code = 'ABORTED'; throw stale; }
                 selectedContext = context;
                 return window.AnalysisApi.enrichedFailureImpact(code, maxHops, context);
             })
             .then(async function (data) {
                 var current = await graph.isCurrentEvidence(selectedContext, data.evidence);
-                if (content && graph.isCurrentResult(sequence)) {
+                if (content && isCurrent() && graph.isCurrentResult(sequence)) {
                     content.innerHTML = current ? renderEnrichedFailureImpact(data)
                         : '<div class="alert alert-warning py-1 px-2 small mb-0">' + t('graph.evidence.changed') + '</div>';
                 }
             })
             .catch(function (err) {
-                if (content && graph.isCurrentResult(sequence)) {
+                if (err.code === 'ABORTED') return;
+                if (content && isCurrent() && graph.isCurrentResult(sequence)) {
                     content.innerHTML = '<div class="alert alert-warning py-1 px-2 small mb-0">' + t('analyze.graph.enriched.failed', escapeHtml(err.message)) + '</div>';
                 }
             });
@@ -616,9 +632,10 @@
             statusEl.style.display = '';
         }
 
+        var isCurrent = beginPanelRequest('archiMateImportStatus');
         window.ImportApi.importArchiMate(formData)
         .then(function (data) {
-            if (statusEl) {
+            if (statusEl && isCurrent()) {
                 var html = '<div class="alert alert-success py-1 px-2 small mb-0">';
                 html += t('analyze.import.success', (data.elementsImported || 0), (data.relationsImported || 0));
                 if (data.notes && data.notes.length > 0) {
@@ -629,7 +646,7 @@
             }
         })
         .catch(function (err) {
-            if (statusEl) {
+            if (statusEl && isCurrent()) {
                 statusEl.innerHTML = '<div class="alert alert-danger py-1 px-2 small mb-0">' + t('analyze.import.failed', escapeHtml(err.message)) + '</div>';
             }
         });
@@ -714,6 +731,7 @@
 
     async function continueCopilotFlow() {
         var results = {};
+        var isCurrent = beginPanelRequest('copilotContent');
         var ticket = ++assessmentTickets.copilot;
         liveAssessments.copilot = {pending:true};
         var recovery = window.TaxonomyAnalysisRecovery;
@@ -721,7 +739,8 @@
         async function step(key, label, request, render, panelId) {
             showCopilotStep(label);
             var execute = async function () {
-                if (!await assessmentCurrent(input) || ticket !== assessmentTickets.copilot) throw new Error(t('analysis.evidence.selectionChanged'));
+                if (!isCurrent()) { var stale = new Error('Analysis context changed'); stale.code = 'ABORTED'; throw stale; }
+                if (!await assessmentCurrent(input) || !isCurrent() || ticket !== assessmentTickets.copilot) throw new Error(t('analysis.evidence.selectionChanged'));
                 var result = await request();
                 if (!result || typeof result !== 'object' || Array.isArray(result)) {
                     throw new Error('Invalid Copilot response');
@@ -729,7 +748,8 @@
                 return result;
             };
             var data = recovery ? await recovery.stage(key, execute, label) : await execute();
-            if (!await assessmentCurrent(input) || ticket !== assessmentTickets.copilot) throw new Error(t('analysis.evidence.selectionChanged'));
+            if (!isCurrent()) { var stale = new Error('Analysis context changed'); stale.code = 'ABORTED'; throw stale; }
+            if (!await assessmentCurrent(input) || !isCurrent() || ticket !== assessmentTickets.copilot) throw new Error(t('analysis.evidence.selectionChanged'));
             if (key === 'gap') requireAssessmentProof(input, data);
             if (key === 'patterns') requirePatternProof(input, data.evidence);
             if (key === 'recommendation') requireAssessmentProof(input, data?.gapAnalysis);
@@ -753,9 +773,9 @@
             renderCopilotSummary(results, {live:input});
             return results;
         } catch (err) {
-            if (ticket === assessmentTickets.copilot) showCopilotStatus('danger', t('analyze.copilot.failed', err.message));
+            if (isCurrent() && ticket === assessmentTickets.copilot && err.code !== 'ABORTED') showCopilotStatus('danger', t('analyze.copilot.failed', err.message));
             if (recovery && recovery.isManaged()) throw err;
-        } finally { resetCopilotBtn(); }
+        } finally { if (isCurrent()) resetCopilotBtn(); }
     }
 
     function renderPartialCopilot(message) {

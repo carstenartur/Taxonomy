@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Background mass indexing may use the globally registered fixture while its own index is built. */
+/** A shared fixture must pair each authored vector and model tag on the same caller thread. */
 class EmbeddingFixtureThreadIsolationTest {
     @Test void anotherIndexingThreadCannotRetagTheVectorAwaitingItsModelIdentity() throws Exception {
         var embeddings = new EmbeddingModelKnnIsolationTest.FixtureEmbeddingService();

@@ -1,3 +1,4 @@
+import canonicalFixture from './canonical-api-fixture.cjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -58,16 +59,26 @@ function harness(language = 'en') {
     const architecture = () => ({repositoryId:'model-a',workspaceScopeKey:runtime.workspaceId,branch:'draft',commit:'a'.repeat(40)});
     window.TaxonomyAppChrome={getContext:()=>({architecture:architecture()})};
     window.TaxonomyArchitectureLifecycle={ready:async()=>({context:architecture()}),state:()=>({context:architecture()}),selectedContext:architecture};
-    window.TaxonomyApiClient={getJson:async()=>[{id:'compatibility',version:'1.0.0'}],
-      sendJson:async(url,body)=>{const path=new URL(url,'https://fixture.test').pathname;derivedRequests.push(path);derivedBodies.push(body);
-        const proof={...architecture(),workspaceId:runtime.workspaceId,commitId:'a'.repeat(40),businessText:body.businessText,
-          profileId:body.profileId,profileVersion:body.profileVersion,metamodelVersion:'1.0.0',
-          evidenceAuthority:'CANONICAL_SNAPSHOT',evidenceCompleteness:body.evidenceCompleteness,totalGaps:0,totalAnchors:1,judgments:[]};
-        if(path==='/api/patterns/detect')return {evidence:{...architecture(),workspaceId:runtime.workspaceId,commitId:'a'.repeat(40),
-          evidenceAuthority:'CANONICAL_SNAPSHOT',readAuthority:'GIT_BRANCH_PROJECTION',readinessState:'READY',templateVersion:'1.0.0',
-          minimumScore:body.minScore,eligibleAnchors:0,completeness:'NOT_EVALUATED_NO_ANCHORS'},patternCoverage:null,matchedPatterns:[],incompletePatterns:[]};
-        return path==='/api/recommend'?{gapAnalysis:proof,matchedElements:[],acceptedElements:[],meanRelevance:null}:proof;}};
-    vm.runInNewContext(analysisApiSource,context);
+    context.fetch = async (url, init) => {
+      const selected = new URL(url, 'https://fixture.test');
+      const path = selected.pathname;
+      if (path === '/api/gap/profiles') return Response.json([{id:'compatibility',version:'1.0.0'}]);
+      const body = JSON.parse(init.body);
+      derivedRequests.push(path); derivedBodies.push(body);
+      assert.equal(selected.searchParams.get('repositoryId'), 'model-a');
+      assert.equal(selected.searchParams.get('workspaceId'), runtime.workspaceId);
+      assert.equal(selected.searchParams.get('branch'), 'draft');
+      assert.equal(selected.searchParams.get('commitId'), 'a'.repeat(40));
+      assert.equal(new Headers(init.headers).get('X-Taxonomy-Workspace-Id'), runtime.workspaceId);
+      const proof={...architecture(),workspaceId:runtime.workspaceId,commitId:'a'.repeat(40),businessText:body.businessText,
+        profileId:body.profileId,profileVersion:body.profileVersion,metamodelVersion:'1.0.0',
+        evidenceAuthority:'CANONICAL_SNAPSHOT',evidenceCompleteness:body.evidenceCompleteness,totalGaps:0,totalAnchors:1,judgments:[]};
+      if(path==='/api/patterns/detect') return Response.json({evidence:{...architecture(),workspaceId:runtime.workspaceId,commitId:'a'.repeat(40),
+        evidenceAuthority:'CANONICAL_SNAPSHOT',readAuthority:'GIT_BRANCH_PROJECTION',readinessState:'READY',templateVersion:'1.0.0',
+        minimumScore:body.minScore,eligibleAnchors:0,completeness:'NOT_EVALUATED_NO_ANCHORS'},patternCoverage:null,matchedPatterns:[],incompletePatterns:[]});
+      return Response.json(path==='/api/recommend'?{gapAnalysis:proof,matchedElements:[],acceptedElements:[],meanRelevance:null}:proof);
+    };
+    canonicalFixture.install(context, ['api/analysis-api.js', 'api/import-api.js']);
     vm.runInNewContext(analysisSource,context);
   }
   function loadRelationsExtension() {
@@ -776,7 +787,7 @@ for (const change of ['raw score','effective score','reason','new assessment']) 
 
 // Reload the real versioned draft lifecycle, not a copy of the recovery module's
 // private state. The provider request remains pending in the page being left.
-function persistedRecovery(shared = {}) {
+function persistedRecovery(shared = {}, admissionReady = true) {
  const copy = value => JSON.parse(JSON.stringify(value));
  const selected = {taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'};
  const id = '5da958bf-e34c-4320-a036-ae0f794789dc';
@@ -791,7 +802,7 @@ function persistedRecovery(shared = {}) {
   shared.snapshot={request,recovery:paused.recovery,result:paused};
   shared.storage=new Map([['taxonomy.recovery.active.v1',JSON.stringify({id,workspaceId:'ws-a'})]]);
  }
- const listeners=new Map(), timers=new Map(), fields={}, analyses=[];let sequence=0, options=[];
+ const listeners=new Map(), timers=new Map(), fields={}, analyses=[], requests=[];let sequence=0, options=[];
  for(const name of ['businessText','copilotBtn','analyzeBtn','providerSelect','analysisRelationsExtension',
   'extendAnalysisRelationsBtn','analysisRelationsExtensionHint']) fields[name]=Object.assign(node(),{dataset:{}});
  fields.businessText.value=shared.draft?'':'Hospital communications';fields.providerSelect.value='CUSTOM_OPENAI';
@@ -806,6 +817,7 @@ function persistedRecovery(shared = {}) {
   TaxonomyAnalysisScope:{read:()=>selected,acceptResult(){},restrictsGlobalAnalysis:()=>true},
   setTimeout(fn){timers.set(++sequence,fn);return sequence;},clearTimeout:key=>timers.delete(key),
   TaxonomyAnalysisSessionApi:{async request(url,configuration={}){
+   requests.push({url,method:configuration.method || 'GET'});
    if(url.startsWith('/api/analysis-drafts/')) {
     if(configuration.method==='PUT') {
      const body=JSON.parse(configuration.body);
@@ -824,11 +836,13 @@ function persistedRecovery(shared = {}) {
   CustomEvent:class {constructor(type,configuration={}){this.type=type;this.detail=configuration.detail;}}});
  const load=name=>vm.runInContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/'+name,import.meta.url),'utf8'),context);
  load('taxonomy-analysis-session-core.js');const C=window.__TaxonomyAnalysisSessionContext;
- C.runtime.workspaceId='ws-a';C.runtime.analysisGeneration=0;C.showActionAlert=()=>{};
+ C.runtime.workspaceId='ws-a';C.runtime.analysisGeneration=0;C.runtime.sourceReady=admissionReady;C.showActionAlert=()=>{};
  load('taxonomy-analysis-session-draft.js');
- window.TaxonomyAnalysisSession={state:()=>({ready:true,workspaceId:C.runtime.workspaceId}),saveNow:()=>C.saveDraft()};
+ window.TaxonomyAnalysisSession={state:()=>({ready:C.runtime.sourceReady,workspaceId:C.runtime.workspaceId}),saveNow:()=>C.saveDraft()};
+ if(!admissionReady)window.TaxonomyAnalysisSessionReady=Promise.resolve(true);
  load('taxonomy-analysis-recovery.js');load('taxonomy-relations-extension.js');
- return {S,C,window,fields,analyses,shared,
+ return {S,C,window,fields,analyses,shared,requests,
+  sourceReady(){C.runtime.sourceReady=true;document.dispatchEvent({type:'taxonomy:analysis-source-ready',detail:{workspaceId:C.runtime.workspaceId}});},
   async restore(){if(shared.draft)await C.loadDraft();else document.dispatchEvent({type:'taxonomy:analysis-draft-restored'});await settle();},
   retry(){window.TaxonomyAnalysisRecovery.open();options.find(option=>option.id==='analysisRecoveryRetry').handler();},
   running(){shared.snapshot={...shared.snapshot,recovery:{...shared.snapshot.recovery,state:'RUNNING',version:8}};},
@@ -913,3 +927,33 @@ for(const variant of ['matching same revision','edited same revision','newer rev
   assert.equal(after.eligible(),variant==='matching same revision');
  });
 }
+
+
+test('a persisted durable operation restores after source confirmation following the draft-only startup promise', async () => {
+ const h=persistedRecovery({},false);
+ await h.restore();
+ assert.equal(h.S.recoveryContext,undefined);assert.equal(h.requests.length,0);
+ h.sourceReady();await settle();
+ assert.equal(h.S.analysisRecovery?.state,'PAUSED');
+ assert.equal(h.S.currentScores.CP,75);
+ assert.ok(h.requests.some(request=>request.url.startsWith('/api/analysis-continuations/')));
+ assert.equal(h.analyses.length,0,'Source readiness only observes existing durable work');
+});
+
+test('retained node-only relation controls recompute eligibility when source readiness changes',()=>{
+ const listeners=new Map(), fields={};
+ for(const id of ['analysisRelationsExtension','extendAnalysisRelationsBtn','analysisRelationsExtensionHint','businessText'])fields[id]=node();
+ fields.businessText.value='Retained text';
+ let ready=false, starts=0;
+ const S={lastAnalysisScope:{mode:'TAXONOMIES_ONLY'},recoveryContext:{workspaceId:'ws-a',request:{businessText:'Retained text',analysisScope:{mode:'TAXONOMIES_ONLY'}}},analysisRecovery:{state:'COMPLETED',version:3}};
+ const window={__TaxonomyAnalysisSessionContext:{S,runtime:{workspaceId:'ws-a'},language:()=> 'en'},
+  TaxonomyAnalysisSession:{state:()=>({ready})},TaxonomyAnalysisRecovery:{nodeEvidenceMatches:()=>true,isStatusKnown:()=>true,extendRelations:()=>starts++}};
+ const document={getElementById:id=>fields[id]||null,addEventListener(name,action){if(!listeners.has(name))listeners.set(name,[]);listeners.get(name).push(action);}};
+ vm.runInNewContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-relations-extension.js',import.meta.url),'utf8'),{window,document,Promise});
+ assert.equal(fields.extendAnalysisRelationsBtn.disabled,true);
+ ready=true;
+ for(const action of listeners.get('taxonomy:analysis-source-ready')||[])action({detail:{workspaceId:'ws-a'}});
+ assert.equal(fields.extendAnalysisRelationsBtn.disabled,false);
+ assert.equal(starts,0,'Readiness alone never starts relationship search');
+ fields.extendAnalysisRelationsBtn.fire('click');assert.equal(starts,1);
+});

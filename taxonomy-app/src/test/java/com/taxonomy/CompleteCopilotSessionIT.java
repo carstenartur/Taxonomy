@@ -321,6 +321,8 @@ class CompleteCopilotSessionIT {
                 .contains("Obligation assessment")
                 .contains("No obligations were evaluated; this is not a completeness claim.")
                 .contains("Mean relevance")
+                .contains("Recorded evidence scope: RETAINED_ANALYSIS · INCOMPLETE")
+                .contains("Candidate ranking and mean relevance use only retained effective relevance scores.")
                 .contains("Assessment matches")
                 .contains("Detected patterns")
                 .contains("Recommendation")
@@ -716,7 +718,8 @@ class CompleteCopilotSessionIT {
         fill(modal, "projectTitle", "Complete Copilot session");
         fill(modal, "projectDescription",
                 "Created by the authoritative complete-session JUnit acceptance test.");
-        modal.findElement(By.cssSelector("button[type='submit']")).click();
+        wait.until(ExpectedConditions.elementToBeClickable(
+                By.cssSelector("#projectModal button[type='submit']"))).click();
         waitForModalClosed("projectModal");
         wait.until(textPresent(By.id("selectedProjectKey"), projectKey));
     }

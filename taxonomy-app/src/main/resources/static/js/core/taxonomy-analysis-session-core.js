@@ -195,14 +195,17 @@
         }).catch(function () { return fallback; });
     }
 
-    function jsonRequest(url, options) {
+    function jsonRequest(url, options, preserveDraftReceipt) {
         var request = Object.assign({}, options || {});
         request.headers = Object.assign({}, csrfHeaders(), request.headers || {});
         var api = window.TaxonomyAnalysisSessionApi;
         if (!api || typeof api.request !== 'function') {
             return Promise.reject(new Error('Analysis session API client is not available'));
         }
-        return api.request(url, request).then(function (response) {
+        var response = preserveDraftReceipt === true
+            ? api.request(url, request, runtime.workspaceId, true)
+            : api.request(url, request);
+        return response.then(function (response) {
             if (!response.ok) {
                 return responseMessage(response, 'HTTP ' + response.status).then(function (message) {
                     var error = new Error(message);

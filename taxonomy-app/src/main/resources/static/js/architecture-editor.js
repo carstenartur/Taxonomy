@@ -250,7 +250,6 @@
     function publishContext() {
         if (!active || !view) return;
         var c = context();
-        window.TaxonomyArchitectureLifecycle?.observe(view.document, view.mayEdit);
         adoptionPanel.update(view);
         window.TaxonomyArchitectureWorkflow?.showEditor(c,adoptionPanel.getSource());
         var contextLabel = view.document.source === 'GIT_CHECKPOINT' ? t('editor.selectedVersion', short(c.commit))
@@ -258,6 +257,9 @@
         window.TaxonomyAppChrome?.updateContext({architecture:{repositoryId:c.repositoryId, workspaceScopeKey:c.workspaceScopeKey, branch:c.branch, modelStand:contextLabel,commit:c.commit,revision:c.revision}, editable:Boolean(view.mayEdit), source:adoptionPanel.getSource()}, 'working');
         el('editorContext').hidden = Boolean(window.TaxonomyAppChrome);
         el('editorContext').textContent = c.repositoryId + ' / ' + c.workspaceScopeKey + ' / ' + c.branch + ' · ' + contextLabel + ' · ' + c.actor;
+        // The overview must capture the identity just published by this editor.
+        // Later source changes still invalidate its canonical request context.
+        window.TaxonomyArchitectureLifecycle?.observe(view.document, view.mayEdit);
     }
     function render(preserveDraft) {
         renderPackages(preserveDraft);

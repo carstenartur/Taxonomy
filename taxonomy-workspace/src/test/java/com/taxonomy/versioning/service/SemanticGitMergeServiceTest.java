@@ -1,5 +1,6 @@
 package com.taxonomy.versioning.service;
 
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.storage.CommitProvenance;
@@ -31,6 +32,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -38,6 +40,73 @@ import static org.mockito.Mockito.when;
 
 class SemanticGitMergeServiceTest {
     @TempDir Path signingKeys;
+
+    @Test
+    void rejectsIncompatibleFinalTypesFromValidHeadsWithoutPublishingSemanticMerge() throws Exception {
+        String base = """
+                element arch-parent type System {
+                  title: Parent;
+                }
+                element arch-child type Component {
+                  title: Child;
+                }
+                relation arch-parent CONTAINS arch-child {
+                  status: accepted;
+                }
+                """;
+        String ours = base.replace("arch-parent type System", "arch-parent type Component");
+        String theirs = base.replace("title: Parent", "title: Reviewed")
+                .replace("arch-child type Component", "arch-child type UserApplication");
+        var commands = new ArchitectureDslCommands();
+        assertValidTypes(commands, base, "System", "Component");
+        assertValidTypes(commands, ours, "Component", "Component");
+        assertValidTypes(commands, theirs, "System", "UserApplication");
+        assertThatThrownBy(() -> commands.validateReconciledSource(
+                theirs.replace("arch-parent type System", "arch-parent type Component")))
+                .isInstanceOfSatisfying(ArchitectureDslCommands.CommandProblem.class,
+                        problem -> assertThat(problem.code()).isEqualTo("INCOMPATIBLE_RELATION"));
+        try (var repository = new DslGitRepository()) {
+            repository.commitDsl("draft", base, "system", "Valid base model");
+            repository.createBranch("ours", "draft");
+            repository.createBranch("theirs", "draft");
+            String target = repository.commitDsl("ours", ours, "alice", "Valid parent type change");
+            String source = repository.commitDsl("theirs", theirs, "bob", "Valid child and title change");
+            assertThat(repository.merge("theirs", "ours"))
+                    .as("The actual textual Git merge must require the semantic fallback").isNull();
+            assertThat(repository.getHeadCommit("ours")).isEqualTo(target);
+
+            var preview = new SemanticGitMergeService().preview(repository, "theirs", "ours");
+            assertThat(preview.semanticFallback()).isTrue();
+            assertThat(preview.success()).isTrue();
+            var candidate = preview.semanticResult().mergedText();
+            var candidateModel = commands.model(candidate);
+            assertThat(candidateModel.getElements()).extracting("id", "type").containsExactlyInAnyOrder(
+                    tuple("arch-parent", "Component"), tuple("arch-child", "UserApplication"));
+            assertThat(candidateModel.getRelations()).hasSize(1);
+            assertThatThrownBy(() -> commands.validateReconciledSource(candidate))
+                    .isInstanceOfSatisfying(ArchitectureDslCommands.CommandProblem.class,
+                            problem -> assertThat(problem.code()).isEqualTo("INCOMPATIBLE_RELATION"));
+
+            assertThatThrownBy(() -> new SemanticGitMergeService()
+                    .mergeBranches(repository, "theirs", "ours", "architect"))
+                    .isInstanceOfSatisfying(ArchitectureDslCommands.CommandProblem.class,
+                            problem -> assertThat(problem.code()).isEqualTo("INCOMPATIBLE_RELATION"));
+
+            assertThat(repository.getHeadCommit("ours")).isEqualTo(target);
+            assertThat(repository.getHeadCommit("theirs")).isEqualTo(source);
+            assertThat(repository.getDslAtHead("ours")).isEqualTo(ours);
+        }
+    }
+
+    private static void assertValidTypes(ArchitectureDslCommands commands, String source,
+                                         String parentType, String childType) {
+        var model = commands.model(source);
+        assertThat(model.getElements()).extracting("id", "type").containsExactlyInAnyOrder(
+                tuple("arch-parent", parentType), tuple("arch-child", childType));
+        assertThat(model.getRelations()).extracting("sourceId", "relationType", "targetId")
+                .containsExactly(tuple("arch-parent", "CONTAINS", "arch-child"));
+        commands.validateReconciledSource(source);
+    }
 
     @Test
     void usesRequestedMessageForOrdinaryMergeCommit() throws Exception {

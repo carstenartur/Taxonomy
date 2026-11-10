@@ -99,6 +99,7 @@ function harness(reply, locale) {
     context.window = context;
     if (locale) vm.runInContext(i18nSource, context, { filename: 'taxonomy-i18n.js' });
     vm.runInContext(transportSource, context, { filename: 'taxonomy-api-client.js' });
+    vm.runInContext(readFileSync(new URL('api/dsl-api.js', sourceRoot), 'utf8'), context, {filename:'dsl-api.js'});
     const hook = 'window.__commands = { commit: commitDsl, materialize: materializeDsl, '
         + 'incremental: materializeIncremental, branch: createBranch, merge: mergeBranch, '
         + 'cherryPick: function () { return cherryPickCommit("fixture-commit"); } };\n}());';

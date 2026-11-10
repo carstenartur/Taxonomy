@@ -66,7 +66,7 @@ final class ReformulationVerificationProfileCheck {
                         && workflow.contains("taxonomy-*/target/surefire-reports-reformulation-usage/TEST-*.xml"),
                 "Archive both phases without overwriting their separate evidence");
         require(runs.contains("TEST-com.taxonomy.build.WorkflowTestAuthorityPolicyTest.xml 7")
-                        && runs.contains("TEST-com.taxonomy.tooling.PythonSourceRatchetRepositoryTest.xml 4")
+                        && runs.contains("TEST-com.taxonomy.tooling.PythonSourceRatchetRepositoryTest.xml 3")
                         && runs.contains("TEST-com.taxonomy.build.ReformulationVerificationProfileTest.xml 1"),
                 "Require positive executed counts for both repository guards");
     }

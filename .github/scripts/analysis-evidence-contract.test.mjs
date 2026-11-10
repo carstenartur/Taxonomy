@@ -1,4 +1,6 @@
-import test from 'node:test';
+import canonicalFixture from './canonical-api-fixture.cjs';
+import test, {afterEach} from 'node:test';
+afterEach(() => canonicalFixture.dispose());
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
@@ -171,7 +173,11 @@ function pendingAssessmentFixture(kind='gap') {
                 return Promise.resolve({evidence:patternProof(),patternCoverage:null,matchedPatterns:[],incompletePatterns:[],notes:[]});},
             analyzeGap:(body,context)=>{request={body,context};return response;},
             recommend:(body,context)=>{request={body,context};return response;}}});
-    context.window=context;vm.runInContext(analysisSource,context);
+    context.window=context;
+    context.TaxonomyAppChrome={getContext:()=>({architecture:current})};
+    context.fetch=()=>{throw new Error('Domain evidence fixture must use its injected named assessment responses');};
+    canonicalFixture.install(context);
+    vm.runInContext(analysisSource,context);
     const proof=()=>({repositoryId:selected.repositoryId,workspaceId:null,workspaceScopeKey:selected.workspaceScopeKey,
         branch:selected.branch,commitId:selected.commit,profileId:'service-support',profileVersion:'7',metamodelVersion:'1.0.0',
         businessText:'Authored requirement',evidenceAuthority:'CANONICAL_SNAPSHOT',evidenceCompleteness:'INCOMPLETE',judgments:[],notes:['delivered-result']});

@@ -84,9 +84,15 @@ async function ensureWorkspaceProjection(page, assert) {
 
   // Reload so a provisioning modal opened during login observes READY and cannot
   // obscure the controls exercised by the remainder of the workflow.
-  await page.reload({ waitUntil: 'networkidle' });
+  const reloadWorkspaceId = await page.evaluate(() =>
+    window.TaxonomyAnalysisSession.state().workspaceId);
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.locator('#mainContent').waitFor({ state: 'visible', timeout: 60_000 });
   await page.evaluate(() => window.TaxonomyI18n?.ready?.());
+  await page.waitForFunction(workspaceId => {
+    const session = window.TaxonomyAnalysisSession?.state?.();
+    return session?.ready === true && session.workspaceId === workspaceId;
+  }, reloadWorkspaceId, { timeout: 30_000 });
   await page.waitForFunction(
     () => Boolean(window.TaxonomyRoleSurface?.ready),
     null,
@@ -98,9 +104,9 @@ async function createPendingProposals(page, assert) {
   await ensureWorkspaceProjection(page, assert);
 
   const candidates = [
-    ['CP', 'BR', 'SUPPORTS'], ['BP', 'UA', 'DEPENDS_ON'],
-    ['CI', 'CO', 'COMMUNICATES_WITH'], ['CR', 'IP', 'PRODUCES'],
-    ['UA', 'CO', 'USES'], ['BP', 'CI', 'REALIZES']
+    ['CR', 'IP', 'PRODUCES'], ['UA', 'CO', 'USES'],
+    ['CR', 'BR', 'SUPPORTS'], ['BP', 'CI', 'USES'],
+    ['CI', 'IP', 'PRODUCES'], ['UA', 'IP', 'PRODUCES']
   ];
   const ids = [];
   const attempts = [];

@@ -1,3 +1,4 @@
+import canonicalFixture from './canonical-api-fixture.cjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -247,9 +248,9 @@ async function customAiBadge(status) {
   const window = { TaxonomyState: {}, addEventListener() {} };
   const module = browseSource.replace('window.TaxonomyBrowse = {',
     'window.TaxonomyBrowse = { checkAiStatusForTest: checkAiStatus,');
-  vm.runInNewContext(module, { window, document, TaxonomyI18n: { t: key => key },
+  vm.runInNewContext(module, canonicalFixture.install({ window, document, TaxonomyI18n: { t: key => key },
     TaxonomyUtils: { escapeHtml: value => value },
-    fetch: async () => ({ ok: true, json: async () => status }) });
+    fetch: async () => ({ ok: true, json: async () => status }) }, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']));
   window.TaxonomyBrowse.checkAiStatusForTest();
   await new Promise(resolve => setImmediate(resolve));
   return elements;
@@ -291,12 +292,12 @@ test('polling checks and retains an explicitly selected custom provider', async 
   let requestedUrl;
   const module = browseSource.replace('window.TaxonomyBrowse = {',
     'window.TaxonomyBrowse = { checkAiStatusForTest: checkAiStatus,');
-  vm.runInNewContext(module, { window, document, TaxonomyI18n: { t: key => key },
+  vm.runInNewContext(module, canonicalFixture.install({ window, document, TaxonomyI18n: { t: key => key },
     TaxonomyUtils: { escapeHtml: value => value }, fetch: async url => {
       requestedUrl = url;
       return { ok: true, json: async () => ({ available: false, connectionStatus: 'UNREACHABLE',
         availableProviders: ['OPENAI', 'CUSTOM_OPENAI'] }) };
-    } });
+    } }, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']));
   window.TaxonomyBrowse.checkAiStatusForTest();
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(requestedUrl, '/api/ai-status?provider=CUSTOM_OPENAI');
@@ -322,11 +323,11 @@ test('an older default-provider response cannot turn a selected unreachable cust
   const older = new Promise(resolve => { finishOlder = resolve; });
   const module = browseSource.replace('window.TaxonomyBrowse = {',
     'window.TaxonomyBrowse = { checkAiStatusForTest: checkAiStatus,');
-  vm.runInNewContext(module, { window, document, TaxonomyI18n: { t: key => key },
+  vm.runInNewContext(module, canonicalFixture.install({ window, document, TaxonomyI18n: { t: key => key },
     TaxonomyUtils: { escapeHtml: value => value }, fetch: async url => url.includes('CUSTOM_OPENAI')
       ? { ok: true, json: async () => ({ available: false, connectionStatus: 'UNREACHABLE',
           availableProviders: ['OPENAI', 'CUSTOM_OPENAI'] }) }
-      : older });
+      : older }, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']));
   window.TaxonomyBrowse.checkAiStatusForTest();
   select.value = 'CUSTOM_OPENAI';
   window.TaxonomyBrowse.checkAiStatusForTest();
@@ -349,9 +350,9 @@ async function adminAiHealthBadge(ai) {
       addEventListener(event, listener) { this[event] = listener; }, textContent: '', className: ''
     }]));
   const document = { getElementById: id => elements[id] };
-  vm.runInNewContext(code, { document, getAdminHeaders: () => ({}),
+  vm.runInNewContext(code, canonicalFixture.install({ document, getAdminHeaders: () => ({}),
     TaxonomyI18n: { ready: async () => {}, t: key => key },
-    fetch: async () => ({ json: async () => ({ overall: 'UP', ai, embedding: {}, memory: {} }) }) });
+    fetch: async () => ({ json: async () => ({ overall: 'UP', ai, embedding: {}, memory: {} }) }) }, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']));
   elements.healthRefreshBtn.click();
   await new Promise(resolve => setImmediate(resolve));
   return elements.healthAiBadge;
@@ -469,6 +470,7 @@ function createStatusHarness({ session = false, observers = false, draftResponse
     TaxonomyI18n: { t: key => key }, TaxonomyUtils: { escapeHtml: value => value },
     fetch: () => new Promise(() => {}), setInterval: () => {},
     setTimeout, clearTimeout, requestAnimationFrame: callback => callback() });
+  canonicalFixture.install(sandbox, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']);
   vm.runInContext(browseSource, sandbox, { filename: 'taxonomy-browse.js' });
   if (session) {
     vm.runInContext(sessionCoreSource, sandbox, { filename: 'taxonomy-analysis-session-core.js' });

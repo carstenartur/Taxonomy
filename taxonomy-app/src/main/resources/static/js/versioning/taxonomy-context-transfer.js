@@ -11,6 +11,8 @@ window.TaxonomyContextTransfer = (function () {
     'use strict';
 
     var t = TaxonomyI18n.t;
+    function ignoredError(error) { return error?.code === 'ABORTED' || error?.status === 401 || error?.status === 403; }
+
     var shownDialog = null;
 
     /**
@@ -41,16 +43,15 @@ window.TaxonomyContextTransfer = (function () {
         var selection = buildSelection();
         if (!selection) return;
 
-        fetch('/api/context/copy-back/preview', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(selection)
-        })
+        var dialog = shownDialog;
+        return window.TaxonomyVersioningApi.copyBackPreview(selection)
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (preview) {
-                if (preview) renderPreview('transferPreviewResults', preview);
+                if (dialog === shownDialog && preview) renderPreview('transferPreviewResults', preview);
             })
-            .catch(function () {
+            .catch(function (error) {
+                if (ignoredError(error)) return;
+                if (dialog !== shownDialog || ignoredError(error)) return;
                 var container = document.getElementById('transferPreviewResults');
                 if (container) container.innerHTML = '<p class="text-danger">' + t('transfer.preview.failed') + '</p>';
             });
@@ -66,13 +67,7 @@ window.TaxonomyContextTransfer = (function () {
         if (!confirm(t('transfer.apply.confirm'))) return;
 
         var dialog = shownDialog;
-        var url = '/api/context/copy-back/apply';
-        if (dialog?.contextId) url += '?expectedContextId=' + encodeURIComponent(dialog.contextId);
-        return fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(selection)
-        })
+        return window.TaxonomyVersioningApi.copyBackApply(selection, dialog?.contextId)
             .then(function (response) {
                 if (dialog !== shownDialog) return;
                 if (response.status === 409) {
@@ -91,7 +86,8 @@ window.TaxonomyContextTransfer = (function () {
                     }
                 });
             })
-            .catch(function () {
+            .catch(function (error) {
+                if (ignoredError(error)) return;
                 if (dialog === shownDialog) alert(t('transfer.apply.failed', t('error.internal')));
             });
     }

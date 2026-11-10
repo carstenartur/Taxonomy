@@ -142,7 +142,19 @@
         if(context.branch)target.searchParams.set('branch',context.branch);link.href=target.href;parts.error.appendChild(link);parts.error.focus();
     }
 
+    function capturePromotionContext() {
+        var current = window.TaxonomyApiClient.captureContext();
+        function selection() {
+            return JSON.stringify([window.location.pathname, window.location.search,
+                window.TaxonomyArchitectureWorkspace?.getSource?.()]);
+        }
+        var captured = selection();
+        return function () { return current() && selection() === captured; };
+    }
+
     async function createRequirement(projectId, values, form, options, newProject) {
+        // A retry retains its exact command while capturing the currently selected view afresh.
+        var current = capturePromotionContext();
         var payload = {
                 requirementKey: values.requirementKey,
                 title: values.title,
@@ -161,15 +173,19 @@
             var target=options?.versionTarget;
             var command=target?await window.TaxonomyRequirementIntake.prepareVersion(form,payload,projectId,target.requirementId,target.requirementVersionId,target.contentHash)
                 :await window.TaxonomyRequirementIntake.prepare(form,payload,projectId);
-            if(!command)return null;
+            if(!command || !current())return null;
             if(newProject&&(command.choice!=='NEW'||!command.projectId))command.newProject=newProject;
-            attempt={command:command,captured:await saveBeforePromotion(options)};promotionAttempts.set(form,attempt);
+            var captured=await saveBeforePromotion(options);
+            if(!current())return null;
+            attempt={command:command,captured:captured};promotionAttempts.set(form,attempt);
         }
         try {
             var saved=await window.TaxonomyArchitectureLifecycle.saveRequirement(attempt.command);
+            if(!current())return null;
             if(!['CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(saved.publication?.state))promotionAttempts.delete(form);
-            return{saved:saved,captured:attempt.captured,choice:attempt.command.choice};
+            return{saved:saved,captured:attempt.captured,choice:attempt.command.choice,current:current};
         } catch(error) {
+            if(!current() || error?.code==='ABORTED')return null;
             if([400,403,404,409,412,422].includes(error?.status))promotionAttempts.delete(form);
             throw error;
         }
@@ -182,8 +198,9 @@
             : value;
     }
 
-    function discardDraftAndNavigate(url, captured) {
+    function discardDraftAndNavigate(url, captured, current) {
         captured = captured === undefined ? comparable(currentPayload()) : captured;
+        if (current && !current()) return Promise.resolve(false);
         if (comparable(currentPayload()) !== captured) return Promise.resolve(false);
         return resetDraft().then(function (view) {
             if (!view) throw new Error(text('draftSaveFailed'));
@@ -191,6 +208,7 @@
                 queueSave(0);
                 return false;
             }
+            if (current && !current()) return false;
             invalidate({
                 keepText: false,
                 silent: true,
@@ -199,6 +217,9 @@
             });
             window.location.assign(applicationUrl(url));
             return true;
+        }).catch(function (error) {
+            if (current && !current()) return false;
+            throw error;
         });
     }
 
@@ -214,16 +235,17 @@
         });
     }
 
-    function navigateAfterPromotion(url, options, captured) {
+    function navigateAfterPromotion(url, options, captured, current) {
         if (captured !== undefined && comparable(currentPayload()) !== captured) {
             queueSave(0);
             return Promise.resolve(false);
         }
+        if (current && !current()) return Promise.resolve(false);
         if (options?.preserveDraft) {
             window.location.assign(applicationUrl(url));
             return;
         }
-        return discardDraftAndNavigate(url, captured);
+        return discardDraftAndNavigate(url, captured, current);
     }
 
     function startNewAnalysis() {
@@ -398,7 +420,7 @@
                     title: titleInput.value.trim(),
                     text: textInput.value
                 }, parts.form, options).then(function (result) {
-                    if (!result) { setDialogBusy(parts, false); return; }
+                    if (!result || !result.current()) { setDialogBusy(parts, false); return; }
                     parts.savedPending=['CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(result.saved.publication?.state);
                     if(parts.savedPending){setDialogBusy(parts,false);parts.error.textContent='';parts.error.classList.remove('d-none');window.TaxonomyArchitectureLifecycle.showPublicationRecovery(parts.error,result.saved);return;}
                     if (result.choice === 'LINK') {
@@ -412,7 +434,7 @@
                     }
                     parts.dialog.close();
                     return navigateAfterPromotion('/projects/' + encodeURIComponent(result.saved.projectId)
-                        + '/requirements/' + encodeURIComponent(result.saved.requirementId), options, result.captured);
+                        + '/requirements/' + encodeURIComponent(result.saved.requirementId), options, result.captured, result.current);
                 }).catch(function (error) {
                     parts.savedPending=promotionAttempts.has(parts.form);
                     setDialogBusy(parts, false);
@@ -486,7 +508,7 @@
             if (seed && createRequirementCheck && createRequirementCheck.checked) {
                 createRequirement(null, {requirementKey:'REQ-001',title:deriveTitle(seedTextInput.value),text:seedTextInput.value},
                     parts.form, options, projectRequest).then(function (result) {
-                    if (!result) { setDialogBusy(parts,false); return; }
+                    if (!result || !result.current()) { setDialogBusy(parts,false); return; }
                     parts.savedPending=['CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(result.saved.publication?.state);
                     if(parts.savedPending){setDialogBusy(parts,false);parts.error.textContent='';parts.error.classList.remove('d-none');window.TaxonomyArchitectureLifecycle.showPublicationRecovery(parts.error,result.saved);return;}
                     if (result.choice === 'LINK') {
@@ -498,7 +520,7 @@
                         showSavedEntry(parts,result,language()==='de'?'Der gewählte Stand wurde gespeichert. Ihre neueren Eingaben bleiben erhalten.':'The selected entry was saved. Your newer edits are retained.');return;
                     }
                     parts.dialog.close();
-                    return navigateAfterPromotion('/projects/'+encodeURIComponent(result.saved.projectId)+'/requirements/'+encodeURIComponent(result.saved.requirementId),options,result.captured);
+                    return navigateAfterPromotion('/projects/'+encodeURIComponent(result.saved.projectId)+'/requirements/'+encodeURIComponent(result.saved.requirementId),options,result.captured,result.current);
                 }).catch(function(error){parts.savedPending=promotionAttempts.has(parts.form);setDialogBusy(parts,false);showDialogError(parts,error);});
                 return;
             }
@@ -540,8 +562,55 @@
             }).catch(function(error){showActionAlert('danger',text('createFailed'),error.message,[],'version-error');return false;});
     }
 
+    var sourceRead = null, sourceNotice = null;
+    function notifySourceReady() {
+        if (!sourceNotice || sourceNotice.workspace !== runtime.workspaceId
+                || !window.TaxonomyAnalysisSession?.state?.().ready) return;
+        sourceNotice = null;
+        document.dispatchEvent(new CustomEvent('taxonomy:analysis-source-ready', {
+            detail: {workspaceId: runtime.workspaceId}
+        }));
+        window.TaxonomyOnboarding?.syncTaskProgress?.();
+    }
+    function confirmInitialSource(retry) {
+        if (runtime.sourceReady !== false || !runtime.workspaceResolved) {
+            if (runtime.workspaceResolved) notifySourceReady();
+            return Promise.resolve(true);
+        }
+        var workspace = runtime.workspaceId;
+        if (sourceRead && sourceRead.workspace === workspace) return sourceRead.promise;
+        var task = {workspace:workspace};
+        sourceRead = task;
+        // These initial publications change the same source identity captured by
+        // the canonical transport. Finish them before admitting an analysis,
+        // rather than letting an initial context read revoke its full response.
+        task.promise = Promise.resolve()
+            .then(function () { return window.TaxonomyArchitectureLifecycle?.ready?.(); })
+            .then(function () { return window.TaxonomyArchitectureWorkspace?.ready?.(retry === true); })
+            .then(function (ready) {
+                if (ready === false) throw new Error('Initial architecture source is unavailable');
+                return window.TaxonomyContextBar?.fetchAndRender?.('contextBar', {joinCurrent: true});
+            }).then(function (context) {
+                if (window.TaxonomyContextBar?.fetchAndRender && !context) {
+                    throw new Error('Initial repository context is unavailable');
+                }
+                if (workspace !== runtime.workspaceId || sourceRead !== task) return false;
+                runtime.sourceReady = true;
+                sourceNotice = {workspace: workspace};
+                notifySourceReady();
+                return true;
+            }).catch(function (error) {
+                if (workspace === runtime.workspaceId && sourceRead === task) C.serverUnavailable(error);
+                return false;
+            }).finally(function () { if (sourceRead === task) sourceRead = null; });
+        return task.promise;
+    }
+
     function beginDraftResolution() {
         runtime.workspaceResolved = false;
+        sourceNotice = null;
+        runtime.sourceReady = !(window.TaxonomyArchitectureLifecycle?.ready
+            || window.TaxonomyArchitectureWorkspace?.ready || window.TaxonomyContextBar?.fetchAndRender);
         runtime.restoring = true;
         setDraftDecisionPending(true);
     }
@@ -562,6 +631,7 @@
             return loadDraft(Object.assign({}, options, { probe: true })).then(function (view) {
                 runtime.workspaceResolved = true;
                 rememberWorkspaceId(remembered);
+                confirmInitialSource();
                 return view;
             }).catch(function (error) {
                 runtime.workspaceId = null;
@@ -590,6 +660,11 @@
                 runtime.workspaceId = workspace.workspaceId;
                 rememberWorkspaceId(runtime.workspaceId);
                 return loadDraft(options);
+            }).then(function (view) {
+                // Do not await this here: architecture source initialization
+                // itself awaits the draft-only whenInitialized() promise.
+                confirmInitialSource();
+                return view;
             })
             .catch(function (error) {
                 runtime.workspaceResolved = false;
@@ -602,10 +677,11 @@
     }
 
     function retryServerState() {
-        if (!runtime.workspaceResolved && !runtime.restoring) {
-            return resolveWorkspaceAndLoad({ reconcile: true });
-        }
-        return C.reconcileDraft();
+        var checked = !runtime.workspaceResolved && !runtime.restoring
+            ? resolveWorkspaceAndLoad({ reconcile: true }) : C.reconcileDraft();
+        return Promise.resolve(checked).then(function (value) {
+            return confirmInitialSource(true).then(function () { return value; });
+        });
     }
 
     function saveLocalDraft() {
@@ -713,6 +789,7 @@
             return Object.freeze({
                 workspaceId: runtime.workspaceId,
                 ready: runtime.initialized && runtime.workspaceResolved
+                    && runtime.sourceReady !== false
                     && !runtime.restoring && !runtime.invalidating && !runtime.resetting
                     && !runtime.conflict && !runtime.serverUnconfirmed,
                 version: runtime.version,

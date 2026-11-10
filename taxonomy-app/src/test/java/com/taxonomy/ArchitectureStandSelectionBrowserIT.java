@@ -5,7 +5,6 @@ import com.taxonomy.editor.ArchitectureEditorProjection;
 import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.editor.ArchitectureReconciliationProjection;
 import com.taxonomy.export.LayeredDiagramLayoutService;
-
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,6 +50,21 @@ class ArchitectureStandSelectionBrowserIT {
     private static final AtomicInteger REVISION = new AtomicInteger(2);
     private static final AtomicBoolean NEEDS_RECONCILIATION = new AtomicBoolean();
     private static final AtomicBoolean PENDING = new AtomicBoolean();
+    private static final String OBSERVE_REVIEW_LOOKUP = """
+            window.lifecycleReviewLookup={started:0,settled:0,aborted:0};
+            const realFetch=window.fetch.bind(window);
+            window.fetch=function(input,options){
+                const url=new URL(typeof input==='string'?input:input.url,location.href);
+                const lookup=url.pathname==='/api/projects' && (options?.method || input?.method || 'GET')==='GET';
+                if(lookup)window.lifecycleReviewLookup.started++;
+                return realFetch(input,options).finally(()=>{
+                    if(lookup){
+                        window.lifecycleReviewLookup.settled++;
+                        if(options?.signal?.aborted)window.lifecycleReviewLookup.aborted++;
+                    }
+                });
+            };
+            """;
     private static PortfolioClientTestPage page;
     private static WebDriverWait wait;
 
@@ -163,15 +177,32 @@ class ArchitectureStandSelectionBrowserIT {
     }
 
     @Test void delayedReviewLookupCannotOpenADialogUnderAnotherStand() throws Exception {
-        currentWithHistoricalBackEntry(); expand();
+        currentWithHistoricalBackEntry(OBSERVE_REVIEW_LOOKUP); expand();
+        page.clearRequests();
         CountDownLatch requested = new CountDownLatch(1), release = new CountDownLatch(1);
         page.route("GET", "/api/projects", request -> { requested.countDown(); await(release); return json(200, List.of(project())); });
         try {
             click(By.cssSelector("[data-lifecycle-action='review']"));
             assertThat(requested.await(10, TimeUnit.SECONDS)).isTrue();
-            page.driver().navigate().back(); awaitRevision(1); release.countDown();
-            wait.until(ExpectedConditions.textToBePresentInElementLocated(By.cssSelector("[data-lifecycle-status]"), "selected architecture state has changed"));
+            page.driver().navigate().back(); awaitRevision(1);
+            wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript(
+                    "return lifecycleReviewLookup.settled===1 && lifecycleReviewLookup.aborted===1;")));
+            assertThat(page.driver().executeScript("return lifecycleReviewLookup.started;")).isEqualTo(1L);
+            release.countDown();
+            wait.until(ExpectedConditions.textToBe(By.cssSelector("[data-lifecycle-status]"), "Historical state · read only"));
+            assertThat(page.driver().executeScript("""
+                    const value=TaxonomyArchitectureLifecycle.state(),context=value.context;
+                    return value.projectionState==='HISTORICAL' && value.mayEdit===false
+                        && context.repositoryId==='fixture-architecture' && context.workspaceScopeKey==='fixture-space'
+                        && context.branch==='draft' && context.revision===1
+                        && TaxonomyAppChrome.getContext().editable===false;
+                    """)).as("The newly selected historical stand owns the UI after the old lookup is cancelled").isEqualTo(true);
+            assertThat(page.driver().getCurrentUrl()).contains("revision=1");
             assertThat(page.driver().findElements(By.id("lifecycleReviewDialog"))).isEmpty();
+            assertThat(page.requests().stream().filter(request -> request.path().equals("/api/projects/42/requirements/7")))
+                    .as("A cancelled review lookup must not continue with the old requirement").isEmpty();
+            assertThat(page.requests().stream().filter(request -> request.method().equals("POST")))
+                    .as("No preview or acceptance may follow the cancelled lookup").isEmpty();
         } finally { release.countDown(); }
     }
 
@@ -425,7 +456,22 @@ class ArchitectureStandSelectionBrowserIT {
     }
 
     @Test void acceptedRequirementNeedingReconciliationKeepsTheVersionFormAndExactRetry() {
+        var fixture=requirementReconciliationFixture(page);
+        fixture.open("en"); fixture.openVersionModal(); fixture.editVersion(); fixture.submitVersion(); fixture.idle();
+        wait.until(driver -> countPosts(PortfolioRequirementFixture.SAVE_REQUIREMENT)==1);
+        assertThat(page.driver().findElement(By.id("newVersionError")).getText()).contains("not published in Git");
+        assertThat(page.driver().findElement(By.id("newVersionModal")).isDisplayed()).isTrue(); fixture.assertDraft();
+        fixture.click(By.cssSelector("#newVersionError [data-lifecycle-publication-reconcile]"));
+        reconcileFromRecovery();
+        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("return TaxonomyArchitectureLifecycle.state()?.context.revision===4;")));
+        fixture.assertDraft(); fixture.click(By.cssSelector("#newVersionForm button[type='submit']"));
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("newVersionModal")));
+        assertExactRetry(PortfolioRequirementFixture.SAVE_REQUIREMENT);
+    }
+
+    static PortfolioRequirementFixture requirementReconciliationFixture(PortfolioClientTestPage page) {
         var fixture=new PortfolioRequirementFixture(page);
+        page.route("POST",RECONCILIATION + "/preview",request -> json(200,reconciliationPreview(request)));
         page.route("GET",LIFECYCLE,request -> json(200,Map.of("context",controlContext(),"architectureTitle","Control architecture",
                 "source","WORKSPACE_REVISION","projectionState",NEEDS_RECONCILIATION.get()?"RECONCILIATION_REQUIRED":"READY",
                 "publicationState",NEEDS_RECONCILIATION.get()?"RECONCILIATION_REQUIRED":"CHECKPOINTED","mayEdit",!NEEDS_RECONCILIATION.get(),
@@ -440,16 +486,7 @@ class ArchitectureStandSelectionBrowserIT {
         page.route("POST",RECONCILIATION + "/accept",request -> {
             REVISION.set(4); NEEDS_RECONCILIATION.set(false); return json(200,Map.of("context",controlContext(),"state","CHECKPOINTED"));
         });
-        fixture.open("en"); fixture.openVersionModal(); fixture.editVersion(); fixture.submitVersion(); fixture.idle();
-        wait.until(driver -> countPosts(PortfolioRequirementFixture.SAVE_REQUIREMENT)==1);
-        assertThat(page.driver().findElement(By.id("newVersionError")).getText()).contains("not published in Git");
-        assertThat(page.driver().findElement(By.id("newVersionModal")).isDisplayed()).isTrue(); fixture.assertDraft();
-        fixture.click(By.cssSelector("#newVersionError [data-lifecycle-publication-reconcile]"));
-        reconcileFromRecovery();
-        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("return TaxonomyArchitectureLifecycle.state()?.context.revision===4;")));
-        fixture.assertDraft(); fixture.click(By.cssSelector("#newVersionForm button[type='submit']"));
-        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("newVersionModal")));
-        assertExactRetry(PortfolioRequirementFixture.SAVE_REQUIREMENT);
+        return fixture;
     }
 
     @Test void failedArchitectureProvisioningCanResumeAfterReloadWithItsPersistedIdentity() throws Exception {
@@ -524,7 +561,8 @@ class ArchitectureStandSelectionBrowserIT {
         assertThat(accept.isDisplayed() && accept.isEnabled()).isFalse();
         assertThat(page.driver().findElement(By.id(prefix + "Preview")).isEnabled()).isFalse();
     }
-    private static void currentWithHistoricalBackEntry() { open("revision=1"); awaitRevision(1); navigateSelection("revision=2"); awaitRevision(2); }
+    private static void currentWithHistoricalBackEntry() { currentWithHistoricalBackEntry(""); }
+    private static void currentWithHistoricalBackEntry(String bootstrap) { open("revision=1", bootstrap); awaitRevision(1); navigateSelection("revision=2"); awaitRevision(2); }
     private static void openReview() {
         expand(); click(By.cssSelector("[data-lifecycle-action='review']"));
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("lifecycleReviewDialog")));
@@ -560,10 +598,13 @@ class ArchitectureStandSelectionBrowserIT {
         wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("return window.TaxonomyArchitectureLifecycle?.state()?.context.revision === arguments[0] && document.getElementById('architectureEditor').getAttribute('aria-busy') === 'false';",revision)));
     }
     private static void open(String selection) {
+        open(selection, "");
+    }
+    private static void open(String selection, String bootstrap) {
         page.openAt("architecture-editor", "", "/architecture/editor", "en", """
                 localStorage.clear(); sessionStorage.clear();
                 history.replaceState(null,'','/architecture/editor?lang=en&repositoryId=fixture-architecture&workspaceId=fixture-space&workspaceScopeKey=fixture-space&branch=draft&%s');
-                """.formatted(selection));
+                """.formatted(selection) + bootstrap);
     }
     private static void openForCreationRecovery() {
         page.openAt("architecture-editor", "", "/architecture/editor", "en", """

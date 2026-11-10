@@ -621,6 +621,9 @@ class ScreenshotGeneratorIT {
     /** Runs a standard (non-interactive) analysis and waits up to 120 s for completion. */
     private void runAnalysis() {
         navigateToTab("analyze");
+        wait(20).withMessage("Analysis source must be ready before the screenshot workflow starts")
+                .until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript(
+                        "return window.TaxonomyAnalysisSession?.state?.().ready === true;")));
         WebElement textarea = driver.findElement(By.id("businessText"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", textarea);
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
@@ -1292,20 +1295,9 @@ class ScreenshotGeneratorIT {
             Assertions.assertInstanceOf(Map.class, catalogue);
             Map<?, ?> names = (Map<?, ?>) catalogue;
             Assertions.assertNull(names.get("error"), "Read real catalogue identities: " + names);
-            var types = new LinkedHashMap<String, String>();
-            types.put("CP-1023", "Capability"); types.put("CR-1047", "CoreService");
-            types.put("BP-1327", "Process"); types.put("BP-1000", "Process");
-            StringBuilder dsl = new StringBuilder("meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n");
-            types.forEach((code, type) -> {
-                Assertions.assertInstanceOf(String.class, names.get(code), "Catalogue node must exist: " + code);
-                dsl.append("element ").append(code).append(" type ").append(type)
-                        .append(" {\n  title: ").append(JSON.writeValueAsString(names.get(code))).append(";\n}\n");
-            });
-            dsl.append("relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n")
-                    .append("relation CR-1047 SUPPORTS BP-1327 {\n  status: accepted;\n}\n")
-                    .append("relation CR-1047 SUPPORTS BP-1000 {\n  status: accepted;\n}\n");
+            String dsl = SavedGraphFixtureDsl.create(names);
             SavedGraphHttpFixture.Saved graph = SavedGraphHttpFixture.create(ScreenshotGeneratorIT::requestFixture,
-                    "screenshot-graph", dsl.toString(), 3);
+                    "screenshot-graph", dsl, 3);
             graphFixture = graph;
             graphFixtureScope = graph.scope(); graphFixtureCommitId = graph.commitId();
         }

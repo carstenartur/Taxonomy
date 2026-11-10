@@ -118,41 +118,63 @@ async function assertControlsUnobscured(page, selectors, label, assert) {
 }
 
 async function waitForCopilotComplete(page, expectedText) {
-  await page.waitForFunction(text => {
-    const state = window.TaxonomyState;
-    const scores = state?.currentScores;
-    const input = document.getElementById('businessText');
-    const button = document.getElementById('copilotBtn');
-    const spinner = document.getElementById('copilotSpinner');
-    const summary = document.querySelector('#copilotContent [data-assessment-state="COMPLETED"]');
-    const recovery = state?.analysisRecovery?.state;
-    const followup = state?.recoveryContext?.followupState;
-    const settled = button && !button.disabled && spinner?.classList.contains('d-none');
-    // A terminal partial result cannot turn into SUCCESS without a user decision.
-    // Fail with the actual application reason, not a misleading 180-second timeout.
-    // Never accept a partial result or silently retry it in this success scenario.
-    if (state?.lastAnalyzedText === text && settled
-        && (['PARTIAL', 'ERROR', 'CANCELLED'].includes(state.lastAnalysisStatus)
-          || ['PAUSED', 'STOPPED', 'CANCELLED', 'COMPLETED_WITH_GAPS'].includes(recovery)
-          || ['PAUSED', 'CANCELLED', 'COMPLETED_WITH_GAPS'].includes(followup))) {
-      const reason = [state.recoveryContext?.followupError,
-        document.getElementById('statusArea')?.textContent].filter(Boolean).join(' ').slice(0, 1500);
-      throw new Error(`Copilot did not complete: ${state.lastAnalysisStatus} / ${recovery || '-'} / ${followup || '-'}: ${reason}`);
-    }
-    return state?.lastAnalyzedText === text
-      && state?.lastAnalysisStatus === 'SUCCESS'
-      && scores && Object.keys(scores).length > 0
-      && Boolean(state.currentArchView)
-      && state.currentCopilot?.schemaVersion === 2
-      && state.currentCopilot.state === 'COMPLETED'
-      && Boolean(state.currentCopilot.gaps)
-      && Boolean(state.currentCopilot.patterns)
-      && Boolean(state.currentCopilot.recommendation)
-      && input && !input.classList.contains('stale-results')
-      && button && !button.disabled
-      && spinner?.classList.contains('d-none')
-      && Boolean(summary);
-  }, expectedText, { timeout: 180_000 });
+  try {
+    await page.waitForFunction(text => {
+      const state = window.TaxonomyState;
+      const scores = state?.currentScores;
+      const input = document.getElementById('businessText');
+      const button = document.getElementById('copilotBtn');
+      const spinner = document.getElementById('copilotSpinner');
+      const summary = document.querySelector('#copilotContent [data-assessment-state="COMPLETED"]');
+      const recovery = state?.analysisRecovery?.state;
+      const followup = state?.recoveryContext?.followupState;
+      const settled = button && !button.disabled && spinner?.classList.contains('d-none');
+      // A terminal partial result cannot turn into SUCCESS without a user decision.
+      // Fail with the actual application reason, not a misleading 180-second timeout.
+      // Never accept a partial result or silently retry it in this success scenario.
+      if (state?.lastAnalyzedText === text && settled
+          && (['PARTIAL', 'ERROR', 'CANCELLED'].includes(state.lastAnalysisStatus)
+            || ['PAUSED', 'STOPPED', 'CANCELLED', 'COMPLETED_WITH_GAPS'].includes(recovery)
+            || ['PAUSED', 'CANCELLED', 'COMPLETED_WITH_GAPS'].includes(followup))) {
+        const reason = [state.recoveryContext?.followupError,
+          document.getElementById('statusArea')?.textContent].filter(Boolean).join(' ').slice(0, 1500);
+        throw new Error(`Copilot did not complete: ${state.lastAnalysisStatus} / ${recovery || '-'} / ${followup || '-'}: ${reason}`);
+      }
+      return state?.lastAnalyzedText === text
+        && state?.lastAnalysisStatus === 'SUCCESS'
+        && scores && Object.keys(scores).length > 0
+        && Boolean(state.currentArchView)
+        && state.currentCopilot?.schemaVersion === 2
+        && state.currentCopilot.state === 'COMPLETED'
+        && Boolean(state.currentCopilot.gaps)
+        && Boolean(state.currentCopilot.patterns)
+        && Boolean(state.currentCopilot.recommendation)
+        && input && !input.classList.contains('stale-results')
+        && button && !button.disabled
+        && spinner?.classList.contains('d-none')
+        && Boolean(summary);
+    }, expectedText, { timeout: 180_000 });
+  } catch (error) {
+    let observed = null;
+    try {
+      observed = await page.evaluate(text => {
+        const state = window.TaxonomyState;
+        const runtime = window.__TaxonomyAnalysisSessionContext?.runtime;
+        return {
+          analysisStatus: state?.lastAnalysisStatus || null,
+          analysisTextMatches: state?.lastAnalyzedText === text,
+          copilotState: state?.currentCopilot?.state || null,
+          recoveryState: state?.analysisRecovery?.state || null,
+          followupState: state?.recoveryContext?.followupState || null,
+          sessionReady: window.TaxonomyAnalysisSession?.state?.().ready ?? null,
+          analysisGeneration: runtime?.analysisGeneration ?? null,
+          serverUnconfirmed: runtime?.serverUnconfirmed === true,
+          draftDecisionPending: runtime?.draftDecisionPending === true
+        };
+      }, expectedText);
+    } catch { /* Preserve the original failure if the page departed. */ }
+    throw new Error(`${error.message}; Copilot completion state: ${JSON.stringify(observed)}`, { cause: error });
+  }
 }
 
 async function assertPersistedCopilot(page, expectedText, assert) {
@@ -232,6 +254,9 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
     return Boolean(grid) && getComputedStyle(grid).display === 'grid';
   }, null, { timeout: 20_000 });
 
+  await page.waitForFunction(() =>
+    window.TaxonomyAnalysisSession?.state?.().ready === true,
+  null, { timeout: 20_000 });
   const meaningful = await page.evaluate(() => {
     const context = window.__TaxonomyAnalysisSessionContext;
     return Boolean(context?.meaningful?.(context.currentPayload()));
@@ -295,7 +320,7 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
     });
   });
 
-  await page.route('**/api/analyze', async route => {
+  await page.route(url => url.pathname.endsWith('/api/analyze'), async route => {
     await new Promise(resolve => setTimeout(resolve, 3_000));
     await route.continue();
   }, { times: 1 });
@@ -488,24 +513,28 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
   await saveRequiredViewportState('session-reset-complete-mobile');
   passed('visible reset command clears browser and authoritative server draft');
 
-  await page.reload({ waitUntil: 'networkidle' });
+  const reloadWorkspaceId = await page.evaluate(() =>
+    window.TaxonomyAnalysisSession.state().workspaceId);
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.evaluate(() => window.TaxonomyI18n?.ready?.());
   await page.locator('#analysisTaskProgress').waitFor({ state: 'visible', timeout: 30_000 });
   const onboardingDismiss = page.locator('#onboardingDismiss');
   if (await onboardingDismiss.isVisible().catch(() => false)) {
     await onboardingDismiss.click();
   }
-  await page.waitForFunction(() => {
-    const session = window.TaxonomyAnalysisSession;
+  await page.waitForFunction(workspaceId => {
+    const session = window.TaxonomyAnalysisSession?.state?.();
     const state = window.TaxonomyState;
-    return session?.state().workspaceId
-      && session.state().restoring === false
+    return session?.workspaceId
+      && session.workspaceId === workspaceId
+      && session.ready === true
+      && session.restoring === false
       && document.getElementById('businessText')?.value === ''
       && !state?.currentScores
       && !state?.currentArchView
       && !window._taxonomyCurrentScores
       && document.querySelector('#taskStageDescribe[data-state="current"]');
-  }, null, { timeout: 30_000 });
+  }, reloadWorkspaceId, { timeout: 30_000 });
   await page.locator('.analysis-command-grid').scrollIntoViewIfNeeded();
   await assertControlsUnobscured(page,
     ['#providerSelect', '#copilotBtn', '#analyzeBtn'], 'reloaded mobile reset state', assert);

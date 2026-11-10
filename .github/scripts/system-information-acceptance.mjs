@@ -55,25 +55,52 @@ export function validateSystemSnapshot(snapshot) {
   }
 }
 
-/** End the previous editing task before a deliberate hard locale reload. */
-export async function settleDraftBeforeLocaleNavigation(page) {
+/** Confirm the previous editing task before a deliberate hard navigation. */
+export async function settleDraftBeforeNavigation(page) {
   await page.evaluate(async () => {
     const session = window.TaxonomyAnalysisSession;
     const before = session?.state?.();
     if (!session?.saveNow || !before?.workspaceId || !before.ready
         || before.restoring || before.conflict) {
-      throw new Error('Analysis draft is not ready for locale navigation');
+      const runtime = window.__TaxonomyAnalysisSessionContext?.runtime || {};
+      const context = window.TaxonomyContextBar?.getCurrentContext?.() || {};
+      const version = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
+      const scope = value => typeof value === 'string' ? value.slice(0, 256) : null;
+      const trace = Array.isArray(runtime.draftMutationTrace) ? runtime.draftMutationTrace : [];
+      const acknowledgements = Array.isArray(runtime.acknowledgedDraftWrites)
+        ? runtime.acknowledgedDraftWrites : [];
+      const diagnostics = {
+        workspaceId: scope(before?.workspaceId), contextId: scope(context.contextId), branch: scope(context.branch),
+        version: version(before?.version), lastAcknowledgedVersion: version(acknowledgements.at(-1)?.version),
+        ready: before?.ready === true, restoring: before?.restoring === true, conflict: before?.conflict === true,
+        initialized: runtime.initialized === true, workspaceResolved: runtime.workspaceResolved === true,
+        sourceReady: runtime.sourceReady !== false,
+        serverUnconfirmed: runtime.serverUnconfirmed === true, draftDecisionPending: runtime.draftDecisionPending === true,
+        saveInFlight: Boolean(runtime.saveInFlight), saveQueued: runtime.saveQueued === true,
+        resetting: runtime.resetting === true, invalidating: runtime.invalidating === true,
+        analysisGeneration: version(runtime.analysisGeneration), draftGeneration: version(runtime.draftGeneration),
+        recentMutations: trace.slice(-4).map(entry => ({
+          mutationId: version(entry?.mutationId),
+          phase: ['started', 'succeeded', 'failed', 'conflict', 'conflict-read', 'retry', 'reset-retry', 'reconciled']
+            .includes(entry?.phase) ? entry.phase : null,
+          method: ['GET', 'PUT', 'POST', 'DELETE'].includes(entry?.method) ? entry.method : null,
+          expectedVersion: version(entry?.expectedVersion), currentVersion: version(entry?.currentVersion)
+        }))
+      };
+      throw new Error('Analysis draft is not ready for navigation; draftDiagnostics=' + JSON.stringify(diagnostics));
     }
     if (await session.saveNow() !== true) {
-      throw new Error('Analysis draft was not saved before locale navigation');
+      throw new Error('Analysis draft was not saved before navigation');
     }
     const after = session.state();
     if (after.workspaceId !== before.workspaceId || !after.ready
         || after.restoring || after.conflict) {
-      throw new Error('Analysis draft or workspace changed during locale navigation preparation');
+      throw new Error('Analysis draft or workspace changed during navigation preparation');
     }
   });
 }
+
+export const settleDraftBeforeLocaleNavigation = settleDraftBeforeNavigation;
 
 /** Continue in the existing authenticated browser/app; no extra service or LLM calls. */
 export async function runSystemInformationAcceptance({

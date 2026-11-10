@@ -1,7 +1,9 @@
-import test from 'node:test';
+import test, {afterEach} from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
+import canonicalFixture from './canonical-api-fixture.cjs';
+afterEach(() => canonicalFixture.dispose());
 const src=name=>readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/'+name,import.meta.url),'utf8');
 const A={repositoryId:'working-a',workspaceScopeKey:'private-a',branch:'design-a',commit:'a'.repeat(40)};
 const B={repositoryId:'working-b',workspaceScopeKey:'private-b',branch:'design-b',commit:'b'.repeat(40)};
@@ -10,11 +12,12 @@ const settle=async()=>{for(let i=0;i<30;i++)await Promise.resolve();};
 function fixture() {
     let visible=A, active=A;
     const context=vm.createContext({URL,URLSearchParams,console,document:{addEventListener(){},getElementById(){return null;}},
-        TaxonomyApiClient:{},TaxonomyUtils:{escapeHtml:String},TaxonomyI18n:{t:key=>key},
+        TaxonomyUtils:{escapeHtml:String},TaxonomyI18n:{t:key=>key},
+        fetch:async url=>{throw new Error('Unexpected request: '+url);},
         TaxonomyAppChrome:{getContext:()=>({architecture:visible})},
         TaxonomyArchitectureLifecycle:{ready:async()=>({context:A}),selectedContext:()=>active}});
     context.window=context;
-    vm.runInContext(src('api/analysis-api.js'),context);
+    canonicalFixture.install(context,['api/analysis-api.js']);
     vm.runInContext(src('shared/taxonomy-graph.js'),context);
     return {context,api:context.AnalysisApi,setVisible:value=>visible=value,suspend:()=>active=null};
 }
@@ -48,15 +51,17 @@ test('lifecycle exposes only the active selected context and hides it on suspend
 });
 async function workspaceFixture(savedSource=A) {
     const handlers=new Map(), nodes=new Map(), owners={};let current={},scope={},suspended=false;
+    const runtime={workspaceId:B.workspaceScopeKey,analysisGeneration:0};
     const node=id=>{if(!nodes.has(id))nodes.set(id,{hidden:false,value:'',textContent:'',addEventListener(){}});return nodes.get(id);};
     const context=vm.createContext({URL,URLSearchParams,console,location:new URL('https://fixture.test/?architectureSource=working#architecture'),
         document:{getElementById:node,querySelector:()=>null,addEventListener:(name,cb)=>handlers.set(name,cb),dispatchEvent(){}},
         CustomEvent:class{constructor(type,options){this.type=type;this.detail=options.detail;}},history:{},
         TaxonomyI18n:{ready:async()=>{},t:key=>key,resolveUrl:value=>value},
-        TaxonomyAnalysisSession:{whenInitialized:async()=>true,state:()=>({workspaceId:B.workspaceScopeKey})},
+        __TaxonomyAnalysisSessionContext:{runtime},
+        TaxonomyAnalysisSession:{whenInitialized:async()=>true,state:()=>runtime},
         TaxonomyArchitectureLifecycleApi:{overview:async()=>({context:B})},
         TaxonomyArchitectureLifecycle:{ready:async()=>({context:A}),selectedContext:()=>suspended?null:A,suspend:()=>suspended=true},
-        TaxonomyApiClient:{}});
+        fetch:async url=>{throw new Error('Unexpected request: '+url);}});
     context.window=context;context.addEventListener=()=>{};
     context.history.replaceState=context.history.pushState=(_a,_b,url)=>context.location=new URL(url,context.location);
     context.TaxonomyAppChrome={getContext:()=>current,updateContext:(value,owner)=>owners[owner]=value,
@@ -64,10 +69,14 @@ async function workspaceFixture(savedSource=A) {
     context.TaxonomyArchitectureWorkflow={getScope:()=>scope,replaceScope:value=>scope=value};
     context.TaxonomyArchitectureEditor={mount:()=>({activate:async()=>{owners.working={architecture:savedSource};},suspend(){},canLeave:()=>true,
         getSource:()=>({...savedSource,kind:'working'}),getData:()=>null,getDiagram:()=>null})};
+    canonicalFixture.install(context,['api/analysis-api.js']);
     vm.runInContext(src('shared/architecture-workspace.js'),context);
-    vm.runInContext(src('api/analysis-api.js'),context);
-    await settle();
-    return {context,page:async page=>{handlers.get('taxonomy:page-activated')({detail:{page}});await settle();}};
+    assert.equal(await context.TaxonomyArchitectureWorkspace.ready(),true);
+    return {context,page:async page=>{
+        const url=new URL(context.location.href);url.hash=page;
+        context.history.replaceState(null,'',url);
+        handlers.get('taxonomy:page-activated')({detail:{page}});await settle();
+    }};
 }
 test('working selection remains explicit in Chrome and URL when navigating to Graph',async()=>{
     const f=await workspaceFixture();await f.page('graph');

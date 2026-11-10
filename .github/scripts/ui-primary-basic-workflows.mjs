@@ -8,7 +8,7 @@ export async function seedSavedGraph(api, branch, onResources = () => {}) {
     if (!response.ok()) throw new Error(`Graph fixture HTTP ${response.status()}: ${await response.text()}`);
     return response.json();
   }
-  const roots = await json(await api.get('/api/taxonomy'));
+  const roots = await json(await api.get('taxonomy'));
   const first = root => roots.find(node => node.code === root)?.children?.[0];
   const service = first('CR'), process = first('BP');
   if (!service?.code || !service.nameEn || !process?.code || !process.nameEn)
@@ -19,7 +19,7 @@ export async function seedSavedGraph(api, branch, onResources = () => {}) {
     + `relation ${service.code} SUPPORTS ${process.code} {\n  status: accepted;\n}\n`;
   // The dedicated UI JVM uses an in-memory database. Its PUBLIC repository is
   // intentionally bounded by that process; only the private working copy has a deletion API.
-  const repository = await json(await api.post('/api/repositories', {data:{
+  const repository = await json(await api.post('repositories', {data:{
     displayName:`Saved graph ${branch}`,slug:`graph-${branch}`,
     description:'Published catalogue graph for native role verification',visibility:'PUBLIC',defaultBranch:branch
   }}));
@@ -28,7 +28,7 @@ export async function seedSavedGraph(api, branch, onResources = () => {}) {
   onResources(resources);
   const scope = new URLSearchParams({repositoryId:repository.repositoryId,workspaceId:'',workspaceScopeKey:'__shared__',branch});
   const centralHeaders = {'X-Taxonomy-Workspace-Id':''};
-  const workspace = await json(await api.post('/api/architecture/editor/workspaces?' + scope,
+  const workspace = await json(await api.post('architecture/editor/workspaces?' + scope,
     {headers:centralHeaders,data:{repositoryId:repository.repositoryId,branch,displayName:`Graph working copy ${branch}`}}));
   resources = {...resources,workspaceId:workspace.workspaceId};
   // Capture the owned workspace before commit/publication, including a lost commit response.
@@ -39,20 +39,20 @@ export async function seedSavedGraph(api, branch, onResources = () => {}) {
   const privateScope = new URLSearchParams({repositoryId:repository.repositoryId,
     workspaceId:workspace.workspaceId,branch:workspace.currentBranch});
   const privateHeaders = {'X-Taxonomy-Workspace-Id':workspace.workspaceId};
-  const saved = await json(await api.post('/api/dsl/commit?' + privateScope + '&message=Saved+graph+entry+fixture',
+  const saved = await json(await api.post('dsl/commit?' + privateScope + '&message=Saved+graph+entry+fixture',
     {data:dsl,headers:{...privateHeaders,'Content-Type':'text/plain;charset=UTF-8'}}));
   if (!saved.valid || !/^[a-f0-9]{40}$/.test(saved.commitId || '')) throw new Error('Graph fixture commit was not persisted');
-  const published = await json(await api.post('/api/workspace/publish?' + privateScope
+  const published = await json(await api.post('workspace/publish?' + privateScope
     + '&userBranch=' + encodeURIComponent(workspace.currentBranch), {headers:privateHeaders}));
   if (!published.success || !/^[a-f0-9]{40}$/.test(published.mergeCommit || ''))
     throw new Error('Graph fixture publication was not persisted');
   const commit = published.mergeCommit;
-  const readiness = await json(await api.get('/api/architecture/relations/projection/readiness?' + scope,
+  const readiness = await json(await api.get('architecture/relations/projection/readiness?' + scope,
     {headers:centralHeaders}));
   if (readiness.repositoryId !== repository.repositoryId || readiness.workspaceId !== null
       || readiness.branch !== branch || readiness.currentHeadCommit !== commit)
     throw new Error('Graph fixture publication is not the selected central head');
-  const projection = await json(await api.post('/api/architecture/relations/projection/rebuild?' + scope,
+  const projection = await json(await api.post('architecture/relations/projection/rebuild?' + scope,
     {headers:{...centralHeaders,'If-Match':`"${commit}"`}}));
   if (projection.repositoryId !== repository.repositoryId || projection.workspaceId !== null || projection.branch !== branch
       || projection.readinessState !== 'READY' || projection.currentHeadCommit !== commit
@@ -69,7 +69,7 @@ export async function removeSavedGraph(api, resources) {
   if (typeof resources.workspaceId !== 'string' || !resources.workspaceId)
     throw new Error('The exact private graph fixture workspace is required for cleanup');
   const query = new URLSearchParams({repositoryId:resources.repositoryId,workspaceId:resources.workspaceId});
-  const response = await api.delete('/api/workspace/' + encodeURIComponent(resources.workspaceId) + '?' + query,
+  const response = await api.delete('workspace/' + encodeURIComponent(resources.workspaceId) + '?' + query,
     {headers:{'X-Taxonomy-Workspace-Id':resources.workspaceId}});
   if (!response.ok()) throw new Error(`Graph fixture cleanup failed: HTTP ${response.status()}`);
   const deleted = await response.json();
@@ -82,7 +82,10 @@ export async function verifyGraphEntry(workflow) {
   const returnUrl = page.url();
   // Provision through the same administrator account used by the role fixture. The
   // browser keeps its original USER/ARCHITECT/ADMIN identity for all reads and actions.
-  const api = await request.newContext({baseURL:new URL(page.url()).origin,extraHTTPHeaders:{Authorization:basicAuthorization(
+  const apiRoot = await page.evaluate(() => new URL(
+    window.TaxonomyI18n.resolveUrl('/api/'), window.location.href).href);
+  const api = await request.newContext({baseURL:apiRoot,extraHTTPHeaders:{
+    'X-Taxonomy-Workspace-Id':'', Authorization:basicAuthorization(
     process.env.TAXONOMY_UI_ADMIN_USERNAME || 'admin', process.env.TAXONOMY_UI_ADMIN_PASSWORD || ROLE_ACCOUNTS.ADMIN.password)}});
   let fixtureResources;
   try {
@@ -208,7 +211,9 @@ export async function runBasicWorkflows({ page, role, evidence }) {
     includedRelationships: []
   };
   const exportRequests = [];
-  const exportRoute = '**/api/diagram/current/visio';
+  // The canonical transport pins the active workspace in the query string.
+  // Match the endpoint path so the injected failure reaches that exact request.
+  const exportRoute = url => url.pathname.endsWith('/api/diagram/current/visio');
   const failExport = route => {
     exportRequests.push(route.request().postDataJSON());
     return route.fulfill({

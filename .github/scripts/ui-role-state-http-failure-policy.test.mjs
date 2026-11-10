@@ -11,6 +11,8 @@ const systemInformationSource = await readFile(
   new URL('./system-information-acceptance.mjs', import.meta.url),
   'utf8'
 );
+const editorAcceptanceSource = await readFile(
+  new URL('./architecture-editor-acceptance.mjs', import.meta.url), 'utf8');
 
 test('only request-correlated successful draft reconciliation removes a 409 from blockers', () => {
   assert.match(source, /failure\?\.status === 409/);
@@ -63,18 +65,42 @@ test('AI bootstrap never treats the untranslated unknown key as settled', () => 
 
 
 // Exercise the real navigation precondition with a controlled draft promise.
-async function navigationHarness({ initial = {}, after, outcome = true, pending } = {}) {
+async function navigationHarness({ initial = {}, after, outcome = true, pending,
+  withoutSession = false, inventory = false, analysisInput = true,
+  baseUrl = 'https://taxonomy.example', url = baseUrl + '/' } = {}) {
   const vm = await import('node:vm');
   const mod = await import('./system-information-acceptance.mjs');
   assert.equal(typeof mod.settleDraftBeforeLocaleNavigation, 'function');
   let saves = 0;
   let state = { workspaceId: 'workspace', ready: true, restoring: false, conflict: false, ...initial };
-  const context = vm.createContext({ window: { TaxonomyAnalysisSession: {
+  const session = {
     state: () => state,
     saveNow: async () => { saves++; const result = pending ? await pending : outcome; if (after) state = { ...state, ...after }; return result; }
-  } } });
-  const page = { evaluate: fn => vm.runInContext('(' + fn.toString() + ')()', context) };
-  return { run: () => mod.settleDraftBeforeLocaleNavigation(page), saves: () => saves };
+  };
+  const location = new URL(url);
+  const document = { getElementById: id => {
+    if (id === 'sessionInventory') return inventory ? {} : null;
+    if (id === 'businessText') return analysisInput ? {} : null;
+    return null;
+  } };
+  const context = vm.createContext({ URL, document, location,
+    window: { location, ...(withoutSession ? {} : { TaxonomyAnalysisSession: session }) } });
+  const page = {
+    evaluate: (fn, argument) => {
+      context.evaluateArgument = argument;
+      return vm.runInContext('(' + fn.toString() + ')(evaluateArgument)', context);
+    },
+    waitForLoadState: async state => {
+      assert.notEqual(state, 'networkidle', 'An open application stream is not a draft persistence barrier');
+    }
+  };
+  const start = editorAcceptanceSource.indexOf("  const base = baseUrl.replace(");
+  const end = editorAcceptanceSource.indexOf('  const initialResponse =', start);
+  assert.ok(start >= 0 && end > start);
+  return { run: () => mod.settleDraftBeforeLocaleNavigation(page), saves: () => saves,
+    runEditor: () => vm.runInNewContext('(async () => {' + editorAcceptanceSource.slice(start, end) + '})()', {
+      page, baseUrl, settleDraftBeforeNavigation: mod.settleDraftBeforeNavigation
+    }) };
 }
 
 test('locale navigation awaits the authoritative draft write', async () => {
@@ -105,6 +131,58 @@ test('a workspace switch during saving invalidates locale navigation', async () 
   const h = await navigationHarness({ after: { workspaceId: 'different' } });
   await assert.rejects(h.run(), /workspace|draft.*changed/i);
 });
+
+test('editor navigation awaits the saved draft while an application stream stays open', async () => {
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  const h = await navigationHarness({ pending });
+  let settled = false;
+  const work = h.runEditor().then(() => { settled = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.saves(), 1);
+  assert.equal(settled, false);
+  release(true);
+  await work;
+  assert.equal(settled, true);
+});
+
+for (const [label, options, message] of [
+  ['unconfirmed draft', {initial: {ready: false}}, /draft.*ready/i],
+  ['failed save', {outcome: false}, /draft.*saved/i],
+  ['changed workspace', {after: {workspaceId: 'different'}}, /workspace|draft.*changed/i]
+]) {
+  test(`editor navigation stops for a ${label}`, async () => {
+    const h = await navigationHarness(options);
+    await assert.rejects(h.runEditor(), message);
+  });
+}
+
+for (const prefix of ['', '/taxonomy']) {
+  test(`editor navigation can leave the verified sessions inventory without a draft: ${prefix || 'root'}`, async () => {
+    const baseUrl = 'https://taxonomy.example' + prefix;
+    const h = await navigationHarness({ baseUrl, url: baseUrl + '/admin/sessions?lang=de',
+      withoutSession: true, inventory: true, analysisInput: false });
+    await h.runEditor();
+    assert.equal(h.saves(), 0);
+  });
+}
+
+for (const [label, options] of [
+  ['analysis document with no session', { withoutSession: true }],
+  ['inventory marker at another path', { withoutSession: true, inventory: true, analysisInput: false }],
+  ['inventory marker at another origin', { withoutSession: true, inventory: true, analysisInput: false,
+    url: 'https://other.example/admin/sessions' }],
+  ['inventory with an analysis input', { withoutSession: true, inventory: true,
+    url: 'https://taxonomy.example/admin/sessions' }],
+  ['inventory with an unconfirmed session', { inventory: true, analysisInput: false,
+    url: 'https://taxonomy.example/admin/sessions', initial: { ready: false } }]
+]) {
+  test(`editor navigation still rejects an unsafe draft source: ${label}`, async () => {
+    const h = await navigationHarness(options);
+    await assert.rejects(h.runEditor(), /draft.*ready/i);
+    assert.equal(h.saves(), 0);
+  });
+}
 
 test('system-information locale reload flushes drafts before its navigation window', async () => {
   assert.match(systemInformationSource, /await settleDraftBeforeLocaleNavigation\(page\);[\s\S]*onLocaleNavigationStart\?\.\(locale\)/);
