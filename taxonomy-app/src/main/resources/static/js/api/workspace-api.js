@@ -88,8 +88,46 @@
         }
     });
 
+    // Response-returning operations retain domain conflict handling in their UI.
+    // The canonical client still owns status/authentication and guarded body readers.
+    function versionRequest(path, init, options) {
+        return window.TaxonomyApiClient.request(path, init || {}, Object.assign({
+            acceptedStatuses: [400, 404, 409, 412, 422, 423]
+        }, options || {}, { retries: 0 }));
+    }
+    function query(params) { var value = new URLSearchParams(params).toString(); return value ? '?' + value : ''; }
+    function versionPost(path, params, body, contentType) {
+        var init = { method: 'POST' };
+        if (body !== undefined) { init.body = body; init.headers = { 'Content-Type': contentType }; }
+        return versionRequest(path + query(params), init);
+    }
+    window.TaxonomyVersioningApi = Object.freeze({
+        branches: function () { return versionRequest('/api/git/branches'); },
+        state: function (branch, options) { return versionRequest('/api/git/state' + query({branch: branch}), {cache:'no-store'}, options); },
+        history: function (branch) { return versionRequest('/api/dsl/history' + query({branch: branch})); },
+        commitById: function (id) { return versionRequest('/api/dsl/git/commit/' + encodeURIComponent(id)); },
+        head: function (branch) { return versionRequest('/api/dsl/git/head' + query({branch: branch})); },
+        diff: function (left, right) { return versionRequest('/api/dsl/diff/' + encodeURIComponent(left) + '/' + encodeURIComponent(right)); },
+        restore: function (id, branch) { return versionPost('/api/dsl/restore', {commitId:id,branch:branch}); },
+        revert: function (id, branch) { return versionPost('/api/dsl/revert', {commitId:id,branch:branch}); },
+        undo: function (branch) { return versionPost('/api/dsl/undo', {branch:branch}); },
+        commit: function (branch, author, message, text) { return versionPost('/api/dsl/commit', {branch:branch,author:author,message:message}, text, 'text/plain'); },
+        compare: function (left, right) { return versionRequest('/api/context/compare' + query({leftBranch:left,rightBranch:right})); },
+        merge: function (from, into) { return versionPost('/api/dsl/merge', {fromBranch:from,intoBranch:into}); },
+        deleteBranch: function (name) { return versionRequest('/api/dsl/branch' + query({name:name}), {method:'DELETE'}); },
+        mergeConflicts: function (from, into) { return versionRequest('/api/dsl/merge/conflicts' + query({from:from,into:into})); },
+        cherryPickConflicts: function (id, target) { return versionRequest('/api/dsl/cherry-pick/conflicts' + query({commitId:id,targetBranch:target})); },
+        resolveMerge: function (from, into, text) { return versionPost('/api/dsl/merge/resolve', {fromBranch:from,intoBranch:into}, text, 'text/plain'); },
+        resolveCherryPick: function (id, target, text) { return versionPost('/api/dsl/cherry-pick/resolve', {commitId:id,targetBranch:target}, text, 'text/plain'); },
+        resolveDiverged: function (strategy, branch) { return versionPost('/api/workspace/resolve-diverged', {strategy:strategy,userBranch:branch}); },
+        copyBackPreview: function (selection) { return versionPost('/api/context/copy-back/preview', {}, JSON.stringify(selection), 'application/json'); },
+        copyBackApply: function (selection, contextId) { return versionPost('/api/context/copy-back/apply', contextId ? {expectedContextId:contextId} : {}, JSON.stringify(selection), 'application/json'); }
+    });
+
     window.TaxonomyPreferencesApi = Object.freeze({
-        current: function (options) { return get('/api/preferences', options); },
+        // Installation settings have no workspace owner. Authentication, page
+        // lifetime and the request deadline still guard this read and its body.
+        current: function (options) { return get('/api/preferences', Object.assign({contextSensitive: false, workspaceScoped: false}, options)); },
         save: function (changes, options) { return json('/api/preferences', changes, 'PUT', options); },
         reset: function (options) { return post('/api/preferences/reset', options); },
         history: function (options) { return get('/api/preferences/history', options); }

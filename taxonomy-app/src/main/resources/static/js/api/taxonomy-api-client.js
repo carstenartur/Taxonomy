@@ -12,6 +12,10 @@ window.TaxonomyApiClient = (function () {
     // taxonomy-i18n.js installs the external base-path wrapper before this file.
     // Capture that wrapper once, then apply the remaining transport policy here.
     var transportFetch = window.fetch.bind(window);
+    var transportAdapters = new Set();
+    var activeScopes = new Set();
+    var authenticationGeneration = 0;
+    var pageGeneration = 0;
     var accountContextPromise = null;
     var responseContexts = new WeakMap();
     var DEFAULT_TIMEOUT_MILLIS = 30000;
@@ -80,6 +84,28 @@ window.TaxonomyApiClient = (function () {
             || fallback;
     }
 
+    function workspacePin(input, init, options) {
+        if (!isSameOrigin(input) || !/\/api\//.test(requestPath(input))) return undefined;
+        var headers = new Headers(init?.headers || (input instanceof Request ? input.headers : {}));
+        if (headers.has('X-Taxonomy-Workspace-Id')) return headers.get('X-Taxonomy-Workspace-Id');
+        if (options.pinnedWorkspaceId !== undefined) return options.pinnedWorkspaceId == null ? '' : options.pinnedWorkspaceId;
+        var target = new URL(inputUrl(input), window.location.href);
+        if (target.searchParams.has('workspaceId')) return target.searchParams.get('workspaceId');
+        if (options.workspaceScoped === false) return undefined;
+        var workspace = window.__TaxonomyAnalysisSessionContext?.runtime?.workspaceId;
+        return workspace == null ? undefined : workspace;
+    }
+
+    function applicationInput(input, init, options) {
+        if (typeof input !== 'string') return input;
+        var path = window.TaxonomyI18n?.resolveUrl?.(input) || input;
+        var pin = workspacePin(path, init, options);
+        if (pin === undefined) return path;
+        var target = new URL(path, window.location.href);
+        target.searchParams.set('workspaceId', pin);
+        return /^[a-z][a-z0-9+.-]*:/i.test(path) ? target.href : target.pathname + target.search + target.hash;
+    }
+
     function ApiError(message, status, url, responseBody, metadata) {
         var details = metadata || {};
         this.name = 'ApiError';
@@ -111,8 +137,13 @@ window.TaxonomyApiClient = (function () {
         }).catch(function () { return null; });
     }
 
-    function dispatchAuthFailure(error) {
+    function dispatchAuthFailure(error, owningScope) {
         if (error.status !== 401 && error.status !== 403) return;
+        authenticationGeneration++;
+        accountContextPromise = null;
+        activeScopes.forEach(function (scope) {
+            if (scope !== owningScope) scope.abort('authentication');
+        });
         document.dispatchEvent(new CustomEvent('taxonomy-api-auth-failure', {
             detail: {
                 status: error.status,
@@ -124,15 +155,26 @@ window.TaxonomyApiClient = (function () {
     }
 
     function checkStatus(response, context) {
-        if (response.ok) {
+        if (response.ok || (response.status !== 401 && response.status !== 403
+                && context.acceptedStatuses.indexOf(response.status) >= 0)) {
             responseContexts.set(response, context);
             return Promise.resolve(response);
         }
+        // Authority is known at headers. A slow problem body must never keep
+        // another interactive result authorized or turn this into a timeout.
+        if (response.status === 401 || response.status === 403) {
+            context.authError = new ApiError('HTTP ' + response.status, response.status,
+                response.url || context.url, null, {
+                    requestId: responseRequestId(response, context.requestId), code: 'HTTP_ERROR'
+                });
+            dispatchAuthFailure(context.authError, context.scope);
+        }
         return parseResponseBody(response).then(function (body) {
             var problem = body && typeof body === 'object' ? body : {};
-            var detail = problem.detail || problem.message || problem.error
-                || (typeof body === 'string' ? body : null);
-            var title = problem.title || null;
+            var detail = [problem.detail, problem.message, problem.error, body].find(function (value) {
+                return typeof value === 'string' && value.trim();
+            }) || null;
+            var title = typeof problem.title === 'string' && problem.title.trim() ? problem.title : null;
             var message = detail || title
                 ? 'HTTP ' + response.status + ': ' + (detail || title)
                 : 'HTTP ' + response.status;
@@ -146,7 +188,6 @@ window.TaxonomyApiClient = (function () {
                     code: 'HTTP_ERROR',
                     retryable: [429, 502, 503, 504].indexOf(response.status) >= 0
                 });
-            dispatchAuthFailure(error);
             throw error;
         });
     }
@@ -155,6 +196,7 @@ window.TaxonomyApiClient = (function () {
         if (response.status === 204) return null;
         var context = responseContexts.get(response) || {};
         return response.json().catch(function (error) {
+            if (error instanceof ApiError) throw error;
             throw new ApiError('Invalid JSON response from server', response.status,
                 response.url || context.url, null, {
                     requestId: responseRequestId(response, context.requestId || null),
@@ -184,32 +226,222 @@ window.TaxonomyApiClient = (function () {
         var controller = new AbortController();
         var timedOut = false;
         var callerAborted = false;
+        var invalidated = false;
         var timer = null;
-        var callerSignal = options.signal || null;
-        var onCallerAbort = function () {
-            callerAborted = true;
-            controller.abort(callerSignal.reason);
-        };
-
-        if (callerSignal) {
-            if (callerSignal.aborted) onCallerAbort();
-            else callerSignal.addEventListener('abort', onCallerAbort, { once: true });
-        }
+        var callerSignals = options.signals || (options.signal ? [options.signal] : []);
+        var listeners = [];
+        callerSignals.forEach(function (signal) {
+            var abort = function () { callerAborted = true; controller.abort(signal.reason); };
+            if (signal.aborted) abort();
+            else { signal.addEventListener('abort', abort, {once: true}); listeners.push([signal, abort]); }
+        });
         if (validated.timeoutMillis > 0) {
             timer = setTimeout(function () {
                 timedOut = true;
                 controller.abort();
             }, validated.timeoutMillis);
         }
-        return {
+        var scope = {
             signal: controller.signal,
+            idle: function () { if (typeof timer?.unref === 'function') timer.unref(); },
+            abort: function (reason) { invalidated = true; controller.abort(reason); },
             timedOut: function () { return timedOut; },
-            callerAborted: function () { return callerAborted; },
+            callerAborted: function () { return callerAborted || invalidated; },
             cleanup: function () {
                 if (timer !== null) clearTimeout(timer);
-                if (callerSignal) callerSignal.removeEventListener('abort', onCallerAbort);
+                listeners.forEach(function (entry) { entry[0].removeEventListener('abort', entry[1]); });
+                activeScopes.delete(this);
             }
         };
+        controller.signal.addEventListener('abort', function () { scope.cleanup(); }, {once: true});
+        return scope;
+    }
+
+    function installTransportAdapter(name, factory) {
+        if (transportAdapters.has(name)) return false;
+        if (typeof name !== 'string' || !name || typeof factory !== 'function') {
+            throw new TypeError('A named transport adapter factory is required');
+        }
+        var adapted = factory(transportFetch);
+        if (typeof adapted !== 'function') throw new TypeError('A transport adapter must return a fetch function');
+        transportFetch = adapted;
+        transportAdapters.add(name);
+        return true;
+    }
+
+    function navigationIdentity() {
+        var value = window.TaxonomyContextBar?.getCurrentContext?.();
+        var chrome = window.TaxonomyAppChrome?.getContext?.() || {};
+        var source = window.TaxonomyArchitectureWorkflow?.getScope?.() || {};
+        return JSON.stringify([value?.contextId, value?.branch, value?.commitId,
+            chrome.project?.id, chrome.requirement?.id, chrome.requirement?.version,
+            chrome.architecture?.repositoryId, chrome.architecture?.workspaceScopeKey,
+            chrome.architecture?.branch, chrome.architecture?.modelStand,
+            chrome.source?.repositoryId, chrome.source?.workspaceScopeKey, chrome.source?.branch,
+            chrome.source?.modelStand, chrome.source?.snapshotId, chrome.source?.projectId,
+            chrome.source?.requirementId, chrome.source?.requirementVersionId, chrome.source?.commit,
+            chrome.source?.revision, source.workspaceId, source.repositoryId, source.branch, source.commitId]);
+    }
+
+    function captureContext(options, init) {
+        var runtime = window.__TaxonomyAnalysisSessionContext?.runtime;
+        var workspace = runtime?.workspaceId;
+        var analysis = runtime?.analysisGeneration;
+        var navigation = navigationIdentity();
+        var authentication = authenticationGeneration;
+        var page = pageGeneration;
+        return function () {
+            return authentication === authenticationGeneration
+                && (init?.keepalive === true || page === pageGeneration)
+                && (options.contextSensitive === false
+                    || (runtime === window.__TaxonomyAnalysisSessionContext?.runtime
+                        && workspace === runtime?.workspaceId && analysis === runtime?.analysisGeneration
+                        && navigation === navigationIdentity()));
+        };
+    }
+
+    function cancelled(context) {
+        return new ApiError('Request context was superseded', 0, context.url, null,
+            {code: 'ABORTED', requestId: context.requestId});
+    }
+
+    function assertCurrent(context) {
+        if (!context.current()) throw cancelled(context);
+    }
+
+    function abortable(promise, signal) {
+        return new Promise(function (resolve, reject) {
+            var abort = function () { reject(new DOMException('Aborted', 'AbortError')); };
+            if (signal.aborted) abort();
+            else signal.addEventListener('abort', abort, {once: true});
+            Promise.resolve(promise).then(resolve, reject).finally(function () {
+                signal.removeEventListener('abort', abort);
+            });
+        });
+    }
+
+    // Every raw body path uses the original request deadline, caller signal and
+    // immutable context. Stream reads stay incremental; no private bytes are
+    // buffered into a JSON convenience response.
+    function guardedResponse(response, context, options, validated, fetchScope, deadline) {
+        var readers = new Set(['json', 'text', 'blob', 'arrayBuffer', 'bytes', 'formData']);
+        var body;
+        function consume(action) {
+            return Promise.resolve().then(function () {
+                assertCurrent(context);
+                if (deadline !== null && Date.now() >= deadline) {
+                    fetchScope.abort('deadline');
+                    throw new ApiError('Request timed out after ' + validated.timeoutMillis + ' ms',
+                        0, context.url, null, {code: 'TIMEOUT', requestId: context.requestId});
+                }
+                var remaining = deadline === null ? 0 : Math.max(1, deadline - Date.now());
+                var scope = createRequestScope(options, {timeoutMillis: remaining});
+                scope.contextSensitive = options.contextSensitive !== false;
+                scope.current = context.current;
+                scope.keepalive = context.keepalive;
+                activeScopes.add(scope);
+                scope.signal.addEventListener('abort', function () { fetchScope.abort(scope.signal.reason); }, {once: true});
+                if (scope.signal.aborted) fetchScope.abort(scope.signal.reason);
+                return abortable(Promise.resolve().then(action), scope.signal).then(function (value) {
+                    assertCurrent(context);
+                    return value;
+                }).catch(function (error) {
+                    if (!context.current()) throw cancelled(context);
+                    throw normalizeTransportError(error, context, fetchScope.timedOut() ? fetchScope : scope, validated);
+                }).finally(function () { scope.cleanup(); });
+            });
+        }
+        function streamBody(stream) {
+            var safeStream;
+            // Pipe/tee/async-iteration use a real stream whose pull operation has
+            // the same fence as getReader().read(), including an original timer.
+            function delegatedStream() {
+                if (!safeStream) {
+                    var reader;
+                    safeStream = new ReadableStream({
+                        pull: function (controller) {
+                            if (!reader) reader = stream.getReader();
+                            return consume(function () { return reader.read(); }).then(function (part) {
+                                if (part.done) { controller.close(); reader.releaseLock(); fetchScope.cleanup(); }
+                                else controller.enqueue(part.value);
+                            }).catch(function (error) {
+                                controller.error(error);
+                                reader.cancel(error).catch(function () {});
+                            });
+                        },
+                        cancel: function (reason) { fetchScope.cleanup(); return reader ? reader.cancel(reason) : stream.cancel(reason); }
+                    }, {highWaterMark: 0});
+                }
+                return safeStream;
+            }
+            return new Proxy(stream, {
+                get: function (target, property) {
+                    if (property === 'cancel') return function (reason) { fetchScope.cleanup(); return target.cancel(reason); };
+                    if (property === 'getReader') return function (readerOptions) {
+                        var reader = target.getReader(readerOptions);
+                        return new Proxy(reader, {
+                            get: function (readerTarget, readerProperty) {
+                                if (readerProperty === 'read') return function () {
+                                    var args = arguments;
+                                    return consume(function () { return readerTarget.read.apply(readerTarget, args); }).then(function (part) {
+                                        if (part.done) fetchScope.cleanup();
+                                        return part;
+                                    });
+                                };
+                                if (readerProperty === 'closed') return consume(function () { return readerTarget.closed; }).finally(function () { fetchScope.cleanup(); });
+                                if (readerProperty === 'cancel') return function (reason) { fetchScope.cleanup(); return readerTarget.cancel(reason); };
+                                var value = Reflect.get(readerTarget, readerProperty, readerTarget);
+                                return typeof value === 'function' ? value.bind(readerTarget) : value;
+                            }
+                        });
+                    };
+                    if (property === 'tee') return function () {
+                        return delegatedStream().tee().map(streamBody);
+                    };
+                    if (property === 'pipeThrough') return function (transform, pipeOptions) {
+                        return streamBody(delegatedStream().pipeThrough(transform, pipeOptions));
+                    };
+                    if (property === 'values' || property === Symbol.asyncIterator) return function (iteratorOptions) {
+                        var iterator = delegatedStream().values(iteratorOptions);
+                        return {
+                            next: function () { return consume(function () { return iterator.next(); }); },
+                            return: function (value) { return iterator.return(value); },
+                            [Symbol.asyncIterator]: function () { return this; }
+                        };
+                    };
+                    if (property === 'pipeTo') return function (destination, pipeOptions) {
+                        var writer = destination.getWriter();
+                        var sink = new WritableStream({
+                            write: function (chunk) { return consume(function () { return writer.write(chunk); }); },
+                            close: function () { return writer.close().finally(function () { writer.releaseLock(); }); },
+                            abort: function (reason) { return writer.abort(reason).finally(function () { writer.releaseLock(); }); }
+                        });
+                        return delegatedStream().pipeTo(sink, pipeOptions);
+                    };
+                    var value = Reflect.get(target, property, target);
+                    return typeof value === 'function' ? value.bind(target) : value;
+                }
+            });
+        }
+        var guarded = new Proxy(response, {
+            get: function (target, property) {
+                if (property === 'clone') return function () {
+                    return guardedResponse(target.clone(), context, options, validated, fetchScope, deadline);
+                };
+                if (property === 'body' && target.body) {
+                    if (!body) body = streamBody(target.body);
+                    return body;
+                }
+                if (readers.has(property) && typeof target[property] === 'function') return function () {
+                    var args = arguments;
+                    return consume(function () { return target[property].apply(target, args); }).finally(function () { fetchScope.cleanup(); });
+                };
+                var value = Reflect.get(target, property, target);
+                return typeof value === 'function' ? value.bind(target) : value;
+            }
+        });
+        responseContexts.set(guarded, context);
+        return guarded;
     }
 
     function prepareRequest(input, init, options, requestId, signal) {
@@ -226,6 +458,10 @@ window.TaxonomyApiClient = (function () {
         }
         if (sameOrigin && !headers.has(REQUEST_ID_HEADER)) {
             headers.set(REQUEST_ID_HEADER, requestId);
+        }
+        var pin = workspacePin(input, prepared, options);
+        if (pin !== undefined && !headers.has('X-Taxonomy-Workspace-Id')) {
+            headers.set('X-Taxonomy-Workspace-Id', pin);
         }
         if (metadata && sameOrigin && method !== 'GET' && method !== 'HEAD'
                 && !headers.has(metadata.name)) {
@@ -261,6 +497,10 @@ window.TaxonomyApiClient = (function () {
                 cause: error
             });
         }
+        if (error && error.code && error.name !== 'AbortError') {
+            return new ApiError(error.message, error.status || 0, context.url, error.responseBody || null,
+                {code: error.code, requestId: context.requestId, cause: error});
+        }
         return new ApiError('Network request failed', 0, context.url, null, {
             requestId: context.requestId,
             code: 'NETWORK_ERROR',
@@ -271,26 +511,53 @@ window.TaxonomyApiClient = (function () {
 
     function performRequest(url, init, options, consumeResponse) {
         var requestOptions = Object.assign({}, options || {});
+        requestOptions.signals = Array.from(new Set([requestOptions.signal, init?.signal,
+            url instanceof Request ? url.signal : undefined].filter(Boolean)));
+        if (requestOptions.signal === undefined) requestOptions.signal = requestOptions.signals[0];
+        url = applicationInput(url, init, requestOptions);
         var validated = validateOptions(requestOptions);
-        var requestId = requestOptions.requestId || createRequestId();
-        var context = { url: inputUrl(url), requestId: requestId };
+        var suppliedHeaders = new Headers(init?.headers || (url instanceof Request ? url.headers : {}));
+        var requestId = suppliedHeaders.get(REQUEST_ID_HEADER) || requestOptions.requestId || createRequestId();
+        var context = {url: inputUrl(url), requestId: requestId,
+            acceptedStatuses: Array.isArray(requestOptions.acceptedStatuses) ? requestOptions.acceptedStatuses : [],
+            current: captureContext(requestOptions, init), keepalive: init?.keepalive === true};
 
         function attempt(number) {
             var scope = createRequestScope(requestOptions, validated);
+            var deadline = validated.timeoutMillis > 0 ? Date.now() + validated.timeoutMillis : null;
+            scope.contextSensitive = requestOptions.contextSensitive !== false;
+            scope.current = context.current;
+            scope.keepalive = context.keepalive;
+            context.scope = scope;
+            activeScopes.add(scope);
             var prepared = prepareRequest(
                 url, init, requestOptions, requestId, scope.signal);
-            return transportFetch(url, prepared)
+            var pending;
+            var rawDelivered = false;
+            try {
+                assertCurrent(context);
+                pending = transportFetch(url, prepared);
+            } catch (error) { pending = Promise.reject(error); }
+            return abortable(Promise.resolve(pending)
                 .then(function (response) { return checkStatus(response, context); })
                 .then(function (response) {
-                    return consumeResponse ? consumeResponse(response) : response;
-                })
+                    assertCurrent(context);
+                    if (consumeResponse) return consumeResponse(response);
+                    rawDelivered = true;
+                    if (response.body === null) scope.cleanup(); else scope.idle();
+                    return guardedResponse(response, context, requestOptions, validated, scope, deadline);
+                }), scope.signal)
+                .then(function (result) { assertCurrent(context); return result; })
                 .catch(function (error) {
+                    if (context.authError && !(error instanceof ApiError && [401, 403].includes(error.status))) throw context.authError;
+                    if (!context.current() && !(error instanceof ApiError && [401, 403].includes(error.status))) {
+                        throw cancelled(context);
+                    }
                     throw normalizeTransportError(error, context, scope, validated);
                 })
-                .finally(scope.cleanup)
+                .finally(function () { if (!rawDelivered) scope.cleanup(); })
                 .catch(function (error) {
-                    var callerCancelled = requestOptions.signal
-                        && requestOptions.signal.aborted;
+                    var callerCancelled = requestOptions.signals.some(function (signal) { return signal.aborted; });
                     if (!callerCancelled && number < validated.retries
                             && error.retryable && requestOptions.idempotent === true) {
                         return attempt(number + 1);
@@ -303,6 +570,10 @@ window.TaxonomyApiClient = (function () {
 
     function request(url, init, options) {
         return performRequest(url, init, options);
+    }
+
+    function requestJson(url, init, options) {
+        return performRequest(url, init, options, parseJson);
     }
 
     // Unlike raw request(), this owns the complete response body lifecycle.
@@ -319,7 +590,9 @@ window.TaxonomyApiClient = (function () {
         if (!accountContextPromise) {
             accountContextPromise = getJson('/api/account/me', {
                 idempotent: true,
-                timeoutMillis: 10000
+                timeoutMillis: 10000,
+                contextSensitive: false,
+                workspaceScoped: false
             }).catch(function (error) {
                 accountContextPromise = null;
                 throw error;
@@ -380,7 +653,7 @@ window.TaxonomyApiClient = (function () {
 
     function getJson(url, options) {
         var requestOptions = Object.assign({ idempotent: true }, options || {});
-        return request(url, { method: 'GET' }, requestOptions).then(parseJson);
+        return requestJson(url, { method: 'GET' }, requestOptions);
     }
 
     function sendJson(url, body, method, options) {
@@ -390,11 +663,11 @@ window.TaxonomyApiClient = (function () {
             requestOptions = actualMethod;
             actualMethod = null;
         }
-        return request(url, {
+        return requestJson(url, {
             method: actualMethod || 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
-        }, requestOptions).then(parseJson);
+        }, requestOptions);
     }
 
     function sendFormData(url, formData, method, options) {
@@ -404,14 +677,32 @@ window.TaxonomyApiClient = (function () {
             requestOptions = actualMethod;
             actualMethod = null;
         }
-        return request(url, {
+        return requestJson(url, {
             method: actualMethod || 'POST',
             body: formData
-        }, requestOptions).then(parseJson);
+        }, requestOptions);
     }
 
     function deleteJson(url, options) {
-        return request(url, { method: 'DELETE' }, options).then(parseJson);
+        return requestJson(url, { method: 'DELETE' }, options);
+    }
+
+    if (typeof window.addEventListener === 'function') window.addEventListener('pagehide', function () {
+        pageGeneration++;
+        activeScopes.forEach(function (scope) { if (!scope.keepalive) scope.abort('pagehide'); });
+    });
+    if (typeof document.addEventListener === 'function') document.addEventListener('taxonomy:analysis-invalidated', function () {
+        activeScopes.forEach(function (scope) { if (scope.contextSensitive) scope.abort('analysis'); });
+    });
+
+    if (typeof document.addEventListener === 'function') {
+        ['taxonomy:entity-context-changed', 'taxonomy:portfolio-project-selecting', 'taxonomy:repository-context-changed'].forEach(function (event) {
+            document.addEventListener(event, function () {
+                activeScopes.forEach(function (scope) {
+                    if (scope.contextSensitive && scope.current && !scope.current()) scope.abort('navigation');
+                });
+            });
+        });
     }
 
     installGlobalCsrfInterceptor();
@@ -419,6 +710,9 @@ window.TaxonomyApiClient = (function () {
     return {
         ApiError: ApiError,
         request: request,
+        requestJson: requestJson,
+        installTransportAdapter: installTransportAdapter,
+        captureContext: function (options) { return captureContext(options || {}, null); },
         requestBlob: requestBlob,
         getJson: getJson,
         getAccountContext: getAccountContext,

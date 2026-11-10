@@ -113,7 +113,31 @@ window.AnalysisApi = (function () {
         return client.getJson('/api/graph/apqc-hierarchy');
     }
 
+    function rawJson(path, payload, options) {
+        return client.request(path, {method: 'POST', headers: Object.assign({'Content-Type': 'application/json'}, options?.headers),
+            body: JSON.stringify(payload)}, options);
+    }
+    function analyzeNode(params, options) {
+        var query = new URLSearchParams();
+        Object.keys(params || {}).forEach(function (key) {
+            if (params[key] !== undefined && params[key] !== null) query.set(key, params[key]);
+        });
+        return client.request('/api/analyze-node?' + query, {}, options);
+    }
     return {
+        // The reserved analysis operation owns its configured server deadline.
+        // Retain caller cancellation/context fencing and any explicit caller deadline.
+        main: function (payload, options) {
+            return rawJson('/api/analyze', payload, Object.assign({}, options, {
+                timeoutMillis: options?.timeoutMillis === undefined ? 0 : options.timeoutMillis
+            }));
+        },
+        analyzeNode: analyzeNode,
+        justifyLeaf: function (payload, options) { return rawJson('/api/justify-leaf', payload, options); },
+        importScores: function (jsonText, options) {
+            return client.request('/api/scores/import', {method: 'POST',
+                headers: {'Content-Type': 'application/json'}, body: jsonText}, options);
+        },
         analyzeGap:            analyzeGap,
         detectPatterns:        detectPatterns,
         recommend:             recommend,

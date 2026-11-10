@@ -59,6 +59,8 @@ function loadClient(fetchImpl, bootstrap) {
     URL,
     Request,
     Response,
+    ReadableStream,
+    WritableStream,
     Headers,
     AbortController,
     DOMException,
@@ -89,6 +91,370 @@ async function loadWorkspaceFeatures(fetchImpl, bootstrap) {
   app.context.URLSearchParams = URLSearchParams;
   vm.runInContext(feature, app.context, { filename: 'workspace-api.js' });
   return app;
+}
+
+test('JSON timeout remains active while the response body is pending', async () => {
+  const app = loadClient(async () => ({
+    ok: true, status: 200, headers: new Headers(),
+    json: () => new Promise(() => {})
+  }));
+  const outcome = await Promise.race([
+    app.client.getJson('/api/context/current', {timeoutMillis: 10})
+      .then(() => 'delivered', error => error.code),
+    new Promise(resolve => setTimeout(() => resolve('body timeout was cleared at headers'), 80))
+  ]);
+  assert.equal(outcome, 'TIMEOUT');
+});
+
+test('a body from a superseded navigation selection cannot repaint the same workspace', async () => {
+  let releaseBody;
+  const app = loadClient(async () => ({
+    ok: true, status: 200, headers: new Headers(),
+    json: () => new Promise(resolve => { releaseBody = resolve; })
+  }));
+  const runtime = {workspaceId: 'personal', analysisGeneration: 1};
+  let context = {contextId: 'older', branch: 'draft', commitId: 'a'.repeat(40)};
+  app.context.window.__TaxonomyAnalysisSessionContext = {runtime};
+  app.context.window.TaxonomyContextBar = {getCurrentContext: () => context};
+  const request = app.client.getJson('/api/context/compare');
+  await new Promise(resolve => setImmediate(resolve));
+  context = {contextId: 'newer', branch: 'review', commitId: 'b'.repeat(40)};
+  releaseBody({changes: ['old navigation']});
+  await assert.rejects(request, error => error.code === 'ABORTED');
+});
+
+test('expected domain statuses are inspectable while authentication errors always reject', async () => {
+  let status = 409;
+  const app = loadClient(async () => Response.json({detail: 'Domain response'}, {status}));
+  const response = await app.client.request('/api/architecture/relations/source/type/target',
+    {method: 'PUT'}, {acceptedStatuses: [409, 401, 403]});
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).detail, 'Domain response');
+  for (status of [401, 403]) {
+    await assert.rejects(app.client.request('/api/architecture/relations/source/type/target',
+      {method: 'PUT'}, {acceptedStatuses: [409, 401, 403]}), error => error.status === status);
+  }
+  assert.deepEqual(app.events.filter(event => event.type === 'taxonomy-api-auth-failure')
+    .map(event => event.detail.status), [401, 403]);
+});
+
+for (const source of ['init', 'Request']) {
+  test(`the canonical request retains a caller signal supplied by ${source}`, async () => {
+    const app = loadClient(abortingFetch());
+    const controller = new AbortController();
+    const input = source === 'Request'
+      ? new Request('https://taxonomy.example.test/api/context/current', {signal: controller.signal})
+      : '/api/context/current';
+    const pending = app.client.request(input, source === 'init' ? {signal: controller.signal} : {}, {timeoutMillis: 20});
+    controller.abort();
+    const outcome = await Promise.race([
+      pending.then(() => 'delivered', error => error.code),
+      new Promise(resolve => setTimeout(() => resolve('caller signal was lost'), 80))
+    ]);
+    assert.equal(outcome, 'ABORTED');
+  });
+}
+
+test('authentication failure invalidates another pending interactive body without navigation', async () => {
+  let releaseBody;
+  const app = loadClient(async url => String(url).includes('/denied')
+    ? Response.json({detail: 'Session expired'}, {status: 401})
+    : {ok: true, status: 200, headers: new Headers(), json: () => new Promise(resolve => {releaseBody = resolve;})});
+  const pending = app.client.getJson('/api/context/current');
+  await new Promise(resolve => setImmediate(resolve));
+  await assert.rejects(app.client.getJson('/api/denied'), error => error.status === 401);
+  releaseBody({branch: 'private old session'});
+  await assert.rejects(pending, error => error.code === 'ABORTED');
+});
+
+test('account context can finish during initial workspace hydration', async () => {
+  let releaseBody;
+  const app = loadClient(async () => ({ok: true, status: 200, headers: new Headers(),
+    json: () => new Promise(resolve => {releaseBody = resolve;})}));
+  const runtime = {workspaceId: null, analysisGeneration: 0};
+  app.context.window.__TaxonomyAnalysisSessionContext = {runtime};
+  const pending = app.client.getAccountContext();
+  await new Promise(resolve => setImmediate(resolve));
+  runtime.workspaceId = 'hydrated';
+  releaseBody({administrator: false});
+  assert.deepEqual(await pending, {administrator: false});
+});
+
+test('raw response clones retain guards on every supported body reader', async () => {
+  for (const reader of ['json', 'text', 'blob', 'arrayBuffer', 'formData']) {
+    const app = loadClient(async () => Response.json({value: 'old'}));
+    const runtime = {workspaceId: 'original', analysisGeneration: 0};
+    app.context.window.__TaxonomyAnalysisSessionContext = {runtime};
+    const response = await app.client.request('/api/relations');
+    const clone = response.clone();
+    runtime.workspaceId = 'changed';
+    await assert.rejects(clone[reader](), error => error.code === 'ABORTED', reader);
+  }
+});
+
+test('named requests preserve prefix and exact central/header pins without rerouting durable work', async () => {
+  const calls = [];
+  const app = loadClient(async (url, init) => {calls.push({url, init}); return Response.json({ok: true});});
+  app.context.window.TaxonomyI18n = {resolveUrl: url => url.startsWith('/api/') ? '/taxonomy' + url : url};
+  app.context.window.__TaxonomyAnalysisSessionContext = {runtime: {workspaceId: 'active'}};
+  await app.client.sendJson('/api/projects/1/requirements', {text: 'review'});
+  assert.equal(calls[0].url, '/taxonomy/api/projects/1/requirements?workspaceId=active');
+  assert.equal(calls[0].init.headers.get('X-Taxonomy-Workspace-Id'), 'active');
+  await app.client.getJson('/api/context/current?workspaceId=stale', {
+    headers: {'X-Taxonomy-Workspace-Id': ''}, pinnedWorkspaceId: ''
+  });
+  await app.client.requestJson('/api/context/current?workspaceId=stale', {
+    headers: {'X-Taxonomy-Workspace-Id': ''}
+  });
+  assert.equal(calls[2].init.headers.get('X-Taxonomy-Workspace-Id'), '');
+  assert.equal(new URL(calls[2].url, app.context.window.location.href).searchParams.get('workspaceId'), '');
+  await app.client.getJson('/api/analysis-runs/retained', {pinnedWorkspaceId: 'original', contextSensitive: false});
+  assert.equal(calls[3].init.headers.get('X-Taxonomy-Workspace-Id'), 'original');
+  assert.equal(new URL(calls[3].url, app.context.window.location.href).searchParams.get('workspaceId'), 'original');
+  await app.client.getJson('/api/account/me', {workspaceScoped: false, contextSensitive: false});
+  assert.equal(calls[4].init.headers.has('X-Taxonomy-Workspace-Id'), false);
+  assert.equal(new URL(calls[4].url, app.context.window.location.href).searchParams.has('workspaceId'), false);
+});
+
+test('late transport adapters compose once without consulting the legacy global fetch chain', async () => {
+  let network = 0, admission = 0, duplicate = 0;
+  const app = loadClient(async () => {network++; return Response.json({ok: true});});
+  assert.equal(app.client.installTransportAdapter('fixture', next => (url, init) => {
+    admission++; return next(url, init);
+  }), true);
+  assert.equal(app.client.installTransportAdapter('fixture', next => {duplicate++; return next;}), false);
+  app.context.window.fetch = () => {throw new Error('Named calls must not delegate through global wrappers');};
+  await app.client.getJson('/api/context/current');
+  assert.equal(network, 1); assert.equal(admission, 1); assert.equal(duplicate, 0);
+});
+
+test('named main analysis emits one real operation admission and terminal event', async () => {
+  const app = loadClient(async () => Response.json({status: 'SUCCESS', scores: {BP: 80}}));
+  app.context.window.__TaxonomyAnalysisSessionContext = {runtime: {}, S: {}, language: () => 'en'};
+  app.context.window.setTimeout = setTimeout;
+  app.context.document.addEventListener = () => {};
+  app.context.document.getElementById = () => null;
+  const source = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-operation-coordinator.js', import.meta.url), 'utf8');
+  vm.runInContext(source, app.context);
+  await app.client.sendJson('/api/analyze', {text: 'deterministic fixture'});
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.deepEqual(app.events.filter(event => event.type === 'taxonomy:operation-state')
+    .map(event => event.detail.status), ['RUNNING', 'SUCCEEDED']);
+});
+
+test('raw stream readers reject bytes from a changed workspace and retain the original deadline', async () => {
+  for (const changed of [true, false]) {
+    let controller;
+    const body = new ReadableStream({start(value) {controller = value;}});
+    const app = loadClient(async () => new Response(body));
+    const runtime = {workspaceId: 'original', analysisGeneration: 0};
+    app.context.window.__TaxonomyAnalysisSessionContext = {runtime};
+    const response = await app.client.request('/api/retained-data', {}, {timeoutMillis: changed ? 100 : 15});
+    const reader = response.body.getReader();
+    const pending = reader.read();
+    if (changed) {
+      runtime.workspaceId = 'changed';
+      controller.enqueue(new TextEncoder().encode('old private bytes'));
+    }
+    await assert.rejects(pending, error => error.code === (changed ? 'ABORTED' : 'TIMEOUT'));
+    controller.close();
+    reader.releaseLock();
+  }
+});
+
+test('raw stream readers deliver current bytes without JSON buffering', async () => {
+  const app = loadClient(async () => new Response(new Uint8Array([1, 2, 3])));
+  const response = await app.client.request('/api/retained-data');
+  const reader = response.body.getReader();
+  assert.deepEqual((await reader.read()).value, new Uint8Array([1, 2, 3]));
+  assert.equal((await reader.read()).done, true);
+  reader.releaseLock();
+});
+
+test('derived tee branches fence bytes buffered before a workspace change', async () => {
+  const app = loadClient(async () => new Response(new Uint8Array([1, 2, 3])));
+  const runtime = {workspaceId: 'before'};
+  app.context.window.__TaxonomyAnalysisSessionContext = {runtime};
+  const response = await app.client.request('/api/retained-data');
+  const [left, right] = response.body.tee();
+  const first = left.getReader();
+  await first.read();
+  runtime.workspaceId = 'after';
+  const second = right.getReader();
+  await assert.rejects(second.read(), error => error.code === 'ABORTED');
+  await Promise.allSettled([first.cancel(), second.cancel()]);
+});
+
+test('a delayed transform cannot publish a chunk after its context is superseded', async () => {
+  let emit;
+  const app = loadClient(async () => new Response(new Uint8Array([1, 2, 3])));
+  const runtime = {workspaceId: 'before'};
+  app.context.window.__TaxonomyAnalysisSessionContext = {runtime};
+  const response = await app.client.request('/api/retained-data');
+  const transform = new TransformStream({transform(chunk, controller) {
+    return new Promise(resolve => {emit = () => {controller.enqueue(chunk); resolve();};});
+  }});
+  const reader = response.body.pipeThrough(transform).getReader();
+  const pending = reader.read();
+  pending.catch(() => {});
+  while (!emit) await new Promise(resolve => setTimeout(resolve, 0));
+  runtime.workspaceId = 'after'; emit();
+  await assert.rejects(pending, error => error.code === 'ABORTED');
+  await reader.cancel().catch(() => {});
+});
+
+test('network and timeout errors report the effective outgoing request ID', async () => {
+  for (const kind of ['network', 'timeout']) {
+    const app = loadClient(kind === 'timeout' ? abortingFetch() : async () => {throw new TypeError('offline');});
+    await assert.rejects(app.client.request('/api/correlated', {headers: {'X-Request-ID': 'retained-correlation'}},
+      {timeoutMillis: 10}), error => error.requestId === 'retained-correlation' && error.code === (kind === 'timeout' ? 'TIMEOUT' : 'NETWORK_ERROR'));
+  }
+});
+
+test('all caller signals remain effective when options and Request/init signals coexist', async () => {
+  for (const abortOptions of [true, false]) {
+    const app = loadClient(abortingFetch());
+    const optionController = new AbortController();
+    const initController = new AbortController();
+    const pending = app.client.request('/api/pending', {signal: initController.signal},
+      {signal: optionController.signal});
+    (abortOptions ? optionController : initController).abort();
+    await assert.rejects(pending, error => error.code === 'ABORTED');
+  }
+});
+
+test('project selection in the same workspace fences interactive bodies but retains durable monitoring', async () => {
+  for (const durable of [false, true]) {
+    let release;
+    const app = loadClient(async () => ({ok: true, status: 200, headers: new Headers(),
+      json: () => new Promise(resolve => {release = resolve;})}));
+    let projectId = 1;
+    app.context.window.TaxonomyAppChrome = {getContext: () => ({project: {id: projectId}})};
+    const pending = app.client.getJson('/api/projects', {contextSensitive: !durable});
+    while (!release) await new Promise(resolve => setTimeout(resolve, 0));
+    projectId = 2;
+    release({projectId: 1});
+    if (durable) assert.deepEqual(await pending, {projectId: 1});
+    else await assert.rejects(pending, error => error.code === 'ABORTED');
+  }
+});
+
+test('authentication headers invalidate pending bodies before a stalled problem body finishes', async () => {
+  let releaseOther, enterOther;
+  const entered = new Promise(resolve => {enterOther = resolve;});
+  const app = loadClient(async url => String(url).includes('/denied') ? {
+    ok: false, status: 403, headers: new Headers({'X-Request-ID': 'denied-request'}),
+    clone: () => ({text: () => new Promise(() => {})})
+  } : {ok: true, status: 200, headers: new Headers(),
+    json: () => {enterOther(); return new Promise(resolve => {releaseOther = resolve;});}});
+  const other = app.client.getJson('/api/other');
+  other.catch(() => {});
+  await entered;
+  const denied = app.client.request('/api/denied', {}, {timeoutMillis: 15});
+  denied.catch(() => {});
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const auth = app.events.filter(event => event.type === 'taxonomy-api-auth-failure');
+  releaseOther({private: 'old'});
+  await assert.rejects(other, error => error.code === 'ABORTED');
+  assert.equal(auth.length, 1);
+  assert.equal(auth[0].detail.status, 403);
+  assert.equal(auth[0].detail.requestId, 'denied-request');
+  await assert.rejects(denied, error => error.status === 403);
+});
+
+test('named global reference reads survive initial hydration but still dispatch authentication failures', async () => {
+  let release;
+  const app = loadClient(() => new Promise(resolve => {release = resolve;}));
+  const api = await loadDomain(app, 'reference-api.js', 'TaxonomyReferenceApi');
+  const pending = api.startup();
+  app.context.window.__TaxonomyAnalysisSessionContext = {runtime:{workspaceId:'hydrated'}};
+  release(Response.json({initialized:true}));
+  assert.deepEqual(await (await pending).json(), {initialized:true});
+  const denied = loadClient(async () => Response.json({detail:'expired'}, {status:403}));
+  await assert.rejects((await loadDomain(denied, 'reference-api.js', 'TaxonomyReferenceApi')).about(), error => error.status === 403);
+  assert.equal(denied.events.filter(event => event.type === 'taxonomy-api-auth-failure').length, 1);
+});
+
+test('a source snapshot selection fences a pending body within the same project and workspace', async () => {
+  let release;
+  const app = loadClient(async () => ({ok:true, status:200, headers:new Headers(),
+    json: () => new Promise(resolve => {release = resolve;})}));
+  let snapshotId = 'old-snapshot';
+  app.context.window.TaxonomyAppChrome = {getContext: () => ({project:{id:1}, source:{snapshotId}})};
+  const pending = app.client.getJson('/api/projects/1/snapshots/old-snapshot');
+  while (!release) await new Promise(resolve => setTimeout(resolve, 0));
+  snapshotId = 'new-snapshot'; release({snapshot:'old'});
+  await assert.rejects(pending, error => error.code === 'ABORTED');
+});
+
+function navigationEvents(context) {
+  const listeners = new Map(), dispatch = context.document.dispatchEvent;
+  context.document.addEventListener = (type, callback) => {
+    if (!listeners.has(type)) listeners.set(type, []);
+    listeners.get(type).push(callback);
+  };
+  context.document.dispatchEvent = event => {
+    dispatch(event);
+    for (const callback of listeners.get(event.type) || []) callback(event);
+  };
+}
+
+test('a body child still owns navigation cancellation after another clone completes', async () => {
+  let release, signal;
+  let projectId = 1;
+  const app = loadClient(async (_url, init) => {
+    signal = init.signal;
+    return {ok:true, status:200, headers:new Headers(),
+      clone: () => ({ok:true, status:200, headers:new Headers(), json:async () => ({ready:true})}),
+      json: () => new Promise(resolve => {release = resolve;})};
+  }, navigationEvents);
+  app.context.window.TaxonomyAppChrome = {getContext: () => ({project:{id:projectId}})};
+  const response = await app.client.request('/api/pending-body');
+  await response.clone().json();
+  const pending = response.json(); pending.catch(() => {});
+  while (!release) await new Promise(resolve => setTimeout(resolve, 0));
+  projectId = 2;
+  app.context.document.dispatchEvent(new TestCustomEvent('taxonomy:entity-context-changed'));
+  const abortedAtNavigation = signal.aborted;
+  release({private:'old'});
+  await assert.rejects(pending, error => error.code === 'ABORTED');
+  assert.equal(abortedAtNavigation, true, 'the remaining child must abort its underlying request immediately');
+});
+
+async function loadDomain(app, file, globalName) {
+  const script = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/api/' + file, import.meta.url), 'utf8').catch(() => '');
+  if (script) vm.runInContext(script, app.context, {filename: file});
+  const api = app.context.window[globalName];
+  assert.ok(api, globalName + ' must be a named canonical API');
+  return api;
+}
+const remainingDomains = [
+  ['search-api.js', 'TaxonomySearchApi', api => api.search('term', 'graph', 10)],
+  ['dsl-api.js', 'TaxonomyDslApi', api => api.parse('architecture {}')],
+];
+for (const [file, name, invoke] of remainingDomains) {
+  test(name + ' dispatches shared authentication failures', async () => {
+    for (const status of [401, 403]) {
+      const app = loadClient(async () => Response.json({detail: 'expired'}, {status}));
+      const api = await loadDomain(app, file, name);
+      await assert.rejects(invoke(api), error => error.status === status);
+      assert.equal(app.events.filter(event => event.type === 'taxonomy-api-auth-failure').length, 1);
+    }
+  });
+  test(name + ' rejects its actual response body after workspace changes', async () => {
+    let release;
+    const app = loadClient(async () => ({ok: true, status: 200, headers: new Headers(),
+      json: () => new Promise(resolve => {release = resolve;})}));
+    const runtime = {workspaceId: 'one'};
+    app.context.window.__TaxonomyAnalysisSessionContext = {runtime};
+    const api = await loadDomain(app, file, name);
+    const response = await invoke(api);
+    const pending = response.json();
+    while (!release) await new Promise(resolve => setTimeout(resolve, 0));
+    runtime.workspaceId = 'two';
+    release({old: 'workspace one'});
+    await assert.rejects(pending, error => error.code === 'ABORTED');
+  });
 }
 
 test('the comparison dialog reads one authorized workspace and ignores results from the previous workspace', async () => {
