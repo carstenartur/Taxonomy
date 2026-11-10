@@ -1,5 +1,7 @@
 package com.taxonomy;
 
+import com.taxonomy.dto.ContextMode;
+import com.taxonomy.dto.ContextRef;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -29,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -161,6 +164,10 @@ class ArchitectureWorkspaceBrowserIT {
         page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of()));
         page.route("GET", "/taxonomy/api/analysis-runs", request -> json(200, List.of()));
         page.route("GET", "/taxonomy/api/workspace/current", request -> json(200, Map.of("workspaceId", "analysis-A")));
+        // ContextRef belongs to the retained analysis-A request scope, not the displayed working/snapshot source.
+        page.route("GET", "/taxonomy/api/context/current", request -> json(200, new ContextRef(
+                "context-analysis-A", "draft/A", COMMIT, Instant.parse("2026-10-07T09:00:00Z"), ContextMode.EDITABLE,
+                null, null, null, null, null, false)));
         page.route("GET", "/taxonomy/api/analysis-drafts/analysis-A", request -> json(200,
                 Map.of("workspaceId", "analysis-A", "version", version.get(), "payload", payload.get())));
         page.route("PUT", "/taxonomy/api/analysis-drafts/analysis-A", request -> {

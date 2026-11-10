@@ -23,6 +23,7 @@ class ReformulationAdoptionTest {
             try(var resource=getClass().getResourceAsStream(name)){assertNotNull(resource,name);Files.copy(resource,path);}paths.add(path.toString());
         }
         var command=new ArrayList<String>();command.add(System.getProperty("taxonomy.node.executable"));command.addAll(paths);
+        command.add(Path.of("..").toAbsolutePath().normalize().resolve(".github/scripts/canonical-api-fixture.cjs").toString());
         execute(command,"controls",30,"REFORMULATION_ADOPTION_CONTROLS_OK");
     }
     @Test void readOnlyDetailRefreshKeepsUnsavedFieldsAndRejectsLateReads() throws Exception {

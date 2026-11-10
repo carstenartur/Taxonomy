@@ -2,6 +2,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
+const canonicalFixture=require(process.argv[4]);
 const apiSource=fs.readFileSync(process.argv[2],'utf8');
 const source=fs.readFileSync(process.argv[3],'utf8');
 const start=source.indexOf('    // Read-only progress state');
@@ -45,7 +46,7 @@ const sandbox={window:{location:{pathname:'/'}},document,URLSearchParams,host,of
         if(id && id===holdId)return new Promise(resolve=>{held=()=>resolve({ok:true,status:200,json:async()=>partial(run,id)});});
         return {ok:true,status:200,json:async()=>parsed.pathname.endsWith('/usage')?usage(run):id?partial(run,id):page(run,parsed.searchParams.get('after'))};
     }};
-vm.createContext(sandbox);
+canonicalFixture.install(sandbox);
 vm.runInContext(apiSource,sandbox);
 sandbox.api=sandbox.window.TaxonomyPortfolioApi;
 vm.runInContext(source.slice(start,end)+'\nthis.actions={showProgress,refreshProgress,showPartial,renderProgress};',sandbox);
@@ -90,4 +91,4 @@ vm.runInContext(source.slice(start,end)+'\nthis.actions={showProgress,refreshPro
     await all(panel).find(n=>n.text==='closeProgress').action();
     assert(!document.getElementById('reformulationProgress'));
     console.log('REFORMULATION_PROGRESS_CONTROLS_OK');
-})().catch(e=>{console.error(e);process.exitCode=1;});
+})().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>canonicalFixture.dispose());

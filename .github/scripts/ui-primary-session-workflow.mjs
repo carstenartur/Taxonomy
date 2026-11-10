@@ -232,6 +232,9 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
     return Boolean(grid) && getComputedStyle(grid).display === 'grid';
   }, null, { timeout: 20_000 });
 
+  await page.waitForFunction(() =>
+    window.TaxonomyAnalysisSession?.state?.().ready === true,
+  null, { timeout: 20_000 });
   const meaningful = await page.evaluate(() => {
     const context = window.__TaxonomyAnalysisSessionContext;
     return Boolean(context?.meaningful?.(context.currentPayload()));

@@ -181,6 +181,7 @@ async function mountedWorkspace(initialKind='analysis',loaderOnly=false,options=
     context.TaxonomyAppChrome={updateContext:(value,owner)=>headers.push({value,owner}),activateContext(){},refreshNavigation(){}};
     context.TaxonomyArchitectureWorkflow={getScope:()=>({}),replaceScope:value=>scopes.push({...value})};
     context.TaxonomyArchitectureLifecycleApi={overview:async scope=>{metadata.push({...scope});return options.overview ? options.overview(scope) : {context:{repositoryId:'analysis-repo',branch:'analysis-branch',workspaceScopeKey:scope.workspaceScopeKey}};}};
+    if (options.lifecycleReady) context.TaxonomyArchitectureLifecycle = {ready: options.lifecycleReady};
     context.TaxonomyArchitectureEditor={mount:()=>({activate:async()=>{},suspend(){},canLeave:()=>context.editorCanLeave!==false,getData:()=>null,getDiagram:()=>null,getSource:()=>({workspaceId:'B',workspaceScopeKey:'B',repositoryId:'working-repo',branch:'working-branch'})})};
     if(!loaderOnly)context.TaxonomyAnalysisSessionReady=readyPromise;
     vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/architecture-workspace.js',import.meta.url),'utf8'),context);
@@ -346,4 +347,75 @@ test('a rejected history departure from Working to Analyze cannot replace the pr
     assert.equal(fixture.context.location.searchParams.get('workspaceId'),'B');
     fixture.context.editorCanLeave=true;await workspace.open('analysis');await transport.preview();
     assertImportDestination(transport.requests[0],{repositoryId:'destination-repo',workspaceId:'',branch:'main'});
+});
+
+
+test('workspace startup publishes its analysis source after the initial working lifecycle stand', async () => {
+    let release;
+    const lifecycle = new Promise(resolve => {release = resolve;});
+    const f = await mountedWorkspace('analysis', false, {page: 'analyze', lifecycleReady: () => lifecycle});
+    await f.ready();
+    assert.equal(typeof f.context.TaxonomyArchitectureWorkspace.ready, 'function');
+    let settled = false;
+    const ready = f.context.TaxonomyArchitectureWorkspace.ready().then(value => {settled = true; return value;});
+    assert.equal(f.metadata.length, 0); assert.equal(settled, false);
+    f.context.TaxonomyArchitectureWorkflow.replaceScope({workspaceScopeKey: 'working', branch: 'initial-working'});
+    release();
+    assert.equal(await ready, true);
+    assert.equal(f.scopes.at(-1).workspaceScopeKey, 'A');
+    assert.equal(f.scopes.at(-1).branch, 'analysis-branch');
+});
+
+test('an unavailable initial analysis source can retry through the same readiness boundary', async () => {
+    let available = false;
+    const f = await mountedWorkspace('analysis', false, {page: 'analyze', overview: async scope => {
+        if (!available) throw new Error('metadata offline');
+        return {context: {repositoryId: 'analysis-repo', branch: 'analysis-branch', workspaceScopeKey: scope.workspaceScopeKey}};
+    }});
+    await f.ready();
+    assert.equal(typeof f.context.TaxonomyArchitectureWorkspace.ready, 'function');
+    assert.equal(await f.context.TaxonomyArchitectureWorkspace.ready(), false);
+    assert.equal(f.metadata.length, 1, 'Observing failed readiness does not retry metadata automatically');
+    available = true;
+    const retry = f.context.TaxonomyArchitectureWorkspace.ready(true);
+    assert.equal(f.context.TaxonomyArchitectureWorkspace.ready(true), retry, 'Repeated retry observers share one initialization');
+    assert.equal(await retry, true);
+    assert.equal(f.metadata.length, 2);
+    assert.equal(f.scopes.at(-1).workspaceScopeKey, 'A');
+});
+
+
+for (const visible of ['analysis', 'working']) test(`a recovered retained analysis workspace confirms its own metadata while preserving visible ${visible} ownership`, async () => {
+    const f = await mountedWorkspace('analysis', false, {page: 'analyze'});
+    await f.ready();
+    const api = f.context.TaxonomyArchitectureWorkspace;
+    assert.equal(await api.ready(), true);
+    if (visible === 'working') await api.open('working', {source: {workspaceScopeKey: 'editor-workspace', branch: 'editor-draft'}});
+    const selected = JSON.stringify(api.getSource()), publications = f.headers.length;
+    f.context.TaxonomyAnalysisSession = {whenInitialized: () => Promise.resolve(true), state: () => ({workspaceId: 'B', version: 1})};
+    assert.equal(await api.ready(), true);
+    assert.equal(f.metadata.length, 2);
+    assert.equal(f.metadata[1].workspaceScopeKey, 'B');
+    if (visible === 'analysis') assert.equal(f.scopes.at(-1).workspaceScopeKey, 'B');
+    else {
+        assert.equal(JSON.stringify(api.getSource()), selected, 'Retained analysis recovery cannot reopen the current editor source');
+        assert.equal(f.headers.length, publications, 'Retained analysis recovery cannot relabel the visible editor');
+    }
+});
+
+
+test('retrying failed initial metadata preserves a subsequently opened working editor in the same retained workspace', async () => {
+    let available = false;
+    const f = await mountedWorkspace('analysis', false, {overview: async scope => {
+        if (!available) throw new Error('initial metadata offline');
+        return {context: {repositoryId: 'analysis-repo', branch: 'analysis-branch', workspaceScopeKey: scope.workspaceScopeKey}};
+    }});
+    await f.ready(); const api = f.context.TaxonomyArchitectureWorkspace;
+    assert.equal(await api.ready(), false);
+    assert.equal(await api.open('working', {source: {workspaceScopeKey: 'editor-workspace', branch: 'editor-draft'}}), true);
+    const selected = JSON.stringify(api.getSource()), publications = f.headers.length;
+    available = true;
+    assert.equal(await api.ready(true), true);
+    assert.equal(JSON.stringify(api.getSource()), selected);
+    assert.equal(f.headers.length, publications, 'Metadata retry cannot relabel the visible editor');
 });

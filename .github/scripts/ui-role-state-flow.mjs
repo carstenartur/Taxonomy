@@ -260,6 +260,9 @@ export async function runRoleStateFlow({
   await navigateToPage(page, 'analyze');
   await page.locator('#taxonomyTree [role="treeitem"]').first()
     .waitFor({ state: 'visible', timeout: 90_000 });
+  await page.waitForFunction(() =>
+    window.TaxonomyAnalysisSession?.state?.().ready === true,
+  null, { timeout: 20_000 });
 
   const taskSurface = await page.evaluate(() => {
     const progress = document.getElementById('analysisTaskProgress');

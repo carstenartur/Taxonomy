@@ -34,7 +34,7 @@ const demoRun = {
     currentRequirementVersion: 1, closedAt: null
 };
 
-function harness({pathname = '/', basePath = '', input = '', responses = {}, route = null} = {}) {
+function harness({pathname = '/', basePath = '', input = '', responses = {}, route = null, ready} = {}) {
     const nodes = new Map();
     const main = node('main');
     const businessText = Object.assign(node('textarea'), {id: 'businessText', value: input});
@@ -51,7 +51,7 @@ function harness({pathname = '/', basePath = '', input = '', responses = {}, rou
         const json = {'Content-Type': 'application/json'};
         if (body === undefined) return new Response(JSON.stringify({detail: 'Not found', code: 'DEMO_RUN_NOT_FOUND'}),
             {status: 404, headers: json});
-        return new Response(JSON.stringify(body), {status: 200, headers: json});
+        return new Response(JSON.stringify(typeof body === 'function' ? await body() : body), {status: 200, headers: json});
     };
     const document = {
         readyState: 'complete', documentElement: {lang: 'de'},
@@ -68,7 +68,7 @@ function harness({pathname = '/', basePath = '', input = '', responses = {}, rou
             origin: 'https://taxonomy.example.test', assign: url => assigned.push(url)},
         TaxonomyI18n: {getBasePath: () => basePath, resolveUrl: path => basePath + path},
         // Published by requirement-detail.js on requirement pages only.
-        TaxonomyRequirementDetail: route ? {route} : undefined,
+        TaxonomyRequirementDetail: route ? {route,whenReady:()=>ready || Promise.resolve(route)} : undefined,
         addEventListener: (name, fn, capture) => windowListeners.set(name + (capture ? ':capture' : ''), fn)
     };
     const context = vm.createContext({window, document, fetch: (...args) => window.fetch(...args), URL, URLSearchParams,
@@ -82,6 +82,40 @@ function harness({pathname = '/', basePath = '', input = '', responses = {}, rou
 }
 
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+
+test('demo banner waits for the actual requirement identity before starting its reads',async()=>{
+    let finish;
+    const ready=new Promise(resolve=>{finish=resolve;});
+    const route={projectId:7,requirementId:9};
+    const h=harness({pathname:'/projects/7/requirements/9',route,ready,
+        responses:{'GET /api/product-demo/runs?projectId=7':[demoRun]}});
+    await flush();const earlyRequests=h.requests.length;
+    h.window.TaxonomyAppChrome={getContext:()=>({project:{id:7},requirement:{id:9,version:1}})};
+    finish(route);await flush();await flush();
+    assert.equal(earlyRequests,0,'No demo request should race initial detail/source hydration');
+    assert.equal(h.main.children[0]?.dataset.demoRun,'run-1');
+});
+
+test('a demo banner cannot repaint another requirement while account permissions are pending',async()=>{
+    let finish;
+    const account=new Promise(resolve=>{finish=resolve;});
+    const h=harness({pathname:'/projects/7/requirements/9',route:{projectId:7,requirementId:9},
+        responses:{'GET /api/product-demo/runs?projectId=7':[demoRun], 'GET /api/account/me':()=>account}});
+    await flush();assert.equal(h.requests.length,2);
+    h.window.TaxonomyAppChrome={getContext:()=>({project:{id:8},requirement:{id:10,version:1}})};
+    finish({architectureMutationAllowed:true});await flush();await flush();
+    assert.equal(h.main.children.length,0,'Superseded permission lookup must not publish the previous demo');
+});
+
+test('failed detail readiness leaves the optional demo banner inactive without new reads',async()=>{
+    const failure=Object.assign(new Error('Source context was superseded'),{code:'ABORTED'});
+    const h=harness({pathname:'/projects/7/requirements/9',route:{projectId:7,requirementId:9},
+        ready:Promise.reject(failure),responses:{'GET /api/product-demo/runs?projectId=7':[demoRun]}});
+    // Attach a rejection observer even before the production readiness fix is applied.
+    h.window.TaxonomyRequirementDetail.whenReady().catch(()=>{});
+    await flush();await flush();
+    assert.equal(h.requests.length,0);assert.equal(h.main.children.length,0);
+});
 
 test('the trimmed command starts an isolated demo instead of an AI analysis', async () => {
     const h = harness({input: '  ProduktDemo \n', responses: {'POST /api/product-demo/runs': demoRun}});

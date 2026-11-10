@@ -96,7 +96,7 @@ function createProbeHarness(request) {
   return { context, runtime };
 }
 
-function createStartupHarness(workspaceResponse, loadDraft = async () => null) {
+function createStartupHarness(workspaceResponse, loadDraft = async () => null, metadata = {}) {
   const pendingStates = [], documentListeners = new Map(), windowListeners = new Map();
   const observations = [];
   const runtime = {
@@ -158,11 +158,16 @@ function createStartupHarness(workspaceResponse, loadDraft = async () => null) {
     },
     getElementById() {
       return null;
+    },
+    dispatchEvent(event) {
+      for (const listener of documentListeners.get(event.type) || []) listener(event);
+      return true;
     }
   };
   const window = {
     __TaxonomyAnalysisSessionContext: context,
     TaxonomyI18n: null,
+    ...metadata,
     console,
     location: { assign() {} },
     setInterval() {
@@ -178,6 +183,7 @@ function createStartupHarness(workspaceResponse, loadDraft = async () => null) {
   }
 
   vm.runInNewContext(projectsSource, {
+    CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options?.detail;}},
     window,
     document,
     console,
@@ -194,7 +200,7 @@ function createStartupHarness(workspaceResponse, loadDraft = async () => null) {
     encodeURIComponent
   }, { filename: 'taxonomy-analysis-session-projects.js' });
 
-  return { context, runtime, pendingStates, observations, document, session: window.TaxonomyAnalysisSession,
+  return { context, runtime, pendingStates, observations, document, window, session: window.TaxonomyAnalysisSession,
     async emit(name, detail, target = 'document') {
       const listeners = (target === 'document' ? documentListeners : windowListeners).get(name) || [];
       for (const listener of listeners) await listener({ type: name, detail, persisted: true });
@@ -446,4 +452,131 @@ test('an unauthorized current git poll preserves both connectivity and central a
   assert.equal(h.events.length,1); assert.equal(h.events[0].detail.available,false);
   assert.equal(h.events[0].detail.status,401); assert.equal(h.authEvents.length,1);
   assert.equal(h.authEvents[0].detail.status,401); assert.equal(h.bar.innerHTML,'');
+});
+
+
+test('draft initialization settles independently while initial source publications keep analysis admission closed', async () => {
+  const lifecycle = deferred(), workspace = deferred(), bar = deferred(), publications = [];
+  const scope = {}, chrome = {}; let repositoryContext = null;
+  const h = createStartupHarness(Promise.resolve({workspaceId: 'ws-ready'}), async () => null, {
+    TaxonomyArchitectureWorkflow: {getScope: () => scope}, TaxonomyAppChrome: {getContext: () => chrome},
+    TaxonomyArchitectureLifecycle: {ready: () => lifecycle.promise.then(() => {scope.repositoryId = 'repo-a'; scope.branch = 'draft'; publications.push('working stand');})},
+    TaxonomyArchitectureWorkspace: {ready: () => workspace.promise.then(() => {chrome.architecture = {repositoryId: 'repo-a', workspaceScopeKey: 'ws-ready', branch: 'draft', modelStand: null}; publications.push('analysis source'); return true;})},
+    TaxonomyContextBar: {getCurrentContext: () => repositoryContext, fetchAndRender: () => bar.promise.then(value => {repositoryContext = value; publications.push('repository context'); return value;})}
+  });
+  const notifications = [];
+  h.document.addEventListener('taxonomy:analysis-source-ready', event => notifications.push({workspaceId: event.detail.workspaceId, ready: h.session.state().ready}));
+  canonicalFixture.install({window: h.window, document: h.document, fetch: async () => Response.json({})});
+  assert.equal(await h.session.whenInitialized(), true, 'The draft-only promise must not wait for a source that awaits it');
+  let current = h.window.TaxonomyApiClient.captureContext();
+  assert.equal(h.session.state().ready, false); assert.deepEqual(notifications, []);
+  lifecycle.resolve(); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(publications, ['working stand']); assert.equal(current(), false, 'Initial working stand changes the frozen request source');
+  current = h.window.TaxonomyApiClient.captureContext(); assert.equal(h.session.state().ready, false);
+  workspace.resolve(); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(publications, ['working stand', 'analysis source']); assert.equal(current(), false, 'Initial analysis source changes the frozen request source');
+  current = h.window.TaxonomyApiClient.captureContext(); assert.equal(h.session.state().ready, false);
+  bar.resolve({contextId: 'initial', branch: 'draft', commitId: null}); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(publications, ['working stand', 'analysis source', 'repository context']);
+  assert.equal(current(), false, 'Initial ContextBar publication changes the frozen request source');
+  assert.equal(h.session.state().ready, true);
+  assert.deepEqual(notifications, [{workspaceId: 'ws-ready', ready: true}]);
+});
+
+for (const boundary of ['workspace metadata', 'repository context']) {
+  test(`unavailable initial ${boundary} fails closed and the existing server check retries it`, async () => {
+    let available = false, attempts = 0;
+    const h = createStartupHarness(Promise.resolve({workspaceId: 'ws-ready'}), async () => null, {
+      TaxonomyArchitectureWorkspace: {ready: async () => { attempts++; return boundary === 'workspace metadata' && !available ? false : true; }},
+      TaxonomyContextBar: {fetchAndRender: async () => boundary === 'repository context' && !available ? null : {contextId: 'initial', branch: 'draft'}}
+    });
+    await h.session.whenInitialized(); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.session.state().ready, false); assert.ok(h.observations.includes('unavailable'));
+    available = true; await h.context.retryServerState();
+    assert.equal(h.session.state().ready, true); assert.equal(attempts, 2);
+  });
+}
+
+
+for (const unavailable of [false, true]) test(`real session admission waits for ${unavailable ? 'the explicit retry of unavailable' : 'the first'} ContextBar metadata before main analysis retains its measured result`, async () => {
+  const messages = await readFile(new URL('../../taxonomy-app/src/main/resources/i18n/messages.properties', import.meta.url), 'utf8');
+  const warning = messages.match(/^scoring\.lifecycle\.not\.ready=(.*)$/m)[1];
+  let actualBar;
+  const workingInitialization = Promise.resolve(null);
+  const h = createStartupHarness(Promise.resolve({workspaceId: 'ws-ready'}), async () => null, {
+    TaxonomyArchitectureLifecycle: {ready: () => workingInitialization},
+    TaxonomyContextBar: {fetchAndRender: () => actualBar.fetchAndRender('absent-context-container')}
+  });
+  const requests = [], announcements = [];
+  const feedback = {dataset: {}, innerHTML: ''};
+  const text = {value: 'communications', classList: {remove() {}}};
+  h.document.documentElement = {lang: 'en'};
+  h.document.getElementById = id => id === 'businessText' ? text : id === 'includeArchitectureView' ? {checked: false} : id === 'statusArea' ? feedback : null;
+  h.document.querySelectorAll = () => [];
+  h.window.TaxonomyState = h.context.S;
+  h.window.TaxonomyState.taxonomyData = [];
+  h.window.TaxonomyBrowse = {clearStatus() {}, renderView() {}};
+  h.window.TaxonomyArchitectureWorkflow = {getScope: () => ({workspaceId: 'ws-ready', repositoryId: 'repo-a', branch: 'draft'})};
+  h.window.TaxonomyAnalysisProgress = {start: () => ({acceptsResult: () => true, finish() {}, stop() {}})};
+  const sandbox = {window: h.window, document: h.document, setInterval: () => 1, clearInterval() {},
+    setTimeout: () => 1, clearTimeout() {}, console: {log() {}, error() {}}, CSS: {escape: String},
+    TaxonomyI18n: {t: key => key === 'scoring.lifecycle.not.ready' ? warning : key}, TaxonomyUtils: {escapeHtml: String},
+    escapeHtml: String, rememberStatusFeedback() {}, announceStatus: message => announcements.push(message), announceAlert() {},
+    fetch: (url, options) => new Promise(resolve => requests.push({url, options, resolve}))};
+  canonicalFixture.install(sandbox, ['api/analysis-api.js', 'api/workspace-api.js', 'versioning/taxonomy-context-bar.js']);
+  actualBar = h.window.TaxonomyContextBar;
+  const browse = await readFile(new URL(`${sourceRoot}taxonomy-browse.js`, import.meta.url), 'utf8');
+  vm.runInContext(browse.slice(browse.indexOf('    function showStatus('), browse.indexOf('    function clearStatus('))
+    + '\nwindow.TaxonomyBrowse.showStatus = showStatus;', sandbox);
+  vm.runInContext(await readFile(new URL(`${sourceRoot}taxonomy-scoring.js`, import.meta.url), 'utf8'), sandbox);
+  assert.equal(await h.session.whenInitialized(), true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.session.state().ready, false);
+  h.window.TaxonomyScoring.runAnalysis();
+  assert.ok(feedback.innerHTML.includes('alert-warning'));
+  assert.ok(feedback.innerHTML.includes(warning), 'An early Analyze action renders the existing visible retry guidance');
+  assert.deepEqual(announcements, [warning], 'The same warning is announced to assistive technology');
+  assert.equal(requests.length, 1, 'Only initial source metadata may be requested before admission');
+  assert.match(requests[0].url, /context\/current/);
+  let metadataRequest = 0;
+  if (unavailable) {
+    requests[0].resolve(Response.json({detail: 'Metadata unavailable'}, {status: 503}));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.session.state().ready, false);
+    assert.equal(requests.length, 1, 'A failed initial read has no automatic retry');
+    const retried = h.context.retryServerState();
+    await new Promise(resolve => setImmediate(resolve));
+    metadataRequest = 1;
+    requests[1].resolve(Response.json({contextId: 'initial-context', branch: 'draft', commitId: null, mode: 'EDITABLE'}));
+    await retried;
+  } else {
+    requests[0].resolve(Response.json({contextId: 'initial-context', branch: 'draft', commitId: null, mode: 'EDITABLE'}));
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  assert.equal(h.session.state().ready, true, 'A retained null working-lifecycle result cannot permanently block the confirmed private source');
+  const pending = h.window.TaxonomyScoring.runAnalysis();
+  assert.equal(requests.length, metadataRequest + 2); assert.match(requests[metadataRequest + 1].url, /api\/analyze/);
+  requests[metadataRequest + 1].resolve(Response.json({status: 'SUCCESS', scores: {CP: 80}, reasons: {}, warnings: [], analysisDurationMillis: 1200}));
+  await pending;
+  assert.equal(h.context.S.lastAnalysisStatus, 'SUCCESS');
+  assert.equal(h.context.S.lastAnalysisDurationMillis, 1200);
+  assert.equal(h.context.S.currentScores.CP, 80);
+});
+
+test('confirmed source readiness is handed off once the existing draft-confirmation barrier also opens', async () => {
+  let reads = 0;
+  const h = createStartupHarness(Promise.resolve({workspaceId: 'ws-ready'}), async () => null, {
+    TaxonomyContextBar: {fetchAndRender: async () => {reads++; return {contextId: 'initial', branch: 'draft'};}}
+  });
+  const notifications = [];
+  h.document.addEventListener('taxonomy:analysis-source-ready', event => notifications.push({workspaceId: event.detail.workspaceId, ready: h.session.state().ready}));
+  h.runtime.serverUnconfirmed = true;
+  await h.session.whenInitialized(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.runtime.sourceReady, true); assert.equal(h.session.state().ready, false);
+  assert.deepEqual(notifications, [], 'Admission consumers must not lose their one notification while the draft is unconfirmed');
+  h.runtime.serverUnconfirmed = false;
+  await h.context.retryServerState();
+  assert.deepEqual(notifications, [{workspaceId: 'ws-ready', ready: true}]);
+  await h.context.retryServerState();
+  assert.equal(notifications.length, 1); assert.equal(reads, 1, 'Confirming the draft does not repeat successful source reads');
 });

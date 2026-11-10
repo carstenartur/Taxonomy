@@ -1,6 +1,7 @@
 // Browser API substitutes only; assertions and test discovery belong to JUnit.
 const fs = require('node:fs');
 const vm = require('node:vm');
+const canonicalFixture = require('../../../../.github/scripts/canonical-api-fixture.cjs');
 
 class Element {
     constructor(tag, attributes = {}) {
@@ -88,7 +89,7 @@ async function probe(source, scenario) {
         }}
     };
     if (scenario === 'pdf-no-client-renderer') delete window.jspdf;
-    vm.runInNewContext(source, {
+    const context = {
         window, document, Element, Blob, TaxonomyI18n: {t: key => key},
         URL: {createObjectURL: blob => { downloads.push(blob); return 'blob:test'; }, revokeObjectURL() {}},
         DOMParser: class {
@@ -111,7 +112,9 @@ async function probe(source, scenario) {
                 text: async () => '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1100"><text data-node-code="CP-outside-viewport">Outside viewport</text></svg>'};
         },
         alert: message => alerts.push(message)
-    }, {filename: 'taxonomy-export.js'});
+    };
+    canonicalFixture.install(context, ['api/export-api.js']);
+    vm.runInContext(source, context, {filename: 'taxonomy-export.js'});
     if (scenario === 'csv') {
         window.TaxonomyExport.exportCsv({zero: 0, fraction: 0.125, invalid: NaN},
             [{code: 'CP', name: 'Capabilities', children: [{code: 'zero', name: 'Explicit zero'}, {code: 'fraction', name: 'Fraction'}]}]);
@@ -127,4 +130,5 @@ async function probe(source, scenario) {
 
 probe(fs.readFileSync(process.argv[2], 'utf8'), process.argv[3])
     .then(result => process.stdout.write(JSON.stringify(result)))
-    .catch(error => { process.stderr.write(error.stack); process.exitCode = 1; });
+    .catch(error => { process.stderr.write(error.stack); process.exitCode = 1; })
+    .finally(() => canonicalFixture.dispose());

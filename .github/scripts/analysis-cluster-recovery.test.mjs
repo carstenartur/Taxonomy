@@ -22,7 +22,7 @@ function snapshot(status = 'RUNNING', sequence = 2) {
         cluster: { completedRoots: status === 'COMPLETED' ? 1 : 0, totalRoots: 1, tasks: [] } };
 }
 const flush = () => new Promise(resolve => setImmediate(resolve));
-function fixture({ status = 'COMPLETED', requestInput, requestResult, startRequest } = {}) {
+function fixture({ status = 'COMPLETED', requestInput, requestResult, startRequest, localProgress = false, sourceReady = true } = {}) {
     const elements = new Map(), timers = new Map(), listeners = new Map(), calls = [], streams = [];
     let serial = 0;
     class Element {
@@ -54,7 +54,7 @@ function fixture({ status = 'COMPLETED', requestInput, requestResult, startReque
     }
     elements.get('businessText').value = 'Unsaved current draft';
     elements.get('providerSelect').value = 'MOCK';
-    const runtime = { workspaceId: 'workspace-a', analysisGeneration: 1, invalidating: false };
+    const runtime = { workspaceId: 'workspace-a', analysisGeneration: 1, invalidating: false, sourceReady };
     const state = { taxonomyData: [], currentScores: {}, currentRawScores: {}, currentScoreDetails: {}, currentReasons: {},
         currentView: 'tree', currentDiscrepancies: [], currentProductCoverageGaps: [] };
     const document = {
@@ -70,7 +70,7 @@ function fixture({ status = 'COMPLETED', requestInput, requestResult, startReque
         setTimeout: schedule, clearTimeout: key => timers.delete(key),
         TaxonomyI18n: { t: key => key, getLocale: () => 'en' }, TaxonomyUtils: { escapeHtml: value => String(value) },
         TaxonomyState: state, __TaxonomyAnalysisSessionContext: { runtime, clearDerivedUi() {} },
-        TaxonomyAnalysisSession: { state: () => ({ workspaceId: runtime.workspaceId, ready: !runtime.invalidating }) },
+        TaxonomyAnalysisSession: { state: () => ({ workspaceId: runtime.workspaceId, ready: !runtime.invalidating && runtime.sourceReady }) },
         TaxonomyAnalysisSessionReady: Promise.resolve(true),
         TaxonomyBrowse: { clearStatus() {}, showStatus: (_, message) => { elements.get('statusArea').textContent = message; },
             renderView: (_, scores) => { elements.get('scoreOutput').textContent = JSON.stringify(scores); }, ensureNodeRendered() {} },
@@ -86,7 +86,7 @@ function fixture({ status = 'COMPLETED', requestInput, requestResult, startReque
             const path = new URL(url, 'https://taxonomy.example').pathname;
             let body = path.endsWith('/request') ? requestInput ? await requestInput() : input
                 : path.endsWith('/result') ? requestResult ? await requestResult() : result
-                    : path === '/api/analysis-runs' ? [snapshot(status)] : snapshot(status);
+                    : path === '/api/analysis-runs' ? [snapshot(status)] : {...snapshot(status), ...(localProgress ? {transport: 'local', rawScores: {CP: 80}} : {})};
             return new Response(JSON.stringify(body), { status: 200 });
         }
     };
@@ -187,4 +187,36 @@ test('starting a new analysis supersedes a still-loading recovery choice', async
     deliver(input); await retrieving;
     assert.equal(f.elements.get('businessText').value, 'Unsaved current draft');
     assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 1);
+});
+
+
+test('ordinary complete HTTP result owns status and measured duration after a terminal local progress preview', async () => {
+    let deliver;
+    const f = fixture({ status: 'COMPLETED', localProgress: true, startRequest: () => new Promise(resolve => {deliver = resolve;}) });
+    await flush();
+    const pending = f.window.TaxonomyScoring.runAnalysis();
+    await f.tick();
+    assert.equal(f.state.lastAnalysisStatus, 'IN_PROGRESS');
+    assert.equal(f.state.lastAnalysisDurationMillis, null);
+    deliver(Response.json(result));
+    await pending;
+    assert.equal(f.state.lastAnalysisStatus, 'SUCCESS');
+    assert.equal(f.state.lastAnalysisDurationMillis, 1400);
+    assert.equal(f.elements.get('analyzeBtn').disabled, false);
+});
+
+
+test('recent durable runs load after source readiness that follows the draft-only startup promise', async () => {
+    const f = fixture({sourceReady: false});
+    await flush();
+    assert.equal(f.calls.length, 0);
+    f.document.dispatchEvent({type: 'taxonomy:analysis-source-ready', detail: {workspaceId: 'workspace-a'}});
+    await flush(); assert.equal(f.calls.length, 0, 'The event cannot bypass current admission readiness');
+    f.runtime.sourceReady = true;
+    f.document.dispatchEvent({type: 'taxonomy:analysis-source-ready', detail: {workspaceId: 'workspace-a'}});
+    await flush();
+    assert.equal(f.calls.length, 1);
+    assert.equal(new URL(f.calls[0].url, 'https://taxonomy.example').pathname, '/api/analysis-runs');
+    assert.ok(f.buttons().some(button => /Retrieve result/.test(button.textContent)));
+    assert.ok(f.calls.every(call => !call.options.method || call.options.method === 'GET'));
 });

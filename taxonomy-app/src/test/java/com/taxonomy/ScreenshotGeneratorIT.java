@@ -601,6 +601,9 @@ class ScreenshotGeneratorIT {
     /** Runs a standard (non-interactive) analysis and waits up to 120 s for completion. */
     private void runAnalysis() {
         navigateToTab("analyze");
+        wait(20).withMessage("Analysis source must be ready before the screenshot workflow starts")
+                .until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript(
+                        "return window.TaxonomyAnalysisSession?.state?.().ready === true;")));
         WebElement textarea = driver.findElement(By.id("businessText"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", textarea);
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);

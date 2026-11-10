@@ -724,7 +724,9 @@
             });
             group._capabilityObserver = observer;
         } catch (failure) {
-            if (generation === capabilityGeneration) diagramStatus(exportMessage('Available formats could not be loaded. Reopen Export to retry.',
+            if (generation !== capabilityGeneration || failure?.code === 'ABORTED'
+                    || failure?.status === 401 || failure?.status === 403) return;
+            diagramStatus(exportMessage('Available formats could not be loaded. Reopen Export to retry.',
                 'Verfügbare Formate konnten nicht geladen werden. Öffnen Sie Export erneut.'), false, true);
         }
     }

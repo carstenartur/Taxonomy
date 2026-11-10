@@ -904,6 +904,7 @@
         update();
     });
     document.addEventListener('taxonomy:analysis-draft-restored', restore);
+    document.addEventListener('taxonomy:analysis-source-ready', restore);
     document.addEventListener('taxonomy:view-rendered', renderCoverage);
     document.addEventListener('taxonomy:analysis-draft-reset', function () {
         clearTimeout(poll); poll = null; S.recoveryContext = null; S.analysisRecovery = null; S.analysisCoverage = null; S.currentRelationSearchReport = null;

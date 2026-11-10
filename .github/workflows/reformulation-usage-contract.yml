@@ -76,6 +76,8 @@ jobs:
       - name: Require persistence suites and positive test counts
         if: always()
         run: |
+          # The absolute no-Python policy has three contracts; the superseded
+          # inventory ratchet also counted its now-removed relocation exception.
           java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-junit-reports \
             taxonomy-portfolio/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.portfolio.reformulation.ReformulationUsageBoundaryTest.xml 3 \
             taxonomy-app/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.portfolio.reformulation.ReformulationUsageTest.xml 1 \
@@ -84,7 +86,7 @@ jobs:
             taxonomy-app/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest.xml 4 \
             taxonomy-app/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.portfolio.reformulation.ReformulationEncodingTest.xml 1 \
             taxonomy-app/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.build.WorkflowTestAuthorityPolicyTest.xml 7 \
-            taxonomy-tooling/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.tooling.PythonSourceRatchetRepositoryTest.xml 4 \
+            taxonomy-tooling/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.tooling.PythonSourceRatchetRepositoryTest.xml 3 \
             taxonomy-app/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.build.ReformulationVerificationProfileTest.xml 1
       - name: Archive the tested public source tree
         if: always()

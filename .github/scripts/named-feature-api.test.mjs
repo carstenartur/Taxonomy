@@ -8,7 +8,7 @@ const sources = new Map();
 for (const path of ['api/taxonomy-api-client.js', 'api/analysis-api.js', 'api/portfolio-api.js',
   'api/import-api.js', 'core/taxonomy-analysis-session-transport.js', 'portfolio/taxonomy-portfolio-async.js',
   'core/taxonomy-analysis.js', 'shared/taxonomy-document-import.js', 'api/export-api.js',
-  'api/copilot-api.js', 'api/architecture-workbench-api.js', 'api/document-templates-api.js', 'shared/architecture-workflow.js', 'portfolio/taxonomy-portfolio.js', 'core/taxonomy-scoring.js', 'api/proposals-api.js', 'api/hypotheses-api.js']) {
+  'api/copilot-api.js', 'api/architecture-workbench-api.js', 'api/document-templates-api.js', 'shared/architecture-workflow.js', 'portfolio/taxonomy-portfolio.js', 'core/taxonomy-scoring.js', 'api/proposals-api.js', 'api/hypotheses-api.js', 'shared/taxonomy-database-setup.js']) {
   sources.set(path, await readFile(new URL(path, root), 'utf8'));
 }
 
@@ -74,6 +74,59 @@ function boot(fetchImpl, {analysis = false, portfolio = false, beforeCanonical =
   if (portfolio && !beforeCanonical) load('portfolio/taxonomy-portfolio-async.js');
   return {window, context, C, runtime, document, events, timers, stored, nodes, load};
 }
+
+test('global database onboarding survives initial workspace hydration without acquiring a workspace pin',async()=>{
+  const status=deferred(),requests=[];
+  const app=boot(async(url,init)=>{
+    const endpoint=new URL(url, 'https://taxonomy.example');
+    if(endpoint.pathname.endsWith('/api/account/me'))return Response.json({administrator:true});
+    requests.push({endpoint,init});return status.promise;
+  });
+  app.document.readyState='loading';
+  app.load('shared/taxonomy-database-setup.js');
+  const preparation=app.window.TaxonomyDatabaseSetup.prepareWelcome();
+  await flush();
+  assert.equal(requests.length,1);assert.equal(requests[0].endpoint.pathname,'/taxonomy/api/admin/database-setup');
+  app.runtime.workspaceId='hydrated-workspace';app.runtime.analysisGeneration++;
+  app.document.dispatchEvent({type:'taxonomy:entity-context-changed'});
+  status.resolve(Response.json({database:'hsqldb',inMemory:true,promptRequired:true}));
+  assert.equal(await preparation,true,'The application database offer must survive unrelated workspace initialization');
+  assert.equal(requests[0].endpoint.searchParams.has('workspaceId'),false);
+  assert.equal(new Headers(requests[0].init.headers).has('X-Taxonomy-Workspace-Id'),false);
+  assert.equal(requests[0].init.signal.aborted,false);
+  assert.equal(app.timers.size,0);
+});
+
+test('portfolio startup reads the selected source only after lifecycle initialization settles',async()=>{
+  const hydration=deferred(),requests=[],nodes=new Map();
+  function element() {return {value:'',textContent:'',innerHTML:'',dataset:{},children:[],
+    classList:{add(){},remove(){},toggle(){}},addEventListener(){},setAttribute(){},
+    append(...values){this.children.push(...values);},appendChild(value){this.children.push(value);},
+    replaceChildren(...values){this.children=values;},scrollIntoView(){}};}
+  const template=await readFile(new URL('../../taxonomy-app/src/main/resources/templates/projects.html',import.meta.url),'utf8');
+  for(const match of template.matchAll(/\bid="([^"]+)"/g))nodes.set(match[1],element());
+  let scope={workspaceId:'initial-workspace',repositoryId:'initial-repository',branch:'draft'};
+  const app=boot(async(url,init)=>{requests.push({url,init});return Response.json([]);},{nodes});
+  app.window.TaxonomyI18n.ready=()=>Promise.resolve();
+  app.window.TaxonomyArchitectureLifecycle={ready:()=>hydration.promise};
+  app.window.TaxonomyArchitectureWorkflow={getScope:()=>scope,preferredProject:()=>null};
+  const query=app.document.querySelector;
+  app.document.querySelector=selector=>query(selector)||element();
+  app.document.createElement=element;
+  vm.runInContext(sources.get('portfolio/taxonomy-portfolio.js').replace(/\}\)\(\);\s*$/,
+    'window.portfolioStartupFixture = {initialize,state};})();'),app.context);
+  const started=app.window.portfolioStartupFixture.initialize();
+  await flush();const earlyRequests=requests.length;
+  scope={workspaceId:'resolved-workspace',repositoryId:'resolved-repository',branch:'draft'};
+  app.runtime.workspaceId='resolved-workspace';hydration.resolve({context:scope});
+  await started;
+  assert.equal(earlyRequests,0,'The initial portfolio must not use the source before lifecycle hydration');
+  assert.equal(requests.length,1);
+  const request=new URL(requests[0].url,'https://taxonomy.example');
+  assert.equal(request.searchParams.get('workspaceId'),'resolved-workspace');
+  assert.equal(request.searchParams.get('repositoryId'),'resolved-repository');
+  assert.equal(new Headers(requests[0].init.headers).get('X-Taxonomy-Workspace-Id'),'resolved-workspace');
+});
 
 for (const barrier of ['serverUnconfirmed', 'draftDecisionPending']) {
   test(`named analysis honors ${barrier} admission before any provider request`, async () => {

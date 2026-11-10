@@ -37,6 +37,21 @@ test('named versioning owns encoded routes and preserves domain conflict statuse
  assert.equal(new URL(calls[1].url,'https://example.test').searchParams.get('expectedContextId'),'context/c');
  assert.equal(calls[2].init.body,'plain DSL');assert.equal(calls[2].init.headers.get('Content-Type'),'text/plain');
 });
+test('variant integration binds both branch names accepted by the merge controller',async()=>{
+ const calls=[];const h=harness(async(url,init)=>{
+  const request=new URL(url,'https://example.test');calls.push({request,init});
+  const fromBranch=request.searchParams.get('fromBranch'),intoBranch=request.searchParams.get('intoBranch');
+  return new Response(JSON.stringify({fromBranch,intoBranch,commitId:'merged'}),{status:fromBranch&&intoBranch?200:400});
+ });
+ const response=await h.context.window.TaxonomyVersioningApi.merge('variant/a & b','target/review');
+ assert.equal(response.status,200,'DslApiController requires fromBranch and binds intoBranch');
+ assert.deepEqual(await response.json(),{fromBranch:'variant/a & b',intoBranch:'target/review',commitId:'merged'});
+ assert.equal(calls.length,1);assert.equal(calls[0].init.method,'POST');
+ assert.equal(calls[0].request.pathname,'/api/dsl/merge');
+ assert.equal(calls[0].request.searchParams.get('workspaceId'),'original');
+ assert.equal(calls[0].request.searchParams.has('from'),false);
+ assert.equal(calls[0].request.searchParams.has('into'),false);
+});
 for(const status of [200,500]) test(`copy-back preview never paints an obsolete workspace HTTP ${status}`,async()=>{
  let respond;const h=harness(()=>new Promise(resolve=>respond=resolve));
  h.load('versioning/taxonomy-context-transfer.js');const api=h.context.window.TaxonomyContextTransfer;

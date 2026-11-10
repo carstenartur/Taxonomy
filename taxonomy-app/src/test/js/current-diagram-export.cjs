@@ -23,16 +23,26 @@ function fixture(view = {viewTitle: 'Existing result', includedElements: [{nodeC
     const businessText=element('textarea');businessText.id='businessText';businessText.value='original';elements.set('businessText',businessText);
     const requests=[]; const alerts=[]; const downloads=[]; let resolve; let reject;
     const pending=new Promise((yes,no)=>{resolve=yes;reject=no;});
+    const documentListeners=new Map(),windowListeners=new Map(),events=[];
+    function listen(listeners,type,handler) {
+        if(!listeners.has(type))listeners.set(type,[]);
+        listeners.get(type).push(handler);
+    }
     const document={documentElement:{lang:'en'},body:element('body'),
         getElementById:id=>elements.get(id)||null,createElement:element,
-        querySelector:()=>null,addEventListener(){},dispatchEvent(){}};
+        querySelector:()=>null,
+        addEventListener(type,handler){listen(documentListeners,type,handler);},
+        dispatchEvent(event){events.push(event);for(const handler of documentListeners.get(event.type)||[])handler(event);}};
     const state={currentArchView:view,lastAnalyzedText:'original',currentScores:{A:90}};
-    const window={TaxonomyState:state,setTimeout() {},confirm:()=>true};
+    const window={TaxonomyState:state,setTimeout() {},confirm:()=>true,
+        addEventListener(type,handler){listen(windowListeners,type,handler);}};
     const context={window,document,MutationObserver:class {observe(){} disconnect(){}},TaxonomyI18n:{t:key=>key},Blob,URL:{createObjectURL:blob=> {downloads.push(blob);return 'blob:test';},revokeObjectURL(){}},
         fetch:(url,options)=>{requests.push({url,options});return pending;},alert(message){alerts.push(message);},Element:class {}};
-    canonicalFixture.install(context, ['api/export-api.js']);
+    canonicalFixture.install(context, ['api/export-api.js','api/plugin-capabilities-api.js','shared/plugin-capabilities.js']);
     vm.runInNewContext(source,context);
-    return {elements,requests,alerts,state,resolve,reject,downloads,window,document,element,api:window.TaxonomyExport,run:()=>window.TaxonomyExport.exportVisio('original')};
+    return {elements,requests,alerts,state,resolve,reject,downloads,window,document,element,events,
+        emitWindow(type){for(const handler of windowListeners.get(type)||[])handler({type});},
+        api:window.TaxonomyExport,run:()=>window.TaxonomyExport.exportVisio('original')};
 }
 
 for (const scopeKind of ['missing', 'null', 'selected']) {
@@ -223,6 +233,44 @@ test('backend errors also reach global feedback while the export group is hidden
     assert.equal(f.elements.get('diagramExportStatus').attributes['aria-busy'],'false');
     assert.equal(f.elements.get('exportVisio').disabled,false);
     assert.equal(JSON.stringify(f.state),before);
+});
+test('a scoped current-view export retains its workspace pin and rejects an actual HTTP failure',async()=>{
+    const f=fixture();
+    f.window.__TaxonomyAnalysisSessionContext={runtime:{workspaceId:'private-workspace',analysisGeneration:2}};
+    const before=JSON.stringify(f.state);const pending=f.run();
+    f.resolve(new Response(JSON.stringify({error:'EXPORT_SERVICE_UNAVAILABLE'}),
+        {status:503,headers:{'Content-Type':'application/json'}}));
+    assert.equal(await pending,false);
+    assert.equal(f.requests.length,1);
+    assert.equal(f.requests[0].url,'/api/diagram/current/visio?workspaceId=private-workspace');
+    assert.equal(new Headers(f.requests[0].options.headers).get('X-Taxonomy-Workspace-Id'),'private-workspace');
+    assert.deepEqual(JSON.parse(f.requests[0].options.body),
+        {...f.state.currentArchView,originalRequirementText:f.state.lastAnalyzedText});
+    assert.equal(f.downloads.length,0);
+    assert.equal(f.alerts.length,1);assert.match(f.alerts[0],/EXPORT_SERVICE_UNAVAILABLE/);
+    assert.equal(JSON.stringify(f.state),before);
+});
+
+for(const outcome of ['pagehide',401,403,503,'network']) test(`format refresh handles ${outcome} through the real transport`,async()=>{
+    const f=fixture();const control=f.elements.get('exportVisio');
+    control.setAttribute('data-taxonomy-format','visio');
+    f.document.querySelectorAll=selector=>selector==='[data-taxonomy-format]'?[control]:[];
+    const pending=f.api.refreshCapabilities();
+    assert.equal(f.requests.length,1);
+    assert.equal(f.requests[0].url,'/api/capabilities');
+    if(outcome==='pagehide')f.emitWindow('pagehide');
+    else if(outcome==='network')f.reject(new TypeError('Connection unavailable'));
+    else f.resolve(new Response(JSON.stringify({detail:'Catalog request failed'}),
+        {status:outcome,headers:{'Content-Type':'application/json'}}));
+    await pending;
+    const visibleFailure=outcome===503||outcome==='network';
+    assert.equal(f.alerts.length,visibleFailure?1:0);
+    if(visibleFailure)assert.match(f.alerts[0],/Available formats could not be loaded/);
+    assert.equal(control.hidden,true,'Failed or abandoned reads must not expose unsupported formats');
+    const authEvents=f.events.filter(event=>event.type==='taxonomy-api-auth-failure');
+    assert.equal(authEvents.length,outcome===401||outcome===403?1:0);
+    if(authEvents.length)assert.equal(authEvents[0].detail.status,outcome);
+    if(outcome==='pagehide')assert.equal(f.requests[0].options.signal.aborted,true);
 });
 test('missing or stale architectures produce global feedback without any request',async()=>{
     for (const missing of [true,false]) {

@@ -1,11 +1,127 @@
 import canonicalFixture from './canonical-api-fixture.cjs';
-import test from 'node:test';
+import test, {afterEach} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 const source=await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-projects.js',import.meta.url),'utf8');
 const detailSource=await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js',import.meta.url),'utf8');
 const portfolioSource=await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio.js',import.meta.url),'utf8');
+const chromeSource=await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/application-chrome.js',import.meta.url),'utf8');
+const reformulationSource=await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/portfolio/requirement-reformulation.js',import.meta.url),'utf8');
+const copilotSource=await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js',import.meta.url),'utf8');
+afterEach(()=>canonicalFixture.dispose());
+
+function detailStartup({holdOffers=false,forbidden=false,copilot=false}={}) {
+  const nodes=new Map(),listeners=new Map(),windowListeners=new Map(),requests=[],auth=[];
+  let finishLifecycle,finishOffers;
+  const lifecycle=new Promise(resolve=>{finishLifecycle=resolve;});
+  const offersGate=new Promise(resolve=>{finishOffers=resolve;});
+  function node(id='') {
+    const values=new Set();
+    const value={id,children:[],dataset:{},style:{},value:'',textContent:'',classList:{
+      add(...names){names.forEach(name=>values.add(name));},remove(...names){names.forEach(name=>values.delete(name));},
+      contains:name=>values.has(name),toggle(name,force){if(force)values.add(name);else values.delete(name);},[Symbol.iterator]:()=>values.values()},
+      append(...children){this.children.push(...children);},appendChild(child){this.append(child);return child;},
+      replaceChildren(...children){this.children=children;},addEventListener(){},focus(){},remove(){},
+      setAttribute(name,text){this[name]=text;},removeAttribute(name){delete this[name];},
+      querySelectorAll(selector){
+        const descendants=this.children.flatMap(child=>[child,...(child.querySelectorAll?.('*')||[])]);
+        if(selector==='*')return descendants;
+        const key=selector.match(/^\[data-([a-z-]+)\]$/)?.[1]?.replace(/-([a-z])/g,(_,letter)=>letter.toUpperCase());
+        return key?descendants.filter(child=>child.dataset?.[key]!==undefined):[];
+      },querySelector(selector){return this.querySelectorAll(selector)[0]||null;}};
+    if(id)nodes.set(id,value);
+    return value;
+  }
+  const get=id=>{
+    if(id.startsWith('application') || id==='architectureWorkspace' || id==='projectFilter' || id==='importMain' || id==='matrixMain' || id==='reportsMain')return null;
+    return nodes.get(id)||node(id);
+  };
+  const document={readyState:'loading',documentElement:{lang:'en'},head:{appendChild(){}},getElementById:get,
+    querySelector:selector=>selector.startsWith('meta')?null:node(),querySelectorAll:selector=>selector==='#textPane h2'?[node(),node()]:[],createElement:()=>node(),
+    addEventListener(type,listener){if(!listeners.has(type))listeners.set(type,[]);listeners.get(type).push(listener);},
+    dispatchEvent(event){if(event.type==='taxonomy-api-auth-failure')auth.push(event);for(const listener of listeners.get(event.type)||[])listener(event);}};
+  const window={location:{pathname:'/projects/7/requirements/11',search:'?lang=en&proposal=offer',href:'https://example.test/projects/7/requirements/11?lang=en&proposal=offer',origin:'https://example.test'},
+    addEventListener(type,listener){if(!windowListeners.has(type))windowListeners.set(type,[]);windowListeners.get(type).push(listener);},
+    TaxonomyI18n:{t:key=>key,ready:async()=>{},resolveUrl:path=>path,getBasePath:()=>'',getLocale:()=> 'en',formatEnum:String},
+    TaxonomyUtils:{escapeHtml:String},TaxonomyRequirementCopilot:{},TaxonomyArchitectureLifecycle:{ready:()=>lifecycle}};
+  const requirement={id:11,requirementKey:'REQ',title:'Requirement',currentVersionId:44,currentVersion:{id:44,versionNumber:1,text:'Original'},status:'APPROVED',reviewStatus:'CONFIRMED'};
+  const offer={id:'offer',baseline:{originalText:'Original',sourceVersionId:44},currentRevision:{number:1,text:'Retained draft',questions:[],statements:[],validation:{findings:[]}}};
+  const context=canonicalFixture.install({window,document,location:window.location,fetch:async(input,init)=>{
+    const pathname=new URL(String(input),window.location.href).pathname;
+    requests.push({pathname,init});
+    if(forbidden && pathname==='/api/projects/7')return Response.json({detail:'Access revoked'},{status:403});
+    if(pathname.endsWith('/reformulations') && holdOffers)await offersGate;
+    const value=pathname==='/api/ai-automation'?{enabled:false}
+      :pathname.endsWith('/copilot/latest')?null
+      :pathname==='/api/account/me'?{architectureMutationAllowed:false}
+      :pathname==='/api/projects/7'?{id:7,projectKey:'P',title:'Project'}
+      :pathname.endsWith('/requirements/11')?requirement
+      :pathname.endsWith('/portfolio')?{solutions:[]}
+      :pathname.endsWith('/reformulations/offer')?offer
+      :pathname.endsWith('/reformulations')?[{id:'offer',currentRevision:1}]:[];
+    return Response.json(value);
+  }},['api/portfolio-api.js','api/copilot-api.js']);
+  for(const [source,name] of [[chromeSource,'application-chrome.js'],[detailSource,'requirement-detail.js'],[reformulationSource,'requirement-reformulation.js']])vm.runInContext(source,context,{filename:name});
+  if(copilot)vm.runInContext(copilotSource,context,{filename:'requirement-copilot.js'});
+  return {window,context,requests,auth,get,
+    start:()=>Promise.all((listeners.get('DOMContentLoaded')||[]).map(listener=>listener({}))),
+    releaseLifecycle(){window.TaxonomyAppChrome.updateContext({architecture:{repositoryId:'repository-a',branch:'draft',modelStand:'initial'}});finishLifecycle(null);},
+    releaseOffers:()=>finishOffers(),pagehide(){for(const listener of windowListeners.get('pagehide')||[])listener({});}};
+}
+const settleStartup=async()=>{for(let i=0;i<6;i++)await new Promise(resolve=>setImmediate(resolve));};
+
+test('detail and reformulation startup wait for actual lifecycle and route identity before rendering an offer',async()=>{
+  const h=detailStartup();
+  assert.equal(h.requests.length,0,'The add-on must not race DOMContentLoaded detail initialization');
+  const pending=h.start();await settleStartup();
+  assert.equal(h.requests.length,0,'Initial architecture hydration owns scope before detail reads');
+  h.releaseLifecycle();await pending;await settleStartup();
+  assert.deepEqual(JSON.parse(JSON.stringify(await h.window.TaxonomyRequirementDetail.whenReady())),{projectId:7,requirementId:11});
+  const editor=h.get('reformulationList').querySelector('[data-reformulation-editor]');
+  assert.equal(editor?.value,'Retained draft','The actual offer editor survives expected startup identity hydration');
+  assert.doesNotMatch(h.get('reformulationStatus').textContent,/superseded|failed/i);
+  assert.equal(h.window.TaxonomyAppChrome.getContext().requirement.id,11);
+});
+
+test('later requirement navigation still aborts actual offer reads without repainting obsolete errors',async()=>{
+  const h=detailStartup({holdOffers:true});
+  const pending=h.start();h.releaseLifecycle();await pending;await settleStartup();
+  const request=h.requests.find(value=>value.pathname.endsWith('/reformulations'));
+  assert.ok(request,'The offer read starts after detail readiness');
+  h.get('reformulationStatus').textContent='New selection owns this view';
+  h.window.TaxonomyAppChrome.updateContext({requirement:{id:99,version:2}});
+  h.releaseOffers();await settleStartup();
+  assert.equal(request.init.signal.aborted,true);
+  assert.equal(h.get('reformulationStatus').textContent,'New selection owns this view');
+  assert.equal(h.get('reformulationList').querySelector('[data-reformulation-editor]'),null);
+  await assert.rejects(h.window.TaxonomyRequirementDetail.whenReady(),error=>error.code==='ABORTED');
+});
+
+test('failed detail authentication cannot resolve readiness or start dependent offer reads',async()=>{
+  const h=detailStartup({forbidden:true});
+  const pending=h.start();h.releaseLifecycle();await pending;await settleStartup();
+  // Header-time auth invalidation can reject a parallel sibling before the 403 body finishes.
+  await assert.rejects(h.window.TaxonomyRequirementDetail.whenReady(),error=>error.status===403 || error.code==='ABORTED');
+  assert.equal(h.auth.length,1);
+  assert.equal(h.auth[0].detail.status,403);
+  assert.equal(h.requests.some(value=>value.pathname.includes('/reformulations')),false);
+});
+
+test('pagehide invalidates completed detail readiness',async()=>{
+  const h=detailStartup();const pending=h.start();h.releaseLifecycle();await pending;await settleStartup();
+  await h.window.TaxonomyRequirementDetail.whenReady();h.pagehide();
+  await assert.rejects(h.window.TaxonomyRequirementDetail.whenReady(),error=>error.code==='ABORTED');
+});
+
+test('saved Copilot startup also waits for hydrated detail before its actual latest request',async()=>{
+  const h=detailStartup({copilot:true});const pending=h.start();await settleStartup();
+  assert.equal(h.requests.length,0,'Neither saved add-on may race initial architecture hydration');
+  h.releaseLifecycle();await pending;await settleStartup();
+  const latest=h.requests.find(value=>value.pathname.endsWith('/copilot/latest'));
+  assert.ok(latest,'The real named Copilot latest request must run after readiness');
+  assert.equal(latest.init.signal.aborted,false,'Expected route hydration must not cancel Copilot startup');
+});
 function harness(reset){
   const events=[];let payload={businessText:'original'};
   const C={S:{},runtime:{},text:key=>key,language:()=> 'en',currentPayload:()=>payload,

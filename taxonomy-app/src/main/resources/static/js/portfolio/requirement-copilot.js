@@ -23,6 +23,7 @@
     let lastServerContact = null;
     let consecutivePollFailures = 0;
     let continuationGeneration = 0;
+    let decisionExportGeneration = 0;
 
     const copy = {
         en: {
@@ -99,6 +100,7 @@
         document.addEventListener('click', interceptDecisionReportExport, true);
 
         try {
+            if (window.TaxonomyRequirementDetail?.whenReady) await window.TaxonomyRequirementDetail.whenReady();
             const [status, latest, account] = await Promise.all([
                 api().status(),
                 api().latest(projectId, requirementId),
@@ -693,10 +695,11 @@
     }
 
     async function runDecisionReportExport(button, format, options, signal, language) {
-        let superseded = false;
         const snapshotId = new URLSearchParams(window.location.search).get('snapshot');
         const surface = ensureExportSurface(button);
-        const operationId = 'export-' + Date.now().toString(36) + '-' + format;
+        const generation = ++decisionExportGeneration;
+        const ownsExport = () => generation === decisionExportGeneration;
+        const operationId = 'export-' + Date.now().toString(36) + '-' + generation + '-' + format;
         if (!snapshotId) {
             renderExportState(surface, operationId, 'FAILED', t('exportFailed'), 'No selected snapshot');
             return;
@@ -709,10 +712,12 @@
             throwIfExportCancelled(signal);
             const response = await window.TaxonomyPortfolioApi.downloadDecisionReport(
                 projectId, snapshotId, format, language || null, options, { signal });
+            if (!ownsExport()) return;
             throwIfExportCancelled(signal);
             if (options && (response.redirected || response.headers.get('X-Taxonomy-Snapshot-Id') !== snapshotId
                     || !response.headers.get('X-Taxonomy-Analysis-SHA256'))) throw new Error('Snapshot report provenance is missing or differs.');
             const blob = await response.blob();
+            if (!ownsExport()) return;
             throwIfExportCancelled(signal);
             const disposition = response.headers.get('Content-Disposition') || '';
             const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
@@ -728,7 +733,7 @@
                 contentType: response.headers.get('Content-Type') || blob.type || ''
             });
         } catch (error) {
-            if (error?.code === 'ABORTED' && !signal?.aborted) {superseded = true; return;}
+            if (!ownsExport() || (error?.code === 'ABORTED' && !signal?.aborted)) return;
             if (signal?.aborted) {
                 renderExportState(surface, operationId, 'CANCELLED', t('exportCancelled'), '');
                 dispatchExport(operationId, format, 'CANCELLED');
@@ -738,7 +743,9 @@
             }
             if (options) throw error;
         } finally {
-            if (!superseded) setExportControlsDisabled(false);
+            // Source/page cancellation suppresses results, but the current local
+            // owner must still release its controls for a restored page.
+            if (ownsExport()) setExportControlsDisabled(false);
         }
     }
 

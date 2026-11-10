@@ -37,7 +37,9 @@ window.TaxonomyDatabaseSetup = (function () {
         var load = api.getAccountContext().then(function (account) {
             administrator = Boolean(account && account.administrator);
             if (!administrator) return null;
-            return api.getJson(base, { timeoutMillis: 4000 });
+            // Installation guidance is independent of the selected repository.
+            // Authentication, page lifetime and the deadline remain canonical.
+            return api.getJson(base, { timeoutMillis: 4000, contextSensitive: false, workspaceScoped: false });
         }).then(function (result) {
             state = result;
             loaded = true;

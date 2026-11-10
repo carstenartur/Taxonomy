@@ -1,6 +1,8 @@
 package com.taxonomy;
 
 import com.sun.net.httpserver.HttpServer;
+import com.taxonomy.dto.ContextMode;
+import com.taxonomy.dto.ContextRef;
 import com.taxonomy.portfolio.dto.PortfolioDtos;
 import com.taxonomy.portfolio.model.PortfolioTypes;
 import com.taxonomy.shared.config.I18nConfig;
@@ -62,6 +64,7 @@ class PortfolioClientRoutingIT {
     void contextualHelpOpensTheGraphSectionInANewTabAndPreservesWork(String language) throws Exception {
         String prefix = "/taxonomy";
         page.clearRoutes();
+        routeCurrentContext(prefix);
         // The full workspace loads capabilities on startup; a missing response opens
         // the export-error dialog and correctly blocks interaction with the page beneath it.
         page.route("GET", prefix + "/api/capabilities", request -> PortfolioClientTestPage.json(200,
@@ -1274,6 +1277,7 @@ class PortfolioClientRoutingIT {
     private static void installRoutes(String prefix) {
         page.clearRoutes();
         page.clearRequests();
+        routeCurrentContext(prefix);
         Map<String, Object> routes = new LinkedHashMap<>();
         routes.put("/api/projects", List.of(project(42), project(63)));
         routes.put("/api/account/me", Map.of("architectureMutationAllowed", true));
@@ -1295,6 +1299,13 @@ class PortfolioClientRoutingIT {
                 "projectCount", 1, "requirementCount", 1, "solutionCount", 0, "productCount", 0,
                 "exportedAt", "2026-10-07T09:00:00Z"));
         routes.forEach((path, body) -> page.route("GET", prefix + path, request -> PortfolioClientTestPage.json(200, body)));
+    }
+
+    private static void routeCurrentContext(String prefix) {
+        // Use the same main/head stand as this owner's Git-state fixture.
+        page.route("GET", prefix + "/api/context/current", request -> PortfolioClientTestPage.json(200,
+                new ContextRef("context-portfolio-main", "main", String.valueOf(repository().get("headCommit")),
+                        LABEL_TIME, ContextMode.EDITABLE, null, null, null, null, null, false)));
     }
 
     private static Map<String, Object> repository() {

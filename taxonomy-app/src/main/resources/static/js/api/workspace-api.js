@@ -90,7 +90,7 @@
         undo: function (branch) { return versionPost('/api/dsl/undo', {branch:branch}); },
         commit: function (branch, author, message, text) { return versionPost('/api/dsl/commit', {branch:branch,author:author,message:message}, text, 'text/plain'); },
         compare: function (left, right) { return versionRequest('/api/context/compare' + query({leftBranch:left,rightBranch:right})); },
-        merge: function (from, into) { return versionPost('/api/dsl/merge', {from:from,into:into}); },
+        merge: function (from, into) { return versionPost('/api/dsl/merge', {fromBranch:from,intoBranch:into}); },
         deleteBranch: function (name) { return versionRequest('/api/dsl/branch' + query({name:name}), {method:'DELETE'}); },
         mergeConflicts: function (from, into) { return versionRequest('/api/dsl/merge/conflicts' + query({from:from,into:into})); },
         cherryPickConflicts: function (id, target) { return versionRequest('/api/dsl/cherry-pick/conflicts' + query({commitId:id,targetBranch:target})); },

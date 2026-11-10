@@ -11,12 +11,19 @@ const document = {
     }
 };
 const context = vm.createContext({
-    window: { location: { pathname: '/' } }, document, URLSearchParams,
+    window: {
+        location: { pathname: '/', href: 'https://example.test/', origin: 'https://example.test' },
+        TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {}
+    },
+    document, URL, URLSearchParams, Headers, Request, Response, FormData,
+    AbortController, DOMException, setTimeout, clearTimeout,
     fetch: async (url, init) => {
         requests.push({ url, init });
-        return { ok: true, status: 200, json: async () => ({ status: 'CANCELLED' }) };
+        return Response.json({ status: 'CANCELLED' });
     }
 });
+context.window.fetch = context.fetch;
+vm.runInContext(fs.readFileSync(process.argv[3], 'utf8'), context);
 vm.runInContext(fs.readFileSync(process.argv[2], 'utf8'), context);
 (async () => {
     const api = context.window.TaxonomyPortfolioApi;
@@ -29,8 +36,9 @@ vm.runInContext(fs.readFileSync(process.argv[2], 'utf8'), context);
         '/api/projects/7/requirements/11/reformulations/proposal-id/synthesis-runs/' + runId + '/cancel');
     assert.equal(requests[0].init.method, 'POST');
     assert.equal(requests[0].init.credentials, 'same-origin');
-    assert.equal(requests[0].init.headers['If-Match'], '"2"');
-    assert.equal(requests[0].init.headers['X-CSRF-TOKEN'], 'browser-token');
+    assert.equal(requests[0].init.headers.get('If-Match'), '"2"');
+    assert.equal(requests[0].init.headers.get('X-CSRF-TOKEN'), 'browser-token');
+    assert.ok(requests[0].init.headers.get('X-Request-ID'), 'Canonical transport assigns request identity');
     for (const operation of ['synthesis-runs//cancel', 'synthesis-runs/../cancel',
         'synthesis-runs/a%2Fb/cancel', 'synthesis-runs/a/cancel/extra',
         'synthesis-runs/a/cancel?adopt=true', 'adoptions']) {

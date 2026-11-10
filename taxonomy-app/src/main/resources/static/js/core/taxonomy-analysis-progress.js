@@ -1209,5 +1209,6 @@
         document.addEventListener('taxonomy:analysis-draft-restored', function () {
             window.setTimeout(function () { refreshRecent(); }, 0);
         });
+        document.addEventListener('taxonomy:analysis-source-ready', function () { refreshRecent(); });
     }
 }());

@@ -1,4 +1,5 @@
 # Every callback declaration is executed by JavascriptContractTest.
+.github/scripts/large-result-budget-harness.test.mjs
 .github/scripts/analysis-cluster-recovery.test.mjs
 .github/scripts/analysis-live-progress.test.mjs
 .github/scripts/analysis-llm-log.test.mjs

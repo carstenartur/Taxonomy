@@ -540,8 +540,55 @@
             }).catch(function(error){showActionAlert('danger',text('createFailed'),error.message,[],'version-error');return false;});
     }
 
+    var sourceRead = null, sourceNotice = null;
+    function notifySourceReady() {
+        if (!sourceNotice || sourceNotice.workspace !== runtime.workspaceId
+                || !window.TaxonomyAnalysisSession?.state?.().ready) return;
+        sourceNotice = null;
+        document.dispatchEvent(new CustomEvent('taxonomy:analysis-source-ready', {
+            detail: {workspaceId: runtime.workspaceId}
+        }));
+        window.TaxonomyOnboarding?.syncTaskProgress?.();
+    }
+    function confirmInitialSource(retry) {
+        if (runtime.sourceReady !== false || !runtime.workspaceResolved) {
+            if (runtime.workspaceResolved) notifySourceReady();
+            return Promise.resolve(true);
+        }
+        var workspace = runtime.workspaceId;
+        if (sourceRead && sourceRead.workspace === workspace) return sourceRead.promise;
+        var task = {workspace:workspace};
+        sourceRead = task;
+        // These initial publications change the same source identity captured by
+        // the canonical transport. Finish them before admitting an analysis,
+        // rather than letting an initial context read revoke its full response.
+        task.promise = Promise.resolve()
+            .then(function () { return window.TaxonomyArchitectureLifecycle?.ready?.(); })
+            .then(function () { return window.TaxonomyArchitectureWorkspace?.ready?.(retry === true); })
+            .then(function (ready) {
+                if (ready === false) throw new Error('Initial architecture source is unavailable');
+                return window.TaxonomyContextBar?.fetchAndRender?.('contextBar');
+            }).then(function (context) {
+                if (window.TaxonomyContextBar?.fetchAndRender && !context) {
+                    throw new Error('Initial repository context is unavailable');
+                }
+                if (workspace !== runtime.workspaceId || sourceRead !== task) return false;
+                runtime.sourceReady = true;
+                sourceNotice = {workspace: workspace};
+                notifySourceReady();
+                return true;
+            }).catch(function (error) {
+                if (workspace === runtime.workspaceId && sourceRead === task) C.serverUnavailable(error);
+                return false;
+            }).finally(function () { if (sourceRead === task) sourceRead = null; });
+        return task.promise;
+    }
+
     function beginDraftResolution() {
         runtime.workspaceResolved = false;
+        sourceNotice = null;
+        runtime.sourceReady = !(window.TaxonomyArchitectureLifecycle?.ready
+            || window.TaxonomyArchitectureWorkspace?.ready || window.TaxonomyContextBar?.fetchAndRender);
         runtime.restoring = true;
         setDraftDecisionPending(true);
     }
@@ -562,6 +609,7 @@
             return loadDraft(Object.assign({}, options, { probe: true })).then(function (view) {
                 runtime.workspaceResolved = true;
                 rememberWorkspaceId(remembered);
+                confirmInitialSource();
                 return view;
             }).catch(function (error) {
                 runtime.workspaceId = null;
@@ -590,6 +638,11 @@
                 runtime.workspaceId = workspace.workspaceId;
                 rememberWorkspaceId(runtime.workspaceId);
                 return loadDraft(options);
+            }).then(function (view) {
+                // Do not await this here: architecture source initialization
+                // itself awaits the draft-only whenInitialized() promise.
+                confirmInitialSource();
+                return view;
             })
             .catch(function (error) {
                 runtime.workspaceResolved = false;
@@ -602,10 +655,11 @@
     }
 
     function retryServerState() {
-        if (!runtime.workspaceResolved && !runtime.restoring) {
-            return resolveWorkspaceAndLoad({ reconcile: true });
-        }
-        return C.reconcileDraft();
+        var checked = !runtime.workspaceResolved && !runtime.restoring
+            ? resolveWorkspaceAndLoad({ reconcile: true }) : C.reconcileDraft();
+        return Promise.resolve(checked).then(function (value) {
+            return confirmInitialSource(true).then(function () { return value; });
+        });
     }
 
     function saveLocalDraft() {
@@ -713,6 +767,7 @@
             return Object.freeze({
                 workspaceId: runtime.workspaceId,
                 ready: runtime.initialized && runtime.workspaceResolved
+                    && runtime.sourceReady !== false
                     && !runtime.restoring && !runtime.invalidating && !runtime.resetting
                     && !runtime.conflict && !runtime.serverUnconfirmed,
                 version: runtime.version,

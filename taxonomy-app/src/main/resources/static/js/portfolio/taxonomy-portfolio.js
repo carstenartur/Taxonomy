@@ -295,6 +295,11 @@
     document.addEventListener('DOMContentLoaded', initialize);
 
     async function initialize() {
+        // Initial lifecycle hydration establishes the source used by every read.
+        // Only page/auth ownership is captured before that intentional transition.
+        const activePage = window.TaxonomyApiClient.captureContext({contextSensitive:false});
+        await window.TaxonomyArchitectureLifecycle?.ready?.();
+        if (!activePage()) return;
         translatePage();
         wireStaticEvents();
         setDefaultVerifiedAt();

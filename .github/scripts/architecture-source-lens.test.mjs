@@ -217,3 +217,50 @@ test('explicit local to AI reassessment starts one bounded request and preserves
     assert.match(f.node('sourceLensReview').textContent,/AI:fixture/);
     f.node('sourceLensInspect').onclick();await flush();assert.equal(f.calls.length,2,'The budget remains a hard limit');
 });
+
+
+test('initial analysis lens settles without a readiness cycle and resumes after its matching source is ready',async()=>{
+    const f=fixture();f.setSession({ready:false});const controller=f.create();
+    assert.equal(await controller.activate(f.workspace.getSource()),false,'Workspace publication must not wait for its own later source-ready event');
+    assert.equal(f.saves(),0);assert.equal(f.node('sourceLensEnabled').disabled,true);
+    f.context.document.dispatchEvent({type:'taxonomy:analysis-source-ready',detail:{workspaceId:'alice'}});await flush();
+    assert.equal(f.saves(),0,'An event cannot bypass the actual session readiness guard');
+    f.setSession({ready:true});
+    f.context.document.dispatchEvent({type:'taxonomy:analysis-source-ready',detail:{workspaceId:'another-workspace'}});await flush();
+    assert.equal(f.saves(),0,'Readiness from another workspace cannot activate this lens');
+    f.context.document.dispatchEvent({type:'taxonomy:analysis-source-ready',detail:{workspaceId:'alice'}});await flush();
+    assert.equal(f.saves(),1,'The deferred activation must acknowledge its exact durable draft');
+    assert.equal(await controller.refresh(),true,'Refresh must expose the completed retry rather than the old unavailable result');
+    assert.equal(f.node('sourceLensEnabled').disabled,false);assert.equal(f.node('sourceLensError').hidden,true);
+    f.context.document.dispatchEvent({type:'taxonomy:analysis-source-ready',detail:{workspaceId:'alice'}});await flush();
+    assert.equal(f.saves(),1,'Readiness notifications cannot activate an already acknowledged source twice');
+    controller.select('arch-a');f.node('sourceLensEnabled').checked=true;f.node('sourceLensEnabled').onchange();
+    f.node('sourceLensInspect').onclick();await flush();
+    assert.deepEqual(JSON.parse(f.calls[0].options.body).source,draft);
+    f.calls[0].resolve(response(draft));await flush();
+});
+
+for(const departure of ['deactivation','source change']) {
+    test(`deferred analysis activation cannot publish after ${departure}`,async()=>{
+        const f=fixture();f.setSession({ready:false});const controller=f.create();
+        await controller.activate(f.workspace.getSource());
+        let acknowledge;f.context.TaxonomyAnalysisSession.saveNow=()=>new Promise(resolve=>{acknowledge=resolve;});
+        f.setSession({ready:true});
+        f.context.document.dispatchEvent({type:'taxonomy:analysis-source-ready',detail:{workspaceId:'alice'}});await flush();
+        assert.equal(typeof acknowledge,'function','The real lens must resume its deferred acknowledged-save path');
+        if(departure==='deactivation')controller.suspend();
+        else {f.setSource({...snapshot,kind:'snapshot'});await controller.activate(f.workspace.getSource());}
+        acknowledge(true);await flush();
+        assert.equal(f.calls.length,0,'Readiness never starts provider work');
+        assert.equal(f.node('sourceLensEnabled').disabled,departure==='deactivation');
+        if(departure==='deactivation')assert.equal(f.node('lensRoot').hidden,true);
+        else assert.match(f.node('sourceLensSource').textContent,/saved-A/,'Late draft acknowledgement cannot replace current snapshot pins');
+    });
+}
+
+test('a departed deferred source ignores a later readiness event before starting any save',async()=>{
+    const f=fixture();f.setSession({ready:false});const controller=f.create();await controller.activate(f.workspace.getSource());
+    controller.suspend();f.setSession({ready:true});
+    f.context.document.dispatchEvent({type:'taxonomy:analysis-source-ready',detail:{workspaceId:'alice'}});await flush();
+    assert.equal(f.saves(),0);assert.equal(f.node('sourceLensEnabled').disabled,true);assert.equal(f.node('lensRoot').hidden,true);
+});

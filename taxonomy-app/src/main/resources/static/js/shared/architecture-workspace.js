@@ -337,9 +337,37 @@
     window.addEventListener('beforeunload',function (event) {
         if (editor?.hasDraft?.()) { event.preventDefault(); event.returnValue = ''; }
     });
-    window.TaxonomyI18n.ready().then(function () {
-        if (location.hash === '#architecture' || /\/architecture\/(editor|workbench)$/.test(location.pathname)) open(initial.kind,{replace:true});
-        else restoreAnalysisContext(location.hash.slice(1) || 'analyze').catch(report);
-    });
+    var initialReady = null, initialFailed = false, initialSettled = false, initialWorkspace;
+    workspace.ready = function (retry) {
+        var workspaceChanged = initialSettled
+            && initialWorkspace !== window.TaxonomyAnalysisSession?.state?.().workspaceId;
+        var refreshRetained = workspaceChanged || retry === true && initialFailed;
+        if (refreshRetained) initialReady = null;
+        if (!initialReady) {
+            initialFailed = false;
+            initialSettled = false;
+            initialReady = window.TaxonomyI18n.ready()
+            .then(function () { return window.TaxonomyArchitectureLifecycle?.ready?.(); })
+            .then(function () {
+                // Workspace recovery confirms the independent retained analysis
+                // scope without reopening or replacing a visible editor draft.
+                if (!refreshRetained && (location.hash === '#architecture'
+                        || /\/architecture\/(editor|workbench)$/.test(location.pathname))) {
+                    return open(initial.kind,{replace:true});
+                }
+                return restoreAnalysisContext(location.hash.slice(1) || 'analyze').then(function () { return true; });
+            }).catch(function (error) { report(error); return false; })
+            .then(function (ready) {
+                // The existing server-check action can retry unavailable initial
+                // metadata without creating a second background polling loop.
+                initialFailed = ready === false;
+                initialSettled = true;
+                initialWorkspace = window.TaxonomyAnalysisSession?.state?.().workspaceId;
+                return ready;
+            });
+        }
+        return initialReady;
+    };
+    workspace.ready();
     function report(error) { var target=el('architectureWorkspaceError');target.textContent=error.message;target.hidden=false; }
 }());

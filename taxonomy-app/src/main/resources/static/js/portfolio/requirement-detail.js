@@ -23,6 +23,7 @@
         account: null,
         busy: 0,
         readGeneration: 0,
+        readError: null,
         versionFormDirty: false
     };
 
@@ -137,29 +138,58 @@
         }
     };
 
+    let resolveReady, rejectReady, readinessContext;
+    let pageActive = true;
+    const readiness = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
+    // The primary page can fail before any optional add-on requests readiness.
+    readiness.catch(() => {});
+    window.addEventListener?.('pagehide', () => { pageActive = false; rejectReady(superseded()); });
     document.addEventListener('DOMContentLoaded', initialize);
     // Read-only adoption refresh must not reset the separate new-version form.
     // The parsed route is shared so page add-ons never re-implement route parsing.
     window.TaxonomyRequirementDetail = {
         route: Object.freeze({projectId: projectId, requirementId: requirementId}),
+        whenReady: () => readiness.then(route => {
+            if (!pageActive || window.location.pathname !== pathname || !readinessContext()) throw superseded();
+            return route;
+        }),
         refreshAfterAdoption: () => loadAll(true)
     };
 
     function t(key) { return (text[locale] && text[locale][key]) || text.en[key] || key; }
 
     async function initialize() {
-        await window.TaxonomyI18n.ready();
-        window.TaxonomyAppChrome?.updateContext({project: {id: projectId}});
-        translateSurface();
-        wireEvents();
-        await loadAll();
-        const requestedSnapshot = new URLSearchParams(window.location.search).get('snapshot');
-        if (requestedSnapshot) {
-            await selectSnapshot(requestedSnapshot);
-            activateDetailTab('analyses-tab');
-        } else if (state.snapshots.length) {
-            await selectSnapshot(state.snapshots[0].id);
+        try {
+            await window.TaxonomyI18n.ready();
+            await window.TaxonomyArchitectureLifecycle?.ready?.();
+            if (!pageActive || window.location.pathname !== pathname) throw superseded();
+            window.TaxonomyAppChrome?.updateContext({project: {id: projectId}});
+            translateSurface();
+            wireEvents();
+            await loadAll();
+            if (state.readError) throw state.readError;
+            if (state.project?.id !== projectId || state.requirement?.id !== requirementId) {
+                throw new Error('The selected requirement detail is unavailable');
+            }
+            const requestedSnapshot = new URLSearchParams(window.location.search).get('snapshot');
+            if (requestedSnapshot) {
+                await selectSnapshot(requestedSnapshot);
+                activateDetailTab('analyses-tab');
+            } else if (state.snapshots.length) {
+                await selectSnapshot(state.snapshots[0].id);
+            }
+            if (state.readError) throw state.readError;
+            if (!pageActive || window.location.pathname !== pathname) throw superseded();
+            readinessContext = window.TaxonomyApiClient.captureContext();
+            resolveReady(window.TaxonomyRequirementDetail.route);
+        } catch (error) {
+            rejectReady(error);
+            if (!state.readError && error.code !== 'ABORTED') showError(error);
         }
+    }
+
+    function superseded() {
+        return Object.assign(new Error('Requirement detail context was superseded'), {code: 'ABORTED'});
     }
 
     function translateSurface() {
@@ -220,6 +250,7 @@
 
     async function loadAll(preserveVersionForm = false) {
         const generation = ++state.readGeneration;
+        state.readError = null;
         setBusy(true);
         try {
             const [project, requirement, versions, snapshots, portfolio, account] = await Promise.all([
@@ -240,7 +271,10 @@
                 || document.getElementById('newVersionModal').classList.contains('show');
             renderAll(keepDraft);
         } catch (error) {
-            if (generation === state.readGeneration) showError(error);
+            if (generation === state.readGeneration) {
+                state.readError = error;
+                if (error.code !== 'ABORTED') showError(error);
+            }
         } finally {
             setBusy(false);
         }
@@ -447,7 +481,8 @@
             renderDecisions();
             renderTasks();
         } catch (error) {
-            showError(error);
+            state.readError = error;
+            if (error.code !== 'ABORTED') showError(error);
         } finally {
             setBusy(false);
         }
