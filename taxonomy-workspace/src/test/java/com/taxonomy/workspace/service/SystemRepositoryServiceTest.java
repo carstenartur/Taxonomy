@@ -167,12 +167,16 @@ class SystemRepositoryServiceTest {
         assertEquals("review", fork.getUpstreamBranch());
     }
 
-    @Test
-    void forkOfRestrictedSourceUsesPrivateDefault() {
-        when(repository.findByRepositoryId("source")).thenReturn(Optional.of(catalogRepository("source")));
+    @ParameterizedTest
+    @CsvSource({"PRIVATE,", "ORGANIZATION,", "PRIVATE, PRIVATE", "ORGANIZATION, PRIVATE"})
+    void restrictedSourceAllowsDefaultOrExplicitPrivateFork(RepositoryVisibility sourceVisibility,
+                                                             RepositoryVisibility requestedVisibility) {
+        SystemRepository source = catalogRepository("source");
+        source.setVisibility(sourceVisibility);
+        when(repository.findByRepositoryId("source")).thenReturn(Optional.of(source));
 
         SystemRepository fork = service.createForkMetadata(
-                "source", null, "a".repeat(40), "Private fork", "private-fork", null, null, "bob");
+                "source", null, "a".repeat(40), "Private fork", "private-fork", null, requestedVisibility, "bob");
 
         assertEquals(RepositoryVisibility.PRIVATE, fork.getVisibility());
     }

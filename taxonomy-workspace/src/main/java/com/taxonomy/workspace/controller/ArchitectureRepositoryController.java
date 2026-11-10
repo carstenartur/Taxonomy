@@ -149,7 +149,7 @@ public class ArchitectureRepositoryController {
 
     @PostMapping("/{repositoryId}/forks")
     @Operation(summary = "Create a durable central fork",
-            description = "Creates a fork from the selected source repository/branch after checking visibility and CONTRIBUTOR permission. A fork of a restricted source must be private. Provisioning records the source authority.")
+            description = "Creates a fork from the selected source repository and branch after checking visibility and CONTRIBUTOR permission. A fork of a non-public source must be private. Provisioning records the source authority and leaves the source repository unchanged.")
     public ResponseEntity<?> createFork(
             @PathVariable String repositoryId,
             @RequestBody CreateForkRequest request) {
