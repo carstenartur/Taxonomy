@@ -1,3 +1,4 @@
+const canonicalFixture = require('../../../../.github/scripts/canonical-api-fixture.cjs');
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {readFileSync, existsSync} = require('node:fs');
@@ -69,7 +70,7 @@ for (const scopeKind of ['missing', 'null', 'selected']) {
         const registration = browse.slice(browse.indexOf('// Import JSON button'), browse.indexOf('// Diagnostics panel'));
         const statuses = [];
         let diagramContextResets = 0;
-        vm.runInNewContext(registration, {window: f.window, document: f.document, S: f.state,
+        const importScope = {window: f.window, document: f.document, S: f.state,
             SC: () => f.window.TaxonomyScoring,
             resetDiagramContext() { diagramContextResets++; },
             switchView(view) { f.state.currentView = view; },
@@ -77,7 +78,10 @@ for (const scopeKind of ['missing', 'null', 'selected']) {
             CustomEvent: class {constructor(type) {this.type = type;}},
             fetch(url, options) {f.requests.push({url, options}); return Promise.resolve({json: async () => incoming});},
             renderView() {}, updateExportGroupVisibility() {}, showStatus(...args) {statuses.push(args);},
-            t: (key, ...args) => [key, ...args].join(': ')});
+            t: (key, ...args) => [key, ...args].join(': ')};
+        f.window.fetch = importScope.fetch;
+        canonicalFixture.install(importScope, ['api/analysis-api.js']);
+        vm.runInNewContext(registration, importScope);
         file.listeners.change();
         await new Promise(resolve => setImmediate(resolve));
         assert.equal(f.requests[0].url, '/api/scores/import');

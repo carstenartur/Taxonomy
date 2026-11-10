@@ -1,3 +1,4 @@
+import canonicalFixture from './canonical-api-fixture.cjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
@@ -803,6 +804,7 @@ function interactiveHarness(response) {
     TaxonomyUtils: { escapeHtml: text => String(text) }, CSS: { escape: text => text },
     fetch: async () => ({ ok: true, json: async () => response })
   });
+  canonicalFixture.install(context, ['api/analysis-api.js']);
   vm.runInContext(browseSource.replace('renderView: renderView,',
     'evaluateNodeChildren: evaluateNodeChildren, renderView: renderView,'), context);
   return { state, classes, logs, status, errors, async run() {
