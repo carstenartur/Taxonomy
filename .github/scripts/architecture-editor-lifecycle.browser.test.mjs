@@ -9,6 +9,47 @@ let browser;
 before(async()=>{browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE?{executablePath:process.env.CHROMIUM_EXECUTABLE}:{}),args:['--no-sandbox','--disable-dev-shm-usage']});});
 after(async()=>{await browser?.close();});
 
+test('exact editor mutation preserves a real 412 when another writer advances the displayed model stand', async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    try {
+        await page.route('http://editor.test/**', async route => {
+            if (new URL(route.request().url()).pathname === '/api/architecture/editor/commands') {
+                await new Promise(resolve => setTimeout(resolve, 40));
+                return route.fulfill({status: 412, contentType: 'application/problem+json',
+                    body: JSON.stringify({type:'about:blank',title:'Revision moved',status:412,code:'REVISION_MOVED'})});
+            }
+            return route.fulfill({contentType:'text/html',body:'<html><body>Editor fixture</body></html>'});
+        });
+        await page.goto('http://editor.test/');
+        await page.evaluate(() => {
+            window.__revisionStand = 'revision 7';
+            window.TaxonomyI18n = {resolveUrl: value => value};
+            window.TaxonomyAppChrome = {getContext: () => ({architecture: {repositoryId:'repo',
+                workspaceScopeKey:'private-a',branch:'draft',modelStand:window.__revisionStand}})};
+        });
+        await page.addScriptTag({path:path.join(resources,'static/js/api/taxonomy-api-client.js')});
+        await page.addScriptTag({path:path.join(resources,'static/js/api/architecture-editor-api.js')});
+        const result = await page.evaluate(async () => {
+            const scope = {repositoryId:'repo',workspaceScopeKey:'private-a',branch:'draft',revision:7};
+            const pending = ArchitectureEditorApi.execute({context:scope,kind:'UPDATE_ELEMENT',
+                id:'element-a',properties:{title:'Concurrent change'},
+                metadata:{commandId:'command-a',correlationId:'command-a',causationId:'command-a',
+                    rationale:'Reviewed update'}}).then(() => ({unexpectedSuccess:true}),
+                    error => ({status:error.status,code:error.code,message:error.message}));
+            window.__revisionStand = 'revision 8';
+            return pending;
+        });
+        assert.equal(result.unexpectedSuccess,undefined);
+        assert.equal(result.status,412,
+            'A frozen exact-scope editor command must surface server revision conflicts, not ABORTED');
+    } finally {
+        await context.close();
+    }
+});
+
+
+
 for(const canonicalization of ['stable','after-response','workspace-before-response'])test(`passive snapshot proof observes production scope and history changes (${canonicalization})`,async()=>{
     const context=await browser.newContext(),page=await context.newPage();
     const baseUrl='http://snapshot.test/',scope={repositoryId:'repository-1',workspaceId:'workspace-1',workspaceScopeKey:'workspace-1',branch:'draft'};

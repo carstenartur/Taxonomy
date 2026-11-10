@@ -62,7 +62,10 @@ export async function settleDraftBeforeNavigation(page) {
     const before = session?.state?.();
     if (!session?.saveNow || !before?.workspaceId || !before.ready
         || before.restoring || before.conflict) {
-      throw new Error('Analysis draft is not ready for navigation');
+      throw new Error('Analysis draft is not ready for navigation: ' + JSON.stringify({
+        state: before, loading: window.__taxonomyAnalysisSessionLoading,
+        progressReady: typeof window.TaxonomyAnalysisProgress?.start === 'function'
+      }));
     }
     if (await session.saveNow() !== true) {
       throw new Error('Analysis draft was not saved before navigation');
