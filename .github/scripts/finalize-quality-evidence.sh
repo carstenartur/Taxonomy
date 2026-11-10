@@ -35,14 +35,16 @@ source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
 build_id="${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
 # The action pin is configuration, not evidence of a completed independent scan.
 # QualityToolMetadataTest checks it against every CodeQL workflow invocation.
-python3 .github/scripts/generate-quality-site.py \
+bash "$(dirname -- "${BASH_SOURCE[0]}")/taxonomy-tooling.sh" generate-quality-site \
   --root target/quality-reports --commit "$GITHUB_SHA" \
   --source-tree "$source_tree" --build-id "$build_id" \
   --tool "java=$(java -version 2>&1 | sed -n '1p')" \
   --tool "maven=$(./mvnw -version 2>&1 | sed -n '1p')" \
   --tool 'codeql-action=configured:github/codeql-action@9b3254085494b55a0f7c4c2b3d2d52cc712ce370' \
   --tool 'trivy-action=v0.36.0'
-python3 .github/scripts/verify-quality-publication.py \
+bash "$(dirname -- "${BASH_SOURCE[0]}")/taxonomy-tooling.sh" verify-quality-publication \
   --root target/quality-reports --expected-commit "$GITHUB_SHA"
+bash "$(dirname -- "${BASH_SOURCE[0]}")/taxonomy-tooling.sh" write-quality-manifest \
+  --root target/quality-reports --expected-commit "$GITHUB_SHA" --expected-tree "$source_tree"
 printf 'Verified commit: %s\nSource tree: %s\nBuild ID: %s\n' \
   "$GITHUB_SHA" "$source_tree" "$build_id" > target/quality-reports/README.txt
