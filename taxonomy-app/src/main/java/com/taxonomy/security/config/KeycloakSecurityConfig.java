@@ -16,6 +16,7 @@ import org.springframework.security.config.ObjectPostProcessor;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.session.SessionRegistry;
+import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
@@ -83,6 +84,13 @@ public class KeycloakSecurityConfig {
     SecurityFilterChain trackedSecurityFilterChain(HttpSecurity http, SessionRegistry registry) throws Exception {
         BrowserSessionConfiguration.configure(http, registry);
         return securityFilterChain(http);
+    }
+
+    @Bean
+    JwtTimestampValidator keycloakJwtTimestampValidator() {
+        var validator = new JwtTimestampValidator();
+        validator.setAllowEmptyExpiryClaim(false);
+        return validator;
     }
 
     /** Existing security rules, also used by focused protocol/filter configuration tests. */

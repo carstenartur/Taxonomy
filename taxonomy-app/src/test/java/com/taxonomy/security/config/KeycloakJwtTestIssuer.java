@@ -47,9 +47,9 @@ record KeycloakJwtTestIssuer(HttpServer server, RSAKey key, String origin) imple
                  Instant expiresAt, String authorizedParty, List<String> roles, String scope) throws Exception {
         var claims = new JWTClaimsSet.Builder().issuer(issuer).subject("audience-proof-person")
                 .issueTime(Date.from(Instant.now().minusSeconds(600)))
-                .expirationTime(Date.from(expiresAt))
                 .claim("preferred_username", "audience-proof")
                 .claim("realm_access", Map.of("roles", roles));
+        if (expiresAt != null) { claims.expirationTime(Date.from(expiresAt)); }
         if (scope != null) { claims.claim("scope", scope); }
         if (audiences != null) { claims.audience(audiences); }
         if (authorizedParty != null) { claims.claim("azp", authorizedParty); }
