@@ -23,6 +23,7 @@
     let lastServerContact = null;
     let consecutivePollFailures = 0;
     let continuationGeneration = 0;
+    let decisionExportGeneration = 0;
 
     const copy = {
         en: {
@@ -99,6 +100,7 @@
         document.addEventListener('click', interceptDecisionReportExport, true);
 
         try {
+            if (window.TaxonomyRequirementDetail?.whenReady) await window.TaxonomyRequirementDetail.whenReady();
             const [status, latest, account] = await Promise.all([
                 api().status(),
                 api().latest(projectId, requirementId),
@@ -113,6 +115,7 @@
                 if (!terminal.has(latest.status)) startPolling(latest.operationId);
             }
         } catch (error) {
+            if (error?.code === 'ABORTED') return;
             showError(error);
         }
     }
@@ -249,6 +252,7 @@
             if (!terminal.has(operation.status)) startPolling(operation.operationId);
             else handleTerminal(operation);
         } catch (error) {
+            if (error?.code === 'ABORTED') return;
             showError(error);
             setControls(false);
         }
@@ -271,6 +275,7 @@
                 startPolling(activeOperationId);
             }
         } catch (error) {
+            if (error?.code === 'ABORTED') return;
             showError(error);
             if (activeOperation && !terminal.has(activeOperation.status)) startPolling(activeOperationId);
         }
@@ -281,6 +286,7 @@
                 || activeOperation?.status === 'CANCELLED' || resuming) return;
         stopPolling();
         resuming = true;
+        let superseded = false;
         setControls(true);
         clearError();
         hideReconnect();
@@ -291,6 +297,7 @@
             if (terminal.has(operation.status)) handleTerminal(operation);
             else startPolling(operation.operationId);
         } catch (error) {
+            if (error?.code === 'ABORTED') {superseded = true; return;}
             showError(error);
             // An uncertain response can already have resumed work. Only observe it.
             try {
@@ -300,12 +307,13 @@
                 if (terminal.has(current.status)) handleTerminal(current);
                 else startPolling(current.operationId);
             } catch (statusError) {
+                if (statusError?.code === 'ABORTED') {superseded = true; return;}
                 renderReconnect(statusError, ++consecutivePollFailures);
                 startPolling(activeOperationId);
             }
         } finally {
             resuming = false;
-            setControls(Boolean(activeOperation && !terminal.has(activeOperation.status)));
+            if (!superseded) setControls(Boolean(activeOperation && !terminal.has(activeOperation.status)));
         }
     }
 
@@ -342,6 +350,7 @@
                     return;
                 }
             } catch (error) {
+                if (error?.code === 'ABORTED') return;
                 if (generation !== pollingGeneration) return;
                 consecutivePollFailures += 1;
                 renderReconnect(error, consecutivePollFailures);
@@ -529,6 +538,7 @@
             if (terminal.has(operation.status)) handleTerminal(operation);
             else startPolling(operation.operationId);
         } catch (error) {
+            if (error?.code === 'ABORTED') return;
             showError(error);
             // A lost response may already have queued the cycle. Observe; never repeat the POST.
             try {
@@ -537,6 +547,7 @@
                 if (terminal.has(current.status)) handleTerminal(current);
                 else startPolling(current.operationId);
             } catch (statusError) {
+                if (statusError?.code === 'ABORTED') return;
                 renderReconnect(statusError, ++consecutivePollFailures);
                 startPolling(activeOperationId);
             }
@@ -686,7 +697,9 @@
     async function runDecisionReportExport(button, format, options, signal, language) {
         const snapshotId = new URLSearchParams(window.location.search).get('snapshot');
         const surface = ensureExportSurface(button);
-        const operationId = 'export-' + Date.now().toString(36) + '-' + format;
+        const generation = ++decisionExportGeneration;
+        const ownsExport = () => generation === decisionExportGeneration;
+        const operationId = 'export-' + Date.now().toString(36) + '-' + generation + '-' + format;
         if (!snapshotId) {
             renderExportState(surface, operationId, 'FAILED', t('exportFailed'), 'No selected snapshot');
             return;
@@ -699,10 +712,12 @@
             throwIfExportCancelled(signal);
             const response = await window.TaxonomyPortfolioApi.downloadDecisionReport(
                 projectId, snapshotId, format, language || null, options, { signal });
+            if (!ownsExport()) return;
             throwIfExportCancelled(signal);
             if (options && (response.redirected || response.headers.get('X-Taxonomy-Snapshot-Id') !== snapshotId
                     || !response.headers.get('X-Taxonomy-Analysis-SHA256'))) throw new Error('Snapshot report provenance is missing or differs.');
             const blob = await response.blob();
+            if (!ownsExport()) return;
             throwIfExportCancelled(signal);
             const disposition = response.headers.get('Content-Disposition') || '';
             const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
@@ -718,6 +733,7 @@
                 contentType: response.headers.get('Content-Type') || blob.type || ''
             });
         } catch (error) {
+            if (!ownsExport() || (error?.code === 'ABORTED' && !signal?.aborted)) return;
             if (signal?.aborted) {
                 renderExportState(surface, operationId, 'CANCELLED', t('exportCancelled'), '');
                 dispatchExport(operationId, format, 'CANCELLED');
@@ -727,7 +743,9 @@
             }
             if (options) throw error;
         } finally {
-            setExportControlsDisabled(false);
+            // Source/page cancellation suppresses results, but the current local
+            // owner must still release its controls for a restored page.
+            if (ownsExport()) setExportControlsDisabled(false);
         }
     }
 

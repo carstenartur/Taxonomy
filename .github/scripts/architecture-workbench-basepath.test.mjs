@@ -1,3 +1,4 @@
+import canonicalFixture from './canonical-api-fixture.cjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -48,6 +49,7 @@ async function boot(prefix, withI18n = true) {
         await context.TaxonomyI18n.ready();
         requests.length = 0;
     }
+    canonicalFixture.install(context);
     vm.runInContext(apiSource, context);
     vm.runInContext(downloadSource, context);
     return { api: context.ArchitectureWorkbenchApi, clicks, downloads, requests, requestOptions };
@@ -89,7 +91,7 @@ for (const workspace of ['private-A','__shared__']) test(`workbench exact snapsh
     assert.equal(url.searchParams.get('repositoryId'),'repository-A');
     assert.equal(url.searchParams.get('workspaceId'),workspace==='__shared__'?'':workspace);
     assert.equal(url.searchParams.get('branch'),'review/A');
-    assert.equal(app.requestOptions.at(-1).headers['X-Taxonomy-Workspace-Id'],workspace==='__shared__'?'':workspace);
+    assert.equal(new Headers(app.requestOptions.at(-1).headers).get('X-Taxonomy-Workspace-Id'),workspace==='__shared__'?'':workspace);
     for(const method of ['svgUrl','pdfUrl','architectureWordUrl','decisionWordUrl','archiMateBundleUrl','visioBundleUrl']){
         const download=new URL(app.api[method]('42','snapshot-A',scope),'https://example.test');
         assert.equal(download.searchParams.get('workspaceScopeKey'),workspace);

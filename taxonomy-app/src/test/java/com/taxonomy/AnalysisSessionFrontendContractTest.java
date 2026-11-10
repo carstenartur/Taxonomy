@@ -55,7 +55,7 @@ class AnalysisSessionFrontendContractTest {
                 .contains("TaxonomyArchitectureLifecycle.saveRequirement(attempt.command)");
         assertThat(resource("/static/js/api/architecture-lifecycle-api.js"))
                 .contains("saveRequirement:function (request)")
-                .contains("write('/api/architecture/editor/requirements', request, true)");
+                .contains("write('/api/architecture/editor/requirements', request, true, null, true)");
     }
 
     @Test

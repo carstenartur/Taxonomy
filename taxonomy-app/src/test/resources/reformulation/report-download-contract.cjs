@@ -2,6 +2,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const canonicalFixture = require(process.argv[4]);
 const requests = [], downloads = [], revoked = [], delayed = [];
 class Element {
     constructor(tag) { this.tagName = tag; this.children = []; this.dataset = {}; this.events = {}; this.isConnected = true; }
@@ -21,6 +22,7 @@ const context = vm.createContext({ window:{location:{pathname:'/'}}, document, U
     URL:{createObjectURL:blob=>'blob:'+blob.type,revokeObjectURL:url=>revoked.push(url)},
     setTimeout: fn => { delayed.push(fn); return delayed.length; },
     fetch: async (url,init) => { requests.push({url,init}); return response(); } });
+canonicalFixture.install(context);
 vm.runInContext(fs.readFileSync(process.argv[2], 'utf8'), context);
 (async () => {
     const api=context.window.TaxonomyPortfolioApi;
@@ -63,4 +65,4 @@ vm.runInContext(fs.readFileSync(process.argv[2], 'utf8'), context);
     await receipt.children.filter(n=>n.tagName==='button')[2].click();assert.equal(downloads.length,3);assert.ok(downloads[2].download.includes(command));
     assert.ok(requests.every(r=>!r.init.method || r.init.method==='GET'),'Export performed a mutation');
     console.log('REFORMULATION_REPORT_DOWNLOAD_OK');
-})().catch(error=>{console.error(error);process.exitCode=1;});
+})().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>canonicalFixture.dispose());

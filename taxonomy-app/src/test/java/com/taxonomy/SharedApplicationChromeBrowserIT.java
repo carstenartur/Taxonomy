@@ -1,5 +1,7 @@
 package com.taxonomy;
 
+import com.taxonomy.dto.ContextMode;
+import com.taxonomy.dto.ContextRef;
 import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
 import com.taxonomy.portfolio.model.AiCostPolicy;
 import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
@@ -9,6 +11,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.openqa.selenium.By;
@@ -24,6 +27,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -82,6 +86,7 @@ class SharedApplicationChromeBrowserIT {
                                 + "body { border-top: 9px solid rgb(14, 64, 124) !important; }"));
         page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of()));
         page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", List.of("portfolio", "architecture"))));
+        if (template.equals("index")) routeCurrentContext("context-customer-shared", "draft", null);
         String path = template.equals("index") ? "/taxonomy/" : "/taxonomy/projects";
         page.openAt(template, "/taxonomy", path, "de", "localStorage.setItem('taxonomy_onboarded','true');",
                 Map.of("customerStylesheetEnabled", true));
@@ -196,13 +201,18 @@ class SharedApplicationChromeBrowserIT {
     }
 
     private static void open(View view, String locale, int width, List<String> features) {
+        open(view, locale, width, features, false);
+    }
+
+    private static void open(View view, String locale, int width, List<String> features, boolean failVersions) {
         page.clearRoutes();
         page.clearRequests();
         viewport(width, 1000);
         page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of()));
         page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", features)));
+        if (view.template().equals("index")) routeCurrentContext("context-private-a", "review/current", "a".repeat(40));
         if (view.template().equals("requirement-detail")) {
-            // A single failed read makes the long error deterministic instead of racing six unrelated 404s.
+            // The explicit error case fails only history; normal navigation has a complete source.
             var currentVersion = PortfolioRequirementFixture.version(9, 1, "Retain this requirement while its history is unavailable.");
             var requirement = Map.ofEntries(
                     Map.entry("id", 7), Map.entry("projectId", 42), Map.entry("requirementKey", "REQ-7"),
@@ -213,8 +223,9 @@ class SharedApplicationChromeBrowserIT {
             page.route("GET", "/taxonomy/api/projects/42", request -> json(200,
                     Map.of("id", 42, "projectKey", "FIXTURE", "title", "Requirement navigation fixture", "status", "ACTIVE")));
             page.route("GET", "/taxonomy/api/projects/42/requirements/7", request -> json(200, requirement));
-            page.route("GET", "/taxonomy/api/projects/42/requirements/7/versions", request -> json(404,
-                    Map.of("error", REQUIREMENT_LOAD_ERROR)));
+            page.route("GET", "/taxonomy/api/projects/42/requirements/7/versions", request -> failVersions
+                    ? json(404, Map.of("error", REQUIREMENT_LOAD_ERROR))
+                    : json(200, List.of(currentVersion)));
             page.route("GET", "/taxonomy/api/projects/42/requirements/7/snapshots", request -> json(200, List.of()));
             page.route("GET", "/taxonomy/api/projects/42/portfolio", request -> json(200,
                     Map.of("requirements", List.of(requirement), "solutions", List.of())));
@@ -250,12 +261,16 @@ class SharedApplicationChromeBrowserIT {
         wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript(
                 "return !!window.TaxonomyI18n && TaxonomyI18n.isLoaded();")));
         if (view.template().equals("requirement-detail")) {
-            wait.until(ExpectedConditions.textToBe(By.id("detailError"), REQUIREMENT_LOAD_ERROR));
+            if (failVersions) {
+                wait.until(ExpectedConditions.textToBe(By.id("detailError"), "HTTP 404: " + REQUIREMENT_LOAD_ERROR));
+            }
             wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("detailBusy")));
-            wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#reformulationList > p")));
-            wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("copilotPolicy"),
-                    "No provider configured for this browser fixture."));
-            assertThat(page.driver().findElement(By.id("copilotError")).isDisplayed()).isFalse();
+            if (!failVersions) {
+                wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#reformulationList > p")));
+                wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("copilotPolicy"),
+                        "No provider configured for this browser fixture."));
+                assertThat(page.driver().findElement(By.id("copilotError")).isDisplayed()).isFalse();
+            }
         }
         if (view.template().equals("index")) {
             // Complete the real first-run dialog before testing the page behind it.
@@ -268,6 +283,38 @@ class SharedApplicationChromeBrowserIT {
     @MethodSource("views")
     void existingViewsShareAccessibleNavigationWithoutLosingTheirControls(View view, String locale, int width) throws IOException {
         open(view, locale, width);
+        assertSharedNavigation(view, locale, width);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"en, 1440", "de, 390"})
+    void failedRequirementReadWrapsWithoutLosingNavigationOrStartingDependentReads(String locale, int width) throws IOException {
+        var view = new View("requirement-detail", "/projects/42/requirements/7", "analysis", "newVersionButton");
+        open(view, locale, width, List.of("portfolio", "architecture"), true);
+        String expectedError = "HTTP 404: " + REQUIREMENT_LOAD_ERROR;
+        assertThat(page.driver().findElement(By.id("detailError")).isDisplayed()).isTrue();
+        assertThat(page.driver().executeAsyncScript("""
+                const expected=arguments[0],done=arguments[arguments.length-1];
+                TaxonomyRequirementDetail.whenReady().then(()=>done(false),error=>
+                    done(error.status===404 && error.message===expected));
+                """, expectedError)).as("A failed source cannot admit dependent detail reads").isEqualTo(true);
+        wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("reformulationStatus"), expectedError));
+        wait.until(ExpectedConditions.textToBe(By.id("copilotError"), expectedError));
+        assertThat(page.driver().findElement(By.id("copilotError")).isDisplayed()).isTrue();
+        assertThat(page.requests().stream().filter(request -> request.path().endsWith("/reformulations")
+                || request.path().endsWith("/copilot/latest") || request.path().endsWith("/api/ai-automation")))
+                .as("Failed detail readiness must not start the dependent proposal or Copilot reads").isEmpty();
+        assertThat(page.requests().stream().filter(request -> request.method().equals("POST"))).isEmpty();
+        assertSharedNavigation(view, locale, width);
+        assertThat(page.driver().executeScript("""
+                const error=document.getElementById('detailError'),box=error.getBoundingClientRect(),range=document.createRange();
+                range.selectNodeContents(error);
+                return [...range.getClientRects()].every(r=>r.left>=box.left && r.right<=box.right
+                    && r.top>=box.top && r.bottom<=box.bottom && r.right<=innerWidth);
+                """)).as("The complete failed-read message wraps visibly inside its alert, without clipping the URL").isEqualTo(true);
+    }
+
+    private static void assertSharedNavigation(View view, String locale, int width) throws IOException {
         var navigation = page.driver().findElements(By.id("applicationNavigation"));
         assertThat(navigation).as("Every existing view has the same application navigation").hasSize(1);
         assertThat(navigation.getFirst().getAccessibleName()).isNotBlank();
@@ -348,14 +395,6 @@ class SharedApplicationChromeBrowserIT {
         assertThat(navigationGeometry.get("valid"))
                 .as("Every focused navigation destination remains fully visible with a 44px target and no page overflow: %s", navigationGeometry)
                 .isEqualTo(true);
-        if (view.template().equals("requirement-detail")) {
-            assertThat(page.driver().executeScript("""
-                    const error=document.getElementById('detailError'),box=error.getBoundingClientRect(),range=document.createRange();
-                    range.selectNodeContents(error);
-                    return [...range.getClientRects()].every(r=>r.left>=box.left && r.right<=box.right
-                        && r.top>=box.top && r.bottom<=box.bottom && r.right<=innerWidth);
-                    """)).as("The complete failed-read message wraps visibly inside its alert, without clipping the URL").isEqualTo(true);
-        }
         if (view.template().equals("index")) {
             assertThat(page.driver().findElements(By.cssSelector("#docImportUploadBtn #docImportSpinner")))
                     .as("Translation preserves the native document-import progress indicator").hasSize(1);
@@ -452,6 +491,7 @@ class SharedApplicationChromeBrowserIT {
                 "architectureTitle", "Shared Architecture Repository", "source", "GIT_CHECKPOINT", "projectionState", "READY",
                 "publicationState", "CHECKPOINTED", "mayEdit", false,
                 "projects", List.of(), "dependencies", List.of(), "requirements", List.of())));
+        routeCurrentContext("context-compact-shared", "draft", COMPACT_COMMIT);
         page.open("index", "/taxonomy", "/", "de", """
                 localStorage.clear();sessionStorage.clear();
                 history.replaceState(null,'','?lang=de&repositoryId=%s&workspaceId=&workspaceScopeKey=__shared__&branch=draft#analyze');
@@ -911,6 +951,13 @@ class SharedApplicationChromeBrowserIT {
         page.driver().executeScript("document.querySelector('[data-app-route=projects]').focus();");
         new Actions(page.driver()).sendKeys(Keys.TAB).perform();
         assertThat(page.driver().switchTo().activeElement().getDomAttribute("data-app-route")).isEqualTo("analysis");
+    }
+
+    private static void routeCurrentContext(String contextId, String branch, String commit) {
+        // Repository/workspace identity remains in each page's explicit pins and lifecycle response.
+        page.route("GET", "/taxonomy/api/context/current", request -> json(200,
+                new ContextRef(contextId, branch, commit, Instant.parse("2026-10-07T09:00:00Z"),
+                        ContextMode.READ_ONLY, null, null, null, null, null, false)));
     }
 
     private static final String COMPACT_REPOSITORY = "05f0a13b-7669-492d-a3e8-f10ce133dacf";

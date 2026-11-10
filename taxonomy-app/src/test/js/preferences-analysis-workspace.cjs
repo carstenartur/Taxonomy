@@ -274,6 +274,37 @@ for (const transition of ['source hydration', 'tab departure', 'tab departure be
     });
 }
 
+for (const startupOrder of ['session-first', 'preferences-first']) {
+    test('installation Preferences uses one unpinned GET during actual ' + startupOrder + ' startup', async () => {
+        const f = fixture({directPreferences: true, deferDraftRead: true, startupOrder});
+        const session = f.window.TaxonomyAnalysisSession;
+        assert.equal(session.state().workspaceId, 'ws-1');
+        assert.equal(session.state().restoring, true);
+        try {
+            if (startupOrder === 'session-first') {
+                f.draftRead.resolve(copy(f.storedDraft));
+                await session.whenInitialized();
+                await settled();
+                assert.equal(session.state().ready, true);
+                assert.equal(f.window.TaxonomyContextBar.getCurrentContext().contextId, 'selected-context');
+            }
+            f.firstPreferenceRead.resolve();
+            await settled();
+            const reads = f.requests.filter(request => request.url === '/api/preferences');
+            assert.equal(f.maxNodes.value, '50', 'The direct Preferences tab must receive the global settings');
+            assert.equal(f.nodes.get('prefResetBtn').disabled, false);
+            assert.deepEqual(reads.map(r => [r.method, r.workspaceQuery, r.workspaceHeader]), [['GET', null, null]]);
+            if (startupOrder === 'preferences-first') {
+                assert.equal(session.state().restoring, true, 'Preferences is usable before the draft can complete');
+                assert.equal(f.requests.some(request => request.url === '/api/context/current'), false);
+            }
+        } finally {
+            f.draftRead.resolve(copy(f.storedDraft));
+            await session.whenInitialized();
+        }
+    });
+}
+
 for (const method of ['PUT', 'POST']) {
     test('Preferences ' + method + ' retains its workspace pin and rejects a departed acknowledgement', async () => {
         const f = fixture();

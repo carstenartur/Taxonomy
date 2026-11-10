@@ -169,3 +169,58 @@ for (const canvas of [false, true]) test(`intentional ${canvas ? 'Canvas' : 'SVG
     f.key('End');
     assert.equal(f.graphSelections.at(-1), 'BR');
 });
+
+function tooltipFixture() {
+    const elements = new Map(), windowEvents = new EventTarget(), documentEvents = new EventTarget();
+    const document = {activeElement: null,
+        getElementById: id => elements.get(id) || null,
+        createElement: () => ({style: {}}),
+        body: {appendChild(element) {elements.set(element.id, element);}},
+        addEventListener: documentEvents.addEventListener.bind(documentEvents)};
+    const window = {innerWidth: 1366, addEventListener: windowEvents.addEventListener.bind(windowEvents)};
+    const context = {window, document, TaxonomyI18n: {t: key => key}};
+    // Exercise the real hover renderer and public view lifecycle; expose only
+    // the private mouse handler in this test realm, never in the shipped API.
+    vm.runInNewContext(source.replace('window.TaxonomyViews = {',
+        'window.showTooltipForTest = showTooltip; window.TaxonomyViews = {'), context);
+    const container = {contains() {return false;}};
+    const node = {code: 'BP-1327', name: 'Enable', description: 'Recorded <catalogue> description\nSecond line'};
+    function hover() {
+        window.showTooltipForTest({pageX: 785, pageY: 976}, node, {'BP-1327': 70});
+        return elements.get('tax-d3-tooltip');
+    }
+    return {window, container, hover,
+        prepare: view => window.TaxonomyViews.prepareDiagramContext(container, {analysisKey: 1, view}),
+        resize() {window.innerWidth = 390; windowEvents.dispatchEvent(new Event('resize'));},
+        navigate() {documentEvents.dispatchEvent(new Event('taxonomy:page-activated'));}};
+}
+
+test('a visible diagram hover retains its complete escaped description and score', () => {
+    const f = tooltipFixture(), tooltip = f.hover();
+    assert.equal(tooltip.style.display, 'block');
+    assert.equal(tooltip.style.left, '799px');
+    assert.match(tooltip.innerHTML, /BP-1327.*Enable/);
+    assert.match(tooltip.innerHTML, /Recorded &lt;catalogue&gt; description<br>Second line/);
+    assert.match(tooltip.innerHTML, /70%/);
+});
+
+for (const view of ['list', 'tabs', 'summary', 'sunburst', 'tree', 'decision']) {
+    test(`preparing the ${view} view dismisses the previous diagram hover`, () => {
+        const f = tooltipFixture(), tooltip = f.hover(), content = tooltip.innerHTML;
+        f.prepare(view);
+        assert.equal(tooltip.style.display, 'none', 'A replaced diagram must not leave a body-level tooltip');
+        assert.equal(tooltip.innerHTML, content, 'Dismissal must not alter the catalogue description');
+        assert.equal(f.hover(), tooltip, 'The next real hover reuses the same tooltip');
+        assert.equal(tooltip.style.display, 'block');
+        assert.equal(tooltip.innerHTML, content);
+    });
+}
+
+for (const change of ['resize', 'navigate']) {
+    test(`${change} dismisses stale diagram coordinates without disabling subsequent hover`, () => {
+        const f = tooltipFixture(), tooltip = f.hover();
+        f[change]();
+        assert.equal(tooltip.style.display, 'none', 'A tooltip cannot outlive its viewport or page context');
+        assert.equal(f.hover().style.display, 'block');
+    });
+}

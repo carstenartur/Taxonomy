@@ -69,7 +69,6 @@
     }
 
     async function initialize() {
-        window.TaxonomyAppChrome?.updateContext({project: {id: projectId}});
         translate();
         wire();
         await load();
@@ -115,9 +114,16 @@
     }
 
     async function load({ preserveMessages = false } = {}) {
+        // Initial lifecycle hydration owns the selected stand. Keep early input
+        // handlers active, but publish this page's project only after that read.
+        const activePage = window.TaxonomyApiClient.captureContext({contextSensitive:false});
+        const selectedUrl = location.href;
         busy(true);
         if (!preserveMessages) clearMessages();
         try {
+            await window.TaxonomyArchitectureLifecycle?.ready?.();
+            if (!activePage() || location.href !== selectedUrl) return;
+            window.TaxonomyAppChrome?.updateContext({project: {id: projectId}});
             [state.project, state.repository, state.exported, state.account] = await Promise.all([
                 api().getProject(projectId),
                 api().getGitState(),

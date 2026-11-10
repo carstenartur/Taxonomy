@@ -1,4 +1,5 @@
 /** Shared SVG renderer acceptance using the packaged D3 dependency, with no API/provider calls. */
+import {installBrowserApiFixture} from './canonical-browser-fixture.mjs';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -670,16 +671,20 @@ test('responsive panel reordering keeps the native fullscreen snapshot connected
 for (const workspace of ['private-A','__shared__']) test(`Decision Word captures immutable source scope from opening through confirmation (${workspace})`, async () => {
     const page=await snapshotFixture();
     try {
+        await installBrowserApiFixture(page,resources);
         await page.evaluate(workspace => {
             window.exportScope={kind:'snapshot',projectId:'42',snapshotId:'snapshot-A',repositoryId:'repository-A',workspaceScopeKey:workspace,workspaceId:workspace==='__shared__'?'':workspace,branch:'review/A'};
             window.TaxonomyArchitectureWorkspace={getSource:()=>exportScope};
             window.TaxonomyArchitectureWorkflow={getScope:()=>exportScope};
             window.exportRequests=[];
-            window.fetch=async(url,init={})=>{
-                exportRequests.push({url:String(url),headers:Object.fromEntries(new Headers(init.headers)),signalAborted:init.signal?.aborted});
-                if(String(url).includes('/options'))return new Response(JSON.stringify({roots:[{code:'CP',title:'Capabilities',inAnalysisScope:true}],analysisLanguage:'en'}),{status:200,headers:{'Content-Type':'application/json'}});
+            TaxonomyApiClient.installTransportAdapter('decision-word-source-fixture',nextFetch=>async(input,init={})=>{
+                const url=new URL(typeof input==='string'?input:input.url,location.href);
+                if(url.origin!==location.origin||!/^\/api\/projects\/[^/]+\/snapshots\/[^/]+\/decision-report\/(?:options|docx)$/.test(url.pathname))
+                    return nextFetch(input,init);
+                exportRequests.push({url:url.href,method:init.method,headers:Object.fromEntries(new Headers(init.headers)),signalAborted:init.signal?.aborted});
+                if(url.pathname.endsWith('/options'))return new Response(JSON.stringify({roots:[{code:'CP',title:'Capabilities',inAnalysisScope:true}],analysisLanguage:'en'}),{status:200,headers:{'Content-Type':'application/json'}});
                 return new Response(JSON.stringify({detail:'Deterministic download boundary'}),{status:422,headers:{'Content-Type':'application/json'}});
-            };
+            });
             window.TaxonomyCapabilities={load:async()=>({reports:[]}),formats:()=>[{id:'docx',displayName:'Word',fileExtension:'docx',contentType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}]};
             document.getElementById('downloadDecisionWord').disabled=false;
         },workspace);
@@ -692,14 +697,19 @@ for (const workspace of ['private-A','__shared__']) test(`Decision Word captures
         await page.locator('.decision-export-dialog button[type=submit]').click();
         await page.waitForFunction(()=>exportRequests.length===2);
         const requests=await page.evaluate(()=>exportRequests);
-        for(const request of requests){
+        for(const [index,request] of requests.entries()){
             const url=new URL(request.url,'https://fixture.test');
             assert.equal(url.searchParams.get('repositoryId'),'repository-A');
             assert.equal(url.searchParams.get('workspaceScopeKey'),workspace);
             assert.equal(url.searchParams.get('workspaceId'),workspace==='__shared__'?'':workspace);
             assert.equal(url.searchParams.get('branch'),'review/A');
             assert.ok(url.pathname.includes('/snapshots/snapshot-A/'));
+            assert.equal(url.pathname,'/api/projects/42/snapshots/snapshot-A/decision-report/'+['options','docx'][index]);
+            for(const key of ['repositoryId','workspaceScopeKey','workspaceId','branch'])
+                assert.equal(url.searchParams.getAll(key).length,1,'Source pin must occur exactly once: '+key);
             assert.equal(request.headers['x-taxonomy-workspace-id'],workspace==='__shared__'?'':workspace);
+            assert.equal(request.method,'GET');
+            assert.equal(request.signalAborted,false);
         }
     } finally {await page.close();}
 });

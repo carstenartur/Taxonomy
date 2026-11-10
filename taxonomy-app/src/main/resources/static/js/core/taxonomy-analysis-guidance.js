@@ -135,7 +135,8 @@
         el('analysisNextStepsHeading').tabIndex = -1; el('analysisNextStepsHeading').focus({preventScroll: true});
     });
     ['taxonomy:view-rendered', 'taxonomy:analysis-progress', 'taxonomy:analysis-running-changed',
-        'taxonomy:analysis-invalidated', 'taxonomy:analysis-cancelled', 'taxonomy:analysis-draft-restored', 'taxonomy:page-activated'].forEach(function (name) {
+        'taxonomy:analysis-invalidated', 'taxonomy:analysis-cancelled', 'taxonomy:analysis-draft-restored',
+        'taxonomy:analysis-source-ready', 'taxonomy:page-activated'].forEach(function (name) {
         document.addEventListener(name, render);
     });
     el('businessText')?.addEventListener('input', render);

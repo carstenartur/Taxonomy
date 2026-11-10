@@ -249,6 +249,42 @@ test('repairs a stale same-browser version after a 409 only from an acknowledged
   assert.equal(reconciled.detail.reason, 'stale-local-version');
 });
 
+for (const boundary of ['reanalysis', 'discard']) {
+test(`a dispatched conflict-retry receipt respects the ${boundary} acknowledgement boundary`, async () => {
+  const retry = deferred(), admitted = deferred(), calls = [];
+  const zero = {businessText: 'Version zero'};
+  const one = {businessText: 'Version one'};
+  const two = {businessText: 'Version two'};
+  const h = createHarness(async (url, options) => {
+    const body = options.body && JSON.parse(options.body);
+    calls.push({method: options.method, body});
+    if (calls.length === 1) return {version: 0, payload: zero};
+    if (calls.length === 2) return {version: 1, payload: one};
+    if (calls.length === 3) throw conflictError();
+    if (calls.length === 4) return {version: 1, payload: one};
+    if (calls.length === 5) { admitted.resolve(); return retry.promise; }
+    throw new Error('A received retry must not start another write');
+  });
+  await h.C.jsonRequest('/api/analysis-drafts/workspace-1', put(zero));
+  await h.C.jsonRequest('/api/analysis-drafts/workspace-1', put(one));
+  h.runtime.version = 0;
+  const saving = h.C.jsonRequest('/api/analysis-drafts/workspace-1', put(two));
+  const outcome = Promise.allSettled([saving]);
+  await admitted.promise;
+  // Reanalysis advances draftGeneration while retaining the saved draft;
+  // discard additionally revokes its acknowledgement, as the UI owner does.
+  h.runtime.draftGeneration++;
+  if (boundary === 'discard') h.runtime.draftAcknowledgementGeneration++;
+  h.C.cancelDerivedRequests(boundary);
+  retry.resolve({version: 2, payload: two});
+  const result = (await outcome)[0];
+  assert.equal(result.status, boundary === 'reanalysis' ? 'fulfilled' : 'rejected');
+  assert.equal(h.runtime.version, boundary === 'reanalysis' ? 2 : 1);
+  assert.deepEqual(calls.map(call => call.method), ['PUT', 'PUT', 'PUT', 'GET', 'PUT']);
+  assert.equal(calls[4].body.expectedVersion, 1);
+});
+}
+
 test('accepts an explicit 409 as already committed only when the remote payload is identical', async () => {
   const payload = { businessText: 'Committed despite response conflict' };
   const conflict = conflictError('same-payload-409');

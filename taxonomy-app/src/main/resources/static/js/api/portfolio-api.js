@@ -10,99 +10,74 @@
 window.TaxonomyPortfolioApi = (function () {
     'use strict';
 
-    function csrfHeaders() {
-        const token = document.querySelector('meta[name="_csrf"]')?.content;
-        if (!token) return {};
-        const headerName = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
-        return { [headerName]: token };
-    }
-
-    async function responsePayload(response) {
-        if (response.status === 204) return null;
-        return response.json().catch(function () { return null; });
-    }
-
-    function problemMessage(payload, response) {
-        return payload?.detail || payload?.message || payload?.error
-            || ('HTTP ' + response.status);
-    }
-
-    async function requireOk(response) {
-        if (response.ok) return response;
-        const payload = await responsePayload(response);
-        const error = new Error(problemMessage(payload, response));
-        error.status = response.status;
-        error.responseBody = payload;
-        throw error;
-    }
-
     function sourceRequest(url, options) {
-        const scope = options?.scope;
-        if (!scope) return {url:url,headers:{}};
+        const scope = options?.scope || (options?.pinnedWorkspaceId === undefined
+            && /^\/api\/projects(?:\/|$)/.test(url) ? window.TaxonomyArchitectureWorkflow?.getScope?.() : null);
+        if (!scope) return {url:url,headers:{},policy:options};
         const target = new URL(applicationUrl(url), window.location.href);
         ['repositoryId','workspaceScopeKey','workspaceId','branch'].forEach(function(key) {
             if (scope[key] !== undefined && scope[key] !== null) target.searchParams.set(key,String(scope[key]));
         });
         const headers = {};
+        const policy = Object.assign({}, options);
         if (scope.workspaceScopeKey !== undefined || scope.workspaceId !== undefined) {
             const workspace = scope.workspaceScopeKey || scope.workspaceId || '__shared__';
             const workspaceId = workspace === '__shared__' ? '' : String(workspace);
             target.searchParams.set('workspaceScopeKey',workspace === '__shared__' ? '__shared__' : String(workspace));
             target.searchParams.set('workspaceId',workspaceId);
             headers['X-Taxonomy-Workspace-Id'] = workspaceId;
+            policy.pinnedWorkspaceId = workspaceId;
         }
-        return {url:target.pathname + target.search,headers:headers};
+        return {url:target.pathname + target.search,headers:headers,policy:policy};
     }
 
     async function getResponse(url, accept, options) {
         const request = sourceRequest(url, options);
-        return requireOk(await fetch(request.url, {
+        return window.TaxonomyApiClient.request(request.url, {
             headers: Object.assign({ Accept: accept || 'application/json' }, request.headers),
             credentials: 'same-origin',
             cache: 'no-store',
-            signal: options?.signal
-        }));
+        }, request.policy);
     }
 
     async function getJson(url, options) {
-        return responsePayload(await getResponse(url, 'application/json', options));
+        const request = sourceRequest(url, options);
+        return window.TaxonomyApiClient.requestJson(request.url, {
+            method: 'GET', headers: Object.assign({Accept: 'application/json'}, request.headers), cache: 'no-store'
+        }, request.policy);
     }
 
-    async function sendJsonResponse(url, method, body) {
-        const language = /\/api\/projects\/\d+\/requirements(?:\/|$)/.test(url)
-            ? window.TaxonomyContentLanguage?.analysis() : null;
-        return requireOk(await fetch(url, {
+    function jsonRequest(url, method, body, options, headers) {
+        const request = sourceRequest(url, options);
+        return {url:request.url,policy:request.policy,init:{
             method: method,
             headers: Object.assign({
                 Accept: 'application/json',
                 'Content-Type': 'application/json'
-            }, language ? {'X-Taxonomy-Analysis-Language': language} : {}, csrfHeaders()),
-            credentials: 'same-origin',
+            }, request.headers, headers || {}),
             body: JSON.stringify(body === undefined ? {} : body)
-        }));
+        }};
     }
 
-    async function sendJson(url, method, body) {
-        return responsePayload(await sendJsonResponse(url, method, body));
+    function sendJsonResponse(url, method, body, options, headers) {
+        const request = jsonRequest(url, method, body, options, headers);
+        return window.TaxonomyApiClient.request(request.url, request.init, request.policy);
     }
 
-    async function sendFormData(url, formData) {
-        return responsePayload(await requireOk(await fetch(url, {
-            method: 'POST',
-            headers: csrfHeaders(),
-            credentials: 'same-origin',
-            body: formData
-        })));
+    function sendJson(url, method, body, options, headers) {
+        const request = jsonRequest(url, method, body, options, headers);
+        return window.TaxonomyApiClient.requestJson(request.url, request.init, request.policy);
+    }
+
+    function sendFormData(url, formData, options) {
+        return window.TaxonomyApiClient.requestJson(url, {method: 'POST', body: formData}, options);
     }
 
     async function adoptionCommand(projectId, requirementId, proposalId, revision, suffix, body) {
         positiveInteger(revision, 'revision');
-        return responsePayload(await requireOk(await fetch(requirementPath(projectId, requirementId)
-            + '/reformulations/' + encodeURIComponent(proposalId) + '/' + suffix, {
-            method: 'POST', credentials: 'same-origin', cache: 'no-store',
-            headers: Object.assign({ Accept: 'application/json', 'Content-Type': 'application/json',
-                'If-Match': '"' + revision + '"' }, csrfHeaders()), body: JSON.stringify(body || {})
-        })));
+        return sendJson(requirementPath(projectId, requirementId)
+            + '/reformulations/' + encodeURIComponent(proposalId) + '/' + suffix,
+            'POST', body || {}, undefined, {'If-Match': '"' + revision + '"'});
     }
 
     function positiveInteger(value, fieldName) {
@@ -170,12 +145,89 @@ window.TaxonomyPortfolioApi = (function () {
                 + '&maxResults=30');
         },
 
+        // Retained inventory evidence shares the canonical cancellation and error contract.
+        listInventoryComparisons: function (projectId, snapshotId) {
+            return getJson(projectPath(projectId) + '/snapshots/' + encodeURIComponent(snapshotId) + '/inventory-comparisons');
+        },
+        createInventoryComparison: function (projectId, snapshotId, body) {
+            return sendJson(projectPath(projectId) + '/snapshots/' + encodeURIComponent(snapshotId)
+                + '/inventory-comparisons', 'POST', body, {timeoutMillis: 125000});
+        },
+        getInventoryComparison: function (id) { return getJson('/api/inventory-comparisons/' + encodeURIComponent(id)); },
+        reviewInventoryComparison: function (id, body) {
+            return sendJson('/api/inventory-comparisons/' + encodeURIComponent(id) + '/reviews', 'POST', body);
+        },
+        listInventoryReviews: function (id) { return getJson('/api/inventory-comparisons/' + encodeURIComponent(id) + '/reviews'); },
+        mapInventoryCandidate: function (id, candidateId, body) {
+            return sendJson('/api/inventory-comparisons/' + encodeURIComponent(id) + '/candidates/'
+                + encodeURIComponent(candidateId) + '/mappings', 'POST', body);
+        },
+        addInventoryAssertion: function (productId, body) {
+            return sendJson('/api/products/' + positiveInteger(productId, 'productId') + '/inventory-assertions', 'POST', body);
+        },
+
         // ── Account ───────────────────────────────────────────────────────────
         getAccount: function () {
-            return getJson('/api/account/me');
+            return getJson('/api/account/me', {contextSensitive: false, workspaceScoped: false});
         },
 
         // ── Projects, requirements and portfolio views ────────────────────────
+        listProjects: function () { return getJson('/api/projects'); },
+        listProducts: function () { return getJson('/api/products'); },
+        createProject: function (body) { return sendJson('/api/projects', 'POST', body); },
+        createSolution: function (body) { return sendJson('/api/solutions', 'POST', body); },
+        createProduct: function (body) { return sendJson('/api/products', 'POST', body); },
+        addProjectSolution: function (projectId, body) {
+            return sendJson(projectPath(projectId) + '/solutions', 'POST', body);
+        },
+        updateProjectSolution: function (projectId, id, body) {
+            return sendJson(projectPath(projectId) + '/solutions/' + positiveInteger(id, 'solutionId'), 'PATCH', body);
+        },
+        addSolutionCoverage: function (projectId, id, body) {
+            return sendJson(projectPath(projectId) + '/solutions/' + positiveInteger(id, 'solutionId') + '/taxonomy-coverage', 'POST', body);
+        },
+        addProductCandidate: function (projectId, solutionId, body) {
+            return sendJson(projectPath(projectId) + '/solutions/' + positiveInteger(solutionId, 'solutionId') + '/products', 'POST', body);
+        },
+        updateProductCandidate: function (projectId, id, body) {
+            return sendJson(projectPath(projectId) + '/product-candidates/' + positiveInteger(id, 'candidateId'), 'PATCH', body);
+        },
+        addProductCoverage: function (productId, body) {
+            return sendJson('/api/products/' + positiveInteger(productId, 'productId') + '/taxonomy-coverage', 'POST', body);
+        },
+        updateRequirement: function (projectId, requirementId, body) {
+            return sendJson(requirementPath(projectId, requirementId), 'PATCH', body);
+        },
+        proposeSolutions: function (projectId, body) { return sendJson(projectPath(projectId) + '/solutions/propose', 'POST', body); },
+        detectConflicts: function (projectId, body) { return sendJson(projectPath(projectId) + '/conflicts/detect', 'POST', body); },
+        analyzeProject: function (projectId, body) { return sendJson(projectPath(projectId) + '/analyses', 'POST', body); },
+        analyzeRequirementJob: function (projectId, requirementId, body) {
+            return sendJson(requirementPath(projectId, requirementId) + '/analyses', 'POST', body);
+        },
+        listRequirementAnalyses: function (projectId, requirementId) {
+            return getJson(requirementPath(projectId, requirementId) + '/analyses');
+        },
+        getRequirementAnalysis: function (projectId, requirementId, snapshotId) {
+            return getJson(requirementPath(projectId, requirementId) + '/analyses/' + encodeURIComponent(snapshotId));
+        },
+        updateSnapshotMapping: function (projectId, requirementId, snapshotId, mappingId, body) {
+            return sendJson(requirementPath(projectId, requirementId) + '/analyses/' + encodeURIComponent(snapshotId)
+                + '/elements/' + positiveInteger(mappingId, 'mappingId'), 'PATCH', body);
+        },
+        compareRequirementAnalyses: function (projectId, requirementId, newer, older) {
+            return getJson(requirementPath(projectId, requirementId) + '/analyses/' + encodeURIComponent(newer)
+                + '/diff/' + encodeURIComponent(older));
+        },
+        updateElementMapping: function (projectId, mappingId, body) {
+            return sendJson(projectPath(projectId) + '/analysis-mappings/elements/' + positiveInteger(mappingId, 'mappingId'), 'PATCH', body);
+        },
+        linkSolutionRequirement: function (projectId, solutionId, body) {
+            return sendJson(projectPath(projectId) + '/solutions/' + positiveInteger(solutionId, 'solutionId')
+                + '/requirements', 'POST', body);
+        },
+        addCatalogSolutionCoverage: function (solutionId, body) {
+            return sendJson('/api/solutions/' + positiveInteger(solutionId, 'solutionId') + '/taxonomy-coverage', 'POST', body);
+        },
         getProject: function (projectId) {
             return getJson(projectPath(projectId));
         },
@@ -226,12 +278,9 @@ window.TaxonomyPortfolioApi = (function () {
         updateReformulation: async function (projectId, requirementId, id, operation, revision, body) {
             const allowed = /^(answers|revisions|variants|synthesis-runs(?:\/[A-Za-z0-9_-]+\/cancel)?|statements\/[A-Za-z0-9_-]+)$/;
             if (!allowed.test(operation)) throw new Error('Unknown reformulation operation');
-            return responsePayload(await requireOk(await fetch(requirementPath(projectId, requirementId)
-                + '/reformulations/' + encodeURIComponent(id) + '/' + operation, {
-                method: 'POST', credentials: 'same-origin',
-                headers: Object.assign({ Accept: 'application/json', 'Content-Type': 'application/json',
-                    'If-Match': '"' + revision + '"' }, csrfHeaders()), body: JSON.stringify(body || {})
-            })));
+            return sendJson(requirementPath(projectId, requirementId)
+                + '/reformulations/' + encodeURIComponent(id) + '/' + operation,
+                'POST', body || {}, undefined, {'If-Match': '"' + revision + '"'});
         },
         createReformulationAdoptionPreview: function (projectId, requirementId, id, revision) {
             return adoptionCommand(projectId, requirementId, id, revision, 'adoption-previews', {});
@@ -277,22 +326,26 @@ window.TaxonomyPortfolioApi = (function () {
         listAnalysisJobs: function (projectId, options) {
             return getJson(projectPath(projectId) + '/analysis-jobs', options);
         },
-        getAnalysisJob: function (projectId, jobId) {
+        getAnalysisJob: function (projectId, jobId, options) {
             return getJson(projectPath(projectId) + '/analysis-jobs/'
-                + encodeURIComponent(String(jobId)));
+                + encodeURIComponent(String(jobId)), options);
         },
-        getAnalysisContinuation: function (projectId, jobId, itemId) {
+        retryAnalysisJob: function (projectId, jobId, options) {
+            return sendJsonResponse(projectPath(projectId) + '/analysis-jobs/' + encodeURIComponent(String(jobId))
+                + '/retry-failed', 'POST', {}, options);
+        },
+        getAnalysisContinuation: function (projectId, jobId, itemId, options) {
             return getJson(projectPath(projectId) + '/analysis-jobs/'
                 + encodeURIComponent(String(jobId)) + '/items/'
-                + positiveInteger(itemId, 'itemId') + '/continuation');
+                + positiveInteger(itemId, 'itemId') + '/continuation', options);
         },
-        continueAnalysis: function (projectId, jobId, itemId, decision) {
+        continueAnalysis: function (projectId, jobId, itemId, decision, options) {
             return sendJson(projectPath(projectId) + '/analysis-jobs/'
                 + encodeURIComponent(String(jobId)) + '/items/'
                 + positiveInteger(itemId, 'itemId') + '/continue', 'POST', {
                     snapshotId: decision.snapshotId,
                     continuationVersion: decision.continuationVersion
-                });
+                }, options);
         },
         analyzeRequirement: function (projectId, requirementId, body) {
             return sendJsonResponse(
