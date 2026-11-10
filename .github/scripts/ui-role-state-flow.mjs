@@ -10,39 +10,36 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-async function createReviewCandidate(page, role) {
+export async function createReviewCandidate(page, role, submit = csrfJson) {
   const rationalePrefix = `Role acceptance ${Date.now().toString(36)}`;
   if (role === 'USER') {
-    return csrfJson(page, '/api/proposals/from-hypothesis', {
+    return submit(page, '/api/proposals/from-hypothesis', {
       body: { sourceCode: 'BP', targetCode: 'BR', relationType: 'RELATED_TO',
         confidence: 0.72, rationale: rationalePrefix }
     });
   }
 
-  const codes = await page.locator('#taxonomyTree [data-code]').evaluateAll(nodes =>
+  const codes = await page.locator('#taxonomyTree .tax-node[data-code]').evaluateAll(nodes =>
     [...new Set(nodes.map(node => node.dataset.code).filter(Boolean))].slice(0, 14));
-  const relationTypes = [
-    'RELATED_TO', 'SUPPORTS', 'REALIZES', 'USES', 'DEPENDS_ON', 'CONSUMES',
-    'FULFILLS', 'PRODUCES', 'COMMUNICATES_WITH', 'CONTAINS', 'ASSIGNED_TO'
-  ];
+  // RELATED_TO is the metamodel's unrestricted relation. On a duplicate,
+  // move to another real pair instead of guessing a restricted relation type.
+  const relationType = 'RELATED_TO';
   let lastConflict = null;
   for (let sourceIndex = 0; sourceIndex < codes.length; sourceIndex += 1) {
     for (let targetIndex = sourceIndex + 1; targetIndex < codes.length; targetIndex += 1) {
-      for (const relationType of relationTypes) {
-        const rationale = `${rationalePrefix} ${sourceIndex}-${targetIndex}-${relationType}`;
-        const response = await csrfJson(page, '/api/proposals/from-hypothesis', {
-          body: {
-            sourceCode: codes[sourceIndex], targetCode: codes[targetIndex], relationType,
-            confidence: 0.72, rationale
-          }
-        });
-        if (response.status === 200) return { ...response, rationale };
-        if (response.status === 409) {
-          lastConflict = response;
-          continue;
+      const rationale = `${rationalePrefix} ${sourceIndex}-${targetIndex}-${relationType}`;
+      const response = await submit(page, '/api/proposals/from-hypothesis', {
+        body: {
+          sourceCode: codes[sourceIndex], targetCode: codes[targetIndex], relationType,
+          confidence: 0.72, rationale
         }
-        return response;
+      });
+      if (response.status === 200) return { ...response, rationale };
+      if (response.status === 409) {
+        lastConflict = response;
+        continue;
       }
+      return response;
     }
   }
   return lastConflict || { status: 409, json: null, text: 'No unique proposal candidate' };
@@ -100,6 +97,15 @@ async function measureArchitectTask(page, proposal) {
     }, null, { timeout: 20_000 });
   }
 
+  const originContext = await page.evaluate(() => ({
+    branch: window.TaxonomyContextBar.getCurrentContext()?.branch,
+    commitId: window.TaxonomyContextBar.getCurrentContext()?.commitId ?? null,
+    repositoryId: window.TaxonomyArchitectureWorkflow.getScope().repositoryId,
+    workspaceId: window.__TaxonomyAnalysisSessionContext.runtime.workspaceId
+  }));
+  assert(originContext.branch && originContext.repositoryId && originContext.workspaceId,
+    'Variant task requires a confirmed original repository, workspace and branch');
+
   const variantName = `qa-variant-${Date.now().toString(36)}-${Math.random()
     .toString(36).slice(2, 7)}`;
   await page.evaluate(() => window.TaxonomyContextBar.showVariantDialog());
@@ -114,8 +120,52 @@ async function measureArchitectTask(page, proposal) {
   });
   assert(currentContext.branch?.includes(variantName),
     `Variant creation did not switch context to ${variantName}`);
-  const returned = await csrfJson(page, '/api/context/return-to-origin', { body: {} });
-  assert(returned.status === 200, `Return from QA variant returned ${returned.status}`);
+  assert(currentContext.contextId && currentContext.originBranch === originContext.branch
+    && (currentContext.originCommitId ?? null) === originContext.commitId,
+  'QA variant did not retain the original branch and commit');
+  // The modal closes before its context refresh publishes the new variant to the browser.
+  await page.waitForFunction(({ contextId, branch }) => {
+    const current = window.TaxonomyContextBar.getCurrentContext();
+    return current?.contextId === contextId && current.branch === branch;
+  }, { contextId: currentContext.contextId, branch: currentContext.branch }, { timeout: 20_000 });
+  const pageOrigin = new URL(page.url()).origin;
+  const returnPath = new URL(await page.evaluate(() =>
+    window.TaxonomyI18n.resolveUrl('/api/context/return-to-origin')), pageOrigin).pathname;
+  const [receipt, browserContext] = await Promise.all([
+    page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return response.request().method() === 'POST' && url.origin === pageOrigin && url.pathname === returnPath;
+    }),
+    page.evaluate(async () => {
+      const returned = await window.TaxonomyContextBar.returnToOrigin();
+      return { returned, visible: window.TaxonomyContextBar.getCurrentContext() };
+    })
+  ]);
+  assert(receipt.status() === 200, `Return from QA variant returned ${receipt.status()}`);
+  const origin = await receipt.json();
+  assert(origin.contextId && origin.contextId !== currentContext.contextId
+    && origin.branch === originContext.branch
+    && (origin.commitId ?? null) === originContext.commitId,
+  'Return from QA variant did not acknowledge its original branch and commit');
+  assert([browserContext.returned, browserContext.visible].every(context =>
+    context?.contextId === origin.contextId && context.branch === origin.branch
+      && (context.commitId ?? null) === (origin.commitId ?? null)),
+  'Browser did not accept the exact context acknowledged by the return from the QA variant');
+  await page.evaluate(async ({original, acknowledged}) => {
+    function ownsOrigin() {
+      const current = window.TaxonomyContextBar.getCurrentContext();
+      const scope = window.TaxonomyArchitectureWorkflow.getScope();
+      return current?.contextId === acknowledged.contextId && current.branch === original.branch
+        && (current.commitId ?? null) === original.commitId
+        && scope.repositoryId === original.repositoryId
+        && window.__TaxonomyAnalysisSessionContext.runtime.workspaceId === original.workspaceId;
+    }
+    if (!ownsOrigin()) throw new Error('Variant return did not confirm the original repository, workspace and branch');
+    const observed = await window.__TaxonomyAnalysisSessionContext.retryServerState();
+    if (!ownsOrigin() || !observed || !window.TaxonomyAnalysisSession.state().ready) {
+      throw new Error('Original analysis draft still requires confirmation after variant return');
+    }
+  }, {original: originContext, acknowledged: origin});
 
   return {
     id: 'architect-review-and-variant',

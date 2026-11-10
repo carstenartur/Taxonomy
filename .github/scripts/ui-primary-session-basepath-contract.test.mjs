@@ -12,6 +12,138 @@ const proposalSource = await readFile(new URL(
 const i18nSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/taxonomy-i18n.js', import.meta.url), 'utf8');
 
+function draftSaveCheckpointHarness({ save = () => true, failEvaluation = 0 } = {}) {
+  let evaluations = 0, saves = 0, documentSequence = 0;
+  const runtime = { version: 3, analysisGeneration: 4, draftGeneration: 5,
+    draftAcknowledgementGeneration: 6, saveInFlight: Promise.resolve(), saveQueued: true };
+  const mutations = [{ mutationId: 1, phase: 'started', method: 'PUT',
+    expectedVersion: 2, currentVersion: 2, recordedAt: '2026-11-10T17:09:15.558Z' }];
+  const browser = vm.createContext({ document: {}, crypto: {
+    randomUUID: () => `00000000-0000-4000-8000-${String(++documentSequence).padStart(12, '0')}`
+  }, __TaxonomyAnalysisSessionContext: { runtime, draftMutationDiagnostics: () => mutations },
+  TaxonomyAnalysisSession: { saveNow: async () => { saves++; return save(browser, runtime); } } });
+  browser.window = browser;
+  const page = {
+    evaluate: async callback => {
+      evaluations++;
+      if (evaluations === failEvaluation) throw new Error('Diagnostic execution context unavailable');
+      return vm.runInContext(`(${callback.toString()})()`, browser);
+    }
+  };
+  const workflow = vm.createContext({ URL });
+  vm.runInContext(source.replace(/^import .*;\n/mg, '').replace(/^export /mg, ''), workflow);
+  const checkpoint = vm.runInContext('assertSavedCopilotDraft', workflow);
+  return { runtime, mutations, browser, run: () => checkpoint(page, assert,
+    'Completed Copilot state was not persisted to the analysis draft'),
+  counts: () => ({ evaluations, saves }) };
+}
+
+function draftSaveDiagnostics(error) {
+  return JSON.parse(error.message.split('\nDraft save diagnostics: ')[1]);
+}
+
+test('Copilot draft-save checkpoint preserves the success assertion and saves exactly once', async () => {
+  const h = draftSaveCheckpointHarness();
+  await h.run();
+  assert.deepEqual(h.counts(), { evaluations: 2, saves: 1 });
+  assert.equal(h.runtime.version, 3, 'The diagnostic must not mutate product state');
+  assert.equal(h.runtime.saveQueued, true);
+});
+
+test('Copilot draft-save failure retains the original exception and distinguishes an unchanged document', async () => {
+  const original = new Error('page.evaluate: Execution context was destroyed, most likely because of a navigation.');
+  const h = draftSaveCheckpointHarness({ save: (_browser, runtime) => {
+    runtime.version = 4; runtime.saveInFlight = null; runtime.saveQueued = false;
+    throw original;
+  } });
+  await assert.rejects(h.run(), error => {
+    assert.equal(error.cause, original);
+    assert.ok(error.message.includes(original.message), 'The recorded failure must retain its original signature');
+    const diagnostic = draftSaveDiagnostics(error);
+    assert.equal(diagnostic.documentChanged, false);
+    assert.equal(diagnostic.before.documentId, diagnostic.after.documentId);
+    assert.deepEqual(diagnostic.before.runtime, { version: 3, analysisGeneration: 4,
+      draftGeneration: 5, draftAcknowledgementGeneration: 6, saveInFlight: true, saveQueued: true });
+    assert.equal(diagnostic.after.runtime.version, 4);
+    assert.equal(diagnostic.after.runtime.saveInFlight, false);
+    assert.equal(diagnostic.after.runtime.saveQueued, false);
+    return true;
+  });
+  assert.deepEqual(h.counts(), { evaluations: 3, saves: 1 });
+});
+
+test('Copilot draft-save failure identifies a replacement document independently of its address', async () => {
+  const original = new Error('Original save failure');
+  const h = draftSaveCheckpointHarness({ save: browser => {
+    browser.document = {};
+    throw original;
+  } });
+  await assert.rejects(h.run(), error => {
+    assert.equal(error.cause, original);
+    const diagnostic = draftSaveDiagnostics(error);
+    assert.equal(diagnostic.documentChanged, true);
+    assert.notEqual(diagnostic.before.documentId, diagnostic.after.documentId);
+    return true;
+  });
+});
+
+test('Copilot draft-save diagnostics bound and allowlist metadata without reading requirement or evidence payloads', async () => {
+  const secret = 'PRIVATE REQUIREMENT AND EVIDENCE '.repeat(1000);
+  const h = draftSaveCheckpointHarness({ save: () => false });
+  h.runtime.analysisGeneration = secret;
+  Object.defineProperty(h.runtime, 'analysisEvidence', { get() { throw new Error('Do not inspect evidence'); } });
+  h.runtime.businessText = secret;
+  h.mutations.splice(0, h.mutations.length, ...Array.from({ length: 100 }, (_, mutationId) => ({
+    mutationId, phase: mutationId === 99 ? secret : 'succeeded', method: mutationId === 99 ? secret : 'PUT',
+    expectedVersion: mutationId, currentVersion: mutationId + 1,
+    recordedAt: mutationId === 99 ? secret : '2026-11-10T17:09:15.558Z',
+    payload: { businessText: secret }, requestId: secret, headers: { Authorization: secret }
+  })));
+  await assert.rejects(h.run(), error => {
+    const diagnostic = draftSaveDiagnostics(error);
+    for (const snapshot of [diagnostic.before, diagnostic.after]) {
+      assert.equal(snapshot.runtime.analysisGeneration, null);
+      assert.equal(snapshot.mutationCount, 100);
+      assert.equal(snapshot.mutations.length, 8);
+      assert.deepEqual(snapshot.mutations.map(entry => entry.mutationId), [92, 93, 94, 95, 96, 97, 98, 99]);
+      assert.equal(snapshot.mutations.at(-1).phase, 'unknown');
+      assert.equal(snapshot.mutations.at(-1).method, null);
+      assert.equal(snapshot.mutations.at(-1).recordedAt, null);
+    }
+    assert.ok(error.message.length < 5000, 'Failure diagnostics must have a small fixed bound');
+    assert.doesNotMatch(error.message, /PRIVATE|businessText|payload|headers|Authorization|requestId/);
+    return true;
+  });
+});
+
+test('an unavailable post-failure diagnostic never masks the original Copilot save failure', async () => {
+  const original = new Error('Original draft save failure');
+  const h = draftSaveCheckpointHarness({ save: () => { throw original; }, failEvaluation: 3 });
+  await assert.rejects(h.run(), error => {
+    assert.equal(error.cause, original);
+    const diagnostic = draftSaveDiagnostics(error);
+    assert.equal(diagnostic.before.available, true);
+    assert.deepEqual(diagnostic.after, { available: false });
+    assert.equal(diagnostic.documentChanged, null);
+    return true;
+  });
+  assert.deepEqual(h.counts(), { evaluations: 3, saves: 1 });
+});
+
+test('an unavailable pre-save diagnostic cannot turn an unsuccessful save into a pass', async () => {
+  const h = draftSaveCheckpointHarness({ save: () => false, failEvaluation: 1 });
+  await assert.rejects(h.run(), error => {
+    assert.equal(error.cause.name, 'AssertionError');
+    assert.match(error.cause.message, /Completed Copilot state was not persisted/);
+    const diagnostic = draftSaveDiagnostics(error);
+    assert.deepEqual(diagnostic.before, { available: false });
+    assert.equal(diagnostic.after.available, true);
+    assert.equal(diagnostic.documentChanged, null);
+    return true;
+  });
+  assert.deepEqual(h.counts(), { evaluations: 3, saves: 1 });
+});
+
 // Run the actual workflow helper without importing unrelated Playwright fixtures.
 const workflowContext = vm.createContext({ URL });
 vm.runInContext(preferencesSource.replace(/^import .*;\n/m, '').replace(/^export /mg, ''),
@@ -137,7 +269,7 @@ test('Primary proposal reload retains provisioning and role gates while backgrou
       return { status: 200, json: { readinessState: 'READY' } };
     }
   });
-  vm.runInContext(proposalSource.replace(/^import .*;\n/m, '').replace(/^export /mg, ''), context);
+  vm.runInContext(proposalSource.replace(/^import .*;\n/gm, '').replace(/^export /mg, ''), context);
 
   await vm.runInContext('ensureWorkspaceProjection', context)(harness.page, assert);
 
@@ -719,6 +851,65 @@ function routeRegistration(source, marker) {
   const finish = source.indexOf('{ times: 1 });', end) + '{ times: 1 });'.length;
   assert.ok(start >= 0 && finish > start);
   return source.slice(start, finish);
+}
+
+for (const [prefix, status] of [['', 200], ['/teams/blue/taxonomy', 200], ['/taxonomy', 404]]) {
+  test(`text-spacing reload verifies its HTTP ${status} stylesheet while background requests continue at ${prefix || '/'}`, async () => {
+    const native = await readFile(new URL('./ui-special-modes-acceptance.mjs', import.meta.url), 'utf8');
+    const owner = 'async function testTextSpacing() {';
+    const start = native.indexOf(owner), end = native.indexOf('  const onboardingDismiss', start);
+    assert.ok(start >= 0 && end > start, 'Exercise the actual stylesheet route, reload and initial readiness gates');
+    const stylesheet = `https://qa.example${prefix}/css/taxonomy-ergonomics.css`;
+    const response = (url, method = 'GET', resourceType = 'stylesheet') => ({
+      url: () => url, request: () => ({ method: () => method, resourceType: () => resourceType }),
+      ok: () => status >= 200 && status < 300, status: () => status
+    });
+    const calls = []; let routeHandler, deliver;
+    const page = {
+      url: () => `https://qa.example${prefix}/?workspaceId=fixture#analyze`,
+      route: async (matcher, handler) => { assert.equal(matcher, stylesheet); routeHandler = handler; },
+      waitForResponse(predicate, options) {
+        assert.equal(options.timeout, 30_000);
+        for (const other of [response('https://foreign.example/css/taxonomy-ergonomics.css'),
+          response('https://qa.example/other/css/taxonomy-ergonomics.css'), response(stylesheet, 'POST'),
+          response(stylesheet, 'GET', 'fetch')]) assert.equal(predicate(other), false);
+        assert.equal(predicate(response(stylesheet)), true);
+        return new Promise(resolve => { deliver = () => resolve(response(stylesheet)); });
+      },
+      async reload(options) {
+        if (options.waitUntil === 'networkidle') throw new Error('An unrelated request remains in flight after the document is ready');
+        assert.equal(options.waitUntil, 'domcontentloaded');
+        assert.equal(options.timeout ?? 30_000, 30_000);
+        const original = { text: async () => '.existing { display: block; }' };
+        await routeHandler({ fetch: async () => original, fulfill: async result => {
+          assert.equal(result.response, original);
+          assert.ok(result.body.startsWith('.existing { display: block; }'));
+          assert.match(result.body, /letter-spacing: 0\.12em !important/);
+          calls.push('modified stylesheet');
+        } });
+        assert.ok(deliver, 'Wait for the stylesheet response before reloading'); deliver();
+      },
+      locator(selector) { return {
+        evaluate: async fn => { assert.match(selector, /taxonomy-ergonomics\.css/); return fn({ href: stylesheet }); },
+        waitFor: async options => {
+          assert.equal(options.state, 'visible');
+          assert.equal(options.timeout, selector === '#mainContent' ? 60_000 : 20_000);
+          calls.push(selector);
+        }
+      }; },
+      evaluate: async fn => vm.runInNewContext(`(${fn.toString()})()`, {
+        window: { TaxonomyI18n: { ready: async () => calls.push('translations') } }
+      })
+    };
+    const run = () => vm.runInNewContext(`(async () => {${native.slice(start + owner.length, end)}})()`, { page, URL, assert });
+    if (status === 404) {
+      await assert.rejects(run, /Text-spacing stylesheet returned HTTP 404/);
+      assert.deepEqual(calls, ['modified stylesheet'], 'A missing asset cannot proceed to UI readiness');
+      return;
+    }
+    await run();
+    assert.deepEqual(calls, ['modified stylesheet', '#mainContent', 'translations', '#analysisTaskProgress']);
+  });
 }
 
 for (const [driver, marker] of [

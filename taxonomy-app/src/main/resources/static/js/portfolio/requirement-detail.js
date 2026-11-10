@@ -76,7 +76,7 @@
             openWorkbench: 'Inspect diagram in architecture workbench', direct: 'Direct',
             sourceNode: 'Source node', expectedRelation: 'Expected relationship',
             targetArea: 'Target area', descriptionLabel: 'Description',
-            nodeCode: 'Node code', coverageScore: 'Coverage score',
+            nodeCode: 'Node code', nodeTitle: 'Title', taxonomyRoot: 'Taxonomy root', coverageScore: 'Coverage score',
             gapDescription: 'Gap description', patternDescription: 'Pattern description',
             missingElement: 'Missing element',
             resultReady: 'The immutable Copilot result is ready for review.',
@@ -135,7 +135,7 @@
             openWorkbench: 'Diagramm in der Architektur-Workbench untersuchen', direct: 'Direkt',
             sourceNode: 'Quellknoten', expectedRelation: 'Erwartete Beziehung',
             targetArea: 'Zielbereich', descriptionLabel: 'Beschreibung',
-            nodeCode: 'Knotencode', coverageScore: 'Abdeckungswert',
+            nodeCode: 'Knotencode', nodeTitle: 'Titel', taxonomyRoot: 'Taxonomiewurzel', coverageScore: 'Abdeckungswert',
             gapDescription: 'Lückenbeschreibung', patternDescription: 'Musterbeschreibung',
             missingElement: 'Fehlendes Element',
             resultReady: 'Das unveränderliche Copilot-Ergebnis ist zur Prüfung bereit.',
@@ -720,11 +720,7 @@
     function renderElementEvidence(label, elements) {
         if (!elements.length) return `<h4 class="small fw-semibold mt-3">${escapeHtml(label)}</h4>`
             + `<p class="text-body-secondary">—</p>`;
-        return `<details class="portfolio-finding-details"><summary>${escapeHtml(label)} <span class="badge text-bg-secondary">${elements.length}</span></summary>`
-            + `<div class="portfolio-result-table portfolio-result-table-sm"><ul class="mb-0">`
-            + elements.map(item => `<li><code>${escapeHtml(item.nodeCode || '—')}</code> `
-                + `${escapeHtml(item.title || item.name || '')}</li>`).join('')
-            + `</ul></div></details>`;
+        return renderFindingDetails(label, elements, ['nodeCode', 'title', 'taxonomyRoot', 'reasoning']);
     }
 
     function renderFindingDetails(label, items, fields) {
@@ -746,6 +742,9 @@
             expectedTargetRoot: t('targetArea'),
             description: t('descriptionLabel'),
             nodeCode: t('nodeCode'),
+            title: t('nodeTitle'),
+            taxonomyRoot: t('taxonomyRoot'),
+            reasoning: t('reasoning'),
             coverageScore: t('coverageScore'),
             gapDescription: t('gapDescription'),
             patternDescription: t('patternDescription'),

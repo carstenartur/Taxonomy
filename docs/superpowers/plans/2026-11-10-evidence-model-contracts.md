@@ -129,9 +129,10 @@ correction passed 53 distinct selected tests across its final two commands,
 including 14 database-backed pattern checks. The portable-reference correction
 passed 13 tests including the production membership lookup with custom canonical
 IDs and genuine catalogue references. Both corrections passed independent review.
-The working branch includes
-qualified main changes through `47d94664f` without importing the independently
-owned PR 1438.
+The original model-only qualification included main changes through `47d94664f`.
+The current PR 1442 also integrates the API and authentication work from PRs 1438
+and 1441. Its combined tree requires fresh qualification; the earlier isolated
+results are retained as focused evidence, not inherited integration passes.
 
 Local canonical verification exposed environment prerequisites: a process-scoped
 Java font configuration is needed for the existing export assertions, and nested

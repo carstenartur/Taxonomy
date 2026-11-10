@@ -226,6 +226,64 @@ async function assertPersistedCopilot(page, expectedText, assert) {
   'Displayed Copilot results do not match the completed authoritative server result');
 }
 
+async function assertSavedCopilotDraft(page, assert, message) {
+  async function diagnostics() {
+    try {
+      return await page.evaluate(() => {
+        // A document-local QA identity distinguishes replacement even at the same URL.
+        const marker = '__taxonomyQaDraftSaveDocumentId';
+        if (!Object.hasOwn(document, marker)) {
+          Object.defineProperty(document, marker, { value: crypto.randomUUID() });
+        }
+        const context = window.__TaxonomyAnalysisSessionContext;
+        const runtime = context?.runtime;
+        const trace = context?.draftMutationDiagnostics?.();
+        const mutations = Array.isArray(trace) ? trace : [];
+        const number = value => Number.isSafeInteger(value) ? value : null;
+        const phases = ['started', 'succeeded', 'failed', 'conflict', 'conflict-read',
+          'retry', 'reconciled', 'reset-retry'];
+        return {
+          available: true,
+          documentId: document[marker],
+          runtime: runtime ? {
+            version: number(runtime.version),
+            analysisGeneration: number(runtime.analysisGeneration),
+            draftGeneration: number(runtime.draftGeneration),
+            draftAcknowledgementGeneration: number(runtime.draftAcknowledgementGeneration),
+            saveInFlight: Boolean(runtime.saveInFlight),
+            saveQueued: Boolean(runtime.saveQueued)
+          } : null,
+          mutationCount: mutations.length,
+          mutations: mutations.slice(-8).map(entry => ({
+            mutationId: number(entry?.mutationId),
+            phase: phases.includes(entry?.phase) ? entry.phase : 'unknown',
+            method: ['GET', 'PUT', 'POST', 'DELETE'].includes(entry?.method) ? entry.method : null,
+            expectedVersion: number(entry?.expectedVersion),
+            currentVersion: number(entry?.currentVersion),
+            recordedAt: typeof entry?.recordedAt === 'string' && entry.recordedAt.length === 24
+              && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(entry.recordedAt)
+              ? entry.recordedAt : null
+          }))
+        };
+      });
+    } catch {
+      return { available: false };
+    }
+  }
+
+  const before = await diagnostics();
+  try {
+    assert(await page.evaluate(() => window.TaxonomyAnalysisSession.saveNow()), message);
+  } catch (cause) {
+    const after = await diagnostics();
+    const documentChanged = before.available && after.available
+      ? before.documentId !== after.documentId : null;
+    const original = typeof cause?.message === 'string' ? cause.message.slice(0, 512) : '';
+    throw new Error(`${message}${original && original !== message ? ': ' + original : ''}`
+      + `\nDraft save diagnostics: ${JSON.stringify({ before, after, documentChanged })}`, { cause });
+  }
+}
+
 function endpointCounts(requests) {
   return Object.fromEntries(COPILOT_ENDPOINTS.map(endpoint => [
     endpoint,
@@ -373,7 +431,7 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
         && !/^Run |^Detect |^Generate /i.test(content.textContent.trim());
     });
   }), 'Copilot completed without populated gap, pattern and recommendation results');
-  assert(await page.evaluate(() => window.TaxonomyAnalysisSession.saveNow()),
+  await assertSavedCopilotDraft(page, assert,
     'Completed Copilot state was not persisted to the analysis draft');
   await assertPersistedCopilot(page, firstRequirement, assert);
   await axeState('session-copilot-complete', '#tab-analyze');
@@ -424,7 +482,7 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
     assert(counts[endpoint] === expected,
       `Changed server-owned Copilot run left ${endpoint} at ${counts[endpoint]} calls; expected ${expected}`);
   }
-  assert(await page.evaluate(() => window.TaxonomyAnalysisSession.saveNow()),
+  await assertSavedCopilotDraft(page, assert,
     'Updated Copilot state was not persisted to the analysis draft');
   await assertPersistedCopilot(page, changedRequirement, assert);
   const analyzeBodies = requests

@@ -38,6 +38,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -341,12 +342,62 @@ class CompleteCopilotSessionIT {
         assertThat(findingDetails).isNotEmpty();
         assertThat(findingDetails).allSatisfy(detail ->
                 assertThat(detail.getAttribute("open")).isNull());
+        assertRetainedRecommendationDetails(projectId, selectedSnapshotId);
         assertThat(driver.findElement(By.id("technicalSnapshotData"))
                 .getAttribute("open")).isNull();
 
         if (Boolean.getBoolean("generateScreenshots")) {
             saveCompleteCopilotRunResultScreenshot();
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void assertRetainedRecommendationDetails(long projectId, String snapshotId) {
+        Map<String, Object> evidence = (Map<String, Object>) javascript().executeAsyncScript("""
+                const projectId = arguments[0], snapshotId = arguments[1];
+                const done = arguments[arguments.length - 1];
+                window.TaxonomyPortfolioApi.getSnapshot(projectId, snapshotId).then(detail => {
+                    const copilot = detail.analysis?.copilot;
+                    done({snapshotId: String(detail.summary?.id), schemaVersion: copilot?.schemaVersion,
+                        profileId: copilot?.gaps?.profileId, judgments: copilot?.gaps?.judgments,
+                        recommendation: copilot?.recommendation,
+                        rendered: [...document.querySelectorAll('#recommendationResultSection details.portfolio-finding-details')]
+                            .map(disclosure => ({summary: disclosure.querySelector('summary').textContent.trim(),
+                                open: disclosure.open,
+                                rows: [...disclosure.querySelectorAll('tbody tr')]
+                                    .map(row => [...row.querySelectorAll('td')].map(cell => cell.textContent))}))});
+                }).catch(error => done({error: String(error && error.stack || error)}));
+                """, projectId, snapshotId);
+        assertThat(evidence).doesNotContainKey("error");
+        assertThat(evidence.get("snapshotId")).isEqualTo(snapshotId);
+        assertThat(((Number) evidence.get("schemaVersion")).intValue()).isEqualTo(2);
+        assertThat(evidence.get("profileId")).isEqualTo("compatibility");
+        assertThat((List<?>) evidence.get("judgments")).isEmpty();
+        Map<String, Object> recommendation = (Map<String, Object>) evidence.get("recommendation");
+        assertThat((List<?>) recommendation.get("suggestedRelations"))
+                .as("Retained analysis must not fabricate new relationship suggestions").isEmpty();
+        var categories = new LinkedHashMap<String, String>();
+        categories.put("matchedElements", "Assessment matches");
+        categories.put("acceptedElements", "Elements in the selected model");
+        categories.put("proposedElements", "Proposed elements");
+        List<Map<String, Object>> expected = new ArrayList<>();
+        for (var category : categories.entrySet()) {
+            assertThat(recommendation.get(category.getKey())).isInstanceOf(List.class);
+            List<Map<String, Object>> elements = (List<Map<String, Object>>) recommendation.get(category.getKey());
+            if (elements.isEmpty()) continue;
+            var rows = elements.stream().map(element -> List.of(
+                    retainedFindingText(element.get("nodeCode")), retainedFindingText(element.get("title")),
+                    retainedFindingText(element.get("taxonomyRoot")), retainedFindingText(element.get("reasoning")))).toList();
+            expected.add(Map.of("summary", category.getValue() + " " + elements.size(), "open", false, "rows", rows));
+        }
+        assertThat(expected).as("The selected frozen report contains actual element evidence to inspect").isNotEmpty();
+        assertThat(evidence.get("rendered"))
+                .as("Closed details must show exactly the selected snapshot's retained categories and evidence")
+                .isEqualTo(expected);
+    }
+
+    private static String retainedFindingText(Object value) {
+        return value == null || "".equals(value) ? "—" : String.valueOf(value);
     }
 
     private static void saveCompleteCopilotRunResultScreenshot() {

@@ -58,10 +58,11 @@ and exchange verification does not express every supported editing operation.
 - Use the real catalogue for application acceptance. Authored unit fixtures are
   labelled as such. No paid or shared remote model calls during this work.
 - Do not weaken assertions, coverage, security gates or timeouts.
-- Independent changes in PRs 1438 and 1440 remain separately owned. Integrate
-  qualified changes from main and preserve their transport/tooling ownership;
-  do not copy an unqualified parallel branch wholesale. PR 1440 is integrated
-  through main commit `47d94664f`; PR 1438 remains independently owned.
+- Preserve transport, authentication and tooling ownership when integrating
+  parallel work. PR 1440 entered through main commit `47d94664f`. PR 1442 now
+  combines these model contracts with the API and authentication changes from
+  PRs 1438 and 1441. Qualification applies to that combined source tree; results
+  from separate branches do not automatically qualify the integration.
 
 ## Reviewed module boundaries
 

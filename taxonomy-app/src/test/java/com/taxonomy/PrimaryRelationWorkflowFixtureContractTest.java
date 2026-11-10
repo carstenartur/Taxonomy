@@ -34,9 +34,16 @@ class PrimaryRelationWorkflowFixtureContractTest {
                 const fs = require('node:fs');
                 const vm = require('node:vm');
                 const assert = require('node:assert/strict');
+                const path = require('node:path');
+                const {pathToFileURL} = require('node:url');
                 const source = fs.readFileSync(process.argv[1], 'utf8');
                 const requests = [];
                 const scope = vm.createContext({
+                  createPendingProposalFixtures: async (submit, check) => {
+                    const helper = await import(pathToFileURL(path.join(path.dirname(process.argv[1]),
+                      'ui-proposal-fixtures.mjs')).href);
+                    return helper.createPendingProposalFixtures(submit, check);
+                  },
                   csrfJson: async (_page, endpoint, options) => {
                     assert.equal(endpoint, '/api/proposals/from-hypothesis');
                     requests.push(options.body);
@@ -66,16 +73,20 @@ class PrimaryRelationWorkflowFixtureContractTest {
             assertThat(proposals).extracting(proposal -> proposal.get("sourceCode") + "/"
                     + proposal.get("relationType") + "/" + proposal.get("targetCode")).doesNotHaveDuplicates();
             assertThat(proposals).allSatisfy(proposal -> {
-                String sourceRoot = (String) proposal.get("sourceCode");
-                String targetRoot = (String) proposal.get("targetCode");
+                String sourceCode = (String) proposal.get("sourceCode");
+                String targetCode = (String) proposal.get("targetCode");
                 String relationType = (String) proposal.get("relationType");
-                // These actual requests select catalogue roots, exactly the endpoint types
-                // passed by RelationProposalService to this same Java metamodel.
+                assertThat(sourceCode).as("Concrete catalogue source").matches("[A-Z]{2}-[0-9]+");
+                assertThat(targetCode).as("Concrete catalogue target").matches("[A-Z]{2}-[0-9]+");
+                String sourceRoot = sourceCode.substring(0, sourceCode.indexOf('-'));
+                String targetRoot = targetCode.substring(0, targetCode.indexOf('-'));
+                // The real catalogue/HTTP fixture additionally resolves these authored
+                // element identifiers against persisted TaxonomyNode endpoint types.
                 assertThat(RelationMetamodel.isCompatible(sourceRoot, targetRoot, relationType))
-                        .as("Actual proposal %s %s %s", sourceRoot, relationType, targetRoot).isTrue();
+                        .as("Actual proposal %s %s %s", sourceCode, relationType, targetCode).isTrue();
                 assertThat(((Number) proposal.get("confidence")).doubleValue()).isEqualTo(0.73);
                 assertThat(proposal.get("rationale")).isEqualTo("Primary workflow "
-                        + sourceRoot + "-" + targetRoot + "-" + relationType);
+                        + sourceCode + "-" + targetCode + "-" + relationType);
             });
         } finally {
             if (process.isAlive()) {
@@ -189,8 +200,10 @@ class PrimaryRelationWorkflowFixtureContractTest {
                 """;
         String node = System.getProperty("taxonomy.node.executable");
         assertThat(node).as("Maven supplies the pinned JavaScript runtime").isNotBlank();
+        Path renderedIndex = directory.resolve("index.html");
+        Files.writeString(renderedIndex, IndexPageFixture.render());
         Process process = new ProcessBuilder(node, "-e", script, source.toString(), requests.toString(),
-                root.resolve("taxonomy-app/src/main/resources/templates/index.html").toString())
+                renderedIndex.toString())
                 .redirectErrorStream(true).redirectOutput(log.toFile()).start();
         try {
             assertThat(process.waitFor(15, TimeUnit.SECONDS)).as("Manual relation generation: " + log).isTrue();

@@ -3,12 +3,14 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 const i18nSource = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/taxonomy-i18n.js', import.meta.url), 'utf8');
+const utilsSource = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/taxonomy-utils.js', import.meta.url), 'utf8');
 const source = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js', import.meta.url), 'utf8');
 function harness(scoped, language = 'en') {
   const elements = new Map();
-  const window = { location: { pathname: '/projects/1/requirements/2', search: '' }, TaxonomyUtils: { escapeHtml: value => String(value ?? '') } };
-  const document = { documentElement: { lang: language }, addEventListener() {}, getElementById(id) { if (!elements.has(id)) elements.set(id, {}); return elements.get(id); } };
+  const window = { location: { pathname: '/projects/1/requirements/2', search: '' } };
+  const document = { readyState: 'loading', documentElement: { lang: language }, addEventListener() {}, getElementById(id) { if (!elements.has(id)) elements.set(id, {}); return elements.get(id); } };
   document.cookie = ''; document.dispatchEvent = () => {};
+  vm.runInNewContext(utilsSource, { window, document });
   // Load the real shared formatter required by the production page.
   vm.runInNewContext(i18nSource, { window, document, fetch: async () => ({ ok: true, json: async () => ({}) }), CustomEvent: class {} });
   // Expose private rendering functions in the test closure; execute their unchanged production bodies.
@@ -108,7 +110,7 @@ test('retained element evidence stays available in closed details without invent
     assert.ok(detail, `Missing evidence details for ${label}`);
     assert.doesNotMatch(detail[1], /(?:^|\s)open(?:\s|=|$)/);
     assert.match(detail[2], new RegExp(`<summary[^>]*>${label}(?:\\s|<)`));
-    assert.ok(detail[2].includes(`<code>${code}</code>`));
+    assert.ok(detail[2].includes(`<td>${code}</td>`));
     assert.ok(detail[2].includes(title));
   }
   assert.match(html, /<h4[^>]*>Elements in the selected model<\/h4><p[^>]*>—<\/p>/);
@@ -137,4 +139,83 @@ test('portfolio patterns preserve concrete evidence, conditional applicability a
   assert.match(html, /BP-fixture REALIZES CP-fixture \[when approved\]/);
   assert.match(html, /Applicability needs review/);
   assert.doesNotMatch(html, /is-missing[^>]*>[^<]*<span[^>]*>○<\/span>BP REALIZES CP/);
+});
+
+function retainedRecommendation(recommendation, language = 'en') {
+  const h = harness(true, language);
+  return h.renderAnalysisSummary({ analysis: { copilot: {
+    schemaVersion: 2, state: 'COMPLETED',
+    gaps: { profileId: 'compatibility', profileVersion: '1.0.0', judgments: [] },
+    patterns: {}, recommendation, notes: ['Only retained evidence is available.']
+  } }, recommendation: { matchedElements: [{ nodeCode: 'unrelated-current-candidate' }] } })
+    .split('<details id="technicalSnapshotData"')[0];
+}
+
+function recommendationDetails(html) {
+  return [...html.matchAll(/<details\b([^>]*)class="portfolio-finding-details"([^>]*)>([\s\S]*?)<\/details>/g)]
+    .map(match => ({ attributes: match[1] + match[2], html: match[3] }));
+}
+
+for (const language of ['en', 'de']) test(`${language} retained recommendation categories expose their actual evidence in closed details`, () => {
+  const categories = [
+    { nodeCode: 'CR-assessed', title: 'Retained service', taxonomyRoot: 'CR', score: 90,
+      reasoning: 'Retained assessment reason: recorded relevance.' },
+    { nodeCode: 'model-system', title: 'Selected system', taxonomyRoot: 'SY', score: 0,
+      reasoning: 'Member of canonical model at ' + 'a'.repeat(40) },
+    { nodeCode: 'BP-candidate', title: 'Retained process', taxonomyRoot: 'BP', score: 60,
+      reasoning: 'Retained assessment reason: review this candidate.' }
+  ];
+  const recommendation = { matchedElements: [categories[0]], acceptedElements: [categories[1]],
+    proposedElements: [categories[2]], suggestedRelations: [], meanRelevance: 75 };
+  const original = JSON.stringify(recommendation);
+  const html = retainedRecommendation(recommendation, language);
+  const details = recommendationDetails(html);
+  assert.equal(details.length, 3, 'Every populated retained category needs its own bounded disclosure');
+  const labels = language === 'de'
+    ? ['Bewertungstreffer', 'Elemente im gewählten Modell', 'Vorgeschlagene Elemente']
+    : ['Assessment matches', 'Elements in the selected model', 'Proposed elements'];
+  for (let index = 0; index < categories.length; index++) {
+    const detail = details[index], element = categories[index];
+    assert.doesNotMatch(detail.attributes, /\bopen\b/);
+    assert.ok(detail.html.includes('<summary>' + labels[index] + ' <span class="badge text-bg-secondary">1</span></summary>'));
+    assert.ok(detail.html.includes('<caption class="visually-hidden">' + labels[index] + '</caption>'));
+    const cells = [...detail.html.matchAll(/<td>([\s\S]*?)<\/td>/g)].map(match => match[1]);
+    assert.deepEqual(cells, [element.nodeCode, element.title, element.taxonomyRoot, element.reasoning]);
+    assert.deepEqual([...detail.html.matchAll(/<th scope="col">([^<]*)<\/th>/g)].map(match => match[1]),
+      language === 'de' ? ['Knotencode', 'Titel', 'Taxonomiewurzel', 'Begründung']
+        : ['Node code', 'Title', 'Taxonomy root', 'Reasoning']);
+  }
+  assert.doesNotMatch(html, /unrelated-current-candidate/);
+  assert.doesNotMatch(details[1].html, /0%|confidence|Konfidenz/);
+  assert.equal(JSON.stringify(recommendation), original, 'Rendering must not change retained evidence or membership');
+});
+
+test('an empty retained recommendation stays empty without adding findings or current candidates', () => {
+  const html = retainedRecommendation({ matchedElements: [], acceptedElements: [], proposedElements: [], suggestedRelations: [] });
+  assert.equal(recommendationDetails(html).length, 0);
+  assert.match(html, /No obligations were evaluated; this is not a completeness claim/);
+  assert.match(html, /Only retained evidence is available/);
+  assert.doesNotMatch(html, /unrelated-current-candidate|<td>|0%/);
+});
+
+test('unavailable retained element fields stay unavailable in the disclosure', () => {
+  const details = recommendationDetails(retainedRecommendation({ matchedElements: [{ nodeCode: 'CR-retained' }] }));
+  assert.equal(details.length, 1);
+  assert.deepEqual([...details[0].html.matchAll(/<td>([\s\S]*?)<\/td>/g)].map(match => match[1]),
+    ['CR-retained', '—', '—', '—']);
+  assert.doesNotMatch(details[0].html, /undefined|null|0%/);
+});
+
+test('retained recommendation identity, title, root and reasoning are escaped in real renderer output', () => {
+  const details = recommendationDetails(retainedRecommendation({ matchedElements: [{
+    nodeCode: '<img src=x onerror=alert(1)>', title: 'Title "quoted" & <script>bad()</script>',
+    taxonomyRoot: '<svg onload=alert(1)>', reasoning: "Recorded <b>reason</b> & 'quotation'"
+  }] }));
+  assert.equal(details.length, 1);
+  const html = details[0].html;
+  assert.doesNotMatch(html, /<img|<script|<svg|<b>/);
+  assert.deepEqual([...html.matchAll(/<td>([\s\S]*?)<\/td>/g)].map(match => match[1]), [
+    '&lt;img src=x onerror=alert(1)&gt;', 'Title &quot;quoted&quot; &amp; &lt;script&gt;bad()&lt;/script&gt;',
+    '&lt;svg onload=alert(1)&gt;', 'Recorded &lt;b&gt;reason&lt;/b&gt; &amp; &#39;quotation&#39;'
+  ]);
 });

@@ -102,7 +102,9 @@
     });
 
     window.TaxonomyPreferencesApi = Object.freeze({
-        current: function (options) { return get('/api/preferences', options); },
+        // Installation settings have no workspace owner. Authentication, page
+        // lifetime and the request deadline still guard this read and its body.
+        current: function (options) { return get('/api/preferences', Object.assign({contextSensitive: false, workspaceScoped: false}, options)); },
         save: function (changes, options) { return json('/api/preferences', changes, 'PUT', options); },
         reset: function (options) { return post('/api/preferences/reset', options); },
         history: function (options) { return get('/api/preferences/history', options); }

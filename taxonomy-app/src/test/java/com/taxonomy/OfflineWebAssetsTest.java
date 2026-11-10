@@ -1,20 +1,66 @@
 package com.taxonomy;
 
+import com.taxonomy.dsl.validation.RelationMetamodel;
 import org.junit.jupiter.api.Test;
-import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.mock.web.MockServletContext;
-import org.thymeleaf.context.WebContext;
-import org.thymeleaf.spring6.SpringTemplateEngine;
-import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
-import org.thymeleaf.web.servlet.JakartaServletWebApplication;
 
-import java.util.Locale;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.io.StringReader;
+import javax.swing.text.MutableAttributeSet;
+import javax.swing.text.html.HTML;
+import javax.swing.text.html.HTMLEditorKit;
+import javax.swing.text.html.parser.ParserDelegator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Ensures that the primary browser application can be rendered without public CDNs. */
 class OfflineWebAssetsTest {
+
+    @Test
+    void renderedRelationSelectorsContainEveryMetamodelTypeExactlyOnceAndPreserveTheirDefaults() throws Exception {
+        var options = relationOptions(renderIndex());
+        var types = RelationMetamodel.relationTypes().stream().sorted().toList();
+        assertThat(types).contains("REQUIRES");
+        assertThat(options.keySet()).containsExactlyInAnyOrder("newRelType", "relationsTypeFilter", "proposeRelationType");
+        for (String id : List.of("newRelType", "proposeRelationType")) {
+            assertThat(options.get(id)).extracting(Option::value).as(id).containsExactlyInAnyOrderElementsOf(types);
+            assertThat(options.get(id).stream().filter(Option::selected)).extracting(Option::value)
+                    .as("default selection for %s", id).containsExactly("REALIZES");
+        }
+        var filterValues = new ArrayList<String>();
+        filterValues.add("");
+        filterValues.addAll(types);
+        assertThat(options.get("relationsTypeFilter")).extracting(Option::value).containsExactlyInAnyOrderElementsOf(filterValues);
+        assertThat(options.get("relationsTypeFilter").stream().filter(Option::selected)).extracting(Option::value)
+                .containsExactly("");
+    }
+
+    private record Option(String value, boolean selected) {}
+
+    private static Map<String, List<Option>> relationOptions(String html) throws Exception {
+        Map<String, List<Option>> options = new LinkedHashMap<>();
+        var selectors = Set.of("newRelType", "relationsTypeFilter", "proposeRelationType");
+        new ParserDelegator().parse(new StringReader(html), new HTMLEditorKit.ParserCallback() {
+            private String current;
+            @Override public void handleStartTag(HTML.Tag tag, MutableAttributeSet attributes, int position) {
+                if (tag == HTML.Tag.SELECT) {
+                    String id = (String) attributes.getAttribute(HTML.Attribute.ID);
+                    current = id != null && selectors.contains(id) ? id : null;
+                    if (current != null) options.put(current, new ArrayList<>());
+                } else if (tag == HTML.Tag.OPTION && current != null) {
+                    options.get(current).add(new Option((String) attributes.getAttribute(HTML.Attribute.VALUE),
+                            attributes.isDefined(HTML.Attribute.SELECTED)));
+                }
+            }
+            @Override public void handleEndTag(HTML.Tag tag, int position) {
+                if (tag == HTML.Tag.SELECT) current = null;
+            }
+        }, true);
+        return options;
+    }
 
     @Test
     void indexUsesOnlyPackagedBrowserLibraries() {
@@ -50,20 +96,6 @@ class OfflineWebAssetsTest {
     }
 
     private String renderIndex() {
-        assertThat(getClass().getResource("/templates/index.html"))
-                .as("index.html must be available on the classpath").isNotNull();
-        var resolver = new ClassLoaderTemplateResolver();
-        resolver.setPrefix("templates/");
-        resolver.setSuffix(".html");
-        resolver.setCharacterEncoding("UTF-8");
-        resolver.setCacheable(false);
-        var engine = new SpringTemplateEngine();
-        engine.setTemplateResolver(resolver);
-        var servlet = new MockServletContext();
-        var request = new MockHttpServletRequest(servlet);
-        request.setRequestURI("/");
-        var exchange = JakartaServletWebApplication.buildApplication(servlet)
-                .buildExchange(request, new MockHttpServletResponse());
-        return engine.process("index", new WebContext(exchange, Locale.ENGLISH));
+        return IndexPageFixture.render();
     }
 }

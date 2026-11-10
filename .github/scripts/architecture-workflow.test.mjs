@@ -32,7 +32,7 @@ function boot(search = '', prefix = '') {
 }
 function url(value) {return new URL(value, 'https://example.test');}
 
-for (const prefix of ['', '/taxonomy']) test(`native status fixture owns its partial lifecycle before state bootstrap (${prefix || '/'})`, async () => {
+async function nativeStatusHtml(prefix) {
     const native = await readFile(new URL('./git-sync-status.browser.test.mjs', import.meta.url), 'utf8');
     const pathsStart = native.indexOf('    const paths = '), pathsEnd = native.indexOf(';', pathsStart);
     const htmlStart = native.indexOf("            return route.fulfill({contentType:'text/html', body:");
@@ -44,6 +44,50 @@ for (const prefix of ['', '/taxonomy']) test(`native status fixture owns its par
         route: {fulfill: value => {html = value.body;}}});
     vm.runInContext(native.slice(pathsStart, pathsEnd + 1), producer);
     await vm.runInContext('(async () => {' + native.slice(htmlStart, htmlEnd) + '})()', producer);
+    return {html, paths: Array.from(vm.runInContext('paths', producer))};
+}
+
+// This extractor models only the locally generated fixture scripts, not general HTML or sanitization.
+function fixtureScripts(html) {
+    return [...html.matchAll(/<script(?=[\t\n\f\r />])((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)];
+}
+
+const scriptVariants = [
+    {name: 'plain', close: '</script>'},
+    {name: 'uppercase', openName: 'SCRIPT', close: '</SCRIPT>'},
+    {name: 'mixed case and whitespace', openName: 'sCrIpT', close: '</ScRiPt >'},
+    {name: 'end tag whitespace', close: '</script \t\n\f\r>'},
+    {name: 'end tag attributes', close: '</script foo="bar">'},
+    {name: 'end tag tab newline attributes', close: '</script\t\n bar>'},
+    {name: 'quoted greater-than attributes', startAttributes: ' data-note="a>b"',
+        close: '</script data-note="a>b">'},
+    {name: 'single-quoted greater-than attributes', startAttributes: " data-note='a>b'",
+        close: "</script data-note='a>b'>"},
+    {name: 'slash end tag', close: '</script/>'},
+    {name: 'false script-foo names', close: '</script>', bodyPrefix: '</script-foo>still-script-body',
+        prefix: '<script-foo src="/js/not-a-script.js">not a script</script-foo>'}
+];
+for (const prefix of ['', '/taxonomy']) for (const variant of scriptVariants) {
+    test(`native fixture script order survives ${variant.name} (${prefix || '/'})`, async () => {
+        const original = await nativeStatusHtml(prefix);
+        const html = (variant.prefix || '') + original.html
+            .replace('<script data-taxonomy-analysis-session>', '<script data-taxonomy-analysis-session>' + (variant.bodyPrefix || ''))
+            .replaceAll('<script', '<' + (variant.openName || 'script') + (variant.startAttributes || ''))
+            .replaceAll('</script>', variant.close);
+        const scripts = fixtureScripts(html);
+        const actualPaths = scripts.map(match => match[1].match(/src="[^"]*\/js\/(.*?)"/)?.[1] || null);
+        assert.deepEqual(actualPaths, ['taxonomy-i18n.js', null, ...original.paths, null,
+            'workspace/taxonomy-git-status.js', 'versioning/taxonomy-context-bar.js', null],
+            'The actual producer script order, including inline scripts, must survive this HTML spelling');
+        const marker = scripts.findIndex(match => /\bdata-taxonomy-analysis-session(?:\s|=|$)/.test(match[1]));
+        assert.equal(marker, 1, 'The ownership marker remains before every core bootstrap script');
+        assert.equal(scripts[marker][2], variant.bodyPrefix || '', 'End-tag-like names do not close a script');
+        assert.equal(scripts.at(-1)[2], 'document.addEventListener("DOMContentLoaded",()=>TaxonomyContextBar.init("contextBar"));');
+    });
+}
+
+for (const prefix of ['', '/taxonomy']) test(`native status fixture owns its partial lifecycle before state bootstrap (${prefix || '/'})`, async () => {
+    const {html} = await nativeStatusHtml(prefix);
     const {context, requests} = boot('?workspaceId=workspace-1&workspaceScopeKey=workspace-1&repositoryId=repository-1&branch=draft', prefix);
     const parsedScripts = [], appended = [];
     context.document.head = {appendChild: node => appended.push(node)};
@@ -51,7 +95,7 @@ for (const prefix of ['', '/taxonomy']) test(`native status fixture owns its par
     context.document.querySelector = selector => selector === 'script[data-taxonomy-analysis-session]'
         ? parsedScripts.find(attributes => /\bdata-taxonomy-analysis-session(?:\s|=|$)/.test(attributes)) || null : null;
     // Model parser order: a marker on a later script cannot own an earlier state bootstrap.
-    for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    for (const match of fixtureScripts(html)) {
         const attributes = match[1]; parsedScripts.push(attributes);
         const file = attributes.match(/src="[^"]*\/js\/(.*?)"/)?.[1];
         if (file === 'api/taxonomy-api-client.js') canonicalFixture.install(context);
