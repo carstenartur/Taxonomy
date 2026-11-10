@@ -93,12 +93,14 @@ window.TaxonomyViewContext = (function () {
      * @param {string} containerId — DOM ID
      * @param {string} [branch='draft'] — branch name
      */
+    var pendingViews = new Map();
     function fetchAndRender(containerId, branch) {
         branch = branch || 'draft';
-        fetch('/api/git/state?branch=' + encodeURIComponent(branch))
+        var token = {}; pendingViews.set(containerId, token);
+        return window.TaxonomyVersioningApi.state(branch)
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (state) {
-                if (!state) return;
+                if (!state || pendingViews.get(containerId) !== token) return;
                 // Build a ViewContext-like object from RepositoryState
                 render(containerId, {
                     basedOnCommit: state.headCommit,

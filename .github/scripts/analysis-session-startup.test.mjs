@@ -1,4 +1,6 @@
-import test from 'node:test';
+import test, {afterEach} from 'node:test';
+import canonicalFixture from './canonical-api-fixture.cjs';
+afterEach(() => canonicalFixture.dispose());
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
@@ -363,20 +365,24 @@ test('an initial workspace outage is retried when server observation reconnects'
 const gitStatusSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/workspace/taxonomy-git-status.js', import.meta.url), 'utf8');
 function gitStatusHarness(fetcher) {
-  const events = [], documentListeners = new Map();
+  const events = [], authEvents = [], documentListeners = new Map();
   const bar = { innerHTML: '', classList: { remove() {} }, querySelector() { return null; } };
   const document = {
     addEventListener(name, listener) { documentListeners.set(name, listener); },
     getElementById: () => bar,
-    dispatchEvent(event) { events.push(event); }
+    dispatchEvent(event) {
+      if (event.type === 'taxonomy:server-contact') events.push(event);
+      else if (event.type === 'taxonomy-api-auth-failure') authEvents.push(event);
+    }
   };
   const window = { addEventListener() {}, TaxonomyUtils: { escapeHtml: String },
     TaxonomyI18n: { t: key => key } };
   const sandbox = { window, document, fetch: fetcher, TaxonomyUtils: window.TaxonomyUtils,
     TaxonomyI18n: window.TaxonomyI18n, AbortController, CustomEvent,
     setInterval() { return 1; }, clearInterval() {} };
-  vm.runInNewContext(gitStatusSource, sandbox);
-  return { events, refresh: () => { documentListeners.get('DOMContentLoaded')(); }, window };
+  canonicalFixture.install(sandbox, ['api/workspace-api.js']);
+  vm.runInContext(gitStatusSource, sandbox);
+  return { events, authEvents, bar, refresh: () => { documentListeners.get('DOMContentLoaded')(); }, window };
 }
 
 test('existing git observation publishes successful and failed server contact without caching', async () => {
@@ -392,6 +398,9 @@ test('existing git observation publishes successful and failed server contact wi
   assert.equal(h.events[0].type, 'taxonomy:server-contact');
   assert.equal(h.events[0].detail.available, false);
   assert.equal(h.events[0].detail.status, 403);
+  assert.equal(h.authEvents.length, 1, 'Central authentication handling still observes the forbidden response');
+  assert.equal(h.authEvents[0].detail.status, 403);
+  assert.equal(h.bar.innerHTML, '', 'Canonical authentication does not paint a Git error view');
   connected = true;
   h.window.TaxonomyGitStatus.refresh();
   await new Promise(resolve => setImmediate(resolve));
@@ -410,4 +419,31 @@ test('an obsolete git observation cannot report loss of the current connection',
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.events.length, 1);
   assert.equal(h.events[0].detail.available, true);
+});
+
+for (const [name, change] of [
+  ['workspace', h => { h.window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'other'; }],
+  ['analysis generation', h => { h.window.__TaxonomyAnalysisSessionContext.runtime.analysisGeneration++; }],
+  ['runtime replacement', h => { h.window.__TaxonomyAnalysisSessionContext.runtime = {workspaceId:'original',analysisGeneration:1}; }],
+  ['same-branch context navigation', h => { h.selection = {contextId:'new-context',branch:'draft',commitId:'new-commit'}; }],
+  ['context navigation', h => { h.selection = {contextId:'new-context',branch:'other',commitId:'new-commit'}; }]
+]) test(`an obsolete forbidden git observation cannot report connectivity for a new ${name}`, async () => {
+  const pending = deferred();
+  const h = gitStatusHarness(() => pending.promise);
+  h.window.__TaxonomyAnalysisSessionContext = {runtime:{workspaceId:'original',analysisGeneration:1}};
+  h.selection = {contextId:'old-context',branch:'draft',commitId:'old-commit'};
+  h.window.TaxonomyContextBar = {getCurrentContext:()=>h.selection};
+  h.refresh(); await new Promise(resolve=>setImmediate(resolve)); change(h);
+  pending.resolve({ok:false,status:403,json:async()=>({})});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(h.events.length,0,'A forbidden response from an old source does not change current connectivity');
+  assert.equal(h.authEvents.length,1,'Source fencing does not bypass central authentication handling');
+});
+
+test('an unauthorized current git poll preserves both connectivity and central authentication signals', async () => {
+  const h = gitStatusHarness(async () => ({ok:false,status:401,json:async()=>({})}));
+  h.refresh(); await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(h.events.length,1); assert.equal(h.events[0].detail.available,false);
+  assert.equal(h.events[0].detail.status,401); assert.equal(h.authEvents.length,1);
+  assert.equal(h.authEvents[0].detail.status,401); assert.equal(h.bar.innerHTML,'');
 });

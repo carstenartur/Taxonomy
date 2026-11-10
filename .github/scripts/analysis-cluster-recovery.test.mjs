@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const base = '../../taxonomy-app/src/main/resources/static/js/';
-const sources = ['api/taxonomy-api-client.js', 'api/analysis-session-api.js',
+const sources = ['api/taxonomy-api-client.js', 'api/analysis-api.js', 'api/analysis-session-api.js',
     'core/taxonomy-analysis-progress.js', 'core/taxonomy-scoring.js']
     .map(path => readFileSync(new URL(base + path, import.meta.url), 'utf8'));
 const id = 'cb2a3d71-e849-4a50-9855-1f9cb8f81402';
@@ -82,7 +82,7 @@ function fixture({ status = 'COMPLETED', requestInput, requestResult, startReque
         },
         async fetch(url, options = {}) {
             calls.push({ url, options });
-            if (url === '/api/analyze') return startRequest ? startRequest() : new Promise(() => {});
+            if (new URL(url, 'https://taxonomy.example').pathname === '/api/analyze') return startRequest ? startRequest() : new Promise(() => {});
             const path = new URL(url, 'https://taxonomy.example').pathname;
             let body = path.endsWith('/request') ? requestInput ? await requestInput() : input
                 : path.endsWith('/result') ? requestResult ? await requestResult() : result

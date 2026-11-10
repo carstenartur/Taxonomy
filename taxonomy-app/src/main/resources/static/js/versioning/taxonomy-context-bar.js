@@ -29,6 +29,13 @@ window.TaxonomyContextBar = (function () {
         if (event.persisted && activeContainer) { pageActive = true; init(activeContainer); }
     });
 
+    function acceptContext(context) {
+        currentContext = context;
+        document.dispatchEvent(new CustomEvent('taxonomy:repository-context-changed', {
+            detail: {contextId:context.contextId, branch:context.branch, commitId:context.commitId}
+        }));
+    }
+
     /**
      * Initialise the context bar and start polling.
      *
@@ -56,7 +63,7 @@ window.TaxonomyContextBar = (function () {
         return window.TaxonomyContextApi.current({ signal: controller.signal })
             .then(function (ctx) {
                 if (!ctx || !pageActive || controller.signal.aborted || pendingRead !== controller) return null;
-                currentContext = ctx;
+                acceptContext(ctx);
                 render(containerId, ctx);
                 return ctx;
             })
@@ -229,7 +236,7 @@ window.TaxonomyContextBar = (function () {
             .then(function (ctx) {
                 if (generation !== navigationGeneration || !ctx) return null;
                 if (pendingRead) pendingRead.abort();
-                currentContext = ctx;
+                acceptContext(ctx);
                 render(activeContainer || 'contextBar', ctx);
                 return ctx;
             }).catch(function (error) {

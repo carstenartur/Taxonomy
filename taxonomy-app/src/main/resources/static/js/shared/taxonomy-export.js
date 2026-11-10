@@ -263,7 +263,8 @@
         if (!scores || Object.keys(scores).length === 0) {
             return unavailable('export.json.no.scores');
         }
-        postJson('/api/scores/export', {
+        var isCurrent = window.TaxonomyApiClient.captureContext();
+        window.ExportApi.scoreExport({
             requirement: businessText || '',
             scores: scores,
             reasons: reasons || {},
@@ -278,12 +279,13 @@
             analysisOperationId: window.TaxonomyState?.analysisOperationId || null,
             analysisProviderId: window.TaxonomyState?.analysisProviderId || null
         }).then(function (data) {
+            if (!isCurrent()) return;
             downloadBlob(
                 new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' }),
                 'taxonomy-scores-' + new Date().toISOString().slice(0, 10) + '.json'
             );
         }).catch(function (error) {
-            unavailable('export.json.failed', error.message);
+            if (isCurrent() && error.code !== 'ABORTED') unavailable('export.json.failed', error.message);
         });
     }
 
@@ -518,27 +520,17 @@
         diagramExportBusy = true;
         diagramStatus(exportMessage('Creating file from the existing architecture — no AI analysis…',
             'Datei wird aus der vorhandenen Architektur erstellt — ohne KI-Analyse…'), true, false);
-        var headers = { 'Content-Type': 'application/json' };
-        var csrf = document.querySelector('meta[name="_csrf"]');
-        var csrfHeader = document.querySelector('meta[name="_csrf_header"]');
-        if (csrf && csrfHeader) headers[csrfHeader.content] = csrf.content;
-        // Keep base-path/workspace routing through the established fetch wrapper.
+        var isCurrent = window.TaxonomyApiClient.captureContext();
         return Promise.resolve().then(function () {
-            return fetch(url.indexOf('/api/diagram/current/') === 0 ? url : url.replace('/api/diagram/', '/api/diagram/current/'), {
-                method: 'POST', headers: headers, credentials: 'same-origin', body: body
-            });
+            return window.ExportApi.diagramResponse(url, body);
         }).then(function (response) {
-            if (!response.ok) {
-                return response.json().catch(function () { return {}; }).then(function (problem) {
-                    throw new Error(problem.error || problem.detail || 'HTTP ' + response.status);
-                });
-            }
             validateResponseType(response, filename, descriptor);
             diagramStatus(exportMessage('Receiving architecture file…', 'Architekturdatei wird übertragen…'), true, false);
             return responseType === 'text' ? response.text() : response.blob();
         }).then(async function (content) {
             var blob = content instanceof Blob ? content : new Blob([content], { type: 'text/plain;charset=utf-8' });
             await validateDownloadBytes(blob, filename, descriptor);
+            if (!isCurrent()) return false;
             if (contentHandler) {
                 await contentHandler(content);
             } else {
@@ -548,6 +540,7 @@
                 'Download bereitgestellt. Die Architektur blieb unverändert.'), false, false);
             return true;
         }).catch(function (error) {
+            if (!isCurrent() || error.code === 'ABORTED') return false;
             diagramStatus(exportMessage('Export failed: ', 'Export fehlgeschlagen: ') + error.message, false, true);
             return false;
         }).finally(function () {
@@ -576,20 +569,6 @@
                 { type: 'text/plain;charset=utf-8' }),
             'taxonomy-tree.mmd'
         );
-    }
-
-    function postJson(url, body) {
-        return fetch(url, {
-            method: 'POST',
-            headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify(body)
-        }).then(requireOk).then(function (response) { return response.json(); });
-    }
-
-    function requireOk(response) {
-        if (response.ok) return response;
-        throw new Error('HTTP ' + response.status);
     }
 
     function unavailable(key, detail) {

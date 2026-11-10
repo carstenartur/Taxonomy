@@ -1,3 +1,4 @@
+const canonicalFixture = require('../../../../.github/scripts/canonical-api-fixture.cjs');
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {readFileSync} = require('node:fs');
@@ -62,6 +63,7 @@ async function uiFixture(options = {}) {
             get: async () => {requests.push({method: 'status'}); return current;},
             resume: async (project, id) => {
                 requests.push({method: 'POST', action: 'resume', project, id});
+                if (options.abortedResumeResponse) {const error = new Error('Superseded context'); error.code = 'ABORTED'; throw error;}
                 if (options.lostResumeResponse) throw new Error('Connection lost after resume');
                 return current;
             }
@@ -192,12 +194,13 @@ test('an uncertain resume response only observes the operation and never repeats
 test('the Copilot API resumes the persisted operation with CSRF protection and no replacement run settings', async () => {
     const requests = [], window = {};
     const document = {querySelector(selector) {return selector.includes('_csrf_header') ? {content: 'X-CSRF-TEST'} : {content: 'token'};}};
-    vm.runInNewContext(source('api/copilot-api.js'), {window, document,
-        fetch: async (url, options) => {requests.push({url, options}); return {ok: true, status: 202, json: async () => ({operationId: 'saved/operation'})};}});
+    const context = {window, document,
+        fetch: async (url, options) => {requests.push({url, options}); return {ok: true, status: 202, json: async () => ({operationId: 'saved/operation'})};}};
+    canonicalFixture.install(context, ['api/copilot-api.js']);
     await window.TaxonomyCopilotApi.resume(41, 'saved/operation');
     assert.equal(requests[0].url, '/api/projects/41/copilot-operations/saved%2Foperation/resume');
     assert.equal(requests[0].options.method, 'POST');
-    assert.equal(requests[0].options.headers['X-CSRF-TEST'], 'token');
+    assert.equal(new Headers(requests[0].options.headers).get('X-CSRF-TEST'), 'token');
     assert.deepEqual(JSON.parse(requests[0].options.body), {});
 });
 
@@ -290,15 +293,16 @@ for (const failure of ['rejected POST', 'lost response']) {
 test('the API client sends only the selected immutable snapshot and revision with CSRF protection', async () => {
     const requests = [], window = {location: {pathname: '/projects'}};
     const document = {querySelector(selector) {return selector.includes('_csrf_header') ? {content: 'X-CSRF-TEST'} : {content: 'token'};}};
-    vm.runInNewContext(source('api/portfolio-api.js'), {window, document, URL, URLSearchParams,
-        fetch: async (url, options) => {requests.push({url, options}); return {ok: true, status: 202, json: async () => ({id: 'job'})};}});
+    const context = {window, document, URL, URLSearchParams,
+        fetch: async (url, options) => {requests.push({url, options}); return {ok: true, status: 202, json: async () => ({id: 'job'})};}};
+    canonicalFixture.install(context, ['api/portfolio-api.js']);
     await window.TaxonomyPortfolioApi.getAnalysisContinuation(41, 'job', 7);
     await window.TaxonomyPortfolioApi.continueAnalysis(41, 'job', 7,
         {snapshotId: 'snapshot', continuationVersion: 123, available: true, maxCalls: 999, verificationPasses: 10});
     assert.equal(requests[0].url, '/api/projects/41/analysis-jobs/job/items/7/continuation');
     assert.equal(requests[1].url, '/api/projects/41/analysis-jobs/job/items/7/continue');
     assert.equal(requests[1].options.method, 'POST');
-    assert.equal(requests[1].options.headers['X-CSRF-TEST'], 'token');
+    assert.equal(new Headers(requests[1].options.headers).get('X-CSRF-TEST'), 'token');
     assert.deepEqual(JSON.parse(requests[1].options.body), {snapshotId: 'snapshot', continuationVersion: 123});
 });
 
@@ -362,10 +366,10 @@ function portfolioContinuationFixture(postResponse, observedResponse) {
     const fetch = async (url, options) => {
         requests.push({url, method: options.method || 'GET', body: options.body});
         if (options.method === 'POST') {
-            assert.equal(url, '/api/projects/41/analysis-jobs/saved-job/items/7/continue');
+            assert.equal(url, '/api/projects/41/analysis-jobs/saved-job/items/7/continue?workspaceId=');
             return postResponse({continuedJob, jsonResponse, failedBody});
         }
-        assert.equal(url, '/api/projects/41/analysis-jobs/saved-job');
+        assert.equal(url, '/api/projects/41/analysis-jobs/saved-job?workspaceId=');
         return observedResponse ? observedResponse({continuedJob, jsonResponse, failedBody}) : jsonResponse(continuedJob);
     };
     const window = {location: {pathname: '/projects', href: 'http://localhost/projects', origin: 'http://localhost'}};
@@ -378,12 +382,14 @@ function portfolioContinuationFixture(postResponse, observedResponse) {
         trimHistory() {}, persistJobs() {}, renderJobs() {},
         schedulePoll(url) {scheduled.push(url);}
     });
+    canonicalFixture.install(context);
     vm.runInContext(source('api/portfolio-api.js'), context);
     const portfolio = source('portfolio/taxonomy-portfolio-async.js');
     vm.runInContext([
         productionSection(portfolio, '    const messages = ', '    restoreJobs();'),
         productionSection(portfolio, '    function m(key)', '    function installFetchAdapter()'),
         productionSection(portfolio, '    function registerJob(', '    function restoreJobs()'),
+        productionSection(portfolio, '    function durableJobOptions(', '    async function loadAccountCapabilities('),
         productionSection(portfolio, '    async function onJobAction(', '    function renderItemContinuation('),
         productionSection(portfolio, '    function showError(', '    function currentProjectId()')
     ].join('\n'), context);
@@ -470,9 +476,10 @@ for (const failure of ['HTTP failure', 'connection failure']) {
                 }
                 return new Response(JSON.stringify(decision), {status: 200});
             }});
-        vm.runInContext(source('api/portfolio-api.js'), context);
+        canonicalFixture.install(context);
+    vm.runInContext(source('api/portfolio-api.js'), context);
         const portfolio = source('portfolio/taxonomy-portfolio-async.js');
-        vm.runInContext(productionSection(portfolio, '    function renderItemContinuation(', '    function countStatuses('), context);
+        vm.runInContext(productionSection(portfolio, '    function durableJobOptions(', '    async function loadAccountCapabilities(') + productionSection(portfolio, '    function renderItemContinuation(', '    function countStatuses('), context);
         const job = {id: 'saved-job', projectId: 41};
         const item = {id: 7, snapshotId: 'old-snapshot', attempt: 1};
         const render = () => {
@@ -497,3 +504,12 @@ for (const failure of ['HTTP failure', 'connection failure']) {
         assert.ok(requests.every(request => request.method === 'GET'));
     });
 }
+
+test('an obsolete Copilot resume response never triggers uncertain-status observation or repaints an error', async () => {
+    const f = await uiFixture({restoredStatus: 'PENDING', abortedResumeResponse: true});
+    const before = f.nodes.get('copilotError').textContent;
+    await f.nodes.get('copilotResume').click(); await tick();
+    assert.equal(f.requests.filter(request => request.method === 'POST').length, 1);
+    assert.equal(f.requests.filter(request => request.method === 'status').length, 0);
+    assert.equal(f.nodes.get('copilotError').textContent, before);
+});

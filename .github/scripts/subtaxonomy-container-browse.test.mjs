@@ -1,3 +1,4 @@
+import canonicalFixture from './canonical-api-fixture.cjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -186,6 +187,7 @@ function harness({ view = 'list', data = catalogue(), scores = null, interactive
             return { ok: true, json: async () => response || { scores: { 'BP-1000': 83 }, reasons: { 'BP-1000': 'Fixture evidence' } } };
         }
     });
+    canonicalFixture.install(context, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']);
     vm.runInContext(sources[0], context); context.TaxonomyUtils = window.TaxonomyUtils;
     if (relevance) vm.runInContext(viewsSource, context);
     // Exercise the real expand/collapse commands without adding a production API.

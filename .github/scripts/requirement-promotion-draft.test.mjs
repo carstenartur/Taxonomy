@@ -1,3 +1,4 @@
+import canonicalFixture from './canonical-api-fixture.cjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -85,8 +86,9 @@ test('portfolio intake keeps one interactive choice, releases cancellation and p
     TaxonomyArchitectureLifecycle:{saveRequirement(command){saves.push(command);return new Promise(resolve=>{finishSave=resolve;});}}};
   const document={documentElement:{lang:'en'},addEventListener(){},getElementById:element,querySelectorAll:()=>[element('submit')]};
   class FormData {forEach(callback){callback('PUMP','requirementKey');callback('Pump control','title');callback(textField.value,'text');}}
-  vm.runInNewContext(portfolioSource.replace(/\}\)\(\);\s*$/,'window.portfolioProbe={state,createRequirement};})();'),
-    {window,document,URLSearchParams,FormData});
+  const context=canonicalFixture.install({window,document,URLSearchParams});
+  context.FormData=FormData; // This DOM fixture supplies its form-field iterator.
+  vm.runInContext(portfolioSource.replace(/\}\)\(\);\s*$/,'window.portfolioProbe={state,createRequirement};})();'),context);
   const {state,createRequirement}=window.portfolioProbe;state.selectedProjectId=7;
   const event={currentTarget:form,preventDefault(){}};
   const cancelled=createRequirement(event);
@@ -145,7 +147,9 @@ for (const surface of ['detail','portfolio']) {
       assert.equal(probe.state.versionDraftBase.requirementVersionId,12);
     } else {
       const instrumented=portfolioSource.replace(/\}\)\(\);\s*$/,'window.portfolioProbe={state,createRequirement,setRefresh:function(reload){refreshSelectedProject=reload;}};})();');
-      vm.runInNewContext(instrumented,{window,document,bootstrap,URLSearchParams,FormData});
+      const context=canonicalFixture.install({window,document,bootstrap,URLSearchParams});
+      context.FormData=FormData;
+      vm.runInContext(instrumented,context);
       const probe=window.portfolioProbe;probe.state.selectedProjectId=1;probe.setRefresh(async()=>{reloads++;});
       await probe.createRequirement({preventDefault(){},currentTarget:form});
     }

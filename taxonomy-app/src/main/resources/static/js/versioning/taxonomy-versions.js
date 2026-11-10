@@ -7,6 +7,8 @@
 window.TaxonomyVersions = (function () {
     'use strict';
     var t = TaxonomyI18n.t;
+    function ignoredError(error) { return error?.code === 'ABORTED' || error?.status === 401 || error?.status === 403; }
+
 
     // ── Constants ─────────────────────────────────────────────────
 
@@ -20,6 +22,8 @@ window.TaxonomyVersions = (function () {
     // ── State ───────────────────────────────────────────────────────
 
     var currentBranch = 'draft';
+    var timelineRequest = 0;
+    var branchesRequest = 0;
 
     // ── Initialization ──────────────────────────────────────────────
 
@@ -78,9 +82,11 @@ window.TaxonomyVersions = (function () {
     // ── Load branches ───────────────────────────────────────────────
 
     function loadBranches(selectEl) {
-        fetch('/api/git/branches')
+        var request = ++branchesRequest, branch = currentBranch;
+        window.TaxonomyVersioningApi.branches()
             .then(function (r) { return r.json(); })
             .then(function (data) {
+                if (request !== branchesRequest || branch !== currentBranch) return;
                 var branches = data.branches || data || [];
                 selectEl.innerHTML = '';
                 branches.forEach(function (b) {
@@ -103,6 +109,7 @@ window.TaxonomyVersions = (function () {
     function loadTimeline(retryCount) {
         retryCount = retryCount || 0;
         var MAX_RETRIES = 2;
+        var branch = currentBranch, request = ++timelineRequest;
 
         var container = el('versionsTimeline');
         if (!container) return;
@@ -115,12 +122,13 @@ window.TaxonomyVersions = (function () {
             container.innerHTML = '<div class="text-muted small">' + escapeHtml(t('versions.history.loading')) + '</div>';
         }
 
-        fetch('/api/dsl/history?branch=' + encodeURIComponent(currentBranch))
+        window.TaxonomyVersioningApi.history(branch)
             .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
             })
             .then(function (data) {
+                if (request !== timelineRequest || branch !== currentBranch) return;
                 var commits = data.commits || [];
                 if (commits.length === 0) {
                     container.setAttribute('data-state', 'empty');
@@ -144,9 +152,11 @@ window.TaxonomyVersions = (function () {
                 });
             })
             .catch(function (err) {
+                if (ignoredError(err)) return;
+                if (request !== timelineRequest || branch !== currentBranch) return;
                 if (retryCount < MAX_RETRIES) {
                     var delay = Math.pow(2, retryCount) * 1000;
-                    setTimeout(function () { loadTimeline(retryCount + 1); }, delay);
+                    setTimeout(function () { if (request === timelineRequest && branch === currentBranch) loadTimeline(retryCount + 1); }, delay);
                 } else {
                     container.setAttribute('data-state', 'error');
                     container.innerHTML = '<div class="text-danger small p-2">' + escapeHtml(t('versions.history.load.failed', err.message)) + '</div>';
@@ -264,7 +274,7 @@ window.TaxonomyVersions = (function () {
     }
 
     function viewVersion(commitId) {
-        fetch('/api/dsl/git/commit/' + encodeURIComponent(commitId))
+        window.TaxonomyVersioningApi.commitById(commitId)
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (data.dslText) {
@@ -274,6 +284,7 @@ window.TaxonomyVersions = (function () {
                 }
             })
             .catch(function (err) {
+                if (ignoredError(err)) return;
                 showModal(t('versions.error'), '<div class="text-danger">' + escapeHtml(err.message) + '</div>');
             });
     }
@@ -288,9 +299,9 @@ window.TaxonomyVersions = (function () {
             if (request === comparisonRequest) comparisonRequest++;
         });
         try {
-            var state = await window.TaxonomyApiClient.getJson('/api/git/state?branch=' + encodeURIComponent(branch));
+            var state = await window.TaxonomyVersioningApi.state(branch).then(function (r) { return r.json(); });
             if (!state.headCommit) throw new Error('No saved version');
-            var diff = await window.TaxonomyApiClient.getJson('/api/dsl/diff/' + encodeURIComponent(commitId) + '/' + encodeURIComponent(state.headCommit));
+            var diff = await window.TaxonomyVersioningApi.diff(commitId, state.headCommit).then(function (r) { return r.json(); });
             var comparison = window.TaxonomyContextCompare.fromDocumentDiff(diff,
                 { branch: branch, commitId: commitId }, { branch: branch, commitId: state.headCommit });
             if (request !== comparisonRequest || !modal.isConnected) return;
@@ -319,10 +330,10 @@ window.TaxonomyVersions = (function () {
             if (request === comparisonRequest) comparisonRequest++;
         });
         try {
-            var state = await window.TaxonomyApiClient.getJson('/api/git/state?branch=' + encodeURIComponent(branch));
+            var state = await window.TaxonomyVersioningApi.state(branch).then(function (r) { return r.json(); });
             if (!state.headCommit) throw new Error('No saved version');
             // Preview the operation the user is about to perform: HEAD -> target.
-            var diff = await window.TaxonomyApiClient.getJson('/api/dsl/diff/' + encodeURIComponent(state.headCommit) + '/' + encodeURIComponent(commitId));
+            var diff = await window.TaxonomyVersioningApi.diff(state.headCommit, commitId).then(function (r) { return r.json(); });
             var comparison = window.TaxonomyContextCompare.fromDocumentDiff(diff,
                 { branch: branch, commitId: state.headCommit }, { branch: branch, commitId: commitId });
             if (request !== comparisonRequest || !modal.isConnected) return;
@@ -367,10 +378,10 @@ window.TaxonomyVersions = (function () {
     }
 
     function executeRestore(commitId, branch) {
-        fetch('/api/dsl/restore?commitId=' + encodeURIComponent(commitId) +
-            '&branch=' + encodeURIComponent(branch), { method: 'POST' })
+        window.TaxonomyVersioningApi.restore(commitId, branch)
             .then(function (r) { return r.json(); })
             .then(function (data) {
+                if (branch !== currentBranch) return;
                 if (data.error) {
                     if (window.TaxonomyOperationResult) {
                         window.TaxonomyOperationResult.showError(t('versions.restore.failed'), data.error);
@@ -387,6 +398,7 @@ window.TaxonomyVersions = (function () {
                 }
             })
             .catch(function (err) {
+                if (ignoredError(err) || branch !== currentBranch) return;
                 if (window.TaxonomyOperationResult) {
                     window.TaxonomyOperationResult.showError(t('versions.restore.failed'), err.message);
                 } else {
@@ -409,10 +421,11 @@ window.TaxonomyVersions = (function () {
     }
 
     function executeRevert(commitId) {
-        fetch('/api/dsl/revert?commitId=' + encodeURIComponent(commitId) +
-            '&branch=' + encodeURIComponent(currentBranch), { method: 'POST' })
+        var branch = currentBranch;
+        window.TaxonomyVersioningApi.revert(commitId, branch)
             .then(function (r) { return r.json(); })
             .then(function (data) {
+                if (branch !== currentBranch) return;
                 if (data.error) {
                     if (window.TaxonomyOperationResult) {
                         window.TaxonomyOperationResult.showError(t('versions.revert.failed'), data.error);
@@ -429,6 +442,7 @@ window.TaxonomyVersions = (function () {
                 }
             })
             .catch(function (err) {
+                if (ignoredError(err) || branch !== currentBranch) return;
                 if (window.TaxonomyOperationResult) {
                     window.TaxonomyOperationResult.showError(t('versions.revert.failed'), err.message);
                 } else {
@@ -449,6 +463,7 @@ window.TaxonomyVersions = (function () {
     // ── Undo ────────────────────────────────────────────────────────
 
     function undoLast() {
+        var branch = currentBranch;
         var branchName = TaxonomyI18n.formatBranch(currentBranch);
         showConfirmModal(
             t('versions.undo.confirm.title'),
@@ -457,9 +472,10 @@ window.TaxonomyVersions = (function () {
             t('versions.undo.confirm.btn'),
             'btn-warning',
             function () {
-                fetch('/api/dsl/undo?branch=' + encodeURIComponent(currentBranch), { method: 'POST' })
+                window.TaxonomyVersioningApi.undo(branch)
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
+                        if (branch !== currentBranch) return;
                         if (data.error) {
                             if (window.TaxonomyOperationResult) {
                                 window.TaxonomyOperationResult.showError(t('versions.undo.failed'), data.error);
@@ -472,6 +488,7 @@ window.TaxonomyVersions = (function () {
                         }
                     })
                     .catch(function (err) {
+                        if (ignoredError(err) || branch !== currentBranch) return;
                         if (window.TaxonomyOperationResult) {
                             window.TaxonomyOperationResult.showError(t('versions.undo.failed'), err.message);
                         } else {
@@ -510,20 +527,23 @@ window.TaxonomyVersions = (function () {
         }
 
         var message = title + (desc ? '\n\n' + desc : '');
+        var branch = currentBranch;
+        var titleInput = titleEl && titleEl.value, descriptionInput = descEl && descEl.value;
+        function ownsInputs() {
+            return branch === currentBranch && (!titleEl || titleEl.value === titleInput)
+                && (!descEl || descEl.value === descriptionInput);
+        }
 
-        fetch('/api/dsl/git/head?branch=' + encodeURIComponent(currentBranch))
+        window.TaxonomyVersioningApi.head(branch)
             .then(function (r) { return r.json(); })
             .then(function (data) {
+                if (branch !== currentBranch) throw Object.assign(new Error('Obsolete branch selection'), {code:'ABORTED'});
                 if (!data.dslText) throw new Error(t('versions.save.error.no.content'));
-                return fetch('/api/dsl/commit?branch=' + encodeURIComponent(currentBranch) +
-                    '&author=' + encodeURIComponent(DEFAULT_AUTHOR) + '&message=' + encodeURIComponent(message), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: data.dslText
-                });
+                return window.TaxonomyVersioningApi.commit(branch, DEFAULT_AUTHOR, message, data.dslText);
             })
             .then(function (r) { return r.json(); })
             .then(function (result) {
+                if (!ownsInputs()) return;
                 if (result.error || result.valid === false) {
                     if (statusEl) {
                         statusEl.textContent = t('versions.save.failed', (result.errors || [result.error]).join(', '));
@@ -541,6 +561,7 @@ window.TaxonomyVersions = (function () {
                 }
             })
             .catch(function (err) {
+                if (ignoredError(err) || !ownsInputs()) return;
                 if (statusEl) {
                     statusEl.textContent = t('versions.save.failed', err.message);
                     statusEl.className = 'ms-2 small text-danger';

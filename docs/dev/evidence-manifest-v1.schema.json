@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/evidence-manifest-v1.schema.json",
+  "title": "Taxonomy source/artifact evidence manifest v1",
+  "type": "object",
+  "required": ["schemaVersion", "profile", "sourceCommit", "sourceTree", "publication", "artifacts", "gates"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "profile": {"enum": ["quality", "release"]},
+    "sourceCommit": {"$ref": "#/$defs/gitId"},
+    "sourceTree": {"$ref": "#/$defs/gitId"},
+    "verificationCommit": {"$ref": "#/$defs/gitId"},
+    "verificationTree": {"$ref": "#/$defs/gitId"},
+    "publication": {"type": "boolean"},
+    "artifacts": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["kind", "path", "sourceCommit", "sha256"],
+        "properties": {
+          "kind": {"enum": ["quality", "junit", "coverage", "sbom", "vex", "image", "image-onnx", "security", "ui", "database", "distribution", "helm", "deployment"]},
+          "path": {"type": "string", "minLength": 1},
+          "sourceCommit": {"$ref": "#/$defs/gitId"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["name", "sourceCommit", "outcome"],
+        "properties": {
+          "name": {"enum": ["ci", "database-postgresql", "database-sqlserver", "database-oracle", "codeql", "security", "ui", "packaged-plugins"]},
+          "sourceCommit": {"$ref": "#/$defs/gitId"},
+          "outcome": {"const": "success"}
+        }
+      }
+    }
+  },
+  "$defs": {"gitId": {"type": "string", "pattern": "^[0-9a-f]{40}$"}}
+}

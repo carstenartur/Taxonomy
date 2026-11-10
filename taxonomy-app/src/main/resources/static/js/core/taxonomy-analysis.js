@@ -7,6 +7,13 @@
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     var escapeHtml = TaxonomyUtils.escapeHtml;
+    var panelRequests = Object.create(null);
+    function beginPanelRequest(panelId) {
+        var sequence = (panelRequests[panelId] || 0) + 1;
+        panelRequests[panelId] = sequence;
+        var context = window.TaxonomyApiClient.captureContext();
+        return function () { return panelRequests[panelId] === sequence && context(); };
+    }
 
     // Layer label lookup for human-readable display of 2-letter taxonomy roots
     var LAYER_LABELS = {
@@ -90,24 +97,17 @@
         var panel = document.getElementById('gapAnalysisPanel');
         if (panel) panel.open = true;
 
-        fetch('/api/gap/analyze', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                scores: getCurrentScores(),
-                businessText: getBusinessText(),
-                minScore: 50
-            })
-        })
-        .then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
+        var isCurrent = beginPanelRequest('gapAnalysisContent');
+        window.AnalysisApi.analyzeGap({
+            scores: getCurrentScores(),
+            businessText: getBusinessText(),
+            minScore: 50
         })
         .then(function (data) {
-            renderGapAnalysis(data);
+            if (isCurrent()) renderGapAnalysis(data);
         })
         .catch(function (err) {
-            showPanelError('gapAnalysisContent', t('analyze.gap.failed', err.message));
+            if (isCurrent() && err.code !== 'ABORTED') showPanelError('gapAnalysisContent', t('analyze.gap.failed', err.message));
         });
     }
 
@@ -206,23 +206,16 @@
         var panel = document.getElementById('patternDetectionPanel');
         if (panel) panel.open = true;
 
-        fetch('/api/patterns/detect', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                scores: getCurrentScores(),
-                minScore: 50
-            })
-        })
-        .then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
+        var isCurrent = beginPanelRequest('patternDetectionContent');
+        window.AnalysisApi.detectPatterns({
+            scores: getCurrentScores(),
+            minScore: 50
         })
         .then(function (data) {
-            renderPatternDetection(data);
+            if (isCurrent()) renderPatternDetection(data);
         })
         .catch(function (err) {
-            showPanelError('patternDetectionContent', t('analyze.patterns.failed', err.message));
+            if (isCurrent() && err.code !== 'ABORTED') showPanelError('patternDetectionContent', t('analyze.patterns.failed', err.message));
         });
     }
 
@@ -321,24 +314,17 @@
         var panel = document.getElementById('recommendationPanel');
         if (panel) panel.open = true;
 
-        fetch('/api/recommend', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                scores: getCurrentScores(),
-                businessText: getBusinessText(),
-                minScore: 50
-            })
-        })
-        .then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
+        var isCurrent = beginPanelRequest('recommendationContent');
+        window.AnalysisApi.recommend({
+            scores: getCurrentScores(),
+            businessText: getBusinessText(),
+            minScore: 50
         })
         .then(function (data) {
-            renderRecommendation(data);
+            if (isCurrent()) renderRecommendation(data);
         })
         .catch(function (err) {
-            showPanelError('recommendationContent', t('analyze.recommendation.failed', err.message));
+            if (isCurrent() && err.code !== 'ABORTED') showPanelError('recommendationContent', t('analyze.recommendation.failed', err.message));
         });
     }
 
@@ -450,16 +436,13 @@
                 t('analyze.graph.enriched.analyzing') + '</div>';
         }
 
-        fetch('/api/graph/node/' + encodeURIComponent(code) + '/enriched-failure-impact?maxHops=' + maxHops)
-            .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
+        var isCurrent = beginPanelRequest('graphResultsContent');
+        window.AnalysisApi.enrichedFailureImpact(code, maxHops)
             .then(function (data) {
-                if (content && graph.isCurrentResult(sequence)) content.innerHTML = renderEnrichedFailureImpact(data);
+                if (content && isCurrent() && graph.isCurrentResult(sequence)) content.innerHTML = renderEnrichedFailureImpact(data);
             })
             .catch(function (err) {
-                if (content && graph.isCurrentResult(sequence)) {
+                if (content && isCurrent() && graph.isCurrentResult(sequence)) {
                     content.innerHTML = '<div class="alert alert-warning py-1 px-2 small mb-0">' + t('analyze.graph.enriched.failed', escapeHtml(err.message)) + '</div>';
                 }
             });
@@ -557,16 +540,10 @@
             statusEl.style.display = '';
         }
 
-        fetch('/api/import/archimate', {
-            method: 'POST',
-            body: formData
-        })
-        .then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-        })
+        var isCurrent = beginPanelRequest('archiMateImportStatus');
+        window.ImportApi.importArchiMate(formData)
         .then(function (data) {
-            if (statusEl) {
+            if (statusEl && isCurrent()) {
                 var html = '<div class="alert alert-success py-1 px-2 small mb-0">';
                 html += t('analyze.import.success', (data.elementsImported || 0), (data.relationsImported || 0));
                 if (data.notes && data.notes.length > 0) {
@@ -577,7 +554,7 @@
             }
         })
         .catch(function (err) {
-            if (statusEl) {
+            if (statusEl && isCurrent()) {
                 statusEl.innerHTML = '<div class="alert alert-danger py-1 px-2 small mb-0">' + t('analyze.import.failed', escapeHtml(err.message)) + '</div>';
             }
         });
@@ -669,20 +646,20 @@
 
     async function continueCopilotFlow() {
         var results = {};
+        var isCurrent = beginPanelRequest('copilotContent');
         var recovery = window.TaxonomyAnalysisRecovery;
         async function step(key, label, url, body, render, panelId) {
             showCopilotStep(label);
             var execute = async function () {
-                var response = await fetch(url, { method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                var result = await response.json();
+                var method = {gap: 'analyzeGap', patterns: 'detectPatterns', recommendation: 'recommend'}[key];
+                var result = await window.AnalysisApi[method](body);
                 if (!result || typeof result !== 'object' || Array.isArray(result)) {
                     throw new Error('Invalid Copilot response');
                 }
                 return result;
             };
             var data = recovery ? await recovery.stage(key, execute, label) : await execute();
+            if (!isCurrent()) { var stale = new Error('Analysis context changed'); stale.code = 'ABORTED'; throw stale; }
             render(data);
             var panel = document.getElementById(panelId); if (panel) panel.open = true;
             return data;
@@ -700,9 +677,9 @@
             renderCopilotSummary(results);
             return results;
         } catch (err) {
-            showCopilotStatus('danger', t('analyze.copilot.failed', err.message));
+            if (isCurrent() && err.code !== 'ABORTED') showCopilotStatus('danger', t('analyze.copilot.failed', err.message));
             if (recovery && recovery.isManaged()) throw err;
-        } finally { resetCopilotBtn(); }
+        } finally { if (isCurrent()) resetCopilotBtn(); }
     }
 
     function renderPartialCopilot(message) {

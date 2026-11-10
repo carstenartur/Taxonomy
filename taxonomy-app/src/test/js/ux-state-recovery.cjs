@@ -1,4 +1,6 @@
-const {test} = require('node:test');
+const canonicalFixture = require('../../../../.github/scripts/canonical-api-fixture.cjs');
+const {test, afterEach} = require('node:test');
+afterEach(() => canonicalFixture.dispose());
 const assert = require('node:assert/strict');
 const {readFileSync} = require('node:fs');
 const path = require('node:path');
@@ -58,7 +60,7 @@ function searchFixture() {
     const highlights = [{classList: {remove(c) {this.removed = c;}}}];
     d.document.querySelectorAll = () => highlights;
     const window = {};
-    vm.runInNewContext(source('shared/taxonomy-search.js'), {window, document: d.document, AbortController,
+    vm.runInNewContext(source('shared/taxonomy-search.js'), canonicalFixture.install({window, document: d.document, AbortController,
         TaxonomyI18n: {t: k => k}, TaxonomyUtils: {escapeHtml: String},
         requestAnimationFrame: callback => callback(),
         CustomEvent: class {constructor(type, init) {this.type = type; this.detail = init.detail;}},
@@ -68,7 +70,7 @@ function searchFixture() {
             }
             options = init;
             return pending.promise;
-        }});
+        }}, ['api/search-api.js']));
     return {...d, window, pending, highlights, signal: () => options?.signal};
 }
 
@@ -336,10 +338,11 @@ test('German decision download validation explains invalid response, snapshot an
 test('portfolio report adapter forwards cancellation to fetch', async () => {
     let seen;
     const window = {location: {pathname: '/'}}, controller = new AbortController();
-    vm.runInNewContext(source('api/portfolio-api.js'), {window, URLSearchParams,
-        document: {querySelector: () => null}, fetch: async (url, init) => {seen = init; return {ok: true};}});
+    vm.runInNewContext(source('api/portfolio-api.js'), canonicalFixture.install({window, URLSearchParams,
+        document: {querySelector: () => null}, fetch: async (url, init) => {seen = init; return {ok: true};}}, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']));
     await window.TaxonomyPortfolioApi.downloadDecisionReport(1, 'snap', 'html', 'de', {}, {signal: controller.signal});
-    assert.equal(seen.signal, controller.signal);
+    controller.abort();
+    assert.equal(seen.signal.aborted, true, 'caller cancellation reaches the composed transport signal');
 });
 
 test('new requirement writes capture AI language for automatic analysis without leaking it across origins', async () => {
@@ -380,7 +383,7 @@ test('live-analysis export cancellation reaches the real API client transport', 
         setTimeout(fn) {timers.add(fn); return fn;}, clearTimeout: timer => timers.delete(timer),
         S: {currentScores: {CP: 80}, taxonomyData: [{code: 'CP', name: 'Capabilities'}],
             lastAnalysisProvider: 'MOCK', lastAnalysisStatus: 'SUCCESS'}});
-    vm.runInContext(source('api/taxonomy-api-client.js'), context);
+    canonicalFixture.install(context, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']);
     installReportCapabilities(window);
     vm.runInContext(source('shared/decision-export-dialog.js'), context);
     const browse = source('core/taxonomy-browse.js');
@@ -439,7 +442,7 @@ async function liveReportBodyFixture() {
         setTimeout(fn) {timers.add(fn); return fn;}, clearTimeout: timer => timers.delete(timer),
         S: {currentScores: {CP: 80}, taxonomyData: [{code: 'CP', name: 'Capabilities'}],
             lastAnalysisProvider: 'MOCK', lastAnalysisStatus: 'SUCCESS'}});
-    vm.runInContext(source('api/taxonomy-api-client.js'), context);
+    canonicalFixture.install(context, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']);
     installReportCapabilities(window);
     vm.runInContext(source('shared/decision-export-dialog.js'), context);
     const browse = source('core/taxonomy-browse.js');
@@ -485,8 +488,9 @@ async function savedRequirementExportFixture(options = {}) {
     class FixtureURL extends URL {}
     Object.assign(FixtureURL, f.urls);
     const context = vm.createContext({window, document: f.document, URL: FixtureURL, URLSearchParams,
-        fetch, AbortController, DOMException, Headers, setTimeout: fn => fn(),
+        fetch, AbortController, DOMException, Headers, setTimeout: (fn, delay) => delay > 0 ? 1 : fn(), clearTimeout() {},
         CustomEvent: class {constructor(type, init) {this.type = type; this.detail = init.detail;}}});
+    canonicalFixture.install(context);
     vm.runInContext(source('api/portfolio-api.js'), context);
     installReportCapabilities(window);
     vm.runInContext(source('shared/decision-export-dialog.js'), context);
@@ -587,6 +591,10 @@ function impactFixture() {
         TaxonomyUtils: {escapeHtml: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;')},
         AnalysisApi: {graphUpstream: (code, hops) => request('upstream', {code, hops}), graphDownstream: (code, hops) => request('downstream', {code, hops}),
             graphFailureImpact: (code, hops) => request('failure', {code, hops})}, fetch: request});
+    const graphApi = context.AnalysisApi;
+    canonicalFixture.install(context, ['api/analysis-api.js', 'api/relations-api.js']);
+    Object.assign(window.AnalysisApi, graphApi);
+    context.AnalysisApi = window.AnalysisApi;
     for (const name of ['shared/taxonomy-graph.js', 'relations/taxonomy-relations.js', 'core/taxonomy-analysis.js']) {
         vm.runInContext(source(name), context);
     }
@@ -727,7 +735,8 @@ function projectionFixture() {
         Headers, AbortController, DOMException, CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options?.detail;}},
         TaxonomyI18n: {t: (key, ...args) => [key, ...args].join(' ')}, TaxonomyUtils: {escapeHtml: String},
         fetch: (...args) => window.fetch(...args), setTimeout(fn) {timers.add(fn); return fn;}, clearTimeout: timer => timers.delete(timer)});
-    for (const name of ['api/taxonomy-api-client.js', 'core/taxonomy-analysis-session-api-routing.js',
+    canonicalFixture.install(context);
+    for (const name of ['core/taxonomy-analysis-session-api-routing.js',
         'api/relations-api.js', 'relations/taxonomy-relations.js']) vm.runInContext(source(name), context);
     return {...f, window, requests, table, timers, text: () => {
         function collect(node) {return node.textContent + node.innerHTML + node.children.map(collect).join(' ');}

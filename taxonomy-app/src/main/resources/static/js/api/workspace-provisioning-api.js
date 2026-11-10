@@ -1,8 +1,8 @@
 /**
  * Raw-response API boundary for workspace provisioning and branch projection.
  *
- * The canonical fetch wrapper installed by taxonomy-api-client.js supplies
- * reverse-proxy base-path and CSRF handling. This client owns transport while
+ * The canonical named client supplies reverse-proxy base-path, CSRF,
+ * authentication, source routing and guarded response-body handling while
  * the workspace UI owns only modal and lifecycle presentation.
  */
 window.TaxonomyWorkspaceProvisioningApi = (function () {
@@ -36,7 +36,9 @@ window.TaxonomyWorkspaceProvisioningApi = (function () {
     }
 
     function requestJson(url, options) {
-        return fetch(url, options || {})
+        return window.TaxonomyApiClient.request(url, options || {}, {
+            retries: 0, acceptedStatuses: [400, 404, 409, 412, 422, 423]
+        })
             .then(function (response) {
                 return response.text().then(function (text) {
                     var body = {};

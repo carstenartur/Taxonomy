@@ -118,10 +118,11 @@ test('a failed start is reported and does not navigate', async () => {
 
 test('demo requirement pages show a persistent banner under the base path', async () => {
     const h = harness({pathname: '/taxonomy/projects/7/requirements/9', basePath: '/taxonomy',
-        route: {projectId: 7, requirementId: 9}, responses: {'GET /api/product-demo/runs?projectId=7': [demoRun]}});
+        route: {projectId: 7, requirementId: 9}, responses: {'GET /taxonomy/api/product-demo/runs?projectId=7': [demoRun]}});
     await flush(); await flush();
     const banner = h.main.children[0];
     assert.ok(banner, 'banner must be rendered');
+    assert.equal(h.requests[0].url, '/taxonomy/api/product-demo/runs?projectId=7', 'The mounted transport resolves the application prefix exactly once');
     assert.equal(banner.dataset.demoRun, 'run-1');
     const content = banner.text();
     assert.match(content, /DEMODUS/);

@@ -348,45 +348,21 @@
         document.getElementById('snapshotDetail').addEventListener('click', onSnapshotDetailAction);
     }
 
-    async function api(path, options) {
-        const config = Object.assign({ method: 'GET', headers: {} }, options || {});
-        const method = String(config.method || 'GET').toUpperCase();
-        config.headers.Accept = 'application/json';
-        if (config.body !== undefined && !(config.body instanceof FormData)) {
-            config.headers['Content-Type'] = 'application/json';
-            if (typeof config.body !== 'string') config.body = JSON.stringify(config.body);
-        }
-        if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-            const token = document.querySelector('meta[name="_csrf"]')?.content;
-            const header = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
-            if (token) config.headers[header] = token;
-        }
-
-        const response = await fetch(path, config);
-        if (response.status === 204) return null;
-        const contentType = response.headers.get('content-type') || '';
-        const payload = contentType.includes('json')
-            ? await response.json().catch(function () { return null; })
-            : await response.text().catch(function () { return ''; });
-        if (!response.ok) {
-            const detail = payload && typeof payload === 'object'
-                ? (payload.detail || payload.message || payload.title)
-                : payload;
-            const error = new Error(detail || (t('error.generic') + ' HTTP ' + response.status));
-            error.status = response.status;
-            throw error;
-        }
-        return payload;
-    }
-
     async function withBusy(operation) {
+        let context = window.TaxonomyApiClient.captureContext();
+        let projectId = state.selectedProjectId;
+        const isCurrent = () => context() && state.selectedProjectId === projectId;
         state.busyCount += 1;
         updateBusyState();
         clearMessage('portfolioError');
         try {
-            return await operation();
+            const pending = operation(isCurrent);
+            // Selection handlers change their target synchronously before issuing reads.
+            projectId = state.selectedProjectId;
+            context = window.TaxonomyApiClient.captureContext();
+            return await pending;
         } catch (error) {
-            showError(error);
+            if (isCurrent() && error.code !== 'ABORTED') showError(error);
             throw error;
         } finally {
             state.busyCount = Math.max(0, state.busyCount - 1);
@@ -423,9 +399,9 @@
     }
 
     async function loadProjects(preferredProjectId) {
-        await withBusy(async function () {
+        await withBusy(async function (isCurrent) {
             const [projects] = await Promise.all([
-                api('/api/projects'),
+                window.TaxonomyPortfolioApi.listProjects(),
                 window.TaxonomyI18n.ready()
             ]);
             state.projects = projects;
@@ -512,6 +488,7 @@
         }));
         renderProjectList();
         await refreshSelectedProject(false);
+        if (state.selectedProjectId !== projectId) return;
         document.getElementById('noProjectSelected').classList.add('d-none');
         document.getElementById('projectWorkspace').classList.remove('d-none');
         document.dispatchEvent(new CustomEvent('taxonomy:portfolio-project-selected', {
@@ -533,14 +510,16 @@
         requireProject();
         const projectId = state.selectedProjectId;
         const results = await Promise.all([
-            api('/api/projects/' + projectId + '/portfolio'),
-            api('/api/products')
+            window.TaxonomyPortfolioApi.getProjectPortfolio(projectId),
+            window.TaxonomyPortfolioApi.listProducts()
         ]);
         if (state.selectedProjectId !== projectId) return;
         state.portfolio = results[0];
         state.products = results[1] || [];
         renderPortfolio();
-        state.projects = await api('/api/projects');
+        const projects = await window.TaxonomyPortfolioApi.listProjects();
+        if (state.selectedProjectId !== projectId) return;
+        state.projects = projects;
         renderProjectList();
         if (showSuccess !== false) showInfo(t('status.loaded'));
     }
@@ -670,28 +649,23 @@
         if (!analyze && !snapshots && !confirm) return;
         const requirementId = Number((analyze || snapshots || confirm).dataset.requirementId);
         if (analyze) {
-            await withBusy(async function () {
-                const job = await api('/api/projects/' + state.selectedProjectId
-                    + '/requirements/' + requirementId + '/analyses', {
-                    method: 'POST',
-                    body: {
+            await withBusy(async function (isCurrent) {
+                const job = await window.TaxonomyPortfolioApi.analyzeRequirementJob(state.selectedProjectId, requirementId, {
                         provider: null,
                         analysisLanguage: window.TaxonomyContentLanguage?.analysis(),
                         maxArchitectureNodes: 25,
                         idempotencyKey: 'ui:req:' + requirementId + ':' + Date.now()
-                    }
-                });
+                    });
+                if (!isCurrent()) return;
                 showAnalysisResult(job);
                 await refreshSelectedProject(false);
             }).catch(function () {});
         } else if (snapshots) {
             await withBusy(function () { return loadSnapshots(requirementId); }).catch(function () {});
         } else {
-            await withBusy(async function () {
-                await api('/api/projects/' + state.selectedProjectId + '/requirements/' + requirementId, {
-                    method: 'PATCH',
-                    body: { reviewStatus: 'CONFIRMED' }
-                });
+            await withBusy(async function (isCurrent) {
+                await window.TaxonomyPortfolioApi.updateRequirement(state.selectedProjectId, requirementId, { reviewStatus: 'CONFIRMED' });
+                if (!isCurrent()) return;
                 showInfo(t('status.saved'));
                 await refreshSelectedProject(false);
             }).catch(function () {});
@@ -702,17 +676,15 @@
         requireProject();
         const requirementIds = (state.portfolio.requirements || []).map(function (requirement) { return requirement.id; });
         if (requirementIds.length === 0) throw new Error(t('error.select.requirement'));
-        await withBusy(async function () {
-            const job = await api('/api/projects/' + state.selectedProjectId + '/analyses', {
-                method: 'POST',
-                body: {
+        await withBusy(async function (isCurrent) {
+            const job = await window.TaxonomyPortfolioApi.analyzeProject(state.selectedProjectId, {
                     requirementIds: requirementIds,
                     analysisLanguage: window.TaxonomyContentLanguage?.analysis(),
                     provider: null,
                     maxArchitectureNodes: 25,
                     idempotencyKey: 'ui:project:' + state.selectedProjectId + ':' + Date.now()
-                }
-            });
+                });
+            if (!isCurrent()) return;
             showAnalysisResult(job);
             await refreshSelectedProject(false);
         }).catch(function () {});
@@ -728,11 +700,9 @@
 
     async function proposeSolutions() {
         requireProject();
-        await withBusy(async function () {
-            const solutions = await api('/api/projects/' + state.selectedProjectId + '/solutions/propose', {
-                method: 'POST',
-                body: {}
-            });
+        await withBusy(async function (isCurrent) {
+            const solutions = await window.TaxonomyPortfolioApi.proposeSolutions(state.selectedProjectId, {});
+            if (!isCurrent()) return;
             showInfo(t('status.solutions.proposed', { count: (solutions || []).length }));
             await refreshSelectedProject(false);
         }).catch(function () {});
@@ -740,11 +710,9 @@
 
     async function detectConflicts() {
         requireProject();
-        await withBusy(async function () {
-            const conflicts = await api('/api/projects/' + state.selectedProjectId + '/conflicts/detect', {
-                method: 'POST',
-                body: {}
-            });
+        await withBusy(async function (isCurrent) {
+            const conflicts = await window.TaxonomyPortfolioApi.detectConflicts(state.selectedProjectId, {});
+            if (!isCurrent()) return;
             showInfo(t('status.conflicts.detected', { count: (conflicts || []).length }));
             await refreshSelectedProject(false);
         }).catch(function () {});
@@ -753,10 +721,11 @@
     async function createProject(event) {
         event.preventDefault();
         const form = event.currentTarget;
-        await withBusy(async function () {
+        await withBusy(async function (isCurrent) {
             const payload = formDataObject(form);
             payload.status = 'PLANNING';
-            const project = await api('/api/projects', { method: 'POST', body: payload });
+            const project = await window.TaxonomyPortfolioApi.createProject(payload);
+            if (!isCurrent()) return;
             window.TaxonomyUtils.hideModal(document.getElementById('projectModal'));
             form.reset();
             showInfo(t('status.project.created'));
@@ -768,6 +737,8 @@
         event.preventDefault();
         if (state.requirementCreateInFlight) return;
         state.requirementCreateInFlight = true;
+        const current = window.TaxonomyApiClient.captureContext();
+        const projectId = state.selectedProjectId;
         const form = event.currentTarget;
         try {
             requireProject();
@@ -779,9 +750,10 @@
             payload.reviewStatus = 'PROPOSED';
             payload.changeReason = 'Created in the project portfolio';
             const command = await window.TaxonomyRequirementIntake.prepare(form, payload, state.selectedProjectId);
-            if (!command) return;
-            await withBusy(async function () {
+            if (!command || !current() || state.selectedProjectId !== projectId) return;
+            await withBusy(async function (isCurrent) {
                 const saved = await window.TaxonomyArchitectureLifecycle.saveRequirement(command);
+                if (!isCurrent()) return;
                 if (['CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(saved.publication?.state)) {
                     window.TaxonomyArchitectureLifecycle.showPublicationRecovery(form,saved); return;
                 }
@@ -796,7 +768,7 @@
                 await refreshSelectedProject(false);
             }).catch(function () {});
         } catch (error) {
-            showError(error);
+            if (current() && state.selectedProjectId === projectId && error.code !== 'ABORTED') showError(error);
         } finally {
             state.requirementCreateInFlight = false;
         }
@@ -806,21 +778,20 @@
         event.preventDefault();
         requireProject();
         const form = event.currentTarget;
-        await withBusy(async function () {
+        await withBusy(async function (isCurrent) {
             const payload = formDataObject(form);
             payload.lifecycleStatus = 'PLANNED';
             payload.maturityLevel = 0;
             payload.reviewStatus = 'PROPOSED';
-            const solution = await api('/api/solutions', { method: 'POST', body: payload });
-            await api('/api/projects/' + state.selectedProjectId + '/solutions', {
-                method: 'POST',
-                body: {
+            const solution = await window.TaxonomyPortfolioApi.createSolution(payload);
+            if (!isCurrent()) return;
+            await window.TaxonomyPortfolioApi.addProjectSolution(state.selectedProjectId, {
                     solutionId: solution.id,
                     actionStatus: 'UNDECIDED',
                     reviewStatus: 'PROPOSED',
                     status: 'PROPOSED'
-                }
-            });
+                });
+            if (!isCurrent()) return;
             window.TaxonomyUtils.hideModal(document.getElementById('solutionModal'));
             form.reset();
             showInfo(t('status.solution.created'));
@@ -831,11 +802,12 @@
     async function createProduct(event) {
         event.preventDefault();
         const form = event.currentTarget;
-        await withBusy(async function () {
+        await withBusy(async function (isCurrent) {
             const payload = formDataObject(form);
             payload.productStatus = 'CANDIDATE';
             payload.verifiedAt = localDateTimeToInstant(payload.verifiedAt);
-            const product = await api('/api/products', { method: 'POST', body: payload });
+            const product = await window.TaxonomyPortfolioApi.createProduct(payload);
+            if (!isCurrent()) return;
             window.TaxonomyUtils.hideModal(document.getElementById('productModal'));
             form.reset();
             setDefaultVerifiedAt();
@@ -1053,62 +1025,51 @@
         const addCandidate = event.target.closest('.add-product-candidate');
         const reviewCandidate = event.target.closest('.product-candidate-review');
         if (saveAction) {
-            await withBusy(async function () {
+            await withBusy(async function (isCurrent) {
                 const projectSolutionId = Number(saveAction.dataset.projectSolutionId);
                 const select = document.querySelector('.solution-action-select[data-project-solution-id="'
                     + projectSolutionId + '"]');
-                await api('/api/projects/' + state.selectedProjectId + '/solutions/' + projectSolutionId, {
-                    method: 'PATCH',
-                    body: { actionStatus: select.value, reviewStatus: 'CONFIRMED', status: 'DECIDED' }
-                });
+                await window.TaxonomyPortfolioApi.updateProjectSolution(state.selectedProjectId, projectSolutionId, { actionStatus: select.value, reviewStatus: 'CONFIRMED', status: 'DECIDED' });
+                if (!isCurrent()) return;
                 showInfo(t('status.saved'));
                 await refreshSelectedProject(false);
             }).catch(function () {});
         } else if (addCoverage) {
             event.preventDefault();
-            await withBusy(async function () {
+            await withBusy(async function (isCurrent) {
                 const form = addCoverage;
-                await api('/api/projects/' + state.selectedProjectId + '/solutions/'
-                    + form.dataset.projectSolutionId + '/taxonomy-coverage', {
-                    method: 'POST',
-                    body: {
+                await window.TaxonomyPortfolioApi.addSolutionCoverage(state.selectedProjectId, form.dataset.projectSolutionId, {
                         nodeCode: form.querySelector('.solution-node-code').value,
                         coveragePercent: Number(form.querySelector('.solution-coverage-percent').value),
                         reviewStatus: 'PROPOSED',
                         evidence: 'Reviewed in the project portfolio workspace'
-                    }
-                });
+                    });
+                if (!isCurrent()) return;
                 showInfo(t('status.saved'));
                 await refreshSelectedProject(false);
             }).catch(function () {});
         } else if (addCandidate) {
             event.preventDefault();
-            await withBusy(async function () {
+            await withBusy(async function (isCurrent) {
                 const form = addCandidate;
-                await api('/api/projects/' + state.selectedProjectId + '/solutions/'
-                    + form.dataset.projectSolutionId + '/products', {
-                    method: 'POST',
-                    body: {
+                await window.TaxonomyPortfolioApi.addProductCandidate(state.selectedProjectId, form.dataset.projectSolutionId, {
                         productId: Number(form.querySelector('.candidate-product-id').value),
                         coveragePercent: Number(form.querySelector('.candidate-coverage-percent').value),
                         reviewStatus: 'PROPOSED',
                         selectionStatus: 'CANDIDATE',
                         suitabilityRationale: 'Recorded in the project portfolio workspace'
-                    }
-                });
+                    });
+                if (!isCurrent()) return;
                 showInfo(t('status.saved'));
                 await refreshSelectedProject(false);
             }).catch(function () {});
         } else if (reviewCandidate) {
-            await withBusy(async function () {
-                await api('/api/projects/' + state.selectedProjectId + '/product-candidates/'
-                    + reviewCandidate.dataset.candidateId, {
-                    method: 'PATCH',
-                    body: {
+            await withBusy(async function (isCurrent) {
+                await window.TaxonomyPortfolioApi.updateProductCandidate(state.selectedProjectId, reviewCandidate.dataset.candidateId, {
                         reviewStatus: reviewCandidate.dataset.status,
                         selectionStatus: reviewCandidate.dataset.status === 'CONFIRMED' ? 'SHORTLISTED' : 'REJECTED'
-                    }
-                });
+                    });
+                if (!isCurrent()) return;
                 showInfo(t('status.saved'));
                 await refreshSelectedProject(false);
             }).catch(function () {});
@@ -1119,16 +1080,14 @@
         const addCoverage = event.target.closest('.add-product-coverage');
         if (!addCoverage) return;
         event.preventDefault();
-        await withBusy(async function () {
-            await api('/api/products/' + addCoverage.dataset.productId + '/taxonomy-coverage', {
-                method: 'POST',
-                body: {
+        await withBusy(async function (isCurrent) {
+            await window.TaxonomyPortfolioApi.addProductCoverage(addCoverage.dataset.productId, {
                     nodeCode: addCoverage.querySelector('.product-node-code').value,
                     coveragePercent: Number(addCoverage.querySelector('.product-coverage-percent').value),
                     reviewStatus: 'PROPOSED',
                     evidence: 'Reviewed in the project portfolio workspace'
-                }
-            });
+                });
+            if (!isCurrent()) return;
             showInfo(t('status.saved'));
             await refreshSelectedProject(false);
         }).catch(function () {});
@@ -1143,11 +1102,9 @@
             resolutionNote = window.prompt(t('confirm.resolve.note'));
             if (resolutionNote === null) return;
         }
-        await withBusy(async function () {
-            await api('/api/projects/' + state.selectedProjectId + '/conflicts/' + button.dataset.conflictId, {
-                method: 'PATCH',
-                body: { status: status, resolutionNote: resolutionNote }
-            });
+        await withBusy(async function (isCurrent) {
+            await window.TaxonomyPortfolioApi.updateConflict(state.selectedProjectId, button.dataset.conflictId, { status: status, resolutionNote: resolutionNote });
+            if (!isCurrent()) return;
             showInfo(t('status.saved'));
             await refreshSelectedProject(false);
         }).catch(function () {});
@@ -1176,8 +1133,7 @@
         state.selectedSnapshotId = null; publishSelection(null);
         document.getElementById('snapshotDetail').replaceChildren();
         const selectedProject = state.selectedProjectId;
-        const loaded = await api('/api/projects/' + selectedProject + '/requirements/'
-            + requirementId + '/analyses');
+        const loaded = await window.TaxonomyPortfolioApi.listRequirementAnalyses(selectedProject, requirementId);
         if (state.selectedProjectId !== selectedProject || state.selectedRequirementId !== requirementId) return;
         state.snapshots = loaded;
         renderSnapshotList();
@@ -1218,8 +1174,7 @@
         publishSelection(null);
         const selectedProject = state.selectedProjectId, selectedRequirement = state.selectedRequirementId;
         renderSnapshotList();
-        const snapshot = await api('/api/projects/' + state.selectedProjectId + '/requirements/'
-            + state.selectedRequirementId + '/analyses/' + encodeURIComponent(snapshotId));
+        const snapshot = await window.TaxonomyPortfolioApi.getRequirementAnalysis(state.selectedProjectId, state.selectedRequirementId, snapshotId);
         if (state.selectedProjectId !== selectedProject || state.selectedRequirementId !== selectedRequirement || state.selectedSnapshotId !== snapshotId) return;
         publishSelection(snapshotSource(snapshot));
         const target = document.getElementById('snapshotDetail');
@@ -1268,18 +1223,14 @@
         const review = event.target.closest('.mapping-review');
         const compare = event.target.closest('.snapshot-compare');
         if (review) {
-            await withBusy(async function () {
-                await api('/api/projects/' + state.selectedProjectId + '/requirements/' + state.selectedRequirementId
-                    + '/analyses/' + encodeURIComponent(state.selectedSnapshotId) + '/elements/'
-                    + review.dataset.mappingId, {
-                    method: 'PATCH',
-                    body: {
+            await withBusy(async function (isCurrent) {
+                await window.TaxonomyPortfolioApi.updateSnapshotMapping(state.selectedProjectId, state.selectedRequirementId, state.selectedSnapshotId, review.dataset.mappingId, {
                         reviewStatus: review.dataset.status,
                         actionStatus: review.dataset.status === 'CONFIRMED' ? 'UNDECIDED' : null,
                         actionEvidence: review.dataset.status === 'CONFIRMED'
                             ? 'Confirmed in the project portfolio workspace' : null
-                    }
-                });
+                    });
+                if (!isCurrent()) return;
                 showInfo(t('status.saved'));
                 await showSnapshot(state.selectedSnapshotId);
                 await refreshSelectedProject(false);
@@ -1297,8 +1248,10 @@
             target.innerHTML = '<div class="alert alert-info">—</div>';
             return;
         }
-        const diff = await api('/api/projects/' + state.selectedProjectId + '/requirements/' + state.selectedRequirementId
-            + '/analyses/' + encodeURIComponent(state.selectedSnapshotId) + '/diff/' + encodeURIComponent(previous.id));
+        const isCurrent = window.TaxonomyApiClient.captureContext();
+        const selectedSnapshot = state.selectedSnapshotId;
+        const diff = await window.TaxonomyPortfolioApi.compareRequirementAnalyses(state.selectedProjectId, state.selectedRequirementId, state.selectedSnapshotId, previous.id);
+        if (!isCurrent() || state.selectedSnapshotId !== selectedSnapshot) return;
         target.innerHTML = '<div class="card"><div class="card-body"><h5 class="h6">Snapshot diff</h5><div class="row g-2">'
             + metricCard('Added elements', diff.addedElements.length)
             + metricCard('Removed elements', diff.removedElements.length)

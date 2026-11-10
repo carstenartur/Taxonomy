@@ -113,6 +113,7 @@
                 if (!terminal.has(latest.status)) startPolling(latest.operationId);
             }
         } catch (error) {
+            if (error?.code === 'ABORTED') return;
             showError(error);
         }
     }
@@ -249,6 +250,7 @@
             if (!terminal.has(operation.status)) startPolling(operation.operationId);
             else handleTerminal(operation);
         } catch (error) {
+            if (error?.code === 'ABORTED') return;
             showError(error);
             setControls(false);
         }
@@ -271,6 +273,7 @@
                 startPolling(activeOperationId);
             }
         } catch (error) {
+            if (error?.code === 'ABORTED') return;
             showError(error);
             if (activeOperation && !terminal.has(activeOperation.status)) startPolling(activeOperationId);
         }
@@ -281,6 +284,7 @@
                 || activeOperation?.status === 'CANCELLED' || resuming) return;
         stopPolling();
         resuming = true;
+        let superseded = false;
         setControls(true);
         clearError();
         hideReconnect();
@@ -291,6 +295,7 @@
             if (terminal.has(operation.status)) handleTerminal(operation);
             else startPolling(operation.operationId);
         } catch (error) {
+            if (error?.code === 'ABORTED') {superseded = true; return;}
             showError(error);
             // An uncertain response can already have resumed work. Only observe it.
             try {
@@ -300,12 +305,13 @@
                 if (terminal.has(current.status)) handleTerminal(current);
                 else startPolling(current.operationId);
             } catch (statusError) {
+                if (statusError?.code === 'ABORTED') {superseded = true; return;}
                 renderReconnect(statusError, ++consecutivePollFailures);
                 startPolling(activeOperationId);
             }
         } finally {
             resuming = false;
-            setControls(Boolean(activeOperation && !terminal.has(activeOperation.status)));
+            if (!superseded) setControls(Boolean(activeOperation && !terminal.has(activeOperation.status)));
         }
     }
 
@@ -342,6 +348,7 @@
                     return;
                 }
             } catch (error) {
+                if (error?.code === 'ABORTED') return;
                 if (generation !== pollingGeneration) return;
                 consecutivePollFailures += 1;
                 renderReconnect(error, consecutivePollFailures);
@@ -529,6 +536,7 @@
             if (terminal.has(operation.status)) handleTerminal(operation);
             else startPolling(operation.operationId);
         } catch (error) {
+            if (error?.code === 'ABORTED') return;
             showError(error);
             // A lost response may already have queued the cycle. Observe; never repeat the POST.
             try {
@@ -537,6 +545,7 @@
                 if (terminal.has(current.status)) handleTerminal(current);
                 else startPolling(current.operationId);
             } catch (statusError) {
+                if (statusError?.code === 'ABORTED') return;
                 renderReconnect(statusError, ++consecutivePollFailures);
                 startPolling(activeOperationId);
             }
@@ -684,6 +693,7 @@
     }
 
     async function runDecisionReportExport(button, format, options, signal, language) {
+        let superseded = false;
         const snapshotId = new URLSearchParams(window.location.search).get('snapshot');
         const surface = ensureExportSurface(button);
         const operationId = 'export-' + Date.now().toString(36) + '-' + format;
@@ -718,6 +728,7 @@
                 contentType: response.headers.get('Content-Type') || blob.type || ''
             });
         } catch (error) {
+            if (error?.code === 'ABORTED' && !signal?.aborted) {superseded = true; return;}
             if (signal?.aborted) {
                 renderExportState(surface, operationId, 'CANCELLED', t('exportCancelled'), '');
                 dispatchExport(operationId, format, 'CANCELLED');
@@ -727,7 +738,7 @@
             }
             if (options) throw error;
         } finally {
-            setExportControlsDisabled(false);
+            if (!superseded) setExportControlsDisabled(false);
         }
     }
 

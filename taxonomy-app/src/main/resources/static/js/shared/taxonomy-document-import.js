@@ -44,6 +44,14 @@
     // Provenance panel elements
     const provenanceContent = document.getElementById('provenanceContent');
 
+    let uploadSequence = 0;
+    function beginUpload() {
+        const sequence = ++uploadSequence;
+        const context = window.TaxonomyApiClient.captureContext();
+        return { ownsControls: () => sequence === uploadSequence,
+            isCurrent: () => sequence === uploadSequence && context() };
+    }
+
     let currentParseResult = null;
     let currentAiCandidates = null;
 
@@ -81,6 +89,7 @@
     // ── Rule-based extraction (existing) ───────────────────────────────────────
 
     async function uploadAndExtract(file) {
+        const operation = beginUpload();
         const formData = new FormData();
         formData.append('file', file);
         formData.append('title', titleInput.value || '');
@@ -92,14 +101,8 @@
         statusArea.innerHTML = '<span class="text-muted">⏳ ' + i18n('docimport.uploading', 'Uploading and parsing…') + '</span>';
 
         try {
-            var resp = await fetchWithCsrf('/api/documents/upload', formData);
-            if (!resp.ok) {
-                var err = await resp.json().catch(function() { return { error: t('docimport.upload.failed') }; });
-                statusArea.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(err.error || t('docimport.upload.failed')) + '</span>';
-                return;
-            }
-
-            var result = await resp.json();
+            var result = await window.ImportApi.uploadDocument(formData);
+            if (!operation.isCurrent()) return;
             currentParseResult = result;
 
             statusArea.innerHTML = '<span class="text-success">✅ ' +
@@ -109,16 +112,20 @@
 
             showCandidateReview(result);
         } catch (e) {
+            if (!operation.isCurrent() || e.code === 'ABORTED') return;
             statusArea.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(e.message) + '</span>';
         } finally {
-            spinner.classList.add('d-none');
-            uploadBtn.disabled = false;
+            if (operation.ownsControls()) {
+                spinner.classList.add('d-none');
+                uploadBtn.disabled = false;
+            }
         }
     }
 
     // ── AI-assisted extraction ─────────────────────────────────────────────────
 
     async function uploadAndExtractAi(file) {
+        const operation = beginUpload();
         var formData = new FormData();
         formData.append('file', file);
         formData.append('sourceType', typeSelect.value || 'REGULATION');
@@ -129,14 +136,8 @@
         statusArea.innerHTML = '<span class="text-muted">⏳ ' + i18n('docimport.ai.extracting', 'AI is analyzing the document…') + '</span>';
 
         try {
-            var resp = await fetchWithCsrf('/api/documents/extract-ai', formData);
-            if (!resp.ok) {
-                var err = await resp.json().catch(function() { return { error: t('docimport.ai.failed') }; });
-                statusArea.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(err.error || t('docimport.ai.failed')) + '</span>';
-                return;
-            }
-
-            var result = await resp.json();
+            var result = await window.ImportApi.extractDocumentWithAi(formData);
+            if (!operation.isCurrent()) return;
             currentAiCandidates = result.aiCandidates || [];
 
             statusArea.innerHTML = '<span class="text-success">✅ ' +
@@ -146,16 +147,20 @@
 
             showAiExtractionResults(result);
         } catch (e) {
+            if (!operation.isCurrent() || e.code === 'ABORTED') return;
             statusArea.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(e.message) + '</span>';
         } finally {
-            spinner.classList.add('d-none');
-            uploadBtn.disabled = false;
+            if (operation.ownsControls()) {
+                spinner.classList.add('d-none');
+                uploadBtn.disabled = false;
+            }
         }
     }
 
     // ── Regulation-to-architecture mapping ─────────────────────────────────────
 
     async function uploadAndMapRegulation(file) {
+        const operation = beginUpload();
         var formData = new FormData();
         formData.append('file', file);
 
@@ -165,14 +170,8 @@
         statusArea.innerHTML = '<span class="text-muted">⏳ ' + i18n('docimport.regmap.mapping', 'Mapping regulation to architecture…') + '</span>';
 
         try {
-            var resp = await fetchWithCsrf('/api/documents/map-regulation', formData);
-            if (!resp.ok) {
-                var err = await resp.json().catch(function() { return { error: t('docimport.regulation.failed') }; });
-                statusArea.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(err.error || t('docimport.regulation.failed')) + '</span>';
-                return;
-            }
-
-            var result = await resp.json();
+            var result = await window.ImportApi.mapRegulation(formData);
+            if (!operation.isCurrent()) return;
             var matches = result.matches || [];
 
             statusArea.innerHTML = '<span class="text-success">✅ ' +
@@ -182,10 +181,13 @@
 
             showRegulationMappingResults(result);
         } catch (e) {
+            if (!operation.isCurrent() || e.code === 'ABORTED') return;
             statusArea.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(e.message) + '</span>';
         } finally {
-            spinner.classList.add('d-none');
-            uploadBtn.disabled = false;
+            if (operation.ownsControls()) {
+                spinner.classList.add('d-none');
+                uploadBtn.disabled = false;
+            }
         }
     }
 
@@ -419,19 +421,6 @@
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────
-
-    async function fetchWithCsrf(url, formData) {
-        var csrfToken = document.querySelector('meta[name="_csrf"]')?.content;
-        var csrfHeader = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
-        var headers = {};
-        if (csrfToken) headers[csrfHeader] = csrfToken;
-
-        return fetch(url, {
-            method: 'POST',
-            headers: headers,
-            body: formData
-        });
-    }
 
     function escapeHtml(text) {
         var div = document.createElement('div');

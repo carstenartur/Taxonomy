@@ -43,7 +43,7 @@ final class JunitOutcomeVerifier {
             return 0;
         } catch(IOException|IllegalArgumentException failure) {error.println(failure.getMessage());return 1;}
     }
-    private static Map<String,Long> validate(Element document) {
+    static Map<String,Long> validate(Element document) {
         Map<String,Long> actual=suite(document);
         if(XmlSupport.descendants(document,"testcase").size()!=actual.get("tests")) throw new IllegalArgumentException("Testcase outside a supported suite");
         for(int i=0;i<OUTCOMES.size();i++) if(XmlSupport.descendants(document,OUTCOMES.get(i)).size()!=actual.get(COUNTERS.get(i+1))) throw new IllegalArgumentException("Misplaced terminal outcome: "+OUTCOMES.get(i));

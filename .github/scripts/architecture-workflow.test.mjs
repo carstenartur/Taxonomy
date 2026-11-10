@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import canonicalFixture from './canonical-api-fixture.cjs';
 import {readFile} from 'node:fs/promises';
 
 const source = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/architecture-workflow.js', import.meta.url), 'utf8').catch(() => '');
@@ -35,7 +36,7 @@ test('named context status retains the original page workspace before session hy
     const {context, requests} = boot('?workspaceId=original&repositoryId=repo&branch=draft');
     context.TaxonomyState = {};
     vm.runInContext(sessionCore, context);
-    context.TaxonomyApiClient = {request: (path, options) => context.fetch(path, options)};
+    canonicalFixture.install(context);
     vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/api/workspace-api.js', import.meta.url), 'utf8'), context);
     await context.TaxonomyContextApi.current();
     assert.equal(requests[0].url, '/api/context/current');
@@ -556,7 +557,7 @@ test('Archi return uploads retain explicit repository, branch and central/worksp
         const context = vm.createContext({URL, URLSearchParams, window: {
             location: {href: 'https://example.test/?workspaceId=' + workspace + '&repositoryId=repo-b&branch=retained'},
             TaxonomyApiClient: {
-                request: async (...args) => {calls.push(args); return {json: async () => ({preview: true})};},
+                requestJson: async (...args) => {calls.push(args); return {preview: true};},
                 sendFormData: async (...args) => {calls.push(args); return {};}
             }
         }});

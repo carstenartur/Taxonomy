@@ -13,6 +13,8 @@ window.TaxonomyWorkspaceProvisioning = (function () {
     'use strict';
 
     var t = TaxonomyI18n.t;
+    function ignoredError(error) { return error?.code === 'ABORTED' || error?.status === 401 || error?.status === 403; }
+
     var POLL_INTERVAL = 2000;
     var pollTimer = null;
     var loaderScript = document.currentScript;
@@ -50,12 +52,14 @@ window.TaxonomyWorkspaceProvisioning = (function () {
                         break;
                     case 'READY':
                         ensureRelationProjection().catch(function (error) {
+                            if (ignoredError(error)) return;
                             showRetryDialog(error.message || String(error));
                         });
                         break;
                 }
             })
             .catch(function (error) {
+                if (ignoredError(error)) return;
                 console.warn('Could not check provisioning status:', error);
             });
     }
@@ -222,6 +226,7 @@ window.TaxonomyWorkspaceProvisioning = (function () {
                 return null;
             })
             .catch(function (error) {
+                if (ignoredError(error)) return;
                 showRetryDialog(error.message || String(error));
             });
     }
@@ -241,6 +246,7 @@ window.TaxonomyWorkspaceProvisioning = (function () {
                         ensureRelationProjection()
                             .then(showReadyDialog)
                             .catch(function (error) {
+                                if (ignoredError(error)) return;
                                 showRetryDialog(error.message || String(error));
                             });
                     } else if (status.status === 'FAILED') {

@@ -1,3 +1,4 @@
+import canonicalFixture from './canonical-api-fixture.cjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
@@ -163,9 +164,11 @@ function harness(locale = 'en') {
       controls.includeArchitectureView = { checked: false };
       context.crypto = { randomUUID: () => 'cb2a3d71-e849-4a50-9855-1f9cb8f81402' };
       context.fetch = url => {
-        assert.equal(url, '/api/analyze');
+        assert.equal(url, '/api/analyze?workspaceId=workspace-a');
         return new Promise(() => {});
       };
+      context.setTimeout = () => 1; context.clearTimeout = () => {};
+      canonicalFixture.install(context, ['api/analysis-api.js']);
       window.TaxonomyScoring.runAnalysis();
       assert.equal(typeof receive, 'function');
       return receive;
@@ -803,6 +806,7 @@ function interactiveHarness(response) {
     TaxonomyUtils: { escapeHtml: text => String(text) }, CSS: { escape: text => text },
     fetch: async () => ({ ok: true, json: async () => response })
   });
+  canonicalFixture.install(context, ['api/analysis-api.js']);
   vm.runInContext(browseSource.replace('renderView: renderView,',
     'evaluateNodeChildren: evaluateNodeChildren, renderView: renderView,'), context);
   return { state, classes, logs, status, errors, async run() {

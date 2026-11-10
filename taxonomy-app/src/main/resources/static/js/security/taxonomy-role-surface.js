@@ -317,7 +317,7 @@ window.TaxonomyRoleSurface = (function () {
 
     function refresh() {
         normalizeGlobalModalPlacement();
-        return window.TaxonomyApiClient.getJson('/api/account/me')
+        return window.TaxonomyApiClient.getJson('/api/account/me', {contextSensitive:false, workspaceScoped:false})
             .then(function (data) {
                 context = data;
                 document.body.classList.toggle('admin-unlocked', isAdministrator());

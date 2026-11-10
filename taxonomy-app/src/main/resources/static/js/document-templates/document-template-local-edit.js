@@ -94,7 +94,7 @@
             } else if (error.status === 401 || error.status === 403) {
                 notify(labels.authentication, true);
             } else if (error.status === 400 || error.status === 413 || error.status === 422) {
-                notify(labels.invalid + ' ' + (error.message || ''), true);
+                notify(labels.invalid + ' ' + (error.detail || error.message || ''), true);
             } else {
                 // A timeout/lost response can occur after a successful commit.
                 notify(labels.uncertain, true);

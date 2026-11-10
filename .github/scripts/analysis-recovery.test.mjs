@@ -1,3 +1,4 @@
+import canonicalFixture from './canonical-api-fixture.cjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -55,6 +56,7 @@ function harness(language = 'en') {
     context.TaxonomyI18n = { t:key=>key };
     context.TaxonomyUtils = { escapeHtml:value=>String(value ?? '') };
     context.fetch = async url => { derivedRequests.push(url); return {ok:true,json:async()=>({totalGaps:0,totalAnchors:1})}; };
+    canonicalFixture.install(context, ['api/analysis-api.js', 'api/import-api.js']);
     vm.runInNewContext(analysisSource,context);
   }
   function loadRelationsExtension() {
@@ -297,7 +299,7 @@ for (const [method, panel, urls] of [
 
   await h.window.TaxonomyAnalysis[method](); await settle();
 
-  assert.deepEqual(h.derivedRequests, urls);
+  assert.deepEqual(h.derivedRequests, urls.map(url => url + '?workspaceId=ws-a'));
  });
 }
 test('a failed follow-up checkpoint pauses and retry persists the result without repeating the operation',async()=>{

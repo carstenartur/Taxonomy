@@ -172,7 +172,7 @@ class ParallelCiEvidenceContractTest {
                 .doesNotContain(".m2/build-cache")
                 .doesNotContain("maven.build.cache.skipCache=true");
         assertThat(finalizer)
-                .contains("verify-quality-publication.py")
+                .contains("verify-quality-publication")
                 .contains("--expected-commit \"$GITHUB_SHA\"");
     }
 

@@ -1,3 +1,4 @@
+import canonicalFixture from './canonical-api-fixture.cjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -230,9 +231,13 @@ test('analysis business-source pins survive returning from its architecture to A
 
 async function importTransport(fixture){
     const requests=[];
-    fixture.context.TaxonomyApiClient={request:async(path,options,policy)=>{
-        requests.push({url:new URL(path,fixture.context.location.href),options,policy});return {json:async()=>({})};
-    }};
+    fixture.context.fetch=async()=>Response.json({});
+    canonicalFixture.install(fixture.context);
+    const requestJson=fixture.context.TaxonomyApiClient.requestJson;
+    fixture.context.TaxonomyApiClient.requestJson=function(path,options,policy){
+        requests.push({url:new URL(path,fixture.context.location.href),options,policy});
+        return requestJson.call(this,path,options,policy);
+    };
     fixture.context.__TaxonomyAnalysisSessionContext={runtime:{workspaceId:'A'}};
     vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-api-routing.js',import.meta.url),'utf8'),fixture.context);
     vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/api/import-api.js',import.meta.url),'utf8'),fixture.context);

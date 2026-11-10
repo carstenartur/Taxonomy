@@ -1268,7 +1268,7 @@
                     var healthRefreshBtn = document.getElementById('healthRefreshBtn');
 
                     function loadHealth() {
-                        TaxonomyI18n.ready().then(function () { return fetch('/api/admin/health-summary', { headers: getAdminHeaders() }); })
+                        TaxonomyI18n.ready().then(function () { return window.TaxonomyReferenceApi.health(getAdminHeaders()); })
                             .then(function(r) { return r.json(); })
                             .then(function(data) {
                                 var overall = document.getElementById('healthOverallBadge');
@@ -1321,11 +1321,8 @@
                     function loadLogs() {
                         var level = document.getElementById('logLevelFilter').value;
                         var component = document.getElementById('logComponentFilter').value;
-                        var url = '/api/admin/logs?limit=200';
-                        if (level) url += '&level=' + encodeURIComponent(level);
-                        if (component) url += '&component=' + encodeURIComponent(component);
 
-                        TaxonomyI18n.ready().then(function () { return fetch(url, { headers: getAdminHeaders() }); })
+                        TaxonomyI18n.ready().then(function () { return window.TaxonomyReferenceApi.logs(level, component, getAdminHeaders()); })
                             .then(function(r) { return r.json(); })
                             .then(function(entries) {
                                 var container = document.getElementById('logViewerContent');
@@ -1591,6 +1588,12 @@
 <th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/api/import-api.js}"></script>
 <script th:src="@{/js/api/analysis-api.js}"></script>
+<script th:src="@{/js/api/reference-api.js}"></script>
+<script th:src="@{/js/api/search-api.js}"></script>
+<script th:src="@{/js/api/dsl-api.js}"></script>
+<script th:src="@{/js/api/proposals-api.js}"></script>
+<script th:src="@{/js/api/hypotheses-api.js}"></script>
+<script th:src="@{/js/api/relations-api.js}"></script>
 <script th:src="@{/js/api/workspace-api.js}" src="/js/api/workspace-api.js"></script>
 <script th:src="@{/js/core/taxonomy-state.js}"></script>
 <script th:src="@{/js/core/taxonomy-views.js}"></script>
@@ -1611,6 +1614,7 @@
 <script th:src="@{/js/api/plugin-capabilities-api.js}" src="/js/api/plugin-capabilities-api.js"></script>
 <script th:src="@{/js/shared/plugin-capabilities.js}" src="/js/shared/plugin-capabilities.js"></script>
 <script th:src="@{/js/shared/decision-export-dialog.js}"></script>
+<script th:src="@{/js/api/export-api.js}"></script>
 <script th:src="@{/js/shared/taxonomy-export.js}"></script>
 <script th:src="@{/js/shared/taxonomy-import.js}"></script>
 <script th:src="@{/js/shared/taxonomy-graph.js}"></script>
@@ -2039,7 +2043,7 @@
         var controller = new AbortController();
         pendingStatus = controller;
         TaxonomyI18n.ready().then(function () {
-                if (currentStatus(controller)) return fetch('/api/status/startup', { signal: controller.signal });
+                if (currentStatus(controller)) return window.TaxonomyReferenceApi.startup(controller.signal);
             })
             .then(function (r) { return currentStatus(controller) && r ? r.json() : null; })
             .then(function (data) {

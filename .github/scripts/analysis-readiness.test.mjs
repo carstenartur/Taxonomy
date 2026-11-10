@@ -1,3 +1,4 @@
+import canonicalFixture from './canonical-api-fixture.cjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -31,6 +32,8 @@ function fixture(options = {}) {
     if (Object.hasOwn(options, 'crypto')) sandbox.crypto = options.crypto;
     if (options.analysisScope) window.TaxonomyAnalysisScope = {read: () => options.analysisScope};
     if (options.invalidScope) window.TaxonomyAnalysisScope = {read: () => { throw new Error('Select a taxonomy'); }};
+    sandbox.setTimeout = () => 1; sandbox.clearTimeout = () => {};
+    canonicalFixture.install(sandbox, ['api/analysis-api.js']);
     vm.runInNewContext(source, sandbox);
     function progress() { window.TaxonomyAnalysisProgress = { start: (...args) => {
         observations.push(args); order.push('monitor');
@@ -55,7 +58,9 @@ function fixture(options = {}) {
         return window.TaxonomyAnalysisRecovery;
     }
     return { window, state, sessionState, statuses, calls, observations, progress, renders, order, loadRecovery,
-        requests, progressActions, rejectRequest: error => rejectRequest(error) };
+        requests, progressActions, rejectRequest: error => error.httpStatus
+            ? requests.at(-1).resolve(Response.json({detail: error.message}, {status: error.httpStatus}))
+            : rejectRequest(error) };
 }
 
 for (const phase of ['no lifecycle', 'progress loaded before lifecycle', 'loader still running']) {
@@ -94,9 +99,9 @@ test('once lifecycle is ready full analysis always starts observation before its
     f.window.TaxonomyScoring.runAnalysis();
     assert.equal(f.observations.length, 1);
     assert.equal(f.calls.length, 1);
-    assert.equal(f.calls[0][0], '/api/analyze');
-    assert.equal(f.calls[0][1].headers['X-Taxonomy-Workspace-Id'], 'workspace-a');
-    assert.equal(f.calls[0][1].headers['X-Analysis-Operation-Id'], f.observations[0][0]);
+    assert.equal(f.calls[0][0], '/api/analyze?workspaceId=workspace-a');
+    assert.equal(new Headers(f.calls[0][1].headers).get('X-Taxonomy-Workspace-Id'), 'workspace-a');
+    assert.equal(new Headers(f.calls[0][1].headers).get('X-Analysis-Operation-Id'), f.observations[0][0]);
     assert.equal(JSON.parse(f.calls[0][1].body).includeArchitectureView, true);
 });
 
@@ -105,7 +110,7 @@ test('ordinary architecture analysis requests a real retained server continuatio
     f.window.TaxonomyScoring.runAnalysis();
     const request=JSON.parse(f.calls[0][1].body);
     assert.equal(request.resumable,true);assert.equal(request.continuationAction,'START');
-    assert.equal(request.continuationId,f.calls[0][1].headers['X-Analysis-Operation-Id']);
+    assert.equal(request.continuationId,new Headers(f.calls[0][1].headers).get('X-Analysis-Operation-Id'));
     assert.equal(request.businessText,'communications');assert.equal(request.includeArchitectureView,true);
     assert.equal(f.calls.length,1);
 });
@@ -327,7 +332,7 @@ test('secure random-values fallback supplies the same canonical version-four ID 
     f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
     assert.doesNotThrow(() => f.window.TaxonomyScoring.runAnalysis());
     assert.equal(f.calls.length, 1);
-    const id = f.calls[0][1].headers['X-Analysis-Operation-Id'];
+    const id = new Headers(f.calls[0][1].headers).get('X-Analysis-Operation-Id');
     assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     assert.equal(id, f.observations[0][0]);
 });
@@ -378,7 +383,7 @@ for (const transport of ['POST', 'resume']) {
         f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
         if (transport === 'POST') {
             f.window.TaxonomyScoring.runAnalysis();
-            assert.equal(f.calls[0][0], '/api/analyze');
+            assert.equal(f.calls[0][0], '/api/analyze?workspaceId=workspace-a');
         } else {
             f.window.TaxonomyAnalysisSessionApi = { getRunInput: async () => ({ json: async () => ({
                 operationId: 'saved-operation', businessText: 'communications', scope: { workspaceId: 'workspace-a' }

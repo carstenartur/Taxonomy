@@ -1,3 +1,4 @@
+import canonicalFixture from './canonical-api-fixture.cjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -58,10 +59,11 @@ function harness(language='en') {
   context.TaxonomyUtils=window.TaxonomyUtils={escapeHtml:value=>String(value??'')};
   context.fetch=async(url,options)=>{writes.push(JSON.parse(options.body));return new Promise(resolve=>{pending=resolve;});};
   const scoring=readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js',import.meta.url),'utf8');
+  canonicalFixture.install(context, ['api/analysis-api.js']);
   vm.runInNewContext(scoring,context);
  }
  function loadAnalysis(){for(const id of ['copilotContent','copilotPanel','gapAnalysisContent','gapAnalysisPanel','patternDetectionContent','patternDetectionPanel','recommendationContent','recommendationPanel'])fields[id]=element();
-  context.TaxonomyI18n={t:key=>key};context.TaxonomyUtils={escapeHtml:v=>String(v??'')};context.fetch=async()=>{throw Error('unexpected global analysis request');};vm.runInNewContext(analysisSource,context);}
+  context.TaxonomyI18n={t:key=>key};context.TaxonomyUtils={escapeHtml:v=>String(v??'')};context.fetch=async()=>{throw Error('unexpected global analysis request');};canonicalFixture.install(context, ['api/analysis-api.js']);vm.runInNewContext(analysisSource,context);}
  return{S,runtime,fields,window,ui,document,writes,reads,views,panels,timers,result,complete,loadAnalysis,loadScoring,
   options:()=>options,followups:()=>followups,renderedReports,opens:()=>opens,act:id=>options.find(o=>o.id===id)?.handler(),
   request:fn=>{requestHandler=fn;},snapshot:r=>{snapshot={request:S.recoveryContext.request,recovery:r.recovery,result:r};},
