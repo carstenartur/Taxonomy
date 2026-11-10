@@ -67,6 +67,44 @@ public class RelationProjectionReadService {
                 repositoryService, "repositoryService");
     }
 
+    /** Strict, detached snapshot: graph/evidence queries never use the migration fallback. */
+    public Snapshot readSnapshot(RepositoryContext context, String commitId) {
+        Objects.requireNonNull(context, "context");
+        String expected = com.taxonomy.workspace.service.WorkspaceDslReadPort.normalizeCommitId(commitId);
+        Readiness proof = readinessService.inspect(context);
+        if (proof.state() != ReadinessState.READY || !expected.equals(proof.currentHeadCommit())
+                || !expected.equals(proof.projectedCommit())) {
+            throw unavailable(context, proof.state() == ReadinessState.READY
+                    ? new Readiness(ReadinessState.STALE, proof.currentHeadCommit(), proof.projectedCommit(), List.of())
+                    : proof, recoveryService.pendingCount(context));
+        }
+        boolean invalid = proof.rows().stream().anyMatch(row ->
+                !context.repositoryId().equals(row.getRepositoryId())
+                || !Objects.equals(context.workspaceId(), row.getWorkspaceId())
+                || !RelationDecisionProjection.scopeKeyFor(context.workspaceId()).equals(row.getWorkspaceScopeKey())
+                || !context.branch().equals(row.getBranch()) || !row.isRelationPresent()
+                || !expected.equals(row.getAuthoritativeCommitId())
+                || row.getCausationId() == null || row.getCausationId().isBlank());
+        if (invalid) throw unavailable(context,
+                new Readiness(ReadinessState.CORRUPT, expected, proof.projectedCommit(), List.of()),
+                recoveryService.pendingCount(context));
+        return new Snapshot(context, expected, proof.rows().stream().map(row -> new SnapshotRelation(
+                row.getId(), row.getSourceCode(), row.getTargetCode(), row.getRelationType(), row.getStatus(),
+                row.getConfidence(), row.getProvenance(), row.getAuthoritativeCommitId(), row.getCausationId())).toList());
+    }
+
+    public record Snapshot(RepositoryContext context, String commitId, List<SnapshotRelation> relations) {
+        public Snapshot {
+            Objects.requireNonNull(context, "context");
+            commitId = com.taxonomy.workspace.service.WorkspaceDslReadPort.normalizeCommitId(commitId);
+            relations = List.copyOf(relations);
+        }
+    }
+
+    public record SnapshotRelation(Long id, String sourceCode, String targetCode, RelationType relationType,
+                                   String status, Double confidence, String provenance,
+                                   String authoritativeCommitId, String causationId) { }
+
     public ReadResult readAll(RepositoryContext context) {
         RepositoryContext selected = Objects.requireNonNull(context, "context");
         return read(
@@ -319,10 +357,11 @@ public class RelationProjectionReadService {
         }
     }
 
+    /** Detached relation identities and the source revision captured by the authorized read. */
     public record IdentitySnapshot(
             ReadModel readModel,
             ReadinessState readinessState,
-            String authoritativeCommitId,
+            String commitId,
             Set<RelationIdentity> identities) {
         public IdentitySnapshot {
             readModel = Objects.requireNonNull(readModel, "readModel");

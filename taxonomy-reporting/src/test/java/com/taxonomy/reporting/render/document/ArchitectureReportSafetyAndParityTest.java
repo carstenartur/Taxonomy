@@ -71,7 +71,7 @@ class ArchitectureReportSafetyAndParityTest {
     void htmlEscapesRequirementAndTableValuesBeforeFormatting() {
         var report = fixture();
         report.setBusinessText("Literal <svg onload=\"window.__qa_marker=1\"></svg> & <requirement> **bold** `**literal** <code>`");
-        report.getRecommendation().getConfirmedElements().getFirst()
+        report.getRecommendation().getMatchedElements().getFirst()
                 .setTitle("<img src=x onerror=alert(1)> | second cell");
         String html = new ArchitectureReportTextRenderer().renderHtml(report);
         assertThat(html).doesNotContain("<svg", "<img", "<requirement>", "<code><strong>");
@@ -110,7 +110,7 @@ class ArchitectureReportSafetyAndParityTest {
     @Test
     void htmlKeepsDelimiterCharactersInNodeIdsAndCodeLiteral() {
         var report = fixture();
-        report.getRecommendation().getConfirmedElements().getFirst().setNodeCode("CP-`tick`|<id>");
+        report.getRecommendation().getMatchedElements().getFirst().setNodeCode("CP-`tick`|<id>");
         String html = new ArchitectureReportTextRenderer().renderHtml(report);
         assertThat(html).contains("<td><code>CP-`tick`|&lt;id&gt;</code></td>",
                 "<td>Matched capability</td>");
@@ -121,21 +121,21 @@ class ArchitectureReportSafetyAndParityTest {
     @Test
     void unmatchedBacktickInRecommendationTitleCannotMergeFollowingCells() {
         var report = fixture();
-        report.getRecommendation().getConfirmedElements().getFirst().setTitle("Literal `tick");
+        report.getRecommendation().getMatchedElements().getFirst().setTitle("Literal `tick");
         assertMatchedRow(report, "Literal `tick");
     }
 
     @Test
     void literalBackslashBeforePipeCannotSplitRecommendationCell() {
         var report = fixture();
-        report.getRecommendation().getConfirmedElements().getFirst().setTitle("Literal \\| separator");
+        report.getRecommendation().getMatchedElements().getFirst().setTitle("Literal \\| separator");
         assertMatchedRow(report, "Literal \\| separator");
     }
 
     @Test
     void tableCodeKeepsLiteralBackslashesPipesAndMarkup() {
         var report = fixture();
-        report.getRecommendation().getConfirmedElements().getFirst()
+        report.getRecommendation().getMatchedElements().getFirst()
                 .setTitle("`code\\path\\|<type>` **bold**");
         assertMatchedRow(report, "<code>code\\path\\|&lt;type&gt;</code> <strong>bold</strong>");
     }
@@ -289,7 +289,7 @@ class ArchitectureReportSafetyAndParityTest {
         report.setBusinessText("Requirement with literal <requirement>");
         report.setScores(Map.of("CP-zero", 0d, "CP-fraction", .125));
         var recommendation = new ArchitectureRecommendation();
-        recommendation.setConfirmedElements(List.of(new RecommendedElement(
+        recommendation.setMatchedElements(List.of(new RecommendedElement(
                 "CP-match", "Matched capability", "CP", .125, "Matched reason")));
         recommendation.setProposedElements(List.of(new RecommendedElement(
                 "CP-proposal", "Gap proposal", "CP", 0, "Proposed reason")));

@@ -161,6 +161,26 @@ test('keeps every primary mutation workflow isolated', () => {
   ]);
 });
 
+test('published graph fixtures enable the repository API only inside disposable primary applications', () => {
+  const groups = groupScenarios([
+    scenario('primary', 'primary-user-chromium', 'USER'),
+    scenario('role-state', 'desktop-user-chromium', 'USER'),
+    scenario('ui', 'desktop-chromium')
+  ]);
+  const inherited = { SPRING_PROFILES_ACTIVE: 'postgres',
+    SPRING_DATASOURCE_URL: 'jdbc:postgresql://persistent/taxonomy',
+    TAXONOMY_DATASOURCE_URL: 'jdbc:postgresql://persistent/taxonomy' };
+  const primary = { ...inherited, ...applicationConfiguration(groups[0], 'http://127.0.0.1:8080').environment };
+  assert.equal(primary.TAXONOMY_FEATURES_MULTI_REPOSITORY_API_ENABLED, 'true');
+  assert.equal(primary.SPRING_PROFILES_ACTIVE, 'hsqldb');
+  assert.match(primary.SPRING_DATASOURCE_URL, /^jdbc:hsqldb:mem:/);
+  assert.equal(primary.TAXONOMY_DATASOURCE_URL, primary.SPRING_DATASOURCE_URL);
+  assert.equal(primary.SPRING_DATASOURCE_DRIVER_CLASS_NAME, 'org.hsqldb.jdbc.JDBCDriver');
+  for (const group of groups.slice(1))
+    assert.equal(applicationConfiguration(group, 'http://127.0.0.1:8080').environment
+      .TAXONOMY_FEATURES_MULTI_REPOSITORY_API_ENABLED, undefined);
+});
+
 test('maps nineteen scenarios to the eight existing starts plus one context application', () => {
   const scenarios = [
     scenario('ui', 'desktop-chromium'),

@@ -1,76 +1,57 @@
 package com.taxonomy.architecture.service;
 
 import com.taxonomy.dto.ApqcHierarchyNode;
-import com.taxonomy.dsl.mapper.AstToModelMapper;
-import com.taxonomy.dsl.model.ArchitectureElement;
-import com.taxonomy.dsl.model.CanonicalArchitectureModel;
-import com.taxonomy.dsl.model.TaxonomyRootTypes;
-import com.taxonomy.dsl.parser.TaxDslParser;
-import com.taxonomy.architecture.model.ArchitectureDslDocument;
-import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.taxonomy.dto.ApqcHierarchyView;
+import com.taxonomy.workspace.service.RepositoryContext;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 
 /**
- * Service that extracts the APQC process hierarchy from imported DSL documents.
+ * Service that extracts the APQC process hierarchy from one selected canonical commit.
  *
- * <p>Scans all stored DSL documents for elements with the
+ * <p>Reads the frozen DSL snapshot for elements with the
  * {@code x-source-framework: "apqc"} extension and reconstructs the
  * parent–child hierarchy using {@code x-apqc-parent} chains.
  */
 @Service
 public class ApqcHierarchyService {
 
-    private static final Logger log = LoggerFactory.getLogger(ApqcHierarchyService.class);
+    private final GraphSnapshotReadService snapshots;
 
-    private final ArchitectureDslDocumentRepository documentRepository;
-
-    public ApqcHierarchyService(ArchitectureDslDocumentRepository documentRepository) {
-        this.documentRepository = documentRepository;
+    public ApqcHierarchyService(GraphSnapshotReadService snapshots) {
+        this.snapshots = snapshots;
     }
 
-    /**
-     * Build the APQC process hierarchy from all stored DSL documents.
-     *
-     * @return list of root APQC hierarchy nodes with children linked
-     */
-    public List<ApqcHierarchyNode> buildHierarchy() {
-        TaxDslParser parser = new TaxDslParser();
-        AstToModelMapper mapper = new AstToModelMapper();
-        List<ArchitectureElement> apqcElements = new ArrayList<>();
-
-        for (ArchitectureDslDocument doc : documentRepository.findAll()) {
-            if (doc.getRawContent() == null || doc.getRawContent().isBlank()) continue;
-            try {
-                var ast = parser.parse(doc.getRawContent(), doc.getPath());
-                CanonicalArchitectureModel model = mapper.map(ast);
-                for (ArchitectureElement el : model.getElements()) {
-                    if ("apqc".equals(el.getExtensions().get("x-source-framework"))) {
-                        apqcElements.add(el);
-                    }
-                }
-            } catch (Exception e) {
-                log.debug("Skipping unparseable DSL document '{}': {}", doc.getPath(), e.getMessage());
-            }
-        }
+    public ApqcHierarchyView buildHierarchy(RepositoryContext context, String commitId) {
+        var selected = snapshots.read(context, commitId);
+        var snapshot = selected.proof();
+        var apqcElements = selected.nodes().values().stream()
+                .filter(node -> "apqc".equals(node.extensions().get("x-source-framework"))).toList();
 
         // Build lookup map and tree
         Map<String, ApqcHierarchyNode> nodeMap = new LinkedHashMap<>();
-        for (ArchitectureElement el : apqcElements) {
-            Map<String, String> ext = el.getExtensions();
+        for (var el : apqcElements) {
+            Map<String, String> ext = el.extensions();
             String level = ext.getOrDefault("x-apqc-level", "Unknown");
             String pcfId = ext.getOrDefault("x-apqc-pcf-id", "");
             String parentId = ext.get("x-apqc-parent");
-            String taxonomyRoot = TaxonomyRootTypes.rootFor(el.getType());
-            nodeMap.put(el.getId(), new ApqcHierarchyNode(
-                    el.getId(), el.getTitle(), level, pcfId, parentId,
+            String taxonomyRoot = el.taxonomyRoot();
+            nodeMap.put(el.id(), new ApqcHierarchyNode(
+                    el.id(), el.title(), level, pcfId, parentId,
                     taxonomyRoot != null ? taxonomyRoot : "",
                     new ArrayList<>()));
         }
 
+        // A cycle must not silently disappear as an empty hierarchy.
+        for (ApqcHierarchyNode node : nodeMap.values()) {
+            Set<String> ancestors = new HashSet<>();
+            ApqcHierarchyNode current = node;
+            while (current != null) {
+                if (!ancestors.add(current.id())) throw new IllegalStateException("APQC parent cycle in selected commit");
+                current = nodeMap.get(current.parentId());
+            }
+        }
         // Link children to parents
         List<ApqcHierarchyNode> roots = new ArrayList<>();
         for (ApqcHierarchyNode node : nodeMap.values()) {
@@ -81,6 +62,7 @@ public class ApqcHierarchyService {
             }
         }
 
-        return roots;
+        snapshots.verifyHead(selected);
+        return new ApqcHierarchyView(roots, ArchitectureGraphQueryServiceImpl.evidence(snapshot, 0, 0, "apqc-parent-hierarchy-v1"));
     }
 }

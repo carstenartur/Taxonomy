@@ -222,7 +222,7 @@ for (const status of [null, '', 'UNKNOWN']) {
 
 
 test('coordinator success renders retained server reports without invoking a browser follow-up', async () => {
-  const f = fixture(); const copilot = { schemaVersion: 1, state: 'COMPLETED', notes: ['Retained evidence'] };
+  const f = fixture(); const copilot = { schemaVersion: 2, state: 'COMPLETED', notes: ['Retained evidence'] };
   f.click(); await f.respond({ status: 'SUCCESS', scores: { BP: 80 }, copilot });
   assert.equal(f.enrichments(), 0);
   assert.equal(f.renderings.length, 1);

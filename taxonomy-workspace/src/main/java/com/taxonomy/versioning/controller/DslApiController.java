@@ -125,7 +125,9 @@ public class DslApiController {
     @Operation(summary = "Commit DSL text as a versioned document",
             description = "Stores the DSL text as a new commit in the JGit repository " +
                     "(database-backed via HibernateRepository). JGit is the single " +
-                    "source of truth. Does not materialize — use POST /api/dsl/materialize " +
+                    "source of truth. HTTP central selections are read-only: select an authorized working copy " +
+                    "for commits, then use the authorized POST /api/workspace/publish operation to publish centrally. " +
+                    "Does not materialize — use POST /api/dsl/materialize " +
                     "or POST /api/dsl/materialize-incremental for that.")
     public ResponseEntity<Map<String, Object>> commitDsl(
             @RequestBody String dslText,
@@ -497,7 +499,8 @@ public class DslApiController {
 
     @DeleteMapping("/branch")
     @Operation(summary = "Delete a branch",
-            description = "Deletes a Git branch. Protected branches (draft, accepted, main) " +
+            description = "Deletes a Git branch in the selected writable working copy. " +
+                    "HTTP central selections are read-only and cannot delete branches. Protected branches (draft, accepted, main) " +
                     "cannot be deleted.")
     public ResponseEntity<Map<String, Object>> deleteBranch(@RequestParam String name) {
         try {

@@ -4,10 +4,8 @@ import com.taxonomy.dto.AnalysisCopilotResult;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.dto.ArchitectureRecommendation;
-import com.taxonomy.dto.CoverageGap;
 import com.taxonomy.dto.DetectedPattern;
 import com.taxonomy.dto.GapAnalysisView;
-import com.taxonomy.dto.MissingRelation;
 import com.taxonomy.dto.PatternDetectionView;
 import com.taxonomy.dto.RecommendedElement;
 import com.taxonomy.dto.RelationSearchReport;
@@ -45,7 +43,6 @@ public class AnalysisCopilotService {
     private static final int MAX_EDGES = 25_000;
     private static final int MAX_ANCHORS = 200;
     private static final int MAX_GAPS = 500;
-    private final RelationCompatibilityMatrix compatibility = new RelationCompatibilityMatrix();
 
     /** A report's completion state describes this computation, not architecture completeness. */
     public AnalysisCopilotResult analyze(AnalysisResult analysis, String businessText) {
@@ -69,7 +66,7 @@ public class AnalysisCopilotService {
             Map<String, Double> scores = analysis.getScores();
             List<Entry<String, Double>> anchors = scores.entrySet()
                 .stream()
-                .filter(e -> e.getValue() >= ArchitectureGapService.DEFAULT_MIN_SCORE)
+                .filter(e -> e.getValue() >= 50)
                 .filter(e -> nodes.containsKey(e.getKey()) && !nodes.get(e.getKey()).isTaxonomyContainer())
                 .sorted(Entry.<String, Double>comparingByValue().reversed().thenComparing(Entry.comparingByKey()))
                 .toList();
@@ -122,7 +119,7 @@ public class AnalysisCopilotService {
             recommendation.getNotes().addAll(notes);
         }
 
-        return new AnalysisCopilotResult(1, state, gaps, patterns, recommendation, notes);
+        return new AnalysisCopilotResult(2, state, gaps, patterns, recommendation, notes);
     }
 
     private static Map<String, TaxonomyNodeDto> index(List<TaxonomyNodeDto> tree, Bounds bounds) {
@@ -228,54 +225,11 @@ public class AnalysisCopilotService {
         GapAnalysisView gaps,
         Bounds bounds
     ) {
-        gaps.setTotalAnchors(anchors.size());
-        gaps.getNotes().add("These are compatibility checks, not established missing relations. 'Not evidenced' means needs checking against further evidence.");
-
-        for (Entry<String, Double> anchor : anchors) {
-            String code = anchor.getKey();
-            String root = nodes.get(code).getTaxonomyRoot();
-            boolean hasOpenCheck = false;
-
-            for (Entry<RelationType, Set<String>> expected : this.compatibility.getExpectedOutgoingRelations(root).entrySet()) {
-                for (String targetRoot : new TreeSet<>(expected.getValue())) {
-                    List<RetainedRelation> compatible = outgoing.getOrDefault(code, List.of())
-                        .stream()
-                        .filter(edge -> edge.type().equals(expected.getKey().name()) && edge.targetRoot().equals(targetRoot))
-                        .toList();
-                    if (!compatible.stream().anyMatch(RetainedRelation::unconditional)) {
-                        hasOpenCheck = true;
-                        if (gaps.getMissingRelations().size() >= MAX_GAPS) {
-                            bounds.truncated = true;
-                        } else {
-                            String description = compatible.isEmpty()
-                                ? code
-                                    + " → "
-                                    + expected.getKey().name()
-                                    + " → "
-                                    + targetRoot
-                                    + " is not evidenced in the retained verified relations; needs checking."
-                                : "Only conditional, optional or alternative evidence is retained; applicability needs checking. Retained example: "
-                                    + compatible.getFirst().description();
-                            gaps.getMissingRelations().add(new MissingRelation(code, root, expected.getKey().name(), targetRoot, description));
-                        }
-                    }
-                }
-            }
-
-            if (hasOpenCheck) {
-                gaps.getCoverageGaps()
-                    .add(
-                        new CoverageGap(
-                            code,
-                            root,
-                            anchor.getValue(),
-                            "Compatible relationships or their unconditional applicability need checking; this is not a confirmed architectural gap."
-                        )
-                    );
-            }
-        }
-
-        gaps.setTotalGaps(gaps.getMissingRelations().size());
+        var baseline = ArchitectureGapService.compatibilityAssessment(gaps.getBusinessText());
+        gaps.setProfileId(baseline.getProfileId()); gaps.setProfileVersion(baseline.getProfileVersion());
+        gaps.setMetamodelVersion(baseline.getMetamodelVersion()); gaps.setEvidenceCompleteness(baseline.getEvidenceCompleteness());
+        gaps.setEvidenceAuthority(baseline.getEvidenceAuthority()); gaps.getNotes().addAll(baseline.getNotes());
+        gaps.setTotalAnchors(0);
     }
 
     /** Each frontier entry retains one connected path to the actual endpoint. */
@@ -342,7 +296,7 @@ public class AnalysisCopilotService {
             }
         }
 
-        patterns.setPatternCoverage(applicable == 0 ? 0.0 : patterns.getMatchedPatterns().size() * 100.0 / applicable);
+        patterns.setPatternCoverage(applicable == 0 ? null : patterns.getMatchedPatterns().size() * 100.0 / applicable);
         patterns.getNotes()
             .add(
                 "Pattern coverage is the fraction of applicable retained anchor checks with a connected, unconditional REQUIRED verified chain; it is not global architecture completeness."
@@ -374,18 +328,18 @@ public class AnalysisCopilotService {
                     : "Retained assessment relevance: " + anchor.getValue() + "%. No assessment reason was retained."
             );
             if (anchor.getValue() >= ArchitectureRecommendationService.HIGH_SCORE_THRESHOLD) {
-                recommendation.getConfirmedElements().add(element);
+                recommendation.getMatchedElements().add(element);
             } else {
                 recommendation.getProposedElements().add(element);
             }
         }
 
-        recommendation.setConfidence(anchors.stream().mapToDouble(Entry::getValue).average().orElse(0.0));
-        recommendation.getReasoning().add("Candidate ranking and confidence use only retained effective relevance scores.");
+        recommendation.setMeanRelevance(anchors.isEmpty() ? null : anchors.stream().mapToDouble(Entry::getValue).average().orElseThrow());
+        recommendation.getReasoning().add("Candidate ranking and mean relevance use only retained effective relevance scores.");
         recommendation.getNotes()
-            .add("Confirmed elements are high-scoring assessment matches, not human approval. Proposed elements are retained candidates for review.");
+            .add("Matched elements are relevance candidates; scores do not establish accepted model membership. Proposed elements are retained candidates for review.");
         recommendation.getNotes()
-            .add("Confidence is mean retained relevance of displayed candidates, not a probability of architectural correctness or completeness.");
+            .add("Mean relevance is the average retained relevance of displayed candidates, not a probability of architectural correctness or completeness.");
         recommendation.getNotes().add("No new catalogue candidates, embedding scores or relation hypotheses were generated.");
     }
 

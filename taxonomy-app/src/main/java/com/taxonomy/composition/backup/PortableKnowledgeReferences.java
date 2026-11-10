@@ -8,11 +8,14 @@ import java.util.*;
 /** Catalogue references in typed portable payload fields; never treats labels or arbitrary strings as identities. */
 final class PortableKnowledgeReferences {
     final Set<String> codes=new TreeSet<>();
+    final Set<String> modelCodes=new TreeSet<>();
+    private final Set<String> allCodes=new HashSet<>();
     final Set<SourceRecordId> hypotheses=new HashSet<>();
-    void code(String code)throws IOException {
+    void code(String code)throws IOException {code(code,codes);}
+    private void code(String code,Set<String> destination)throws IOException {
         if(code==null)return;
         if(code.isBlank() || !code.equals(code.strip()) || code.length()>256 || code.chars().anyMatch(Character::isISOControl))throw new IOException("Invalid catalogue reference");
-        codes.add(code);if(codes.size()>100_000)throw new IOException("Catalogue reference limit exceeded");
+        destination.add(code);allCodes.add(code);if(allCodes.size()>100_000)throw new IOException("Catalogue reference limit exceeded");
     }
     void hypothesis(String id)throws IOException {
         if(id==null || id.isEmpty() || id.length()>19 || id.charAt(0)=='0'
@@ -24,27 +27,34 @@ final class PortableKnowledgeReferences {
             hypotheses.add(identity);
         }
     }
-    void value(JsonNode value)throws IOException {if(value==null || value.isNull())return;if(!value.isTextual())throw new IOException("Invalid catalogue reference field");code(value.textValue());}
-    void array(JsonNode value)throws IOException {if(value==null || value.isNull())return;if(!value.isArray())throw new IOException("Invalid catalogue reference list");for(var item:value)value(item);}
-    void payload(JsonNode value)throws IOException {
+    void value(JsonNode value)throws IOException {value(value,codes);}
+    private void value(JsonNode value,Set<String> destination)throws IOException {if(value==null || value.isNull())return;if(!value.isTextual())throw new IOException("Invalid catalogue reference field");code(value.textValue(),destination);}
+    void array(JsonNode value)throws IOException {array(value,codes);}
+    private void array(JsonNode value,Set<String> destination)throws IOException {if(value==null || value.isNull())return;if(!value.isArray())throw new IOException("Invalid catalogue reference list");for(var item:value)value(item,destination);}
+    void payload(JsonNode value)throws IOException {payload(value,Set.of());}
+    private void payload(JsonNode value,Set<String> modelFields)throws IOException {
         if(value==null || value.isNull())return;
-        if(value.isArray()){for(var child:value)payload(child);return;}
+        if(value.isArray()){for(var child:value)payload(child,modelFields);return;}
         if(!value.isObject())return;
         // These names belong to AnalysisResult / architecture views / catalogue trees / analysis questions.
-        for(String field:List.of("code","nodeCode","sourceCode","targetCode","parentCode","parentNodeCode","productFamilyCode","sourceNodeCode","taxonomyRoot","sourceRoot","expectedTargetRoot"))value(value.get(field));
+        for(String field:List.of("code","nodeCode","sourceCode","targetCode","parentCode","parentNodeCode","productFamilyCode","sourceNodeCode","taxonomyRoot","sourceRoot"))value(value.get(field),modelFields.contains(field)?modelCodes:codes);
         for(String field:List.of("scores","rawScores","effectiveScores","productSuitabilityScores","reasons","scoreDetails","scoreSemanticsContext")) {
             var map=value.get(field);if(map!=null && !map.isNull()) {
                 if(!map.isObject())throw new IOException("Invalid catalogue-indexed payload");
                 var names=map.fieldNames();while(names.hasNext())code(names.next());
             }
         }
-        for(String field:List.of("evaluatedNodes","candidateCodes"))array(value.get(field));
+        for(String field:List.of("evaluatedNodes","candidateCodes","targetRoots"))array(value.get(field),modelFields.contains(field)?modelCodes:codes);
         var coverage=value.get("analysisCoverage");if(coverage!=null && !coverage.isNull()) {
             var nodes=coverage.get("nodes");if(nodes==null || !nodes.isObject())throw new IOException("Invalid analysis coverage references");
             var names=nodes.fieldNames();while(names.hasNext())code(names.next());
         }
         // Traverse only declared structured evidence, never diagnostics, free text or provider prompts.
-        for(String field:List.of("tree","children","discrepancies","architectureView","anchors","includedElements","includedRelationships","provisionalRelations","productCoverageGaps","confirmedElements","proposedElements","suggestedRelations","missingRelations","incompletePatterns","coverageGaps","matchedPatterns","explanationTrace","analysisResult"))payload(value.get(field));
+        for(String field:List.of("tree","children","discrepancies","architectureView","anchors","includedElements","includedRelationships","provisionalRelations","productCoverageGaps","matchedElements","proposedElements","gapAnalysis","incompletePatterns","matchedPatterns","explanationTrace","analysisResult","copilot","gaps","patterns","recommendation"))payload(value.get(field));
+        // Canonical model identities and type roots depend on the catalogue only when exact membership is recorded.
+        payload(value.get("acceptedElements"),Set.of("nodeCode","taxonomyRoot"));
+        payload(value.get("judgments"),Set.of("sourceNodeCode","sourceRoot","targetRoots"));
+        payload(value.get("suggestedRelations"),Set.of("sourceCode","targetCode","taxonomyRoot","sourceRoot"));
         var report=value.get("relationSearchReport");if(report!=null && !report.isNull())relationReport(report);
         var edges=value.get("requirementEvidence");if(edges!=null && !edges.isNull()) {
             if(!edges.isArray())throw new IOException("Invalid architecture relation evidence");

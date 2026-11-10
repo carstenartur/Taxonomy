@@ -5,6 +5,10 @@ package com.taxonomy.dto;
  */
 public class ImpactRelationship {
 
+    private GraphEdgeEvidence evidence;
+    public GraphEdgeEvidence getEvidence() { return evidence; }
+    public void setEvidence(GraphEdgeEvidence evidence) { this.evidence = evidence; }
+
     private Long relationId;
     private String sourceCode;
     private String targetCode;

@@ -219,10 +219,11 @@ test('node Graph action reveals the Graph page and an initial result through the
             left.append(document.getElementById('taxonomyTree'));
             document.body.append(left, right);
             window.graphQueries = [];
-            window.AnalysisApi = { graphUpstream: async (code, hops) => {
+            window.graphContext = {repositoryId:'fixture-repo',workspaceScopeKey:'__shared__',branch:'fixture',commit:'a'.repeat(40)};
+            window.AnalysisApi = { captureContext: async () => graphContext, graphUpstream: async (code, hops) => {
                 window.graphQueries.push({code, hops});
                 return {originNodeCode: code, direction: 'UPSTREAM', maxHops: hops,
-                    neighbors: [], traversedRelationships: [], notes: []};
+                    neighbors: [], traversedRelationships: [], notes: [], evidence: {...graphContext,commitId:graphContext.commit}};
             }};
         }, graph);
         await page.addStyleTag({content: '.d-none { display:none !important; }'});
@@ -291,9 +292,10 @@ async function searchFixture(locale = 'de', withArchitecture = false, delayedTra
         function query(kind, code, hops) {
             graphQueries.push({kind, code, hops});
             return Promise.resolve({originNodeCode: code, direction: kind.toUpperCase(), maxHops: hops,
-                neighbors: [], traversedRelationships: [], notes: []});
+                neighbors: [], traversedRelationships: [], notes: [], evidence: {...graphContext,commitId:graphContext.commit}});
         }
-        window.AnalysisApi = {graphUpstream: (code, hops) => query('upstream', code, hops),
+        window.graphContext = {repositoryId:'fixture-repo',workspaceScopeKey:'__shared__',branch:'fixture',commit:'a'.repeat(40)};
+        window.AnalysisApi = {captureContext: async () => graphContext, graphUpstream: (code, hops) => query('upstream', code, hops),
             graphDownstream: (code, hops) => query('downstream', code, hops)};
     }, {template, messages, locale, delayedTranslations});
     if (!withArchitecture) await page.addScriptTag({path: path.join(resources, 'static/js/core/taxonomy-scoring.js')});
@@ -856,13 +858,21 @@ test('full analysis result pipeline retains relations with the architecture opti
             window.TaxonomyAnalysisSession={state:()=>({ready:true,workspaceId:'test-workspace'})};
             window.TaxonomyAnalysisSessionApi={getRunStatus:async id=>({status:200,json:async()=>({operationId:id,status:'COMPLETED',phase:'FINISHED',sequence:1,serverTime:3000,lastActivityAt:3000,elapsedMillis:1000,calls:[],evaluatedNodes:1})})};
             window.__taxonomyFixtureFetch=async(url,options)=>{
-                if(url!=='/api/analyze')throw new Error('Unexpected request '+url);
-                window.analysisRequest=JSON.parse(options.body);
+                if(new URL(url,location.href).pathname!=='/api/analyze')throw new Error('Unexpected request '+url);
+                window.analysisRequest={url:String(url),method:options.method,
+                    headers:Object.fromEntries(new Headers(options.headers)),body:JSON.parse(options.body)};
                 return {ok:true,json:async()=>({status:'SUCCESS',scores:{'BP-1000':70},rawScores:{'BP-1000':70},reasons:{},warnings:[],architectureView:null,relationSearchReport:report})};
             };
         },relationReport);
         await page.evaluate(()=>TaxonomyScoring.runAnalysis());
-        assert.equal(await page.evaluate(()=>analysisRequest.includeArchitectureView),false);
+        const request=await page.evaluate(()=>window.analysisRequest);
+        assert.ok(request,'The actual named analysis request must reach the captured transport');
+        const url=new URL(request.url,'http://taxonomy.fixture');
+        assert.equal(url.pathname,'/api/analyze');
+        assert.deepEqual([...url.searchParams],[['workspaceId','test-workspace']]);
+        assert.equal(request.headers['x-taxonomy-workspace-id'],'test-workspace');
+        assert.equal(request.method,'POST');
+        assert.equal(request.body.includeArchitectureView,false);
         assert.deepEqual(await page.evaluate(()=>TaxonomyState.currentRelationSearchReport),relationReport);
         assert.equal(await page.locator('#relationSearchReportPanel').isVisible(),true);
     }finally{await finish(page);}
@@ -1028,9 +1038,9 @@ const importedArchitecture = {
 };
 test('portable Copilot import renders and re-exports retained evidence without granting a server reference', async () => {
     const page = await reportFixture();
-    const copilot = {schemaVersion:1,state:'PARTIAL',gaps:{totalAnchors:0,totalGaps:0,notes:[],missingRelations:[]},
+    const copilot = {schemaVersion:2,state:'PARTIAL',gaps:{profileId:'compatibility',profileVersion:'1.0.0',totalAnchors:0,totalGaps:0,notes:[],judgments:[],evidenceCompleteness:'INCOMPLETE'},
         patterns:{matchedPatterns:[],incompletePatterns:[],patternCoverage:0,notes:[]},
-        recommendation:{confirmedElements:[],proposedElements:[],suggestedRelations:[],reasoning:[],notes:[],confidence:0},
+        recommendation:{matchedElements:[],acceptedElements:[],proposedElements:[],suggestedRelations:[],reasoning:[],notes:[],meanRelevance:null},
         notes:['PORTABLE COPILOT EVIDENCE']};
     try {
         await page.evaluate(() => {
@@ -1072,20 +1082,25 @@ for (const edited of [false,true]) test(`report export ${edited ? 'retains manua
         await page.evaluate(edited=>{
             const C=__TaxonomyAnalysisSessionContext,S=TaxonomyState;
             C.runtime.workspaceId='ws-owned';S.currentReasons={'BP-1000':'Retained rationale'};
-            S.currentCopilot={schemaVersion:1,state:'COMPLETED',notes:[]};
+            S.currentCopilot={schemaVersion:2,state:'COMPLETED',notes:[]};
             S.analysisOperationId='owned-operation';S.analysisRecovery=null;
             C.runtime.analysisReference={workspaceId:'ws-owned',operationId:'owned-operation'};
             C.runtime.analysisEvidence=C.currentAnalysisEvidence();
             if(edited)S.currentReasons['BP-1000']='Manual rationale';
-            window.__taxonomyFixtureFetch=async(url,options)=>{window.reportRequest={url,headers:options.headers,body:JSON.parse(options.body)};
+            window.__taxonomyFixtureFetch=async(url,options)=>{window.reportRequest={url:String(url),method:options.method,
+                headers:Object.fromEntries(new Headers(options.headers)),body:JSON.parse(options.body)};
                 return {ok:true,blob:async()=>new Blob(['report'],{type:'text/markdown'})};};
         },edited);
         await page.locator('#exportReportMd').click();await page.waitForFunction(()=>window.reportRequest);
         const request=await page.evaluate(()=>window.reportRequest);
-        assert.equal(request.url,'/api/report/markdown');
+        const url=new URL(request.url,'http://taxonomy.fixture');
+        assert.equal(url.pathname,'/api/report/markdown');
+        assert.deepEqual([...url.searchParams],[['workspaceId','ws-owned']]);
+        assert.equal(request.headers['x-taxonomy-workspace-id'],'ws-owned');
+        assert.equal(request.method,'POST');
         if(edited){assert.equal(request.body.analysisReference,undefined);assert.equal(request.body.reasons['BP-1000'],'Manual rationale');}
-        else {assert.equal(request.body.analysisReference.operationId,'owned-operation');
-            assert.equal(request.headers['X-Taxonomy-Workspace-Id'],'ws-owned');assert.equal(request.body.scores,undefined);}
+        else {assert.deepEqual(request.body.analysisReference,{workspaceId:'ws-owned',operationId:'owned-operation'});
+            assert.equal(request.body.scores,undefined);}
     } finally {await finish(page);}
 });
 for (const [label, architectureFields] of [

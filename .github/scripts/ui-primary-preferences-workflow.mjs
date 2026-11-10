@@ -412,14 +412,22 @@ async function installRequestGate(page, pattern, method, description = pattern) 
   let released = false;
   const gate = new Promise(resolve => { releaseRequest = resolve; });
   const seen = new Promise(resolve => { markSeen = resolve; });
-  const handler = async route => {
-    if (route.request().method() !== method) {
+  const activeHandlers = new Set();
+  const failures = [];
+  const handler = route => {
+    const active = (async () => {
+      if (route.request().method() === method) {
+        markSeen();
+        await gate;
+      }
       await route.continue();
-      return;
-    }
-    markSeen();
-    await gate;
-    await route.continue();
+    })().catch(error => {
+      // The gate owns these failures and reports them from its awaited cleanup,
+      // instead of leaving a rejected Playwright callback outside the workflow.
+      failures.push(error);
+    }).finally(() => activeHandlers.delete(active));
+    activeHandlers.add(active);
+    return active;
   };
   await page.route(pattern, handler);
   return {
@@ -447,7 +455,18 @@ async function installRequestGate(page, pattern, method, description = pattern) 
         released = true;
         releaseRequest();
       }
-      await page.unroute(pattern, handler);
+      // Removing a current Playwright handler also continues its held route.
+      // Drain our callbacks first, including any that arrive while draining.
+      while (activeHandlers.size) await Promise.all([...activeHandlers]);
+      try {
+        await page.unroute(pattern, handler);
+      } catch (error) {
+        failures.push(error);
+      }
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1) {
+        throw new AggregateError(failures, 'Preferences request gate cleanup failed');
+      }
     }
   };
 }

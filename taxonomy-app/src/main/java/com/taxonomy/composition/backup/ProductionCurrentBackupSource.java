@@ -152,6 +152,16 @@ public final class ProductionCurrentBackupSource implements BackupCaptureSource 
         }
         if(keys.size()>BackupLimits.MAX_ITEMS)throw new IOException("Repository inventory limit exceeded");return Set.copyOf(keys);
     }
+    static KnowledgeBackupContributor.Selection resolveKnowledgeReferences(PortableKnowledgeReferences references,
+            JdbcTemplate jdbc,BackupCheckpoint checkpoint)throws IOException {
+        var codes=new TreeSet<>(references.codes);
+        for(String id:references.modelCodes) {
+            checkpoint.check();
+            var actual=jdbc.query("select code from taxonomy_node where code=?",(r,n)->r.getString(1),id);
+            if(actual.size()==1 && id.equals(actual.getFirst()))codes.add(id);
+        }
+        return new KnowledgeBackupContributor.Selection(codes,references.hypotheses);
+    }
     private final class ReferenceClosure {
         private final GitStandBackupSource source;private final GitStandBackupSource.Limits limits;private final PortfolioBackupContributor portfolio;private final AnalysisBackupContributor analysis;private final ExistingGitBackupRepositories repositories;private BackupCheckpoint checkpoint;
         private final WorkspaceBackupContributor workspace;private final GitHistoryBackupContributor history;
@@ -199,7 +209,7 @@ public final class ProductionCurrentBackupSource implements BackupCaptureSource 
                     }
                 }
             }
-            return new KnowledgeBackupContributor.Selection(references.codes,references.hypotheses);
+            return resolveKnowledgeReferences(references,jdbc,checkpoint);
         }
         void selectedDocuments(AuthorizedBackupRequest authorization,List<BackupManifest.Repository> repositories,BackupCheckpoint checkpoint)throws IOException {
             for(var repository:repositories)try(var stand=source.open(authorization,repository.id(),limits,checkpoint)) {

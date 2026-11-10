@@ -5,6 +5,7 @@ import com.taxonomy.backup.BackupScope;
 import com.taxonomy.backup.BackupWriteBarrier;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
@@ -349,9 +350,13 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
 
     @Override
     public <T> T version(RepositoryContext context, String rationale, GitAction<T> action) throws IOException {
+        if (context.scope() == RepositoryScope.CENTRAL_READ) {
+            throw new AccessDeniedException("A central read selection cannot create architecture versions; use a working copy");
+        }
         try (var write = writeBarrier.enter(backupScope(context))) {
+            if (context.scope() != RepositoryScope.WORKSPACE) return action.run();
             Snapshot snapshot = journal.read(context);
-            if (context.scope() != RepositoryScope.WORKSPACE || snapshot == null) return action.run();
+            if (snapshot == null) return action.run();
             if (snapshot.state().pendingCheckpoint() != null) resumeCheckpoint(context);
             reconcileVersion(context);
             snapshot = journal.read(context);

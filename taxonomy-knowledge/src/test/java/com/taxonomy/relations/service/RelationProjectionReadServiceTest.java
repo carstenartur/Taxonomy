@@ -54,6 +54,51 @@ class RelationProjectionReadServiceTest {
     }
 
     @Test
+    void strictSnapshotRejectsUnbuiltPrimaryInsteadOfLegacyFallback() {
+        var context = RepositoryContext.centralRead("repo-a", "main", "alice");
+        when(readinessService.inspect(context)).thenReturn(new Readiness(
+                ReadinessState.NOT_BUILT, "a".repeat(40), null, List.of()));
+        assertThatThrownBy(() -> service.readSnapshot(context, "a".repeat(40)))
+                .isInstanceOf(RelationProjectionUnavailableException.class);
+        verifyNoInteractions(legacyRelationService, repositoryService);
+    }
+
+    @Test
+    void strictSnapshotRejectsEveryUnprovedReadinessState() {
+        var context = RepositoryContext.centralRead("repo-a", "main", "alice");
+        for (ReadinessState state : List.of(ReadinessState.STALE, ReadinessState.CORRUPT, ReadinessState.BRANCH_MISSING)) {
+            when(readinessService.inspect(context)).thenReturn(new Readiness(state, "b".repeat(40), "a".repeat(40), List.of()));
+            assertThatThrownBy(() -> service.readSnapshot(context, "b".repeat(40)))
+                    .isInstanceOf(RelationProjectionUnavailableException.class);
+        }
+        verifyNoInteractions(legacyRelationService, repositoryService);
+    }
+
+    @Test
+    void strictSnapshotFreezesEvidenceAndRejectsWrongRevisionOrTuple() {
+        var context = RepositoryContext.workspace("repo-a", "workspace-a", "feature/a", "alice");
+        var row = projection(17L, "BP-1", RelationType.SUPPORTS, "CP-2", "manual", "a".repeat(40));
+        row.setRepositoryId(context.repositoryId());
+        row.setWorkspaceId(context.workspaceId());
+        row.setBranch(context.branch());
+        row.setRelationPresent(true);
+        row.setCausationId("decision-17");
+        when(readinessService.inspect(context)).thenReturn(new Readiness(
+                ReadinessState.READY, "a".repeat(40), "a".repeat(40), List.of(row)));
+        var snapshot = service.readSnapshot(context, "a".repeat(40));
+        row.setProvenance("changed after read");
+        assertThat(snapshot.relations()).singleElement().satisfies(edge -> {
+            assertThat(edge.provenance()).isEqualTo("manual");
+            assertThat(edge.causationId()).isEqualTo("decision-17");
+        });
+        assertThatThrownBy(() -> service.readSnapshot(context, "b".repeat(40)))
+                .isInstanceOf(RelationProjectionUnavailableException.class);
+        row.setBranch("other");
+        assertThatThrownBy(() -> service.readSnapshot(context, "a".repeat(40)))
+                .isInstanceOf(RelationProjectionUnavailableException.class);
+    }
+
+    @Test
     void readyProjectionIsTheOnlyNormalProductReadSource() {
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "feature/a", "alice");
@@ -112,7 +157,7 @@ class RelationProjectionReadServiceTest {
 
         assertThat(snapshot.readModel()).isEqualTo(ReadModel.PROJECTION);
         assertThat(snapshot.readinessState()).isEqualTo(ReadinessState.READY);
-        assertThat(snapshot.authoritativeCommitId()).isEqualTo("a".repeat(40));
+        assertThat(snapshot.commitId()).isEqualTo("a".repeat(40));
         assertThat(snapshot.contains("BP", RelationType.SUPPORTS, "CP"))
                 .isTrue();
         assertThat(snapshot.contains("BP", RelationType.SUPPORTS, "CR"))

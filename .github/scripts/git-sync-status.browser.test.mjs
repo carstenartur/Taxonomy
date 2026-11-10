@@ -24,7 +24,7 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
     const url = baseUrl + '?' + query + '#architecture';
     const errors = [], reconciled = [], ledger = createConsoleErrorLedger(errors, reconciled);
     const observer = createNavigationPollEvidence({browserName:'webkit', baseUrl});
-    const headers = [], headerTasks = [], pageErrors = [];
+    const headers = [], headerTasks = [], pageErrors = [], lifecycleLoads = [];
     const git = {currentBranch:'draft', headCommit:'a'.repeat(40), projectionStale:false, indexStale:false,
         branches:['draft'], totalCommits:1, operationInProgress:false};
     const current = {contextId:'context-1', branch:'draft', commitId:null, mode:'EDITABLE',
@@ -43,6 +43,8 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
     try {
         page.on('pageerror', error => pageErrors.push(error.message));
         page.on('request', request => {
+            if (new URL(request.url()).pathname.endsWith('/js/core/taxonomy-analysis-session.js'))
+                lifecycleLoads.push(request.url());
             if (!/\/api\/(?:git\/state|context\/current)$/.test(new URL(request.url()).pathname)) return;
             const item = {url:request.url(), pageUrl:page.url(), immediate:request.headers()['x-taxonomy-workspace-id'] || null};
             headers.push(item);
@@ -68,6 +70,9 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
                 relative === '/api/i18n/en' ? messages : relative === '/api/git/state' ? git : relative === '/api/context/current' ? current : {})});
             return route.fulfill({contentType:'text/html', body:'<!doctype html><html lang="en"><head><meta charset="UTF-8">'
                 + '<script src="' + prefix + '/js/taxonomy-i18n.js"></script></head><body>' + statusMarkup
+                // This fixture owns only pre-hydration Core/Routing. Claim that
+                // lifecycle before taxonomy-state could start the full loader.
+                + '<script data-taxonomy-analysis-session></script>'
                 + paths.map(file => '<script src="' + prefix + '/js/' + file + '"></script>').join('')
                 + '<script>__TaxonomyAnalysisSessionContext.installWorkspaceFetchRouting();</script>'
                 + '<script src="' + prefix + '/js/workspace/taxonomy-git-status.js"></script>'
@@ -80,6 +85,9 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
             && window.TaxonomyContextBar?.getCurrentContext()?.contextId === 'context-1');
         const initialEpoch = await page.evaluate(() => performance.timeOrigin);
         assert.equal(await page.evaluate(() => __TaxonomyAnalysisSessionContext.runtime.workspaceId), null);
+        assert.equal(await page.evaluate(() => __TaxonomyAnalysisSessionContext.runtime.workspaceResolved), false);
+        assert.equal(await page.evaluate(() => window.TaxonomyAnalysisSession), undefined);
+        assert.deepEqual(lifecycleLoads, [], 'The owned pre-hydration fixture must not start the full lifecycle');
         await page.evaluate(() => window.addEventListener('beforeunload', () => window.__fixtureStatusCancellation()));
         await observer.begin(null, 'reload');
         await page.reload();
@@ -88,6 +96,10 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
         await observer.end(null, true, 'reload');
         await observer.verifyDestination(null, 'reload');
         await Promise.all(headerTasks);
+        assert.equal(await page.evaluate(() => __TaxonomyAnalysisSessionContext.runtime.workspaceId), null);
+        assert.equal(await page.evaluate(() => __TaxonomyAnalysisSessionContext.runtime.workspaceResolved), false);
+        assert.equal(await page.evaluate(() => window.TaxonomyAnalysisSession), undefined);
+        assert.deepEqual(lifecycleLoads, [], 'Reload must retain the fixture’s pre-hydration lifecycle ownership');
         assert.equal(page.url(), url, 'Status reads must not rewrite any URL, scope or selection pin');
         assert.notEqual(await page.evaluate(() => performance.timeOrigin), initialEpoch);
         assert.deepEqual(headers.map(item => [item.immediate, item.all]),

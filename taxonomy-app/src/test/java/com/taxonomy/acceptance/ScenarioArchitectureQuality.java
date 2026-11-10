@@ -3,6 +3,10 @@ package com.taxonomy.acceptance;
 import com.taxonomy.archimate.exchange.ArchiMateRelationProvenance;
 import com.taxonomy.diagram.DiagramRelationMetadata;
 import com.taxonomy.model.RelationType;
+import com.taxonomy.architecture.service.ObligationEvaluator;
+import com.taxonomy.dto.EvidenceCompleteness;
+import com.taxonomy.dto.ObligationJudgment;
+import com.taxonomy.dto.ObligationProfile;
 import com.taxonomy.relations.service.RelationCompatibilityMatrix;
 import com.taxonomy.dto.RelationSearchModel.*;
 import com.taxonomy.exchange.sparx.SparxXmiCodec;
@@ -17,6 +21,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -28,13 +35,251 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 
 /** Independent declared-function and evidence gate, not a deployment or EA-desktop certification. */
 public final class ScenarioArchitectureQuality {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String RESOURCE = "/scenarios/flood-quality-reference.json";
+    private static final String CORPUS_RESOURCE = "/scenarios/architecture-quality-v1.json";
     private ScenarioArchitectureQuality() { }
+
+    /** Deterministic evaluation of a bounded authored reference, never a call to a model. */
+    public static Map<String, Object> evaluateCorpusCase(String caseId, JsonNode observation) {
+        return evaluateCorpusCase(corpusReference(), caseId, observation);
+    }
+
+    /** Records all cases, including NOT_RUN; missing cases and measurements never become success. */
+    public static Map<String, Object> writeCorpus(Path observations, Path output) throws IOException {
+        if (observations.toAbsolutePath().normalize().equals(output.toAbsolutePath().normalize()))
+            throw new IllegalArgumentException("The report cannot replace its observations");
+        Files.deleteIfExists(output);
+        byte[] bytes;
+        try (var input = Files.newInputStream(observations)) {
+            bytes = input.readNBytes(256 * 1024 + 1);
+            requireCorpus(bytes.length <= 256 * 1024, "Corpus observations exceed their byte budget");
+        }
+        JsonNode inputs = JSON.readTree(bytes);
+        requireCorpus(inputs.path("schemaVersion").isIntegralNumber() && inputs.path("schemaVersion").canConvertToInt()
+                        && inputs.path("schemaVersion").asInt() == 1,
+                "Unsupported observation schema");
+        String kind = corpusText(inputs, "evidenceKind");
+        requireCorpus(Set.of("AUTHORED_OBSERVATIONS_NOT_MODEL_OUTPUT", "RECORDED_OUTPUT_WITHOUT_RUN_VERIFICATION").contains(kind),
+                "Unsupported or overstated observation evidence kind");
+        CorpusReference reference = corpusReference();
+        var selected = new LinkedHashMap<String, JsonNode>();
+        for (JsonNode observation : corpusArray(inputs, "observations")) {
+            String id = corpusText(observation, "caseId");
+            requireCorpus(reference.cases().containsKey(id), "Unknown observation case: " + id);
+            requireCorpus(selected.putIfAbsent(id, observation) == null, "Repeated observation case: " + id);
+        }
+        var assessments = new ArrayList<Map<String, Object>>();
+        var outcomes = new LinkedHashMap<String, Integer>();
+        for (var verdict : DirectedRelationMetrics.Verdict.values()) outcomes.put(verdict.name(), 0);
+        for (String id : reference.cases().keySet()) {
+            var assessment = evaluateCorpusCase(reference, id, selected.getOrDefault(id, notRunObservation(id)));
+            assessments.add(assessment);
+            outcomes.compute(assessment.get("verdict").toString(), (key, count) -> count + 1);
+        }
+        var report = new LinkedHashMap<String, Object>();
+        report.put("schemaVersion", 1); report.put("referenceVersion", reference.version());
+        report.put("referenceResource", CORPUS_RESOURCE); report.put("referenceSha256", reference.sha256());
+        report.put("catalogueResource", reference.catalogueResource()); report.put("catalogueSha256", reference.catalogueSha256());
+        report.put("observationsSha256", sha256(bytes)); report.put("evidenceKind", kind);
+        report.put("evaluationScope", "BOUNDED_INDEPENDENT_ARCHITECTURE_REFERENCE");
+        report.put("outcomes", outcomes); report.put("cases", assessments);
+        report.put("measurements", new TreeMap<>(Map.of("modelRuntime", unmeasured("milliseconds"), "modelCost", unmeasured("currency amount"),
+                "humanCorrectionEffort", unmeasured("person minutes"))));
+        report.put("limits", List.of("The authored reference is not expert-certified ground truth.",
+                "Deterministic fixtures do not measure live-model architecture quality.",
+                "Recorded-output imports do not verify provider execution, cost, duration or human review.",
+                "Properties are checked only where the reference declares an expected value."));
+        Path destination = output.toAbsolutePath(); Files.createDirectories(destination.getParent());
+        Path temporary = Files.createTempFile(destination.getParent(), ".architecture-quality-", ".json");
+        try {
+            Files.writeString(temporary, JSON.writerWithDefaultPrettyPrinter().writeValueAsString(report) + "\n", StandardCharsets.UTF_8);
+            Files.move(temporary, destination, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } finally { Files.deleteIfExists(temporary); }
+        return report;
+    }
+
+    private static Map<String, Object> evaluateCorpusCase(CorpusReference corpus, String caseId, JsonNode observation) {
+        JsonNode reference = corpus.cases().get(caseId);
+        requireCorpus(reference != null, "Unknown independent reference case: " + caseId);
+        requireCorpus(caseId.equals(corpusText(observation, "caseId")), "Observation case identity differs from the reference");
+        var state = DirectedRelationMetrics.RunState.valueOf(corpusText(observation, "state"));
+        var declared = EvidenceCompleteness.valueOf(corpusText(observation, "evidenceCompleteness"));
+        var referenceCompleteness = EvidenceCompleteness.valueOf(corpusText(reference, "evidenceCompleteness"));
+        boolean complete = state == DirectedRelationMetrics.RunState.SUCCESS && declared == EvidenceCompleteness.COMPLETE
+                && referenceCompleteness == EvidenceCompleteness.COMPLETE;
+        var effective = complete ? EvidenceCompleteness.COMPLETE : EvidenceCompleteness.INCOMPLETE;
+        var metricState = state == DirectedRelationMetrics.RunState.SUCCESS && !complete ? DirectedRelationMetrics.RunState.PARTIAL : state;
+        var elements = new TreeMap<String, JsonNode>();
+        var roots = new TreeMap<String, String>();
+        for (JsonNode element : corpusArray(observation, "elements")) {
+            String id = corpusText(element, "id");
+            requireCorpus(elements.putIfAbsent(id, element) == null, "Duplicate observation element: " + id);
+            roots.put(id, corpusText(element, "root")); corpusProperties(element);
+        }
+        Set<String> acknowledged = corpusStrings(corpusArray(observation, "questions"));
+        requireCorpus(state != DirectedRelationMetrics.RunState.NOT_RUN || elements.isEmpty() && acknowledged.isEmpty(),
+                "An unexecuted case cannot contain model or question observations");
+        var expected = new TreeMap<String, JsonNode>();
+        corpusObject(reference, "requiredElements").properties().forEach(e -> expected.put(e.getKey(), e.getValue()));
+        Set<String> requiredIds = new TreeSet<>(expected.keySet());
+        corpusObject(reference, "allowedElements").properties().forEach(e -> expected.put(e.getKey(), e.getValue()));
+        var unobserved = new TreeSet<>(requiredIds); unobserved.removeAll(elements.keySet());
+        var additional = new TreeSet<>(elements.keySet()); additional.removeAll(expected.keySet());
+        var mismatches = new ArrayList<Map<String, Object>>();
+        for (var element : elements.entrySet()) {
+            JsonNode wanted = expected.get(element.getKey());
+            if (wanted == null) continue;
+            corpusPropertyMismatch(mismatches, element.getKey(), "root", corpusText(wanted, "root"), corpusText(element.getValue(), "root"));
+            for (var property : corpusObject(wanted, "properties").properties())
+                corpusPropertyMismatch(mismatches, element.getKey(), property.getKey(), property.getValue().asText(),
+                        value(corpusObject(element.getValue(), "properties"), property.getKey()));
+        }
+        var relations = ScenarioRelationQuality.assessCorpusRelations(reference, observation, elements.keySet(), metricState);
+        ObligationProfile profile = corpus.profiles().get(corpusText(reference, "profile"));
+        var judgments = new ObligationEvaluator().evaluate(profile, roots, relations.obligationEvidence(), effective);
+        var missing = judgments.stream().filter(j -> j.status() == ObligationJudgment.Status.VIOLATED && j.observedCount() < j.minCount()).toList();
+        var excessive = judgments.stream().filter(j -> j.status() == ObligationJudgment.Status.VIOLATED && j.maxCount() != null && j.observedCount() > j.maxCount()).toList();
+        var inconclusive = judgments.stream().filter(j -> j.status() == ObligationJudgment.Status.INCONCLUSIVE).toList();
+        var questions = new TreeSet<String>();
+        for (JsonNode question : corpusArray(reference, "questions")) questions.add(corpusText(question, "id"));
+        var unacknowledged = new TreeSet<>(questions); unacknowledged.removeAll(acknowledged);
+        var unrecognized = new TreeSet<>(acknowledged); unrecognized.removeAll(questions);
+        boolean defect = !additional.isEmpty() || !mismatches.isEmpty() || !relations.classified().falsePositives().isEmpty()
+                || !relations.unsupportedAccepted().isEmpty() || !relations.dangling().isEmpty() || !unacknowledged.isEmpty()
+                || !missing.isEmpty() || !excessive.isEmpty()
+                || complete && (!unobserved.isEmpty() || !relations.accepted().notObservedRequired().isEmpty());
+        var verdict = state == DirectedRelationMetrics.RunState.NOT_RUN ? DirectedRelationMetrics.Verdict.NOT_RUN
+                : defect ? DirectedRelationMetrics.Verdict.FAIL
+                : !complete || !questions.isEmpty() || !unrecognized.isEmpty() || !inconclusive.isEmpty()
+                    || relations.classified().unresolvedReferenceCount() > 0 ? DirectedRelationMetrics.Verdict.INCONCLUSIVE : DirectedRelationMetrics.Verdict.PASS;
+        var result = new LinkedHashMap<String, Object>();
+        result.put("caseId", caseId); result.put("category", corpusText(reference, "category"));
+        result.put("state", state.name()); result.put("verdict", verdict.name()); result.put("evidenceCompleteness", effective.name());
+        result.put("profileId", profile.id()); result.put("profileVersion", profile.version());
+        result.put("missingElements", complete ? unobserved : List.of()); result.put("notObservedElements", unobserved);
+        result.put("unjustifiedElements", additional); result.put("propertyMismatches", mismatches);
+        result.put("missingRequiredRelations", complete ? relations.accepted().notObservedRequired() : List.of());
+        result.put("notObservedRequiredRelations", relations.accepted().notObservedRequired());
+        result.put("missingObligations", missing); result.put("excessObligations", excessive); result.put("inconclusiveObligations", inconclusive);
+        result.put("unjustifiedRelations", relations.classified().falsePositives()); result.put("unsupportedAcceptedRelations", relations.unsupportedAccepted());
+        result.put("danglingRelations", relations.dangling()); result.put("obligations", judgments);
+        result.put("relations", new TreeMap<>(Map.of("classified", relations.classified(), "accepted", relations.accepted())));
+        result.put("openQuestions", questions); result.put("unacknowledgedQuestions", unacknowledged); result.put("unrecognizedQuestions", unrecognized);
+        return result;
+    }
+
+    private record CorpusReference(String version, String sha256, String catalogueResource, String catalogueSha256,
+                                   Map<String, JsonNode> cases, Map<String, ObligationProfile> profiles) { }
+
+    private static CorpusReference corpusReference() {
+        try (var input = ScenarioArchitectureQuality.class.getResourceAsStream(CORPUS_RESOURCE)) {
+            requireCorpus(input != null, "Independent architecture corpus is missing");
+            byte[] bytes = input.readNBytes(256 * 1024 + 1);
+            requireCorpus(bytes.length <= 256 * 1024, "Independent architecture corpus is oversized");
+            JsonNode tree = JSON.readTree(bytes);
+            requireCorpus(tree.path("schemaVersion").isIntegralNumber() && tree.path("schemaVersion").canConvertToInt()
+                            && tree.path("schemaVersion").asInt() == 1,
+                    "Unsupported independent corpus schema");
+            corpusText(tree, "authorship");
+            String catalogue = corpusText(tree, "catalogue"), catalogueHash = corpusText(tree, "catalogueSha256");
+            requireCorpus(catalogue.matches("[A-Za-z0-9_\\-]+\\.xlsx") && catalogueHash.matches("[0-9a-f]{64}"),
+                    "Invalid pinned catalogue identity");
+            String catalogueResource = "/data/" + catalogue;
+            try (var workbook = ScenarioArchitectureQuality.class.getResourceAsStream(catalogueResource)) {
+                requireCorpus(workbook != null, "Pinned corpus catalogue is missing");
+                byte[] workbookBytes = workbook.readNBytes(16 * 1024 * 1024 + 1);
+                requireCorpus(workbookBytes.length <= 16 * 1024 * 1024 && catalogueHash.equals(sha256(workbookBytes)),
+                        "Catalogue bytes differ from the independent reference pin; review the corpus before updating it");
+            }
+            var profiles = new LinkedHashMap<String, ObligationProfile>();
+            for (var item : corpusObject(tree, "profiles").properties()) {
+                var profile = JSON.treeToValue(item.getValue(), ObligationProfile.class);
+                corpusText(item.getValue(), "id"); corpusText(item.getValue(), "version"); corpusText(item.getValue(), "description");
+                profiles.put(item.getKey(), profile);
+            }
+            var cases = new LinkedHashMap<String, JsonNode>();
+            for (JsonNode reference : corpusArray(tree, "cases")) {
+                String id = corpusText(reference, "id"), requirement = corpusText(reference, "requirement");
+                requireCorpus(cases.putIfAbsent(id, reference) == null, "Duplicate independent case identity");
+                corpusText(reference, "category"); corpusText(reference, "rationale");
+                EvidenceCompleteness.valueOf(corpusText(reference, "evidenceCompleteness"));
+                requireCorpus(profiles.containsKey(corpusText(reference, "profile")), "Unknown independent obligation profile");
+                JsonNode clauses = corpusObject(reference, "clauses");
+                for (var clause : clauses.properties())
+                    requireCorpus(clause.getValue().isString() && !clause.getValue().asText().isBlank()
+                            && requirement.contains(clause.getValue().asText()), "Reference clause is not an exact requirement quotation");
+                validateCorpusQuoteIds(reference, clauses);
+                var allElements = new LinkedHashSet<String>();
+                for (String section : List.of("requiredElements", "allowedElements", "initialElements")) {
+                    for (var element : corpusObject(reference, section).properties()) {
+                        corpusText(element.getValue(), "root"); corpusProperties(element.getValue());
+                        requireCorpus(!element.getKey().isBlank(), "Blank reference element identity");
+                        if (!section.equals("initialElements")) requireCorpus(allElements.add(element.getKey()), "Overlapping element reference classifications");
+                    }
+                }
+                for (String section : List.of("requiredRelations", "allowedRelations", "unresolvedRelations", "initialRelations")) {
+                    var available = section.equals("initialRelations") ? corpusObject(reference, "initialElements") : null;
+                    for (var relation : ScenarioRelationQuality.corpusRelations(corpusArray(reference, section)))
+                        requireCorpus(available == null ? allElements.contains(relation.source()) && allElements.contains(relation.target())
+                                : available.has(relation.source()) && available.has(relation.target()), "Unbound reference relation endpoint");
+                }
+                ScenarioRelationQuality.assessCorpusRelations(reference, notRunObservation(id), Set.of(), DirectedRelationMetrics.RunState.NOT_RUN);
+                var questions = new HashSet<String>();
+                for (JsonNode question : corpusArray(reference, "questions")) {
+                    requireCorpus(questions.add(corpusText(question, "id")), "Duplicate reference question");
+                    corpusText(question, "kind"); corpusText(question, "text"); validateCorpusQuoteIds(question, clauses);
+                }
+            }
+            requireCorpus(!cases.isEmpty(), "Independent corpus has no cases");
+            return new CorpusReference(corpusText(tree, "referenceVersion"), sha256(bytes), catalogueResource, catalogueHash, cases, profiles);
+        } catch (IOException failure) { throw new IllegalArgumentException("Cannot read independent architecture corpus", failure); }
+    }
+
+    private static void validateCorpusQuoteIds(JsonNode parent, JsonNode clauses) {
+        Set<String> ids = corpusStrings(corpusArray(parent, "quoteIds"));
+        requireCorpus(!ids.isEmpty() && ids.stream().allMatch(clauses::has), "Missing or unknown reference source binding");
+    }
+    private static void corpusPropertyMismatch(List<Map<String, Object>> differences, String id, String property, String expected, String actual) {
+        if (Objects.equals(expected, actual)) return;
+        var difference = new LinkedHashMap<String, Object>(); difference.put("elementId", id); difference.put("property", property);
+        difference.put("expected", expected); difference.put("actual", actual); differences.add(difference);
+    }
+    private static JsonNode notRunObservation(String id) {
+        var result = JSON.createObjectNode().put("caseId", id).put("state", "NOT_RUN").put("evidenceCompleteness", "INCOMPLETE");
+        result.putArray("elements"); result.putArray("relations"); result.putArray("questions"); return result;
+    }
+    private static Map<String, Object> unmeasured(String unit) {
+        var value = new LinkedHashMap<String, Object>(); value.put("status", "NOT_MEASURED"); value.put("value", null); value.put("unit", unit); return value;
+    }
+    private static void corpusProperties(JsonNode parent) {
+        corpusObject(parent, "properties").properties().forEach(e -> requireCorpus(e.getValue().isString(), "Observed and expected properties must be text"));
+    }
+    private static Set<String> corpusStrings(JsonNode values) {
+        var result = new TreeSet<String>();
+        for (JsonNode value : values) {
+            requireCorpus(value.isString() && !value.asText().isBlank(), "Expected canonical text array");
+            requireCorpus(result.add(value.asText()), "Repeated text-array identity");
+        }
+        return result;
+    }
+    private static JsonNode corpusObject(JsonNode parent, String key) {
+        requireCorpus(parent != null && parent.path(key).isObject(), "Expected corpus object: " + key); return parent.path(key);
+    }
+    private static JsonNode corpusArray(JsonNode parent, String key) {
+        requireCorpus(parent != null && parent.path(key).isArray(), "Expected corpus array: " + key); return parent.path(key);
+    }
+    private static String corpusText(JsonNode parent, String key) {
+        requireCorpus(parent != null && parent.path(key).isString() && !parent.path(key).asText().isBlank(), "Expected corpus text: " + key);
+        return parent.path(key).asText();
+    }
+    private static void requireCorpus(boolean condition, String message) { if (!condition) throw new IllegalArgumentException(message); }
 
     /** Checks actual authored protocol replies with the unchanged independent relationship gate. */
     static void verifyAuthoredRelationshipEvidence(String source, String type, String target,

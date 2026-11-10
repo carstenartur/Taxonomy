@@ -313,10 +313,26 @@
                 </div>
 
                 <!-- Gap Analysis Panel -->
+                <fieldset class="analysis-assessment-scope mt-3 p-2 border rounded" aria-describedby="gapProfileHelp">
+                    <legend class="float-none w-auto px-1 fs-6" th:text="#{analysis.evidence.settings}">Assessment scope</legend>
+                    <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
+                        <button id="gapSelectModel" type="button" class="btn btn-sm btn-outline-secondary" th:text="#{analysis.evidence.useSelectedModel}">Use selected saved model</button>
+                        <span id="gapModelSource" class="small text-muted" role="status" th:text="#{analysis.evidence.selectVersion}">Select a saved architecture version before assessing its graph.</span>
+                    </div>
+                    <label class="form-label small mb-1" for="gapProfile" th:text="#{analysis.evidence.profile}">Obligation profile</label>
+                    <select id="gapProfile" class="form-select form-select-sm mb-2">
+                        <option value="compatibility" th:text="#{analysis.evidence.loadingProfiles}">Loading profiles…</option>
+                    </select>
+                    <div class="form-check small">
+                        <input id="gapEvidenceComplete" class="form-check-input" type="checkbox">
+                        <label class="form-check-label" for="gapEvidenceComplete" th:text="#{analysis.evidence.completeDeclaration}">The selected model contains all accepted relationships needed for this profile.</label>
+                    </div>
+                    <p id="gapProfileHelp" class="small text-muted mb-0 mt-1" th:text="#{analysis.evidence.profileHelp}">Applies to gap analysis and recommendations. Leave completeness unconfirmed when relationships are still being collected.</p>
+                </fieldset>
                 <details id="gapAnalysisPanel" class="mt-2">
                     <summary class="fw-semibold" style="cursor:pointer;" th:text="#{analyze.gap.panel.title}">&#128269; Gap Analysis</summary>
                     <div id="gapAnalysisContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
-                        <div class="text-muted" th:text="#{analyze.gap.panel.description}">Run gap analysis to identify missing relations and incomplete patterns.</div>
+                        <div class="text-muted" th:text="#{analyze.gap.panel.description}">Assess the selected model against explicit obligations and identify unresolved evidence.</div>
                     </div>
                     <div class="mt-1">
                         <button id="gapAnalyzeBtn" class="btn btn-sm btn-outline-primary" th:text="#{analyze.gap.btn}">&#128269; Analyze Gaps</button>

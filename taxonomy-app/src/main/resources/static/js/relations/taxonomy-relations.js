@@ -367,7 +367,7 @@
     /* ------------------------------------------------------------------ */
     /*  Requirement Impact Analysis                                        */
     /* ------------------------------------------------------------------ */
-    function runRequirementImpact() {
+    async function runRequirementImpact() {
         var area = document.getElementById('requirementImpactResults');
         if (!area) return;
         var graph = window.TaxonomyGraph;
@@ -397,20 +397,21 @@
 
         var maxHops = document.getElementById('graphMaxHops') ? parseInt(document.getElementById('graphMaxHops').value, 10) : 2;
 
-        window.TaxonomyRelationsApi.impact({scores: scores, businessText: businessText, maxHops: maxHops})
-        .then(function (r) {
-            if (!r.ok) throw new Error('Impact analysis failed (' + r.status + ')');
-            return r.json();
-        })
-        .then(function (data) {
-            if (graph.isCurrentResult(sequence)) renderImpactResults(data);
-        })
-        .catch(function (err) {
-                if (err?.code === 'ABORTED') return;
-            if (graph.isCurrentResult(sequence)) {
-                area.innerHTML = '<div class="text-danger small p-2" role="alert">\u26A0\uFE0F ' + escapeHtml(err.message) + '</div>';
-            }
-        });
+        var isCurrent = window.TaxonomyApiClient.captureContext();
+        try {
+            var context = await AnalysisApi.captureContext();
+            if (!isCurrent() || !graph.isCurrentResult(sequence)) return;
+            var data = await AnalysisApi.requirementImpact({scores:scores, businessText:businessText, maxHops:maxHops}, context);
+            if (!isCurrent() || !graph.isCurrentResult(sequence)) return;
+            var current = await graph.isCurrentEvidence(context, data.evidence);
+            if (!isCurrent() || !graph.isCurrentResult(sequence)) return;
+            if (!current) throw new Error(t('graph.evidence.changed'));
+            renderImpactResults(data);
+        } catch (error) {
+            if (!isCurrent() || error.code === 'ABORTED') return;
+            if (graph.isCurrentResult(sequence)) area.innerHTML = '<div class="text-danger small p-2" role="alert">'
+                + escapeHtml(error.message) + '</div>';
+        }
     }
 
     function renderImpactResults(data) {
@@ -424,7 +425,7 @@
             html += '<div class="alert alert-info small py-1 px-2 mt-2 mb-0">'
                 + data.notes.map(escapeHtml).join('<br>') + '</div>';
         }
-        area.innerHTML = html;
+        area.innerHTML = graph.renderEvidence(data.evidence) + html;
         graph.attachNodeLinks();
     }
 

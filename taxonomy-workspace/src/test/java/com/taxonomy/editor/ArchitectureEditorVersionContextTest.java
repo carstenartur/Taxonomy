@@ -4,7 +4,11 @@ import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.util.Map;
 import java.util.UUID;
@@ -96,6 +100,34 @@ class ArchitectureEditorVersionContextTest {
             assertThat(document.versions()).isEmpty();
             assertThatThrownBy(() -> fixture.service.read(central, null, 1L)).isInstanceOfSatisfying(CommandProblem.class,
                     error -> assertThat(error.code()).isEqualTo("NOT_FOUND"));
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = RepositoryScope.class, names = {"CENTRAL_WRITE", "FORK"})
+    void gitVersionActionsOutsideAWorkspaceDoNotReadAWorkspaceJournal(RepositoryScope scope) throws Exception {
+        try (var fixture = fixture()) {
+            var selected = new RepositoryContext("versioned-repository", null, "release", "owner", scope);
+            var repository = fixture.repositories.resolveRepository(selected);
+            String commit = fixture.service.version(selected, "Create Git version", () ->
+                    repository.commitDsl("release", model("Versioned Git model"), "owner", "Create Git version"));
+            assertThat(repository.getHeadCommit("release")).isEqualTo(commit);
+            assertThat(repository.getDslAtHead("release")).contains("Versioned Git model");
+            assertThat(repository.getCommitCount("release")).isEqualTo(1);
+            assertThat(fixture.service.read(selected, null).source()).isEqualTo("GIT_CHECKPOINT");
+        }
+    }
+
+    @Test void aCentralReadSelectionCannotRunAGitVersionAction() throws Exception {
+        try (var fixture = fixture()) {
+            var selected = RepositoryContext.centralRead("read-only-repository", "release", "reader");
+            var repository = fixture.repositories.resolveRepository(selected);
+            String head = repository.commitDsl("release", model("Published model"), "owner", "Seed central");
+            assertThatThrownBy(() -> fixture.service.version(selected, "Attempt central write", () ->
+                    repository.commitDsl("release", model("Unauthorized change"), "reader", "Attempt central write")))
+                    .isInstanceOf(AccessDeniedException.class);
+            assertThat(repository.getHeadCommit("release")).isEqualTo(head);
+            assertThat(repository.getCommitCount("release")).isEqualTo(1);
         }
     }
 

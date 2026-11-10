@@ -310,6 +310,30 @@
             .catch(function (error) { report(error); return false; });
         return sourceActivation;
     }
+    function activateSavedModel(source, page) {
+        analysisGeneration++;
+        window.TaxonomyArchitectureWorkflow?.replaceScope(source);
+        window.TaxonomyAppChrome?.activateContext?.('working');
+        var target = new URL(urlFor(new URL(location.href), source, window.TaxonomyI18n.resolveUrl('/')));
+        target.hash = page; history.replaceState(null, '', target);
+        window.TaxonomyAppChrome?.refreshNavigation();
+    }
+    workspace.useSelectedModel = async function () {
+        var source = workspace.getSource();
+        if (source.kind !== 'working' || !/^[a-f0-9]{40}$/.test(source.commit || '')
+                || !['repositoryId','workspaceScopeKey','branch'].every(function (key) { return typeof source[key] === 'string' && source[key]; })) {
+            await open('working');
+            return false;
+        }
+        var page = location.hash.slice(1) || 'analyze';
+        activateSavedModel(source, page);
+        var visible = window.TaxonomyAppChrome?.getContext?.()?.architecture;
+        if (!visible || !['repositoryId','workspaceScopeKey','branch','commit'].every(function (key) { return source[key] === visible[key]; })) {
+            await open('working', {source:source});
+            return false;
+        }
+        return true;
+    };
     workspace.openLens = function () {
         if (workspace.getSource().kind === 'working') editor?.openLens(); else { lens?.select(workspace.getSource().element);lens?.open(); }
     };
@@ -325,7 +349,16 @@
     el('architectureSource').addEventListener('change',function () { open(this.value).then(function(ok){if(!ok)el('architectureSource').value=workspace.getSource().kind;}); });
     document.addEventListener('taxonomy:page-activated',function (event) {
         if (event.detail.page === 'architecture') { if (!workspace.isActive()) open(workspace.getSource().kind,{replace:true}); else dimensions(); }
-        else { workspace.suspend(); positionSnapshotContext(false); lens?.suspend(); window.TaxonomyArchitectureLifecycle?.suspend?.(); restoreAnalysisPage(event.detail.page); }
+        else {
+            var selected = workspace.getSource(), visible = window.TaxonomyAppChrome?.getContext?.()?.architecture;
+            var keepSelected = event.detail.page === 'graph' && selected.kind === 'working'
+                && /^[a-f0-9]{40}$/.test(selected.commit || '') && visible
+                && ['repositoryId','workspaceScopeKey','branch','commit'].every(function (key) { return selected[key] === visible[key]; });
+            workspace.suspend(); positionSnapshotContext(false); lens?.suspend(); window.TaxonomyArchitectureLifecycle?.suspend?.();
+            if (keepSelected) {
+                activateSavedModel(selected, event.detail.page);
+            } else restoreAnalysisPage(event.detail.page);
+        }
     });
     document.addEventListener('taxonomy:architecture-diagram-updated',function () { if(workspace.isActive()) { lens?.refresh(); dimensions(); } });
     window.addEventListener('resize', scheduleSnapshotHeight);

@@ -146,39 +146,18 @@ public final class ArchitectureReportDocxRenderer {
             var gaps = report.getGapAnalysis();
             if (gaps != null) {
                 w.heading(labels.gaps(), 1, null);
-                w.table(
-                        List.of(
-                                labels.source(),
-                                labels.type(),
-                                labels.target(),
-                                labels.rationale()),
-                        gaps.getMissingRelations().stream()
-                                .map(
-                                        e ->
-                                                List.of(
-                                                        value(e.getSourceNodeCode(), labels),
-                                                        value(e.getExpectedRelationType(), labels),
-                                                        value(e.getExpectedTargetRoot(), labels),
-                                                        value(e.getDescription(), labels)))
-                                .toList());
-                w.table(
-                        List.of(labels.node(), labels.titleLabel(), labels.gaps()),
-                        gaps.getIncompletePatterns().stream()
-                                .map(
-                                        e ->
-                                                List.of(
-                                                        value(e.getNodeCode(), labels),
-                                                        value(e.getPatternDescription(), labels),
-                                                        value(e.getMissingElement(), labels)))
-                                .toList());
+                w.paragraph("Profile: " + gaps.getProfileId() + " @ " + gaps.getProfileVersion());
+                w.paragraph("Evidence: " + gaps.getEvidenceAuthority() + " / " + gaps.getEvidenceCompleteness() + "; revision " + gaps.getCommitId());
+                w.table(List.of("Rule", labels.source(), "Status", labels.rationale()), gaps.getJudgments().stream()
+                        .map(e -> List.of(value(e.ruleId(), labels), value(e.sourceNodeCode(), labels), e.status().name(), value(e.description(), labels))).toList());
                 gaps.getNotes().forEach(w::paragraph);
             }
             var patterns = report.getPatternDetection();
             if (patterns != null) {
                 w.heading(labels.detectedPatterns(), 1, null);
                 patterns.getNotes().forEach(w::paragraph);
-                w.paragraph(labels.patternCoverage() + ": " + String.format(Locale.ROOT, "%.1f%%",
-                        boundedPatternPercentage(patterns.getPatternCoverage())));
+                w.paragraph(labels.patternCoverage() + ": " + (patterns.getPatternCoverage() == null ? labels.notAssessed() : String.format(Locale.ROOT, "%.1f%%",
+                        boundedPatternPercentage(patterns.getPatternCoverage()))));
                 var all = new ArrayList<DetectedPattern>(patterns.getMatchedPatterns());
                 all.addAll(patterns.getIncompletePatterns());
                 w.table(
@@ -207,11 +186,17 @@ public final class ArchitectureReportDocxRenderer {
             if (recommendation != null) {
                 w.heading(labels.recommendation(), 1, null);
                 recommendation.getReasoning().forEach(w::paragraph);
-                w.paragraph(labels.confidence() + ": " + String.format(Locale.ROOT, "%.1f%%", recommendation.getConfidence()));
-                if (!recommendation.getConfirmedElements().isEmpty()) {
+                w.paragraph(labels.meanRelevance() + ": " + (recommendation.getMeanRelevance() == null ? labels.unknown() : String.format(Locale.ROOT, "%.1f%%", recommendation.getMeanRelevance())));
+                if (!recommendation.getAcceptedElements().isEmpty()) {
+                    w.heading(labels.acceptedModelElements(), 2, null);
+                    w.table(List.of(labels.node(), labels.titleLabel(), labels.taxonomyRoot(), labels.rationale()),
+                            recommendation.getAcceptedElements().stream().map(e -> List.of(value(e.getNodeCode(), labels),
+                                    value(e.getTitle(), labels), value(e.getTaxonomyRoot(), labels), value(e.getReasoning(), labels))).toList());
+                }
+                if (!recommendation.getMatchedElements().isEmpty()) {
                     w.heading(labels.matchedElements(), 2, null);
                     w.paragraph(labels.matchedElementNotice());
-                    recommendationElements(w, labels, recommendation.getConfirmedElements());
+                    recommendationElements(w, labels, recommendation.getMatchedElements());
                 }
                 if (!recommendation.getProposedElements().isEmpty()) {
                     w.heading(labels.proposedElements(), 2, null);

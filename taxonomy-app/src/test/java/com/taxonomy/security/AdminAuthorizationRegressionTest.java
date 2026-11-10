@@ -1,6 +1,12 @@
 package com.taxonomy.security;
 
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.security.service.DatabaseUserDetailsService;
+import com.taxonomy.workspace.model.RepositoryVisibility;
+import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
+import com.taxonomy.workspace.service.RepositoryWorkspaceService;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -14,6 +20,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -40,6 +48,15 @@ class AdminAuthorizationRegressionTest {
 
     @Autowired
     private DatabaseUserDetailsService users;
+
+    @Autowired
+    private ArchitectureRepositoryProvisioningService repositoryProvisioning;
+
+    @Autowired
+    private RepositoryWorkspaceService repositoryWorkspaces;
+
+    @Autowired
+    private DslGitRepositoryFactory gitRepositories;
 
     @Test
     @WithMockUser(username = "reader", roles = "USER")
@@ -70,15 +87,58 @@ class AdminAuthorizationRegressionTest {
     @Test
     @WithMockUser(username = "architect", roles = "ARCHITECT")
     void architectCanReachWorkspacePullAndPublishOperations() throws Exception {
-        mockMvc.perform(post("/api/workspace/sync-from-shared").with(csrf()))
-                .andExpect(result -> assertThat(result.getResponse().getStatus())
-                        .as("architect pull must pass authorization (200 = success, 500 = no git config; 403 = forbidden, 404 = endpoint missing)")
-                        .isIn(200, 500));
+        String sourceDsl = """
+                element authorization-capability type Capability {
+                  title: "Authorization capability";
+                }
+                element authorization-service type CoreService {
+                  title: "Authorization service";
+                }
+                relation authorization-capability REALIZES authorization-service {
+                  status: accepted;
+                }
+                """;
+        var commands = new ArchitectureDslCommands();
+        var model = commands.model(sourceDsl);
+        assertThat(model.getElements()).hasSize(2);
+        assertThat(model.getRelations()).hasSize(1);
+        commands.validateReconciledSource(sourceDsl);
 
-        mockMvc.perform(post("/api/workspace/publish").with(csrf()))
-                .andExpect(result -> assertThat(result.getResponse().getStatus())
-                        .as("architect publish must pass authorization (200 = success, 500 = no git config; 403 = forbidden, 404 = endpoint missing)")
-                        .isIn(200, 500));
+        // Authorization must reach valid backend work, independent of the shared test Git history.
+        var source = repositoryProvisioning.createRepository(
+                "Authorization regression", "authorization-" + UUID.randomUUID(),
+                "Isolated authorization fixture", RepositoryVisibility.PRIVATE, "architect", "draft");
+        var sourceGit = gitRepositories.getCentralRepository(source.getRepositoryId());
+        sourceGit.commitDsl(source.getDefaultBranch(), sourceDsl, "architect", "Valid authorization source");
+        var workspace = repositoryWorkspaces.createWorkingCopy(
+                "architect", source.getRepositoryId(), source.getDefaultBranch(),
+                "Authorization working copy", "Isolated authorization fixture");
+        var workspaceGit = gitRepositories.openWorkspaceRepository(workspace.getWorkspaceId());
+        String branch = workspace.getCurrentBranch();
+
+        var pull = mockMvc.perform(post("/api/workspace/sync-from-shared")
+                        .header(WorkspaceContextResolver.WORKSPACE_HEADER, workspace.getWorkspaceId())
+                        .param("userBranch", branch)
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.branch").value(branch));
+        String pulledCommit = workspaceGit.getHeadCommit(branch);
+        assertThat(pulledCommit).matches("[0-9a-f]{40}");
+        pull.andExpect(jsonPath("$.mergeCommit").value(pulledCommit));
+        commands.validateReconciledSource(workspaceGit.getDslAtCommit(pulledCommit));
+
+        var publish = mockMvc.perform(post("/api/workspace/publish")
+                        .header(WorkspaceContextResolver.WORKSPACE_HEADER, workspace.getWorkspaceId())
+                        .param("userBranch", branch)
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.branch").value(branch));
+        String publishedCommit = sourceGit.getHeadCommit(source.getDefaultBranch());
+        assertThat(publishedCommit).matches("[0-9a-f]{40}");
+        publish.andExpect(jsonPath("$.mergeCommit").value(publishedCommit));
+        commands.validateReconciledSource(sourceGit.getDslAtCommit(publishedCommit));
     }
 
     @Test
