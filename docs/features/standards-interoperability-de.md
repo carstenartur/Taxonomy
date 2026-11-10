@@ -113,12 +113,13 @@ Suchindizes und Projektionen bleiben daraus wiederherstellbar.
 Die Format-Tests verwenden unabhängige RMF-/Archi-Dateien und behalten fehlerhafte
 Herstellerbeispiele ausdrücklich als Negativtests bei. Das ersetzt keine
 Produktzertifizierung. Ein verpflichtender CI-Lauf installiert StrictDoc 0.29.0
-und Archi 5.10.0 und prüft echte Import-/Export-Rundläufe. Bericht, Austauschdateien,
+und Archi 5.11.0 und prüft echte Import-/Export-Rundläufe. Bericht, Austauschdateien,
 Produktversionen, bekannte Verluste und Prüfsummen werden an den getesteten
 Git-Stand gebunden. Ohne erfolgreichen Bericht gilt kein Produktpfad als bestätigt.
-Archi 5.10.0 ersetzt im geprüften Modell geradlinige Anschlusskoordinaten durch
-einen mittleren Biegepunkt. Der Produktnachweis hält jede solche Umwandlung als
-`ARCHI_ATTACHMENTS_TO_BENDPOINT` mit ursprünglichen und resultierenden Punkten fest;
+Im beibehaltenen Nachweis mit Archi 5.10.0 wurden geradlinige Anschlusskoordinaten
+durch einen mittleren Biegepunkt ersetzt. Der Produktnachweis hält jede solche
+Umwandlung als `ARCHI_ATTACHMENTS_TO_BENDPOINT` mit ursprünglichen und resultierenden
+Punkten fest;
 andere Koordinatenänderungen lassen die Prüfung fehlschlagen. Dies ist keine
 Behauptung verlustfreier Layoutübertragung.
 Wird ein übergeordnetes Diagrammobjekt entfernt, bleibt ein vorhandenes Kind auf

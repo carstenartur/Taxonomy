@@ -17,7 +17,8 @@ under the MIT licence retained in `/archimate-3.1/LICENSE.archi.txt`.
 
 `archi-bendpoints.xml` is `bendpoint.test.xml` from the same pinned Archi test-data
 directory and licence. Product CI additionally imports the Taxonomy
-export into the official Archi 5.10.0 release and exports it again.
+export into the official Archi 5.11.0 release and exports it again. The versioned
+return profile and retained Archi 5.10.0 golden files keep their original identity.
 
 `strictdoc-product.sdoc` is an original project-owned acceptance fixture. Product
 CI uses StrictDoc 0.29.0's native export and import commands with stable MIDs.

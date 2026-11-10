@@ -11,7 +11,8 @@ import { pipeline } from 'node:stream/promises';
 const execute = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const out = path.join(root, 'target/interoperability-products');
-const archiSha = 'f9422455a00a22f5340dc28692ceafe0ad720c8cde839eaafb0fab1cea57287f';
+// The installed product must satisfy the recorded 5.10 comparison and return-profile contracts.
+const archiSha = 'a13f4f058c16d8653c1307a145b9dd6bddd4226abc952f58c586c46d61db219e';
 const report = { schemaVersion: 2, sourceCommit: process.env.GITHUB_SHA, executedAt: new Date().toISOString(), results: [], status: 'running' };
 await mkdir(out, { recursive: true });
 await writeFile(path.join(out, 'execution.log'), '');
@@ -91,7 +92,7 @@ try {
 
   try {
     const archive = path.join(out, 'archi.tgz');
-    const response = await fetch('https://github.com/archimatetool/archi.io/releases/download/5.10/Archi-Linux64-5.10.0.tgz', { signal: AbortSignal.timeout(120_000) });
+    const response = await fetch('https://github.com/archimatetool/archi.io/releases/download/5_11/Archi-Linux64-5.11.0.tgz', { signal: AbortSignal.timeout(120_000) });
     if (!response.ok) throw new Error(`Archi download returned ${response.status}`);
     await pipeline(Readable.fromWeb(response.body), createWriteStream(archive));
     if (await digest(archive) !== archiSha) throw new Error('Archi release digest differs from pinned upstream asset');
@@ -109,7 +110,7 @@ try {
     const lossLine = comparison.split('\n').find(line => line.startsWith('PRODUCT_MAPPING_LOSSES '));
     if (!lossLine) throw new Error('Product comparison did not return its layout loss report');
     const mappingLosses = JSON.parse(lossLine.slice('PRODUCT_MAPPING_LOSSES '.length));
-    report.results.push({ product: 'Archi', version: '5.10.0', releaseSha256: archiSha, profile: 'archimate-3.1/1', direction: 'Archi fixture -> Taxonomy -> Archi -> Taxonomy', fixture: path.basename(fixture), inputSha256: await digest(fixture), outputSha256: await digest(returned), result: 'passed', mappingLosses, knownLosses: ['Archi 5.10.0 may replace two straight-line attachment points with their midpoint bendpoint; every such transformation is recorded. Unknown geometry changes fail. This fixture does not certify every Archi feature.'] });
+    report.results.push({ product: 'Archi', version: '5.11.0', releaseSha256: archiSha, profile: 'archimate-3.1/1', direction: 'Archi fixture -> Taxonomy -> Archi -> Taxonomy', fixture: path.basename(fixture), inputSha256: await digest(fixture), outputSha256: await digest(returned), result: 'passed', mappingLosses, knownLosses: ['Archi 5.10.0 may replace two straight-line attachment points with their midpoint bendpoint; every such transformation is recorded. Unknown geometry changes fail. This fixture does not certify every Archi feature.'] });
 
     const workbenchBundle = path.join(out, 'workbench.zip');
     const workbenchXml = path.join(out, 'workbench-model.archimate.xml');
@@ -123,7 +124,7 @@ try {
       throw new Error('Workbench comparison did not execute the expected bounded return profile');
     const workbenchLossLine = workbenchComparison.split('\n').find(line => line.startsWith('PRODUCT_MAPPING_LOSSES '));
     if (!workbenchLossLine) throw new Error('Workbench product comparison did not return its transformation report');
-    report.results.push({ product: 'Archi', version: '5.10.0', releaseSha256: archiSha, profile: 'taxonomy-archimate-3.1-v2',
+    report.results.push({ product: 'Archi', version: '5.11.0', releaseSha256: archiSha, profile: 'taxonomy-archimate-3.1-v2',
       direction: 'Taxonomy workbench bundle -> Archi -> bounded original-bound return reader and semantic comparison',
       returnProfile: 'taxonomy-archi-5.10-return-v1', fixture: 'authored frozen workbench projection',
       bundleSha256: await digest(workbenchBundle), inputSha256: await digest(workbenchXml), outputSha256: await digest(workbenchReturned),
