@@ -27,9 +27,9 @@ function deferred() {
 // Execute the complete production scripts, controlling only their external DOM,
 // clock and HTTP boundaries. Reads deliberately may ignore abort, as an already
 // accepted response/body can arrive after pagehide or a restored page's new read.
-function harness(kind, { translationsPending = false } = {}) {
+function harness(kind, { translationsPending = false, proposals = false } = {}) {
     const dom = new EventTarget(), lifecycle = new EventTarget(), translations = deferred();
-    const nodes = new Map(), reads = [], timers = new Map();
+    const nodes = new Map(), reads = [], timers = new Map(), errors = [];
     let nextTimer = 0;
     class Element extends EventTarget {
         constructor() {
@@ -53,12 +53,14 @@ function harness(kind, { translationsPending = false } = {}) {
         }
     }
     for (const id of ['systemStatusBar', 'gitStatusBar', 'syncStatePanel', 'analyzeBtn',
-        'startupBanner', 'startupBannerStatus', 'taxonomyTree', 'expandAll', 'collapseAll']) {
+        'startupBanner', 'startupBannerStatus', 'taxonomyTree', 'expandAll', 'collapseAll',
+        ...(proposals ? ['proposalsTableContainer', 'proposalPendingBadge'] : [])]) {
         const node = new Element(); node.id = id; nodes.set(id, node);
     }
     nodes.get('systemStatusBar').textContent = 'retained system status';
     nodes.get('syncStatePanel').innerHTML = 'retained sync status';
     nodes.get('taxonomyTree').innerHTML = 'retained tree';
+    if (proposals) nodes.get('proposalPendingBadge').textContent = 'retained proposal count';
     nodes.get('startupBanner').classList.add('d-none');
     const document = {
         addEventListener: dom.addEventListener.bind(dom),
@@ -72,7 +74,7 @@ function harness(kind, { translationsPending = false } = {}) {
         setTimeout: (fn, delay) => schedule(fn, delay, false), clearTimeout: id => timers.delete(id),
         setInterval: (fn, delay) => schedule(fn, delay, true), clearInterval: id => timers.delete(id)
     };
-    const state = { taxonomyData: ['retained catalogue'], currentView: 'list' };
+    const state = { taxonomyData: ['retained catalogue'], currentView: 'list', currentProposalFilter: 'PENDING' };
     const window = { ...clock, TaxonomyState: state,
         TaxonomyRoleSurface: { ready: Promise.resolve({ administrator: false }), isAdministrator: () => false },
         addEventListener: lifecycle.addEventListener.bind(lifecycle)
@@ -91,12 +93,12 @@ function harness(kind, { translationsPending = false } = {}) {
     };
     window.fetch = fetch;
     const scope = { window, document, fetch, ...clock, AbortController, Headers,
-        TaxonomyI18n: { t: key => key, ready: () => translations.promise },
-        TaxonomyUtils: { escapeHtml: String }, console };
-    canonicalFixture.install(scope, ['api/workspace-api.js', 'api/reference-api.js', 'api/search-api.js']);
+        TaxonomyI18n: { t: (key, ...values) => [key, ...values].join(' '), ready: () => translations.promise },
+        TaxonomyUtils: { escapeHtml: String }, console: { ...console, error: (...values) => errors.push(values) } };
+    canonicalFixture.install(scope, ['api/workspace-api.js', 'api/reference-api.js', 'api/search-api.js', 'api/proposals-api.js']);
     vm.runInNewContext(sources[kind], scope, { filename: `production-${kind}-poll.js` });
     if (!translationsPending) translations.resolve();
-    return { window, nodes, reads, state, timers, translations,
+    return { window, nodes, reads, state, timers, translations, errors,
         start() { dom.dispatchEvent(new Event('DOMContentLoaded')); },
         hide() { lifecycle.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: true })); },
         show(persisted = true) { lifecycle.dispatchEvent(Object.assign(new Event('pageshow'), { persisted })); },
@@ -243,4 +245,98 @@ test('catalogue startup resumes after BFCache and retains its network retry unti
     const count = h.requests('/api/taxonomy').length;
     h.hide(); h.show(); await settle();
     assert.equal(h.requests('/api/taxonomy').length, count, 'An already loaded retained catalogue is not discarded or fetched again');
+});
+
+async function proposalRead(stage) {
+    const h = harness('browse', { proposals: true }); h.start(); await settle();
+    if (stage === 'badge') {
+        h.requests('/api/proposals/pending')[0].answer([]); await settle();
+        assert.equal(h.requests('/api/proposals/pending').length, 2);
+    }
+    return { h, read: h.requests('/api/proposals/pending').at(-1) };
+}
+
+function proposalPresentation(h) {
+    return {
+        table: h.nodes.get('proposalsTableContainer').innerHTML,
+        badge: h.nodes.get('proposalPendingBadge').textContent
+    };
+}
+
+for (const stage of ['list', 'badge']) {
+    test(`proposal ${stage} response body cannot render or start another request after pagehide`, async () => {
+        const { h, read } = await proposalRead(stage);
+        const body = read.bodyPending(); await settle();
+        const retained = proposalPresentation(h), count = h.reads.length;
+        h.hide(); body.resolve([]); await settle();
+        assert.equal(h.reads.length, count, 'A departed response cannot start a follow-up badge read');
+        assert.deepEqual(proposalPresentation(h), retained, 'A departed response cannot update the old view');
+        assert.equal(read.init.signal?.aborted, true, 'Page departure must cancel the actual proposal read');
+        assert.deepEqual(h.errors, []);
+    });
+
+    test(`proposal ${stage} body rejection after pagehide cannot report an obsolete error`, async () => {
+        const { h, read } = await proposalRead(stage);
+        const body = read.bodyPending(); await settle();
+        const retained = proposalPresentation(h);
+        h.hide(); body.reject(new TypeError('controlled body rejection after departure')); await settle();
+        assert.deepEqual(h.errors, [], 'Only the active proposal read may report a failure');
+        assert.deepEqual(proposalPresentation(h), retained);
+    });
+
+    for (const failure of ['http', 'json', 'network']) {
+        test(`an active proposal ${stage} ${failure} failure remains visible`, async () => {
+            const { h, read } = await proposalRead(stage);
+            const count = h.requests('/api/proposals/pending').length;
+            if (failure === 'http') read.answer(null, 503);
+            else if (failure === 'network') read.reject(new TypeError('network unavailable'));
+            else { const body = read.bodyPending(); await settle(); body.reject(new SyntaxError('invalid proposal JSON')); }
+            await settle();
+            assert.equal(h.errors.length, 1, 'Active errors must still fail the clean-console gate');
+            assert.equal(h.errors[0][0], stage === 'list'
+                ? '[Taxonomy] Failed to load proposals' : '[Taxonomy] Failed to update proposal badge');
+            const reported = h.errors[0][1];
+            if (failure === 'http') {
+                assert.match(reported.message, /HTTP 503/);
+                assert.equal(reported.status, 503);
+            } else {
+                assert.equal(reported.message, 'Network request failed');
+                assert.equal(reported.code, 'NETWORK_ERROR');
+                assert.equal(reported.cause.name, failure === 'network' ? 'TypeError' : 'SyntaxError');
+                assert.equal(reported.cause.message, failure === 'network' ? 'network unavailable' : 'invalid proposal JSON');
+            }
+            assert.equal(h.requests('/api/proposals/pending').length, count, 'Failure must not start another read');
+            if (stage === 'list') assert.match(h.nodes.get('proposalsTableContainer').innerHTML, /text-danger/);
+        });
+    }
+}
+
+test('BFCache restores proposal loading once and ignores the previous list body', async () => {
+    const { h, read } = await proposalRead('list');
+    const body = read.bodyPending(); await settle();
+    h.hide(); h.show(); await settle();
+    assert.equal(h.requests('/api/proposals/pending').length, 2, 'Return must read current proposals once');
+    const current = h.requests('/api/proposals/pending').at(-1);
+    const retained = proposalPresentation(h);
+    body.resolve([]); await settle();
+    assert.equal(h.requests('/api/proposals/pending').length, 2, 'An old generation cannot start a badge read');
+    assert.deepEqual(proposalPresentation(h), retained);
+    h.show(false); h.show(); await settle();
+    assert.equal(h.requests('/api/proposals/pending').length, 2, 'Repeated pageshow must not duplicate reads');
+    current.answer([]); await settle();
+    h.requests('/api/proposals/pending').at(-1).answer([{}, {}]); await settle();
+    assert.equal(h.nodes.get('proposalPendingBadge').textContent, 'browse.proposals.pending 2');
+    assert.deepEqual(h.errors, []);
+});
+
+test('a pre-navigation badge body cannot replace the restored page count', async () => {
+    const { h, read } = await proposalRead('badge');
+    const body = read.bodyPending(); await settle();
+    h.hide(); h.show(); await settle();
+    assert.equal(h.requests('/api/proposals/pending').length, 3, 'Return must start a new proposal list read');
+    h.requests('/api/proposals/pending').at(-1).answer([]); await settle();
+    h.requests('/api/proposals/pending').at(-1).answer([{}, {}]); await settle();
+    body.resolve([]); await settle();
+    assert.equal(h.nodes.get('proposalPendingBadge').textContent, 'browse.proposals.pending 2');
+    assert.deepEqual(h.errors, []);
 });

@@ -125,7 +125,13 @@ window.AnalysisApi = (function () {
         return client.request('/api/analyze-node?' + query, {}, options);
     }
     return {
-        main: function (payload, options) { return rawJson('/api/analyze', payload, options); },
+        // The reserved analysis operation owns its configured server deadline.
+        // Retain caller cancellation/context fencing and any explicit caller deadline.
+        main: function (payload, options) {
+            return rawJson('/api/analyze', payload, Object.assign({}, options, {
+                timeoutMillis: options?.timeoutMillis === undefined ? 0 : options.timeoutMillis
+            }));
+        },
         analyzeNode: analyzeNode,
         justifyLeaf: function (payload, options) { return rawJson('/api/justify-leaf', payload, options); },
         importScores: function (jsonText, options) {

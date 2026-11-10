@@ -35,8 +35,8 @@ window.TaxonomyProposalsApi = (function () {
         fromHypothesis: function (payload, options) { return post('/from-hypothesis', payload, options); },
         bulk: function (payload) { return post('/bulk', payload); },
         propose: function (payload) { return post('/propose', payload); },
-        list: function (status) { return domainRequest('/api/proposals' + (status === 'PENDING' ? '/pending' : '')); },
-        pending: function () { return domainRequest('/api/proposals/pending'); },
+        list: function (status, options) { return domainRequest('/api/proposals' + (status === 'PENDING' ? '/pending' : ''), undefined, options); },
+        pending: function (options) { return domainRequest('/api/proposals/pending', undefined, options); },
         readHead: readHead,
         review: review
     };

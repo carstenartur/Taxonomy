@@ -264,3 +264,43 @@ test('browser report includes HTTP evidence without weakening the clean-console 
   assert.match(source, /externalRequests, consoleErrors, httpFailures, auditError/);
   assert.match(source, /assert\(consoleErrors.length === 0,/);
 });
+
+
+test('full acceptance blocks the actual first analysis keypress until public source readiness',async()=>{
+  const source=await readFile(new URL('./ui-acceptance.mjs',import.meta.url),'utf8');
+  const start=source.indexOf("if (mode === 'full') {")+"if (mode === 'full') {".length;
+  const end=source.indexOf("await page.locator('#statusArea')",start);
+  assert.ok(start>0&&end>start);
+  let ready=false, waits=0, submitted=0;
+  const window={TaxonomyAnalysisSession:{state:()=>({ready})}};
+  const page={
+    locator:()=>({isChecked:async()=>true,uncheck:async()=>{},check:async()=>{},fill:async()=>{},focus:async()=>{}}),
+    keyboard:{press:async key=>{assert.equal(key,'Enter');assert.equal(ready,true,'Analysis keypress preceded full source readiness');submitted++;}},
+    waitForFunction:async(predicate,arg,options)=>{
+      waits++;assert.equal(predicate(),false,'Draft-only readiness must not admit the first analysis');
+      ready=true;assert.equal(predicate(),true);assert.equal(options.timeout,20_000);
+    }
+  };
+  const {default:vm}=await import('node:vm');
+  await vm.runInNewContext(`(async()=>{${source.slice(start,end)}})()`,{page,window});
+  assert.equal(waits,1);assert.equal(submitted,1);
+});
+
+test('special-mode startup waits for public source readiness as well as server startup and an enabled button',async()=>{
+  const source=await readFile(new URL('./ui-special-modes-acceptance.mjs',import.meta.url),'utf8');
+  const start=source.indexOf('async function waitForTaxonomyReady(');
+  const end=source.indexOf('\nasync function selectSynchronousAnalysisView',start);
+  const {default:vm}=await import('node:vm');
+  let ready=false, predicates=0;
+  const window={TaxonomyAnalysisSession:{state:()=>({ready})}};
+  const page={locator:()=>({waitFor:async()=>{}}),waitForFunction:async(predicate,arg,options)=>{
+    predicates++;
+    if(predicates===1){assert.equal(await predicate(),true);assert.equal(options.timeout,180_000);return;}
+    assert.equal(await predicate(),false,'An enabled button alone does not prove its source is ready');
+    ready=true;assert.equal(await predicate(),true);assert.equal(options.timeout,30_000);
+  }};
+  const context=vm.createContext({page,window,document:{querySelector:()=>({disabled:false})},
+    fetch:async()=>({ok:true,json:async()=>({initialized:true})})});
+  vm.runInContext(source.slice(start,end),context);
+  await context.waitForTaxonomyReady();assert.equal(predicates,2);
+});

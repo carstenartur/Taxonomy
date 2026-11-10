@@ -255,7 +255,7 @@ class SharedApplicationChromeBrowserIT {
         wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript(
                 "return !!window.TaxonomyI18n && TaxonomyI18n.isLoaded();")));
         if (view.template().equals("requirement-detail")) {
-            wait.until(ExpectedConditions.textToBe(By.id("detailError"), REQUIREMENT_LOAD_ERROR));
+            wait.until(ExpectedConditions.textToBe(By.id("detailError"), "HTTP 404: " + REQUIREMENT_LOAD_ERROR));
             wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("detailBusy")));
             wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#reformulationList > p")));
             wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("copilotPolicy"),

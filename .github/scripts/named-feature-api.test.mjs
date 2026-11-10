@@ -499,3 +499,44 @@ test('actual mutable Copilot reads preserve no-store and JSON response negotiati
     assert.equal(new Headers(call.init.headers).get('X-Request-ID'), 'feature-request-id');
   }
 });
+
+
+test('main analysis preserves its server-owned operation deadline beyond the generic 30-second request budget',async()=>{
+  const response=deferred();let request;
+  const app=boot(async(url,init)=>{request={url,init};return response.promise;});
+  let failure;
+  const operation=app.window.AnalysisApi.main({businessText:'controlled-long-operation'})
+    .then(result=>result.json()).catch(error=>{failure=error;});
+  await flush();
+  for(const timer of [...app.timers.values()].filter(timer=>timer.delay===30_000))timer.callback();
+  await flush();
+  assert.equal(request.init.signal.aborted,false,'The generic read timeout must not cancel an admitted long analysis');
+  response.resolve(Response.json({status:'SUCCESS'}));await operation;
+  assert.equal(failure,undefined);assert.equal(app.timers.size,0);
+});
+
+test('a caller-owned deadline still cancels main analysis explicitly',async()=>{
+  let request;
+  const app=boot(async(url,init)=>{request={url,init};return new Promise(()=>{});});
+  const operation=app.window.AnalysisApi.main({businessText:'controlled-long-operation'},{timeoutMillis:15});
+  const rejected=assert.rejects(operation,error=>error.code==='TIMEOUT');await flush();
+  const deadline=[...app.timers.values()].find(timer=>timer.delay===15);
+  assert.ok(deadline,'The explicit caller deadline must remain active');deadline.callback();await rejected;
+  assert.equal(request.init.signal.aborted,true);assert.equal(app.timers.size,0);
+});
+
+test('long main analysis still rejects a body from a departed workspace',async()=>{
+  const response=deferred();const app=boot(async()=>response.promise);
+  const operation=app.window.AnalysisApi.main({businessText:'controlled-long-operation'}).then(result=>result.json());
+  const rejected=assert.rejects(operation,error=>error.code==='ABORTED');await flush();
+  app.runtime.workspaceId='workspace-b';response.resolve(Response.json({status:'SUCCESS'}));await rejected;
+  assert.equal(app.timers.size,0);
+});
+
+
+for(const status of [401,403])test(`long main analysis retains shared authentication rejection ${status}`,async()=>{
+  const app=boot(async()=>Response.json({detail:'Access expired'},{status}));
+  await assert.rejects(app.window.AnalysisApi.main({businessText:'controlled-long-operation'}),error=>error.status===status);
+  assert.equal(app.events.filter(event=>event.type==='taxonomy-api-auth-failure').length,1);
+  assert.equal(app.timers.size,0);
+});

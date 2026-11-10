@@ -1206,7 +1206,7 @@ test('reformulation promotion preserves draft evidence and stops before creation
                 return {projectId:7,requirementId:9,requirement:{id:9,projectId:7,currentVersion:{id:1,text:command.requirement.text}},
                     publication:{state:'CURRENT',context:{repositoryId:'fixture-architecture',workspaceScopeKey:'fixture-copy',branch:'draft',revision:2}}};
             }}};
-        vm.runInNewContext(source('core/taxonomy-analysis-session-projects.js'),{window,document:f.document,URLSearchParams});
+        vm.runInContext(source('core/taxonomy-analysis-session-projects.js'),canonicalFixture.install({window,document:f.document,URLSearchParams}));
         window.TaxonomyAnalysisSession.addAsRequirement({preserveDraft:true});await tick();
         const form=f.all.find(node=>node.tagName==='form');form.reportValidity=()=>true;
         const select=f.all.find(node=>node.tagName==='select');if(select)select.value='7';

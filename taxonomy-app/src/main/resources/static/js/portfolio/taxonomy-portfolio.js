@@ -291,6 +291,8 @@
         selectedSnapshotId: null,
         busyCount: 0
     };
+    let initialSourceReady = null;
+    let sourceInitialized = false;
 
     document.addEventListener('DOMContentLoaded', initialize);
 
@@ -298,12 +300,26 @@
         // Initial lifecycle hydration establishes the source used by every read.
         // Only page/auth ownership is captured before that intentional transition.
         const activePage = window.TaxonomyApiClient.captureContext({contextSensitive:false});
-        await window.TaxonomyArchitectureLifecycle?.ready?.();
-        if (!activePage()) return;
+        state.busyCount += 1;
+        updateBusyState();
+        initialSourceReady = Promise.resolve(window.TaxonomyArchitectureLifecycle?.ready?.()).then(async function () {
+            if (!activePage()) return false;
+            // Initial selection also publishes context. Finish it before a
+            // submission accepted during hydration can create its own target.
+            await loadProjects(undefined, {sourceBootstrap:true});
+            if (!activePage()) return false;
+            sourceInitialized = true;
+            return true;
+        }).finally(function () {
+            state.busyCount = Math.max(0, state.busyCount - 1);
+            updateBusyState();
+        });
         translatePage();
+        // The visible forms must already prevent native submission while their
+        // first source is loading. withBusy admits their work after hydration.
         wireStaticEvents();
         setDefaultVerifiedAt();
-        await loadProjects();
+        await initialSourceReady;
     }
 
     function resolveLocale() {
@@ -353,14 +369,21 @@
         document.getElementById('snapshotDetail').addEventListener('click', onSnapshotDetailAction);
     }
 
-    async function withBusy(operation) {
+    async function withBusy(operation, options) {
         let context = window.TaxonomyApiClient.captureContext();
         let projectId = state.selectedProjectId;
         const isCurrent = () => context() && state.selectedProjectId === projectId;
+        const preparingSource = !sourceInitialized && !options?.sourceBootstrap && initialSourceReady;
+        const activePage = preparingSource && window.TaxonomyApiClient.captureContext({contextSensitive:false});
         state.busyCount += 1;
         updateBusyState();
         clearMessage('portfolioError');
         try {
+            if (preparingSource) {
+                if (!await preparingSource || !activePage()) return;
+                context = window.TaxonomyApiClient.captureContext();
+                projectId = state.selectedProjectId;
+            }
             const pending = operation(isCurrent);
             // Selection handlers change their target synchronously before issuing reads.
             projectId = state.selectedProjectId;
@@ -403,7 +426,7 @@
         target.textContent = '';
     }
 
-    async function loadProjects(preferredProjectId) {
+    async function loadProjects(preferredProjectId, options) {
         await withBusy(async function (isCurrent) {
             const [projects] = await Promise.all([
                 window.TaxonomyPortfolioApi.listProjects(),
@@ -425,7 +448,7 @@
                     showError(new Error(window.TaxonomyI18n.t('workflow.projectUnavailable')));
                 }
             }
-        }).catch(function () {});
+        }, options).catch(function () {});
     }
 
     function renderProjectList() {
@@ -726,9 +749,9 @@
     async function createProject(event) {
         event.preventDefault();
         const form = event.currentTarget;
+        const payload = formDataObject(form);
+        payload.status = 'PLANNING';
         await withBusy(async function (isCurrent) {
-            const payload = formDataObject(form);
-            payload.status = 'PLANNING';
             const project = await window.TaxonomyPortfolioApi.createProject(payload);
             if (!isCurrent()) return;
             window.TaxonomyUtils.hideModal(document.getElementById('projectModal'));
@@ -743,6 +766,7 @@
         if (state.requirementCreateInFlight) return;
         state.requirementCreateInFlight = true;
         const current = window.TaxonomyApiClient.captureContext();
+        const activePage = window.TaxonomyApiClient.captureContext({contextSensitive:false});
         const projectId = state.selectedProjectId;
         const form = event.currentTarget;
         try {
@@ -756,16 +780,22 @@
             payload.changeReason = 'Created in the project portfolio';
             const command = await window.TaxonomyRequirementIntake.prepare(form, payload, state.selectedProjectId);
             if (!command || !current() || state.selectedProjectId !== projectId) return;
-            await withBusy(async function (isCurrent) {
+            await withBusy(async function () {
                 const saved = await window.TaxonomyArchitectureLifecycle.saveRequirement(command);
-                if (!isCurrent()) return;
-                if (['CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(saved.publication?.state)) {
+                if (!activePage() || state.selectedProjectId !== projectId
+                        || !window.TaxonomyArchitectureLifecycle.isCurrentRequirementPublication(saved)) return;
+                const pendingPublication = ['CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(saved.publication?.state);
+                if (!window.TaxonomyRequirementIntake.isCurrent(form)) {
+                    if (!pendingPublication) showInfo(command.choice === 'LINK'
+                        ? window.TaxonomyI18n.t('lifecycle.linked') : t('status.requirement.created'));
+                    return;
+                }
+                if (pendingPublication) {
                     window.TaxonomyArchitectureLifecycle.showPublicationRecovery(form,saved); return;
                 }
                 form.querySelector('[data-lifecycle-publication-recovery]')?.remove();
                 if (command.choice === 'LINK') { showInfo(window.TaxonomyI18n.t('lifecycle.linked')); return; }
                 const requirement = saved.requirement;
-                if (!window.TaxonomyRequirementIntake.isCurrent(form)) { showInfo(t('status.requirement.created')); return; }
                 window.TaxonomyUtils.hideModal(document.getElementById('requirementModal'));
                 form.reset();
                 state.selectedRequirementId = requirement.id;

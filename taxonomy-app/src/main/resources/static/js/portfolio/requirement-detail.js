@@ -905,6 +905,8 @@
         event.preventDefault();
         if (state.versionSaveInFlight) return;
         state.versionSaveInFlight = true;
+        const current = window.TaxonomyApiClient.captureContext();
+        const activePage = window.TaxonomyApiClient.captureContext({contextSensitive:false});
         clearNewVersionError();
         let saving = false;
         try {
@@ -930,13 +932,14 @@
                 };
                 const command = await window.TaxonomyRequirementIntake.prepareVersion(form,payload,projectId,requirementId,
                     base?.requirementVersionId,base?.contentHash);
-                if (!command || beforeReview !== versionDraftFingerprint()) return;
+                if (!command || !current() || beforeReview !== versionDraftFingerprint()) return;
                 state.versionAttempt = {command:command,captured:versionDraftFingerprint()};
             }
             const {command,captured} = state.versionAttempt;
             saving = true;
             setBusy(true);
             const saved = await window.TaxonomyArchitectureLifecycle.saveRequirement(command);
+            if (!activePage() || !window.TaxonomyArchitectureLifecycle.isCurrentRequirementPublication(saved)) return;
             if (['CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(saved.publication?.state)) {
                 versionRetryLabel(true);
                 const target=document.getElementById('newVersionError');target.textContent='';target.classList.remove('d-none');
@@ -958,6 +961,7 @@
                 (locale==='de'?'Eine neue Anforderung wurde angelegt.':'A new requirement was created.'));
             await loadAll(!unchanged);
         } catch (error) {
+            if (!current() || error?.code === 'ABORTED') return;
             if ([400,403,404,409,412,422].includes(error?.status)) { state.versionAttempt=null;versionRetryLabel(false); }
             else if (state.versionAttempt) versionRetryLabel(true);
             const target = document.getElementById('newVersionError');

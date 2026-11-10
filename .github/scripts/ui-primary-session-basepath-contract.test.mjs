@@ -346,3 +346,53 @@ for (const { basePath, provisionStatus } of [
     }
   });
 }
+
+
+function routeRegistration(source, marker) {
+  const end = source.indexOf(marker);
+  assert.ok(end >= 0, 'The real scenario route must exist');
+  const start = source.lastIndexOf('await page.route(', end);
+  const finish = source.indexOf('{ times: 1 });', end) + '{ times: 1 });'.length;
+  assert.ok(start >= 0 && finish > start);
+  return source.slice(start, finish);
+}
+
+for (const [driver, marker] of [
+  ['ui-role-state-flow.mjs', "body: JSON.stringify({ error: 'QA_PROVIDER_UNAVAILABLE'"],
+  ['ui-primary-session-workflow.mjs', 'await new Promise(resolve => setTimeout(resolve, 3_000))'],
+  ['ui-special-modes-acceptance.mjs', "status: 'PARTIAL'"]
+]) {
+  test(`${driver} intercepts the exact mounted analysis endpoint with canonical workspace queries`, async () => {
+    const driverSource = await readFile(new URL(driver, import.meta.url), 'utf8');
+    let registered;
+    const context = vm.createContext({page:{route:async (matcher,handler,options)=>{registered={matcher,handler,options};}}});
+    await vm.runInContext(`(async()=>{${routeRegistration(driverSource,marker)}})()`, context);
+    const matches = value => typeof registered.matcher === 'function'
+      ? registered.matcher(new URL(value)) : value.endsWith(registered.matcher.slice(2));
+    for(const prefix of ['', '/taxonomy', '/teams/blue/taxonomy']) {
+      for(const query of ['', '?workspaceId=exact-source', '?workspaceId=&language=en']) {
+        assert.equal(matches(`https://qa.example${prefix}/api/analyze${query}`),true,
+          'The injected scenario response/delay must receive canonical pinned requests');
+      }
+      for(const path of ['/api/analyze-node','/api/analyze/extra','/api/other?next=/api/analyze']) {
+        assert.equal(matches(`https://qa.example${prefix}${path}`),false,'Unrelated requests must remain real');
+      }
+    }
+    assert.equal(registered.options.times,1,'Only the intended first analysis is intercepted');
+  });
+}
+
+test('special-mode AI status interception accepts workspace queries and retains identical cleanup matcher',async()=>{
+  const driverSource=await readFile(new URL('ui-special-modes-acceptance.mjs',import.meta.url),'utf8');
+  const start=driverSource.indexOf('await page.route(',driverSource.indexOf('const stableAiStatus'));
+  const finish=driverSource.indexOf(';',start)+1;
+  let registered;
+  const context=vm.createContext({stableAiStatus(){},page:{route:async matcher=>{registered=matcher;}}});
+  const declaration=driverSource.match(/const aiStatusEndpoint = [^;]+;/)?.[0]||'';
+  await vm.runInContext(`(async()=>{${declaration}${driverSource.slice(start,finish)}})()`,context);
+  const matches=value=>typeof registered==='function'?registered(new URL(value)):value.endsWith(registered.slice(2));
+  assert.equal(matches('https://qa.example/taxonomy/api/ai-status?workspaceId=exact-source'),true);
+  assert.equal(matches('https://qa.example/taxonomy/api/ai-status/other'),false);
+  assert.equal(matches('https://qa.example/taxonomy/api/other?next=/api/ai-status'),false);
+  if(typeof registered==='function')assert.match(driverSource,/page\.unroute\(aiStatusEndpoint, stableAiStatus\)/);
+});

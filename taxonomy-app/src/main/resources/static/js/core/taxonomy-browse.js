@@ -583,6 +583,7 @@
     var LOADING_MSG = t('browse.loading.message');
     var startupPageActive = true;
     var startupRead = null;
+    var proposalRead = null;
     var startupRetryTimer = null;
     var taxonomyLoading = false;
 
@@ -590,11 +591,13 @@
         startupPageActive = false;
         clearTimeout(startupRetryTimer); startupRetryTimer = null;
         if (startupRead) startupRead.abort();
+        if (proposalRead) proposalRead.abort();
     });
     window.addEventListener('pageshow', function (event) {
         if (!event.persisted || startupPageActive) return;
         startupPageActive = true;
         if (taxonomyLoading) loadTaxonomy();
+        loadProposals(S.currentProposalFilter);
     });
 
     function beginStartupRead() {
@@ -2142,26 +2145,35 @@
 
     // ── Relation Proposal Review ──────────────────────────────────────────────
 
+    function currentProposalRead(controller) {
+        return startupPageActive && proposalRead === controller && !controller.signal.aborted;
+    }
+
     function loadProposals(statusFilter) {
         const container = document.getElementById('proposalsTableContainer');
-        if (!container) return;
+        if (!container || !startupPageActive) return;
+        if (proposalRead) proposalRead.abort();
+        const controller = new AbortController();
+        proposalRead = controller;
         container.innerHTML = '<div class="text-muted small p-2" role="status" aria-live="polite">' + t('browse.proposals.loading') + '</div>';
         // PENDING has a dedicated endpoint; ACCEPTED/REJECTED/ALL need the full list
-        window.TaxonomyProposalsApi.list(statusFilter)
+        window.TaxonomyProposalsApi.list(statusFilter, { signal: controller.signal })
             .then(function (r) {
+                if (!currentProposalRead(controller)) return null;
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
             })
             .then(function (proposals) {
+                if (!currentProposalRead(controller)) return;
                 let filtered = proposals;
                 if (statusFilter !== 'ALL' && statusFilter !== 'PENDING') {
                     filtered = proposals.filter(function (p) { return p.status === statusFilter; });
                 }
                 renderProposalTable(filtered);
-                updateProposalBadge();
+                updateProposalBadge(controller);
             })
             .catch(function (err) {
-                if (err?.code === 'ABORTED') return;
+                if (!currentProposalRead(controller) || err?.code === 'ABORTED') return;
                 console.error('[Taxonomy] Failed to load proposals', err);
                 if (container) {
                     container.innerHTML = '<div class="text-danger small p-2">' + t('browse.proposals.load.failed', escapeHtml(err.message)) + '</div>';
@@ -2473,13 +2485,16 @@
             });
     }
 
-    function updateProposalBadge() {
-        window.TaxonomyProposalsApi.pending()
+    function updateProposalBadge(controller) {
+        if (!currentProposalRead(controller)) return;
+        window.TaxonomyProposalsApi.pending({ signal: controller.signal })
             .then(function (r) {
+                if (!currentProposalRead(controller)) return null;
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
             })
             .then(function (pending) {
+                if (!currentProposalRead(controller)) return;
                 const badge = document.getElementById('proposalPendingBadge');
                 if (badge) {
                     const count = Array.isArray(pending) ? pending.length : 0;
@@ -2490,7 +2505,7 @@
                 }
             })
             .catch(function (err) {
-                if (err?.code === 'ABORTED') return;
+                if (!currentProposalRead(controller) || err?.code === 'ABORTED') return;
                 console.error('[Taxonomy] Failed to update proposal badge', err);
             });
     }

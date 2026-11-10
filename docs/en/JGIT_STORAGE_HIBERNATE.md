@@ -23,7 +23,7 @@ Taxonomy consumes public types from `io.github.carstenartur.jgit.storage.hiberna
 The root POM is the source of truth for both the released dependency and its repository:
 
 ```xml
-<jgit-storage-hibernate.version>0.12.0</jgit-storage-hibernate.version>
+<jgit-storage-hibernate.version>0.12.1</jgit-storage-hibernate.version>
 ```
 
 ```xml

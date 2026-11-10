@@ -6,6 +6,8 @@
     var root, summary, status, rows, historyList, historySearch, disclosure, currentButton, reconcileButton;
     var listeners = new Set();
     var pendingRequirements = new Map();
+    var requirementPublications = new WeakMap();
+    var publishedStand = null;
     var subjectKey = null;
     var state = {suspended:false, overview:null, sequence:0, generation:0, selection:selectionFromUrl(), context:null, observed:null, history:null};
     function t(key) { return window.TaxonomyI18n.t.apply(null, arguments); }
@@ -180,11 +182,23 @@
         var url = new URL(location.href); url.searchParams.delete('commit'); url.searchParams.delete('revision');
         window.history.replaceState(null,'',url);
         window.TaxonomyAppChrome?.refreshNavigation();
-        refresh(context,null);
+        var promise = refresh(context,null);
+        publishedStand = {context:clone(context),promise:promise};
+        return promise;
     }
     function publishChanged(result, reconciled) {
+        var previous = publishedStand;
         document.dispatchEvent(new CustomEvent(reconciled ? 'taxonomy:architecture-reconciled' : 'taxonomy:lifecycle-changed', {detail:result}));
         if (!isEditor() && reconciled) showPublishedCurrentStand(publicationOf(result)?.context);
+        return publishedStand !== previous && contextKey(publishedStand.context) === contextKey(publicationOf(result)?.context)
+            ? publishedStand.promise : null;
+    }
+    function isCurrentRequirementPublication(result) {
+        var proof = requirementPublications.get(result);
+        return Boolean(proof?.confirmed && state.overview === proof.confirmed && !state.suspended && !historicalSelection()
+            && proof.subject === subjectKey && scopeKey(scope()) === scopeKey(proof.context)
+            && contextKey(state.context) === contextKey(proof.context)
+            && contextKey(state.overview.context) === contextKey(proof.context));
     }
     function selectedProject(value, context) {
         var explicit = Object.prototype.hasOwnProperty.call(context,'project');
@@ -492,10 +506,16 @@
         // Expose the captured identity to the owning form so a pending result can retry this exact intent.
         command.context = clone(retained.request.context); command.metadata = clone(retained.request.metadata);
         try {
-            var result = await api.saveRequirement(retained.request);
+            // A known completed write awaiting its source confirmation is never sent again.
+            var result = retained.completed || await api.saveRequirement(retained.request);
             retained.uncertain = false;
-            if (pendingPublication(result)) retained.publication = clone(publicationOf(result)); else pendingRequirements.delete(key);
-            if (matchesStand(captured,!recovery)) publishChanged(result,false);
+            retained.publication = clone(publicationOf(result));
+            if (!pendingPublication(result)) retained.completed = result;
+            if (matchesStand(captured,!recovery)) {
+                var confirmed = await publishChanged(result,false);
+                requirementPublications.set(result,{confirmed:confirmed,context:clone(publicationOf(result)?.context),subject:captured.subject});
+            }
+            if (!pendingPublication(result) && (isEditor() || isCurrentRequirementPublication(result))) pendingRequirements.delete(key);
             return result;
         } catch (error) {
             if ([400,403,404,409,412,422].includes(error.status)) pendingRequirements.delete(key);
@@ -650,6 +670,7 @@
         ready:function () { return initialized.then(function () { return clone(state.overview); }); },
         suspend:function(){state.suspended=true;state.sequence++;clearHistory();invalidateStand();if(root)root.hidden=true;},
         refresh:refresh, beginSelection:beginSelection, observe:observe,
-        failedSelection:failedSelection, saveRequirement:saveRequirement, showPublicationRecovery:showPublicationRecovery, openNewArchitecture:openNewArchitecture};
+        failedSelection:failedSelection, saveRequirement:saveRequirement,isCurrentRequirementPublication:isCurrentRequirementPublication,
+        showPublicationRecovery:showPublicationRecovery, openNewArchitecture:openNewArchitecture};
     var initialized = window.TaxonomyI18n.ready().then(initialize);
 }());

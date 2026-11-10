@@ -333,7 +333,7 @@ class PortfolioClientRoutingIT {
                     .isEqualTo(prefix + "/architecture/workbench?projectId=42&snapshotId=" + snapshotId
                             + "&lang=de" + (workspaceQuery == null ? "" : "&" + workspaceQuery));
             assertThat(requests("GET", prefix + "/api/projects/42/snapshots/" + snapshotId)).singleElement()
-                    .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
+                    .extracting(request -> queryPairs(request.query())).isEqualTo(queryPairs(workspaceQuery));
         }
     }
 
@@ -436,12 +436,12 @@ class PortfolioClientRoutingIT {
                 + (workspaceQuery == null ? "" : "&" + workspaceQuery);
         assertProjectReturn(prefix, workspaceId);
         assertThat(requests("GET", prefix + "/api/projects/42")).singleElement()
-                .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
+                .extracting(request -> queryPairs(request.query())).isEqualTo(queryPairs(workspaceQuery));
         click(By.id("confirmImport"));
         wait.until(ignored -> !hidden("importInfo") && hidden("importBusy"));
         assertThat(text("importError")).isEmpty();
         assertThat(requests("POST", prefix + "/api/projects/42/requirements/import-review")).singleElement()
-                .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
+                .extracting(request -> queryPairs(request.query())).isEqualTo(queryPairs(workspaceQuery));
         JsonNode stored = readJobs();
         assertThat(stored.size()).isEqualTo(1);
         assertThat(stored.get(0).path("url").asText()).isEqualTo(page.origin() + prefix + "/api/projects/42/analysis-jobs/job-7");
@@ -1104,9 +1104,10 @@ class PortfolioClientRoutingIT {
                 <script>localStorage.clear();%s%s</script>
                 <script src="%s/js/taxonomy-i18n.js"></script>
                 <script src="%s/js/shared/taxonomy-utils.js"></script>
+                <script src="%s/js/api/taxonomy-api-client.js"></script>
                 <script src="%s/js/api/portfolio-api.js"></script>
                 <script src="%s/js/portfolio/taxonomy-portfolio-async.js"></script></body></html>
-                """.formatted(OBSERVE_FETCH, setup, prefix, prefix, prefix, prefix);
+                """.formatted(OBSERVE_FETCH, setup, prefix, prefix, prefix, prefix, prefix);
         page.openHtml(prefix, "/projects", html);
         wait.until(ignored -> Boolean.TRUE.equals(driver.executeScript("return typeof window.taxonomyPortfolioRegisterJob === 'function';")));
     }
@@ -1129,6 +1130,12 @@ class PortfolioClientRoutingIT {
 
     private static String workspaceScopeAssertion(String workspaceId) {
         return "&workspaceScopeKey=" + (workspaceId.isEmpty() ? "__shared__" : workspaceId);
+    }
+
+    private static List<String> queryPairs(String query) {
+        // Parameter order is not part of the scope contract. Preserve every pair,
+        // including duplicates or empty values, so extra or missing scope is rejected.
+        return query == null ? List.of() : Stream.of(query.split("&", -1)).sorted().toList();
     }
 
     private static String workspaceSetup(String workspaceId) {

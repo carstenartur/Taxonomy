@@ -547,7 +547,7 @@ export async function runRoleStateFlow({
   await sunburst.scrollIntoViewIfNeeded();
   await sunburst.click();
   await page.waitForFunction(() => window.TaxonomyState.currentView === 'sunburst');
-  await page.route('**/api/analyze', route => route.fulfill({
+  await page.route(url => url.pathname.endsWith('/api/analyze'), route => route.fulfill({
     status: 503,
     contentType: 'application/json',
     body: JSON.stringify({ error: 'QA_PROVIDER_UNAVAILABLE', message: 'Deterministic QA failure' })

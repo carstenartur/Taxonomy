@@ -110,6 +110,9 @@ async function auditApplication() {
   passed('reduced-motion preference');
 
   if (mode === 'full') {
+    await page.waitForFunction(() =>
+      window.TaxonomyAnalysisSession?.state?.().ready === true,
+    null, { timeout: 20_000 });
     const interactive = page.locator('#interactiveMode');
     if (await interactive.isChecked()) await interactive.uncheck();
     const architectureView = page.locator('#includeArchitectureView');

@@ -23,7 +23,7 @@ Taxonomy verwendet öffentliche Typen aus `io.github.carstenartur.jgit.storage.h
 Das Root-POM ist die maßgebliche Quelle für die veröffentlichte Abhängigkeit und ihr Repository:
 
 ```xml
-<jgit-storage-hibernate.version>0.12.0</jgit-storage-hibernate.version>
+<jgit-storage-hibernate.version>0.12.1</jgit-storage-hibernate.version>
 ```
 
 ```xml

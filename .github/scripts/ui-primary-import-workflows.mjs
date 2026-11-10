@@ -29,7 +29,7 @@ export async function runImportWorkflows({ page, evidence }) {
       { text: 'The service shall remain available.', sectionHeading: 'Availability', pageNumber: 1 },
       { text: 'The service shall record decisions.', sectionHeading: 'Traceability', pageNumber: 1 }
     ] });
-  await page.route('**/api/documents/upload', async route => {
+  await page.route(url => url.pathname.endsWith('/api/documents/upload'), async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: successBody });
   }, { times: 1 });
   await page.locator('#docImportFile').setInputFiles({
@@ -42,11 +42,11 @@ export async function runImportWorkflows({ page, evidence }) {
     [request, response] = await Promise.all([
       page.waitForRequest(candidate => {
         const url = new URL(candidate.url());
-        return candidate.method() === 'POST' && url.pathname === '/api/documents/upload';
+        return candidate.method() === 'POST' && url.pathname.endsWith('/api/documents/upload');
       }, { timeout: 15_000 }),
       page.waitForResponse(candidate => {
         const url = new URL(candidate.url());
-        return candidate.request().method() === 'POST' && url.pathname === '/api/documents/upload';
+        return candidate.request().method() === 'POST' && url.pathname.endsWith('/api/documents/upload');
       }, { timeout: 15_000 }),
       page.locator('#docImportUploadBtn').click()
     ]);
@@ -131,7 +131,7 @@ export async function runImportWorkflows({ page, evidence }) {
   await saveState('document-review-success', '#docCandidateReviewPanel');
   passed('document upload and candidate review');
 
-  await page.route('**/api/documents/upload', async route => {
+  await page.route(url => url.pathname.endsWith('/api/documents/upload'), async route => {
     await route.fulfill({
       status: 422,
       contentType: 'application/json',
@@ -142,8 +142,17 @@ export async function runImportWorkflows({ page, evidence }) {
   await page.locator('#docImportFile').setInputFiles({
     name: 'oversized.pdf', mimeType: 'application/pdf', buffer: Buffer.from('oversized')
   });
-  await page.locator('#docImportUploadBtn').click();
-  await waitForText('#docImportStatus', text => text.includes('DOCUMENT_RESOURCE_LIMIT'));
+  const [resourceResponse] = await Promise.all([
+    page.waitForResponse(candidate => {
+      const url = new URL(candidate.url());
+      return candidate.request().method() === 'POST' && url.pathname.endsWith('/api/documents/upload');
+    }, { timeout: 15_000 }),
+    page.locator('#docImportUploadBtn').click()
+  ]);
+  const resourceBody = await resourceResponse.json();
+  assert(resourceResponse.status() === 422 && resourceBody.error === 'DOCUMENT_RESOURCE_LIMIT',
+    `Document resource rejection differs: status=${resourceResponse.status()}, body=${JSON.stringify(resourceBody)}`);
+  await waitForText('#docImportStatus', text => text.includes('Expanded document exceeds the configured limit'));
   await axeState('document-upload-error', '#docImportPanel');
   await saveState('document-upload-error', '#docImportPanel');
   passed('document upload resource error');
@@ -157,7 +166,7 @@ export async function runImportWorkflows({ page, evidence }) {
     name: 'apqc.csv', mimeType: 'text/csv',
     buffer: Buffer.from('PCF ID,Name,Level,Description\n1.0,Strategy,1,QA')
   });
-  await page.route('**/api/import/preview/apqc', async route => {
+  await page.route(url => url.pathname.endsWith('/api/import/preview/apqc'), async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -172,7 +181,7 @@ export async function runImportWorkflows({ page, evidence }) {
   await saveState('framework-import-preview', '#importResultArea');
   passed('framework import preview');
 
-  await page.route('**/api/import/apqc?branch=*', async route => {
+  await page.route(url => url.pathname.endsWith('/api/import/apqc') && url.searchParams.has('branch'), async route => {
     await route.fulfill({
       status: 422,
       contentType: 'application/json',
