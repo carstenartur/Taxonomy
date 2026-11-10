@@ -1,4 +1,6 @@
-const {test} = require('node:test');
+const {test, afterEach} = require('node:test');
+const canonicalFixture = require('../../../../.github/scripts/canonical-api-fixture.cjs');
+afterEach(() => canonicalFixture.dispose());
 const assert = require('node:assert/strict');
 const {readFileSync} = require('node:fs');
 const path = require('node:path');
@@ -31,9 +33,11 @@ function completedPayload() {
         evaluatedNodes: ['CR-1047'], currentView: 'list'};
 }
 function fixture({deferDraftRead = false, checkboxPreference = false, reasonLengthPreference = false,
-        relationPreferences = false} = {}) {
+        relationPreferences = false, directPreferences = false, contextStatus = 200, startupOrder} = {}) {
     const listeners = new Map(), requests = [], timers = new Map(), controls = [];
     const preferenceGates = new Map();
+    const firstPreferenceRead = directPreferences ? deferred() : null;
+    if (firstPreferenceRead) preferenceGates.set('GET', firstPreferenceRead);
     let timerId = 0, preferenceFailure = false, pendingDraftSave = null;
     const draftRead = deferDraftRead ? deferred() : null;
     const storedDraft = {version: 4, payload: completedPayload()};
@@ -56,7 +60,7 @@ function fixture({deferDraftRead = false, checkboxPreference = false, reasonLeng
     for (const id of ['prefSaveBtn', 'prefResetBtn', 'prefHistorySection', 'prefStatusMsg',
             'tab-preferences', 'businessText', 'statusArea', 'taxonomyTree', 'viewSummary'])
         nodes.set(id, element(id));
-    const maxNodes = element('pref-max-arch-nodes', {type: 'number', value: '50'});
+    const maxNodes = element('pref-max-arch-nodes', {type: 'number', value: directPreferences ? '' : '50'});
     maxNodes.setAttribute('data-pref-key', 'limits.max-architecture-nodes');
     controls.push(maxNodes);
     let reasonLength = null;
@@ -112,10 +116,10 @@ function fixture({deferDraftRead = false, checkboxPreference = false, reasonLeng
     }
     const state = {taxonomyData: [{code: 'CR-1047'}], currentScores: null,
         currentRawScores: {}, currentReasons: {}, currentArchView: null, evaluatedNodes: new Set()};
-    const runtime = {workspaceId: 'ws-1', version: null, restoring: false,
+    const runtime = {workspaceId: startupOrder ? null : 'ws-1', version: null, restoring: false,
         invalidating: false, resetting: false, conflict: false};
     const businessText = nodes.get('businessText');
-    const document = {
+    const document = {readyState: 'loading',
         getElementById: id => nodes.get(id) || null,
         querySelectorAll: selector => selector === '[data-pref-key]' ? controls : [],
         addEventListener: (name, fn) => {
@@ -130,6 +134,13 @@ function fixture({deferDraftRead = false, checkboxPreference = false, reasonLeng
         clearTimeout: id => timers.delete(id), setTimeout: fn => {timers.set(++timerId, fn); return timerId;},
         confirm: () => true, console: {warn() {}}
     };
+    if (directPreferences) {
+        const page = new EventTarget();
+        window.location = new URL('https://example.test/#preferences');
+        window.addEventListener = page.addEventListener.bind(page);
+        window.dispatchEvent = page.dispatchEvent.bind(page);
+        nodes.get('tab-preferences').classList.remove('d-none');
+    }
     function currentPayload() {
         return {schemaVersion: 1, draftState: 'ACTIVE', businessText: businessText.value,
             lastAnalyzedText: state.lastAnalyzedText, scores: state.currentScores,
@@ -161,7 +172,15 @@ function fixture({deferDraftRead = false, checkboxPreference = false, reasonLeng
         }};
     window.__TaxonomyAnalysisSessionContext = C;
     const fetch = (url, options = {}) => {
-        requests.push({url, method: options.method || 'GET', body: options.body});
+        const target = new URL(url, window.location.href);
+        url = target.pathname;
+        requests.push({url, method: options.method || 'GET', body: options.body,
+            workspaceQuery: target.searchParams.get('workspaceId'), workspaceHeader: options.headers?.get('X-Taxonomy-Workspace-Id')});
+        if (directPreferences && url === '/api/context/current') {
+            return Promise.resolve(Response.json(contextStatus === 200
+                ? {contextId: 'selected-context', branch: 'draft/admin', commitId: 'selected-commit'}
+                : {error: 'Access denied'}, {status: contextStatus}));
+        }
         if (url !== '/api/preferences' && url !== '/api/preferences/reset') throw Error('Unexpected request: ' + url);
         if (options.method === 'PUT') {
             if (preferenceFailure) return Promise.resolve({ok: false, status: 500, json: async () => ({})});
@@ -185,26 +204,28 @@ function fixture({deferDraftRead = false, checkboxPreference = false, reasonLeng
     };
     const context = {window, document, fetch, TaxonomyI18n: {t: key => key},
         CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options.detail;}},
-        console: window.console};
+        console: window.console, clearInterval};
+    // Only the ContextBar's source publication is mounted; this fixture has no repository-bar markup.
+    if (directPreferences) context.TaxonomyUtils = {};
     vm.runInNewContext(draftScript, context, {filename: 'taxonomy-analysis-session-draft.js'});
-    context.Headers = Headers;
-    window.TaxonomyApiClient = {
-        ApiError: class extends Error {
-            constructor(message, status, url, body, options) {
-                super(message);
-                this.status = status;
-                this.code = options.code;
-            }
-        },
-        request: (url, init) => fetch(url.split('?')[0], init).then(response => {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            return response;
-        })
-    };
-    vm.runInNewContext(readFileSync(path.join(resources, 'static/js/api/workspace-api.js'), 'utf8'), context);
+    window.fetch = fetch;
+    canonicalFixture.install(context, directPreferences
+        ? ['api/workspace-api.js', 'versioning/taxonomy-context-bar.js'] : ['api/workspace-api.js']);
+    function installStartup() {
+        Object.assign(C, {rememberedWorkspaceId: () => 'ws-1', rememberWorkspaceId() {},
+            installWorkspaceFetchRouting() {}, installWorkspaceEventSourceRouting() {},
+            queueStaleActions() {}, statusArea: () => null});
+        window.setInterval = () => 1;
+        context.MutationObserver = class {observe() {}};
+        for (const name of ['taxonomy-analysis-session-api-routing.js', 'taxonomy-analysis-session-projects.js']) {
+            vm.runInContext(readFileSync(path.join(resources, 'static/js/core', name), 'utf8'), context, {filename: name});
+        }
+    }
+    if (startupOrder === 'session-first') installStartup();
     vm.runInNewContext(preferencesScript, context, {filename: 'index.html Preferences script'});
+    if (startupOrder === 'preferences-first') installStartup();
     document.dispatchEvent({type: 'DOMContentLoaded'});
-    return {C, state, runtime, nodes, maxNodes, checkbox, reasonLength, relationControls,
+    return {C, state, runtime, nodes, maxNodes, checkbox, reasonLength, relationControls, window, firstPreferenceRead,
         requests, storedDraft, preferences,
         draftRead, activate(page) {
             if (page === 'preferences') nodes.get('tab-preferences').classList.remove('d-none');
@@ -218,6 +239,58 @@ function fixture({deferDraftRead = false, checkboxPreference = false, reasonLeng
             return gate;
         },
         delayDraftSave: () => {pendingDraftSave = deferred(); return pendingDraftSave;}};
+}
+for (const transition of ['source hydration', 'tab departure', 'tab departure before failure', 'pagehide', 'authentication loss']) {
+    test('direct Preferences initial read across ' + transition, async () => {
+        const f = fixture({directPreferences: true, contextStatus: transition === 'authentication loss' ? 403 : 200});
+        const reset = f.nodes.get('prefResetBtn');
+        await settled();
+        assert.deepEqual(f.requests.map(r => [r.method, r.url]), [['GET', '/api/preferences']]);
+        assert.equal(f.maxNodes.value, '');
+        assert.equal(reset.disabled, true);
+        assert.equal(reset.getAttribute('aria-busy'), 'true');
+        if (transition === 'source hydration') {
+            const context = await f.window.TaxonomyContextBar.fetchAndRender('contextBar', {joinCurrent: true});
+            assert.equal(context?.contextId, 'selected-context');
+            assert.equal(f.window.TaxonomyContextBar.getCurrentContext().commitId, 'selected-commit');
+        } else if (transition.startsWith('tab departure')) {
+            f.activate('analyze');
+        } else if (transition === 'pagehide') {
+            f.window.dispatchEvent(new Event('pagehide'));
+        } else {
+            await assert.rejects(f.window.TaxonomyContextApi.current(), error => error.status === 403);
+        }
+        // A transport can finish after cancellation. Only the current page and login may see that response.
+        if (transition === 'tab departure before failure') f.firstPreferenceRead.reject(new Error('Read unavailable'));
+        else f.firstPreferenceRead.resolve();
+        await settled();
+        assert.equal(reset.getAttribute('aria-busy'), 'false');
+        assert.equal(f.maxNodes.value, transition === 'source hydration' ? '50' : '');
+        assert.equal(reset.disabled, transition !== 'source hydration');
+        assert.equal(f.nodes.get('prefSaveBtn').disabled, true);
+        if (transition.startsWith('tab departure')) assert.equal(f.nodes.get('prefStatusMsg').textContent, '');
+        assert.deepEqual(f.requests.map(r => [r.method, r.url]), transition.startsWith('tab departure') || transition === 'pagehide'
+            ? [['GET', '/api/preferences']] : [['GET', '/api/preferences'], ['GET', '/api/context/current']]);
+    });
+}
+
+for (const method of ['PUT', 'POST']) {
+    test('Preferences ' + method + ' retains its workspace pin and rejects a departed acknowledgement', async () => {
+        const f = fixture();
+        f.activate('preferences');
+        await settled();
+        const gate = f.delayPreferences(method), status = f.nodes.get('prefStatusMsg');
+        const before = status.textContent;
+        f.maxNodes.value = '150';
+        f.nodes.get(method === 'PUT' ? 'prefSaveBtn' : 'prefResetBtn').click();
+        f.runtime.workspaceId = 'ws-2';
+        gate.resolve();
+        await settled();
+        const writes = f.requests.filter(request => request.method !== 'GET');
+        assert.deepEqual(writes.map(r => [r.method, r.workspaceQuery, r.workspaceHeader]), [[method, 'ws-1', 'ws-1']]);
+        assert.equal(status.textContent, before, 'A response from the departed workspace cannot announce success');
+        assert.equal(f.maxNodes.value, '150');
+    });
 }
 function assertWorkPreserved(f, expected) {
     assert.equal(f.nodes.get('businessText').value, expected.businessText);

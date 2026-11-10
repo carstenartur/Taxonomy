@@ -6,30 +6,7 @@
 
     function request(path, init, options) {
         var client = window.TaxonomyApiClient;
-        var context = window.__TaxonomyAnalysisSessionContext;
-        var workspace = context && context.runtime.workspaceId;
-        var policy = Object.assign({}, options || {}, { retries: 0 });
-        // Before session hydration, the existing source-aware bootstrap owns
-        // status scope. An unresolved workspace is not an explicit central pin.
-        if (policy.pinnedWorkspaceId === undefined && workspace != null) policy.pinnedWorkspaceId = workspace;
-        var headers = new Headers(init && init.headers || {});
-        if (policy.pinnedWorkspaceId !== undefined) {
-            var pin = policy.pinnedWorkspaceId == null ? '' : policy.pinnedWorkspaceId;
-            path += (path.indexOf('?') < 0 ? '?' : '&') + 'workspaceId=' + encodeURIComponent(pin);
-            headers.set('X-Taxonomy-Workspace-Id', pin);
-        }
-        function current() {
-            if (policy.signal && policy.signal.aborted || context && context.runtime.workspaceId !== workspace) {
-                throw new client.ApiError('Request was cancelled', 0, path, null, { code: 'ABORTED' });
-            }
-        }
-        return client.request(path, Object.assign({}, init || {}, { headers: headers }), policy)
-            .then(function (response) { current(); return response.json(); })
-            .then(function (body) { current(); return body; })
-            .catch(function (error) {
-                if (error?.code !== 'ABORTED') current();
-                throw error;
-            });
+        return client.requestJson(path, init || {}, Object.assign({}, options || {}, { retries: 0 }));
     }
 
     function get(path, options) { return request(path, { method: 'GET' }, options); }

@@ -36,7 +36,10 @@ class HypothesisGitReviewUiContractTest {
 
         assertThat(api)
                 .contains("window.TaxonomyHypothesesApi")
-                .contains("fetch('/api/dsl/hypotheses/head'")
+                .contains("domainRequest('/api/dsl/hypotheses/head'")
+                .contains("window.TaxonomyApiClient.request(url, init,")
+                .contains("acceptedStatuses:[400,404,409,412,422]")
+                .doesNotContain("fetch(")
                 .contains("function review(hypothesisId, action, headers)")
                 .contains("method: 'POST'")
                 .contains("headers: headers");

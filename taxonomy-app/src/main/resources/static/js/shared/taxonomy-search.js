@@ -134,13 +134,14 @@
             ? new AbortController()
             : null;
         return {
+            current: window.TaxonomyApiClient.captureContext(),
             generation: searchGeneration,
             signal: activeSearchController ? activeSearchController.signal : null
         };
     }
 
     function isCurrentSearch(request) {
-        return request.generation === searchGeneration;
+        return request.generation === searchGeneration && request.current();
     }
 
     function searchFetchOptions(request) {
@@ -149,7 +150,7 @@
 
     function shouldIgnoreSearchError(error, request) {
         return !isCurrentSearch(request)
-            || (error && error.name === 'AbortError');
+            || (error && (error.name === 'AbortError' || error.code === 'ABORTED'));
     }
 
     function openSearchWorkspace() {
@@ -170,7 +171,7 @@
     }
 
     function checkEmbeddingStatus() {
-        fetch('/api/embedding/status')
+        window.TaxonomySearchApi.status()
             .then(function (response) {
                 if (!response.ok) throw new Error('Embedding status is unavailable');
                 return response.json();
@@ -249,26 +250,7 @@
             + t('search.searching') + '</div>';
         updateClearControl();
 
-        var url;
-        switch (mode) {
-            case 'semantic':
-                url = '/api/search/semantic?q=' + encodeURIComponent(query)
-                    + '&maxResults=' + maxResults;
-                break;
-            case 'hybrid':
-                url = '/api/search/hybrid?q=' + encodeURIComponent(query)
-                    + '&maxResults=' + maxResults;
-                break;
-            case 'graph':
-                url = '/api/search/graph?q=' + encodeURIComponent(query)
-                    + '&maxResults=' + maxResults;
-                break;
-            default:
-                url = '/api/search?q=' + encodeURIComponent(query)
-                    + '&maxResults=' + maxResults;
-        }
-
-        fetch(url, searchFetchOptions(request))
+        window.TaxonomySearchApi.search(query, mode, maxResults, searchFetchOptions(request))
             .then(function (response) {
                 if (!response.ok) {
                     throw new Error('Search failed (' + response.status + ')');
@@ -781,9 +763,7 @@
             updateClearControl();
         }
 
-        fetch(
-            '/api/search/similar/' + encodeURIComponent(code) + '?topK=10',
-            searchFetchOptions(request))
+        window.TaxonomySearchApi.similar(code, 10, searchFetchOptions(request))
             .then(function (response) {
                 if (!response.ok) throw new Error('Failed (' + response.status + ')');
                 return response.json();

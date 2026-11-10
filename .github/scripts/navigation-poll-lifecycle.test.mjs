@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import canonicalFixture from './canonical-api-fixture.cjs';
 
 const resources = new URL('../../taxonomy-app/src/main/resources/', import.meta.url);
 const index = readFileSync(new URL('templates/index.html', resources), 'utf8');
@@ -90,19 +91,18 @@ function harness(kind, { translationsPending = false, proposals = false } = {}) 
         };
         reads.push(read); return response.promise;
     };
-    window.TaxonomyApiClient = {request: (url, init, policy) => fetch(url, {...init, signal: policy.signal})
-        .then(response => { if (!response.ok) throw new Error('HTTP ' + response.status); return response; })};
+    window.fetch = fetch;
     const scope = { window, document, fetch, ...clock, AbortController, Headers,
         TaxonomyI18n: { t: (key, ...values) => [key, ...values].join(' '), ready: () => translations.promise },
         TaxonomyUtils: { escapeHtml: String }, console: { ...console, error: (...values) => errors.push(values) } };
-    vm.runInNewContext(workspaceApi, scope, {filename: 'workspace-api.js'});
+    canonicalFixture.install(scope, ['api/workspace-api.js', 'api/reference-api.js', 'api/search-api.js', 'api/proposals-api.js']);
     vm.runInNewContext(sources[kind], scope, { filename: `production-${kind}-poll.js` });
     if (!translationsPending) translations.resolve();
     return { window, nodes, reads, state, timers, translations, errors,
         start() { dom.dispatchEvent(new Event('DOMContentLoaded')); },
         hide() { lifecycle.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: true })); },
         show(persisted = true) { lifecycle.dispatchEvent(Object.assign(new Event('pageshow'), { persisted })); },
-        requests(url) { return reads.filter(read => read.url === url); },
+        requests(url) { return reads.filter(read => new URL(read.url, window.location.href).pathname === url); },
         tick(delay) {
             for (const [id, timer] of [...timers]) if (timer.delay === delay && timers.has(id)) {
                 if (!timer.repeat) timers.delete(id);
@@ -295,8 +295,16 @@ for (const stage of ['list', 'badge']) {
             assert.equal(h.errors.length, 1, 'Active errors must still fail the clean-console gate');
             assert.equal(h.errors[0][0], stage === 'list'
                 ? '[Taxonomy] Failed to load proposals' : '[Taxonomy] Failed to update proposal badge');
-            assert.match(h.errors[0][1].message, failure === 'http' ? /HTTP 503/
-                : failure === 'network' ? /network unavailable/ : /invalid proposal JSON/);
+            const reported = h.errors[0][1];
+            if (failure === 'http') {
+                assert.match(reported.message, /HTTP 503/);
+                assert.equal(reported.status, 503);
+            } else {
+                assert.equal(reported.message, 'Network request failed');
+                assert.equal(reported.code, 'NETWORK_ERROR');
+                assert.equal(reported.cause.name, failure === 'network' ? 'TypeError' : 'SyntaxError');
+                assert.equal(reported.cause.message, failure === 'network' ? 'network unavailable' : 'invalid proposal JSON');
+            }
             assert.equal(h.requests('/api/proposals/pending').length, count, 'Failure must not start another read');
             if (stage === 'list') assert.match(h.nodes.get('proposalsTableContainer').innerHTML, /text-danger/);
         });

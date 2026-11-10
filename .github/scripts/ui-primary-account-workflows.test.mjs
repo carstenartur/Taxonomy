@@ -1,4 +1,6 @@
-import test from 'node:test';
+import test, {afterEach} from 'node:test';
+import canonicalFixture from './canonical-api-fixture.cjs';
+afterEach(() => canonicalFixture.dispose());
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -112,23 +114,13 @@ function createHarness({ lateConnectivity = false, extraReads = 0,
     addEventListener: lifecycle.addEventListener.bind(lifecycle),
     setTimeout: callback => queued.push(callback),
     TaxonomyContextBar: { getCurrentContext: () => ({ branch: 'draft' }) },
-    TaxonomyApiClient: { getJson: async path => (await fetch(path)).json(),
-      request: async (path, init) => {
-        const response = await fetch(path, init);
-        if (!response.ok) {
-          const body = await response.json();
-          throw Object.assign(new Error(body.message || body.error || 'HTTP ' + response.status),
-            {status: response.status, detail: body.message || body.error});
-        }
-        return response;
-      } },
     TaxonomyOperationResult: {
       showError: (_title, detail) => { toast = detail; toastKind = 'error'; },
       showSuccess: title => { toast = title; toastKind = 'success'; }
     }
   };
   const context = vm.createContext({
-    window, fetch, AbortController, Headers, setInterval() {},
+    window, fetch, AbortController, Headers, setInterval() {}, clearInterval() {},
     document: {
       addEventListener: (type, callback) => listeners.set(type, callback),
       getElementById: id => id === 'syncStatePanel' ? panel : null
@@ -138,7 +130,8 @@ function createHarness({ lateConnectivity = false, extraReads = 0,
     navigateToPage: async () => undefined
   });
   if (workspaceId) window.__TaxonomyAnalysisSessionContext = {runtime: {workspaceId}};
-  vm.runInContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/workspace-api.js', import.meta.url), 'utf8'), context);
+  window.fetch = fetch;
+  canonicalFixture.install(context, ['api/workspace-api.js']);
   vm.runInContext(syncSource, context, { filename: 'taxonomy-workspace-sync.js' });
   const guardStart = roleSource.indexOf('    function renderWorkspaceOffline(error)');
   const guardEnd = roleSource.indexOf('    function refresh()', guardStart);

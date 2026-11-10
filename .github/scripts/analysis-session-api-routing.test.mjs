@@ -115,9 +115,11 @@ assert.equal(
 
 runtime.workspaceId = 'workspace-b';
 assert.equal(
-  client.deleteJson('/api/items/1?workspaceId=obsolete'),
-  '/api/items/1?workspaceId=workspace-b'
+  client.deleteJson('/api/items/1?workspaceId=retained-source'),
+  '/api/items/1?workspaceId=retained-source'
 );
+assert.equal(client.deleteJson('/api/items/1'), '/api/items/1?workspaceId=workspace-b');
+assert.equal(client.deleteJson('/api/items/1?workspaceId='), '/api/items/1?workspaceId=');
 assert.equal(client.__taxonomyWorkspaceRouting, true);
 assert.equal(
   typeof window.__TaxonomyAnalysisSessionContext.workspaceScopedApiUrl,

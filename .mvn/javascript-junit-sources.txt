@@ -106,3 +106,4 @@ taxonomy-app/src/test/js/contextual-help.cjs
 .github/scripts/git-sync-status.browser.test.mjs
 .github/scripts/user-management-navigation.browser.test.mjs
 .github/scripts/integrations.browser.test.mjs
+.github/scripts/named-workspace-versioning.test.mjs

@@ -190,16 +190,20 @@
     async function showBannerForRequirementPage() {
         const route = window.TaxonomyRequirementDetail?.route;
         if (!route) return null;
-        let run;
-        try { run = await api().runForProject(route.projectId); }
+        let run, isCurrent;
+        try {
+            await window.TaxonomyRequirementDetail.whenReady?.();
+            isCurrent = window.TaxonomyApiClient.captureContext();
+            run = await api().runForProject(route.projectId);
+        }
         catch (ignored) { return null; }
-        if (!run || run.projectId !== route.projectId) return null;
+        if (!isCurrent() || !run || run.projectId !== route.projectId) return null;
         let account = null;
         if (!run.closedAt) {
             try { account = await api().account(); }
             catch (ignored) { account = null; }
         }
-        return renderBanner(run, account);
+        return isCurrent() ? renderBanner(run, account) : null;
     }
 
     window.addEventListener('click', interceptAnalyze, true);

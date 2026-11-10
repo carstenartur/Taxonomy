@@ -362,6 +362,56 @@ test('authentication headers invalidate pending bodies before a stalled problem 
   await assert.rejects(denied, error => error.status === 403);
 });
 
+test('actual search handlers leave newer results untouched after old-context success or failure', async () => {
+  const source = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/taxonomy-search.js', import.meta.url), 'utf8');
+  for (const failure of [false, true]) {
+    let release, reject;
+    const app = loadClient(() => new Promise((resolve, fail) => {release = resolve; reject = fail;}));
+    const runtime = {workspaceId: 'old'};
+    app.context.window.__TaxonomyAnalysisSessionContext = {runtime};
+    app.context.TaxonomyI18n = {t: key => key};
+    app.context.TaxonomyUtils = {escapeHtml: String};
+    const area = {innerHTML: '', style: {}, dataset: {}, classList: {remove() {}, add() {}}};
+    app.context.document.getElementById = id => id === 'searchResultsArea' ? area : null;
+    app.context.document.addEventListener = () => {};
+    app.context.document.querySelectorAll = () => [];
+    await loadDomain(app, 'search-api.js', 'TaxonomySearchApi');
+    vm.runInContext(source, app.context);
+    app.context.window.TaxonomySearch.performSearch('query', 'graph', 10);
+    runtime.workspaceId = 'new'; area.innerHTML = 'new context results';
+    if (failure) reject(new Error('old context failure'));
+    else release(Response.json([]));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(area.innerHTML, 'new context results');
+  }
+});
+
+test('actual relation handlers leave a new workspace panel untouched after old read success or failure', async () => {
+  const source = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/relations/taxonomy-relations.js', import.meta.url), 'utf8');
+  for (const failure of [false, true]) {
+    let release, reject;
+    const app = loadClient(() => new Promise((resolve, fail) => {release = resolve; reject = fail;}));
+    const runtime = {workspaceId: 'old'};
+    app.context.window.__TaxonomyAnalysisSessionContext = {runtime};
+    app.context.TaxonomyI18n = {t: key => key};
+    app.context.TaxonomyUtils = {escapeHtml: String};
+    const content = {innerHTML: '', setAttribute() {}, replaceChildren() {this.innerHTML = '';},
+      appendChild() {this.innerHTML = 'old read error';}};
+    app.context.document.getElementById = id => id === 'relationsTableContainer' ? content : null;
+    app.context.document.addEventListener = () => {};
+    app.context.document.createElement = () => ({setAttribute() {}, appendChild() {}, append() {}, addEventListener() {}});
+    await loadDomain(app, 'relations-api.js', 'TaxonomyRelationsApi');
+    vm.runInContext(source, app.context);
+    const pending = app.context.window.TaxonomyRelations.loadRelations(false);
+    while (!release) await new Promise(resolve => setTimeout(resolve, 0));
+    runtime.workspaceId = 'new'; content.innerHTML = 'new relation results';
+    if (failure) reject(new Error('old read failure')); else release(Response.json([]));
+    await pending.catch(() => {});
+    assert.equal(content.innerHTML, 'new relation results');
+  }
+});
+
 test('named global reference reads survive initial hydration but still dispatch authentication failures', async () => {
   let release;
   const app = loadClient(() => new Promise(resolve => {release = resolve;}));
@@ -387,6 +437,28 @@ test('a source snapshot selection fences a pending body within the same project 
   await assert.rejects(pending, error => error.code === 'ABORTED');
 });
 
+test('actual session routing retains query pins and central scope beneath explicit header and policy pins', async () => {
+  const calls = [];
+  const app = loadClient(async (url, init) => {calls.push({url,init}); return Response.json({ready:true});});
+  app.context.window.TaxonomyState = {};
+  app.context.window.TaxonomyI18n = {getBasePath: () => '/taxonomy',
+    resolveUrl: path => String(path).startsWith('/api/') ? '/taxonomy' + path : path};
+  for (const name of ['taxonomy-analysis-session-core.js','taxonomy-analysis-session-api-routing.js']) {
+    const source = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/core/' + name, import.meta.url), 'utf8');
+    vm.runInContext(source, app.context, {filename:name});
+  }
+  app.context.window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'active-B';
+  await app.client.requestJson('/api/projects?workspaceId=retained-A', {method:'GET'});
+  await app.client.requestJson('/api/projects?workspaceId=', {method:'GET'});
+  await app.client.requestJson('/api/projects?workspaceId=retained-A', {headers:{'X-Taxonomy-Workspace-Id':'header-C'}}, {pinnedWorkspaceId:'policy-D'});
+  await app.client.requestJson('/api/projects?workspaceId=retained-A', {}, {pinnedWorkspaceId:null});
+  for (const [index,pin] of ['retained-A','','header-C',''].entries()) {
+    assert.equal(new URL(calls[index].url, app.context.window.location.href).pathname, '/taxonomy/api/projects');
+    assert.equal(new URL(calls[index].url, app.context.window.location.href).searchParams.get('workspaceId'), pin);
+    assert.equal(calls[index].init.headers.get('X-Taxonomy-Workspace-Id'), pin);
+  }
+});
+
 function navigationEvents(context) {
   const listeners = new Map(), dispatch = context.document.dispatchEvent;
   context.document.addEventListener = (type, callback) => {
@@ -398,6 +470,31 @@ function navigationEvents(context) {
     for (const callback of listeners.get(event.type) || []) callback(event);
   };
 }
+
+test('accepted ContextBar navigation cancels idle interactive streams while retaining explicit durable pins', async () => {
+  const signals = [];
+  const app = await loadWorkspaceFeatures(async (url, init) => {
+    if (String(url).includes('/api/context/current')) return Response.json({contextId:'accepted-context', branch:'review', commitId:'new'});
+    signals.push(init.signal);
+    return new Response(new ReadableStream({}));
+  }, navigationEvents);
+  app.context.document.getElementById = () => null;
+  app.context.TaxonomyI18n = {t:key => key};
+  app.context.TaxonomyUtils = {escapeHtml:String};
+  app.context.clearInterval = clearInterval;
+  app.context.window.addEventListener = () => {};
+  const source = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/versioning/taxonomy-context-bar.js', import.meta.url), 'utf8');
+  vm.runInContext(source, app.context);
+  const interactive = await app.client.request('/api/idle-stream');
+  const durable = await app.client.request('/api/job-stream', {}, {contextSensitive:false, pinnedWorkspaceId:'retained'});
+  await app.context.window.TaxonomyContextBar.fetchAndRender('contextBar');
+  try {
+    assert.equal(signals[0].aborted, true, 'accepted navigation must stop the idle interactive network resource');
+    assert.equal(signals[1].aborted, false, 'the retained durable stream must remain alive');
+  } finally {
+    await Promise.allSettled([interactive.body.cancel(), durable.body.cancel()]);
+  }
+});
 
 test('a body child still owns navigation cancellation after another clone completes', async () => {
   let release, signal;
@@ -431,6 +528,9 @@ async function loadDomain(app, file, globalName) {
 const remainingDomains = [
   ['search-api.js', 'TaxonomySearchApi', api => api.search('term', 'graph', 10)],
   ['dsl-api.js', 'TaxonomyDslApi', api => api.parse('architecture {}')],
+  ['relations-api.js', 'TaxonomyRelationsApi', api => api.readSnapshot()],
+  ['proposals-api.js', 'TaxonomyProposalsApi', api => api.review(1, 'accept', {})],
+  ['hypotheses-api.js', 'TaxonomyHypothesesApi', api => api.applyForSession(1)]
 ];
 for (const [file, name, invoke] of remainingDomains) {
   test(name + ' dispatches shared authentication failures', async () => {
@@ -527,6 +627,9 @@ async function loadVersioningFeatures(fetchImpl) {
   const lifecycle = new EventTarget();
   const app = await loadWorkspaceFeatures((url, init) => {
     if (url === '/taxonomy/api/i18n/en') return Promise.resolve(Response.json({}));
+    if (new URL(url, 'https://taxonomy.example.test').pathname === '/taxonomy/api/dsl/history') {
+      return Promise.resolve(Response.json({commits:[{commitId:'7654321'}]}));
+    }
     return fetchImpl(url, init);
   }, context => {
     context.document.currentScript = {src: 'https://taxonomy.example.test/taxonomy/js/taxonomy-i18n.js'};
@@ -540,10 +643,7 @@ async function loadVersioningFeatures(fetchImpl) {
   context.TaxonomyUtils = {escapeHtml: String};
   context.bootstrap = {Modal: class { show() { openedVariantModal++; } }};
   context.clearInterval = clearInterval;
-  context.fetch = url => {
-    assert.equal(url, '/api/dsl/history?branch=draft', 'context navigation must use the named API client');
-    return Promise.resolve(Response.json({commits: [{commitId: '7654321'}]}));
-  };
+  context.fetch = () => {throw new Error('Versioning must use named clients');};
   document.getElementById = id => ({
     contextBar, versionsTimeline: timeline, versionedSearch: search, createVariantModal: variantModal
   })[id] || null;
@@ -853,6 +953,119 @@ for (const [initialWorkspace, hydratedWorkspace] of [[null, 'workspace-A'], [nul
     assert.ok(badge.title.includes('draft/current'));
   });
 }
+
+async function loadWorkspaceBadgeStartup() {
+  const calls = [], writes = [], classes = new Set(['d-none']);
+  let finishSource;
+  const sourceReady = new Promise(resolve => { finishSource = resolve; });
+  const app = await loadWorkspaceFeatures((url, init) => new Promise(resolve => calls.push({url, init, resolve})), scope => {
+    for (const target of [scope.window, scope.document]) {
+      const listeners = new Map(), originalDispatch = target.dispatchEvent?.bind(target);
+      target.addEventListener = (type, callback) => {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type).add(callback);
+      };
+      target.removeEventListener = (type, callback) => listeners.get(type)?.delete(callback);
+      target.dispatchEvent = event => {
+        originalDispatch?.(event);
+        for (const callback of listeners.get(event.type) || []) callback(event);
+        return true;
+      };
+    }
+  });
+  const w = app.context.window;
+  w.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'workspace-A';
+  w.TaxonomyArchitectureWorkspace = {ready: () => sourceReady};
+  app.context.setInterval = () => 1;
+  app.context.clearInterval = () => {};
+  app.context.TaxonomyI18n = {ready: () => Promise.resolve(), t: key => key, formatBranch: branch => branch};
+  app.context.TaxonomyUtils = {escapeHtml: String};
+  const badge = {title: '', classList: {remove: name => classes.delete(name)}, set textContent(value) { writes.push(value); }};
+  app.context.document.getElementById = id => id === 'workspaceUserBadge' ? badge : null;
+  vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/versioning/taxonomy-context-bar.js', import.meta.url), 'utf8'), app.context);
+  const index = await readFile(new URL('../../taxonomy-app/src/main/resources/templates/index.html', import.meta.url), 'utf8');
+  const marker = index.indexOf('// Load workspace info for the user badge');
+  const start = index.lastIndexOf('<script>', marker) + '<script>'.length;
+  vm.runInContext(index.slice(start, index.indexOf('</script>', marker)), app.context);
+  const settle = async () => { for (let turn = 0; turn < 5; turn++) await new Promise(resolve => setImmediate(resolve)); };
+  app.context.document.dispatchEvent({type: 'DOMContentLoaded'});
+  await settle();
+  const reads = path => calls.filter(call => new URL(call.url, w.location.href).pathname.endsWith(path));
+  return {...app, w, reads, writes, classes, badge, finishSource, settle};
+}
+
+async function confirmWorkspaceBadgeSource(f, status = 200) {
+  f.finishSource(true);
+  await f.settle();
+  assert.equal(f.reads('/api/context/current').length, 1, 'Initial readiness consumers share the current repository read');
+  f.reads('/api/context/current')[0].resolve(Response.json(status === 200
+    ? {contextId: 'current-A', branch: 'draft/current', commitId: '1234567', mode: 'EDITABLE'}
+    : {detail: 'Repository context is unavailable'}, {status}));
+  await f.settle();
+}
+
+test('the live workspace badge waits for the initial repository context in the same workspace', async () => {
+  const f = await loadWorkspaceBadgeStartup();
+  assert.equal(f.reads('/api/workspace/current').length, 0, 'Do not admit the badge read before source readiness');
+  await confirmWorkspaceBadgeSource(f);
+  assert.equal(f.w.TaxonomyContextBar.getCurrentContext().contextId, 'current-A');
+  assert.equal(f.reads('/api/workspace/current').length, 1, 'Initial readiness admits one current workspace read');
+  const read = f.reads('/api/workspace/current')[0];
+  read.resolve(Response.json({workspaceId: 'workspace-A', username: 'current-user', displayName: 'Current A', currentBranch: 'draft/current'}));
+  await f.settle();
+  assert.equal(f.classes.has('d-none'), false, 'The first repository context must not leave the current user badge permanently hidden');
+  assert.deepEqual(f.writes, ['👤 current-user']);
+  assert.ok(f.badge.title.includes('Current A'));
+  assert.ok(f.badge.title.includes('draft/current'));
+  assert.equal(read.init.signal.aborted, false);
+  assert.equal(new URL(read.url, f.w.location.href).searchParams.get('workspaceId'), 'workspace-A');
+  assert.equal(read.init.headers.get('X-Taxonomy-Workspace-Id'), 'workspace-A');
+});
+
+for (const departure of ['workspace', 'pagehide', 'authentication']) {
+  test(`the live workspace badge does not start after ${departure} during initial readiness`, async () => {
+    const f = await loadWorkspaceBadgeStartup();
+    assert.equal(f.reads('/api/workspace/current').length, 0);
+    if (departure === 'workspace') f.w.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'workspace-B';
+    else if (departure === 'pagehide') f.w.dispatchEvent({type: 'pagehide'});
+    else {
+      const denied = f.client.getJson('/api/denied');
+      f.reads('/api/denied')[0].resolve(Response.json({detail: 'Access revoked'}, {status: 403}));
+      await assert.rejects(denied, error => error.status === 403);
+    }
+    f.finishSource(true);
+    await f.settle();
+    for (const read of f.reads('/api/context/current')) read.resolve(Response.json({contextId: 'current-B', branch: 'other', commitId: '7654321', mode: 'EDITABLE'}));
+    await f.settle();
+    assert.equal(f.reads('/api/workspace/current').length, 0, 'A departed owner cannot start a fresh badge read');
+    assert.equal(f.classes.has('d-none'), true);
+    assert.deepEqual(f.writes, []);
+  });
+}
+
+test('the live workspace badge remains strict after the initial repository context is confirmed', async () => {
+  const f = await loadWorkspaceBadgeStartup();
+  await confirmWorkspaceBadgeSource(f);
+  const read = f.reads('/api/workspace/current')[0];
+  assert.ok(read, 'Initial confirmation admits the current workspace read');
+  const moved = f.w.TaxonomyContextBar.fetchAndRender('contextBar');
+  f.reads('/api/context/current').at(-1).resolve(Response.json({contextId: 'other-A', branch: 'other', commitId: '7654321', mode: 'READ_ONLY'}));
+  await moved;
+  read.resolve(Response.json({workspaceId: 'workspace-A', username: 'obsolete-user', displayName: 'Old A', currentBranch: 'draft/current'}));
+  await f.settle();
+  assert.equal(read.init.signal.aborted, true);
+  assert.equal(f.reads('/api/workspace/current').length, 1, 'A real source departure must not retry the badge');
+  assert.equal(f.classes.has('d-none'), true);
+  assert.deepEqual(f.writes, []);
+});
+
+test('the live workspace badge requires a confirmed initial repository context', async () => {
+  const f = await loadWorkspaceBadgeStartup();
+  await confirmWorkspaceBadgeSource(f, 503);
+  assert.equal(f.reads('/api/workspace/current').length, 0);
+  assert.equal(f.classes.has('d-none'), true);
+  assert.deepEqual(f.writes, []);
+});
 
 test('workspace current still rejects a resolved workspace departure and an aborted hydration read', async () => {
   for (const aborted of [false, true]) {

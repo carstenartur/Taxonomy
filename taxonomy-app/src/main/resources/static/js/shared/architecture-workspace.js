@@ -43,6 +43,8 @@
             if (settings.workspaceId !== undefined && settings.workspaceScopeKey === undefined) next.workspaceScopeKey = settings.workspaceId || '__shared__';
             if (next.workspaceScopeKey !== undefined) next.workspaceId = next.workspaceScopeKey === '__shared__' ? '' : next.workspaceScopeKey;
             else if (next.workspaceId !== undefined) next.workspaceScopeKey = next.workspaceId || '__shared__';
+            if (options.initialize && await options.initialize() === false) return false;
+            if (ticket !== generation) return false;
             if (active && prior?.canLeave && !await prior.canLeave(next, {retain:kind !== current.kind})) return false;
             var target = adapters[kind];
             if (activated.has(kind) && (!active || target !== prior) && target?.canLeave && !await target.canLeave(next,{retain:false})) return false;
@@ -60,7 +62,7 @@
         }
         return {
             open:open, getSource:getSource, isActive:function () { return active; },
-            getData:function () { return adapters[current.kind]?.getData?.(); },
+            getData:function () { return adapters[current.kind]?.getData?.() ?? null; },
             getDiagram:function () { return adapters[current.kind]?.getDiagram?.(); },
             select:function (id) { current.element = id; adapters[current.kind]?.select?.(id); },
             rememberSelection:function (id) { current.element = id; },
@@ -99,7 +101,7 @@
         });
         return value;
     }
-    var analysisGeneration = 0, analysisMetadata = null;
+    var analysisGeneration = 0, analysisMetadata = null, sourceInitialization = null, sourceActivation = null;
     var workingScope = Object.assign({kind:'working'}, initialScope);
     var snapshotScope = Object.assign({kind:'snapshot'}, initialScope);
     ['repositoryId','workspaceId','workspaceScopeKey','branch','projectId','requirementId','requirementVersionId','snapshotId'].forEach(function (key) {
@@ -124,6 +126,26 @@
             function failed() { finish(false); }
             loader.addEventListener('load', loaded, {once:true}); loader.addEventListener('error', failed, {once:true});
         });
+    }
+    function initializeSource() {
+        if (!sourceInitialization) {
+            var current = window.TaxonomyApiClient.captureContext({contextSensitive:false});
+            sourceInitialization = window.TaxonomyI18n.ready()
+                .then(function () { return window.TaxonomyArchitectureLifecycle?.ready?.(); })
+                .then(sessionInitialization)
+                .then(function (initialized) {
+                    if (!current()) return false;
+                    if (initialized === false && !window.TaxonomyAnalysisSession) throw new Error(t('sourceLens.unavailable'));
+                    var bar = window.TaxonomyContextBar;
+                    if (!bar?.fetchAndRender) return true;
+                    return bar.fetchAndRender('contextBar', {joinCurrent:true}).then(function (context) {
+                        if (!current()) return false;
+                        if (!context) throw new Error(t('sourceLens.unavailable'));
+                        return true;
+                    });
+                });
+        }
+        return sourceInitialization;
     }
     async function resolveAnalysisScope() {
         var initialized = await sessionInitialization();
@@ -153,6 +175,7 @@
             }
         }
         var ticket = ++analysisGeneration;
+        if (await initializeSource() === false || ticket !== analysisGeneration) return;
         var resolved = await resolveAnalysisScope();
         if (ticket !== analysisGeneration || (workspace.isActive() && workspace.getSource().kind !== 'analysis')) return;
         analysisScope = resolved;
@@ -224,7 +247,7 @@
         dimensions();
         document.dispatchEvent(new CustomEvent('taxonomy:architecture-source-changed', {detail:{source:source,data:workspace.getData(),diagram:workspace.getDiagram(),active:true}}));
     }
-    workspace = create({initial:initial, defaults:{analysis:Object.assign({kind:'analysis'},analysisScope),working:workingScope,snapshot:snapshotScope},
+    workspace = create({initial:initial, initialize:initializeSource, defaults:{analysis:Object.assign({kind:'analysis'},analysisScope),working:workingScope,snapshot:snapshotScope},
         adapters:{
             analysis:{
                 activate:async function () {
@@ -269,11 +292,24 @@
         }, onChange:publish
     });
     var activateSource = workspace.open;
-    workspace.open = async function(kind,settings){
-        var accepted=await activateSource(kind,settings);
-        if(accepted)window.navigateToPage?.('architecture');
-        return accepted;
+    workspace.open = function(kind,settings){
+        var activation = activateSource(kind,settings).then(function (accepted) {
+            if(accepted)window.navigateToPage?.('architecture');
+            return accepted;
+        });
+        sourceActivation = activation;
+        return activation;
     };
+    function awaitSelectedSource(activation) {
+        return activation.then(function (ready) {
+            return sourceActivation !== activation ? awaitSelectedSource(sourceActivation) : ready;
+        });
+    }
+    function restoreAnalysisPage(page) {
+        sourceActivation = restoreAnalysisContext(page).then(function () { return true; })
+            .catch(function (error) { report(error); return false; });
+        return sourceActivation;
+    }
     workspace.openLens = function () {
         if (workspace.getSource().kind === 'working') editor?.openLens(); else { lens?.select(workspace.getSource().element);lens?.open(); }
     };
@@ -289,7 +325,7 @@
     el('architectureSource').addEventListener('change',function () { open(this.value).then(function(ok){if(!ok)el('architectureSource').value=workspace.getSource().kind;}); });
     document.addEventListener('taxonomy:page-activated',function (event) {
         if (event.detail.page === 'architecture') { if (!workspace.isActive()) open(workspace.getSource().kind,{replace:true}); else dimensions(); }
-        else { workspace.suspend(); positionSnapshotContext(false); lens?.suspend(); window.TaxonomyArchitectureLifecycle?.suspend?.(); restoreAnalysisContext(event.detail.page).catch(report); }
+        else { workspace.suspend(); positionSnapshotContext(false); lens?.suspend(); window.TaxonomyArchitectureLifecycle?.suspend?.(); restoreAnalysisPage(event.detail.page); }
     });
     document.addEventListener('taxonomy:architecture-diagram-updated',function () { if(workspace.isActive()) { lens?.refresh(); dimensions(); } });
     window.addEventListener('resize', scheduleSnapshotHeight);
@@ -316,7 +352,7 @@
             // A visible working source may still refuse the page change. Commit
             // this destination only when its normal page activation is accepted.
             pendingAnalysisHistory = {url:target,source:source};
-            if (!workspace.isActive()) restoreAnalysisContext(location.hash.slice(1) || 'analyze').catch(report);
+            if (!workspace.isActive()) restoreAnalysisPage(location.hash.slice(1) || 'analyze');
             return;
         }
         pendingAnalysisHistory = null;
@@ -337,9 +373,37 @@
     window.addEventListener('beforeunload',function (event) {
         if (editor?.hasDraft?.()) { event.preventDefault(); event.returnValue = ''; }
     });
-    window.TaxonomyI18n.ready().then(function () {
-        if (location.hash === '#architecture' || /\/architecture\/(editor|workbench)$/.test(location.pathname)) open(initial.kind,{replace:true});
-        else restoreAnalysisContext(location.hash.slice(1) || 'analyze').catch(report);
-    });
+    var initialReady = null, initialFailed = false, initialSettled = false, initialWorkspace;
+    workspace.ready = function (retry) {
+        var workspaceChanged = initialSettled
+            && initialWorkspace !== window.TaxonomyAnalysisSession?.state?.().workspaceId;
+        var refreshRetained = workspaceChanged || retry === true && initialFailed;
+        if (refreshRetained) { initialReady = null; sourceInitialization = null; }
+        if (!initialReady) {
+            initialFailed = false;
+            initialSettled = false;
+            initialReady = initializeSource().then(function (confirmed) {
+                if (confirmed === false) return false;
+                if (!refreshRetained && sourceActivation) return awaitSelectedSource(sourceActivation);
+                // Workspace recovery confirms the independent retained analysis
+                // scope without reopening or replacing a visible editor draft.
+                if (!refreshRetained && (location.hash === '#architecture'
+                        || /\/architecture\/(editor|workbench)$/.test(location.pathname))) {
+                    return awaitSelectedSource(open(initial.kind,{replace:true}));
+                }
+                return awaitSelectedSource(restoreAnalysisPage(location.hash.slice(1) || 'analyze'));
+            }).catch(function (error) { report(error); return false; })
+            .then(function (ready) {
+                // The existing server-check action can retry unavailable initial
+                // metadata without creating a second background polling loop.
+                initialFailed = ready === false;
+                initialSettled = true;
+                initialWorkspace = window.TaxonomyAnalysisSession?.state?.().workspaceId;
+                return ready;
+            });
+        }
+        return initialReady;
+    };
+    workspace.ready();
     function report(error) { var target=el('architectureWorkspaceError');target.textContent=error.message;target.hidden=false; }
 }());

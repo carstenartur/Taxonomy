@@ -39,10 +39,11 @@
         if (!content) return;
         content.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('coverage.loading') + '</div>';
 
-        fetch('/api/coverage/statistics')
+        window.TaxonomyRelationsApi.coverageStatistics()
             .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
             .then(function (stats) { renderDashboard(stats); })
-            .catch(function () {
+            .catch(function (error) {
+                if (error?.code === 'ABORTED') return;
                 content.innerHTML = '<div class="text-danger small p-2">\u26A0\uFE0F ' + t('coverage.load.failed') + '</div>';
             });
     }
@@ -112,7 +113,7 @@
         if (!content) return;
         content.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('coverage.loading.node') + '</div>';
 
-        fetch('/api/coverage/node/' + encodeURIComponent(nodeCode))
+        window.TaxonomyRelationsApi.nodeCoverage(nodeCode)
             .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
             .then(function (entries) {
                 var html = '<div class="mb-2"><button id="coverageBackBtn" class="btn btn-sm btn-outline-secondary">' + t('coverage.back') + '</button>'
@@ -135,7 +136,8 @@
                 var backBtn = document.getElementById('coverageBackBtn');
                 if (backBtn) backBtn.addEventListener('click', loadCoverageDashboard);
             })
-            .catch(function () {
+            .catch(function (error) {
+                if (error?.code === 'ABORTED') return;
                 content.innerHTML = '<div class="text-danger small p-2">\u26A0\uFE0F ' + t('coverage.load.node.failed') + '</div>';
             });
     }
@@ -157,15 +159,11 @@
         var businessTextEl = document.getElementById('businessText');
         if (businessTextEl) reqText = businessTextEl.value || '';
 
-        fetch('/api/coverage/record', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+        window.TaxonomyRelationsApi.recordCoverage({
                 requirementId: reqId.trim(),
                 requirementText: reqText,
                 scores: scores,
                 minScore: 50
-            })
         })
         .then(function (r) {
             if (r.ok) {
@@ -174,7 +172,8 @@
                 alert(t('coverage.record.failed', r.status));
             }
         })
-        .catch(function () {
+        .catch(function (error) {
+                if (error?.code === 'ABORTED') return;
             alert(t('coverage.record.error'));
         });
     }

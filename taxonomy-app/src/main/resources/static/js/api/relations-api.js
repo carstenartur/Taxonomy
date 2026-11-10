@@ -8,6 +8,9 @@
  */
 window.TaxonomyRelationsApi = (function () {
     'use strict';
+    function domainRequest(url, init, options) {
+        return window.TaxonomyApiClient.request(url, init, Object.assign({acceptedStatuses:[400,404,409,412,422]}, options));
+    }
 
     /** All three reads must succeed; a failed response is not an empty metric. */
     function readQualityDashboard() {
@@ -22,20 +25,22 @@ window.TaxonomyRelationsApi = (function () {
         var url = relationType
             ? '/api/relations?type=' + encodeURIComponent(relationType)
             : '/api/relations';
-        return fetch(url, { cache: 'no-store' });
+        return domainRequest(url, {cache:'no-store'}, {acceptedStatuses:[409,412,503]});
     }
 
-    function readProjectionReadiness(workspaceId) {
-        return projectionRequest('/readiness', 'GET', workspaceId);
+    function readProjectionReadiness(workspaceId, options) {
+        return projectionRequest('/readiness', 'GET', workspaceId, null, options);
     }
 
+    // An explicit command owns the inspected source through its preflight and
+    // mutation. Visible relation reads afterward resolve the then-current tab.
     function rebuildProjection(status, headEtag) {
         return projectionRequest('/rebuild', 'POST', status.workspaceId, {
             'If-Match': headEtag
-        });
+        }, {contextSensitive:false});
     }
 
-    function projectionRequest(path, method, workspaceId, headers) {
+    function projectionRequest(path, method, workspaceId, headers, options) {
         headers = Object.assign({}, headers || {});
         if (workspaceId !== undefined) {
             headers['X-Taxonomy-Workspace-Id'] = workspaceId == null ? '' : workspaceId;
@@ -44,11 +49,11 @@ window.TaxonomyRelationsApi = (function () {
         // including explicit central scope, while supplying CSRF and base paths.
         return window.TaxonomyApiClient.request('/api/architecture/relations/projection' + path, {
             method: method, headers: headers, cache: 'no-store'
-        }, { idempotent: method === 'GET', pinnedWorkspaceId: workspaceId });
+        }, Object.assign({idempotent:method === 'GET', pinnedWorkspaceId:workspaceId, acceptedStatuses:[409,412]}, options));
     }
 
     function upsertRelation(sourceCode, relationType, targetCode, payload, headers) {
-        return fetch(commandUrl(sourceCode, relationType, targetCode), {
+        return domainRequest(commandUrl(sourceCode, relationType, targetCode), {
             method: 'PUT',
             headers: headers,
             body: JSON.stringify(payload)
@@ -56,7 +61,7 @@ window.TaxonomyRelationsApi = (function () {
     }
 
     function deleteRelation(sourceCode, relationType, targetCode, headers) {
-        return fetch(commandUrl(sourceCode, relationType, targetCode), {
+        return domainRequest(commandUrl(sourceCode, relationType, targetCode), {
             method: 'DELETE',
             headers: headers
         });
@@ -70,6 +75,12 @@ window.TaxonomyRelationsApi = (function () {
     }
 
     return {
+        createLegacy: function (payload) { return domainRequest('/api/relations', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); },
+        deleteLegacy: function (id) { return domainRequest('/api/relations/' + encodeURIComponent(id), {method:'DELETE'}); },
+        impact: function (payload) { return domainRequest('/api/graph/impact', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); },
+        coverageStatistics: function () { return domainRequest('/api/coverage/statistics'); },
+        nodeCoverage: function (code) { return domainRequest('/api/coverage/node/' + encodeURIComponent(code)); },
+        recordCoverage: function (payload) { return domainRequest('/api/coverage/record', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); },
         readQualityDashboard: readQualityDashboard,
         readSnapshot: readSnapshot,
         readProjectionReadiness: readProjectionReadiness,

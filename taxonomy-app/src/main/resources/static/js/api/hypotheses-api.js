@@ -6,16 +6,19 @@
  */
 window.TaxonomyHypothesesApi = (function () {
     'use strict';
+    function domainRequest(url, init, options) {
+        return window.TaxonomyApiClient.request(url, init, Object.assign({acceptedStatuses:[400,404,409,412,422]}, options));
+    }
 
     function readHead() {
-        return fetch('/api/dsl/hypotheses/head', {
+        return domainRequest('/api/dsl/hypotheses/head', {
             method: 'GET',
             cache: 'no-store'
         });
     }
 
     function review(hypothesisId, action, headers) {
-        return fetch('/api/dsl/hypotheses/'
+        return domainRequest('/api/dsl/hypotheses/'
                 + encodeURIComponent(hypothesisId) + '/'
                 + encodeURIComponent(action.toLowerCase()), {
             method: 'POST',
@@ -24,7 +27,7 @@ window.TaxonomyHypothesesApi = (function () {
     }
 
     function applyForSession(hypothesisId) {
-        return fetch('/api/dsl/hypotheses/'
+        return domainRequest('/api/dsl/hypotheses/'
                 + encodeURIComponent(hypothesisId)
                 + '/apply-session', {
             method: 'POST'

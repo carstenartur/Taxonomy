@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import canonical from './canonical-api-fixture.cjs';
 
 const resources = new URL('../../taxonomy-app/src/main/resources/static/js/', import.meta.url);
 const [i18nSource, utilsSource, aboutSource] = await Promise.all([
@@ -172,6 +173,7 @@ async function renderAboutLinks(prefix, data) {
     app.elements.set('aboutLegalResources', legal);
     app.elements.set('aboutThirdPartyContent', { parentNode: {} });
     app.document.currentScript = { src: `${origin}${prefix}/js/shared/taxonomy-about.js` };
+    canonical.install(app.context, ['api/reference-api.js']);
     vm.runInContext(aboutSource, app.context, { filename: 'taxonomy-about.js' });
     app.context.TaxonomyAbout.loadAboutInfo();
     await new Promise(resolve => setImmediate(resolve));

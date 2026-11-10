@@ -7,11 +7,12 @@ const sourceRoot = new URL('../../taxonomy-app/src/main/resources/static/js/', i
 const transportSource = readFileSync(new URL('api/taxonomy-api-client.js', sourceRoot), 'utf8');
 const editorSource = readFileSync(new URL('shared/taxonomy-dsl-editor.js', sourceRoot), 'utf8');
 const i18nSource = readFileSync(new URL('taxonomy-i18n.js', sourceRoot), 'utf8');
+const utilityContext = { window: {}, document: { readyState: 'loading', addEventListener() {} } };
+vm.runInNewContext(readFileSync(new URL('shared/taxonomy-utils.js', sourceRoot), 'utf8'), utilityContext);
+const { escapeHtml } = utilityContext.window.TaxonomyUtils;
 const originalText = 'element BP {\n  taxonomy: BP;\n}\n';
 const originalMessage = 'Keep the reviewed requirement changes';
 const history = { commits: [{ documentId: 22 }, { documentId: 21 }] };
-const escapeHtml = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
 function response(body, status = 200, type = 'application/json') {
     return new Response(typeof body === 'string' ? body : JSON.stringify(body), {
@@ -19,11 +20,12 @@ function response(body, status = 200, type = 'application/json') {
     });
 }
 
-function materializationMessages(locale) {
+function commandMessages(locale) {
     // I18nApiController serves these message-bundle values to the browser.
     const filename = locale === 'de' ? 'messages_de.properties' : 'messages.properties';
     const lines = readFileSync(new URL('../../i18n/' + filename, sourceRoot), 'utf8').split(/\r?\n/);
-    return Object.fromEntries(['dsl.materialized', 'dsl.incremental.done'].map(key => {
+    return Object.fromEntries(['dsl.materialized', 'dsl.incremental.done', 'views.valid',
+        'dsl.diff.failed', 'dsl.textdiff.failed', 'dsl.diff.error', 'dsl.diff.text.error'].map(key => {
         const line = lines.find(value => value.startsWith(key + '='));
         assert.ok(line, `${filename} must translate ${key}`);
         return [key, line.slice(key.length + 1).replace(/\\u([\da-f]{4})/gi,
@@ -48,7 +50,7 @@ function element(value = '') {
 // boundary are fixtures; the hook exposes existing handlers without changing them.
 function harness(reply, locale) {
     const calls = [], statuses = [], events = [], operationResults = [], ready = [], timers = new Map();
-    const translations = locale ? materializationMessages(locale) : null;
+    const translations = locale ? commandMessages(locale) : null;
     let timerSequence = 0;
     const nodes = new Map(['dslEditorContainer', 'dslParseBtn', 'dslValidateBtn', 'dslFormatBtn',
         'dslCommitBtn', 'dslMaterializeBtn', 'dslMaterializeIncrBtn', 'dslLoadCurrentBtn',
@@ -99,8 +101,11 @@ function harness(reply, locale) {
     context.window = context;
     if (locale) vm.runInContext(i18nSource, context, { filename: 'taxonomy-i18n.js' });
     vm.runInContext(transportSource, context, { filename: 'taxonomy-api-client.js' });
-    const hook = 'window.__commands = { commit: commitDsl, materialize: materializeDsl, '
+    vm.runInContext(readFileSync(new URL('api/dsl-api.js', sourceRoot), 'utf8'), context, {filename:'dsl-api.js'});
+    const hook = 'window.__commands = { parse: parseDsl, validate: validateDsl, commit: commitDsl, materialize: materializeDsl, '
         + 'incremental: materializeIncremental, branch: createBranch, merge: mergeBranch, '
+        + 'diff: function () { return loadDiff("before-commit", "after-commit"); }, '
+        + 'textDiff: function () { return loadTextDiff("before-commit", "after-commit"); }, '
         + 'cherryPick: function () { return cherryPickCommit("fixture-commit"); } };\n}());';
     assert.ok(editorSource.endsWith('}());\n'), 'editor initialization hook must remain explicit');
     vm.runInContext(editorSource.replace(/\}\(\)\);\s*$/, hook), context,
@@ -267,4 +272,62 @@ test('a successful older commit does not erase a message edited while it was pen
     await completed;
     assert.match(h.status.className, /alert-success/);
     assert.equal(h.nodes.get('dslMessageInput').value, 'Message for the next edit');
+});
+
+const markupDiagnostic = 'Unavailable version <img src="invalid" onerror="window.dslInjected=true"> & detail';
+const escapedDiagnostic = 'Unavailable version &lt;img src=&quot;invalid&quot; onerror=&quot;window.dslInjected=true&quot;&gt; &amp; detail';
+for (const locale of ['en', 'de']) {
+    for (const command of ['diff', 'textDiff']) {
+        test(`${command}: ${locale} HTTP error diagnostics remain text in the diff panel`, async () => {
+            // Both real diff controllers return HTTP 400 with the caught exception in the error field.
+            const h = harness(() => response({ error: markupDiagnostic }, 400), locale);
+            await h.run(command);
+            const prefix = command === 'diff'
+                ? (locale === 'de' ? 'Diff fehlgeschlagen: ' : 'Diff failed: ')
+                : (locale === 'de' ? 'Text-Diff fehlgeschlagen: ' : 'Text diff failed: ');
+            assert.equal(h.nodes.get('dslDiffOutput').innerHTML,
+                `<span class="text-danger">${prefix}HTTP 400: ${escapedDiagnostic}</span>`,
+                'The server diagnostic must be readable text, never an executable HTML element');
+            assertFailure(h, 400);
+            assert.ok(h.status.textContent.includes(markupDiagnostic), 'The text-only status keeps the full diagnostic');
+            assert.equal(h.calls.length, 1, 'A rejected diff read must not retry or issue a write');
+            assert.equal(h.calls[0].input, command === 'diff'
+                ? '/api/dsl/diff/before-commit/after-commit' : '/api/dsl/diff/text/before-commit/after-commit');
+            assert.equal(h.calls[0].init.method || 'GET', 'GET');
+            assert.equal(h.calls[0].init.credentials, 'same-origin');
+        });
+    }
+}
+
+for (const [elements, relations] of [[0, 0], [2, 1]]) {
+    test(`parse: valid ${elements}/${relations} counts and diagnostic text retain their meaning`, async () => {
+        // DslApiController.parseDsl publishes integer sizes, including real zeros.
+        const h = harness(() => response({ valid: true, elements, relations,
+            requirements: 0, mappings: 0, views: 0, evidence: 0, errors: [], warnings: [markupDiagnostic] }), 'en');
+        await h.run('parse');
+        const html = h.nodes.get('dslValidationOutput').innerHTML;
+        assert.ok(html.startsWith('<span class="text-success">\u2705 Valid</span>'));
+        assert.ok(html.includes(` — ${elements} elements, ${relations} relations`), 'Zero counts must stay visible');
+        assert.ok(html.includes(escapedDiagnostic));
+        assert.ok(!html.includes('<img'));
+        assert.equal(h.calls.length, 1);
+        assert.equal(h.calls[0].input, '/api/dsl/parse');
+        assert.equal(h.calls[0].init.body, originalText);
+        assert.equal(h.view.state.doc.toString(), originalText);
+    });
+}
+
+test('validate: a valid response without counts retains escaped warning diagnostics', async () => {
+    // DslApiController.validateDsl returns diagnostics and validity, without invented count fields.
+    const h = harness(() => response({ valid: true, errors: [], warnings: [markupDiagnostic] }), 'en');
+    await h.run('validate');
+    const html = h.nodes.get('dslValidationOutput').innerHTML;
+    assert.ok(html.startsWith('<span class="text-success">\u2705 Valid</span>'));
+    assert.ok(html.includes(escapedDiagnostic));
+    assert.ok(!html.includes('<img'));
+    assert.ok(!html.includes(' elements, '));
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0].input, '/api/dsl/validate');
+    assert.equal(h.calls[0].init.body, originalText);
+    assert.equal(h.view.state.doc.toString(), originalText);
 });
