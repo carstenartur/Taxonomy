@@ -91,7 +91,8 @@ window.TaxonomyApiClient = (function () {
         if (options.pinnedWorkspaceId !== undefined) return options.pinnedWorkspaceId == null ? '' : options.pinnedWorkspaceId;
         var target = new URL(inputUrl(input), window.location.href);
         if (target.searchParams.has('workspaceId')) return target.searchParams.get('workspaceId');
-        if (options.workspaceScoped === false) return undefined;
+        // A retained workspace may already be unavailable while repairing installation settings.
+        if (options.workspaceScoped === false || /\/api\/admin\/database-setup(?:\/|$)/.test(target.pathname)) return undefined;
         var workspace = window.__TaxonomyAnalysisSessionContext?.runtime?.workspaceId;
         return workspace == null ? undefined : workspace;
     }

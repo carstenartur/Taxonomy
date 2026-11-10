@@ -552,7 +552,9 @@
             });
     }
 
+    var connectionTestGeneration = 0;
     function testLlmConnection() {
+        const generation = ++connectionTestGeneration;
         const current = window.TaxonomyApiClient.captureContext();
         const btn = document.getElementById('testLlmConnection');
         if (btn) { btn.disabled = true; btn.textContent = t('browse.test.testing'); }
@@ -560,6 +562,7 @@
         window.AnalysisApi.analyzeNode({parentCode:'BP', businessText:testText})
             .then(r => r.json())
             .then(result => {
+                if (generation !== connectionTestGeneration || !current()) return;
                 console.log('[Taxonomy] Test connection result:', result);
                 if (result.error) {
                     showStatus('warning', t('browse.test.error', result.error));
@@ -569,13 +572,12 @@
                 loadDiagnostics();
             })
             .catch(err => {
-                if (err?.code === 'ABORTED') return;
+                if (generation !== connectionTestGeneration || !current() || err?.code === 'ABORTED') return;
                 console.error('[Taxonomy] Test connection failed', err);
                 showStatus('danger', t('browse.test.failed', err.message));
             })
             .finally(() => {
-                if (!current()) return;
-                if (btn) { btn.disabled = false; btn.textContent = t('browse.test.btn'); }
+                if (btn && generation === connectionTestGeneration) { btn.disabled = false; btn.textContent = t('browse.test.btn'); }
             });
     }
 
@@ -2450,7 +2452,9 @@
             });
     }
 
+    var proposalGeneration = 0;
     function proposeRelationsForNode(nodeCode, relationType) {
+        const generation = ++proposalGeneration;
         const current = window.TaxonomyApiClient.captureContext();
         const spinner = document.getElementById('proposeSpinner');
         const submitBtn = document.getElementById('proposeRelationsSubmit');
@@ -2463,6 +2467,7 @@
                 return r.json();
             })
             .then(function (proposals) {
+                if (generation !== proposalGeneration || !current()) return;
                 // Close modal
                 const modalEl = document.getElementById('proposeRelationsModal');
                 if (modalEl && window.bootstrap) {
@@ -2474,14 +2479,14 @@
                 loadProposals(S.currentProposalFilter);
             })
             .catch(function (err) {
-                if (err?.code === 'ABORTED') return;
+                if (generation !== proposalGeneration || !current() || err?.code === 'ABORTED') return;
                 console.error('[Taxonomy] Propose relations failed', err);
                 showStatus('danger', t('browse.proposals.generate.failed', err.message));
             })
             .finally(function () {
-                if (!current()) return;
+                if (generation !== proposalGeneration) return;
                 if (spinner) spinner.classList.add('d-none');
-                if (submitBtn) submitBtn.disabled = false;
+                if (submitBtn) submitBtn.disabled = window.TaxonomyRoleSurface?.canMutateArchitecture?.() === false;
             });
     }
 

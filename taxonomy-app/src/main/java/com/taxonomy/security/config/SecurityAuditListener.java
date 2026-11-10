@@ -6,6 +6,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.EventListener;
 import org.springframework.security.authentication.event.AuthenticationFailureBadCredentialsEvent;
 import org.springframework.security.authentication.event.AuthenticationSuccessEvent;
+import org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthenticationToken;
 import org.springframework.security.web.authentication.WebAuthenticationDetails;
 import org.springframework.stereotype.Component;
 
@@ -29,7 +30,9 @@ public class SecurityAuditListener {
 
     @EventListener
     public void onFailure(AuthenticationFailureBadCredentialsEvent event) {
-        String username = event.getAuthentication().getName();
+        // Before JWT verification this token's principal/name is the raw credential.
+        String username = event.getAuthentication() instanceof BearerTokenAuthenticationToken
+                ? "[unverified-bearer]" : event.getAuthentication().getName();
         String ip = extractIp(event.getAuthentication().getDetails());
         log.warn("LOGIN_FAILED user={} ip={}", username, ip);
     }

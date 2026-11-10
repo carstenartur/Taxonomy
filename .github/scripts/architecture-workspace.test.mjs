@@ -443,6 +443,20 @@ test('an unavailable initial analysis source can retry through the same readines
 });
 
 
+test('explicit navigation retries the initial repository lookup after ContextBar recovers', async () => {
+    let available = false, reads = 0;
+    const f = await mountedWorkspace('analysis', false, {beforeMount(context) {
+        context.TaxonomyContextBar = {fetchAndRender: async () => {reads++; return available ? {branch: 'main'} : null;}};
+    }});
+    await f.ready();
+    const workspace = f.context.TaxonomyArchitectureWorkspace;
+    assert.equal(await workspace.ready(), false);
+    assert.equal(reads, 1);
+    available = true;
+    assert.equal(await workspace.open('working', {source: {workspaceScopeKey:'workspace-B', branch:'draft'}}), true);
+    assert.equal(reads, 2);
+});
+
 for (const visible of ['analysis', 'working']) test(`a recovered retained analysis workspace confirms its own metadata while preserving visible ${visible} ownership`, async () => {
     const f = await mountedWorkspace('analysis', false, {page: 'analyze'});
     await f.ready();

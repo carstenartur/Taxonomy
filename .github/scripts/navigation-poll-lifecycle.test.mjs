@@ -27,7 +27,7 @@ function deferred() {
 // Execute the complete production scripts, controlling only their external DOM,
 // clock and HTTP boundaries. Reads deliberately may ignore abort, as an already
 // accepted response/body can arrive after pagehide or a restored page's new read.
-function harness(kind, { translationsPending = false, proposals = false } = {}) {
+function harness(kind, { translationsPending = false, proposals = false, forms = false } = {}) {
     const dom = new EventTarget(), lifecycle = new EventTarget(), translations = deferred();
     const nodes = new Map(), reads = [], timers = new Map(), errors = [];
     let nextTimer = 0;
@@ -54,6 +54,7 @@ function harness(kind, { translationsPending = false, proposals = false } = {}) 
     }
     for (const id of ['systemStatusBar', 'gitStatusBar', 'syncStatePanel', 'analyzeBtn',
         'startupBanner', 'startupBannerStatus', 'taxonomyTree', 'expandAll', 'collapseAll',
+        ...(forms ? ['testLlmConnection', 'proposeRelationsSubmit', 'proposeSpinner', 'proposeRelationType'] : []),
         ...(proposals ? ['proposalsTableContainer', 'proposalPendingBadge'] : [])]) {
         const node = new Element(); node.id = id; nodes.set(id, node);
     }
@@ -95,7 +96,7 @@ function harness(kind, { translationsPending = false, proposals = false } = {}) 
     const scope = { window, document, fetch, ...clock, AbortController, Headers,
         TaxonomyI18n: { t: (key, ...values) => [key, ...values].join(' '), ready: () => translations.promise },
         TaxonomyUtils: { escapeHtml: String }, console: { ...console, error: (...values) => errors.push(values) } };
-    canonicalFixture.install(scope, ['api/workspace-api.js', 'api/reference-api.js', 'api/search-api.js', 'api/proposals-api.js']);
+    canonicalFixture.install(scope, ['api/analysis-api.js', 'api/workspace-api.js', 'api/reference-api.js', 'api/search-api.js', 'api/proposals-api.js']);
     vm.runInNewContext(sources[kind], scope, { filename: `production-${kind}-poll.js` });
     if (!translationsPending) translations.resolve();
     return { window, nodes, reads, state, timers, translations, errors,
@@ -339,4 +340,41 @@ test('a pre-navigation badge body cannot replace the restored page count', async
     body.resolve([]); await settle();
     assert.equal(h.nodes.get('proposalPendingBadge').textContent, 'browse.proposals.pending 2');
     assert.deepEqual(h.errors, []);
+});
+
+test('an invalidated connection test releases its busy button', async () => {
+    const h = harness('browse', {forms:true});
+    h.start(); await settle();
+    const button = h.nodes.get('testLlmConnection');
+    button.dispatchEvent(new Event('click'));
+    assert.equal(button.disabled, true);
+    h.window.__TaxonomyAnalysisSessionContext = {runtime: {workspaceId: 'fresh'}};
+    h.reads.at(-1).answer({provider:'obsolete'});
+    await settle();
+    assert.equal(button.disabled, false);
+    assert.equal(button.textContent, 'browse.test.btn');
+});
+
+test('proposal cleanup respects the newer request and the currently allowed role', async () => {
+    const h = harness('browse', {forms:true});
+    h.start(); await settle();
+    h.window.TaxonomyRoleSurface.canMutateArchitecture = () => true;
+    h.state.pendingProposalNodeCode = 'BP';
+    h.nodes.get('proposeRelationType').value = 'DEPENDS_ON';
+    const button = h.nodes.get('proposeRelationsSubmit'), spinner = h.nodes.get('proposeSpinner');
+    button.dispatchEvent(new Event('click'));
+    const older = h.reads.at(-1);
+    assert.equal(button.disabled, true);
+    h.window.__TaxonomyAnalysisSessionContext = {runtime: {workspaceId: 'fresh'}};
+    button.dispatchEvent(new Event('click'));
+    const newer = h.reads.at(-1);
+    assert.notEqual(older, newer);
+    older.answer([]); await settle();
+    assert.equal(spinner.classList.contains('d-none'), false);
+    assert.equal(button.disabled, true);
+    h.window.TaxonomyRoleSurface.canMutateArchitecture = () => false;
+    h.window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'third';
+    newer.answer([]); await settle();
+    assert.equal(spinner.classList.contains('d-none'), true);
+    assert.equal(button.disabled, true);
 });

@@ -130,7 +130,7 @@
     function initializeSource() {
         if (!sourceInitialization) {
             var current = window.TaxonomyApiClient.captureContext({contextSensitive:false});
-            sourceInitialization = window.TaxonomyI18n.ready()
+            var pending = window.TaxonomyI18n.ready()
                 .then(function () { return window.TaxonomyArchitectureLifecycle?.ready?.(); })
                 .then(sessionInitialization)
                 .then(function (initialized) {
@@ -144,6 +144,10 @@
                         return true;
                     });
                 });
+            sourceInitialization = pending;
+            pending.catch(function () {
+                if (sourceInitialization === pending) sourceInitialization = null;
+            });
         }
         return sourceInitialization;
     }

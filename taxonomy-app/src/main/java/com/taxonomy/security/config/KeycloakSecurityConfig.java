@@ -8,6 +8,7 @@ import com.taxonomy.security.webdav.WebDavApplicationCredentialFilter;
 import com.taxonomy.shared.config.RateLimitFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -116,6 +117,8 @@ public class KeycloakSecurityConfig {
                 .userInfoEndpoint(userInfo -> userInfo.oidcUserService(oidcUserService)))
             .oauth2ResourceServer(oauth2 -> oauth2
                 .authenticationEntryPoint(authenticationEntryPoint)
+                .authenticationConverter(CredentialSafeBearerTokenAuthenticationConverter.forContext(
+                        http.getSharedObject(ApplicationContext.class)))
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthConverter)))
             .exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
                     authenticationEntryPoint, SecurityConfig::isRestClient))

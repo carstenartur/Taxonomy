@@ -459,6 +459,26 @@ test('actual session routing retains query pins and central scope beneath explic
   }
 });
 
+test('installation database wizard discards only the inferred workspace pin', async () => {
+  const calls = [];
+  const app = loadClient(async (url, init) => { calls.push({url, init}); return Response.json({}); });
+  app.context.window.__TaxonomyAnalysisSessionContext = {runtime: {workspaceId: 'retained'}};
+  for (const route of ['/api/admin/database-setup', '/Taxonomy/api/admin/database-setup/status']) {
+    await app.client.getJson(route);
+    const call = calls.at(-1);
+    assert.equal(new URL(call.url, app.context.window.location.href).searchParams.has('workspaceId'), false);
+    assert.equal(call.init.headers.has('X-Taxonomy-Workspace-Id'), false);
+  }
+  await app.client.sendJson('/Taxonomy/api/admin/database-setup/test', {}, 'POST', {pinnedWorkspaceId: 'explicit'});
+  await app.client.getJson('/Taxonomy/api/admin/database-setup/status?workspaceId=');
+  await app.client.getJson('/Taxonomy/api/admin/database-setup-extra');
+  for (const [index, pin] of ['explicit', '', 'retained'].entries()) {
+    const call = calls[index + 2];
+    assert.equal(new URL(call.url, app.context.window.location.href).searchParams.get('workspaceId'), pin);
+    assert.equal(call.init.headers.get('X-Taxonomy-Workspace-Id'), pin);
+  }
+});
+
 function navigationEvents(context) {
   const listeners = new Map(), dispatch = context.document.dispatchEvent;
   context.document.addEventListener = (type, callback) => {

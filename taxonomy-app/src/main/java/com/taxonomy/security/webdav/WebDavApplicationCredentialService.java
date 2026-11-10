@@ -10,6 +10,8 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -107,8 +109,7 @@ public class WebDavApplicationCredentialService {
         credential.setExpiresAt(now.plus(lifetime));
         repository.save(credential);
 
-        log.info("audit.webdav_credential.created id={} user={} read={} write={} expires={}",
-                id, owner.getName(), credential.isReadAllowed(), writeAllowed,
+        auditCreatedAfterCommit(id, owner.getName(), credential.isReadAllowed(), writeAllowed,
                 credential.getExpiresAt());
         return new CreatedCredential(metadata(credential), token);
     }
@@ -192,6 +193,25 @@ public class WebDavApplicationCredentialService {
         return value != null
                 && value.length() == TOKEN_LENGTH
                 && TOKEN.matcher(value).matches();
+    }
+
+    private static void auditCreatedAfterCommit(
+            String id, String username, boolean readAllowed, boolean writeAllowed, Instant expiresAt) {
+        Runnable audit = () -> log.info(
+                "audit.webdav_credential.created id={} user={} read={} write={} expires={}",
+                id, username, readAllowed, writeAllowed, expiresAt);
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            audit.run();
+            return;
+        }
+        // A successful save can still be rolled back or fail during commit.
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        audit.run();
+                    }
+                });
     }
 
     private void updateLastUsedIfNeeded(
