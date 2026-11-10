@@ -15,7 +15,8 @@ const workspaceApi = readFileSync(new URL('static/js/api/workspace-api.js', reso
 const sources = {
     system: index.slice(statusStart, statusEnd),
     sync: readFileSync(new URL('static/js/workspace/taxonomy-workspace-sync.js', resources), 'utf8'),
-    browse: readFileSync(new URL('static/js/core/taxonomy-browse.js', resources), 'utf8')
+    browse: readFileSync(new URL('static/js/core/taxonomy-browse.js', resources), 'utf8'),
+    git: readFileSync(new URL('static/js/workspace/taxonomy-git-status.js', resources), 'utf8')
 };
 const settle = () => new Promise(resolve => setImmediate(resolve));
 function deferred() {
@@ -76,7 +77,7 @@ function harness(kind, { translationsPending = false, proposals = false, forms =
         setInterval: (fn, delay) => schedule(fn, delay, true), clearInterval: id => timers.delete(id)
     };
     const state = { taxonomyData: ['retained catalogue'], currentView: 'list', currentProposalFilter: 'PENDING' };
-    const window = { ...clock, TaxonomyState: state,
+    const window = { ...clock, TaxonomyState: state, location: {href: 'http://taxonomy.test/'},
         TaxonomyRoleSurface: { ready: Promise.resolve({ administrator: false }), isAdministrator: () => false },
         addEventListener: lifecycle.addEventListener.bind(lifecycle)
     };
@@ -93,6 +94,7 @@ function harness(kind, { translationsPending = false, proposals = false, forms =
         reads.push(read); return response.promise;
     };
     window.fetch = fetch;
+    window.TaxonomyVersioningApi = {state: (branch, {signal}) => fetch('http://taxonomy.test/api/git/state?branch=' + encodeURIComponent(branch), {signal})};
     const scope = { window, document, fetch, ...clock, AbortController, Headers,
         TaxonomyI18n: { t: (key, ...values) => [key, ...values].join(' '), ready: () => translations.promise },
         TaxonomyUtils: { escapeHtml: String }, console: { ...console, error: (...values) => errors.push(values) } };
@@ -102,6 +104,7 @@ function harness(kind, { translationsPending = false, proposals = false, forms =
     return { window, nodes, reads, state, timers, translations, errors,
         start() { dom.dispatchEvent(new Event('DOMContentLoaded')); },
         hide() { lifecycle.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: true })); },
+        beforeUnload() { lifecycle.dispatchEvent(new Event('beforeunload')); },
         show(persisted = true) { lifecycle.dispatchEvent(Object.assign(new Event('pageshow'), { persisted })); },
         requests(url) { return reads.filter(read => new URL(read.url, window.location.href).pathname === url); },
         tick(delay) {
@@ -113,6 +116,21 @@ function harness(kind, { translationsPending = false, proposals = false, forms =
         timerCount(delay) { return [...timers.values()].filter(timer => timer.delay === delay).length; }
     };
 }
+
+test('Git polling stops at beforeunload, before a departing WebKit document can schedule its next fetch', async () => {
+    const h = harness('git'); h.start(); await settle();
+    const old = h.requests('/api/git/state')[0];
+    assert.ok(old, 'The real Git poll must have started');
+    assert.equal(h.timerCount(10000), 1);
+    h.beforeUnload();
+    assert.equal(old.init.signal.aborted, true, 'The active request is cancelled before pagehide');
+    assert.equal(h.timerCount(10000), 0, 'No periodic request may be scheduled while navigating');
+    const count = h.requests('/api/git/state').length;
+    h.tick(10000); h.window.TaxonomyGitStatus.refresh(); await settle();
+    assert.equal(h.requests('/api/git/state').length, count);
+    h.hide();
+    assert.equal(h.timerCount(10000), 0);
+});
 
 for (const [kind, endpoint, nodeId, field, result] of [
     ['system', '/api/status/startup', 'systemStatusBar', 'textContent', { initialized: true, memory: { heapUsagePercent: 20 } }],

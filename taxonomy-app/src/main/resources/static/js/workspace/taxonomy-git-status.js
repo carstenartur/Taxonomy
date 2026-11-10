@@ -14,10 +14,18 @@
     var pollTimer = null;
     var pendingRead = null;
     var pageActive = true;
-    window.addEventListener('pagehide', function () {
-        pageActive = false; clearInterval(pollTimer); pollTimer = null;
+    // A hard navigation can start while a periodic poll is due. Stop the timer
+    // at beforeunload, ahead of pagehide, so WebKit never starts a fetch in a
+    // departing document; also cancel any already owned read.
+    function stopPolling() {
+        pageActive = false;
+        clearInterval(pollTimer);
+        pollTimer = null;
         if (pendingRead) pendingRead.abort();
-    });
+        pendingRead = null;
+    }
+    window.addEventListener('beforeunload', stopPolling);
+    window.addEventListener('pagehide', stopPolling);
     window.addEventListener('pageshow', function (event) {
         if (event.persisted && statusBar) {
             pageActive = true; pollGitState(); pollTimer = setInterval(pollGitState, POLL_INTERVAL);
