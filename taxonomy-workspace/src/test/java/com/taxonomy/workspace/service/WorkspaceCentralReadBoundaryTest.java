@@ -1,11 +1,14 @@
 package com.taxonomy.workspace.service;
 
+import com.taxonomy.dto.ContextMode;
+import com.taxonomy.dto.ContextRef;
 import com.taxonomy.workspace.controller.WorkspaceController;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.SyncStateRepository;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.versioning.service.SemanticGitMergeService;
 import org.junit.jupiter.api.AfterEach;
@@ -34,9 +37,13 @@ class WorkspaceCentralReadBoundaryTest {
     void clearRequest() { RequestContextHolder.resetRequestAttributes(); }
 
     private MockMvc mvc() {
+        return mvc(manager);
+    }
+
+    private MockMvc mvc(WorkspaceManager workspaceManager) {
         when(resolver.resolveCurrentUsername()).thenReturn("alice");
         return MockMvcBuilders.standaloneSetup(new WorkspaceController(
-                manager, resolver, null, null, null, null, null, null))
+                workspaceManager, resolver, null, null, null, null, null, null))
                 .addInterceptors(new ExplicitWorkspacePinValidationInterceptor(resolver)).build();
     }
 
@@ -87,8 +94,35 @@ class WorkspaceCentralReadBoundaryTest {
         mvc().perform(get("/api/workspace/current")
                 .header(WorkspaceContextResolver.WORKSPACE_HEADER, "chosen-workspace"))
                 .andExpect(status().isOk());
-        verify(manager).getWorkspaceMetadataInfo(workspace);
+        verify(manager).getWorkspaceMetadataInfo("alice", workspace);
         verify(manager, never()).getWorkspaceInfo(anyString());
+        verify(resolver, never()).resolveCurrentRepositoryContext();
+    }
+
+    @Test
+    void pinnedCollaboratorReceivesTheirOwnNavigationContext() throws Exception {
+        var workspace = new UserWorkspace();
+        workspace.setWorkspaceId("shared-with-alice");
+        workspace.setUsername("bob");
+        workspace.setCurrentBranch("draft");
+        when(resolver.resolveCurrentWorkspaceMetadata()).thenReturn(workspace);
+        var workspaceManager = new WorkspaceManager(mock(UserWorkspaceRepository.class), 50,
+                mock(SystemRepositoryService.class), mock(DslGitRepository.class));
+        workspaceManager.getOrCreateScopedWorkspaceState(new WorkspaceContext("bob", workspace.getWorkspaceId(), "draft"))
+                .setCurrentContext(new ContextRef("owner-selection", "owner-branch", null, null,
+                        ContextMode.READ_ONLY, null, null, null, "owner search", null, false));
+        workspaceManager.getOrCreateScopedWorkspaceState(new WorkspaceContext("alice", workspace.getWorkspaceId(), "draft"))
+                .setCurrentContext(new ContextRef("collaborator-selection", "collaborator-branch", null, null,
+                        ContextMode.EDITABLE, null, null, null, null, null, false));
+        mvc(workspaceManager).perform(get("/api/workspace/current")
+                        .header(WorkspaceContextResolver.WORKSPACE_HEADER, workspace.getWorkspaceId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("bob"))
+                .andExpect(jsonPath("$.currentContext.contextId").value("collaborator-selection"))
+                .andExpect(jsonPath("$.currentContext.branch").value("collaborator-branch"))
+                .andExpect(jsonPath("$.currentContext.mode").value("EDITABLE"))
+                .andExpect(jsonPath("$.currentContext.openedFromSearch").doesNotExist());
+        assertNull(workspaceManager.getWorkspace("alice"));
         verify(resolver, never()).resolveCurrentRepositoryContext();
     }
 

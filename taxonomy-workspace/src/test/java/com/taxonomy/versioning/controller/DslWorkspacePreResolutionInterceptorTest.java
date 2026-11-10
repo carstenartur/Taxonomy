@@ -93,7 +93,7 @@ class DslWorkspacePreResolutionInterceptorTest {
     void supportedUnpinnedReaderUsesCentralContextWithoutAllocatingWorkspaceState() {
         interceptor.setWorkspaceProvisionPermission(actor -> false);
         when(request.getMethod()).thenReturn("GET");
-        when(request.getRequestURI()).thenReturn("/api/search/graph");
+        when(request.getRequestURI()).thenReturn("/api/projects/1/architecture-workbench/retained");
         var central = RepositoryContext.centralRead("repository-a", "draft", WORKSPACE.username());
         when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(central);
         when(workspaceResolver.resolveCurrentContext()).thenReturn(
@@ -128,7 +128,7 @@ class DslWorkspacePreResolutionInterceptorTest {
     void readerWithExistingWorkspaceRetainsItsSelectedContext() {
         interceptor.setWorkspaceProvisionPermission(actor -> false);
         when(request.getMethod()).thenReturn("GET");
-        when(request.getRequestURI()).thenReturn("/api/search/graph");
+        when(request.getRequestURI()).thenReturn("/api/projects/1/architecture-workbench/retained");
         when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(REPOSITORY);
         when(workspaceResolver.resolveCurrentContext()).thenReturn(WORKSPACE);
 
@@ -140,7 +140,7 @@ class DslWorkspacePreResolutionInterceptorTest {
     void implicitCentralReadStillRejectsMismatchedActorBeforeAllocatingState() {
         interceptor.setWorkspaceProvisionPermission(actor -> false);
         when(request.getMethod()).thenReturn("GET");
-        when(request.getRequestURI()).thenReturn("/api/search/graph");
+        when(request.getRequestURI()).thenReturn("/api/projects/1/architecture-workbench/retained");
         when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(
                 RepositoryContext.centralRead("repository-a", "draft", "someone-else"));
         when(workspaceResolver.resolveCurrentContext()).thenReturn(

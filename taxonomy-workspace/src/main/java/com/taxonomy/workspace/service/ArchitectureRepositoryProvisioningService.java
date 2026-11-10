@@ -2,12 +2,13 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
-import com.taxonomy.workspace.storage.CommitProvenance;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
 import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.SystemRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.server.ResponseStatusException;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
@@ -16,6 +17,8 @@ import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /** Provisions central repositories and durable forks in logical JGit storage. */
 @Service
@@ -47,12 +50,7 @@ public class ArchitectureRepositoryProvisioningService {
             String defaultBranch) {
         SystemRepository metadata = systemRepositoryService.createCentralRepository(
                 displayName, slug, description, visibility, ownerId, defaultBranch);
-        return provisionRepository(
-                metadata,
-                MINIMAL_DSL,
-                ownerId,
-                "Initialize architecture repository",
-                "Could not initialize central repository ", null);
+        return provisionRepository(metadata, ownerId);
     }
 
     /** Stable-slug lifecycle creation and recovery share the catalog's durable claim. */
@@ -122,31 +120,23 @@ public class ArchitectureRepositoryProvisioningService {
             throw new IllegalStateException(
                     "Source repository is not active: " + sourceRepositoryId);
         }
+        requireForkSource(source, ownerId, visibility);
         String sourceBranch = requestedSourceBranch == null || requestedSourceBranch.isBlank()
                 ? source.getDefaultBranch()
                 : requestedSourceBranch.strip();
 
-        String sourceDsl;
+        DslGitRepository sourceGit;
         String sourceCommit;
-        CommitProvenance provenance;
         try {
-            DslGitRepository sourceGit =
-                    repositoryFactory.getCentralRepository(source.getRepositoryId());
+            sourceGit = repositoryFactory.getCentralRepository(source.getRepositoryId());
             sourceCommit = sourceGit.getHeadCommit(sourceBranch);
             if (sourceCommit == null) throw new IOException("Source branch has no commit");
-            provenance = CommitProvenance.capture("fork", sourceGit, source.getRepositoryId(),
-                    sourceBranch, sourceCommit, null);
-            sourceDsl = sourceGit.getDslAtCommit(sourceCommit);
+            verifyForkSnapshot(sourceGit, sourceCommit);
         } catch (IOException | RuntimeException exception) {
             throw new IllegalStateException(
                     "Could not read source repository " + sourceRepositoryId,
                     exception);
         }
-        if (sourceDsl == null || sourceDsl.isBlank() || sourceCommit == null) {
-            throw new IllegalStateException(
-                    "Source branch has no architecture content: " + sourceBranch);
-        }
-
         SystemRepository fork = systemRepositoryService.createForkMetadata(
                 source.getRepositoryId(),
                 sourceBranch,
@@ -156,21 +146,61 @@ public class ArchitectureRepositoryProvisioningService {
                 description,
                 visibility,
                 ownerId);
-        return provisionRepository(
-                fork,
-                sourceDsl,
-                ownerId,
-                "Fork from " + source.getSlug() + "/" + sourceBranch,
-                "Could not initialize fork repository ", provenance);
+        return provisionFork(fork, sourceGit, ownerId);
     }
 
-    private SystemRepository provisionRepository(
-            SystemRepository metadata,
-            String dsl,
-            String ownerId,
-            String commitMessage,
-            String failurePrefix,
-            CommitProvenance provenance) {
+    private static void verifyForkSnapshot(DslGitRepository source, String commit) throws IOException {
+        source.verifySnapshot(commit);
+        var repository = source.getGitRepository();
+        try (var walk = new RevWalk(repository)) {
+            var tip = walk.parseCommit(ObjectId.fromString(commit));
+            try (var tree = TreeWalk.forPath(repository, DslGitRepository.DSL_FILENAME, tip.getTree())) {
+                if (tree == null || !FileMode.REGULAR_FILE.equals(tree.getFileMode(0))) {
+                    throw new IOException("Source branch has no regular architecture DSL document");
+                }
+                var loader = repository.open(tree.getObjectId(0), Constants.OBJ_BLOB);
+                if (new String(loader.getBytes(GitHistoryTransfer.MAX_OBJECT_BYTES), StandardCharsets.UTF_8).isBlank()) {
+                    throw new IOException("Source branch has no architecture content");
+                }
+            }
+        }
+    }
+
+    private void requireForkSource(SystemRepository source, String actor, RepositoryVisibility visibility) {
+        if (!membershipService.canContribute(source, actor)) {
+            throw new AccessDeniedException("Current source repository CONTRIBUTOR role is required");
+        }
+        SystemRepositoryService.requirePermittedForkVisibility(source, visibility);
+    }
+
+    private SystemRepository provisionFork(SystemRepository fork, DslGitRepository source, String ownerId) {
+        String repositoryId = fork.getRepositoryId();
+        String branch = fork.getDefaultBranch();
+        String forkPoint = fork.getForkPointCommit();
+        try {
+            membershipService.assignOwner(repositoryId, ownerId);
+            var destination = repositoryFactory.createCentralRepository(repositoryId, fork.getStorageRepositoryName());
+            destination.verifyExpectedHead(branch, null);
+            GitHistoryTransfer.copyCommitClosure(source, destination, forkPoint, List.of());
+            systemRepositoryService.readCurrentAuthorization(fork.getUpstreamRepositoryId(),
+                    current -> requireForkSource(current, ownerId, fork.getVisibility()));
+            source.verifyExpectedHead(fork.getUpstreamBranch(), forkPoint);
+            destination.fastForwardIfHeadMatches(branch, null, forkPoint, ownerId, "Provision repository fork");
+            return systemRepositoryService.markProvisioningReady(repositoryId);
+        } catch (BranchHeadConflictException conflict) {
+            recordProvisioningFailure(repositoryId, conflict);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A branch changed while provisioning the fork", conflict);
+        } catch (AccessDeniedException | IllegalArgumentException rejected) {
+            recordProvisioningFailure(repositoryId, rejected);
+            throw rejected;
+        } catch (IOException | RuntimeException failure) {
+            // Keep any published ref for recovery if catalog completion failed after Git publication.
+            recordProvisioningFailure(repositoryId, failure);
+            throw new IllegalStateException("Could not initialize fork repository " + repositoryId, failure);
+        }
+    }
+
+    private SystemRepository provisionRepository(SystemRepository metadata, String ownerId) {
         String repositoryId = metadata.getRepositoryId();
         boolean storageAttempted = false;
         try {
@@ -178,12 +208,7 @@ public class ArchitectureRepositoryProvisioningService {
             storageAttempted = true;
             DslGitRepository git = repositoryFactory.createCentralRepository(
                     repositoryId, metadata.getStorageRepositoryName());
-            if (provenance == null) git.commitDsl(
-                    metadata.getDefaultBranch(),
-                    dsl,
-                    ownerId,
-                    commitMessage);
-            else git.commitDsl(metadata.getDefaultBranch(), dsl, ownerId, commitMessage, provenance);
+            git.commitDsl(metadata.getDefaultBranch(), MINIMAL_DSL, ownerId, INITIAL_MESSAGE);
             return systemRepositoryService.markProvisioningReady(repositoryId);
         } catch (IOException | RuntimeException exception) {
             if (storageAttempted) {
@@ -193,13 +218,16 @@ public class ArchitectureRepositoryProvisioningService {
                     exception.addSuppressed(cleanupException);
                 }
             }
-            try {
-                systemRepositoryService.markProvisioningFailed(
-                        repositoryId, safeMessage(exception));
-            } catch (RuntimeException stateException) {
-                exception.addSuppressed(stateException);
-            }
-            throw new IllegalStateException(failurePrefix + repositoryId, exception);
+            recordProvisioningFailure(repositoryId, exception);
+            throw new IllegalStateException("Could not initialize central repository " + repositoryId, exception);
+        }
+    }
+
+    private void recordProvisioningFailure(String repositoryId, Exception failure) {
+        try {
+            systemRepositoryService.markProvisioningFailed(repositoryId, safeMessage(failure));
+        } catch (RuntimeException stateFailure) {
+            failure.addSuppressed(stateFailure);
         }
     }
 

@@ -117,6 +117,7 @@ public final class PrincipalIdentityService {
     /**
      * Validate the exact login behind a protected request against current committed authority.
      * Unlike isEnabled, a different enabled binding cannot rescue this login after unlinking.
+     * A local login must still hold the roles it captured when authenticating.
      * Each decision uses one registry read, without a cross-request or per-instance cache.
      */
     public PrincipalId requireCurrent(org.springframework.security.core.Authentication authentication) {
@@ -125,26 +126,31 @@ public final class PrincipalIdentityService {
                 && authentication.getPrincipal() instanceof PrincipalUserDetails local) {
             PrincipalId principal = local.principalId();
             String id = principal.value().toString();
-            var matches = jdbc.query("""
+            var currentRoles = jdbc.query("""
                     select p.principal_id, p.scope_key, p.enabled, b.binding_key, b.principal_id,
                            b.binding_kind, b.issuer, b.subject_id, b.enabled, i.installation_id,
-                           u.principal_id, u.enabled
+                           u.principal_id, u.enabled, r.name
                     from app_principal p
                     join principal_binding b on b.principal_id=p.principal_id and b.binding_kind='LOCAL'
                     join principal_installation i on i.registry_key='local'
                          and b.issuer=i.installation_id and b.subject_id=p.principal_id
                     join app_user u on u.principal_id=p.principal_id
+                    left join user_roles ur on ur.user_id=u.id
+                    left join app_role r on r.id=ur.role_id
                     where p.principal_id=?
                     """, (row, number) -> {
                 String installation = row.getString(10);
                 var binding = new IdentityBinding(IdentityBinding.Kind.LOCAL, installation, id);
-                return id.equals(row.getString(1)) && authentication.getName().equals(row.getString(2))
+                boolean current = id.equals(row.getString(1)) && authentication.getName().equals(row.getString(2))
                         && row.getInt(3) == 1 && PrincipalBinding.key(binding).equals(row.getString(4))
                         && id.equals(row.getString(5)) && "LOCAL".equals(row.getString(6))
                         && installation.equals(row.getString(7)) && id.equals(row.getString(8))
                         && row.getInt(9) == 1 && id.equals(row.getString(11)) && row.getBoolean(12);
+                if (!current) throw denied();
+                return row.getString(13);
             }, id);
-            if (matches.size() != 1 || !matches.getFirst()) throw denied();
+            if (currentRoles.isEmpty() || local.getAuthorities().stream()
+                    .anyMatch(role -> !currentRoles.contains(role.getAuthority()))) throw denied();
             return principal;
         }
         if (authentication instanceof PrincipalJwtAuthenticationToken jwt) {

@@ -79,6 +79,18 @@ class WorkspaceManagerBehaviorTest {
     }
 
     @Test
+    void failedSwitchKeepsPreviousNavigationState() {
+        var original = manager.getOrCreateWorkspace("alice", "original");
+        var candidate = workspace("candidate", "alice");
+        when(repository.findByWorkspaceId("candidate")).thenReturn(Optional.of(candidate));
+        when(repository.save(candidate)).thenThrow(new IllegalStateException("metadata write failed"));
+
+        assertThrows(IllegalStateException.class, () -> manager.switchWorkspace("alice", "candidate"));
+        assertSame(original, manager.getWorkspace("alice"));
+        assertEquals(1, manager.getActiveWorkspaceCount());
+    }
+
+    @Test
     void switchingEnforcesExistenceOwnershipArchiveAndSharedBoundaries() {
         when(repository.findByWorkspaceId("missing")).thenReturn(Optional.empty());
         assertThrows(IllegalArgumentException.class,

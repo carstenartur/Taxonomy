@@ -8,6 +8,8 @@ import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
@@ -148,6 +150,48 @@ class SystemRepositoryServiceTest {
         assertEquals(RepositoryLifecycleState.PROVISIONING, created.getLifecycleState());
         assertNull(created.getProvisioningError());
         assertFalse(created.isPrimaryRepo());
+    }
+
+    @Test
+    void forkOfPublicSourceCanRemainPublic() {
+        SystemRepository source = catalogRepository("source");
+        source.setVisibility(RepositoryVisibility.PUBLIC);
+        when(repository.findByRepositoryId("source")).thenReturn(Optional.of(source));
+
+        SystemRepository fork = service.createForkMetadata(
+                "source", "review", "a".repeat(40), "Public fork", "public-fork", null,
+                RepositoryVisibility.PUBLIC, "bob");
+
+        assertEquals(RepositoryVisibility.PUBLIC, fork.getVisibility());
+        assertEquals("source", fork.getUpstreamRepositoryId());
+        assertEquals("review", fork.getUpstreamBranch());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"PRIVATE,", "ORGANIZATION,", "PRIVATE, PRIVATE", "ORGANIZATION, PRIVATE"})
+    void restrictedSourceAllowsDefaultOrExplicitPrivateFork(RepositoryVisibility sourceVisibility,
+                                                             RepositoryVisibility requestedVisibility) {
+        SystemRepository source = catalogRepository("source");
+        source.setVisibility(sourceVisibility);
+        when(repository.findByRepositoryId("source")).thenReturn(Optional.of(source));
+
+        SystemRepository fork = service.createForkMetadata(
+                "source", null, "a".repeat(40), "Private fork", "private-fork", null, requestedVisibility, "bob");
+
+        assertEquals(RepositoryVisibility.PRIVATE, fork.getVisibility());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"PRIVATE, PUBLIC", "PRIVATE, ORGANIZATION", "ORGANIZATION, PUBLIC", "ORGANIZATION, ORGANIZATION"})
+    void restrictedSourceCannotCreateNonPrivateForkMetadata(RepositoryVisibility sourceVisibility,
+                                                           RepositoryVisibility forkVisibility) {
+        SystemRepository source = catalogRepository("source");
+        source.setVisibility(sourceVisibility);
+        when(repository.findByRepositoryId("source")).thenReturn(Optional.of(source));
+
+        assertThrows(IllegalArgumentException.class, () -> service.createForkMetadata(
+                "source", null, "a".repeat(40), "Fork", "fork", null, forkVisibility, "bob"));
+        verify(repository, never()).save(any());
     }
 
     @Test

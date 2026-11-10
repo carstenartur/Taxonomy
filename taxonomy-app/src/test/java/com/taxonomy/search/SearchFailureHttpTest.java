@@ -9,7 +9,6 @@ import com.taxonomy.relations.service.HybridSearchService;
 import com.taxonomy.search.controller.SearchApiController;
 import com.taxonomy.search.service.SearchFacade;
 import com.taxonomy.shared.config.GlobalExceptionHandler;
-import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import jakarta.persistence.EntityManager;
@@ -34,7 +33,6 @@ class SearchFailureHttpTest {
     private final EntityManager manager = mock(EntityManager.class);
     private final LocalEmbeddingService embeddings = spy(new LocalEmbeddingService());
     private final WorkspaceResolver workspaces = mock(WorkspaceResolver.class);
-    private final RepositoryStateService repository = mock(RepositoryStateService.class);
     private MockMvc mvc;
 
     @BeforeEach
@@ -52,12 +50,11 @@ class SearchFailureHttpTest {
         var facade = new SearchFacade(taxonomy, fullText,
                 new HybridSearchService(fullText, embeddings), embeddings,
                 new GraphSearchService(embeddings, authority), initializer);
-        when(workspaces.resolveCurrentUsername()).thenReturn("test-user");
-        when(workspaces.resolveCurrentRepositoryContext()).thenReturn(RepositoryContext.centralRead("fixture-repository", "draft", "system"));
+        when(workspaces.resolveCurrentRepositoryContextForRead()).thenReturn(RepositoryContext.centralRead("fixture-repository", "draft", "system"));
         var messages = new ResourceBundleMessageSource();
         messages.setBasenames("i18n/messages_search", "i18n/messages");
         messages.setDefaultEncoding("UTF-8");
-        mvc = standaloneSetup(new SearchApiController(facade, messages, workspaces, repository))
+        mvc = standaloneSetup(new SearchApiController(facade, messages, workspaces))
                 .setControllerAdvice(new GlobalExceptionHandler(messages)).build();
     }
 
@@ -116,7 +113,7 @@ class SearchFailureHttpTest {
 
     @Test
     void workspaceDenialKeepsIts403Meaning() throws Exception {
-        when(workspaces.resolveCurrentRepositoryContext())
+        when(workspaces.resolveCurrentRepositoryContextForRead())
                 .thenThrow(new AccessDeniedException("private-workspace"));
         mvc.perform(get("/api/search/graph").param("q", "query"))
                 .andExpect(status().isForbidden())
@@ -125,15 +122,23 @@ class SearchFailureHttpTest {
     }
 
     @Test
+    void graphReadPassesTheSelectedWorkspaceToSearchAuthority() throws Exception {
+        var selected = RepositoryContext.workspace("fixture-repository", "selected-workspace", "draft", "test-user");
+        when(workspaces.resolveCurrentRepositoryContextForRead()).thenReturn(selected);
+        when(authority.inspect(selected)).thenThrow(new com.taxonomy.error.SearchUnavailableException());
+        mvc.perform(get("/api/search/graph").param("q", "query"))
+                .andExpect(status().isServiceUnavailable());
+        verify(authority).inspect(selected);
+        verifyNoMoreInteractions(authority);
+    }
+
+    @Test
     void workspaceFailureReturns503BeforeRetrieval() throws Exception {
-        when(workspaces.resolveCurrentRepositoryContext()).thenReturn(RepositoryContext.workspace(
-                "fixture-repository", "fixture-workspace", "draft", "test-user"));
-        doThrow(new IllegalStateException("private-workspace"))
-                .when(repository).ensureWorkspaceState("test-user");
+        when(workspaces.resolveCurrentRepositoryContextForRead())
+                .thenThrow(new IllegalStateException("private-workspace"));
         mvc.perform(get("/api/search/graph").param("q", "query"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(content().string(not(containsString("private-"))));
-        verify(repository).ensureWorkspaceState("test-user");
         verifyNoInteractions(authority);
         verify(embeddings, never()).embedQuery(anyString());
     }

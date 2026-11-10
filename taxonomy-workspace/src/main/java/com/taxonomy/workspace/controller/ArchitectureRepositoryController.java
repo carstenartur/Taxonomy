@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -148,7 +149,7 @@ public class ArchitectureRepositoryController {
 
     @PostMapping("/{repositoryId}/forks")
     @Operation(summary = "Create a durable central fork",
-            description = "Creates a fork from the selected source repository/branch after checking visibility and CONTRIBUTOR permission. Provisioning records the source authority and does not modify the source repository.")
+            description = "Creates a fork from the selected source repository and branch after checking visibility and CONTRIBUTOR permission. A fork of a non-public source must be private. Provisioning records the source authority and leaves the source repository unchanged.")
     public ResponseEntity<?> createFork(
             @PathVariable String repositoryId,
             @RequestBody CreateForkRequest request) {
@@ -172,6 +173,10 @@ public class ArchitectureRepositoryController {
             return ResponseEntity.ok(toMap(fork));
         } catch (IllegalArgumentException exception) {
             return ResponseEntity.badRequest().body(Map.of("error", safeMessage(exception)));
+        } catch (AccessDeniedException exception) {
+            return forbidden(safeMessage(exception));
+        } catch (ResponseStatusException exception) {
+            return ResponseEntity.status(exception.getStatusCode()).body(Map.of("error", safeMessage(exception)));
         } catch (RuntimeException exception) {
             return ResponseEntity.internalServerError().body(Map.of(
                     "error", "Fork provisioning failed",

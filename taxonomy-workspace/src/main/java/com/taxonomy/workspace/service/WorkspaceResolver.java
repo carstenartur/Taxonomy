@@ -71,6 +71,15 @@ public class WorkspaceResolver {
      * ambiguous legacy {@link WorkspaceContext#SHARED} sentinel.
      */
     public RepositoryContext resolveCurrentRepositoryContext() {
+        return resolveCurrentRepositoryContext(true);
+    }
+
+    /** Resolve the authorized repository for a read that must not provision a workspace. */
+    public RepositoryContext resolveCurrentRepositoryContextForRead() {
+        return resolveCurrentRepositoryContext(false);
+    }
+
+    private RepositoryContext resolveCurrentRepositoryContext(boolean provisionDefault) {
         RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
         if (attributes != null) {
             Object cached = attributes.getAttribute(
@@ -80,8 +89,10 @@ public class WorkspaceResolver {
             }
         }
 
-        RepositoryContext resolved = contextResolver.resolveRepositoryContextForUser(
-                resolveCurrentUsername());
+        String username = resolveCurrentUsername();
+        RepositoryContext resolved = provisionDefault
+                ? contextResolver.resolveRepositoryContextForUser(username)
+                : contextResolver.resolveRepositoryContextForRead(username);
         if (resolved == null) {
             throw new IllegalStateException("Repository context resolver returned null");
         }

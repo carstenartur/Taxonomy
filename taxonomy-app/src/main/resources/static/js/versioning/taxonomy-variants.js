@@ -101,9 +101,9 @@ window.TaxonomyVariants = (function () {
     }
 
     function switchTo(branch) {
-        fetch('/api/context/open?branch=' + encodeURIComponent(branch) + '&readOnly=false', { method: 'POST' })
-            .then(function () {
-                if (window.TaxonomyContextBar) window.TaxonomyContextBar.fetchAndRender('contextBar');
+        return window.TaxonomyContextBar.open(branch, null, false)
+            .then(function (context) {
+                if (!context) return;
                 if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
                 refresh();
             });

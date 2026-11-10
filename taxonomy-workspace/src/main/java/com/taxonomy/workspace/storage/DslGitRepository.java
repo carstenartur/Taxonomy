@@ -62,6 +62,9 @@ import java.util.function.Consumer;
  */
 public class DslGitRepository implements AutoCloseable {
 
+    /** Temporary transport branches never establish accepted history. */
+    public static final String EXTERNAL_SYNC_BRANCH_PREFIX = "__external_sync__/";
+
     private static final Logger log = LoggerFactory.getLogger(DslGitRepository.class);
     private static final String DEFAULT_REPOSITORY_NAME = "taxonomy-dsl";
 
@@ -199,6 +202,16 @@ public class DslGitRepository implements AutoCloseable {
                 verifySnapshot(commit.name());
             }
         }
+    }
+
+    /** Capture accepted branches before publication; remote and temporary refs are not trust anchors. */
+    public List<String> acceptedBranchHeads() throws IOException {
+        return gitRepo.getRefDatabase().getRefsByPrefix(Constants.R_HEADS).stream()
+                .filter(ref -> !ref.getName().startsWith(Constants.R_HEADS + EXTERNAL_SYNC_BRANCH_PREFIX))
+                .filter(ref -> ref.getObjectId() != null)
+                .map(ref -> ref.getObjectId().name())
+                .distinct()
+                .toList();
     }
 
     private byte[] rawCommit(String commitId) throws IOException {
@@ -429,6 +442,13 @@ public class DslGitRepository implements AutoCloseable {
         updateRef(Constants.R_HEADS + newBranch, snapshot, ObjectId.zeroId(), false,
                 systemIdent(), "branch: created at " + commitId);
         return snapshot.name();
+    }
+
+    /** Publish an explicitly selected snapshot only after checking all newly introduced ancestry. */
+    public String createBranchAtVerifiedCommit(String newBranch, String commitId) throws IOException {
+        List<String> accepted = acceptedBranchHeads();
+        verifyIncomingFromAcceptedHeads(commitId, accepted);
+        return createBranchAtCommit(newBranch, commitId);
     }
 
     // ── Diff operations ─────────────────────────────────────────────

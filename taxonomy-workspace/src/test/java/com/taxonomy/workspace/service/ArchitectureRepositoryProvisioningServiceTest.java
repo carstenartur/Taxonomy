@@ -1,9 +1,6 @@
 package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.storage.DslGitRepository;
-import com.taxonomy.workspace.storage.CommitProvenance;
-import org.junit.jupiter.api.AfterEach;
-import org.mockito.MockedStatic;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.RepositoryTopologyMode;
@@ -17,12 +14,16 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
+import java.util.function.Consumer;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -42,20 +43,10 @@ class ArchitectureRepositoryProvisioningServiceTest {
     @Mock
     private DslGitRepository repositoryGit;
 
-    @Mock
-    private DslGitRepository sourceGit;
-
     private ArchitectureRepositoryProvisioningService service;
-
-    // Routing/lifecycle fixtures have no Git objects; real provenance is covered by snapshot tests.
-    private MockedStatic<CommitProvenance> provenanceCapture;
-
-    @AfterEach
-    void closeProvenanceCapture() { if (provenanceCapture != null) provenanceCapture.close(); }
 
     @BeforeEach
     void setUp() {
-        provenanceCapture = org.mockito.Mockito.mockStatic(CommitProvenance.class);
         service = new ArchitectureRepositoryProvisioningService(
                 systemRepositoryService, membershipService, repositoryFactory);
     }
@@ -144,7 +135,7 @@ class ArchitectureRepositoryProvisioningServiceTest {
     }
 
     @Test
-    void forkUsesSelectedSourceAndActivatesAfterOwnerAndForkCommit() throws Exception {
+    void forkUsesSelectedSourceAndActivatesAtItsOriginalCommit() throws Exception {
         SystemRepository source = repository(
                 "source", "central-source", "reference", RepositoryLifecycleState.ACTIVE);
         SystemRepository provisioningFork = repository(
@@ -152,28 +143,37 @@ class ArchitectureRepositoryProvisioningServiceTest {
         SystemRepository activeFork = repository(
                 "fork", "central-fork", "reference-fork", RepositoryLifecycleState.ACTIVE);
         when(systemRepositoryService.getRepository("source")).thenReturn(source);
-        when(repositoryFactory.getCentralRepository("source")).thenReturn(sourceGit);
-        when(sourceGit.getDslAtCommit("source-commit"))
-                .thenReturn("meta { language: \"taxdsl\"; }\n");
-        when(sourceGit.getHeadCommit("main")).thenReturn("source-commit");
-        when(systemRepositoryService.createForkMetadata(
-                "source", "main", "source-commit", "Fork", "reference-fork", null,
-                RepositoryVisibility.PRIVATE, "alice"))
-                .thenReturn(provisioningFork);
-        when(repositoryFactory.createCentralRepository("fork", "central-fork"))
-                .thenReturn(repositoryGit);
-        when(systemRepositoryService.markProvisioningReady("fork")).thenReturn(activeFork);
+        when(membershipService.canContribute(source, "alice")).thenReturn(true);
+        doAnswer(call -> {
+            Consumer<SystemRepository> decision = call.getArgument(1);
+            decision.accept(source);
+            return null;
+        }).when(systemRepositoryService).readCurrentAuthorization(eq("source"), any());
+        try (var sourceGit = new DslGitRepository(); var target = new DslGitRepository()) {
+            String captured = sourceGit.commitDsl("main", "architecture DSL", "author", "Source history");
+            provisioningFork.setUpstreamRepositoryId("source");
+            provisioningFork.setUpstreamBranch("main");
+            provisioningFork.setForkPointCommit(captured);
+            when(repositoryFactory.getCentralRepository("source")).thenReturn(sourceGit);
+            when(systemRepositoryService.createForkMetadata(
+                    "source", "main", captured, "Fork", "reference-fork", null,
+                    RepositoryVisibility.PRIVATE, "alice")).thenReturn(provisioningFork);
+            when(repositoryFactory.createCentralRepository("fork", "central-fork")).thenReturn(target);
+            when(systemRepositoryService.markProvisioningReady("fork")).thenAnswer(call -> {
+                assertEquals(captured, target.getHeadCommit("main"));
+                return activeFork;
+            });
 
-        SystemRepository result = service.createFork(
-                "source", "main", "Fork", "reference-fork", null,
-                RepositoryVisibility.PRIVATE, "alice");
+            SystemRepository result = service.createFork(
+                    "source", "main", "Fork", "reference-fork", null,
+                    RepositoryVisibility.PRIVATE, "alice");
 
-        assertSame(activeFork, result);
-        verify(membershipService).assignOwner("fork", "alice");
-        verify(repositoryGit).commitDsl(
-                "main", "meta { language: \"taxdsl\"; }\n", "alice",
-                "Fork from reference/main");
-        verify(systemRepositoryService).markProvisioningReady("fork");
+            assertSame(activeFork, result);
+            InOrder order = inOrder(membershipService, repositoryFactory, systemRepositoryService);
+            order.verify(membershipService).assignOwner("fork", "alice");
+            order.verify(repositoryFactory).createCentralRepository("fork", "central-fork");
+            order.verify(systemRepositoryService).markProvisioningReady("fork");
+        }
     }
 
     @Test

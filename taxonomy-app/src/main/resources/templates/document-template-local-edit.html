@@ -42,6 +42,9 @@
                th:download="${template.fileName}"
                type="application/vnd.openxmlformats-officedocument.wordprocessingml.template"
                th:text="#{document.templates.local.download}">Download this starting version</a>
+            <a id="localTemplateStartingSample" th:if="${templatePreviewPinned}" class="btn btn-outline-secondary"
+               th:href="@{/admin/document-templates/{id}/test.docx(id=${template.templateId},revision=${template.headCommit})}"
+               th:text="#{document.templates.local.sample.start}">Download a test report for the starting version</a>
         </div>
     </section>
     <section class="card mb-3" aria-labelledby="localTemplateUploadHeading">
@@ -75,10 +78,12 @@
                th:text="#{document.templates.local.compare}">Compare the saved changes</a>
             <a id="localTemplateSample" th:if="${templatePreviewAvailable}" class="btn btn-outline-secondary mb-2"
                aria-describedby="localTemplateSampleHelp"
+               th:attr="data-pin-revision=${templatePreviewPinned}"
                th:href="@{/admin/document-templates/{id}/test.docx(id=${template.templateId})}"
-               th:text="#{document.templates.local.sample}">Download a test report from the current template</a>
+               th:text="${templatePreviewPinned} ? #{document.templates.local.sample.saved} : #{document.templates.local.sample}">Download a test report</a>
             <p id="localTemplateSampleHelp" th:if="${templatePreviewAvailable}"
-               class="small text-body-secondary mb-0" th:text="#{document.templates.local.sample.help}">The test report uses the current server version, which may have changed since this save. It is not a pre-publication check.</p>
+               class="small text-body-secondary mb-0"
+               th:text="${templatePreviewPinned} ? #{document.templates.local.sample.saved.help} : #{document.templates.local.sample.help}">The test report uses saved template content and sample data.</p>
         </div>
     </section>
     <a id="localTemplateHistory" class="btn btn-outline-secondary"

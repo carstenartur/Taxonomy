@@ -200,13 +200,21 @@ class DocumentTemplateDetailControllerTest {
     }
 
     @Test
-    void testReportReturnsAGenuineDocxDownload() {
+    void testReportReturnsAGenuineDocxDownload() throws Exception {
         when(preview.renderPreview()).thenReturn(new byte[]{1, 2, 3});
-        var response = controller().testReport(ID);
+        var response = controller().testReport(ID, null);
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getHeaders().getContentType().toString())
                 .isEqualTo("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
         assertThat(response.getBody()).containsExactly(1, 2, 3);
+    }
+
+    @Test
+    void anActiveOnlyContributionCannotSilentlyRenderARequestedRevision() {
+        assertThatThrownBy(() -> controller().testReport(ID, OLD))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+        verifyNoInteractions(templates, preview);
     }
 
     private DocumentTemplateDetailController controller() {

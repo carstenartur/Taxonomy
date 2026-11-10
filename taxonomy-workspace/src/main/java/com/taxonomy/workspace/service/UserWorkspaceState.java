@@ -37,8 +37,10 @@ public class UserWorkspaceState {
     private final int maxHistory;
 
     // Context navigation state
-    private volatile ContextRef currentContext;
+    private volatile NavigationSelection navigation;
     private final Deque<ContextHistoryEntry> history = new ArrayDeque<>();
+
+    public record NavigationSelection(ContextRef current, ContextRef origin) {}
 
     // Projection tracking (per-workspace freshness)
     private volatile String lastProjectionCommit;
@@ -51,17 +53,21 @@ public class UserWorkspaceState {
     private volatile String operationKind;  // null = no operation
 
     public UserWorkspaceState(String username, int maxHistory) {
+        this(username, maxHistory, "draft");
+    }
+
+    UserWorkspaceState(String username, int maxHistory, String branch) {
         this.username = username;
         this.maxHistory = maxHistory;
-        // Initialize with default editable context on draft branch
-        this.currentContext = new ContextRef(
+        ContextRef current = new ContextRef(
                 UUID.randomUUID().toString(),
-                "draft",
+                branch == null || branch.isBlank() ? "draft" : branch,
                 null,
                 Instant.now(),
                 ContextMode.EDITABLE,
                 null, null, null, null, null, false
         );
+        this.navigation = new NavigationSelection(current, null);
     }
 
     // ── Username ────────────────────────────────────────────────────
@@ -73,11 +79,18 @@ public class UserWorkspaceState {
     // ── Context navigation ──────────────────────────────────────────
 
     public ContextRef getCurrentContext() {
-        return currentContext;
+        return navigation.current();
     }
 
-    public void setCurrentContext(ContextRef ctx) {
-        this.currentContext = ctx;
+    /** Read the current selection and its recorded origin together. */
+    public NavigationSelection getNavigationSelection() {
+        return navigation;
+    }
+
+    public synchronized void setCurrentContext(ContextRef ctx) {
+        ContextRef previous = navigation.current();
+        ContextRef origin = previous.contextId().equals(ctx.originContextId()) ? previous : null;
+        this.navigation = new NavigationSelection(ctx, origin);
     }
 
     public List<ContextHistoryEntry> getHistory() {

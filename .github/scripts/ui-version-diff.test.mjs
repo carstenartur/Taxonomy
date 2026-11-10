@@ -99,7 +99,8 @@ function dialogHarness() {
   }
   h.context.document.createElement = () => ({});
   h.context.bootstrap = { Modal: { getOrCreateInstance: () => ({ show() {} }) } };
-  h.context.window.TaxonomyApiClient = { getJson: url => new Promise((resolve, reject) => pending.push({ url, resolve, reject })) };
+  const request = () => new Promise((resolve, reject) => pending.push({ resolve, reject }));
+  h.context.window.TaxonomyContextApi = { listBranches: request, compare: request };
   return { ...h, pending, listeners, button };
 }
 const flush = () => new Promise(resolve => setImmediate(resolve));

@@ -13,8 +13,10 @@ import com.taxonomy.workspace.storage.CommitProvenance;
 import com.taxonomy.dto.TransferConflict;
 import com.taxonomy.dto.TransferSelection;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -66,18 +68,6 @@ public class SelectiveTransferService {
     }
 
     /**
-     * Resolve the current workspace context from the authenticated user.
-     * Falls back to {@link WorkspaceContext#SHARED} if resolution fails.
-     */
-    private WorkspaceContext resolveContext() {
-        try {
-            return workspaceResolver.resolveCurrentContext();
-        } catch (Exception e) {
-            return WorkspaceContext.SHARED;
-        }
-    }
-
-    /**
      * Preview a selective transfer without modifying any data.
      *
      * <p>Uses the system repository (SHARED context). Use
@@ -116,14 +106,23 @@ public class SelectiveTransferService {
      * context from the authenticated user via {@code WorkspaceResolver}.
      *
      * @param selection the transfer selection
+     * @param expectedContextId the navigation identity captured by the browser
      * @return the commit ID of the resulting commit
      * @throws IOException if Git operations fail
      */
-    public String applyTransfer(TransferSelection selection) throws IOException {
-        WorkspaceContext ctx = resolveContext();
+    public String applyTransfer(TransferSelection selection, String expectedContextId) throws IOException {
+        WorkspaceContext ctx = workspaceResolver.resolveCurrentContext();
+        if (ctx == null || ctx.workspaceId() == null) {
+            throw new AccessDeniedException("Copy-back requires an authorized workspace");
+        }
+        var target = contextNavigationService.getEditableTransferTarget(ctx, expectedContextId);
+        String targetBranch = target.branch();
+        String sourceCommit = WorkspaceDslReadPort.normalizeCommitId(selection.sourceContextId());
+        String expectedHead = WorkspaceDslReadPort.normalizeCommitId(selection.targetContextId());
         DslGitRepository repo = resolveRepository(ctx);
-        CanonicalArchitectureModel sourceModel = loadModel(repo, selection.sourceContextId());
-        CanonicalArchitectureModel targetModel = loadModel(repo, selection.targetContextId());
+        repo.verifyExpectedHead(targetBranch, expectedHead);
+        CanonicalArchitectureModel sourceModel = loadModel(repo, sourceCommit);
+        CanonicalArchitectureModel targetModel = loadModel(repo, expectedHead);
 
         // Merge selected elements
         Map<String, ArchitectureElement> targetElements = targetModel.getElements().stream()
@@ -153,27 +152,27 @@ public class SelectiveTransferService {
         targetModel.getRelations().addAll(targetRelations.values());
 
         // Serialize merged model back to DSL and commit
-        String targetDsl = repo.getDslAtCommit(selection.targetContextId());
+        String targetDsl = repo.getDslAtCommit(expectedHead);
         var originalDoc = parser.parse(targetDsl);
         String namespace = originalDoc.getMeta() != null
                 ? originalDoc.getMeta().namespace() : "default";
         var mergedDoc = modelToAstMapper.toDocument(targetModel, namespace);
         String mergedDsl = serializer.serialize(mergedDoc);
 
-        String targetBranch = contextNavigationService.getCurrentContext(
-                workspaceResolver.resolveCurrentUsername()).branch();
-        String repositoryId = ctx.workspaceId() == null
-                ? ctx.repositoryId() : "workspace:" + ctx.workspaceId();
+        String repositoryId = "workspace:" + ctx.workspaceId();
         var sourceEvidence = CommitProvenance.capture("selective-transfer", repo, repositoryId,
-                "detached", selection.sourceContextId(), selection.targetContextId());
+                "detached", sourceCommit, expectedHead);
         var targetEvidence = CommitProvenance.capture("selective-transfer", repo, repositoryId,
-                "detached", selection.targetContextId(), null);
+                targetBranch, expectedHead, null);
         var provenance = new CommitProvenance(1, "selective-transfer", List.of(
                 sourceEvidence.sources().getFirst(), targetEvidence.sources().getFirst()));
-        String commitId = repo.commitDsl(
-                targetBranch, mergedDsl, "system",
-                "Selective transfer: " + selection.selectedElementIds().size() + " elements, "
-                        + selection.selectedRelationIds().size() + " relations", provenance);
+        String message = "Selective transfer: " + selection.selectedElementIds().size() + " elements, "
+                + selection.selectedRelationIds().size() + " relations";
+        String commitId;
+        synchronized (target.state()) {
+            target.requireCurrent();
+            commitId = repo.commitDslIfHeadMatches(targetBranch, expectedHead, mergedDsl, "system", message, provenance);
+        }
 
         log.info("Selective transfer applied: {} elements, {} relations → commit '{}'",
                 selection.selectedElementIds().size(),

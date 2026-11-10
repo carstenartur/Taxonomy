@@ -5,11 +5,10 @@ import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
-import com.taxonomy.workspace.storage.CommitProvenance;
+import com.taxonomy.workspace.storage.DslCommit;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
@@ -63,12 +62,10 @@ class WorkspaceProvisioningClaimIT {
             var central = repositories.getPrimaryRepository();
             var source = new DslGitRepository();
             String sourceDsl = "meta { language: \"taxdsl\"; }";
+            String ancestor = source.commitDsl(central.getDefaultBranch(), sourceDsl, "system", "Earlier source");
             String base = source.commitDsl(central.getDefaultBranch(), sourceDsl, "system", "Initial source");
             when(factory.getSystemRepository()).thenReturn(source);
-            var destination = mock(DslGitRepository.class);
-            when(destination.commitDslIfHeadMatches(anyString(), isNull(), anyString(), anyString(), anyString(),
-                    any(CommitProvenance.class))).thenReturn(base);
-            when(destination.getHeadCommit("main")).thenReturn(null);
+            var destination = gitRepositories.openWorkspaceRepository(id);
             when(factory.openWorkspaceRepository(id)).thenReturn(destination);
             var system = mock(SystemRepositoryService.class);
             when(system.getPrimaryRepository()).thenReturn(central);
@@ -89,22 +86,18 @@ class WorkspaceProvisioningClaimIT {
                 assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS),
                         "Provisioning test workers did not terminate");
             }
-            var provenance = ArgumentCaptor.forClass(CommitProvenance.class);
-            verify(destination, times(1)).commitDslIfHeadMatches(eq("main"), isNull(), eq(sourceDsl),
-                    eq("claim-owner"), eq("Fork from shared/" + central.getDefaultBranch()), provenance.capture());
-            assertEquals("fork", provenance.getValue().operation());
-            assertEquals(1, provenance.getValue().sources().size());
-            var origin = provenance.getValue().sources().getFirst();
-            assertEquals(central.getRepositoryId(), origin.repositoryId());
-            assertEquals(central.getDefaultBranch(), origin.branch());
-            assertEquals(base, origin.commitId());
-            assertNull(origin.baseCommitId());
-            verify(destination, never()).commitDsl(anyString(), anyString(), anyString(), anyString());
+            assertEquals(base, destination.getHeadCommit("main"));
+            assertEquals(List.of(base, ancestor), destination.getDslHistory("main").stream().map(DslCommit::commitId).toList());
+            verify(factory, times(1)).openWorkspaceRepository(id);
             var retained = repository.findByWorkspaceId(id).orElseThrow();
             assertEquals(WorkspaceProvisioningStatus.READY, retained.getProvisioningStatus());
             assertEquals(base, retained.getCurrentCommit());
+            assertEquals(base, retained.getBaseCommit());
+            assertEquals(central.getRepositoryId(), retained.getSourceRepositoryId());
+            assertEquals(central.getDefaultBranch(), retained.getSourceBranch());
             assertNull(retained.getProvisioningError());
         } finally {
+            gitRepositories.deleteWorkspaceRepository(id);
             repository.findByWorkspaceId(id).ifPresent(repository::delete);
         }
     }
@@ -148,7 +141,7 @@ class WorkspaceProvisioningClaimIT {
             assertEquals(WorkspaceProvisioningStatus.READY, result.getProvisioningStatus());
             var retained = repository.findByWorkspaceId(id).orElseThrow();
             assertEquals(WorkspaceProvisioningStatus.READY, retained.getProvisioningStatus());
-            assertNotNull(retained.getCurrentCommit());
+            assertEquals(sourceCommit, retained.getCurrentCommit());
             assertEquals("draft", retained.getCurrentBranch());
             assertEquals(source.getRepositoryId(), retained.getSourceRepositoryId());
             assertEquals(sourceCommit, retained.getBaseCommit());

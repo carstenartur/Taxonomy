@@ -2,6 +2,7 @@ package com.taxonomy.versioning.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -219,7 +220,7 @@ class ContextNavigationControllerTest {
 
     @Test
     void applyTransfer_returnsOk() throws Exception {
-        MvcResult ctx = mockMvc.perform(get("/api/context/current"))
+        MvcResult ctx = mockMvc.perform(post("/api/context/open").param("branch", "draft").param("readOnly", "false"))
                 .andExpect(status().isOk())
                 .andReturn();
         JsonNode json = objectMapper.readTree(ctx.getResponse().getContentAsString());
@@ -235,9 +236,38 @@ class ContextNavigationControllerTest {
                 }
                 """.formatted(commitId, commitId);
         mockMvc.perform(post("/api/context/copy-back/apply")
+                        .param("expectedContextId", json.get("contextId").asText())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    void applyTransferRejectsCentralScopeAndSupersededNavigation() throws Exception {
+        String body = """
+                {
+                    "sourceContextId": "%s",
+                    "targetContextId": "%s",
+                    "selectedElementIds": [],
+                    "selectedRelationIds": [],
+                    "mode": "COPY"
+                }
+                """.formatted("a".repeat(40), "b".repeat(40));
+
+        mockMvc.perform(post("/api/context/copy-back/apply")
+                        .header(WorkspaceContextResolver.WORKSPACE_HEADER, "")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/context/copy-back/apply")
+                        .param("expectedContextId", "superseded-context")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/context/copy-back/apply")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.replace("a".repeat(40), "not-a-full-sha")))
+                .andExpect(status().isBadRequest());
     }
 }

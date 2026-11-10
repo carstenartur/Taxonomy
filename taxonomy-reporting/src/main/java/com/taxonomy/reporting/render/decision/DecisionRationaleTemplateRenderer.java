@@ -98,7 +98,14 @@ public final class DecisionRationaleTemplateRenderer {
             throw unavailable("Required template could not be validated: "
                     + safeMessage(exception), exception);
         }
+        return renderArtifact(delegate, report, template);
+    }
 
+    ReportRenderResult renderArtifact(DecisionRationaleDocxRenderer delegate,
+            DecisionRationaleReport report, TemplateFile template) {
+        if (!DecisionRationaleTemplateContract.TEMPLATE_ID.equals(template.manifest().templateId())) {
+            throw new IllegalArgumentException("The template does not belong to the decision report family");
+        }
         DecisionReportTemplateProvenance provenance =
                 DecisionReportTemplateProvenance.from(template);
         DecisionReportLabels labels = new DecisionReportLabels(report.languageTag());

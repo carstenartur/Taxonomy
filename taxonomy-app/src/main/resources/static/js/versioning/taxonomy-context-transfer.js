@@ -11,16 +11,19 @@ window.TaxonomyContextTransfer = (function () {
     'use strict';
 
     var t = TaxonomyI18n.t;
+    var shownDialog = null;
 
     /**
      * Show the transfer dialog.
      *
      * @param {string} sourceCommitId — source context commit ID
      * @param {string} targetCommitId — target context commit ID
+     * @param {string} contextId — navigation selection when the dialog opened
      */
-    function showDialog(sourceCommitId, targetCommitId) {
+    function showDialog(sourceCommitId, targetCommitId, contextId) {
         var modal = document.getElementById('contextTransferModal');
         if (!modal) return;
+        shownDialog = { contextId: contextId };
 
         var srcInput = document.getElementById('transferSourceCommit');
         var tgtInput = document.getElementById('transferTargetCommit');
@@ -62,21 +65,34 @@ window.TaxonomyContextTransfer = (function () {
 
         if (!confirm(t('transfer.apply.confirm'))) return;
 
-        fetch('/api/context/copy-back/apply', {
+        var dialog = shownDialog;
+        var url = '/api/context/copy-back/apply';
+        if (dialog?.contextId) url += '?expectedContextId=' + encodeURIComponent(dialog.contextId);
+        return fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(selection)
         })
-            .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (result) {
-                if (result && result.success) {
-                    alert(t('transfer.apply.success', (result.commitId || '').substring(0, 7)));
-                    var modal = bootstrap.Modal.getInstance(document.getElementById('contextTransferModal'));
-                    if (modal) modal.hide();
-                    if (window.TaxonomyContextBar) window.TaxonomyContextBar.fetchAndRender('contextBar');
-                } else {
-                    alert(t('transfer.apply.failed', result ? result.error : 'Unknown error'));
+            .then(function (response) {
+                if (dialog !== shownDialog) return;
+                if (response.status === 409) {
+                    alert(t('transfer.apply.stale'));
+                    return;
                 }
+                return response.json().then(function (result) {
+                    if (dialog !== shownDialog) return;
+                    if (response.ok && result?.success) {
+                        alert(t('transfer.apply.success', (result.commitId || '').substring(0, 7)));
+                        var modal = bootstrap.Modal.getInstance(document.getElementById('contextTransferModal'));
+                        if (modal) modal.hide();
+                        if (window.TaxonomyContextBar) window.TaxonomyContextBar.fetchAndRender('contextBar');
+                    } else {
+                        alert(t('transfer.apply.failed', result?.message || result?.error || t('error.internal')));
+                    }
+                });
+            })
+            .catch(function () {
+                if (dialog === shownDialog) alert(t('transfer.apply.failed', t('error.internal')));
             });
     }
 

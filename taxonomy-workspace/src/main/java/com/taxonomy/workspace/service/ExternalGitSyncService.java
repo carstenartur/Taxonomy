@@ -45,7 +45,7 @@ import java.util.UUID;
 public class ExternalGitSyncService {
 
     private static final Logger log = LoggerFactory.getLogger(ExternalGitSyncService.class);
-    private static final String EXTERNAL_SYNC_BRANCH_PREFIX = "__external_sync__/";
+    private static final String EXTERNAL_SYNC_BRANCH_PREFIX = DslGitRepository.EXTERNAL_SYNC_BRANCH_PREFIX;
     private static final Set<RemoteRefUpdate.Status> SUCCESSFUL_PUSH_STATUSES =
             EnumSet.of(RemoteRefUpdate.Status.OK, RemoteRefUpdate.Status.UP_TO_DATE);
 
@@ -85,7 +85,7 @@ public class ExternalGitSyncService {
                                            DslGitRepository dslRepository,
                                            String sharedBranch) throws Exception {
         return fetchFromExternal(systemRepository, dslRepository, sharedBranch,
-                acceptedLocalHeads(dslRepository.getGitRepository()));
+                dslRepository.acceptedBranchHeads());
     }
 
     private FetchResult fetchFromExternal(SystemRepository systemRepository,
@@ -194,7 +194,7 @@ public class ExternalGitSyncService {
     private String fullSync(SystemRepository metadata, DslGitRepository dslRepository,
                             String sharedBranch, String username) throws Exception {
         Repository gitRepository = dslRepository.getGitRepository();
-        List<String> acceptedHeads = acceptedLocalHeads(gitRepository);
+        List<String> acceptedHeads = dslRepository.acceptedBranchHeads();
         fetchFromExternal(metadata, dslRepository, sharedBranch, acceptedHeads);
         validateBranchName(sharedBranch);
 
@@ -256,16 +256,6 @@ public class ExternalGitSyncService {
         } finally {
             deleteTemporaryRef(gitRepository, temporaryRefName, remoteRef.getObjectId());
         }
-    }
-
-    /** Freeze accepted ancestry before transport; staged or rejected objects are never trust anchors. */
-    private static List<String> acceptedLocalHeads(Repository repository) throws IOException {
-        return repository.getRefDatabase().getRefsByPrefix(Constants.R_HEADS).stream()
-                .filter(ref -> !ref.getName().startsWith(Constants.R_HEADS + EXTERNAL_SYNC_BRANCH_PREFIX))
-                .filter(ref -> ref.getObjectId() != null)
-                .map(ref -> ref.getObjectId().name())
-                .distinct()
-                .toList();
     }
 
     /** Get the current external synchronization status without exposing credentials. */

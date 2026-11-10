@@ -163,16 +163,16 @@ test('CodeMirror and asynchronous session readiness can complete in either order
 
 const contextSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/versioning/taxonomy-context-bar.js', import.meta.url), 'utf8');
 function contextHarness() {
- const lifecycle = new EventTarget(), calls = [];
+ const lifecycle = new EventTarget(), calls = [], elements = new Map();
  const scope = { window: {addEventListener:lifecycle.addEventListener.bind(lifecycle)},
-  document:{getElementById:()=>null}, TaxonomyI18n:{t:key=>key}, TaxonomyUtils:{escapeHtml:String},
+  document:{getElementById:id=>elements.get(id) || null}, TaxonomyI18n:{t:key=>key}, TaxonomyUtils:{escapeHtml:String},
   fetch:(url,options)=>new Promise(resolve=>calls.push({url,options,resolve})), AbortController, clearInterval, setInterval };
  scope.Headers = Headers;
  scope.window.TaxonomyApiClient = {request: (url, options, policy) => scope.fetch(url, {...options, signal: policy.signal})
   .then(response => {if (!response.ok) throw new Error('HTTP ' + response.status); return response;})};
  vm.runInNewContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/workspace-api.js', import.meta.url), 'utf8'), scope);
  vm.runInNewContext(contextSource, scope);
- return {api:scope.window.TaxonomyContextBar,calls,lifecycle};
+ return {api:scope.window.TaxonomyContextBar,calls,lifecycle,elements,scope};
 }
 test('context readiness returns the accepted context and ignores a superseded startup response',async()=>{
  const h=contextHarness(), first=h.api.fetchAndRender('contextBar'), second=h.api.fetchAndRender('contextBar');
@@ -188,6 +188,41 @@ test('context readiness fails closed on HTTP failure and navigation',async()=>{
  const cancelled=h.api.fetchAndRender('contextBar');h.lifecycle.dispatchEvent(new Event('pagehide'));
  h.calls[1].resolve(response(JSON.stringify({branch:'draft',commitId:'late'}),200,'application/json'));
  assert.equal(await cancelled,null);assert.equal(h.api.getCurrentContext(),null);
+});
+
+test('copy-back submits the dialog context and reports a 409 without closing it', async () => {
+ const h = contextHarness(), alerts = [];
+ let closes = 0;
+ h.scope.bootstrap = { Modal: class {
+  show() {}
+  static getInstance() { return {hide: () => closes++}; }
+ }};
+ h.scope.alert = value => alerts.push(value);
+ h.scope.confirm = () => true;
+ for (const id of ['contextTransferModal', 'transferSourceCommit', 'transferTargetCommit']) {
+  h.elements.set(id, {value: ''});
+ }
+ vm.runInNewContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/versioning/taxonomy-context-transfer.js', import.meta.url), 'utf8'), h.scope);
+ const initial = h.api.fetchAndRender('contextBar');
+ h.calls[0].resolve(response(JSON.stringify({
+  contextId: 'selected / context', branch: 'history', commitId: 'source', originCommitId: 'target'
+ }), 200, 'application/json'));
+ await initial;
+ h.api.showTransferDialog();
+
+ const pending = h.scope.window.TaxonomyContextTransfer.applyTransfer();
+ const request = h.calls[1];
+ const target = new URL(request.url, 'https://taxonomy.example');
+ assert.equal(target.pathname, '/api/context/copy-back/apply');
+ assert.equal(target.searchParams.get('expectedContextId'), 'selected / context');
+ const selection = JSON.parse(request.options.body);
+ assert.equal(selection.sourceContextId, 'source');
+ assert.equal(selection.targetContextId, 'target');
+ request.resolve(response('{"error":"Target changed"}', 409, 'application/json'));
+ await pending;
+ assert.deepEqual(alerts, ['transfer.apply.stale']);
+ assert.equal(closes, 0);
+ assert.equal(h.calls.length, 2);
 });
 
 for (const change of ['workspaceId','analysisGeneration']) test(`startup does not export after ${change} changes during context resolution`,async()=>{

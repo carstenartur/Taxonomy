@@ -11,6 +11,7 @@
     const spinner = document.getElementById('localTemplateSpinner');
     const result = document.getElementById('localTemplateResult');
     const compare = document.getElementById('localTemplateCompare');
+    const sample = document.getElementById('localTemplateSample');
     const labels = document.getElementById('localTemplateLabels').dataset;
     const revision = workspace.dataset.revision;
     const maxBytes = Number(workspace.dataset.maxBytes);
@@ -79,6 +80,11 @@
             url.searchParams.set('from', revision);
             url.searchParams.set('to', response.headCommit);
             compare.href = url.href;
+            if (sample?.dataset.pinRevision === 'true') {
+                const sampleUrl = new URL(sample.href, window.location.href);
+                sampleUrl.searchParams.set('revision', response.headCommit);
+                sample.href = sampleUrl.href;
+            }
             document.getElementById('localTemplateSavedRevision').textContent = response.headCommit;
             result.hidden = false;
             notify(labels.saved, false);

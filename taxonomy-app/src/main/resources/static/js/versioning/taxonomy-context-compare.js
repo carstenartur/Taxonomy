@@ -62,7 +62,12 @@ window.TaxonomyContextCompare = (function () {
     var currentRawDslDiff = null;
     var compareRequest = 0;
     var branchesReady = false;
+    var dialogWorkspaceId;
     var boundDialogs = new WeakSet();
+
+    function workspaceId() {
+        return window.__TaxonomyAnalysisSessionContext?.runtime.workspaceId;
+    }
 
     function selectionHint() {
         return t('compare.left.branch') + ' → ' + t('compare.right.branch') + ' — ' + t('compare.btn');
@@ -110,6 +115,7 @@ window.TaxonomyContextCompare = (function () {
         bindDialog(modal);
         setSidesDisabled(true);
         branchesReady = false;
+        dialogWorkspaceId = workspaceId();
         var request = ++compareRequest;
         currentRawDslDiff = null;
         var results = document.getElementById('contextCompareResults');
@@ -118,7 +124,7 @@ window.TaxonomyContextCompare = (function () {
         if (results) results.textContent = t('compare.loading');
         bootstrap.Modal.getOrCreateInstance(modal).show();
         try {
-            var data = await window.TaxonomyApiClient.getJson('/api/git/branches');
+            var data = await window.TaxonomyContextApi.listBranches();
             var branches = data.branches || data;
             if (!Array.isArray(branches) || !branches.length || branches.some(function (branch) { return typeof branch !== 'string'; })) {
                 throw new Error('No branches available');
@@ -145,7 +151,9 @@ window.TaxonomyContextCompare = (function () {
             if (results) results.textContent = selectionHint();
             if (autoCompare) doCompare();
         } catch (error) {
-            if (request === compareRequest && results) results.innerHTML = '<p class="text-danger">' + escapeHtml(t('compare.failed')) + '</p>';
+            if (request === compareRequest && results && error?.code !== 'ABORTED') {
+                results.innerHTML = '<p class="text-danger">' + escapeHtml(t('compare.failed')) + '</p>';
+            }
         }
     }
 
@@ -157,18 +165,20 @@ window.TaxonomyContextCompare = (function () {
     /**
      * Execute a compare request and render results.
      *
-     * @param {string} url — the compare API URL
+     * @param {object} selection — selected branches and optional commits
      */
-    async function executeCompare(url) {
+    async function executeCompare(selection) {
         var request = ++compareRequest;
         var container = document.getElementById('contextCompareResults');
         if (container) container.innerHTML = '<div class="text-muted small">' + escapeHtml(t('compare.loading')) + '</div>';
         try {
-            var comparison = await window.TaxonomyApiClient.getJson(url);
+            var comparison = await window.TaxonomyContextApi.compare(selection);
             if (!comparison || !comparison.summary || !Array.isArray(comparison.changes)) throw new Error('Invalid comparison');
             if (request === compareRequest) renderComparison('contextCompareResults', comparison);
         } catch (error) {
-            if (request === compareRequest && container) container.innerHTML = '<p class="text-danger">' + escapeHtml(t('compare.failed')) + '</p>';
+            if (request === compareRequest && container && error?.code !== 'ABORTED') {
+                container.innerHTML = '<p class="text-danger">' + escapeHtml(t('compare.failed')) + '</p>';
+            }
         }
     }
 
@@ -176,18 +186,18 @@ window.TaxonomyContextCompare = (function () {
      * Trigger compare from the modal form.
      */
     function doCompare() {
-        if (!branchesReady) return;
+        if (!branchesReady || dialogWorkspaceId !== workspaceId()) return;
         var leftBranch = document.getElementById('compareLeftBranch');
         var rightBranch = document.getElementById('compareRightBranch');
         var leftCommit = document.getElementById('compareLeftCommit');
         var rightCommit = document.getElementById('compareRightCommit');
 
-        var url = '/api/context/compare?leftBranch=' + encodeURIComponent(leftBranch ? leftBranch.value : 'draft')
-            + '&rightBranch=' + encodeURIComponent(rightBranch ? rightBranch.value : 'draft');
-        if (leftCommit && leftCommit.value) url += '&leftCommit=' + encodeURIComponent(leftCommit.value);
-        if (rightCommit && rightCommit.value) url += '&rightCommit=' + encodeURIComponent(rightCommit.value);
-
-        executeCompare(url);
+        executeCompare({
+            leftBranch: leftBranch ? leftBranch.value : 'draft',
+            rightBranch: rightBranch ? rightBranch.value : 'draft',
+            leftCommit: leftCommit ? leftCommit.value : '',
+            rightCommit: rightCommit ? rightCommit.value : ''
+        });
     }
 
     /**

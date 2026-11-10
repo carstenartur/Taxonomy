@@ -36,14 +36,14 @@ class ContextNavigationControllerEdgeTest {
 
     @Test
     void navigationReadsKeepTheAuthenticatedUsersContextAndHistory() {
-        when(resolver.resolveCurrentUsername()).thenReturn("alice");
+        when(resolver.resolveCurrentContext()).thenReturn(workspace);
         ContextRef expected = new ContextRef("context", "review", null, null,
                 ContextMode.READ_ONLY, null, null, null, null, null, false);
         List<ContextHistoryEntry> entries = List.of(new ContextHistoryEntry("old", "context", null, null));
-        when(navigation.getCurrentContext("alice")).thenReturn(expected);
-        when(navigation.returnToOrigin("alice")).thenReturn(expected);
-        when(navigation.back("alice")).thenReturn(expected);
-        when(navigation.getHistory("alice")).thenReturn(entries);
+        when(navigation.getCurrentContextForScope(workspace)).thenReturn(expected);
+        when(navigation.returnToOrigin("alice", workspace)).thenReturn(expected);
+        when(navigation.back("alice", workspace)).thenReturn(expected);
+        when(navigation.getHistoryForScope(workspace)).thenReturn(entries);
         assertSame(expected, controller.getCurrentContext().getBody());
         assertSame(expected, controller.returnToOrigin().getBody());
         assertSame(expected, controller.back().getBody());
@@ -52,12 +52,12 @@ class ContextNavigationControllerEdgeTest {
 
     @Test
     void successfulTransferReturnsTheActualCommit() throws Exception {
-        when(transfer.applyTransfer(selection)).thenReturn("created-commit");
-        var result = controller.applyTransfer(selection);
+        when(transfer.applyTransfer(selection, "selected-context")).thenReturn("created-commit");
+        var result = controller.applyTransfer(selection, "selected-context");
         assertEquals(200, result.getStatusCode().value());
         assertEquals("created-commit", result.getBody().get("commitId"));
         assertEquals(true, result.getBody().get("success"));
-        verify(transfer).applyTransfer(selection);
+        verify(transfer).applyTransfer(selection, "selected-context");
     }
 
     static Stream<Arguments> filters() {
@@ -109,6 +109,7 @@ class ContextNavigationControllerEdgeTest {
 
     @Test
     void variantFailureIsNotReportedAsSuccess() throws Exception {
+        when(resolver.resolveCurrentContext()).thenReturn(workspace);
         when(navigation.createVariantFromCurrent(any(), eq("variant"), any())).thenThrow(new IOException("disk full"));
         var response = controller.createVariant("variant");
         assertEquals(500, response.getStatusCode().value());
@@ -128,19 +129,29 @@ class ContextNavigationControllerEdgeTest {
         assertEquals(conflict, response.getBody().get("hasConflicts"));
         assertEquals(1, response.getBody().get("selectedElements"));
         assertEquals(1, response.getBody().get("selectedRelations"));
-        verify(transfer, never()).applyTransfer(any());
+        verify(transfer, never()).applyTransfer(any(), any());
     }
 
     @Test
-    void transferFailuresReturnErrorsAndLegacyResolutionFallbackIsExplicit() throws Exception {
-        when(resolver.resolveCurrentContext()).thenThrow(new IllegalStateException("no request context"));
-        when(transfer.previewTransfer(selection, WorkspaceContext.SHARED)).thenThrow(new IOException("preview unavailable"));
-        when(transfer.applyTransfer(selection)).thenThrow(new IOException("write unavailable"));
+    void transferFailuresReturnErrors() throws Exception {
+        when(resolver.resolveCurrentContext()).thenReturn(workspace);
+        when(transfer.previewTransfer(selection, workspace)).thenThrow(new IOException("preview unavailable"));
+        when(transfer.applyTransfer(selection, null)).thenThrow(new IOException("write unavailable"));
         var preview = controller.previewTransfer(selection);
         assertEquals(500, preview.getStatusCode().value());
         assertEquals("Transfer preview failed: preview unavailable", preview.getBody().get("error"));
-        var apply = controller.applyTransfer(selection);
+        var apply = controller.applyTransfer(selection, null);
         assertEquals(500, apply.getStatusCode().value());
         assertEquals("Transfer failed: write unavailable", apply.getBody().get("error"));
+    }
+
+    @Test
+    void unresolvedScopeCannotFallBackForCompareOrPreview() {
+        var failure = new IllegalStateException("no request context");
+        when(resolver.resolveCurrentContext()).thenThrow(failure);
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> controller.previewTransfer(selection)));
+        assertSame(failure, assertThrows(IllegalStateException.class,
+                () -> controller.compare("left", null, "right", null, null)));
+        verifyNoInteractions(compare, transfer);
     }
 }
