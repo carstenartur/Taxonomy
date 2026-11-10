@@ -1,15 +1,14 @@
 package com.taxonomy.plugins.sparx;
 
-import com.taxonomy.extension.api.integration.IntegrationConnectorExtension;
+import com.taxonomy.extension.api.integration.AdmbwQeaExport;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.sparx.mapping.SparxSemanticTypes;
 import java.util.Set;
 
 /** Versioned native-file output. A supplied basis is mandatory; this never publishes to EA or PCS. */
-public final class SparxQeaWriterConnector implements IntegrationConnectorExtension {
+public final class SparxQeaWriterConnector implements AdmbwQeaExport {
     private static final long serialVersionUID = 1L;
     static final String VERSION = "2";
-    static final String MEDIA_TYPE = "application/vnd.sparx.qea";
     static final Set<String> MEDIA_TYPES = Set.of(MEDIA_TYPE, "application/vnd.sqlite3", "application/x-sqlite3", "application/octet-stream");
     private static final IntegrationDescriptor DESCRIPTOR = new IntegrationDescriptor(SparxQeaConnector.PROFILE, VERSION,
             "Sparx QEA files (experimental, reviewed copy writing)", Set.of(Capability.FILE_IMPORT, Capability.FILE_EXPORT,
@@ -31,4 +30,8 @@ public final class SparxQeaWriterConnector implements IntegrationConnectorExtens
         throw new UnsupportedOperationException("QEA writing requires an exact binary basis and an explicit NEW_PROJECT or UPDATE_COPY mode");
     }
     @Override public ExchangeFile previewOutbound(BasedOutboundRequest request) { return new QeaWriter().write(request); }
+
+    @Override public ExchangeFile exportAdmbw(Delivery delivery, String rootPackageGuid, byte[] basis) {
+        return new AdmbwQeaWriter().write(delivery, rootPackageGuid, basis);
+    }
 }
