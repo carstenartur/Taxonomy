@@ -627,6 +627,23 @@ See [Accessibility](docs/en/ACCESSIBILITY.md) for the evidence matrix, manual ch
 
 German documentation is available under [`docs/de`](docs/de/).
 
+## Related projects and references
+
+These open-source projects provide modeling references, exchange tooling and
+storage infrastructure relevant to Taxonomy:
+
+| Project | Relevance to Taxonomy |
+|---|---|
+| [EAM-Toolfamilie](https://github.com/Mitchel85/EAM-Toolfamilie) | Architecture creation and analysis tools. Their QEA analysis and public ADMBw model/profile examples serve as references for Taxonomy's Sparx and ADMBw work. |
+| [AAroN](https://github.com/schmitze87/AAroN) | Source of selected QEA implicit-reference mappings adapted, with attribution, in Taxonomy's optional Sparx plugin. |
+| [Archi](https://github.com/archimatetool/archi) | Open-source ArchiMate modeler used in Taxonomy's documented ArchiMate exchange verification. |
+| [jgit-storage-hibernate](https://github.com/carstenartur/jgit-storage-hibernate) | Runtime library providing database-backed Git repositories for Taxonomy's architecture and preference history. |
+
+See the [Sparx plugin's provenance notes](plugins/taxonomy-sparx-plugin/THIRD-PARTY.md),
+[ADMBw delivery guide](docs/features/admbw-conformance-de.md),
+[ArchiMate exchange scope](docs/features/standards-interoperability.md) and
+[Git storage integration](docs/en/JGIT_STORAGE_HIBERNATE.md) for details.
+
 ## Project status
 
 The project is under active development. The [source release notes](release_notes.md)
