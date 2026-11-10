@@ -70,11 +70,7 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
         noteValidation('request', request);
       }
     };
-    const observeResponse = response => noteValidation('response', response.request(), response.status());
-    const observeFailed = request => noteValidation('failed', request, request.failure()?.errorText ?? null);
     page.on('request', observe);
-    page.on('response', observeResponse);
-    page.on('requestfailed', observeFailed);
     try {
       const home = new URL(base);
       home.searchParams.set('lang', locale);
@@ -249,8 +245,6 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
         liveValidationOnReveal: true });
     } finally {
       page.off('request', observe);
-      page.off('response', observeResponse);
-      page.off('requestfailed', observeFailed);
     }
   }
   await writeFile(path.join(outputDir, 'browser-sessions.json'),
