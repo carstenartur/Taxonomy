@@ -94,6 +94,15 @@ window.TaxonomyApiClient = (function () {
         // A retained workspace may already be unavailable while repairing installation settings.
         if (options.workspaceScoped === false || /\/api\/admin\/database-setup(?:\/|$)/.test(target.pathname)) return undefined;
         var workspace = window.__TaxonomyAnalysisSessionContext?.runtime?.workspaceId;
+        if (workspace == null && (target.pathname.endsWith('/api/git/state')
+                || target.pathname.endsWith('/api/context/current'))) {
+            // Named status consumers capture this transport before the legacy
+            // workspace fetch wrapper is installed. On a cold reload retain
+            // the URL's unambiguous, explicitly selected original scope.
+            var entry = new URL(window.location.href).searchParams;
+            var original = entry.get('workspaceId');
+            if (original && entry.get('workspaceScopeKey') === original) return original;
+        }
         return workspace == null ? undefined : workspace;
     }
 

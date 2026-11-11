@@ -1078,7 +1078,7 @@ for (const edited of [false,true]) test(`report export ${edited ? 'retains manua
             C.runtime.analysisReference={workspaceId:'ws-owned',operationId:'owned-operation'};
             C.runtime.analysisEvidence=C.currentAnalysisEvidence();
             if(edited)S.currentReasons['BP-1000']='Manual rationale';
-            window.__taxonomyFixtureFetch=async(url,options)=>{window.reportRequest={url,headers:options.headers,body:JSON.parse(options.body)};
+            window.__taxonomyFixtureFetch=async(url,options)=>{window.reportRequest={url,headers:Object.fromEntries(new Headers(options.headers).entries()),body:JSON.parse(options.body)};
                 return {ok:true,blob:async()=>new Blob(['report'],{type:'text/markdown'})};};
         },edited);
         await page.locator('#exportReportMd').click();await page.waitForFunction(()=>window.reportRequest);

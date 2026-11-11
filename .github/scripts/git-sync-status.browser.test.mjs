@@ -90,8 +90,15 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
         await Promise.all(headerTasks);
         assert.equal(page.url(), url, 'Status reads must not rewrite any URL, scope or selection pin');
         assert.notEqual(await page.evaluate(() => performance.timeOrigin), initialEpoch);
+        // Both legacy status observation and named ContextBar startup read
+        // the authoritative context. Check every physical read in both epochs,
+        // including the named call that bypasses the legacy fetch wrapper.
+        assert.deepEqual(headers.map(item => new URL(item.url).pathname.slice(prefix.length)),
+            ['/api/git/state', '/api/context/current', '/api/context/current',
+             '/api/git/state', '/api/context/current', '/api/context/current'],
+            'Both status transports must be exercised at startup and reload');
         assert.deepEqual(headers.map(item => [item.immediate, item.all]),
-            Array.from({length:4}, () => [workspaceId, workspaceId]),
+            Array.from({length:6}, () => [workspaceId, workspaceId]),
             'Immediate passive headers and allHeaders must both prove the exact original workspace: ' + JSON.stringify(headers));
         const observed = observer.snapshot();
         assert.deepEqual(observed.reads.map(read => read.workspaceId), headers.map(item => item.all));
