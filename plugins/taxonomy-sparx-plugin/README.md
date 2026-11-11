@@ -22,7 +22,7 @@ cd plugins/taxonomy-sparx-plugin
 ../../mvnw verify
 ```
 
-Install `target/taxonomy-sparx-plugin-1.5.3-SNAPSHOT.jar` through the host's existing
+Install `target/taxonomy-sparx-plugin-1.5.4-SNAPSHOT.jar` through the host's existing
 operator plugin installation flow and restart the host. The manifest declares
 plugin ID `taxonomy.sparx`, mode `STARTUP`, and host SPI `>=1.5.0 & <2.0.0`.
 The SDK is provided by the host and is not included in the plugin JAR. SQLite

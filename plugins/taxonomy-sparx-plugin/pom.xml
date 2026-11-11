@@ -5,7 +5,7 @@
     <!-- Independent operator-installed artifact; no host implementation dependency. -->
     <groupId>com.taxonomy</groupId>
     <artifactId>taxonomy-sparx-plugin</artifactId>
-    <version>1.5.3-SNAPSHOT</version>
+    <version>1.5.4-SNAPSHOT</version>
     <name>Taxonomy Sparx QEA Exchange Plugin</name>
     <licenses><license><name>MIT License</name><url>https://opensource.org/licenses/MIT</url></license></licenses>
     <properties>
