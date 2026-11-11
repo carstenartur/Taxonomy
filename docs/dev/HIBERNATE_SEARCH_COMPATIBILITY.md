@@ -6,7 +6,7 @@ The application uses the Hibernate Search **platform BOM**, not independently ve
 
 | Component | Version line | Source of truth |
 |---|---:|---|
-| Hibernate Search mapper/backend | `8.4.0.Final` | `hibernate-search.version` and `hibernate-search-platform-bom` |
+| Hibernate Search mapper/backend | `8.4.1.Final` | `hibernate-search.version` and `hibernate-search-platform-bom` |
 | Hibernate ORM | `7.4.x` | Hibernate Search platform BOM |
 | Apache Lucene | `9.12.3` | Hibernate Search platform BOM and `lucene.version` |
 

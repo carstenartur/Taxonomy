@@ -40,7 +40,7 @@ bash "$(dirname -- "${BASH_SOURCE[0]}")/taxonomy-tooling.sh" generate-quality-si
   --source-tree "$source_tree" --build-id "$build_id" \
   --tool "java=$(java -version 2>&1 | sed -n '1p')" \
   --tool "maven=$(./mvnw -version 2>&1 | sed -n '1p')" \
-  --tool 'codeql-action=configured:github/codeql-action@9b3254085494b55a0f7c4c2b3d2d52cc712ce370' \
+  --tool 'codeql-action=configured:github/codeql-action@33d7b85da1a04171e211befe2c739303b9a4c066' \
   --tool 'trivy-action=v0.36.0'
 bash "$(dirname -- "${BASH_SOURCE[0]}")/taxonomy-tooling.sh" verify-quality-publication \
   --root target/quality-reports --expected-commit "$GITHUB_SHA"
