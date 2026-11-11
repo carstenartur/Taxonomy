@@ -1,5 +1,7 @@
 package com.taxonomy.composition.dsl.service;
 
+import com.taxonomy.catalog.definition.RetainedCatalogueDefinitions;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.dsl.export.TaxDslExportService;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
@@ -384,7 +386,8 @@ class GitRepositoryBootstrapTest {
         context.registerBean(DslGitRepositoryFactory.class, () -> factory);
         context.registerBean(TaxDslExportService.class, () -> exporter);
         context.registerBean(AppInitializationStateService.class, () -> state);
-        context.register(CatalogueRuntimePolicy.class, GitRepositoryBootstrap.class);
+        context.registerBean(CatalogueSourceJournal.class, () -> mock(CatalogueSourceJournal.class));
+        context.register(RetainedCatalogueDefinitions.class, CatalogueRuntimePolicy.class, GitRepositoryBootstrap.class);
         context.refresh();
         return context;
     }

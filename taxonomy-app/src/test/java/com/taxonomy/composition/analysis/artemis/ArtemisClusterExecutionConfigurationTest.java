@@ -1,5 +1,7 @@
 package com.taxonomy.composition.analysis.artemis;
 
+import com.taxonomy.catalog.definition.RetainedCatalogueDefinitions;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.analysis.cluster.*;
 import com.taxonomy.analysis.dag.*;
 import com.taxonomy.analysis.dispatch.AnalysisDispatchStore;
@@ -35,7 +37,8 @@ class ArtemisClusterExecutionConfigurationTest {
     @TempDir Path brokerData;
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
-            .withUserConfiguration(ArtemisAnalysisTransportConfiguration.class, ArtemisClusterExecutionConfiguration.class)
+            .withBean(CatalogueSourceJournal.class, () -> mock(CatalogueSourceJournal.class))
+            .withUserConfiguration(RetainedCatalogueDefinitions.class, ArtemisAnalysisTransportConfiguration.class, ArtemisClusterExecutionConfiguration.class)
             .withInitializer(context -> {
                 // Composition dependencies are already initialized: do not inject production
                 // field annotations inherited by Mockito subclasses into these test doubles.

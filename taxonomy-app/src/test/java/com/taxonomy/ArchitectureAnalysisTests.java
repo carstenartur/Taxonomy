@@ -81,6 +81,8 @@ class ArchitectureAnalysisTests extends GraphSnapshotFixtureSupport {
         assertThat(compatibilityMatrix.targetDomain("UNKNOWN", RelationType.REALIZES).state())
                 .isEqualTo(com.taxonomy.dsl.validation.RelationMetamodel.DomainState.FORBIDDEN);
         assertThat(compatibilityMatrix.targetDomain("UNKNOWN", RelationType.RELATED_TO).state())
+                .isEqualTo(com.taxonomy.dsl.validation.RelationMetamodel.DomainState.FORBIDDEN);
+        assertThat(compatibilityMatrix.targetDomain("CP", RelationType.RELATED_TO).state())
                 .isEqualTo(com.taxonomy.dsl.validation.RelationMetamodel.DomainState.UNRESTRICTED);
         assertThat(compatibilityMatrix.targetDomain("CP", RelationType.REALIZES).roots()).containsExactly("CR");
     }

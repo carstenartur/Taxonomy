@@ -259,14 +259,16 @@ class PortfolioUiAcceptanceIT {
         open("/projects?lang=en",By.id("portfolioMain"));
         createProject(projectKey);
         long projectId=selectedProjectId();
+        String implementationTitle = "Evidence register " + projectKey;
         String completedTenthCommit=null;long completedTenthRevision=0;
         for(int number=1;number<=12;number++) {
             String key="REQ-"+number;
             createRequirement(key,"Lifecycle requirement "+number,
                     "The architecture shall retain auditable requirement evidence for capability "+number+".");
+            if (number == 1) createRealizationDependency(projectId, implementationTitle);
             if(number<=10) {
-                if(number==10) reviewRealization(key,"PARTIAL");
-                reviewRealization(key,"COMPLETE");
+                if(number==10) reviewRealization(key,"PARTIAL",implementationTitle);
+                reviewRealization(key,"COMPLETE",implementationTitle);
             }
             if(number==10) {
                 var overview=lifecycleOverview();completedTenthCommit=overview.path("context").path("commit").asString();
@@ -369,15 +371,34 @@ class PortfolioUiAcceptanceIT {
                 .stream().filter(row->key.equals(row.getAttribute("data-requirement-key"))).findFirst().orElse(null));
     }
 
-    private static void reviewRealization(String key,String status) {
+    private static void createRealizationDependency(long projectId, String title) {
+        wait.until(browser -> !lifecycleRequirement("REQ-1").path("requirementId").isMissingNode());
+        String scope = lifecycleScope();
+        open("/architecture/editor?lang=en&" + scope, By.id("architectureEditor"));
+        click(By.id("editorNew"));
+        new Select(driver.findElement(By.id("editorType"))).selectByValue("System");
+        fill("editorTitle", title);
+        fill("editorRationale", "Record the system used to implement these requirements");
+        click(By.id("editorPreviewElement"));
+        click(By.id("editorAccept"));
+        wait.until(textPresent(By.id("editorTree"), title));
+        open("/projects?projectId=" + projectId + "&lang=en&" + scope, By.id("portfolioMain"));
+        wait.until(browser -> {
+            for (var dependency : lifecycleOverview().path("dependencies")) {
+                if ("element".equals(dependency.path("kind").asString()) && title.equals(dependency.path("title").asString())) return true;
+            }
+            return false;
+        });
+    }
+
+    private static void reviewRealization(String key,String status,String implementationTitle) {
         wait.until(browser->!lifecycleRequirement(key).path("requirementId").isMissingNode());openLifecycle();
         click(lifecycleRow(key).findElement(By.cssSelector("[data-lifecycle-action='review']")));
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("lifecycleReviewDialog")));
         new Select(driver.findElement(By.id("lifecycleReviewStatus"))).selectByValue(status);
         var dependencies=new Select(driver.findElement(By.id("lifecycleReviewDependencies")));
-        var actualElement=dependencies.getOptions().stream().filter(option->option.getAttribute("value").startsWith("element:"))
-                .findFirst().orElseThrow(()->new AssertionError("Real initialized catalogue must offer an architecture dependency"));
-        dependencies.selectByValue(actualElement.getAttribute("value"));
+        dependencies.selectByVisibleText(implementationTitle);
+        assertThat(dependencies.getFirstSelectedOption().getAttribute("value")).startsWith("element:");
         fill("lifecycleReviewReason",("COMPLETE".equals(status)?"Complete ":"Partially implement ")+key);
         click(By.id("lifecycleReviewPreview"));
         wait.until(ExpectedConditions.elementToBeClickable(By.id("lifecycleReviewAccept")));click(By.id("lifecycleReviewAccept"));

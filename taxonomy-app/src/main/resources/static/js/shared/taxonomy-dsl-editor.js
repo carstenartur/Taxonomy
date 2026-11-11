@@ -208,6 +208,12 @@
             if (!current()) return;
             if (!ready) throw new Error(t('workspace.provisioning.failed'));
             var workspace = workspaceScope();
+            // The architecture workspace publishes the selected repository after restoring its source.
+            var architecture = window.TaxonomyArchitectureWorkspace;
+            if (architecture?.ready && await architecture.ready() === false) {
+                throw new Error(t('dsl.reading.invalidResponse'));
+            }
+            if (!current() || workspace !== workspaceScope()) return;
             // Refetch after routing is pinned; discard any earlier unscoped context response.
             if (window.TaxonomyContextBar && !await window.TaxonomyContextBar.fetchAndRender('contextBar')) {
                 throw new Error(t('dsl.reading.invalidResponse'));
