@@ -192,7 +192,7 @@ class ArtemisProductionExecutionTest {
         var computation = new FrozenClusterAnalysisComputation(db.store, snapshots, engine.llm, engine.providers,
                 ArtemisProductionExecutionTest::guard, JSON);
         var handlers = new AnalysisTaskHandlers(new ClusterAnalysisService(db.store, computation, signals)::prepare, null);
-        var worker = new ArtemisAnalysisWorker(connect(), destinations, AnalysisWorkerShards.parse("MC", definition),
+        var worker = new ArtemisAnalysisWorker(connect(), destinations, AnalysisWorkerShards.parse("MC", definition.rootCodes()),
                 1, handlers, db.ledger, codec);
         resources.push(worker);
         worker.start(true, false);

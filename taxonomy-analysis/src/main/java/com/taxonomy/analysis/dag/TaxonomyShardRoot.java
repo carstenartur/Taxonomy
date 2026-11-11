@@ -18,8 +18,11 @@ public record TaxonomyShardRoot(String code) implements Comparable<TaxonomyShard
     private static final Pattern CODE = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_.-]{0,63}");
 
     /** The eight catalogue roots in their catalogue order. */
-    public static final List<TaxonomyShardRoot> DEFAULT_ROOTS =
-            com.taxonomy.dsl.model.CatalogueDefinition.standard().rootCodes().stream().map(TaxonomyShardRoot::of).toList();
+    public static final List<TaxonomyShardRoot> DEFAULT_ROOTS = List.of(
+            new TaxonomyShardRoot("BP"), new TaxonomyShardRoot("BR"),
+            new TaxonomyShardRoot("CP"), new TaxonomyShardRoot("CI"),
+            new TaxonomyShardRoot("CO"), new TaxonomyShardRoot("CR"),
+            new TaxonomyShardRoot("IP"), new TaxonomyShardRoot("UA"));
 
     public boolean catalogueIdentifier() { return code.matches("[A-Z][A-Z0-9_]{0,63}"); }
 

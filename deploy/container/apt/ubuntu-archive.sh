@@ -37,21 +37,62 @@ EOF
     return 1
 }
 
+# APT parses both source formats and expands enabled suites without fetching anything.
 configure_ubuntu_archives() {
-    local directory=$1 codename=$2 keyring=$3 fallback=$4 service suite pattern selected source
+    local directory=$1 keyring=$2 fallback=$3 service suite selected source mirrorlist pattern
     local -a sources=("$directory/sources.list")
     for source in "$directory"/sources.list.d/*.list "$directory"/sources.list.d/*.sources; do
         if [[ -f "$source" ]]; then sources+=("$source"); fi
     done
+    mkdir -p "$directory/plan/partial" || return 1
+    apt-get --print-uris -o "Dir::Etc::sourcelist=$directory/sources.list" \
+        -o "Dir::Etc::sourceparts=$directory/sources.list.d" -o "Dir::State::lists=$directory/plan" \
+        update > "$directory/requests" || return 1
     for service in archive security; do
-        pattern="https?://$service\\.ubuntu\\.com/ubuntu/?([[:space:]]|$)"
-        if awk -v pattern="$pattern" '/^[[:space:]]*(deb(-src)?[[:space:]]|URIs:[[:space:]])/ && $0 ~ pattern { seen=1 } END { exit !seen }' "${sources[@]}"; then
-            suite=${codename:?Ubuntu image must identify its suite}
-            if [[ $service == security ]]; then suite+=-security; fi
+        # Sort the finite set before probing; source formats, components and architectures can repeat it.
+        sed -nE "s@^'https?://$service\\.ubuntu\\.com/ubuntu/dists/([A-Za-z0-9_.-]+)/InRelease'.*@\\1@p" \
+            "$directory/requests" | LC_ALL=C sort -u > "$directory/$service.suites" || return 1
+        [[ -s "$directory/$service.suites" ]] || continue
+        mirrorlist="$directory/$service.mirrors"
+        : > "$mirrorlist" || return 1
+        while IFS= read -r suite; do
             selected=$(select_ubuntu_archive "$directory" "$suite" "$keyring" \
                 "https://$service.ubuntu.com/ubuntu/" "$fallback") || return 1
-            sed -Ei "/^[[:space:]]*(deb(-src)?[[:space:]]|URIs:[[:space:]])/s@$pattern@$selected\\1@g" "${sources[@]}"
-        fi
+            printf '%s\tsuite:%s\n' "$selected" "$suite" >> "$mirrorlist" || return 1
+        done < "$directory/$service.suites"
+    done
+
+    # Change only repository URI tokens. Keep options, third-party URIs and comments intact.
+    for service in archive security; do
+        mirrorlist="$directory/$service.mirrors"
+        [[ -s "$mirrorlist" ]] || continue
+        pattern="https?://$service\\.ubuntu\\.com/ubuntu/?"
+        for source in "${sources[@]}"; do
+            if [[ $source == *.sources ]]; then
+                # A deb822 paragraph may contain multiple URIs, suites and continuation lines.
+                # Emit sed addresses for its active URIs field only.
+                awk '
+                    function flush(    i) {
+                        if (!disabled) for (i = 1; i <= count; i++) print lines[i]
+                        count = 0; disabled = 0; uris = 0
+                    }
+                    /^[[:space:]]*$/ { flush(); next }
+                    /^#/ { next }
+                    /^[^[:space:]]/ {
+                        uris = tolower($0) ~ /^uris:/
+                        if (tolower($0) ~ /^enabled:[[:space:]]*no[[:space:]]*$/) disabled = 1
+                    }
+                    uris { lines[++count] = NR }
+                    END { flush() }
+                ' "$source" | while IFS= read -r line; do
+                    printf '%ss@([[:space:]])%s([[:space:]]|$)@\\1mirror+file:%s\\2@g\n' "$line" "$pattern" "$mirrorlist"
+                done > "$directory/replace.sed" || return 1
+                sed -Ei -f "$directory/replace.sed" "$source" || return 1
+            else
+                sed -Ei "s@^([[:space:]]*deb(-src)?[[:space:]]+(\\[[^]]*\\][[:space:]]+)?)$pattern([[:space:]]|\$)@\\1mirror+file:$mirrorlist\\4@" \
+                    "$source" || return 1
+            fi
+        done
     done
 }
 
@@ -89,9 +130,7 @@ for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sour
     [[ -f "$source" ]] || continue
     cp "$source" "$config/${source#/etc/apt/}"
 done
-source /etc/os-release
-configure_ubuntu_archives "$config" "${VERSION_CODENAME:-}" \
-    /usr/share/keyrings/ubuntu-archive-keyring.gpg "$fallback"
+configure_ubuntu_archives "$config" /usr/share/keyrings/ubuntu-archive-keyring.gpg "$fallback"
 
 apt_sources=(-o "Dir::Etc::sourcelist=$config/sources.list" -o "Dir::Etc::sourceparts=$config/sources.list.d")
 apt-get "${apt_sources[@]}" -o APT::Update::Error-Mode=any update
