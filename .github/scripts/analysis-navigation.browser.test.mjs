@@ -64,7 +64,7 @@ async function fixture(locale='de',width=1366,entry=null){
             getJson:()=>window.accountError?Promise.reject(new Error('Account unavailable')):Promise.resolve(window.account),
             // Component tests stub the HTTP boundary, but load the production
             // reference client to verify its consumers instead of inventing globals.
-            request:(url,init)=>window.fetch(url,init)
+            request:(url,init)=>window.fetch(window.TaxonomyI18n.resolveUrl(url),init)
         };
     },dict);
     await page.addStyleTag({content:bootstrapCss});
