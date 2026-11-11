@@ -80,7 +80,7 @@
 
     <properties>
         <java.version>25</java.version>
-        <pf4j.version>3.16.0</pf4j.version>
+        <pf4j.version>3.16.1</pf4j.version>
         <taxonomy.maven.user-settings>${user.home}/.m2/settings.xml</taxonomy.maven.user-settings>
         <!-- Keep the complete Boot-managed Tomcat family on the released fixes for
              CVE-2026-65182, CVE-2026-65905 and CVE-2026-68525 (#989), plus the
