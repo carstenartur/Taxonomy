@@ -103,13 +103,16 @@ class DocumentTemplateWordLinkContractTest {
 
         assertThat(transport)
                 .contains("window.TaxonomyDocumentTemplatesApi")
-                .contains("global.fetch(url, request)")
-                .contains("credentials: 'same-origin'")
-                .contains("meta[name=\"_csrf\"]")
-                .contains("method !== 'GET' && method !== 'HEAD'")
+                .contains("global.TaxonomyApiClient.requestJson(url,")
+                .doesNotContain("fetch(")
                 .contains("list,")
                 .contains("history,")
                 .contains("upload");
+        assertThat(resource("/static/js/api/taxonomy-api-client.js"))
+                .contains("prepared.credentials = 'same-origin'")
+                .contains("meta[name=\"_csrf\"]")
+                .contains("method !== 'GET' && method !== 'HEAD'")
+                .contains("headers.set(metadata.name, metadata.value)");
     }
 
     @Test

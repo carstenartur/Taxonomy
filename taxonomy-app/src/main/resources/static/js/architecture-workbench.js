@@ -187,6 +187,24 @@
         };
     }
 
+    function sessionInitialization() {
+        if (window.TaxonomyAnalysisSession?.whenInitialized) return window.TaxonomyAnalysisSession.whenInitialized();
+        if (window.TaxonomyAnalysisSessionReady) return window.TaxonomyAnalysisSessionReady;
+        const loader = document.querySelector?.('script[data-taxonomy-analysis-session]');
+        if (!loader) return Promise.resolve(true);
+        return new Promise(function (resolve) {
+            function finish(value) {
+                loader.removeEventListener('load', loaded);
+                loader.removeEventListener('error', failed);
+                resolve(value);
+            }
+            function loaded() { finish(window.TaxonomyAnalysisSessionReady || false); }
+            function failed() { finish(false); }
+            loader.addEventListener('load', loaded, {once:true});
+            loader.addEventListener('error', failed, {once:true});
+        });
+    }
+
     function mount(root) {
     if (root.__architectureSnapshot) return root.__architectureSnapshot;
     let active = false, generation = 0, request = null, activeSource = {}, sourceKey = null;
@@ -659,6 +677,8 @@
         request?.abort();
         const controller = new AbortController();
         request = controller;
+        const activePage = window.TaxonomyApiClient?.captureContext({contextSensitive:false});
+        const isCurrent = () => active && ticket === generation && (!activePage || activePage());
         projection = null;
         scene = null;
         diagramController?.destroy();
@@ -685,11 +705,22 @@
         try {
             await window.TaxonomyI18n.ready();
             await window.TaxonomyArchitectureLifecycle?.ready?.();
-            if (!active || ticket !== generation) return false;
+            // The analysis draft owns the runtime workspace even while a saved
+            // snapshot is displayed. Its full readiness awaits this workspace,
+            // so only the independent draft initialization can be awaited here.
+            const initialized = await sessionInitialization();
+            if (!isCurrent()) return false;
+            if (initialized === false && !window.TaxonomyAnalysisSession) throw new Error(t('workbench.ui.loadFailed'));
+            window.TaxonomyArchitectureWorkflow?.setScope(selectedSource);
+            if (window.TaxonomyContextBar) {
+                const current = await window.TaxonomyContextBar.fetchAndRender('contextBar');
+                if (!isCurrent()) return false;
+                if (!current) throw new Error(t('workbench.ui.loadFailed'));
+            }
             const saved = retained.get(key);
             const data = saved?.data || await ArchitectureWorkbenchApi.load(
                 selectedSource.projectId, selectedSource.snapshotId, selectedSource, controller.signal);
-            if (!active || ticket !== generation) return false;
+            if (!isCurrent()) return false;
             const initialState = saved ? saved.session.state : pendingState;
             render(data, initialState, saved?.session);
             if (saved && selectedSource.element && selectedSource.element !== diagramController.getState().selectedNodeId) {
@@ -701,7 +732,7 @@
             snapshotId = activeSource.snapshotId;
             return true;
         } catch (error) {
-            if (active && ticket === generation) showError(error);
+            if (isCurrent()) showError(error);
             return false;
         }
     }

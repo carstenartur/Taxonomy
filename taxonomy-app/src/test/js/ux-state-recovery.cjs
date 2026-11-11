@@ -338,10 +338,11 @@ test('German decision download validation explains invalid response, snapshot an
 test('portfolio report adapter forwards cancellation to fetch', async () => {
     let seen;
     const window = {location: {pathname: '/'}}, controller = new AbortController();
-    vm.runInNewContext(source('api/portfolio-api.js'), {window, URLSearchParams,
-        document: {querySelector: () => null}, fetch: async (url, init) => {seen = init; return {ok: true};}});
+    vm.runInNewContext(source('api/portfolio-api.js'), canonicalFixture.install({window, URLSearchParams,
+        document: {querySelector: () => null}, fetch: async (url, init) => {seen = init; return {ok: true};}}, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']));
     await window.TaxonomyPortfolioApi.downloadDecisionReport(1, 'snap', 'html', 'de', {}, {signal: controller.signal});
-    assert.equal(seen.signal, controller.signal);
+    controller.abort();
+    assert.equal(seen.signal.aborted, true, 'caller cancellation reaches the composed transport signal');
 });
 
 test('new requirement writes capture AI language for automatic analysis without leaking it across origins', async () => {
@@ -382,7 +383,7 @@ test('live-analysis export cancellation reaches the real API client transport', 
         setTimeout(fn) {timers.add(fn); return fn;}, clearTimeout: timer => timers.delete(timer),
         S: {currentScores: {CP: 80}, taxonomyData: [{code: 'CP', name: 'Capabilities'}],
             lastAnalysisProvider: 'MOCK', lastAnalysisStatus: 'SUCCESS'}});
-    vm.runInContext(source('api/taxonomy-api-client.js'), context);
+    canonicalFixture.install(context, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']);
     installReportCapabilities(window);
     vm.runInContext(source('shared/decision-export-dialog.js'), context);
     const browse = source('core/taxonomy-browse.js');
@@ -441,7 +442,7 @@ async function liveReportBodyFixture() {
         setTimeout(fn) {timers.add(fn); return fn;}, clearTimeout: timer => timers.delete(timer),
         S: {currentScores: {CP: 80}, taxonomyData: [{code: 'CP', name: 'Capabilities'}],
             lastAnalysisProvider: 'MOCK', lastAnalysisStatus: 'SUCCESS'}});
-    vm.runInContext(source('api/taxonomy-api-client.js'), context);
+    canonicalFixture.install(context, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']);
     installReportCapabilities(window);
     vm.runInContext(source('shared/decision-export-dialog.js'), context);
     const browse = source('core/taxonomy-browse.js');
@@ -470,6 +471,8 @@ test('live export cancellation after headers aborts the pending body transport',
 
 async function savedRequirementExportFixture(options = {}) {
     const f = dom(), transfer = pendingReportBody({...options, snapshotId: 'snapshot-1'});
+    const lifecycle = new EventTarget(), transfers = [transfer], submitSignals = [];
+    let reportIndex = 0, savedSubmit;
     f.document.readyState = 'loading';
     f.element('section', 'requirementCopilotCard');
     const button = f.element('button');
@@ -477,35 +480,50 @@ async function savedRequirementExportFixture(options = {}) {
     const container = f.element('div');
     button.closest = selector => selector === '[data-decision-report-format]' ? button : container;
     f.document.querySelectorAll = selector => selector === '[data-decision-report-format]' ? [button] : [];
-    const fetch = (url, init) => url.includes('/decision-report/options')
+    const fetch = (url, init) => url.includes('/api/account/me')
+        ? Promise.resolve({ok:true,status:200,json:async()=>({})})
+        : url.includes('/decision-report/options')
         ? Promise.resolve({ok: true, status: 200, json: async () => ({roots: [{code: 'CP', title: 'Capabilities'}]})})
-        : transfer.fetch(url, init);
-    const window = {location: {pathname: '/projects/1/requirements/2', search: '?lang=de&snapshot=snapshot-1'},
+        : (transfers[reportIndex++] || transfer).fetch(url, init);
+    const window = {addEventListener: lifecycle.addEventListener.bind(lifecycle), location: {pathname: '/projects/1/requirements/2', search: '?lang=de&snapshot=snapshot-1'},
         TaxonomyCopilotApi: {status: async () => ({}), latest: async () => null},
         setTimeout: fn => fn()};
     f.document.currentScript = {src: 'http://localhost/js/api/portfolio-api.js'};
     class FixtureURL extends URL {}
     Object.assign(FixtureURL, f.urls);
     const context = vm.createContext({window, document: f.document, URL: FixtureURL, URLSearchParams,
-        fetch, AbortController, DOMException, Headers, setTimeout: fn => fn(),
+        fetch, AbortController, DOMException, Headers, setTimeout: (fn, delay) => delay > 0 ? 1 : fn(), clearTimeout() {},
         CustomEvent: class {constructor(type, init) {this.type = type; this.detail = init.detail;}}});
+    canonicalFixture.install(context);
     vm.runInContext(source('api/portfolio-api.js'), context);
     installReportCapabilities(window);
     vm.runInContext(source('shared/decision-export-dialog.js'), context);
+    const decisionExport = window.TaxonomyDecisionExport;
+    window.TaxonomyDecisionExport = {...decisionExport, openSaved(config) {
+        savedSubmit = config.submit;
+        return decisionExport.openSaved({...config, submit(selection) {
+            submitSignals.push(selection.signal);
+            return savedSubmit(selection);
+        }});
+    }};
     vm.runInContext(source('portfolio/requirement-copilot.js'), context);
     await f.document.fire('DOMContentLoaded');
     await f.document.fire('click', {target: button, preventDefault() {}, stopImmediatePropagation() {}});
     await tick();
     const dialog = f.document.body.querySelector('dialog');
     assert.ok(dialog, 'real delegated requirement export handler opens the dialog');
-    return {...f, transfer, button, dialog};
+    return {...f, transfer, button, dialog, submitSignals,
+        pagehide() {lifecycle.dispatchEvent(new Event('pagehide'));},
+        pageshow() {lifecycle.dispatchEvent(Object.assign(new Event('pageshow'), {persisted:true}));},
+        queueTransfer() {const next=pendingReportBody({...options,snapshotId:'snapshot-1'});transfers.push(next);return next;},
+        submitExport(selection) {return savedSubmit(selection);}};
 }
 
 test('saved requirement custom submit cancels the adapter body transfer', async () => {
     const f = await savedRequirementExportFixture();
     const pending = f.dialog.querySelector('form').fire('submit');
     await tick();
-    assert.equal(f.transfer.reading(), true);
+    assert.equal(f.transfer.reading(), true, JSON.stringify(f.events));
     assert.equal(f.button.disabled, true);
     await f.dialog.querySelectorAll('button').find(button => button.textContent === 'Abbrechen').click();
     const aborted = f.transfer.aborted();
@@ -521,7 +539,7 @@ test('saved requirement custom submit suppresses a body arriving after cancellat
     const f = await savedRequirementExportFixture({ignoreAbort: true});
     const pending = f.dialog.querySelector('form').fire('submit');
     await tick();
-    assert.equal(f.transfer.reading(), true);
+    assert.equal(f.transfer.reading(), true, JSON.stringify(f.events));
     await f.dialog.querySelectorAll('button').find(button => button.textContent === 'Abbrechen').click();
     f.transfer.body.resolve({size: 10});
     await pending;
@@ -530,11 +548,43 @@ test('saved requirement custom submit suppresses a body arriving after cancellat
     assert.equal(f.events.at(-1).detail.status, 'CANCELLED');
 });
 
+test('saved requirement pagehide restores its own export controls without stale result feedback', async () => {
+    const f = await savedRequirementExportFixture({ignoreAbort:true});
+    const pending = f.dialog.querySelector('form').fire('submit');
+    await tick();
+    assert.equal(f.transfer.reading(),true,JSON.stringify(f.events));assert.equal(f.button.disabled,true);
+    const caller = f.submitSignals[0];assert.equal(caller.aborted,false);
+    f.pagehide();assert.equal(caller.aborted,false,'Page cancellation is independent of the dialog caller');
+    await pending;f.pageshow();
+    assert.equal(f.transfer.aborted(),true);assert.equal(f.button.disabled,false);
+    assert.equal(f.button.getAttribute('aria-busy'),'false');assert.equal(f.downloads.length,0);
+    assert.deepEqual(f.events.filter(event=>event.type==='taxonomy:export-operation-state').map(event=>event.detail.status),['RUNNING']);
+    f.transfer.body.resolve({size:10});await tick();assert.equal(f.downloads.length,0);
+});
+
+test('an older saved export completion never downloads or unlocks a newer owner', async () => {
+    const f = await savedRequirementExportFixture({ignoreAbort:true});
+    const next = f.queueTransfer();
+    const older = f.submitExport({format:'docx',options:{},signal:new AbortController().signal});
+    await tick();assert.equal(f.transfer.reading(),true,JSON.stringify(f.events));
+    const newer = f.submitExport({format:'docx',options:{},signal:new AbortController().signal});
+    await tick();assert.equal(next.reading(),true);assert.equal(f.button.disabled,true);
+    f.transfer.body.resolve({size:10});await older;
+    assert.equal(f.downloads.length,0,'Superseded local export must not publish its result');
+    assert.equal(f.button.disabled,true,'Only the new operation owns the busy controls');
+    assert.equal(f.button.getAttribute('aria-busy'),'true');
+    assert.equal(f.events.filter(event=>event.detail?.status==='SUCCESS').length,0);
+    next.body.resolve({size:12});await newer;
+    assert.equal(f.downloads.length,1);assert.equal(f.button.disabled,false);
+    assert.equal(f.button.getAttribute('aria-busy'),'false');
+    assert.equal(f.events.filter(event=>event.detail?.status==='SUCCESS').length,1);
+});
+
 test('blob transport timeout remains active after headers and cancels the body', async () => {
     const f = await liveReportBodyFixture();
     const pending = f.window.TaxonomyApiClient.requestBlob('/api/decision-report/docx', {method: 'POST'}, {timeoutMillis: 25});
     await tick();
-    assert.equal(f.transfer.reading(), true);
+    assert.equal(f.transfer.reading(), true, JSON.stringify(f.events));
     assert.equal(f.timers.size, 1, 'receiving headers must not clear the body timeout');
     const rejection = assert.rejects(pending, error => error.code === 'TIMEOUT' && error.retryable === true);
     [...f.timers][0]();
@@ -548,7 +598,7 @@ test('successful live export downloads the body consumed inside the transport sc
     const f = await liveReportBodyFixture();
     const pending = f.dialog.querySelector('form').fire('submit');
     await tick();
-    assert.equal(f.transfer.reading(), true);
+    assert.equal(f.transfer.reading(), true, JSON.stringify(f.events));
     f.transfer.body.resolve({size: 10});
     await pending;
     assert.equal(f.downloads.length, 1);
@@ -1156,7 +1206,7 @@ test('reformulation promotion preserves draft evidence and stops before creation
                 return {projectId:7,requirementId:9,requirement:{id:9,projectId:7,currentVersion:{id:1,text:command.requirement.text}},
                     publication:{state:'CURRENT',context:{repositoryId:'fixture-architecture',workspaceScopeKey:'fixture-copy',branch:'draft',revision:2}}};
             }}};
-        vm.runInNewContext(source('core/taxonomy-analysis-session-projects.js'),{window,document:f.document,URLSearchParams});
+        vm.runInContext(source('core/taxonomy-analysis-session-projects.js'),canonicalFixture.install({window,document:f.document,URLSearchParams}));
         window.TaxonomyAnalysisSession.addAsRequirement({preserveDraft:true});await tick();
         const form=f.all.find(node=>node.tagName==='form');form.reportValidity=()=>true;
         const select=f.all.find(node=>node.tagName==='select');if(select)select.value='7';

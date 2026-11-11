@@ -2,47 +2,22 @@
 window.TaxonomyCopilotApi = (function () {
     'use strict';
 
-    function csrfHeaders() {
-        const token = document.querySelector('meta[name="_csrf"]')?.content;
-        if (!token) return {};
-        const headerName = document.querySelector('meta[name="_csrf_header"]')?.content
-            || 'X-CSRF-TOKEN';
-        return { [headerName]: token };
+    var client = window.TaxonomyApiClient;
+    function sourceRequest(url) {
+        const scoped = window.TaxonomyArchitectureWorkflow?.scopeUrl?.(url) || url;
+        const target = new URL(scoped, window.location.href);
+        const options = target.searchParams.has('workspaceId')
+            ? {pinnedWorkspaceId: target.searchParams.get('workspaceId')} : {};
+        return {url: scoped, options};
     }
-
-    async function payload(response) {
-        if (response.status === 204) return null;
-        return response.json().catch(function () { return null; });
+    function getJson(url) {
+        const source = sourceRequest(url);
+        return client.requestJson(source.url, {method:'GET', cache:'no-store',
+            headers:{Accept:'application/json'}}, source.options);
     }
-
-    async function requireOk(response) {
-        if (response.ok) return response;
-        const body = await payload(response);
-        const error = new Error(body?.detail || body?.message || body?.error
-            || ('HTTP ' + response.status));
-        error.status = response.status;
-        error.responseBody = body;
-        throw error;
-    }
-
-    async function getJson(url) {
-        return payload(await requireOk(await fetch(url, {
-            headers: { Accept: 'application/json' },
-            credentials: 'same-origin',
-            cache: 'no-store'
-        })));
-    }
-
-    async function postJson(url, body) {
-        return payload(await requireOk(await fetch(url, {
-            method: 'POST',
-            headers: Object.assign({
-                Accept: 'application/json',
-                'Content-Type': 'application/json'
-            }, csrfHeaders()),
-            credentials: 'same-origin',
-            body: JSON.stringify(body === undefined ? {} : body)
-        })));
+    function postJson(url, body) {
+        const source = sourceRequest(url);
+        return client.sendJson(source.url, body === undefined ? {} : body, 'POST', source.options);
     }
 
     function positiveInteger(value, name) {
@@ -59,7 +34,7 @@ window.TaxonomyCopilotApi = (function () {
 
     return {
         status: function () {
-            return getJson('/api/ai-automation');
+            return client.getJson('/api/ai-automation', {contextSensitive: false, workspaceScoped: false});
         },
         start: function (projectId, requirementId, request) {
             return postJson(projectPath(projectId) + '/requirements/'

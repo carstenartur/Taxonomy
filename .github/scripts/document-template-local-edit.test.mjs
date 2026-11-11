@@ -1,3 +1,4 @@
+import canonicalFixture from './canonical-api-fixture.cjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -46,6 +47,7 @@ function boot(fetch, overrides = {}) {
             href: 'https://example.test/taxonomy/admin/document-templates/' + id + '/local-edit?revision=' + revision } }
     };
     vm.createContext(context);
+    canonicalFixture.install(context);
     vm.runInContext(apiSource, context);
     vm.runInContext(source, context);
     return { node, file, workspace,

@@ -26,7 +26,7 @@ function harness({ status = 'SUCCESS', lastText = 'requirement', busy = false, s
   } }, document: { getElementById: id => elements[id] || null, querySelector: () => summary ? {} : null } });
   vm.runInContext(waitSource, context);
   let polls = 0;
-  const page = { async waitForFunction(predicate, text, options) {
+  const page = { async evaluate(predicate, text) { return predicate(text); }, async waitForFunction(predicate, text, options) {
     polls++;
     assert.equal(options.timeout, 180_000, 'Do not enlarge the normal completion budget');
     const result = predicate(text);
@@ -56,4 +56,17 @@ test('only a populated complete SUCCESS with ready controls satisfies the wait',
 });
 test('a stale terminal result cannot end the wait for a different requirement', async () => {
   await assert.rejects(harness({ status: 'PARTIAL', lastText: 'previous requirement', summary: false }).wait(), /STILL_WAITING/);
+});
+
+
+test('an incomplete Copilot timeout reports bounded ownership state without exposing requirement text',async()=>{
+  let failure;
+  try {await harness({status:'IN_PROGRESS',lastText:null,summary:false,copilot:null}).wait();}
+  catch(error){failure=error;}
+  assert.ok(failure);
+  assert.match(failure.message,/analysisStatus.*IN_PROGRESS/);
+  assert.match(failure.message,/analysisTextMatches.*false/);
+  assert.match(failure.message,/copilotState.*null/);
+  assert.equal(failure.message.includes('requirement'),false,'Diagnostics must not repeat authored text');
+  assert.match(failure.message,/STILL_WAITING/,'The original failure must remain visible');
 });

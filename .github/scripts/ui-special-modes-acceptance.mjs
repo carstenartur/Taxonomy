@@ -31,21 +31,40 @@ function isAnalyzeResponseForText(response, expectedText) {
 }
 
 async function waitForTaxonomyReady(timeout = 180_000) {
+  await page.evaluate(() => {
+    window.__taxonomyStartupRead?.controller.abort();
+    window.__taxonomyStartupStatus = null;
+    window.__taxonomyStartupRead = {
+      pending: false, ready: false, controller: new AbortController()
+    };
+  });
   try {
-    await page.waitForFunction(async () => {
-      try {
-        const response = await fetch('/api/status/startup', {
+    await page.waitForFunction(() => {
+      const read = window.__taxonomyStartupRead;
+      if (!read || read.controller.signal.aborted) return false;
+      if (read.ready) return true;
+      if (!read.pending) {
+        read.pending = true;
+        // Playwright must poll a boolean, not the truthy Promise returned by fetch.
+        fetch('/api/status/startup', {
           credentials: 'same-origin',
-          headers: { Accept: 'application/json' }
+          headers: { Accept: 'application/json' },
+          signal: read.controller.signal
+        }).then(async response => {
+          if (!response.ok) return;
+          const status = await response.json();
+          if (read.controller.signal.aborted) return;
+          window.__taxonomyStartupStatus = status;
+          read.ready = status?.initialized === true;
+        }).catch(error => {
+          if (!read.controller.signal.aborted) {
+            window.__taxonomyStartupStatus = { error: String(error) };
+          }
+        }).finally(() => {
+          read.pending = false;
         });
-        if (!response.ok) return false;
-        const status = await response.json();
-        window.__taxonomyStartupStatus = status;
-        return status?.initialized === true;
-      } catch (error) {
-        window.__taxonomyStartupStatus = { error: String(error) };
-        return false;
       }
+      return false;
     }, null, { timeout, polling: 1_000 });
   } catch (error) {
     const status = await page.evaluate(() => window.__taxonomyStartupStatus || null);
@@ -53,18 +72,22 @@ async function waitForTaxonomyReady(timeout = 180_000) {
       `Taxonomy server did not become ready: ${JSON.stringify(status)}`,
       { cause: error }
     );
+  } finally {
+    await page.evaluate(() => {
+      window.__taxonomyStartupRead?.controller.abort();
+      delete window.__taxonomyStartupRead;
+    });
   }
 
   await page.locator('#analyzeBtn').waitFor({ state: 'visible', timeout: 30_000 });
   await page.waitForFunction(() => {
     const button = document.querySelector('#analyzeBtn');
-    return Boolean(button) && button.disabled === false;
+    return Boolean(button) && button.disabled === false
+      && window.TaxonomyAnalysisSession?.state?.().ready === true;
   }, null, { timeout: 30_000 });
 
-  // Server readiness and button visibility alone do not establish an analysis
-  // workspace. The session loader resolves the isolated workspace and its
-  // persisted draft asynchronously. Clicks before that transition are rejected
-  // by TaxonomyScoring without sending the expected POST.
+  // A visible button is not sufficient: synchronous analysis requires the
+  // fully resolved, confirmed workspace and installed progress coordinator.
   try {
     await page.waitForFunction(() => {
       const session = window.TaxonomyAnalysisSession?.state?.();

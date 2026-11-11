@@ -195,14 +195,17 @@
         }).catch(function () { return fallback; });
     }
 
-    function jsonRequest(url, options) {
+    function jsonRequest(url, options, preserveDraftReceipt) {
         var request = Object.assign({}, options || {});
         request.headers = Object.assign({}, csrfHeaders(), request.headers || {});
         var api = window.TaxonomyAnalysisSessionApi;
         if (!api || typeof api.request !== 'function') {
             return Promise.reject(new Error('Analysis session API client is not available'));
         }
-        return api.request(url, request).then(function (response) {
+        var response = preserveDraftReceipt === true
+            ? api.request(url, request, runtime.workspaceId, true)
+            : api.request(url, request);
+        return response.then(function (response) {
             if (!response.ok) {
                 return responseMessage(response, 'HTTP ' + response.status).then(function (message) {
                     var error = new Error(message);
@@ -267,9 +270,7 @@
                     if (url.searchParams.has('workspaceId')) headers.set(WORKSPACE_HEADER, url.searchParams.get('workspaceId'));
                     else if (runtime.workspaceId) headers.set(WORKSPACE_HEADER, runtime.workspaceId);
                     else if (apiPath === '/api/git/state' || apiPath === '/api/context/current') {
-                        // These passive reads run before analysis-session hydration. A
-                        // reload of an explicitly scoped root URL must keep its
-                        // exact workspace even before runtime.workspaceId is known.
+                        // Passive reads before session hydration retain an explicitly selected URL workspace.
                         // Do not infer this pin for writes or installation setup.
                         var locationScope = new URL(window.location.href).searchParams;
                         var locationWorkspace = locationScope.get('workspaceId');

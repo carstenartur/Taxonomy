@@ -52,7 +52,7 @@ export async function captureFailureEvidence({
   // A single viewport image is sufficient to locate the failing state while
   // avoiding the unbounded full-page screenshots that made successful CI
   // evidence hundreds of megabytes large.
-  await page.screenshot({ path: screenshot, fullPage: false, animations: 'disabled' });
+  await page.screenshot({ path: screenshot, fullPage: false, animations: 'disabled', timeout: 5_000 });
   await writeFile(html, await target.evaluate(node => node.outerHTML), 'utf8');
   const ariaSnapshot = typeof target.ariaSnapshot === 'function'
     ? await target.ariaSnapshot().catch(error => `ARIA snapshot unavailable: ${error}`)

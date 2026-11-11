@@ -1,3 +1,4 @@
+import canonicalFixture from './canonical-api-fixture.cjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {existsSync, readFileSync} from 'node:fs';
@@ -84,8 +85,8 @@ for (const action of ['enterManualScoringMode', 'applyManualScores']) {
         // Expose the existing event handlers inside this VM; production code receives no test hooks.
         vm.runInNewContext(browse.replace('renderView: renderView,',
             'renderView: renderView, enterManualScoringMode, applyManualScores,'),
-        {window: h.window, document: h.document, TaxonomyI18n: {t: key => key},
-            TaxonomyUtils: {escapeHtml: value => String(value)}});
+        canonicalFixture.install({window: h.window, document: h.document, TaxonomyI18n: {t: key => key},
+            TaxonomyUtils: {escapeHtml: value => String(value)}}, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']));
         h.window.TaxonomyBrowse[action]();
         assert.equal(h.S.lastAnalysisScope, null);
         assert.equal(h.nodes.get('analysisScopeEvidence').hidden, true);

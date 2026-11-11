@@ -166,7 +166,10 @@ export async function runLocalePrintWorkflow({ page, baseUrl, evidence, outputDi
     await expect(page.locator('#reportPreviewFrame')).toBeHidden();
     evidence.passed('scope and requirement changes invalidate a report and prevent stale preview/print revival');
 
-    await route('**/api/projects/73101/architecture-workbench/qa-locale', request => request.fulfill(json({
+    // The canonical API transport may attach an explicit workspace query pin;
+    // match the exact immutable snapshot endpoint rather than the full URL string.
+    await route(url => url.pathname.endsWith('/api/projects/73101/architecture-workbench/qa-locale'),
+      request => request.fulfill(json({
       snapshotId: 'qa-locale', snapshotStatus: 'SUCCESS',
       requirementText: 'Original English requirement\n' + Array.from({ length: 80 }, (_, index) =>
         'QA Requirement row ' + String(index + 1).padStart(2, '0') + ': original requirement content retained in the complete print document.').join('\n'),

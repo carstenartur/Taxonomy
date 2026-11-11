@@ -237,7 +237,7 @@ function preferencesNavigationHarness({ basePath = '', pendingRestore = false } 
 for (const basePath of ['', '/taxonomy']) {
   test(`Preferences deep link at ${basePath || 'root'} waits for its original ready workspace without network idle`, async () => {
     const start = preferencesSource.indexOf('async function runPreferencesPreservationWorkflow(');
-    const end = preferencesSource.indexOf('  // Use the real application state', start);
+    const end = preferencesSource.indexOf('  const originalState =', start);
     assert.ok(start >= 0 && end > start, 'Run the actual direct-link prefix before any draft mutation');
     const harness = preferencesNavigationHarness({ basePath });
     const context = vm.createContext({});
@@ -256,6 +256,49 @@ for (const basePath of ['', '/taxonomy']) {
     ]);
   });
 }
+
+test('Preferences keep-local reload waits for the same ready workspace before comparing retained evidence', async () => {
+  const marker = "    'Keeping newer input lost persisted score or manual-decision authority');";
+  const start = preferencesSource.indexOf(marker) + marker.length;
+  const end = preferencesSource.indexOf("    await page.locator('#businessText').fill(JSON.parse(before).businessText);", start);
+  assert.ok(start >= marker.length && end > start, 'Run the actual persisted keep-local reload section');
+  const harness = preferencesNavigationHarness();
+  const context = vm.createContext({ page: harness.page, edited: 'retained-local-evidence',
+    workingStateExpression: () => () => 'retained-local-evidence',
+    assert(condition, message) {
+      assert.equal(harness.readyObserved(), true, 'Retained evidence is compared only in the original ready workspace');
+      assert(condition, message);
+    }
+  });
+  await vm.runInContext(`(async () => {${preferencesSource.slice(start, end)}})()`, context);
+  assert.deepEqual(harness.calls, ['document-ready', 'same-workspace-ready']);
+});
+
+test('Preferences pending-restore reload keeps its workspace fence before and after the held draft read', async () => {
+  const start = preferencesSource.indexOf('    // Hold the initial draft GET open after reload.');
+  const end = preferencesSource.indexOf('    const afterReload =', start);
+  assert.ok(start >= 0 && end > start, 'Run the real pending-restoration navigation and preference mutation');
+  const harness = preferencesNavigationHarness({ pendingRestore: true });
+  const context = vm.createContext({ page: harness.page, changedLimit: 150, preferenceRestored: true,
+    workspaceId: 'fixture-workspace', console: { log() {} }
+  });
+  vm.runInContext(preferencesSource.replace(/^import .*;\n/m, '').replace(/^export /mg, ''), context);
+  // Keep the navigation and existing preference-load predicate real; only the
+  // request gate and unrelated preference persistence are controlled here.
+  context.installRequestGate = async (_page, pattern, method) => {
+    assert.equal(pattern, '**/api/analysis-drafts/**'); assert.equal(method, 'GET'); return harness.gate;
+  };
+  context.saveArchitectureLimit = async (_page, value) => {
+    assert.equal(value, 150);
+    assert.equal(harness.restoringObserved(), true, 'Preferences must be exercised during this workspace restoration');
+    assert.equal(harness.readyObserved(), false, 'The held draft must not finish before the preference save');
+    harness.calls.push('preference-saved-during-restore');
+  };
+  await vm.runInContext(`(async () => {${preferencesSource.slice(start, end)}})()`, context);
+  assert.deepEqual(harness.calls, ['document-ready', 'translations-ready', 'same-workspace-restoring',
+    'visible:#tab-preferences', 'preferences-loaded', 'preference-saved-during-restore',
+    'draft-released', 'same-workspace-ready', 'gate-disposed']);
+});
 
 async function applySessionCommandHarness(authority) {
   const calls = [];
@@ -587,6 +630,7 @@ for (const { basePath, provisionStatus } of [
     }
   });
 }
+
 
 function routeRegistration(source, marker) {
   const end = source.indexOf(marker);

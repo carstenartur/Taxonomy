@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import apiFixture from './canonical-api-fixture.cjs';
 import { createDslValidationSource } from '../../taxonomy-app/src/main/resources/static/js/shared/taxonomy-dsl-validation.mjs';
 
 function document(text) {
@@ -41,6 +42,55 @@ test('validation preserves errors, warnings and exact source line ranges', async
     ]);
     source.dispose();
 });
+
+function transportFixture(t) {
+    const lifecycle = new EventTarget();
+    const events = new EventTarget();
+    const sent = Promise.withResolvers();
+    const reply = Promise.withResolvers();
+    const context = apiFixture.install({
+        document: events, CustomEvent,
+        addEventListener: lifecycle.addEventListener.bind(lifecycle),
+        fetch(url, init) {
+            if (url.endsWith('/api/account/me')) return Promise.resolve(new Response(null, { status: 401 }));
+            assert.equal(url, '/api/dsl/validate');
+            sent.resolve(init);
+            return reply.promise;
+        }
+    });
+    const api = context.TaxonomyApiClient;
+    const source = createDslValidationSource(api, lifecycle);
+    const view = { inView: true, dom: { isConnected: true }, state: { doc: document('catalogue') } };
+    t.after(() => { source.dispose(); apiFixture.dispose(); });
+    return { context, source, api, view, lifecycle, events, sent: sent.promise,
+        finish: () => reply.resolve(Response.json({ warnings: ['current warning'] })) };
+}
+
+test('initial repository context does not cancel lint for the same loaded document', async t => {
+    const f = transportFixture(t);
+    const result = f.source.lint(f.view);
+    const request = await f.sent;
+    f.context.TaxonomyContextBar = { getCurrentContext: () => ({ contextId: 'workspace', branch: 'draft' }) };
+    f.events.dispatchEvent(new Event('taxonomy:repository-context-changed'));
+    f.finish();
+    assert.equal(request.signal.aborted, false);
+    assert.equal((await result)[0]?.message, 'current warning');
+});
+
+for (const reason of ['pagehide', '401', 'replaced document', 'hidden editor']) {
+    test(`pending text validation discards its response on ${reason}`, async t => {
+        const f = transportFixture(t);
+        const result = f.source.lint(f.view);
+        const request = await f.sent;
+        if (reason === 'pagehide') f.lifecycle.dispatchEvent(new Event('pagehide'));
+        if (reason === '401') await assert.rejects(f.api.getJson('/api/account/me'), { status: 401 });
+        if (reason === 'replaced document') f.view.state.doc = document('replacement');
+        if (reason === 'hidden editor') f.source.setPageActive(false);
+        f.finish();
+        assert.deepEqual(await result, []);
+        if (reason !== 'replaced document') assert.equal(request.signal.aborted, true);
+    });
+}
 
 test('a new lint call cancels and settles the superseded request', async () => {
     const { source, calls, view } = fixture();
