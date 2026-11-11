@@ -1,6 +1,7 @@
 package com.taxonomy.tooling;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -51,7 +52,7 @@ class ParallelCiEvidenceContractTest {
                 .contains("needs: [application, production-image, app-test-shards, core, coverage-aggregate, observability, ui-contracts, ui-shards, interoperability-products, plugin-profile, change-scope, documentation]")
                 .contains("if: always()")
                 .contains("name: taxonomy-ui-application")
-                .contains("pattern: app-test-shard-*")
+                .contains("pattern: app-test-shard-*-success")
                 .contains("name: quality-reports-core")
                 .contains("name: junit-plugin-profile")
                 .contains("Stage source-bound original plugin reports")
@@ -87,7 +88,7 @@ class ParallelCiEvidenceContractTest {
         assertThat(core)
                 .contains("./mvnw -B verify -Pci,ci-app-test-shards-core")
                 .contains("-Dtaxonomy.ui.skip=true")
-                .contains("name: app-test-shard-core")
+                .contains("name: app-test-shard-core-attempt-${{ github.run_attempt }}-${{ job.status }}")
                 .contains("core-reactor-outputs.tar.gz")
                 .contains("*/target/jacoco.exec")
                 .doesNotContain("Stage commit-bound UI application")
@@ -98,6 +99,9 @@ class ParallelCiEvidenceContractTest {
 
         String coverageAggregate = workflow.substring(coverageAggregateStart, observabilityStart);
         assertThat(coverageAggregate)
+                .contains("path: target/app-test-shard-attempts")
+                .contains("bash .github/scripts/select-app-test-shard-attempts.sh")
+                .doesNotContain("merge-multiple: true")
                 .contains("needs: [core, app-test-shards]")
                 .contains("--verify true")
                 .contains("--verify-inputs true")
@@ -122,7 +126,7 @@ class ParallelCiEvidenceContractTest {
                 .contains("matrix: ${{ fromJSON(needs.app-test-plan.outputs.matrix) }}")
                 .contains("./mvnw -B -pl taxonomy-tooling,taxonomy-app -am verify -P\"ci,$APP_TEST_PROFILE\"")
                 .contains("Stage digest-bound shard reports and coverage")
-                .contains("app-test-shard-${{ matrix.shard }}");
+                .contains("app-test-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}-${{ job.status }}");
         assertThat(shardCatalogue).contains("\"applicationTestShards\"")
                 .contains("ci-app-test-shard-recovery")
                 .contains("ci-app-test-shard-browser")
@@ -224,6 +228,47 @@ class ParallelCiEvidenceContractTest {
                 .contains("Consolidated UI scenario inventory mismatch")
                 .contains("appears in both")
                 .contains("actualApplicationSha256");
+    }
+
+    @Test
+    void selectsOneCompleteSuccessfulAttemptPerShard(@TempDir Path root)
+            throws Exception {
+        Files.createDirectories(root.resolve(".mvn"));
+        Files.writeString(root.resolve(".mvn/verification-suites.json"),
+                "{\"applicationTestShards\":{\"groups\":{\"browser\":{},\"core\":{}}}}");
+        Path latestBrowser = shardAttempt(root, "browser", 10, "success");
+        Files.writeString(shardAttempt(root, "browser", 2, "success").resolve("old-only.xml"), "old");
+        Files.writeString(shardAttempt(root, "browser", 9, "failure").resolve("failed-only.xml"), "failed");
+        shardAttempt(root, "core", 1, "success");
+
+        var select = new ProcessBuilder("bash", findRepositoryRoot()
+                .resolve(".github/scripts/select-app-test-shard-attempts.sh").toString());
+        select.directory(root.toFile()).redirectErrorStream(true);
+        select.environment().put("GITHUB_RUN_ATTEMPT", "10");
+        select.environment().put("GITHUB_RUN_ID", "42");
+        Process selected = select.start();
+        String output = new String(selected.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertThat(selected.waitFor()).as(output).isZero();
+        Path inputs = root.resolve("target/app-test-shards");
+        assertThat(Files.readString(inputs.resolve("browser/manifest.json"))).contains("42.10.browser");
+        assertThat(Files.readString(inputs.resolve("core/manifest.json"))).contains("42.1.core");
+        assertThat(Files.exists(inputs.resolve("browser/old-only.xml"))).isFalse();
+        assertThat(Files.exists(inputs.resolve("browser/failed-only.xml"))).isFalse();
+
+        Files.move(inputs, root.resolve("first-result"));
+        Files.writeString(latestBrowser.resolve("manifest.json"), "{\"buildId\":\"41.10.browser\"}");
+        Process wrongRun = select.start();
+        assertThat(wrongRun.waitFor()).isNotZero();
+        assertThat(Files.exists(inputs)).isFalse();
+    }
+
+    private static Path shardAttempt(Path root, String shard, int attempt, String status) throws Exception {
+        Path directory = root.resolve("target/app-test-shard-attempts")
+                .resolve("app-test-shard-" + shard + "-attempt-" + attempt + "-" + status).resolve(shard);
+        Files.createDirectories(directory);
+        Files.writeString(directory.resolve("manifest.json"),
+                "{\"buildId\":\"42." + attempt + "." + shard + "\"}");
+        return directory;
     }
 
     private static Path findRepositoryRoot() {

@@ -676,8 +676,18 @@ final class PortfolioContextBrowserChecks {
     }
 
     private void verifyVersionConflict() throws IOException {
-        focus(detailLink(PROJECT_A)); key(Keys.ENTER);
-        url("/projects/" + PROJECT_A + "/requirements/" + REQUIREMENT_A + "?lang=de");
+        var gate = fixtures.delayNextRead("/api/architecture/lifecycle", "/projects/" + PROJECT_A + "/requirements/" + REQUIREMENT_A);
+        try {
+            focus(detailLink(PROJECT_A)); key(Keys.ENTER);
+            url("/projects/" + PROJECT_A + "/requirements/" + REQUIREMENT_A + "?lang=de");
+            wait.until(browser -> gate.seen.get());
+            WebElement button = visible("newVersionButton");
+            assertThat(button.isEnabled()).isFalse();
+            new Actions(driver).moveToElement(button).click().perform();
+            assertThat(driver.findElement(By.id("newVersionModal")).isDisplayed()).isFalse();
+        } finally {
+            gate.release.countDown();
+        }
         pageReady("requirementHeading", fixtures.primaryRequirement(PROJECT_A).title(), "detailBusy");
         wait.until(ExpectedConditions.elementToBeClickable(By.id("newVersionButton")));
         click("newVersionButton");
@@ -767,7 +777,7 @@ final class PortfolioContextBrowserChecks {
         Map<String, String> selections = Map.of("commitBranch", BRANCHES.get(1), "materializeBranch", BRANCHES.get(2),
                 "mergeSource", BRANCHES.getFirst(), "mergeTarget", BRANCHES.get(2));
         messages.forEach(this::fill); selections.forEach(this::select);
-        var gate = fixtures.delayNextRepositoryRead();
+        var gate = fixtures.delayNextRead("/api/git/state", null);
         fixtures.head = "b".repeat(40);
         click("refreshPreview");
         wait.until(browser -> gate.seen.get()); visible("versioningBusy");

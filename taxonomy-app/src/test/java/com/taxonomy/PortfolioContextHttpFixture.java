@@ -123,9 +123,12 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
         active = false;
     }
 
-    ReadGate delayNextRepositoryRead() { readGate = new ReadGate(); return readGate; }
+    ReadGate delayNextRead(String path, String page) { readGate = new ReadGate(path, page); return readGate; }
 
     static final class ReadGate {
+        final String path;
+        final String page;
+        ReadGate(String path, String page) { this.path = path; this.page = page; }
         final AtomicBoolean seen = new AtomicBoolean();
         final CountDownLatch release = new CountDownLatch(1);
     }
@@ -243,13 +246,13 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
                     return;
                 }
                 if (relative != null && fixturePath(relative)) {
-                    if (relative.equals("/api/git/state")) {
-                        ReadGate gate = readGate;
-                        if (gate != null && gate.seen.compareAndSet(false, true)
-                                && !gate.release.await(30, TimeUnit.SECONDS)) {
-                            reject(exchange, "Timed out waiting for the explicit repository-read release");
-                            return;
-                        }
+                    ReadGate heldRead = readGate;
+                    String referrer = exchange.getRequestHeaders().getFirst("Referer");
+                    if (heldRead != null && relative.equals(heldRead.path)
+                            && (heldRead.page == null || referrer != null && URI.create(referrer).getPath().equals(context + heldRead.page))
+                            && heldRead.seen.compareAndSet(false, true) && !heldRead.release.await(30, TimeUnit.SECONDS)) {
+                        reject(exchange, "Timed out waiting to release " + relative);
+                        return;
                     }
                     if (relative.startsWith("/api/projects/" + PROJECT_A + "/analysis-jobs/")) {
                         AnalysisJobReadGate gate = analysisJobReadGate;

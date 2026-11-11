@@ -30,6 +30,37 @@ function translated(value) {
 }
 function normalized(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
 
+function nativeFramesMatch(lines, scriptRoot, frames) {
+  return lines.length === frames.length + 1 && frames.every(([name, file], index) => {
+    const start = `    at ${name} (${scriptRoot}${file}:`, line = lines[index + 1];
+    return line.startsWith(start) && /^\d+:\d+\)$/.test(line.slice(start.length));
+  });
+}
+
+function consumedBefore(read, limit) {
+  return read.finished === true && read.jsonParsed === true && Number.isSafeInteger(read.sequence)
+    && read.sequence > 0 && Number.isSafeInteger(read.finishedSequence)
+    && Number.isSafeInteger(read.parsedSequence) && read.sequence < read.finishedSequence
+    && read.finishedSequence < read.parsedSequence && read.parsedSequence < limit;
+}
+
+function departingContextRead(reads, endpoint, oldDocument, oldUrl, start, contextId) {
+  return reads.find(read => {
+    if (read.url !== endpoint || read.documentEpoch !== oldDocument.epoch
+        || read.method !== 'GET' || read.status !== 200
+        || read.failed || read.redirected || !consumedBefore(read, start)
+        || read.workspaceId !== oldUrl.searchParams.get('workspaceId')
+        || read.payload?.contextId !== contextId || read.payload?.branch !== oldUrl.searchParams.get('branch')) return false;
+    // Editing can advance the revision in the document's URL before the declared reload.
+    const page = new URL(read.pageUrl);
+    return page.origin === oldUrl.origin && page.pathname === oldUrl.pathname && page.hash === oldUrl.hash
+      && oldUrl.searchParams.get('workspaceScopeKey') === read.workspaceId
+      && ['repositoryId', 'workspaceId', 'workspaceScopeKey', 'branch'].every(key =>
+        oldUrl.searchParams.getAll(key).length === 1 && oldUrl.searchParams.get(key)
+        && page.searchParams.getAll(key).length === 1 && page.searchParams.get(key) === oldUrl.searchParams.get(key));
+  });
+}
+
 function adoptedReloadRead(endpoint, read, observation, messages, destination) {
   const branch = destination.searchParams.get('branch'), workspace = destination.searchParams.get('workspaceId');
   const context = observation.context, data = read.payload;
@@ -87,8 +118,11 @@ export function classifyWebKitPollCancellation(input) {
     const workspace = oldUrl.searchParams.get('workspaceId');
     const scopedSyncPath = workspace && oldUrl.searchParams.getAll('workspaceId').length === 1
       ? `${syncPath}?workspaceId=${encodeURIComponent(workspace)}` : null;
+    const contextPath = `${prefix}/api/context/current`;
+    const scopedContextPath = workspace && oldUrl.searchParams.getAll('workspaceId').length === 1
+      ? `${contextPath}?workspaceId=${encodeURIComponent(workspace)}` : null;
     const allowed = reload ? [`${prefix}/api/git/state?branch=${encodeURIComponent(oldUrl.searchParams.get('branch') || '')}`,
-      `${prefix}/api/context/current`] : [`${prefix}/api/status/startup`, syncPath, scopedSyncPath].filter(Boolean);
+      contextPath, scopedContextPath].filter(Boolean) : [`${prefix}/api/status/startup`, syncPath, scopedSyncPath].filter(Boolean);
     const endpoint = allowed
       .find(path => error.name === `Fetch API cannot load ${base.protocol.slice(0, -1)}`
         && error.message === `/${base.host}${path} due to access control checks.`
@@ -108,13 +142,21 @@ export function classifyWebKitPollCancellation(input) {
       && event.sequence >= navigation.startSequence)) return null;
 
     const endpointUrl = base.origin + endpoint;
+    const scopedContext = reload && endpoint === scopedContextPath;
+    let prior;
+    if (scopedContext) {
+      if (!nativeFramesMatch(error.stack.split('\n'), base.origin + prefix, [
+        ['attempt', '/js/api/taxonomy-api-client.js'],
+        ['fetchAndRender', '/js/versioning/taxonomy-context-bar.js'],
+        ['unknown', '/js/versioning/taxonomy-context-bar.js']
+      ])) return null;
+      prior = departingContextRead(reads, endpointUrl, oldDocument, oldUrl, navigation.startSequence, observation.context?.state?.contextId);
+      if (!prior) return null;
+    }
     const scopedSync = endpoint === scopedSyncPath;
     const bootstrapSyncUrl = base.origin + syncPath;
-    // The original WebKit cancellation signature names the unpinned status
-    // endpoint. A successful destination GET can carry the exact retained
-    // workspace as a canonical query pin, in addition to its verified header.
-    // Construct that one permitted URL instead of ignoring query parameters:
-    // a foreign/duplicate pin or any other query parameter remains blocking.
+    // An unpinned error URL can be followed by a destination GET carrying the
+    // retained workspace in both its canonical query and its verified header.
     let retainedReloadUrl = null;
     if (reload && workspace && oldUrl.searchParams.getAll('workspaceId').length === 1) {
       const url = new URL(endpointUrl);
@@ -125,12 +167,13 @@ export function classifyWebKitPollCancellation(input) {
     // Include the pinned request in the failure veto as well as in adoption.
     const matchesPoll = read => read.url === endpointUrl
       || retainedReloadUrl !== null && read.url === retainedReloadUrl
+      || scopedContext && read.url === base.origin + contextPath
       || scopedSync && read.url === bootstrapSyncUrl;
     // A real network/HTTP failure is not the engine's pre-request cancellation.
     if (reads.some(read => matchesPoll(read) && (read.failed || read.status >= 400)
         && (read.documentEpoch === newDocument.epoch
-          || read.documentEpoch === oldDocument.epoch
-            && read.sequence >= navigation.startSequence && read.sequence <= navigation.endSequence))) return null;
+          || read.documentEpoch === oldDocument.epoch && (scopedContext
+            || read.sequence >= navigation.startSequence && read.sequence <= navigation.endSequence)))) return null;
     for (const read of reads) {
       if (!matchesPoll(read) || read.method !== 'GET' || read.status !== 200
           || !read.finished || !read.jsonParsed || read.failed || read.redirected
@@ -138,12 +181,14 @@ export function classifyWebKitPollCancellation(input) {
           || read.documentEpoch !== newDocument.epoch
           || withoutFragment(read.pageUrl) !== withoutFragment(newDocument.url)) continue;
       if (scopedSync && (read.workspaceId ?? null) !== (read.url === endpointUrl ? workspace : null)) continue;
+      if (scopedContext && (read.url !== endpointUrl || read.sequence <= pageHide.sequence
+          || !consumedBefore(read, navigation.endSequence))) continue;
       const data = read.payload, messages = observation.messages?.[read.id];
       if (!data || typeof data !== 'object' || Array.isArray(data) || !messages) continue;
       let render;
       if (reload) {
         if (read.pageUrl !== newDocument.url) continue;
-        render = adoptedReloadRead(endpoint, read, observation, messages, newUrl);
+        render = adoptedReloadRead(scopedContext ? contextPath : endpoint, read, observation, messages, newUrl);
         if (!render) continue;
       } else if (endpoint.endsWith('/status/startup')) {
         if (typeof data.initialized !== 'boolean' || !data.memory
@@ -164,7 +209,7 @@ export function classifyWebKitPollCancellation(input) {
             || !observation.sync.panelText?.includes(messages.syncPanel)) continue;
         render = observation.sync;
       }
-      return { reason: 'webkit-provisional-navigation-poll-cancelled', endpoint,
+      return { reason: 'webkit-provisional-navigation-poll-cancelled', endpoint, ...(prior ? {priorRequestId:prior.id} : {}),
         kind: navigation.kind || 'locale', locale: navigation.locale, requestId: read.id, oldDocument, newDocument, rawError: error,
         lifecycle: { beforeUnload, pageHide, startSequence: navigation.startSequence, endSequence: navigation.endSequence },
         request: read, render, messages };
@@ -458,10 +503,7 @@ export const classifyPortfolioSnapshotPollCancellation = (() => {
       ['getJson', '/js/api/portfolio-api.js'],
       ['synchronizeCurrentProjectJobs', '/js/portfolio/portfolio-analysis-job-synchronizer.js']
     ];
-    if (lines.length !== frames.length + 1 || !frames.every(([name, file], index) => {
-      const start = `    at ${name} (${base.origin}${prefix}${file}:`, line = lines[index + 1];
-      return line.startsWith(start) && /^\d+:\d+\)$/.test(line.slice(start.length));
-    })) return null;
+    if (!nativeFramesMatch(lines, base.origin + prefix, frames)) return null;
     return url;
   }
 

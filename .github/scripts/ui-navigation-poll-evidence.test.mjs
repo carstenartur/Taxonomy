@@ -345,6 +345,62 @@ function reloadFixture(endpoint) {
   return input;
 }
 
+function scopedContextReload() {
+  const input = reloadFixture('/api/context/current');
+  const endpoint = '/api/context/current?workspaceId=workspace-1';
+  const url = new URL(endpoint, baseUrl).href;
+  input.error.message = `/127.0.0.1:8091${endpoint} due to access control checks.`;
+  input.error.stack = [`Fetch API cannot load ${url} due to access control checks.`,
+    `    at attempt (${baseUrl}js/api/taxonomy-api-client.js:555:41)`,
+    `    at fetchAndRender (${baseUrl}js/versioning/taxonomy-context-bar.js:79:58)`,
+    `    at unknown (${baseUrl}js/versioning/taxonomy-context-bar.js:59:31)`].join('\n');
+  const fresh = input.reads[0];
+  Object.assign(fresh, {url, finishedSequence:52, parsedSequence:54});
+  input.reads.push({...structuredClone(fresh), id:'departing-read', documentEpoch:oldEpoch,
+    pageUrl:reloadUrl.replace('revision=16', 'revision=0'), sequence:4, finishedSequence:6, parsedSequence:8});
+  return input;
+}
+
+test('WebKit scoped context reload requires the departing poll and the adopted replacement', () => {
+  const proof = classifyWebKitPollCancellation(scopedContextReload());
+  assert.equal(proof?.requestId, 'fresh-read');
+  assert.equal(proof?.priorRequestId, 'departing-read');
+});
+
+for (const [description, change] of [
+  ['a different context API origin', x => { x.error.stack=x.error.stack.replace('127.0.0.1:8091/js/api','example.test/js/api'); }],
+  ['an unrelated context caller', x => { x.error.stack=x.error.stack.replace('at fetchAndRender ', 'at writeContext '); }],
+  ['no departing read', x => { x.reads.pop(); }],
+  ['an earlier document', x => { x.reads[1].documentEpoch=oldEpoch-1; }],
+  ['a departing read of another branch', x => { x.reads[1].pageUrl=x.reads[1].pageUrl.replace('branch=draft','branch=other'); }],
+  ['a departing read of another repository', x => { x.reads[1].pageUrl=x.reads[1].pageUrl.replace('repository-1','foreign'); }],
+  ['a departing read with the wrong header', x => { x.reads[1].workspaceId='foreign'; }],
+  ['an unfinished departing read', x => { x.reads[1].parsedSequence=11; }],
+  ['a departed context identity mismatch', x => { x.reads[1].payload.contextId='foreign'; }],
+  ['a destination 403', x => { x.reads.push({...x.reads[0],status:403}); }],
+  ['a departing 403 before the reload alongside an earlier success', x => {
+    x.reads.push({...x.reads[1],id:'failed-before-reload',sequence:9,status:403});
+  }],
+  ['a destination bootstrap 403 alongside a pinned success', x => {
+    x.reads.push({...x.reads[0],url:baseUrl+'api/context/current',status:403});
+  }],
+  ['a different error workspace query', x => {
+    x.error.message=x.error.message.replace('workspace-1','foreign');
+    x.error.stack=x.error.stack.replace('workspace-1','foreign');
+  }],
+  ['a mismatched scope key', x => { x.reads[1].pageUrl=x.reads[1].pageUrl.replace('workspaceScopeKey=workspace-1','workspaceScopeKey=other'); }],
+  ['an actual redirect', x => { x.reads[0].redirected=true; }],
+  ['an unpinned destination read', x => { x.reads[0].url=baseUrl+'api/context/current'; }],
+  ['a different destination workspace', x => { x.reads[0].workspaceId='foreign'; }],
+  ['an unadopted response', x => { x.observation.context.state.contextId='foreign'; }],
+  ['a missing DOM write', x => { x.observation.context.writeCount=0; }],
+  ['a destination read parsed after the observation', x => { x.reads[0].parsedSequence=61; }],
+  ['a non-GET departing read', x => { x.reads[1].method='POST'; }]
+]) test(`scoped context reload keeps ${description} blocking`, () => {
+  const input=scopedContextReload(); change(input);
+  assert.equal(classifyWebKitPollCancellation(input), null);
+});
+
 for (const endpoint of reloadEndpoints) {
   test(`${endpoint}: an explicit editor reload requires a fresh matching adopted response`, () => {
     assertReconciled(reloadFixture(endpoint), endpoint);
