@@ -2,18 +2,20 @@
 set -euo pipefail
 
 # This mirror carries Ubuntu's signed archive, including the security suites.
-# Its independent DNS is useful when all ubuntu.com hosts are unavailable.
+# Prioritize the independently resolved, signed mirror: failed Canonical DNS
+# otherwise consumes the whole bounded package-install budget per index.
 fallback='https://mirrors.kernel.org/ubuntu/'
 
 if [[ ${1:-} == --hosted-list ]]; then
     mirrors=$2
     [[ -f "$mirrors" ]] || exit 0
     if grep -Eq '^https://archive\.ubuntu\.com/ubuntu/?[[:space:]]' "$mirrors"; then
-        sed -i -E '/^https:\/\/archive\.ubuntu\.com\/ubuntu\/?[[:space:]]/s/([[:space:]])priority:[0-9]+/\1priority:0/' "$mirrors"
+        sed -i -E '/^https:\/\/archive\.ubuntu\.com\/ubuntu\/?[[:space:]]/s/([[:space:]])priority:[0-9]+/\1priority:10/' "$mirrors"
+        sed -i -E '/^https:\/\/mirrors\.kernel\.org\/ubuntu\/?[[:space:]]/s/([[:space:]])priority:[0-9]+/\1priority:0/' "$mirrors"
         if ! awk -v url="$fallback" '$1 == url { found = 1 } END { exit !found }' "$mirrors"; then
             # The runner's mirror list is newline-delimited.
             if [[ -n $(tail -c 1 "$mirrors") ]]; then printf '\n' >> "$mirrors"; fi
-            printf '%s\tpriority:10\n' "$fallback" >> "$mirrors"
+            printf '%s\tpriority:0\n' "$fallback" >> "$mirrors"
         fi
     fi
     exit 0
@@ -27,8 +29,8 @@ trap 'rm -rf "$config"' EXIT
 chmod 755 "$config"
 mkdir "$config/sources.list.d"
 for service in archive security; do
-    printf 'https://%s.ubuntu.com/ubuntu/\tpriority:0\n%s\tpriority:10\n' \
-        "$service" "$fallback" > "$config/$service.mirrors"
+    printf '%s\tpriority:0\nhttps://%s.ubuntu.com/ubuntu/\tpriority:10\n' \
+        "$fallback" "$service" > "$config/$service.mirrors"
 done
 shopt -s nullglob
 touch "$config/sources.list"
