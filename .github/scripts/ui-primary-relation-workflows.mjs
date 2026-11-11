@@ -1,7 +1,7 @@
 import { navigateArchitectureSubtab } from './ui-role-fixtures.mjs';
 
 const MANUAL_RELATION = {
-  sourceCode: 'CP',
+  sourceCode: 'CR',
   targetCode: 'IP',
   relationType: 'CONSUMES'
 };
@@ -30,14 +30,14 @@ export async function runRelationWorkflows({ page, evidence }) {
   async function exactRelationRow() {
     const rows = page.locator('#relationsTableContainer tbody tr');
     const matching = rows.filter({
-      has: page.locator('td:nth-child(1)', { hasText: /^CP$/ })
+      has: page.locator('td:nth-child(1)', { hasText: /^CR$/ })
     }).filter({
       has: page.locator('td:nth-child(2)', { hasText: /^IP$/ })
     }).filter({
       has: page.locator('td:nth-child(3)', { hasText: /^CONSUMES$/ })
     });
     if (await matching.count() !== 1) {
-      throw new Error(`Expected exactly one CP -> IP CONSUMES row, found ${await matching.count()}`);
+      throw new Error(`Expected exactly one CR -> IP CONSUMES row, found ${await matching.count()}`);
     }
     return matching.first();
   }
@@ -52,7 +52,7 @@ export async function runRelationWorkflows({ page, evidence }) {
         && item.relationType === relation.relationType).length;
     }, MANUAL_RELATION);
     if (count !== expected) {
-      throw new Error(`Expected ${expected} persisted CP -> IP CONSUMES relation(s), found ${count}`);
+      throw new Error(`Expected ${expected} persisted CR -> IP CONSUMES relation(s), found ${count}`);
     }
   }
 
@@ -69,7 +69,7 @@ export async function runRelationWorkflows({ page, evidence }) {
     const responsePromise = page.waitForResponse(response => {
       const pathname = new URL(response.url()).pathname;
       return response.request().method() === 'PUT'
-        && pathname.endsWith('/api/architecture/relations/CP/CONSUMES/IP');
+        && pathname.endsWith('/api/architecture/relations/CR/CONSUMES/IP');
     }, { timeout: 15_000 });
     await page.locator('#createRelationSubmit').click();
     const response = await responsePromise;

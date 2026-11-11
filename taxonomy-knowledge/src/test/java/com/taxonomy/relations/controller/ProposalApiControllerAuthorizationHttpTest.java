@@ -62,6 +62,7 @@ class ProposalApiControllerAuthorizationHttpTest {
     private static final String NEXT = "b".repeat(40);
     private static final RepositoryContext READ = RepositoryContext.centralRead("selected-repo", "selected-branch", "alice");
     private static final RepositoryContext WRITE = RepositoryContext.centralWrite("selected-repo", "selected-branch", "alice");
+    private final RelationProposalService generation = mock(RelationProposalService.class);
     private final RelationProposalRepository proposals = mock(RelationProposalRepository.class);
     private final RepositoryMembershipRepository memberships = mock(RepositoryMembershipRepository.class);
     private final GitAuthoritativeRelationMutationService mutations = mock(GitAuthoritativeRelationMutationService.class);
@@ -79,7 +80,7 @@ class ProposalApiControllerAuthorizationHttpTest {
         when(repositories.getRepository("selected-repo")).thenReturn(selected);
         when(resolver.resolveCurrentRepositoryContext()).thenReturn(READ);
         var reviews = new GitAuthoritativeProposalReviewService(new ProposalReviewStateStore(proposals), mutations);
-        mvc = standaloneSetup(new ProposalApiController(mock(RelationProposalService.class), reviews,
+        mvc = standaloneSetup(new ProposalApiController(generation, reviews,
                 readiness, resolver, repositories, new RepositoryMembershipService(memberships))).build();
     }
 
@@ -114,6 +115,37 @@ class ProposalApiControllerAuthorizationHttpTest {
 
         verifyNoInteractions(proposals, mutations, readiness);
         verify(memberships).findByRepositoryIdAndUsername("selected-repo", "alice");
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {-1, 0, 5})
+    void aReadOnlyMemberCannotRequestGenerationAtAnyLimit(int limit) throws Exception {
+        grant("READER");
+
+        mvc.perform(post("/api/proposals/propose").contentType(MediaType.APPLICATION_JSON)
+                        .content(proposalRequest(limit)))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(generation, proposals, mutations);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"-1,10", "0,10", "5,5", "101,10"})
+    void generationReceivesTheMaintainersResolvedContextAndBoundedLimit(int requested, int expected)
+            throws Exception {
+        grant("MAINTAINER");
+
+        mvc.perform(post("/api/proposals/propose").contentType(MediaType.APPLICATION_JSON)
+                        .content(proposalRequest(requested)))
+                .andExpect(status().isOk());
+
+        verify(generation).proposeRelationsInContext("BP", RelationType.RELATED_TO, expected, WRITE);
+    }
+
+    private static String proposalRequest(int limit) {
+        return """
+                {"sourceCode":"BP","relationType":"RELATED_TO","limit":"%d"}
+                """.formatted(limit);
     }
 
     static Stream<org.junit.jupiter.params.provider.Arguments> permittedRequests() {

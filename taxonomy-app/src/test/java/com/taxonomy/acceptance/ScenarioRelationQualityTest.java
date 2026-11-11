@@ -1,5 +1,6 @@
 package com.taxonomy.acceptance;
 
+import com.taxonomy.model.RelationType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -636,7 +637,7 @@ class ScenarioRelationQualityTest {
             node.put("root", root);
             for (String target : List.of("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA")) {
                 for (var type : com.taxonomy.model.RelationType.values()) {
-                    if (matrix.allowedTargetRoots(root, type).contains(target) || matrix.allowedTargetRoots(target, type).contains(root)) {
+                    if (type != RelationType.RELATED_TO && (matrix.targetDomain(root, type).allows(target) || matrix.targetDomain(target, type).allows(root))) {
                         tasks.addObject().put("sourceId", id).put("targetRoot", target)
                                 .put("state", unresolved.contains(id + "|" + target) ? "UNRESOLVED" : "COMPLETED");
                         break;

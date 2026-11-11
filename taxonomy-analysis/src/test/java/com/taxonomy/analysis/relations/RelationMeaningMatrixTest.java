@@ -27,7 +27,7 @@ class RelationMeaningMatrixTest {
 
     static Stream<Arguments> allowedEndpointFamilies() {
         return Stream.of(RelationType.SUPPORTS, RelationType.USES, RelationType.DEPENDS_ON, RelationType.REALIZES)
-                .flatMap(type -> ROOTS.stream().flatMap(source -> MATRIX.allowedTargetRoots(source, type).stream().sorted()
+                .flatMap(type -> ROOTS.stream().flatMap(source -> MATRIX.targetDomain(source, type).roots().stream().sorted()
                         .flatMap(target -> Stream.of(Direction.values()).flatMap(direction -> Stream.of(Phase.values())
                                 .map(phase -> Arguments.of(type, source, target, direction, phase))))));
     }

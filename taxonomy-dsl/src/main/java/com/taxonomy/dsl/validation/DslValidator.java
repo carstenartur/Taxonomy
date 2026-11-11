@@ -20,67 +20,10 @@ import java.util.*;
  */
 public class DslValidator {
 
-    /** Recognized relation types from the type matrix. */
-    private static final Set<String> VALID_RELATION_TYPES = Set.of(
-            "REALIZES", "SUPPORTS", "CONSUMES", "USES", "FULFILLS",
-            "ASSIGNED_TO", "DEPENDS_ON", "PRODUCES", "COMMUNICATES_WITH",
-            "CONTAINS", "REQUIRES", "RELATED_TO");
-
-    /** Recognized relation statuses. */
-    private static final Set<String> VALID_STATUSES = Set.of(
-            "proposed", "provisional", "accepted", "rejected");
-
-    /**
-     * Type compatibility matrix: relation type → allowed (sourceRoot → targetRoots).
-     * Mirrors {@code RelationCompatibilityMatrix} but usable without Spring.
-     */
-    private static final Map<String, Map<String, Set<String>>> TYPE_MATRIX;
-
-    static {
-        Map<String, Map<String, Set<String>>> m = new LinkedHashMap<>();
-        m.put("REALIZES",          Map.of("CP", Set.of("CR")));
-        m.put("SUPPORTS",          Map.of("CR", Set.of("BP", "BR"),
-                                          "CI", Set.of("BP", "BR"),
-                                          "CO", Set.of("BP"),
-                                          "UA", Set.of("BP")));
-        m.put("CONSUMES",          Map.of("BP", Set.of("IP"),
-                                          "CR", Set.of("IP"),
-                                          "CI", Set.of("IP"),
-                                          "UA", Set.of("IP")));
-        m.put("USES",              Map.of("UA", Set.of("CR", "CI", "CO"),
-                                          "SY", Set.of("SY", "CR"),
-                                          "BP", Set.of("CR", "CI"),
-                                          "BR", Set.of("IP")));
-        m.put("FULFILLS",          Map.of("CI", Set.of("CP"), "CR", Set.of("CP")));
-        m.put("ASSIGNED_TO",       Map.of("BR", Set.of("BP")));
-        m.put("DEPENDS_ON",        Map.of("CR", Set.of("CR", "CI"),
-                                          "CI", Set.of("CR"),
-                                          "CO", Set.of("CR"),
-                                          "SY", Set.of("SY"),
-                                          "CM", Set.of("CM", "CR")));
-        m.put("PRODUCES",          Map.of("BP", Set.of("IP"),
-                                          "CR", Set.of("IP"),
-                                          "CI", Set.of("IP"),
-                                          "UA", Set.of("IP")));
-        m.put("COMMUNICATES_WITH", Map.of("CO", Set.of("CR", "CI", "UA")));
-        m.put("CONTAINS",          Map.of("SY", Set.of("UA", "CM"), "CM", Set.of("CM")));
-        m.put("REQUIRES",          Map.of("CP", Set.of("IP")));
-        // RELATED_TO has no restrictions
-        TYPE_MATRIX = Collections.unmodifiableMap(m);
-    }
-
-    /** Immutable metamodel rules shared by strict semantic command validation and UI schemas. */
-    public static Map<String, Map<String, Set<String>>> relationTypeRules() {
-        return TYPE_MATRIX;
-    }
-
-    public static Set<String> relationTypes() {
-        return VALID_RELATION_TYPES;
-    }
-
-    public static Set<String> relationStatuses() {
-        return VALID_STATUSES;
-    }
+    private static final Set<String> VALID_RELATION_TYPES = RelationMetamodel.relationTypes();
+    private static final Set<String> VALID_STATUSES = Set.of("proposed", "provisional", "accepted", "rejected");
+    public static Set<String> relationTypes() { return RelationMetamodel.relationTypes(); }
+    public static Set<String> relationStatuses() { return VALID_STATUSES; }
 
     /**
      * Validate a canonical architecture model.
@@ -200,11 +143,7 @@ public class DslValidator {
     private void validateTypeCombination(ArchitectureRelation rel,
                                          Map<String, String> elementTypeMap,
                                          DslValidationResult result) {
-        Map<String, Set<String>> rules = TYPE_MATRIX.get(rel.getRelationType());
-        if (rules == null) {
-            return; // No type matrix rule (e.g., RELATED_TO or unknown type)
-        }
-
+        if (!RelationMetamodel.relationTypes().contains(rel.getRelationType())) return;
         String sourceRoot = resolveTaxonomyRootCode(rel.getSourceId(), elementTypeMap);
         String targetRoot = resolveTaxonomyRootCode(rel.getTargetId(), elementTypeMap);
 
@@ -212,12 +151,13 @@ public class DslValidator {
             return; // Can't determine type — skip validation
         }
 
-        Set<String> allowedTargets = rules.get(sourceRoot);
-        if (allowedTargets == null) {
+        var domain = RelationMetamodel.targetDomain(sourceRoot, rel.getRelationType());
+        Set<String> allowedTargets = domain.roots();
+        if (domain.state() == RelationMetamodel.DomainState.FORBIDDEN) {
             result.addWarning("Relation " + rel.getRelationType() + ": source "
                     + rel.getSourceId() + " (root " + sourceRoot
                     + ") is not a valid source type for " + rel.getRelationType());
-        } else if (!allowedTargets.contains(targetRoot)) {
+        } else if (!domain.allows(targetRoot)) {
             result.addWarning("Relation " + rel.getRelationType() + ": target "
                     + rel.getTargetId() + " (root " + targetRoot
                     + ") is not a valid target type; expected one of " + allowedTargets);

@@ -1,0 +1,8 @@
+[
+  ["CP-1023", "CR-1047", "REALIZES"],
+  ["CR-1047", "CI-1002", "DEPENDS_ON"],
+  ["CO-1001", "CI-1002", "COMMUNICATES_WITH"],
+  ["CR-1047", "IP-1659", "PRODUCES"],
+  ["UA-1001", "CO-1001", "USES"],
+  ["BP-1327", "CI-1002", "USES"]
+]

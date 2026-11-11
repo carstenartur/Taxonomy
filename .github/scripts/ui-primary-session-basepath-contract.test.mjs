@@ -137,7 +137,7 @@ test('Primary proposal reload retains provisioning and role gates while backgrou
       return { status: 200, json: { readinessState: 'READY' } };
     }
   });
-  vm.runInContext(proposalSource.replace(/^import .*;\n/m, '').replace(/^export /mg, ''), context);
+  vm.runInContext(proposalSource.replace(/^import .*;\n/gm, '').replace(/^export /mg, ''), context);
 
   await vm.runInContext('ensureWorkspaceProjection', context)(harness.page, assert);
 

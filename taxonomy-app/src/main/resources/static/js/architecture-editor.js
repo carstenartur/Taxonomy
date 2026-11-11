@@ -394,9 +394,58 @@
         el('editorRelationType').value = edge.relationType;
         var relation = view.model.relations.find(function (item) { return relationId(item) === edge.id; });
         el('editorRelationStatus').value = relation && relation.status || 'proposed';
+        renderRelationTargets();
         el('editorRelationType').focus();
         draftBaseline = draftValue();
     }
+    var relationTargets = document.createElement('datalist');
+    relationTargets.id = 'editorLegalRelationTargets';
+    el('editorRelationForm').append(relationTargets);
+    el('editorRelationTarget').setAttribute('list', relationTargets.id);
+
+    function taxonomyRoot(type) {
+        var roots = view.schema.typeRoots || {};
+        return Object.prototype.hasOwnProperty.call(roots, type) ? roots[type]
+            : Object.values(roots).includes(type) ? type : null;
+    }
+    function selectedRelationDomain(type) {
+        var source = selectedElement();
+        var rootType = source && taxonomyRoot(source.type);
+        var declaration = view && view.schema.relationDomains && view.schema.relationDomains[type];
+        return declaration && (declaration.sourceDomains && declaration.sourceDomains[rootType] || declaration.defaultDomain)
+            || {state:'FORBIDDEN', roots:[]};
+    }
+    function legalRelationTargets() {
+        var domain = selectedRelationDomain(el('editorRelationType').value);
+        if (!selectedElement() || domain.state === 'FORBIDDEN') return [];
+        return view.model.elements.filter(function (target) {
+            return domain.state === 'UNRESTRICTED' || domain.state === 'RESTRICTED'
+                && Array.isArray(domain.roots) && domain.roots.includes(taxonomyRoot(target.type));
+        });
+    }
+    function validateRelationTarget() {
+        var target = el('editorRelationTarget');
+        var valid = legalRelationTargets().some(function (element) { return element.id === target.value.trim(); });
+        target.setCustomValidity(valid ? '' : t('editor.relation.invalidTarget'));
+        return valid;
+    }
+    function renderRelationTargets() {
+        relationTargets.replaceChildren();
+        legalRelationTargets().forEach(function (target) { option(relationTargets, target.id, target.title || target.id); });
+        validateRelationTarget();
+    }
+    function renderRelationChoices() {
+        var input = el('editorRelationType'), chosen = input.value;
+        input.replaceChildren();
+        if (selectedElement()) (view.schema.relationTypes || []).filter(function (type) {
+            return ['RESTRICTED','UNRESTRICTED'].includes(selectedRelationDomain(type).state);
+        }).forEach(function (type) { option(input, type); });
+        if (Array.from(input.children).some(function (item) { return item.value === chosen; })) input.value = chosen;
+        renderRelationTargets();
+    }
+    el('editorRelationType').addEventListener('change', renderRelationTargets);
+    el('editorRelationTarget').addEventListener('input', validateRelationTarget);
+
     function renderRelations() {
         var list = el('editorRelations'); list.replaceChildren();
         view.model.relations.filter(function (relation) { return relation.sourceId === selected || relation.targetId === selected; }).slice(0, 50).forEach(function (relation) {
@@ -411,6 +460,7 @@
             .map(function (r) { return { relation: relationId(r), provenance: r.provenance, details: r.extensions }; });
         el('editorEvidence').textContent = JSON.stringify({ taxonomy: item && item.taxonomy, extensions: item && item.extensions,
             evidence: evidence, relations: relationEvidence }, null, 2);
+        renderRelationChoices();
     }
     function renderPackages(preserveDraft) {
         var packages = view.model.packages || [], chosen = el('editorPackage').value,
@@ -587,6 +637,7 @@
     el('editorForm').addEventListener('input', function () { el('editorDraft').hidden = false; pending = null; });
     el('editorRelationForm').addEventListener('submit', function (event) {
         event.preventDefault();
+        if (el('editorRelationFields').disabled || !validateRelationTarget()) { el('editorRelationTarget').reportValidity(); return; }
         var relation = { sourceId: selected, relationType: el('editorRelationType').value, targetId: el('editorRelationTarget').value.trim() };
         var exists = view.model.relations.some(function (item) { return relationId(item) === relationId(relation); });
         stage(Object.assign({ kind: exists ? 'UPDATE_RELATION' : 'CREATE_RELATION', status: el('editorRelationStatus').value }, relation));
