@@ -10,6 +10,13 @@ import java.util.*;
  */
 public class CanonicalArchitectureModel {
 
+    private String catalogueRevision;
+    private String comparisonCatalogueRevision;
+    public String getCatalogueRevision() { return catalogueRevision; }
+    public void setCatalogueRevision(String value) { catalogueRevision = value; }
+    public String getComparisonCatalogueRevision() { return comparisonCatalogueRevision; }
+    public void setComparisonCatalogueRevision(String value) { comparisonCatalogueRevision = value; }
+
     private final List<ArchitecturePackage> packages = new ArrayList<>();
     public List<ArchitecturePackage> getPackages() { return packages; }
 

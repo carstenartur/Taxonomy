@@ -1637,7 +1637,7 @@ The DSL Editor tab in the application provides a full-featured code editing expe
 1. **Syntax highlighting** — DSL keywords (`element`, `relation`, `meta`, `view`), taxonomy codes, relation types, and property names are colour-coded for readability
 2. **Autocompletion** — Context-aware suggestions appear as you type: block keywords, element types, relation types, and taxonomy codes
 3. **Live validation** — Errors and warnings from the server-side validator are displayed inline with red/yellow markers in the gutter
-4. **Load Current** — Export the current architecture state as DSL text
+4. **Load Current** opens the selected architecture, semantic revision or Git checkpoint as project DSL. The source includes explicitly adopted standalone elements, packages, views, mappings, evidence and extensions. **Export full catalogue** downloads the global catalogue in a separate file. Earlier revisions with an unknown catalogue keep that status. **Compare with current catalogue** adds its generation to the draft as a separate comparison. Commit the draft to keep that comparison.
 5. **Edit** — Modify the DSL text directly in the editor
 6. **Validate** — Check the DSL for errors and warnings
 7. **Format** — Reformat DSL to canonical style (Shift+Alt+F)

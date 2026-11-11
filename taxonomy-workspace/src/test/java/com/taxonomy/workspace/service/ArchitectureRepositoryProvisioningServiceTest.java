@@ -48,7 +48,7 @@ class ArchitectureRepositoryProvisioningServiceTest {
     @BeforeEach
     void setUp() {
         service = new ArchitectureRepositoryProvisioningService(
-                systemRepositoryService, membershipService, repositoryFactory);
+                systemRepositoryService, membershipService, repositoryFactory, namespace -> "meta { language: \"taxdsl\"; }\n");
     }
 
     @Test

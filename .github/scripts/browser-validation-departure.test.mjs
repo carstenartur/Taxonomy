@@ -28,7 +28,7 @@ async function scenario(leakAt) {
   const request = { url: () => validationUrl.href, method: () => 'POST', postData: () => document };
   const response = { url: () => validationUrl.href, request: () => request,
     status: () => 200, finished: async () => null };
-  const exported = { url: () => new URL('api/dsl/export', base).href,
+  const exported = { url: () => new URL('api/dsl/project', base).href,
     request: () => ({ url: () => exported.url(), method: () => 'GET' }), status: () => 200,
     finished: async () => null, text: async () => document };
   const emptyValidation = { ...response,
@@ -61,7 +61,7 @@ async function scenario(leakAt) {
       if (++editorVisits === 1) {
         emit();
         deliver(emptyValidation);
-        // Resolve the initial export after the empty editor's validation. The
+        // Resolve the initial project read after the empty editor's validation. The
         // acceptance code must wait for the matching nonempty document instead.
         await new Promise(resolve => setImmediate(resolve));
         deliver(exported);
@@ -81,7 +81,7 @@ async function scenario(leakAt) {
   }
 }
 
-test('only loaded-document validation completes reveal, including a slow initial export', async () => {
+test('only loaded-document validation completes reveal, including a slow initial project read', async () => {
   assert.equal(await scenario(null), 0);
 });
 

@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * {@code /api/git/state?branch=draft} returns null values.
  *
  * <p>This component creates an initial commit on the {@code draft} branch containing
- * the DSL export of the current taxonomy, so that Git-based features (status bar,
+ * an empty project DSL pinned to the retained catalogue generation, so that Git-based features (status bar,
  * version history, variants, compare) work correctly from the start.
  *
  * <p>In synchronous init mode (default), the taxonomy is already loaded by the time
@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * event can precede catalogue completion; {@link InitializationReadyEvent} retries the
  * same idempotent bootstrap immediately after the catalogue becomes authoritative.
  * Workers only consume exact-source snapshots, so their readiness never authorizes
- * exporting the global catalogue into the shared repository.
+ * creating the coordinator's initial project checkpoint.
  *
  * <p>Controlled by the {@code taxonomy.git.bootstrap} property (default: {@code true}).
  * A JVM-wide static guard ensures that only the <em>first</em> Spring context in a
@@ -113,15 +113,15 @@ public class GitRepositoryBootstrap {
                 return;
             }
 
-            String dsl = exportService.exportAll("default");
+            String dsl = exportService.newProject("default");
             String commitId = gitRepository.commitDsl(
                     "draft",
                     dsl,
                     "system",
-                    "Initial taxonomy materialization");
+                    "Initialize project with catalogue generation");
 
             log.info(
-                    "Bootstrapped 'draft' branch with initial taxonomy DSL "
+                    "Bootstrapped 'draft' branch with initial project DSL "
                             + "(commit={}, {} chars)",
                     commitId.substring(0, 7),
                     dsl.length());

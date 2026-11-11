@@ -107,6 +107,10 @@ public final class TaxDslSemanticMerger {
                 language != null ? language : MetaAst.LANGUAGE_ID,
                 version != null ? version : MetaAst.CURRENT_VERSION,
                 namespace != null ? namespace : "default",
+                mergeScalar("meta", "catalogueRevision", value(base, MetaAst::catalogueRevision),
+                        value(ours, MetaAst::catalogueRevision), value(theirs, MetaAst::catalogueRevision), conflicts),
+                mergeScalar("meta", "comparisonCatalogueRevision", value(base, MetaAst::comparisonCatalogueRevision),
+                        value(ours, MetaAst::comparisonCatalogueRevision), value(theirs, MetaAst::comparisonCatalogueRevision), conflicts),
                 GENERATED);
     }
 

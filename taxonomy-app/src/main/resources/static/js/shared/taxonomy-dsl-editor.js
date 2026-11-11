@@ -73,6 +73,12 @@
         if (materializeBtn)    materializeBtn.addEventListener('click', materializeDsl);
         if (materializeIncrBtn) materializeIncrBtn.addEventListener('click', materializeIncremental);
         if (loadCurrentBtn)    loadCurrentBtn.addEventListener('click', loadCurrent);
+        document.getElementById('dslCompareCatalogueBtn')?.addEventListener('click', function () {
+            return readEditorText(options => window.TaxonomyDslApi.compareCatalogue(getEditorContent(), options), {
+                loading:t('dsl.loading'), success:(_, response) => t('dsl.comparison.preview', response.headers.get('X-Taxonomy-Comparison-Catalogue')),
+                failure:'dsl.load.failed'
+            }, true, false);
+        });
         if (newBranchBtn)      newBranchBtn.addEventListener('click', createBranch);
         if (mergeBtn)          mergeBtn.addEventListener('click', mergeBranch);
         if (branchSelect)      branchSelect.addEventListener('change', onBranchChange);
@@ -131,11 +137,41 @@
     });
     window.addEventListener('pageshow', function () { textSuspended = false; });
 
+    function selectedProject() {
+        var runtime = window.__TaxonomyAnalysisSessionContext?.runtime;
+        var route = window.TaxonomyArchitectureWorkflow?.getScope() || {};
+        var navigation = window.TaxonomyContextBar?.getCurrentContext();
+        var lifecycle = window.TaxonomyArchitectureLifecycle;
+        var selected = lifecycle?.selectedContext?.();
+        var visible = window.TaxonomyAppChrome?.getContext()?.architecture;
+        var scope = Object.assign({}, route);
+        if (scope.workspaceId == null) scope.workspaceId = runtime?.workspaceId;
+        if (navigation?.mode === 'READ_ONLY' && navigation.commitId) {
+            scope.branch = navigation.branch;
+            scope.commit = navigation.commitId;
+        } else if (selected && (!visible || (visible.repositoryId === selected.repositoryId
+                && visible.branch === selected.branch && visible.workspaceScopeKey === selected.workspaceScopeKey))) {
+            scope.repositoryId = selected.repositoryId;
+            scope.workspaceId = selected.workspaceScopeKey === '__shared__' ? '' : selected.workspaceScopeKey;
+            scope.branch = selected.branch;
+            if (lifecycle.state()?.source === 'GIT_CHECKPOINT') scope.commit = selected.commit;
+            else scope.revision = selected.revision;
+        } else if (visible?.repositoryId && visible.branch) {
+            scope.repositoryId = visible.repositoryId;
+            scope.workspaceId = visible.workspaceScopeKey === '__shared__' ? '' : visible.workspaceScopeKey;
+            scope.branch = visible.branch;
+            scope.commit = visible.commit;
+        } else {
+            scope.branch = navigation?.branch || scope.branch;
+            scope.commit = navigation?.commitId;
+        }
+        return scope;
+    }
     function editorScope() {
         var runtime = window.__TaxonomyAnalysisSessionContext?.runtime;
         var context = window.TaxonomyContextBar?.getCurrentContext();
         return JSON.stringify([runtime?.workspaceId, runtime?.analysisGeneration,
-            context?.branch, context?.commitId, branchSelect?.value]);
+            context?.branch, context?.commitId, branchSelect?.value, selectedProject()]);
     }
 
     function sessionInitialization() {
@@ -216,7 +252,7 @@
                 showStatus(t('dsl.reading.newerDraft'), 'info'); return;
             }
             setEditorContent(text, preserve);
-            showStatus(labels.success(text), 'success');
+            showStatus(labels.success(text, response), 'success');
         } catch (error) {
             if (error?.code === 'ABORTED') return;
             if (current()) showStatus(t(labels.failure, error.message), 'error');
@@ -226,8 +262,12 @@
     }
 
     function loadCurrent() {
-        return readEditorText(options => window.TaxonomyDslApi.exportText(options), {
-            loading: t('dsl.loading'), success: text => t('dsl.loaded', text.length), failure: 'dsl.load.failed'
+        return readEditorText(options => window.TaxonomyDslApi.projectText(selectedProject(), options), {
+            loading: t('dsl.loading'), success: (text, response) => {
+                var generation = response.headers.get('X-Taxonomy-Catalogue-Revision');
+                return generation ? t('dsl.loaded.catalogue', text.length, generation)
+                    : t('dsl.loaded.unknownCatalogue', text.length);
+            }, failure: 'dsl.load.failed'
         }, false, false);
     }
 

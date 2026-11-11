@@ -144,7 +144,7 @@ public final class ApiAccessPolicy {
         rules.add(rule(null, "/oslc/**", Access.DENIED, null, "OSLC is read-only."));
 
         add(rules, "POST", INTEGRATION_EXPORT, "/api/scores/export", "/api/architecture/editor.admbw.qea");
-        add(rules, "POST", ARCHITECTURE_READ, "/api/dsl/parse", "/api/dsl/validate", "/api/dsl/format", "/api/graph/**", "/api/scores/**");
+        add(rules, "POST", ARCHITECTURE_READ, "/api/dsl/parse", "/api/dsl/validate", "/api/dsl/format", "/api/dsl/project/compare-current", "/api/graph/**", "/api/scores/**");
         for (String path : List.of("/api/diagram/visio", "/api/diagram/archimate", "/api/diagram/mermaid",
                 "/api/diagram/structurizr", "/api/diagram/export/*")) {
             rules.add(new Rule("POST", path, Access.PERMISSION, ANALYSIS_RUN, RESOURCE_CHECKS,
@@ -158,7 +158,7 @@ public final class ApiAccessPolicy {
         // Downloads must precede both saved-analysis reads and the generic architecture read fallback.
         add(rules, "GET", INTEGRATION_EXPORT, "/api/architecture/editor.svg", "/api/architecture/editor.pdf",
                 "/api/architecture/editor.admbw.json",
-                "/api/dsl/export", "/api/projects/git/export", "/api/projects/*/reports/*",
+                "/api/dsl/export", "/api/dsl/project/catalogue-source", "/api/projects/git/export", "/api/projects/*/reports/*",
                 "/api/projects/*/snapshots/*/architecture-report/docx",
                 "/api/projects/*/snapshots/*/decision-report/*", "/api/projects/*/architecture-workbench/*.svg",
                 "/api/projects/*/architecture-workbench/*.pdf", "/api/projects/*/architecture-workbench/*.archimate.xml",

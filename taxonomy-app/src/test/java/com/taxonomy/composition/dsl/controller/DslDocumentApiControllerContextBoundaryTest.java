@@ -30,6 +30,9 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class DslDocumentApiControllerContextBoundaryTest {
+    private final com.taxonomy.composition.dsl.service.ProjectDslSource projects =
+            org.mockito.Mockito.mock(com.taxonomy.composition.dsl.service.ProjectDslSource.class);
+
 
     @Mock
     private DslOperationsFacade dslOperationsFacade;
@@ -49,7 +52,7 @@ class DslDocumentApiControllerContextBoundaryTest {
         controller = new DslDocumentApiController(
                 documents, dslOperationsFacade,
                 workspaceResolver,
-                new DslReadWorkspaceContextResolver(workspaceResolver, repositoryStateService));
+                new DslReadWorkspaceContextResolver(workspaceResolver, repositoryStateService), projects);
     }
 
     @Test

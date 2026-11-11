@@ -1,10 +1,15 @@
 package com.taxonomy.composition.dsl.controller;
 
+import org.springframework.http.CacheControl;
+import com.taxonomy.composition.dsl.service.ProjectDslSource;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.mapper.AstToModelMapper;
+import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import com.taxonomy.dsl.diff.DiffSummary;
 import com.taxonomy.dsl.diff.ModelDiff;
 import com.taxonomy.dsl.diff.SemanticDiffDescriber;
 import com.taxonomy.dsl.export.DslMaterializeService;
-import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.workspace.storage.DslCommit;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.architecture.model.ArchitectureDslDocument;
@@ -14,6 +19,9 @@ import com.taxonomy.versioning.service.DslOperationsFacade;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +39,7 @@ import java.util.*;
 @Tag(name = "Architecture DSL")
 public class DslDocumentApiController {
     private static final Logger log = LoggerFactory.getLogger(DslDocumentApiController.class);
+    private final ProjectDslSource projects;
     private final DslDocumentOperationsFacade documents;
     private final DslOperationsFacade dslOps;
     private final WorkspaceResolver workspaceResolver;
@@ -38,7 +47,9 @@ public class DslDocumentApiController {
 
     public DslDocumentApiController(DslDocumentOperationsFacade documents, DslOperationsFacade dslOps,
                                     WorkspaceResolver workspaceResolver,
-                                    DslReadWorkspaceContextResolver readContextResolver) {
+                                    DslReadWorkspaceContextResolver readContextResolver,
+                                    ProjectDslSource projects) {
+        this.projects = projects;
         this.documents = documents;
         this.dslOps = dslOps;
         this.workspaceResolver = workspaceResolver;
@@ -48,33 +59,59 @@ public class DslDocumentApiController {
     // ── Export & current state ────────────────────────────────────────
 
     @GetMapping("/export")
-    @Operation(summary = "Export current architecture as DSL text",
-            description = "Serializes the current materialized architecture as plain-text DSL using the requested namespace. This is a current-state export, not an export of an arbitrary historical Git commit; it does not create a commit.")
+    @Operation(summary = "Export the entire current official catalogue as DSL text",
+            description = "Serializes the official catalogue's concrete nodes, hierarchy, relationships and recorded generation as DSL. Project source is read from /api/dsl/project.")
     public ResponseEntity<String> exportCurrentArchitecture(
             @RequestParam(defaultValue = "default") String namespace) {
         String dsl = documents.exportAll(namespace);
         return ResponseEntity.ok()
-                .contentType(MediaType.TEXT_PLAIN)
+                .contentType(new MediaType("text", "plain", StandardCharsets.UTF_8))
                 .body(dsl);
     }
 
     @GetMapping("/current")
-    @Operation(summary = "Get current architecture state as structured JSON",
-            description = "Returns the current materialized architecture's elements, relations, requirements, mappings, views and evidence, together with the resolved workspace viewContext. Reading this representation does not commit or materialize changes.")
-    public ResponseEntity<Map<String, Object>> getCurrentArchitecture() {
-        CanonicalArchitectureModel model = documents.buildCanonicalModel();
-        String username = workspaceResolver.resolveCurrentUsername();
-        WorkspaceContext workspaceContext = readContextResolver.resolve(username);
-        String branch = dslOps.resolveWorkspaceBranch(workspaceContext.username());
-        Map<String, Object> result = new LinkedHashMap<>();
+    @Operation(summary = "Get selected architecture state as structured JSON",
+            description = "Returns collections and provenance parsed from the selected project's saved DSL. An optional commit selects a reachable Git checkpoint; revision selects a retained workspace revision.")
+    @ApiResponse(responseCode = "200", description = "Structured architecture and provenance of the selected project revision", useReturnTypeSchema = true)
+    @ApiResponse(responseCode = "400", description = "Invalid project revision selection", content = @Content)
+    @ApiResponse(responseCode = "404", description = "The selected revision could not be read", content = @Content)
+    @ApiResponse(responseCode = "409", description = "The selected workspace context has changed or the revision cannot be opened in it", content = @Content)
+    public ResponseEntity<Map<String, Object>> getCurrentArchitecture(
+            @Parameter(description = "Expected repository ID of the authenticated workspace") @RequestParam(required = false) String repositoryId,
+            @Parameter(description = "Expected branch of the authenticated workspace") @RequestParam(required = false) String branch,
+            @Parameter(description = "Reachable Git checkpoint. Omit when selecting a semantic revision.") @RequestParam(required = false) String commit,
+            @Parameter(description = "Retained semantic revision. Omit when selecting a Git checkpoint.") @RequestParam(required = false) Long revision) throws IOException {
+        var document = projects.read(repositoryId, branch, commit, revision);
+        var ast = new TaxDslParser().parse(document.dsl());
+        var model = new AstToModelMapper().map(ast);
+        var source = document.context();
+        var timestamp = document.versions().stream().filter(item -> item.commitId().equals(source.commit()))
+                .map(DslCommit::timestamp).findFirst().orElse(null);
+        var result = new LinkedHashMap<String, Object>();
         result.put("elements", model.getElements());
         result.put("relations", model.getRelations());
         result.put("requirements", model.getRequirements());
         result.put("mappings", model.getMappings());
         result.put("views", model.getViews());
         result.put("evidence", model.getEvidence());
-        result.put("viewContext", dslOps.getViewContext(workspaceContext.username(), branch, workspaceContext));
-        return ResponseEntity.ok(result);
+        result.put("packages", model.getPackages());
+        result.put("sources", model.getSources());
+        result.put("sourceVersions", model.getSourceVersions());
+        result.put("sourceFragments", model.getSourceFragments());
+        result.put("requirementSourceLinks", model.getRequirementSourceLinks());
+        result.put("catalogueRevision", model.getCatalogueRevision());
+        result.put("comparisonCatalogueRevision", model.getComparisonCatalogueRevision());
+        result.put("context", source);
+        var workspace = new WorkspaceContext(source.actor(), "__shared__".equals(source.workspaceScopeKey())
+                ? null : source.workspaceScopeKey(), source.branch(), source.repositoryId());
+        var indexed = dslOps.getViewContext(source.actor(), source.branch(), workspace);
+        boolean differentRevision = !Objects.equals(indexed.basedOnCommit(), source.commit())
+                || ("WORKSPACE_REVISION".equals(document.source()) && source.revision() != document.checkpointRevision());
+        boolean provisional = model.getRelations().stream().anyMatch(r ->
+                "provisional".equals(r.getStatus()) || "proposed".equals(r.getStatus()));
+        result.put("viewContext", new ViewContext(source.commit(), source.branch(), timestamp, provisional,
+                differentRevision || indexed.projectionStale(), differentRevision || indexed.indexStale()));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result);
     }
 
     // ── Materialization ──────────────────────────────────────────────

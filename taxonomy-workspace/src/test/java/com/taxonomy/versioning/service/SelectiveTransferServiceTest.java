@@ -241,7 +241,8 @@ class SelectiveTransferServiceTest {
         var workspace = factory.openWorkspaceRepository(PERSONAL.workspaceId());
         workspace.withSignatureService(SigningTestKeys.createService(signingKeys), "workspace:personal-workspace");
         String sourceCommit = workspace.commitDsl("source", DSL_SOURCE, "tester", "source");
-        String targetCommit = workspace.commitDsl("target", DSL_TARGET, "tester", "target");
+        String project = "# retained reference\nopaque extra {\n  x-extra: true;\n}\n";
+        String targetCommit = workspace.commitDsl("target", DSL_TARGET + project, "tester", "target");
         TransferSelection selection = new TransferSelection(
                 sourceCommit,
                 targetCommit,
@@ -256,6 +257,7 @@ class SelectiveTransferServiceTest {
         assertEquals(List.of(sourceCommit, targetCommit), workspace.getProvenance(commit).sources().stream()
                 .map(com.taxonomy.workspace.storage.CommitProvenance.Source::commitId).toList());
         String committedDsl = workspace.getDslAtHead("target");
+        assertTrue(committedDsl.contains(project));
         assertTrue(committedDsl.contains("CP-1024"));
         assertTrue(committedDsl.contains("CP-1023 REALIZES CR-1047"));
         assertTrue(committedDsl.contains("Secure Voice"));

@@ -127,6 +127,12 @@ public class TaxDslSerializer {
         if (meta.namespace() != null) {
             sb.append("  namespace: \"").append(escapeForQuoting(meta.namespace())).append("\";\n");
         }
+        if (meta.catalogueRevision() != null) {
+            sb.append("  catalogueRevision: \"").append(escapeForQuoting(meta.catalogueRevision())).append("\";\n");
+        }
+        if (meta.comparisonCatalogueRevision() != null) {
+            sb.append("  comparisonCatalogueRevision: \"").append(escapeForQuoting(meta.comparisonCatalogueRevision())).append("\";\n");
+        }
         sb.append("}\n");
     }
 

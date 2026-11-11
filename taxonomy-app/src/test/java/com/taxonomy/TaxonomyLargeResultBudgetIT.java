@@ -156,6 +156,15 @@ class TaxonomyLargeResultBudgetIT {
                     """);
             wait.until(browser -> Boolean.TRUE.equals(execute(
                     "return Boolean(window.dslCmView?.state.doc.length)")));
+            assertThat(number(execute("""
+                    return performance.getEntriesByType('resource').filter(entry =>
+                      new URL(entry.name).pathname === '/api/dsl/project').length;
+                    """))).as("Load Current reads the selected project").isPositive();
+            assertThat(number(execute("""
+                    return performance.getEntriesByType('resource').filter(entry =>
+                      new URL(entry.name).pathname === '/api/dsl/export').length;
+                    """))).as("Opening a project does not export the global catalogue").isZero();
+            assertThat(driver.findElement(By.cssSelector("a[download='taxonomy-catalogue.taxdsl']")).isDisplayed()).isTrue();
             execute("window.__taxonomyBudgetEditor = window.dslCmView");
             WebElement editor = driver.findElement(
                     By.cssSelector("#dslEditorContainer .cm-content"));

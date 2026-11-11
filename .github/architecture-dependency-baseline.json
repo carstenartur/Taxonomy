@@ -676,6 +676,20 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.dsl.controller",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.provenance",
+      "classDependencyCount": 6
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.dsl.controller",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.editor",
+      "classDependencyCount": 4
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.dsl.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.versioning.controller",
       "classDependencyCount": 1
@@ -740,8 +754,22 @@
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.dsl.service",
       "toContext": "workspace",
+      "toPackage": "com.taxonomy.editor",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.dsl.service",
+      "toContext": "workspace",
       "toPackage": "com.taxonomy.versioning.service",
       "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.dsl.service",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 2
     },
     {
       "fromContext": "app-composition",
@@ -1202,6 +1230,13 @@
       "fromContext": "dsl-adapters",
       "fromPackage": "com.taxonomy.dsl.export",
       "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.provenance",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "dsl-adapters",
+      "fromPackage": "com.taxonomy.dsl.export",
+      "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.repository",
       "classDependencyCount": 2
     },
@@ -1238,7 +1273,7 @@
       "fromPackage": "com.taxonomy.dsl.export",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 5
+      "classDependencyCount": 6
     },
     {
       "fromContext": "interop",

@@ -7,6 +7,8 @@ import com.taxonomy.editor.WorkspaceCollaborationService;
 import com.taxonomy.interop.controller.IntegrationController;
 import com.taxonomy.analysis.recovery.AnalysisContinuationController;
 import com.taxonomy.composition.analysis.artemis.AnalysisDispatchAdminController;
+import com.taxonomy.composition.dsl.controller.DslDocumentApiController;
+import com.taxonomy.composition.dsl.controller.ProjectDslController;
 import com.taxonomy.composition.reformulation.ReformulationAdoptionController;
 import com.taxonomy.export.controller.ExportApiController;
 import com.taxonomy.shared.config.OpenApiConfig;
@@ -62,6 +64,10 @@ public final class OpenApiContractCases {
         checkDocument(current);
         checkAccessDocumentation(current, false);
         verifyContractMutations(current);
+        var projection = documentForFixture(ProjectDocumentFixture.class);
+        var projectionErrors = new ArrayList<String>();
+        checkProjectRead(projection, "/api/dsl/current", projectionErrors);
+        require(projectionErrors.isEmpty(), String.join("\n", projectionErrors));
         for (String setting : List.of("--taxonomy.security.change-password-enabled=false",
                 "--spring.profiles.active=keycloak")) {
             var configured = document(setting);
@@ -100,7 +106,11 @@ public final class OpenApiContractCases {
     }
 
     private static JsonNode document(String... settings) throws Exception {
-        var app = new SpringApplication(ApiFixture.class);
+        return documentForFixture(ApiFixture.class, settings);
+    }
+
+    static JsonNode documentForFixture(Class<?> fixture, String... settings) throws Exception {
+        var app = new SpringApplication(fixture);
         app.setWebApplicationType(WebApplicationType.SERVLET);
         app.setRegisterShutdownHook(false);
         app.setAdditionalProfiles("openapi-contract-fixture");
@@ -181,6 +191,7 @@ public final class OpenApiContractCases {
                 }
             }
         }
+        checkProjectCatalogueContract(document, errors);
         checkAccountContract(document, errors);
         checkDatabaseSetupContract(document, errors);
         checkSystemInformationContract(document, errors);
@@ -301,6 +312,38 @@ public final class OpenApiContractCases {
             for (var property : node.properties()) checkLocalReferences(document, property.getValue(), errors);
         } else if (node.isArray()) {
             for (var child : node) checkLocalReferences(document, child, errors);
+        }
+    }
+
+    private static void checkProjectCatalogueContract(JsonNode document, List<String> errors) {
+        for (String path : List.of("/api/dsl/project", "/api/dsl/project/catalogues", "/api/dsl/project/catalogue-source")) {
+            checkProjectRead(document, path, errors);
+        }
+        var download = operation(document, "/api/dsl/project/catalogue-source", "get", errors);
+        var input = parameter(download, "input", "query");
+        var kinds = input.path("schema").path("enum");
+        check(input.path("required").asBoolean() && kinds.size() == 3
+                        && contains(kinds, "workbook") && contains(kinds, "overlay") && contains(kinds, "relations"),
+                "Catalogue download must require a workbook, overlay or relations input", errors);
+        var comparison = parameter(download, "comparison", "query");
+        check(!comparison.path("required").asBoolean() && comparison.path("schema").path("default").isBoolean()
+                        && !comparison.path("schema").path("default").asBoolean(),
+                "Catalogue download must default to the original generation", errors);
+        check(download.path("responses").path("200").path("content").has("application/octet-stream"),
+                "Catalogue download must describe a binary file", errors);
+        var preview = operation(document, "/api/dsl/project/compare-current", "post", errors);
+        check(preview.path("responses").has("409"), "Catalogue comparison must document an unavailable generation", errors);
+    }
+
+    private static void checkProjectRead(JsonNode document, String path, List<String> errors) {
+        var get = operation(document, path, "get", errors);
+        for (String selector : List.of("repositoryId", "branch", "commit", "revision")) {
+            var field = parameter(get, selector, "query");
+            check(!field.path("description").asText("").isBlank() && !field.path("required").asBoolean(),
+                    path + ": missing optional project selector " + selector, errors);
+        }
+        for (String status : List.of("200", "400", "404", "409")) {
+            check(get.path("responses").has(status), path + ": missing response " + status, errors);
         }
     }
 
@@ -480,6 +523,15 @@ public final class OpenApiContractCases {
         System.out.println("OpenAPI generated-contract checks passed");
     }
 
+    @Configuration(proxyBeanMethods = false)
+    @org.springframework.context.annotation.Profile("openapi-contract-fixture")
+    @Import(ApiFixture.class)
+    static class ProjectDocumentFixture {
+        @Bean DslDocumentApiController projectDocumentController() {
+            return new DslDocumentApiController(null, null, null, null, null);
+        }
+    }
+
     @org.springframework.context.annotation.Profile("openapi-contract-fixture")
     @Configuration(proxyBeanMethods = false)
     @ImportAutoConfiguration({
@@ -526,6 +578,9 @@ public final class OpenApiContractCases {
         }
         @Bean AnalysisProgressController progressController() {
             return new AnalysisProgressController(null, null);
+        }
+        @Bean ProjectDslController projectDslController() {
+            return new ProjectDslController(null, null);
         }
         @Bean ExportApiController exportController() {
             return new ExportApiController(null, null);

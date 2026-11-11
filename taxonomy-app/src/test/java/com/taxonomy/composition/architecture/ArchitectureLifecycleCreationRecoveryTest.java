@@ -233,7 +233,7 @@ class ArchitectureLifecycleCreationRecoveryTest {
         var resolver = mock(WorkspaceResolver.class);
         when(resolver.resolveCurrentUsername()).thenReturn(user);
         return new ArchitectureLifecycleCreationController(selectedCatalog,
-                new ArchitectureRepositoryProvisioningService(selectedCatalog, membership, selectedGit), membership, resolver, workspaces);
+                new ArchitectureRepositoryProvisioningService(selectedCatalog, membership, selectedGit, namespace -> "meta { language: \"taxdsl\"; }\n"), membership, resolver, workspaces);
     }
 
     private SystemRepository failed(ArchitectureLifecycleCreationController.Create request, String owner) {

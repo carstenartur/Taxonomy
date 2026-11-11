@@ -47,6 +47,21 @@ class TaxDslExportClosureTest {
         assertEquals(1, blocks.values().stream().filter(b -> "relation".equals(b.getKind())).count());
     }
 
+    @Test void emptySeedAndExplicitFullExportKeepDistinctObjectSetsAndTheSameGeneration() {
+        var standalone = node("IP-standalone", "IP", 2);
+        standalone.setParentCode("IP-parent");
+        standalone.setSortOrder(13);
+        var exporter = exporter(List.of(standalone), List.of());
+        var parser = new com.taxonomy.dsl.parser.TaxDslParser();
+        var seed = parser.parse(exporter.newProject("project"));
+        var catalogue = parser.parse(exporter.exportAll("catalogue"));
+        assertTrue(seed.blocksOfKind("element").isEmpty());
+        assertEquals(seed.getMeta().catalogueRevision(), catalogue.getMeta().catalogueRevision());
+        var single = catalogue.blocksOfKind("element").getFirst();
+        assertEquals("IP-parent", single.property("x-catalogue-parent"));
+        assertEquals("13", single.property("x-catalogue-order"));
+    }
+
     @Test void missingConcreteEndpointFailsInsteadOfBeingSilentlyDropped() {
         var process = node("BP-1017", "BP", 1);
         var missing = node("IP-1116", "IP", 2);
@@ -76,7 +91,10 @@ class TaxDslExportClosureTest {
         var nodeRepository = mock(TaxonomyNodeRepository.class);
         var relationRepository = mock(TaxonomyRelationRepository.class);
         when(nodeRepository.findAll()).thenReturn(nodes); when(relationRepository.findAll()).thenReturn(relations);
-        return new TaxDslExportService(nodeRepository, relationRepository);
+        var journal = mock(com.taxonomy.catalog.provenance.CatalogueSourceJournal.class);
+        when(journal.lockForCapture()).thenReturn(new com.taxonomy.catalog.provenance.CatalogueSourceJournal.Snapshot(
+                "016cd9ec-0cd7-49b2-a750-6accccc35fad", java.time.Instant.EPOCH, null, null, null));
+        return new TaxDslExportService(nodeRepository, relationRepository, journal);
     }
     public static void main(String[] args) throws Exception {
         int passed = 0, failed = 0;

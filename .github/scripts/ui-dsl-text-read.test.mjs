@@ -237,3 +237,17 @@ test('failed context resolution reports an error without an initial export',asyn
  const h=startupHarness();h.resolveWorkspace();h.resolveContext(null);await settle();
  assert.equal(h.calls.length,0);assert.equal(h.status.textContent,'dsl.load.failed');
 });
+
+test('project load pins a historical architecture while the independent catalogue export stays available', async () => {
+ const h=harness(), commit='a'.repeat(40);
+ h.window.TaxonomyContextBar={getCurrentContext:()=>({branch:'draft',commitId:commit,mode:'READ_ONLY'})};
+ h.window.TaxonomyArchitectureWorkflow={getScope:()=>({repositoryId:'historical-project',workspaceId:'qa-original'})};
+ h.window.__qaLoadCurrent();
+ const url=new URL(h.calls[0].url,'https://example.test');
+ assert.equal(url.pathname,'/api/dsl/project');
+ assert.equal(url.searchParams.get('commit'),commit);
+ assert.equal(url.searchParams.get('repositoryId'),'historical-project');
+ assert.equal(url.searchParams.get('workspaceId'),'qa-original');
+ h.calls[0].resolve(response('project with a standalone element')); await settle();
+ assert.equal(h.view.state.doc.toString(),'project with a standalone element');
+});

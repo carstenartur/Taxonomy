@@ -142,13 +142,20 @@ public class CatalogueSourceJournal {
             if (em.createQuery("select count(r) from CatalogueSourceRevision r", Long.class).getSingleResult() != 0) throw invalid();
             return null;
         }
+        return findRevision(state.currentRevision).orElseThrow(CatalogueSourceJournal::invalid);
+    }
+
+    /** Resolve a recorded model's generation without consulting today's catalogue pointer. */
+    @Transactional(readOnly = true)
+    public Optional<Snapshot> findRevision(String id) {
+        if (id == null || !id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))
+            return Optional.empty();
+        var revision = em.find(CatalogueSourceRevision.class, id);
+        if (revision == null) return Optional.empty();
         try {
-            if (!UUID.fromString(state.currentRevision).toString().equals(state.currentRevision)) throw invalid();
-            var revision = em.find(CatalogueSourceRevision.class, state.currentRevision);
-            if (revision == null) throw invalid();
-            return new Snapshot(revision.id, Instant.parse(revision.createdAt),
+            return Optional.of(new Snapshot(revision.id, Instant.parse(revision.createdAt),
                     reference(revision.workbookUse, revision.workbook), reference(revision.overlayUse, revision.overlay),
-                    reference(revision.relationsUse, revision.relations));
+                    reference(revision.relationsUse, revision.relations)));
         } catch (IllegalArgumentException | NullPointerException | DateTimeException failure) { throw invalid(); }
     }
 

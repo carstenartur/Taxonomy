@@ -56,6 +56,23 @@ public final class ArchitectureSemanticPatch {
         return result;
     }
 
+    /** Copy selected blocks into a target while retaining its header and unrelated source, including unknown blocks. */
+    public static String copyBlocks(String target, String source, java.util.Set<String> ids) {
+        var incoming = index(source);
+        var existing = new ArrayList<>(index(target).entrySet());
+        var pending = new java.util.LinkedHashSet<>(ids);
+        String result = target;
+        for (int i = existing.size() - 1; i >= 0; i--) {
+            var item = existing.get(i);
+            var replacement = incoming.get(item.getKey());
+            if (replacement != null && pending.remove(item.getKey()))
+                result = replace(result, item.getValue(), replacement);
+        }
+        for (var entry : incoming.entrySet())
+            if (pending.contains(entry.getKey())) result = replace(result, null, entry.getValue());
+        return result;
+    }
+
     public static String inverse(String current, String original, List<BlockChange> changes) {
         Map<String, BlockAst> currentBlocks = index(current);
         for (BlockChange change : changes) {
