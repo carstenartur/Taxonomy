@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
@@ -90,6 +91,35 @@ class PortfolioRequirementReviewIT {
         fixture.idle();
         assertThat(fixture.element("newVersionError").isDisplayed()).isTrue();
         assertThat(page.driver().switchTo().activeElement()).isEqualTo(fixture.element("newVersionError"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"en,Analyze selected version", "de,Ausgewählte Version analysieren"})
+    void analysisActionNamesAndSubmitsTheSelectedVersion(String locale, String label) {
+        var fixture = new PortfolioRequirementFixture(page);
+        fixture.open(locale);
+        fixture.click("versions-tab");
+        var current = By.cssSelector("#versionList [data-version-id='12']");
+        assertThat(page.driver().findElement(current).getDomAttribute("aria-current")).isEqualTo("true");
+        fixture.click(By.cssSelector("#versionList [data-version-id='11']"));
+        assertThat(page.driver().findElement(current).getDomAttribute("aria-current")).isNull();
+        assertThat(fixture.element("reanalyzeRequirement").getAccessibleName()).isEqualTo(label);
+
+        int initialReads = page.requests().size();
+        fixture.click("reanalyzeRequirement");
+        fixture.wait.until(driver -> page.requests().stream().skip(initialReads)
+                .anyMatch(request -> request.path().equals(REQUIREMENT + "/versions")));
+        fixture.idle();
+        assertThat(page.driver().findElement(By.cssSelector("#versionList [aria-current='true']"))
+                .getDomAttribute("data-version-id")).isEqualTo("11");
+
+        page.route("POST", REQUIREMENT + "/analyses", request -> json(202, Map.of("id", "second-job")));
+        fixture.click("reanalyzeRequirement");
+        fixture.idle();
+        var submittedVersions = page.requests().stream().filter(request -> request.method().equals("POST")
+                && request.path().equals(REQUIREMENT + "/analyses"))
+                .map(request -> JSON.readTree(request.body()).path("requirementVersionId").asInt()).toList();
+        assertThat(submittedVersions).containsExactly(11, 11);
     }
 
     @Test void versionFeedbackIsInsideTheActualModalFocusTrap() {
@@ -216,6 +246,8 @@ class PortfolioRequirementReviewIT {
         fixture.submitVersion();
         fixture.wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("newVersionModal")));
         refreshed(fixture, PortfolioRequirementFixture.DRAFT.getFirst());
+        assertThat(page.driver().findElement(By.cssSelector("#versionList [aria-current='true']"))
+                .getDomAttribute("data-version-id")).isEqualTo("13");
         try (var pending = startBackground(fixture)) {
             fixture.updateBaseline("Subsequently refreshed baseline", "Refreshed requirement");
             pending.release();

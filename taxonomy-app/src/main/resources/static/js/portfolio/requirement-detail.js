@@ -35,7 +35,7 @@
             noJudgments: 'No obligations were evaluated; this is not a completeness claim.',
             SATISFIED: 'Satisfied', VIOLATED: 'Violated', INCONCLUSIVE: 'Inconclusive',
             observedRequired: 'Observed / required', evidenceScope: 'Recorded evidence scope',
-            detail: 'Requirement detail', analyze: 'Analyze current version',
+            detail: 'Requirement detail',
             newVersion: 'New version', open: 'Open decisions', textSource: 'Text & source',
             versions: 'Versions', analyses: 'Analyses', architecture: 'Taxonomy & architecture',
             decisions: 'Decisions', solutions: 'Solutions & products', currentText: 'Current requirement text',
@@ -99,7 +99,7 @@
             noJudgments: 'Keine Pflichten wurden bewertet; dies ist keine Vollständigkeitsbehauptung.',
             SATISFIED: 'Erfüllt', VIOLATED: 'Verletzt', INCONCLUSIVE: 'Ungeklärt',
             observedRequired: 'Beobachtet / erforderlich', evidenceScope: 'Gespeicherter Evidenzbereich',
-            detail: 'Anforderungsdetails', analyze: 'Aktuelle Version analysieren',
+            detail: 'Anforderungsdetails',
             newVersion: 'Neue Version', open: 'Offene Entscheidungen', textSource: 'Text & Quelle',
             versions: 'Versionen', analyses: 'Analysen', architecture: 'Taxonomie & Architektur',
             decisions: 'Entscheidungen', solutions: 'Lösungen & Produkte', currentText: 'Aktueller Anforderungstext',
@@ -218,7 +218,6 @@
         document.querySelector('.skip-link').textContent = locale === 'de'
             ? 'Zu den Anforderungsdetails springen' : 'Skip to requirement detail';
         document.getElementById('matrixLink').textContent = t('matrices');
-        document.getElementById('reanalyzeRequirement').textContent = t('analyze');
         document.getElementById('newVersionButton').textContent = t('newVersion');
         document.getElementById('tasksHeading').textContent = t('open');
         setTabText('text-tab', t('textSource'));
@@ -268,7 +267,7 @@
         });
     }
 
-    async function loadAll(preserveVersionForm = false) {
+    async function loadAll(preserveVersionForm = false, {preserveVersionSelection = false} = {}) {
         const generation = ++state.readGeneration;
         state.readError = null;
         setBusy(true);
@@ -283,7 +282,9 @@
             ]);
             if (generation !== state.readGeneration) return;
             Object.assign(state, { project, requirement, versions, snapshots, portfolio, account });
-            state.selectedVersion = requirement.currentVersion || versions[0] || null;
+            const retainedVersion = preserveVersionSelection
+                && versions.find(version => version.id === state.selectedVersion?.id);
+            state.selectedVersion = retainedVersion || requirement.currentVersion || versions[0] || null;
             // Check after the read: the user may have opened or edited the form
             // while the background request was in flight. Avoid even resetting
             // the value of an active textarea, which would also move its caret.
@@ -1095,7 +1096,7 @@
                 const job = await api().getAnalysisJob(projectId, jobId);
                 document.getElementById('requirementLive').textContent = humanize(job.status);
                 if (['SUCCESS', 'PARTIAL', 'FAILED', 'CANCELLED'].includes(job.status)) {
-                    await loadAll();
+                    await loadAll(false, {preserveVersionSelection: true});
                     if (job.items && job.items[0] && job.items[0].snapshotId) {
                         await selectSnapshot(job.items[0].snapshotId);
                     }

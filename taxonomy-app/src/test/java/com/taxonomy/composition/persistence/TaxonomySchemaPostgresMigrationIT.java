@@ -263,7 +263,8 @@ class TaxonomySchemaPostgresMigrationIT {
                 where id = 'job-before-reason-length'
                 """);
 
-        installApplicationAtVersion(dataSource, "47");
+        TaxonomySchemaMigrationConfig.migrateApplicationSchema(
+                Flyway.configure().dataSource(dataSource).load().getConfiguration());
 
         assertAnalysisReasonLengthSchema(dataSource);
         assertThat(singleString(dataSource, "select analysis_language from req_analysis_job where id = 'job-before-reason-length'")).isNull();
@@ -277,7 +278,11 @@ class TaxonomySchemaPostgresMigrationIT {
                     .isInstanceOfSatisfying(SQLException.class, exception -> assertThat(exception.getSQLState()).isEqualTo("23514"))
                     .hasMessageContaining("ck_req_analysis_language");
         assertThat(singleString(dataSource, """
-                select (to_jsonb(job) - 'analysis_reason_length' - 'analysis_language')::text from req_analysis_job job
+                select admitted_model_json from req_analysis_job where id = 'job-before-reason-length'
+                """)).isNull();
+        assertThat(singleString(dataSource, """
+                select (to_jsonb(job) - 'analysis_reason_length' - 'analysis_language' - 'admitted_model_json')::text
+                from req_analysis_job job
                 where id = 'job-before-reason-length'
                 """)).isEqualTo(legacyJob);
         assertThat(singleString(dataSource, """
