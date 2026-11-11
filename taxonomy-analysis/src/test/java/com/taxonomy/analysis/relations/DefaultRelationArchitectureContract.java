@@ -59,10 +59,10 @@ public final class DefaultRelationArchitectureContract {
     public static void testRuntimeAndDslBothAdmitApplicationReadsButNotReversedReads() {
         var rules = new RelationCompatibilityMatrix();
         check(rules.isCompatible("UA", "IP", RelationType.CONSUMES), "Runtime admits application reads");
-        check(DslValidator.relationTypeRules().get("CONSUMES").getOrDefault("UA", Set.of()).contains("IP"),
+        check(com.taxonomy.dsl.validation.RelationMetamodel.isCompatible("UA", "IP", "CONSUMES"),
                 "Canonical DSL must not reject a relationship that analysis can produce");
         check(!rules.isCompatible("IP", "UA", RelationType.CONSUMES), "Do not reverse access semantics");
-        check(!DslValidator.relationTypeRules().get("CONSUMES").getOrDefault("IP", Set.of()).contains("UA"),
+        check(!com.taxonomy.dsl.validation.RelationMetamodel.isCompatible("IP", "UA", "CONSUMES"),
                 "The DSL keeps the same negative direction contract");
     }
 

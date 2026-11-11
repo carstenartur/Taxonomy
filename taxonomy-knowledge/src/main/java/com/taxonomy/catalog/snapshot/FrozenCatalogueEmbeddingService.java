@@ -77,7 +77,7 @@ public class FrozenCatalogueEmbeddingService {
                     root.nodes().forEach(node -> texts.put(node.code(),
                             NodeEmbeddingText.buildEnrichedText(nodes.get(node.code()))));
                     return root.withEmbeddings(new RootEmbeddingSnapshot(RootEmbeddingSnapshot.SCHEMA_VERSION,
-                            source, root.rootCode(), before.authoritativeCommitId(), RootEmbeddingSnapshot.TEXT_VERSION,
+                            source, root.rootCode(), before.commitId(), RootEmbeddingSnapshot.TEXT_VERSION,
                             model, texts));
                 }).toList();
         if (!before.equals(requireExact(relations.readIdentitySnapshot(context), source))) {
@@ -89,7 +89,7 @@ public class FrozenCatalogueEmbeddingService {
     private static IdentitySnapshot requireExact(IdentitySnapshot snapshot, CatalogueSourceIdentity source) {
         if (snapshot == null || snapshot.readModel() != ReadModel.PROJECTION
                 || snapshot.readinessState() != ReadinessState.READY || source.sourceCommit() == null
-                || !source.sourceCommit().equals(snapshot.authoritativeCommitId())) {
+                || !source.sourceCommit().equals(snapshot.commitId())) {
             throw new IllegalStateException("Frozen embeddings require a complete relation projection at the exact source commit");
         }
         return snapshot;

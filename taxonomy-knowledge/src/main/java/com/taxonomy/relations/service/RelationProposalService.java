@@ -97,6 +97,10 @@ public class RelationProposalService {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Source node not found: " + sourceNodeCode));
 
+        if (com.taxonomy.dsl.validation.RelationMetamodel.targetDomain(source.getTaxonomyRoot(),
+                relationType == null ? null : relationType.name()).state()
+                == com.taxonomy.dsl.validation.RelationMetamodel.DomainState.FORBIDDEN || limit <= 0) return List.of();
+
         log.info("Proposing {} relations for node '{}' "
                         + "(repository={}, workspace={}, branch={})",
                 relationType,
@@ -196,7 +200,7 @@ public class RelationProposalService {
                 tenant.repositoryId(),
                 tenant.workspaceId(),
                 tenant.branch(),
-                existingRelations.authoritativeCommitId());
+                existingRelations.commitId());
         return proposals;
     }
 
@@ -294,6 +298,11 @@ public class RelationProposalService {
         TaxonomyNode target = nodeRepository.findByCode(targetCode)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Target node not found: " + targetCode));
+
+        if (!com.taxonomy.dsl.validation.RelationMetamodel.isCompatible(source.getTaxonomyRoot(), target.getTaxonomyRoot(),
+                relationType == null ? null : relationType.name())) {
+            throw new IllegalArgumentException("Relation hypothesis has incompatible endpoint types");
+        }
 
         if (proposalRepository.existsInRepositoryWorkspace(
                 tenant.repositoryId(),

@@ -465,11 +465,11 @@ public final class RequirementRelationSearch {
     for (SourceAssessment assessment : sources) for (Contribution contribution : assessment.contributions()) {
         List<Intent> intents = new ArrayList<>();
         for (RelationType type : RelationType.values()) {
-            Set<String> allowed = rules.allowedTargetRoots(contribution.source().root(), type);
-            List<Node> outgoing = roots.stream().filter(n -> allowed.contains(n.root())).toList();
+            if (!RelationDiscoveryPolicy.automatic(type)) continue;
+            var allowed = rules.targetDomain(contribution.source().root(), type);
+            List<Node> outgoing = roots.stream().filter(n -> allowed.allows(n.root())).toList();
             for (Node root : outgoing) intents.add(new Intent(contribution, type.name(), Direction.OUTGOING, List.of(root)));
-            List<Node> incoming = roots.stream().filter(n -> rules.allowedTargetRoots(n.root(), type)
-                    .contains(contribution.source().root())).toList();
+            List<Node> incoming = roots.stream().filter(n -> rules.targetDomain(n.root(), type).allows(contribution.source().root())).toList();
             for (Node root : incoming) intents.add(new Intent(contribution, type.name(), Direction.INCOMING, List.of(root)));
         }
         if (intents.isEmpty()) warnings.add("NO_STRUCTURAL_ROUTE " + contribution.source().id()
@@ -490,8 +490,9 @@ public final class RequirementRelationSearch {
 
     private boolean hasTargetRoutes(List<Node> sources, List<Node> roots) {
         for (Node source : sources) for (Node root : roots) for (RelationType type : RelationType.values()) {
-            if (rules.allowedTargetRoots(source.root(), type).contains(root.root())
-                    || rules.allowedTargetRoots(root.root(), type).contains(source.root())) return true;
+            if (!RelationDiscoveryPolicy.automatic(type)) continue;
+            if (rules.targetDomain(source.root(), type).allows(root.root())
+                    || rules.targetDomain(root.root(), type).allows(source.root())) return true;
         }
         return false;
     }

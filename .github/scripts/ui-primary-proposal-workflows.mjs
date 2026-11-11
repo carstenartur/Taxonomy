@@ -1,4 +1,5 @@
 import { csrfJson, navigateArchitectureSubtab } from './ui-role-fixtures.mjs';
+import { createPendingProposalFixtures } from './ui-proposal-fixtures.mjs';
 
 const PROJECTION_ENDPOINT = '/api/architecture/relations/projection';
 
@@ -103,25 +104,7 @@ async function ensureWorkspaceProjection(page, assert) {
 async function createPendingProposals(page, assert) {
   await ensureWorkspaceProjection(page, assert);
 
-  const candidates = [
-    ['CP', 'BR', 'SUPPORTS'], ['BP', 'UA', 'DEPENDS_ON'],
-    ['CI', 'CO', 'COMMUNICATES_WITH'], ['CR', 'IP', 'PRODUCES'],
-    ['UA', 'CO', 'USES'], ['BP', 'CI', 'REALIZES']
-  ];
-  const ids = [];
-  const attempts = [];
-  for (const [sourceCode, targetCode, relationType] of candidates) {
-    const response = await csrfJson(page, '/api/proposals/from-hypothesis', {
-      body: { sourceCode, targetCode, relationType, confidence: 0.73,
-        rationale: `Primary workflow ${sourceCode}-${targetCode}-${relationType}` }
-    });
-    attempts.push(`${sourceCode}-${targetCode}-${relationType}: ${response.status}`);
-    if (response.status === 200 && response.json?.id) ids.push(response.json.id);
-    if (ids.length >= 4) break;
-  }
-  assert(ids.length >= 4,
-    `Unable to create four independent proposals; created ${ids.length}; ${attempts.join(', ')}`);
-  return ids;
+  return createPendingProposalFixtures(body => csrfJson(page, '/api/proposals/from-hypothesis', { body }), assert);
 }
 
 async function loadPending(page) {

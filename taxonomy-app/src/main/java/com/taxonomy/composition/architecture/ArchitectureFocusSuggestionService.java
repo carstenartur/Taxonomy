@@ -191,9 +191,8 @@ public class ArchitectureFocusSuggestionService {
     }
     private static void add(List<Triple> result, ArchitectureElement from, ArchitectureElement to,
                             String type, int rank, Set<String> existing) {
-        var rules = DslValidator.relationTypeRules().get(type);
-        if (rules != null && !rules.getOrDefault(TaxonomyRootTypes.rootFor(from.getType()), Set.of())
-                .contains(TaxonomyRootTypes.rootFor(to.getType()))) return;
+        if (!com.taxonomy.dsl.validation.RelationMetamodel.isCompatible(TaxonomyRootTypes.rootFor(from.getType()),
+                TaxonomyRootTypes.rootFor(to.getType()), type)) return;
         var triple = new Triple(from.getId(), to.getId(), type, rank, List.of(excerpt(from), excerpt(to)));
         if (!existing.contains(triple.key())) result.add(triple);
     }

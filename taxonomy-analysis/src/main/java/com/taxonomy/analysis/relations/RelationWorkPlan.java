@@ -42,9 +42,9 @@ final class RelationWorkPlan implements RelationSearchEngine.Observer {
         this.sources = sources.size(); this.maximum = maximum; this.publish = publish;
         sources.forEach(source -> sourceRoots.put(source.id(), source.root()));
         for (Node source : sources) for (Node root : roots) {
-            boolean compatible = Arrays.stream(RelationType.values()).anyMatch(type ->
-                    rules.allowedTargetRoots(source.root(), type).contains(root.root())
-                    || rules.allowedTargetRoots(root.root(), type).contains(source.root()));
+            boolean compatible = Arrays.stream(RelationType.values()).filter(RelationDiscoveryPolicy::automatic).anyMatch(type ->
+                    rules.targetDomain(source.root(), type).allows(root.root())
+                    || rules.targetDomain(root.root(), type).allows(source.root()));
             Pair pair = new Pair(source.id(), root.root());
             if (compatible && !work.containsKey(pair)) {
                 Counts counts = countsByRoot.computeIfAbsent(root.root(), unused -> new Counts());

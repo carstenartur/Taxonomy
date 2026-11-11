@@ -81,6 +81,7 @@
 .github/scripts/ui-primary-import-workflows.test.mjs
 .github/scripts/ui-primary-evidence.test.mjs
 .github/scripts/ui-primary-session-basepath-contract.test.mjs
+.github/scripts/ui-proposal-fixtures.test.mjs
 .github/scripts/ui-qa-polish.test.mjs
 .github/scripts/ui-role-fixtures.test.mjs
 .github/scripts/ui-role-state-http-failure-policy.test.mjs

@@ -461,11 +461,9 @@ public final class ArchitectureDslCommands {
         if (!DslValidator.relationTypes().contains(relation.relationType())) throw problem("UNKNOWN_RELATION_TYPE", "relationType", "Unknown relation type");
         String sourceType = elementType(require(blocks, "element:" + relation.sourceId()));
         String targetType = elementType(require(blocks, "element:" + relation.targetId()));
-        Map<String, Set<String>> rules = DslValidator.relationTypeRules().get(relation.relationType());
         String sourceRoot = TaxonomyRootTypes.rootFor(sourceType);
         String targetRoot = TaxonomyRootTypes.rootFor(targetType);
-        if (rules != null && (sourceRoot == null || targetRoot == null
-                || !rules.getOrDefault(sourceRoot, Set.of()).contains(targetRoot))) {
+        if (!com.taxonomy.dsl.validation.RelationMetamodel.isCompatible(sourceRoot, targetRoot, relation.relationType())) {
             throw problem("INCOMPATIBLE_RELATION", "relationType", "Relation direction or endpoint types are incompatible");
         }
     }

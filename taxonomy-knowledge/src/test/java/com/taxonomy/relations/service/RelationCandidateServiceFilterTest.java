@@ -28,7 +28,7 @@ class RelationCandidateServiceFilterTest {
         var second = dto("CP-2", "CP");
         when(search.hybridSearch("Source Detailed description", 2))
                 .thenReturn(List.of(dto("BP-1", "BP"), dto("WRONG", "IP"), first, second));
-        when(matrix.allowedTargetRoots("BP", RelationType.SUPPORTS)).thenReturn(Set.of("CP"));
+        when(matrix.targetDomain("BP", RelationType.SUPPORTS)).thenReturn(new com.taxonomy.dsl.validation.RelationMetamodel.TargetDomain(com.taxonomy.dsl.validation.RelationMetamodel.DomainState.RESTRICTED, Set.of("CP")));
         assertThat(service.findCandidates(source, RelationType.SUPPORTS, 1)).containsExactly(first);
     }
 
@@ -38,7 +38,7 @@ class RelationCandidateServiceFilterTest {
     void absentDescriptionDoesNotPolluteQueryAndUnrestrictedRootsAllowOtherTaxonomies(String description) {
         var target = dto("IP-1", "IP");
         when(search.hybridSearch("Source", 4)).thenReturn(List.of(dto("BP-1", "BP"), target));
-        when(matrix.allowedTargetRoots("BP", RelationType.RELATED_TO)).thenReturn(Set.of());
+        when(matrix.targetDomain("BP", RelationType.RELATED_TO)).thenReturn(new com.taxonomy.dsl.validation.RelationMetamodel.TargetDomain(com.taxonomy.dsl.validation.RelationMetamodel.DomainState.UNRESTRICTED, Set.of()));
         assertThat(service.findCandidates(source(description), RelationType.RELATED_TO, 2)).containsExactly(target);
         verify(search).hybridSearch("Source", 4);
     }
