@@ -10,7 +10,7 @@
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <taxonomy.sdk.version>${project.version}</taxonomy.sdk.version>
-        <jacoco.version>0.8.15</jacoco.version>
+        <jacoco.version>0.8.16</jacoco.version>
     </properties>
     <dependencies>
         <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-domain</artifactId><version>${taxonomy.sdk.version}</version><scope>provided</scope>

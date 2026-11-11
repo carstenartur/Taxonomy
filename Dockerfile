@@ -8,9 +8,8 @@ WORKDIR /workspace
 # The Maven Wrapper validates the ZIP distribution. The minimal Maven builder
 # image does not provide unzip, and mvnw would otherwise silently switch to the
 # tar.gz archive while retaining the ZIP checksum.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends unzip \
-    && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=bind,source=deploy/container/apt/ubuntu-archive.sh,target=/tmp/ubuntu-archive.sh,readonly \
+    bash /tmp/ubuntu-archive.sh unzip
 
 # The checked-in wrapper is the single Maven authority for contributors, CI and
 # container builds. The builder image supplies only Java and bootstrap utilities.
@@ -100,9 +99,8 @@ FROM otel/autoinstrumentation-java:2.28.1@sha256:41b92978e61d13d4f32c6eb20c6ae78
 # This stage is independent of the application build, so unchanged model bytes
 # remain cacheable across application releases. The default target does not use it.
 FROM eclipse-temurin:25-jre-jammy@sha256:f7f4c9bc54b8c1b734ddf49e056b4d158c08a6a234a7604a4b08c36b0c5ad68c AS onnx-model
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=bind,source=deploy/container/apt/ubuntu-archive.sh,target=/tmp/ubuntu-archive.sh,readonly \
+    bash /tmp/ubuntu-archive.sh curl ca-certificates
 COPY .github/scripts/download-embedding-model.sh /usr/local/bin/download-embedding-model.sh
 COPY deploy/container/onnx/ /opt/taxonomy/models/multilingual-minilm/
 RUN MODEL_PROFILE=MULTILINGUAL_MINILM_L12 \
@@ -136,9 +134,8 @@ ARG TAXONOMY_UID=10001
 ARG TAXONOMY_GID=10001
 # curl is used only by the container-native healthcheck. The application itself
 # remains reachable exclusively through the reverse proxy in production.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl libssl3 openssl \
-    && rm -rf /var/lib/apt/lists/* \
+RUN --mount=type=bind,source=deploy/container/apt/ubuntu-archive.sh,target=/tmp/ubuntu-archive.sh,readonly \
+    bash /tmp/ubuntu-archive.sh curl libssl3 openssl \
     && groupadd --gid "${TAXONOMY_GID}" taxonomy \
     && useradd --uid "${TAXONOMY_UID}" --gid "${TAXONOMY_GID}" \
          --no-create-home --home-dir /app --shell /usr/sbin/nologin taxonomy

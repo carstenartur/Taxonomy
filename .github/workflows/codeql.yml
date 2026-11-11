@@ -57,7 +57,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Java 25
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           java-version: '25'
           distribution: temurin
@@ -73,7 +73,7 @@ jobs:
             .mvn/dependency-cache-epoch
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           languages: java-kotlin
           build-mode: manual
@@ -101,7 +101,7 @@ jobs:
           cp "$tooling_jar" "$RUNNER_TEMP/taxonomy-tooling.jar"
 
       - name: Analyze Java to local SARIF
-        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: /language:java-kotlin
           upload: false
@@ -146,7 +146,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Java 25
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           java-version: '25'
           distribution: temurin
@@ -176,14 +176,14 @@ jobs:
           cp "$tooling_jar" "$RUNNER_TEMP/taxonomy-tooling.jar"
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           languages: javascript-typescript
           build-mode: none
           queries: security-extended,security-and-quality
 
       - name: Analyze JavaScript to local SARIF
-        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: /language:javascript-typescript
           upload: false

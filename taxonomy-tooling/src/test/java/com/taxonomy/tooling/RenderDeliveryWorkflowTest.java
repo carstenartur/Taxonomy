@@ -109,7 +109,7 @@ class RenderDeliveryWorkflowTest {
       end = next.find() ? next.start() : workflow.length();
       assertThat(workflow.substring(start, end))
           .contains(
-              "actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad",
+              "actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78",
               "java-version: '25'",
               "ref: ${{ github.event.workflow_run.head_sha }}");
     }

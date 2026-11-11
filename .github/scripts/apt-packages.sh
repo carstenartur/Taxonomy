@@ -11,9 +11,9 @@ prefer_hosted_apt_mirror() {
     if [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted ]]; then
         local mirrors="${TAXONOMY_APT_MIRROR_LIST:-/etc/apt/apt-mirrors.txt}"
         if [[ -f "$mirrors" ]]; then
-            sudo sed -i -E \
-                '/^https:\/\/archive\.ubuntu\.com\/ubuntu\/?[[:space:]]/s/([[:space:]])priority:[0-9]+/\1priority:0/' \
-                "$mirrors"
+            local helper
+            helper="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../../deploy/container/apt/ubuntu-archive.sh"
+            sudo bash "$helper" --hosted-list "$mirrors"
         fi
     fi
 }
