@@ -31,6 +31,12 @@ class RelationMetamodelRegressionTest {
         assertThat(service.findCandidates(source, RelationType.REALIZES, 5)).isEmpty();
         verifyNoInteractions(search);
     }
+    @Test void unspecifiedRelationTypeCannotGrantPermission() {
+        var matrix = new RelationCompatibilityMatrix();
+        assertThat(matrix.targetDomain("BP", null).state())
+                .isEqualTo(com.taxonomy.dsl.validation.RelationMetamodel.DomainState.FORBIDDEN);
+        assertThat(matrix.isCompatible("BP", "IP", null)).isFalse();
+    }
     @Test void relatedToRemainsUnrestricted() {
         var search = mock(HybridSearchService.class);
         var target = new TaxonomyNodeDto(); target.setCode("fixture-bp"); target.setTaxonomyRoot("BP");

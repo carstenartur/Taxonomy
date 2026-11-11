@@ -2191,7 +2191,16 @@ class ScreenshotGeneratorIT {
                 // Selenium's real file upload invokes the production importer and its HTTP validation.
                 js("window.__screenshotPreviousImportScores = window.TaxonomyState.currentRawScores;");
                 driver.findElement(By.id("importJsonFile")).sendKeys(savedFile.toAbsolutePath().toString());
-                wait(30).until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript("""
+                wait(30).withMessage(() -> "Imported score readiness (no score values): " + js("""
+                        const s = window.TaxonomyState;
+                        return JSON.stringify({
+                            rawScoresReplaced: s.currentRawScores !== window.__screenshotPreviousImportScores,
+                            analysisStatus: s.lastAnalysisStatus,
+                            communicationState: s.analysisCoverage?.nodes?.CO?.state,
+                            currentHasCO: Object.prototype.hasOwnProperty.call(s.currentScores || {}, 'CO'),
+                            rawHasCO: Object.prototype.hasOwnProperty.call(s.currentRawScores || {}, 'CO')
+                        });
+                        """)).until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript("""
                         const state = window.TaxonomyState;
                         return state.currentRawScores !== window.__screenshotPreviousImportScores
                             && state.lastAnalysisStatus === 'PARTIAL'

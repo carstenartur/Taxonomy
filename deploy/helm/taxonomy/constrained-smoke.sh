@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Preserve the failing command's line/status when a shell-only guard exits silently.
+trap 'status=$?; printf "::error::Constrained smoke failed at line %s (exit %s)\\n" "$LINENO" "$status" >&2' ERR
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 CHART_DIR="${ROOT_DIR}/deploy/helm/taxonomy"
