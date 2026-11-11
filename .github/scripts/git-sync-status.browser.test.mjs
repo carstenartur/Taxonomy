@@ -109,7 +109,26 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
             JSON.stringify({browser:'chromium', nativeEngineCancellationReproduced:false, headers, observed, proofs, pageErrors}, null, 2) + '\n');
         assert.deepEqual(pageErrors, [], 'Actual renderer and script errors remain blocking');
         ledger.reconcile(proofs);
-        assert.deepEqual(errors, []);
+        // A failed cancellation proof must expose the original browser/HTTP
+        // evidence, not merely say that an artificial WebKit error remained.
+        // Keep the strict ledger assertion: never silently waive an error.
+        const diagnosis = errors.length ? JSON.stringify({
+            lifecycle: observed.events.filter(event =>
+                ['beforeunload', 'pagehide', 'poll-page-error', 'document-start'].includes(event.type)
+                || event.type.includes('navigation')).map(event => ({
+                    type:event.type, sequence:event.sequence, epoch:event.documentEpoch,
+                    url:event.url, pageUrl:event.pageUrl, message:event.message})),
+            requests: observed.reads.map(read => ({
+                id:read.id, url:read.url, epoch:read.documentEpoch, pageUrl:read.pageUrl,
+                workspaceId:read.workspaceId, sequence:read.sequence, status:read.status,
+                finished:read.finished, jsonParsed:read.jsonParsed, failed:read.failed})),
+            navigation: observed.navigations.map(item => ({
+                completed:item.completed, startSequence:item.startSequence, endSequence:item.endSequence,
+                oldDocument:item.oldDocument, newDocument:item.newDocument,
+                adoption:item.observation})),
+            pageErrors, reconciledCount:proofs.length
+        }, null, 2) : '';
+        assert.deepEqual(errors, [], 'Full native lifecycle and adoption evidence for an unreconciled cancellation: ' + diagnosis);
         assert.deepEqual(reconciled.map(proof => proof.request.payload), [git, current]);
     } finally { await context.close(); }
 });
