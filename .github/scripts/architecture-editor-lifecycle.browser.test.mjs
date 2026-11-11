@@ -164,6 +164,7 @@ async function fixture(standaloneUrl=null){
         }};
         history.replaceState=(_state,_title,url)=>navigation.push({kind:'replace',url:String(url)});history.pushState=(_state,_title,url)=>navigation.push({kind:'push',url:String(url)});
     });
+    await page.addScriptTag({path:path.join(resources,'static/js/architecture-brief.js')});
     await page.addScriptTag({path:path.join(resources,'static/js/architecture-editor.js')});
     return page;
 }
@@ -213,6 +214,25 @@ test('embedded editor loads only when activated and retains an unaccepted form a
         assert.equal(await page.locator('#editorTitle').inputValue(),'Unaccepted design draft');
         assert.equal(await page.evaluate(()=>loaded.length),1,'Same-source return must retain the mounted form');
     }finally{await page.close();}
+});
+test('unsaved architecture objective participates in working-editor navigation protection', async () => {
+    const page = await fixture();
+    try {
+        const opened = await page.evaluate(async () => {
+            window.editor = TaxonomyArchitectureEditor.mount(document.getElementById('architectureWorkingSource'));
+            return editor.activate({kind:'working', repositoryId:'repo', workspaceScopeKey:'private-a', branch:'draft/a'});
+        });
+        assert.equal(opened, true);
+        await page.locator('#editorBriefFields-objective').fill('Decision still being drafted');
+        page.once('dialog', dialog => dialog.dismiss());
+        assert.equal(await page.evaluate(() => editor.hasDraft()), true);
+        const mayLeave = await page.evaluate(() => editor.canLeave({kind:'working', repositoryId:'repo',
+            workspaceScopeKey:'private-b', branch:'draft/b'}, {retain:false}));
+        assert.equal(mayLeave, false);
+        assert.equal(await page.locator('#editorBriefFields-objective').inputValue(), 'Decision still being drafted');
+    } finally {
+        await page.close();
+    }
 });
 test('a dirty editor refuses changing the exact source when discard is declined',async()=>{
     const page=await fixture();try{
@@ -464,4 +484,61 @@ test('history replay replaces the selected element without adding history and ca
         assert.equal(await page.locator('#editorRelationTarget').inputValue(),'two');
         assert.equal(await page.evaluate(()=>editor.hasDraft()),false,'Selecting existing relation values is not an unaccepted edit');
     }finally{await page.close();}
+});
+
+test('architecture brief previews model-scoped values and drops an unsaved reference on workspace change', async () => {
+    const page = await browser.newPage();
+    try {
+        const template = await readFile(path.join(resources, 'templates/architecture-editor.html'), 'utf8');
+        await page.route('http://localhost/**', route => route.fulfill({contentType: 'text/html', body: '<main></main>'}));
+        await page.goto('http://localhost/editor');
+        await page.evaluate(html => {
+            const source = new DOMParser().parseFromString(html, 'text/html').getElementById('editorBrief');
+            document.querySelector('main').append(document.importNode(source, true));
+        }, template);
+        await page.addScriptTag({path: path.join(resources, 'static/js/architecture-brief.js')});
+        await page.evaluate(() => {
+            window.intents = [];
+            window.brief = window.TaxonomyArchitectureBrief.create({t: key => key,
+                stage: (intent, reason) => window.intents.push({intent, reason: reason.value})});
+            window.show = (workspace, revision, present) => window.brief.render({
+                document: {context: {repositoryId: 'repository', workspaceScopeKey: workspace, branch: 'draft', revision}},
+                schema: {relationDomains: {USES: {}, DEPENDS_ON: {}}},
+                architectureBrief: {present, version: present ? '1' : null, fields: present ? {objective: 'Registry', context: 'european'} : {}, references: []}
+            }, true);
+            window.show('A', 1, false);
+            window.brief.setEnabled(true);
+        });
+        assert.equal(await page.locator('#editorBriefReferenceSave').isDisabled(), true);
+        await page.locator('#editorBriefFields-objective').fill('Registry');
+        await page.locator('#editorBriefFields-stakeholders').fill('Municipal services');
+        await page.locator('#editorBriefFields-stage').selectOption('target');
+        await page.locator('#editorBriefReason').fill('Agree the commission');
+        await page.locator('#editorBriefSave').click();
+        assert.deepEqual(await page.evaluate(() => window.intents[0]), {intent: {kind: 'SET_ARCHITECTURE_BRIEF',
+            properties: {objective: 'Registry', stakeholders: 'Municipal services', stage: 'target'}}, reason: 'Agree the commission'});
+        await page.evaluate(() => window.show('A', 2, true));
+        assert.deepEqual(await page.locator('#editorBriefSources option').evaluateAll(items => items.map(item => item.value)),
+            ['European Interoperability Reference Architecture (EIRA)']);
+        await page.locator('#editorBriefReferenceFields-identifier').fill('Local decision');
+        await page.locator('#editorBriefReferenceFields-edition').fill('2026');
+        await page.locator('#editorBriefReferenceFields-section').fill('§ 4');
+        await page.locator('#editorBriefReferenceFields-role').selectOption('binding');
+        await page.locator('#editorBriefReferenceFields-scope').selectOption('architecture');
+        await page.locator('#editorBriefReferenceFields-rule').selectOption('exclude-relation-v1');
+        await page.locator('#editorBriefReferenceFields-relation').selectOption('USES');
+        await page.locator('#editorBriefReferenceReason').fill('Record section 4');
+        await page.locator('#editorBriefReferenceSave').click();
+        const assignment = await page.evaluate(() => window.intents[1]);
+        assert.match(assignment.intent.id, /^ref-/);
+        assert.deepEqual(assignment.intent.properties, {identifier: 'Local decision', edition: '2026', section: '§ 4',
+            role: 'binding', scope: 'architecture', rule: 'exclude-relation-v1', relation: 'USES'});
+        await page.evaluate(() => window.show('B', 2, true));
+        assert.equal(await page.locator('#editorBriefReferenceFields-identifier').inputValue(), '');
+        assert.equal(await page.locator('#editorBriefReferenceReason').inputValue(), '');
+        await page.evaluate(() => window.brief.setEnabled(false));
+        assert.equal(await page.locator('#editorBriefSave').isDisabled(), true);
+    } finally {
+        await page.close();
+    }
 });

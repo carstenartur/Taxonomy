@@ -22,6 +22,14 @@ public sealed interface ArchitectureCommand {
             elements = List.copyOf(elements); relations = List.copyOf(relations); provenance = copyProperties(provenance);
         }
     }
+    record SetArchitectureBrief(Map<String, String> fields) implements ArchitectureCommand {
+        public SetArchitectureBrief { fields = copyProperties(fields); }
+    }
+    record SetArchitectureReference(String id, Map<String, String> values) implements ArchitectureCommand {
+        public SetArchitectureReference { Objects.requireNonNull(id); values = copyProperties(values); }
+    }
+    record DeleteArchitectureReference(String id) implements ArchitectureCommand {}
+
     record SetRequirementPlanning(String requirementId, com.taxonomy.dsl.planning.PlanningEntry entry)
             implements ArchitectureCommand {
         public SetRequirementPlanning { Objects.requireNonNull(requirementId); Objects.requireNonNull(entry); }

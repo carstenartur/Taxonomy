@@ -1,5 +1,7 @@
 package com.taxonomy.dsl.command;
 
+import com.taxonomy.dsl.planning.ArchitectureBrief;
+
 import com.taxonomy.dsl.admbw.AdmbwFffmlvProfile;
 import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.ast.PropertyAst;
@@ -108,6 +110,9 @@ public final class ArchitectureDslCommands {
             case ReviewRequirementRealization review -> com.taxonomy.dsl.requirements.RequirementRealization.record(
                     source, review.requirementId(), review.review());
             case AdoptAnalysisSnapshot adoption -> AnalysisSnapshotAdoption.apply(this, source, adoption);
+            case SetArchitectureBrief brief -> ArchitectureBrief.store(source, brief.fields());
+            case SetArchitectureReference reference -> ArchitectureBrief.putReference(source, reference.id(), reference.values());
+            case DeleteArchitectureReference reference -> ArchitectureBrief.removeReference(source, reference.id());
             case SetRequirementPlanning p -> planning.upsert(source, p.requirementId(), p.entry(), false);
             case ImportRequirementPlanning p -> planning.upsert(source, p.requirementId(), p.entry(), true);
             case DeleteRequirementPlanning p -> planning.remove(source, p.requirementId(), p.entryId());
@@ -139,6 +144,7 @@ public final class ArchitectureDslCommands {
         if (original.stream().anyMatch(change -> !change.id().startsWith("element:")
                 && !change.id().startsWith("relation:") && !change.id().startsWith("package:")
                 && !change.id().startsWith("mapping:")
+                && !ArchitectureBrief.ownsChange(before, after, change.id())
                 && !AnalysisSnapshotAdoption.isAdoptionView(change)
                 && !com.taxonomy.dsl.requirements.RequirementRealization.reviewOnlyChange(before, after, change.id())
                 && !com.taxonomy.dsl.planning.PlanningInformation.planningOnlyChange(before, after, change.id()))) {
@@ -168,6 +174,11 @@ public final class ArchitectureDslCommands {
         }
         validateContainment(blocks);
         validatePackages(next);
+        if (ArchitectureBrief.presentIn(blocks)
+                && original.stream().anyMatch(change -> change.id().startsWith("source:")
+                        || change.id().startsWith("sourceVersion:") || change.id().startsWith("sourceFragment:"))
+                && "INVALID_ARCHITECTURE_BRIEF".equals(ArchitectureBrief.read(model(next)).problem()))
+            throw problem("INVALID_ARCHITECTURE_BRIEF", ArchitectureBrief.ID, "Undo would strand a cited source");
         if (original.stream().anyMatch(c -> com.taxonomy.dsl.planning.PlanningInformation.planningOnlyChange(before, after, c.id())))
             com.taxonomy.dsl.planning.PlanningInformation.validateReferences(next);
         return new Change(next, ArchitectureSemanticPatch.between(current, next));
@@ -193,7 +204,8 @@ public final class ArchitectureDslCommands {
         Map<String, String> values = new LinkedHashMap<>(command.properties());
         values.put("parent", ""); values.put("position", Integer.toString(position));
         String next = ArchitectureSemanticPatch.replace(source, null, block("package", List.of(command.id()), values, null));
-        validatePackages(next); return next;
+        validatePackages(next);
+        return next;
     }
 
     private String updatePackage(String source, Map<String, BlockAst> blocks, UpdateArchitecturePackage command) {
@@ -219,7 +231,8 @@ public final class ArchitectureDslCommands {
                 next = ArchitectureSemanticPatch.replace(next, require(ArchitectureSemanticPatch.index(next), ArchitectureSemanticPatch.key(sibling)),
                         block(sibling.getKind(), sibling.getHeaderTokens(), Map.of("position", Integer.toString(Integer.parseInt(sibling.property("position")) - 1)), sibling));
         }
-        validatePackages(next); return next;
+        validatePackages(next);
+        return next;
     }
 
     private String placePackages(String source, Map<String, BlockAst> blocks, SetArchitecturePackagePlacements command) {
@@ -258,7 +271,8 @@ public final class ArchitectureDslCommands {
             }
             next = ArchitectureSemanticPatch.replace(next, existing, new BlockAst(existing.getKind(), existing.getHeaderTokens(), values, existing.getChildren(), existing.getExtensions(), null));
         }
-        validatePackages(next); return next;
+        validatePackages(next);
+        return next;
     }
 
     private static void mappingOwnership(BlockAst existing) {
@@ -416,6 +430,10 @@ public final class ArchitectureDslCommands {
                                   Map<String, String> properties) {
         String key = "relation:" + relation.id();
         if (blocks.containsKey(key)) throw problem("DUPLICATE_RELATION", "relation", "Relation already exists");
+        if (ArchitectureBrief.presentIn(blocks)
+                && ArchitectureBrief.read(model(source)).excludedRelationTypes().contains(relation.relationType())) {
+            throw problem("ARCHITECTURE_BRIEF_RULE", "relationType", "The selected architecture brief excludes this relation type");
+        }
         validateRelation(blocks, relation);
         requireStatus(status);
         Map<String, String> values = new LinkedHashMap<>(properties);

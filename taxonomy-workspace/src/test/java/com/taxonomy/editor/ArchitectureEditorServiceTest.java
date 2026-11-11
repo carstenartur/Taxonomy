@@ -149,6 +149,42 @@ class ArchitectureEditorServiceTest {
         }
     }
 
+    @Test void archivedBriefKeepsItsBindingEditionAfterAnotherEditionIsAssigned() throws Exception {
+        var objective = new SemanticCommand(new SetArchitectureBrief(Map.of("objective", "Model a public registry")));
+        var preview = service.preview(alice, command(objective));
+        assertThat(preview.change().changedIds()).contains("source:architecture-brief");
+        execute(objective);
+        var binding = Map.of("identifier", "Registry architecture decision", "edition", "A", "section", "2",
+                "role", "binding", "scope", "architecture", "rule", "exclude-relation-v1", "relation", "DEPENDS_ON");
+        execute(new SemanticCommand(new SetArchitectureReference("registry-decision", binding)));
+        var checkpoint = service.checkpoint(alice, new CreateCheckpointCommand(service.read(alice, null).context(), metadata()));
+        execute(new SemanticCommand(new SetArchitectureReference("registry-decision", Map.of(
+                "identifier", "Registry architecture decision", "edition", "B", "section", "3",
+                "role", "guidance", "scope", "architecture"))));
+        var reopened = new ArchitectureEditorService(fixture.repositories, fixture.journal, new ArchitectureCheckpointWriter());
+        var dsl = new com.taxonomy.dsl.command.ArchitectureDslCommands();
+        var archived = com.taxonomy.dsl.planning.ArchitectureBrief.read(dsl.model(reopened.read(alice, checkpoint.commitId()).dsl()));
+        var current = com.taxonomy.dsl.planning.ArchitectureBrief.read(dsl.model(reopened.read(alice, null, 3L).dsl()));
+        assertThat(archived.references().getFirst().values()).containsEntry("edition", "A").containsEntry("section", "2");
+        assertThat(archived.excludedRelationTypes()).containsExactly("DEPENDS_ON");
+        assertThat(current.references().getFirst().values()).containsEntry("edition", "B").containsEntry("role", "guidance");
+        assertThat(current.excludedRelationTypes()).isEmpty();
+        assertThat(archived.references().getFirst().sourceId()).isEqualTo(current.references().getFirst().sourceId());
+        assertThat(archived.references().getFirst().sourceVersionId()).isNotEqualTo(current.references().getFirst().sourceVersionId());
+
+        var pinned = new com.taxonomy.dsl.model.CatalogueDefinition("registry-A", false,
+                List.of(new com.taxonomy.dsl.model.CatalogueDefinition.Root("Public registers", "PR", "PublicRegister")),
+                List.of(new com.taxonomy.dsl.model.CatalogueDefinition.Direction("PR", "DEPENDS_ON", "PR"),
+                        new com.taxonomy.dsl.model.CatalogueDefinition.Direction("PR", "USES", "PR")));
+        var projection = new ArchitectureEditorProjection(new com.taxonomy.export.LayeredDiagramLayoutService(), model -> pinned);
+        var historicalView = projection.project(reopened.read(alice, checkpoint.commitId()), false);
+        var currentView = projection.project(reopened.read(alice, null, 3L), true);
+        assertThat(historicalView.schema().elementTypes()).contains("PublicRegister").doesNotContain("CoreService");
+        assertThat(historicalView.schema().properties().get("type").values()).isEqualTo(historicalView.schema().elementTypes());
+        assertThat(historicalView.schema().relationTypes()).containsExactly("USES");
+        assertThat(currentView.schema().relationTypes()).containsExactly("DEPENDS_ON", "USES");
+    }
+
     @Test void previewDoesNotEvenInitializeJournalAndRetryNeverAppendsTwice() throws Exception {
         Command command = command(update("Changed"));
         service.preview(alice, command);

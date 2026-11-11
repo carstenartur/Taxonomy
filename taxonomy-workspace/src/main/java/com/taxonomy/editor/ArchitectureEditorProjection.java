@@ -1,5 +1,7 @@
 package com.taxonomy.editor;
 
+import com.taxonomy.dsl.planning.ArchitectureBrief;
+
 import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.diagram.DiagramLayout;
 import com.taxonomy.diagram.DiagramLayout.Strategy;
@@ -64,6 +66,7 @@ public class ArchitectureEditorProjection {
         public View withCollaboration(WorkspaceCollaborationService.Status status) {
             return new View(document, model, scene, schema, mayEdit, searchIndex, status);
         }
+        public ArchitectureBrief.Snapshot getArchitectureBrief() { return ArchitectureBrief.read(model); }
         public Map<String, List<com.taxonomy.dsl.planning.PlanningInformation.View>> getPlanningInformation() {
             var registry = new com.taxonomy.dsl.planning.PlanningInformation();
             Map<String, List<com.taxonomy.dsl.planning.PlanningInformation.View>> result = new java.util.LinkedHashMap<>();
@@ -100,8 +103,12 @@ public class ArchitectureEditorProjection {
         var referenceModel = layoutReference == null ? null : new ArchitectureDslCommands().model(layoutReference.dsl());
         DiagramModel reference = referenceModel == null ? null : diagram(referenceModel, document.context().branch(), catalogues.forModel(referenceModel));
         DiagramScene scene = layout.layout(diagram, strategy, reference);
+        var brief = ArchitectureBrief.read(model);
+        var declared = catalogue.relationDomains().keySet();
+        var excluded = brief.problem() == null ? brief.excludedRelationTypes() : declared;
+        var eligibleRelations = declared.stream().filter(type -> !excluded.contains(type)).sorted().toList();
         Schema schema = new Schema(types(catalogue), ArchitectureDslCommands.ELEMENT_PROPERTIES.stream().sorted().toList(),
-                catalogue.relationDomains().keySet().stream().sorted().toList(), DslValidator.relationStatuses().stream().sorted().toList(),
+                eligibleRelations, DslValidator.relationStatuses().stream().sorted().toList(),
                 catalogue.relationDomains(), catalogue.typeRoots(), properties(catalogue),
                 strategy == Strategy.STABLE ? "DERIVED_SERVER_LAYOUT" : "DERIVED_SERVER_LAYOUT_REDUCE_CROSSINGS",
                 strategy.id(), layoutRevision);

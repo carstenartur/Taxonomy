@@ -848,6 +848,9 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                     a.relations().forEach(relation -> parts.add(relation.id()));
                     properties(parts, a.provenance());
                 }
+                case SetArchitectureBrief brief -> properties(parts, brief.fields());
+                case SetArchitectureReference reference -> { parts.add(reference.id()); properties(parts, reference.values()); }
+                case DeleteArchitectureReference reference -> parts.add(reference.id());
                 case SetRequirementPlanning p -> planningFingerprint(parts, p.requirementId(), p.entry());
                 case ImportRequirementPlanning p -> planningFingerprint(parts, p.requirementId(), p.entry());
                 case DeleteRequirementPlanning p -> { parts.add(p.requirementId()); parts.add(p.entryId()); }

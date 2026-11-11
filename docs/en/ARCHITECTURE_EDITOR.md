@@ -228,3 +228,11 @@ derivation to an exact requirement version. Open a Git checkpoint and use
 **Prepare ADMBw delivery** to download the structural assessment and modeling
 data for C1–S1 and R7. The report identifies the reviews required for native
 delivery. [Rules and delivery evidence (German)](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/admbw-conformance-de.md)
+
+### Architecture brief and source assignments
+
+Open **Architecture brief** in a model workspace to record the objective, decision question, stakeholders, system boundary, current/transition/target state, reference architecture, views and deliverables. Preview the change, check the displayed workspace and revision, then accept. Opening an earlier revision shows its own brief. A project that continues the same architecture can reuse the brief already recorded in its model history.
+
+Add each applicable source separately under **Sources and modelling constraints**. Specify its identifier, edition, section, purpose, authority and scope. Choose the European Interoperability Reference Architecture (EIRA) for relevant public-service interoperability work, the Föderale IT-Architekturrichtlinie for applicable federal projects, an applicable exchange profile such as ADMBw R7 / FFFmLV, or enter the client's own reference. The selector records a reference. Actual import formats and mappings belong to the respective exchange tools. [EIRA](https://interoperable-europe.ec.europa.eu/collection/interoperability-architecture-solutions/solution/eira) · [Föderale IT-Architekturrichtlinie](https://www.it-planungsrat.de/beschluss/beschluss-2025-17)
+
+For an unresolved interpretation, choose **Unresolved** and record the question and its source. For a binding, architecture-wide decision with an identified edition and section, choose **Exclude a relation type from new proposals (v1)** and select the type. The editor and model-focused AI candidate selection exclude that type before generating a proposal. Multiple source assignments combine their explicit restrictions. A guidance citation alone applies no automatic checks. Existing relationships and the history of accepted decisions are retained.
