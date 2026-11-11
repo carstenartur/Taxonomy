@@ -213,7 +213,9 @@ class ReformulationBrowserTest extends ReformulationWorkflowFixture {
         wait.until(d->d.findElement(By.cssSelector("[data-reformulation-status]")).getText().contains("Gespeichert"));
     }
     private static void awaitNativeClickTarget(RemoteWebDriver driver,WebElement element) {
-        driver.executeScript("arguments[0].scrollIntoView({block:'center'})",element);
+        // The app uses smooth page scrolling; force an immediate test scroll before
+        // checking real pointer hit-testing, including the narrow mobile viewport.
+        driver.executeScript("arguments[0].scrollIntoView({block:'center',behavior:'instant'})",element);
         String[] previous = {""};
         new WebDriverWait(driver,Duration.ofSeconds(20)).until(d -> {
             @SuppressWarnings("unchecked") var geometry=(Map<String,Object>)driver.executeScript("""
