@@ -1075,10 +1075,11 @@
     }
 
     function applyCapabilities() {
-        if (state.account && state.account.architectureMutationAllowed) return;
+        const mayChange = state.account?.architectureMutationAllowed === true;
         const versionButton = document.getElementById('newVersionButton');
-        versionButton.disabled = true;
-        versionButton.title = t('permission');
+        versionButton.disabled = !mayChange || !state.versionDraftBase?.requirementVersionId
+                || !state.versionDraftBase?.contentHash;
+        versionButton.title = state.account && !mayChange ? t('permission') : '';
     }
 
     function api() {

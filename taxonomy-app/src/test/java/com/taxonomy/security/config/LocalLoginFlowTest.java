@@ -104,6 +104,22 @@ class LocalLoginFlowTest {
     }
 
     @Test
+    void unauthorizedApiReadsCannotCreateOrReplaceTheBrowserLoginDestination() throws Exception {
+        var background = mvc.perform(get("/api/architecture/lifecycle").accept("*/*"))
+                .andExpect(status().isUnauthorized()).andReturn();
+        assertThat(background.getRequest().getSession(false)).isNull();
+
+        var navigation = mvc.perform(get("/qa-login-protected").accept("text/html"))
+                .andExpect(redirectedUrl("/login")).andReturn();
+        var session = (MockHttpSession) navigation.getRequest().getSession(false);
+        mvc.perform(get("/api/architecture/lifecycle").session(session).accept("*/*"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/login").session(session).with(csrf())
+                        .param("username", "qa-user").param("password", "qa-password"))
+                .andExpect(redirectedUrl("http://localhost/qa-login-protected?continue"));
+    }
+
+    @Test
     void errorsAndLogoutAreLocalizedWithoutDisclosingAuthenticationDetails() throws Exception {
         var session = new MockHttpSession();
         session.setAttribute("SPRING_SECURITY_LAST_EXCEPTION", new BadCredentialsException("private-account-detail"));

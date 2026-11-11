@@ -37,6 +37,7 @@
 .github/scripts/copilot-summary-freshness.test.mjs
 .github/scripts/copilot-terminal-state-regression.test.mjs
 .github/scripts/decision-export-dialog.test.mjs
+.github/scripts/docker-apt-sources.test.mjs
 .github/scripts/document-template-layout.test.mjs
 .github/scripts/document-template-local-edit-fixtures.test.mjs
 .github/scripts/document-template-local-edit.test.mjs
