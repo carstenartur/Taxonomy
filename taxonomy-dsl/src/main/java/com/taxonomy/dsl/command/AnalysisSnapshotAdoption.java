@@ -3,7 +3,6 @@ package com.taxonomy.dsl.command;
 import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.ast.PropertyAst;
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
-import com.taxonomy.dsl.model.TaxonomyRootTypes;
 import java.util.*;
 
 /** Frozen-source adoption only. Nothing here reads renderer or review-overlay state. */
@@ -32,8 +31,7 @@ final class AnalysisSnapshotAdoption {
                 throw problem("INVALID_VALUE", "Snapshot element identity, type, title and description must be present");
             if (elements.putIfAbsent(element.id(), element) != null)
                 throw problem("AMBIGUOUS_SNAPSHOT_IDENTITY", "Duplicate snapshot element identity");
-            if (!TaxonomyRootTypes.TYPE_TO_ROOT.containsKey(element.type()))
-                throw problem("UNKNOWN_TYPE", "Unsupported snapshot element type");
+            commands.requireType(element.type());
             commands.apply("", new CreateArchitectureElement(element.id(), element.type(),
                     Map.of("title", element.title(), "description", element.description())));
         }
@@ -64,7 +62,7 @@ final class AnalysisSnapshotAdoption {
                     Map.of("title", element.title(), "description", element.description()))).dsl();
         }
         for (var relation : adoption.relations().stream().sorted(Comparator.comparing(RelationKey::id)).toList()) {
-            ArchitectureDslCommands.validateRelation(ArchitectureSemanticPatch.index(next), relation);
+            commands.validateRelation(ArchitectureSemanticPatch.index(next), relation);
             if (!blocks.containsKey("relation:" + relation.id()))
                 next = commands.apply(next, new CreateArchitectureRelation(relation, "proposed")).dsl();
         }

@@ -14,6 +14,7 @@ import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import com.taxonomy.dsl.validation.DslValidationResult;
 import com.taxonomy.dsl.validation.DslValidator;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.model.RelationEvidence;
@@ -65,7 +66,12 @@ public class HypothesisService {
     private final AstToModelMapper astToModelMapper = new AstToModelMapper();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
     private final TaxDslParser parser = new TaxDslParser();
-    private final DslValidator validator = new DslValidator();
+    private DslValidator validator = new DslValidator();
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void useCatalogueDefinitions(CatalogueDefinitionResolver catalogues) {
+        validator = new DslValidator(catalogues);
+    }
 
     public HypothesisService(RelationHypothesisRepository hypothesisRepository,
                              RelationEvidenceRepository evidenceRepository,

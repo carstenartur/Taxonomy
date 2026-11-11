@@ -21,27 +21,10 @@ public final class TaxonomyRootTypes {
      *   <li>{@code "CM"} → {@code "Component"} (C4 Component)</li>
      * </ul>
      */
-    public static final Map<String, String> ROOT_TO_TYPE = Map.ofEntries(
-            Map.entry("CP", "Capability"),
-            Map.entry("BP", "Process"),
-            Map.entry("CR", "CoreService"),
-            Map.entry("CI", "COIService"),
-            Map.entry("CO", "CommunicationsService"),
-            Map.entry("UA", "UserApplication"),
-            Map.entry("IP", "InformationProduct"),
-            Map.entry("BR", "BusinessRole"),
-            Map.entry("SY", "System"),
-            Map.entry("CM", "Component")
-    );
+    public static final Map<String, String> ROOT_TO_TYPE = CatalogueDefinition.standard().rootTypes();
 
-    /** Reverse mapping: DSL element type name → taxonomy root code. */
-    public static final Map<String, String> TYPE_TO_ROOT;
-
-    static {
-        var reverse = new java.util.LinkedHashMap<String, String>();
-        ROOT_TO_TYPE.forEach((root, type) -> reverse.put(type, root));
-        TYPE_TO_ROOT = java.util.Collections.unmodifiableMap(reverse);
-    }
+    /** Reverse mapping for historical DSL documents using the standard catalogue. */
+    public static final Map<String, String> TYPE_TO_ROOT = CatalogueDefinition.standard().typeRoots();
 
     /**
      * Get the DSL element type name for a taxonomy root code.

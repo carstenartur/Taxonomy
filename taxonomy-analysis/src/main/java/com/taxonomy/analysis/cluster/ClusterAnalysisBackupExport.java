@@ -96,7 +96,7 @@ public final class ClusterAnalysisBackupExport {
         rows.writeBatches(sink, "analysis", "cluster-inputs", profile,
                 children("i", "analysis_cluster_input", "root_code", included), r -> {
                     var run = parent(r, scope, included); String root = text(r, "root_code");
-                    if (!TaxonomyShardRoot.DEFAULT_ROOTS.stream().map(TaxonomyShardRoot::code).toList().contains(root)
+                    if (!TaxonomyShardRoot.of(root).catalogueIdentifier()
                             || !frozenRoots.computeIfAbsent(run.id, ignored -> new HashSet<>()).add(root))
                         throw new IOException("Cluster analysis frozen root is inconsistent");
                     return new ClusterAnalysisBackupRecords.Input(PortableRows.reference(r, "analysis.cluster-input", "id"), reference(run.id), root, text(r, "input_json"));

@@ -7,6 +7,8 @@ import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.catalog.definition.WorkbookCatalogueDefinition;
+import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
 import com.taxonomy.catalog.snapshot.FrozenCatalogueContext;
 import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
@@ -53,19 +55,6 @@ public class TaxonomyService {
     private static final int BATCH_SIZE = 50;
 
     public static final String ROOT_ASSESSMENT_CONTEXT_POLICY = "root-catalogue-context-v1";
-
-    /** Maps sheet name → two-letter prefix used as virtual root code. */
-    private static final Map<String, String> SHEET_PREFIXES = new LinkedHashMap<>();
-    static {
-        SHEET_PREFIXES.put("Business Processes",       "BP");
-        SHEET_PREFIXES.put("Business Roles",           "BR");
-        SHEET_PREFIXES.put("Capabilities",             "CP");
-        SHEET_PREFIXES.put("COI Services",             "CI");
-        SHEET_PREFIXES.put("Communications Services",  "CO");
-        SHEET_PREFIXES.put("Core Services",            "CR");
-        SHEET_PREFIXES.put("Information Products",     "IP");
-        SHEET_PREFIXES.put("User Applications",        "UA");
-    }
 
     private final TaxonomyNodeRepository repository;
     private final TaxonomyRelationRepository relationRepository;
@@ -336,26 +325,7 @@ public class TaxonomyService {
         CatalogueSourceBytes workbookInput = CatalogueSourceBytes.capture(
                 () -> resourceLoader.getResource(catalogueResource).getInputStream());
 
-        // Global node map: code → entity (across all sheets)
-        Map<String, TaxonomyNode> nodeMap = new LinkedHashMap<>();
-
-        // UUID → code map used to resolve parent references that use UUIDs
-        Map<String, String> uuidToCode = new HashMap<>();
-
-        // 1. Create one virtual root per sheet (level 0)
-        List<TaxonomyNode> virtualRoots = new ArrayList<>();
-        for (Map.Entry<String, String> entry : SHEET_PREFIXES.entrySet()) {
-            String sheetName = entry.getKey();
-            String prefix    = entry.getValue();
-            TaxonomyNode root = new TaxonomyNode();
-            root.setCode(prefix);
-            root.setNameEn(sheetName);
-            root.setDescriptionEn("C3 Taxonomy – " + sheetName);
-            root.setTaxonomyRoot(prefix);
-            root.setLevel(0);
-            nodeMap.put(prefix, root);
-            virtualRoots.add(root);
-        }
+        WorkbookNodes hierarchy;
 
         // Raw relation tuples extracted from the workbook before it is closed:
         // each entry is [sourceCode, targetCode, typeStr, description]
@@ -365,19 +335,7 @@ public class TaxonomyService {
         try (InputStream is = workbookInput.openStream();
              Workbook workbook = new XSSFWorkbook(is)) {
 
-            // 2. Read every sheet and collect raw rows
-            for (Map.Entry<String, String> entry : SHEET_PREFIXES.entrySet()) {
-                String sheetName = entry.getKey();
-                String prefix    = entry.getValue();
-                Sheet sheet = workbook.getSheet(sheetName);
-                if (sheet == null) {
-                    log.warn("Sheet '{}' not found in workbook.", sheetName);
-                    continue;
-                }
-                readSheet(sheet, prefix, nodeMap, uuidToCode);
-            }
-
-            // Parent relationships are resolved and validated after the workbook closes.
+            hierarchy = readWorkbookNodes(workbook);
 
             // 4a. Extract raw relation rows BEFORE closing the workbook so the workbook
             //     can be released from heap before the (memory-intensive) persist phase.
@@ -388,6 +346,9 @@ public class TaxonomyService {
             }
         } // workbook closes here, releasing its heap memory
 
+        var nodeMap = hierarchy.nodes();
+        var virtualRoots = hierarchy.virtualRoots();
+        var uuidToCode = hierarchy.uuidToCode();
         CatalogueOverlayService.OverlayApplicationResult overlayResult =
                 catalogueOverlayService.applyAndValidate(nodeMap, uuidToCode, catalogueResource);
         log.info("Catalogue hierarchy prepared with overlay {} ({} products, {} product families).",
@@ -398,7 +359,7 @@ public class TaxonomyService {
         //     Returns a code → database ID map for subsequent relation wiring.
         Map<String, Long> codeToId = persistNodesBatched(virtualRoots, nodeMap);
         log.info("Taxonomy loaded: {} nodes from {} sheets.",
-                nodeMap.size(), SHEET_PREFIXES.size());
+                nodeMap.size(), virtualRoots.size());
 
         // 4c. Load relations using managed entity proxies (via codeToId)
         SourceUse relationsInput = SourceUse.notUsed();
@@ -618,8 +579,39 @@ public class TaxonomyService {
         return SourceUse.applied(bytes);
     }
 
+    public record WorkbookNodes(CatalogueDefinition definition, List<TaxonomyNode> virtualRoots,
+                                Map<String, TaxonomyNode> nodes, Map<String, String> uuidToCode) { }
+
+    /** The importer and exact-revision reads use the same worksheet and identifier interpretation. */
+    public static WorkbookNodes readWorkbookNodes(Workbook workbook) {
+        Map<String, TaxonomyNode> nodeMap = new LinkedHashMap<>();
+        Map<String, String> uuidToCode = new HashMap<>();
+        List<TaxonomyNode> virtualRoots = new ArrayList<>();
+        var definition = WorkbookCatalogueDefinition.read(workbook);
+        for (var sheetRoot : definition.roots()) {
+            TaxonomyNode root = new TaxonomyNode();
+            root.setCode(sheetRoot.code());
+            root.setNameEn(sheetRoot.sheet());
+            root.setDescriptionEn("C3 Taxonomy – " + sheetRoot.sheet());
+            root.setTaxonomyRoot(sheetRoot.code());
+            root.setLevel(0);
+            nodeMap.put(root.getCode(), root);
+            virtualRoots.add(root);
+        }
+        for (var sheetRoot : definition.roots()) {
+            Sheet sheet = workbook.getSheet(sheetRoot.sheet());
+            if (sheet == null) {
+                log.warn("Sheet '{}' not found in workbook.", sheetRoot.sheet());
+                continue;
+            }
+            readSheet(sheet, sheetRoot.code(), nodeMap, uuidToCode);
+        }
+
+        return new WorkbookNodes(definition, virtualRoots, nodeMap, uuidToCode);
+    }
+
     /** Read one sheet and populate nodeMap and uuidToCode. */
-    private void readSheet(Sheet sheet, String sheetPrefix, Map<String, TaxonomyNode> nodeMap,
+    private static void readSheet(Sheet sheet, String sheetPrefix, Map<String, TaxonomyNode> nodeMap,
                            Map<String, String> uuidToCode) {
         // Expected columns: Page(0), UUID(1), Title(2), Description(3),
         //                   Parent(4), Dataset(5), ExternalID(6), Source(7),
@@ -675,11 +667,11 @@ public class TaxonomyService {
         }
     }
 
-    private String cellString(Row row, int col) {
+    private static String cellString(Row row, int col) {
         return cellString(row, col, true);
     }
 
-    private String cellString(Row row, int col, boolean trim) {
+    private static String cellString(Row row, int col, boolean trim) {
         Cell cell = row.getCell(col, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
         if (cell == null) return null;
         String val = switch (cell.getCellType()) {
@@ -710,7 +702,7 @@ public class TaxonomyService {
         return trim ? val.trim() : val.strip();
     }
 
-    private String truncate(String s, int maxLen) {
+    private static String truncate(String s, int maxLen) {
         if (s == null) return null;
         return s.length() <= maxLen ? s : s.substring(0, maxLen);
     }

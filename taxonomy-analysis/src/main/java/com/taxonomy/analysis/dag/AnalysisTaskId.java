@@ -15,6 +15,8 @@ import java.util.stream.Collectors;
  */
 public record AnalysisTaskId(String value) {
 
+    // A 1,024-character routing suffix holds at most 512 one-character names and their separators.
+    public static final int MAX_ROUTED_ROOTS = 512;
     private static final Pattern OPERATION = Pattern.compile("[A-Za-z0-9._-]{1,128}");
     private static final Pattern VALUE = Pattern.compile("[A-Za-z0-9._-]{1,128}:[a-z]{1,32}:([A-Za-z0-9_.+-]{1,1024}|\\*)");
 
@@ -61,7 +63,7 @@ public record AnalysisTaskId(String value) {
 
     /** Version-two relation unit: one deterministic, bounded item of a persisted source plan. */
     public static AnalysisTaskId relationWork(String operationId, TaxonomyShardRoot target, int ordinal) {
-        if (target == null || !target.defaultCatalogueRoot() || ordinal < 0 || ordinal >= 100_000)
+        if (target == null || !target.catalogueIdentifier() || ordinal < 0 || ordinal >= 100_000)
             throw new IllegalArgumentException("Relation work requires a catalogue root and ordinal 0..99999");
         return new AnalysisTaskId(requireOperationId(operationId) + ":" + AnalysisTaskType.RELATION_ANALYSIS.token()
                 + ":" + target.code() + ".w" + String.format(java.util.Locale.ROOT, "%06d", ordinal));
@@ -70,15 +72,15 @@ public record AnalysisTaskId(String value) {
     /** Empty for the original whole-target-set relation contract. */
     public java.util.OptionalInt relationWorkOrdinal() {
         String suffix = value.substring(value.lastIndexOf(':') + 1);
-        if (!suffix.matches("[A-Z]{2}\\.w[0-9]{6}")) return java.util.OptionalInt.empty();
-        int ordinal = Integer.parseInt(suffix.substring(4));
+        if (!suffix.matches("[A-Z][A-Z0-9_]{0,63}\\.w[0-9]{6}")) return java.util.OptionalInt.empty();
+        int ordinal = Integer.parseInt(suffix.substring(suffix.lastIndexOf('.') + 2));
         return ordinal < 100_000 ? java.util.OptionalInt.of(ordinal) : java.util.OptionalInt.empty();
     }
 
     public boolean matchesRelation(String operationId, java.util.List<TaxonomyShardRoot> roots, int schemaVersion) {
         if (equals(relation(operationId, roots))) return true;
         var ordinal = relationWorkOrdinal();
-        return schemaVersion == 2 && roots.size() == 1 && roots.getFirst().defaultCatalogueRoot()
+        return schemaVersion == 2 && roots.size() == 1 && roots.getFirst().catalogueIdentifier()
                 && ordinal.isPresent() && equals(relationWork(operationId, roots.getFirst(), ordinal.getAsInt()));
     }
 

@@ -2,7 +2,8 @@ package com.taxonomy.analysis.relations;
 
 import com.taxonomy.analysis.dag.TaxonomyShardRoot;
 import com.taxonomy.dto.RelationSearchReport;
-import com.taxonomy.relations.service.RelationCompatibilityMatrix;
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.util.*;
 
@@ -20,7 +21,17 @@ public final class RelationSearchDistribution {
                        List<String> sourceResultIds, RequirementRelationSearch.Options options,
                        List<Node> sourceNodes, List<Node> targetRoots, List<SourceAssessment> sources,
                        List<Item> items, int sourceCalls, long durationMillis,
-                       List<String> warnings, String stopReason, boolean included, RelationSearchReport inlineReport) {
+                       List<String> warnings, String stopReason, boolean included, RelationSearchReport inlineReport,
+                       @JsonInclude(JsonInclude.Include.NON_NULL)
+                       CatalogueDefinition.Spec catalogueDefinition) {
+        public Plan(int schemaVersion, String preparationId, String originalSha256,
+                List<String> sourceResultIds, RequirementRelationSearch.Options options,
+                List<Node> sourceNodes, List<Node> targetRoots, List<SourceAssessment> sources,
+                List<Item> items, int sourceCalls, long durationMillis,
+                List<String> warnings, String stopReason, boolean included, RelationSearchReport inlineReport) {
+            this(schemaVersion, preparationId, originalSha256, sourceResultIds, options, sourceNodes, targetRoots, sources, items,
+                    sourceCalls, durationMillis, warnings, stopReason, included, inlineReport, null);
+        }
         public Plan(int schemaVersion, String preparationId, String originalSha256,
                 List<String> sourceResultIds, RequirementRelationSearch.Options options,
                 List<Node> sourceNodes, List<Node> targetRoots, List<SourceAssessment> sources,
@@ -29,8 +40,14 @@ public final class RelationSearchDistribution {
             this(schemaVersion, preparationId, originalSha256, sourceResultIds, options, sourceNodes, targetRoots,
                     sources, items, sourceCalls, durationMillis, warnings, stopReason, included, null);
         }
+        CatalogueDefinition definition() {
+            return catalogueDefinition == null ? CatalogueDefinition.standard() : catalogueDefinition.definition();
+        }
+
         public Plan {
-            if (schemaVersion != 1) throw new IllegalArgumentException("Unsupported relation preparation schema");
+            if (schemaVersion != (catalogueDefinition == null ? 1 : 2))
+                throw new IllegalArgumentException("Unsupported relation preparation schema");
+            var definition = catalogueDefinition == null ? CatalogueDefinition.standard() : catalogueDefinition.definition();
             required(preparationId); required(originalSha256); Objects.requireNonNull(options);
             sourceResultIds = List.copyOf(sourceResultIds);
             sourceResultIds.forEach(RelationSearchDistribution::required);
@@ -54,6 +71,13 @@ public final class RelationSearchDistribution {
                         || item.contributionIndex() >= sources.get(item.sourceIndex()).contributions().size()
                         || !roots.contains(item.targetRoot()))
                     throw new IllegalArgumentException("Invalid prepared relation reference");
+                if (catalogueDefinition != null) {
+                    String source = sources.get(item.sourceIndex()).node().root();
+                    String target = item.targetRoot().code();
+                    boolean allowed = item.direction() == Direction.OUTGOING
+                            ? definition.allows(source, item.type(), target) : definition.allows(target, item.type(), source);
+                    if (!allowed) throw new IllegalArgumentException("Prepared direction is absent from the saved catalogue");
+                }
             }
             if (!included && (!sourceNodes.isEmpty() || !sources.isEmpty() || !items.isEmpty() || sourceCalls != 0))
                 throw new IllegalArgumentException("Disabled relations cannot contain work");
@@ -74,13 +98,16 @@ public final class RelationSearchDistribution {
                     || inlineReport.budget().newCalls() != inlineReport.totalCalls()
                     || inlineReport.budget().spentCalls() != (long) options.budget().callsBeforeExecution() + inlineReport.totalCalls()))
                 throw new IllegalArgumentException("Invalid inline relation continuation");
-            if (inlineReport != null) validateInlineEvidence(sourceNodes, targetRoots, sources, inlineReport);
+            if (sourceNodes.stream().anyMatch(node -> !definition.rootCodes().contains(node.root()))
+                    || targetRoots.stream().anyMatch(node -> !definition.rootCodes().contains(node.root())))
+                throw new IllegalArgumentException("Source or target root is absent from the saved catalogue definition");
+            if (inlineReport != null) validateInlineEvidence(sourceNodes, targetRoots, sources, inlineReport, definition);
         }
     }
 
     /** Inline preparation must retain the same contribution and route authority as target grants. */
     private static void validateInlineEvidence(List<Node> sourceNodes, List<Node> targetRoots,
-            List<SourceAssessment> sources, RelationSearchReport report) {
+            List<SourceAssessment> sources, RelationSearchReport report, CatalogueDefinition rules) {
         Set<Node> frozenSources = new HashSet<>(sourceNodes);
         Set<String> sourceIds = new HashSet<>(), roots = new HashSet<>();
         sourceNodes.forEach(node -> sourceIds.add(node.id()));
@@ -94,7 +121,6 @@ public final class RelationSearchDistribution {
         }
         Set<Contribution> accepted = new HashSet<>();
         contributions.values().forEach(accepted::addAll);
-        var rules = new RelationCompatibilityMatrix();
         for (Edge edge : report.result().edges()) {
             if (!accepted.contains(edge.contribution()) || edge.target() == null || edge.target().container()
                     || !roots.contains(edge.target().root()) || edge.evidence() == null
@@ -131,7 +157,7 @@ public final class RelationSearchDistribution {
     }
 
     private static boolean inlineRoute(Map<String, List<Contribution>> contributions, Set<String> roots,
-            RelationCompatibilityMatrix rules, String sourceId, String type, Direction direction,
+            CatalogueDefinition rules, String sourceId, String type, Direction direction,
             String contributionKey, String targetRoot) {
         if (type == null || direction == null || targetRoot != null && !roots.contains(targetRoot)) return false;
         var relation = com.taxonomy.model.RelationType.valueOf(type);
@@ -144,7 +170,7 @@ public final class RelationSearchDistribution {
                 if (targetRoot != null && !targetRoot.equals(root)) continue;
                 String origin = direction == Direction.OUTGOING ? contribution.source().root() : root;
                 String destination = direction == Direction.OUTGOING ? root : contribution.source().root();
-                if (rules.targetDomain(origin, relation).allows(destination)) return true;
+                if (rules.targetDomain(origin, relation.name()).allows(destination)) return true;
             }
         }
         return false;
@@ -230,7 +256,7 @@ public final class RelationSearchDistribution {
         if (previous != null && !plan.originalSha256().equals(previous.originalSha256()))
             throw new IllegalArgumentException("Saved relation evidence belongs to another requirement");
         var progress = new RelationWorkPlan(plan.sourceNodes(), plan.targetRoots(),
-                new RelationCompatibilityMatrix(), plan.options().limits().maxCalls(), false);
+                plan.definition(), plan.options().limits().maxCalls(), false);
         progress.restore(previous);
         plan.sources().forEach(progress::assessed);
         progress.expect(plan.items().stream().map(i -> intent(plan, i)).toList());

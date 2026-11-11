@@ -14,6 +14,7 @@ import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -89,11 +90,27 @@ public class CatalogueOverlayService {
         Objects.requireNonNull(nodes, "nodes");
         Objects.requireNonNull(uuidToCode, "uuidToCode");
 
-        resolveUuidParents(nodes, uuidToCode);
-
         LoadedOverlay overlay = enabled ? loadOverlay() : LoadedOverlay.disabled(overlayResource);
+        if (enabled) validateBaseCatalogue(overlay.definition(), baseCataloguePath);
+        return applyHierarchy(nodes, uuidToCode, overlay);
+    }
+
+    /** Reconstruct a previously imported workbook/overlay pair without consulting configured resources. */
+    public CatalogueOverlayService applyRetainedHierarchy(Map<String, TaxonomyNode> nodes,
+            Map<String, String> uuidToCode, CatalogueSourceBytes bytes) {
+        String identity = bytes == null ? "not-used" : "sha256:" + bytes.sha256();
+        var detached = new CatalogueOverlayService(objectMapper, resourceLoader, bytes != null, identity);
+        var overlay = bytes == null ? LoadedOverlay.disabled(identity) : detached.decodeOverlay(bytes);
+        detached.rebuildMetadataIndex(overlay.definition());
+        detached.loadedOverlay = overlay;
+        detached.applyHierarchy(nodes, uuidToCode, overlay);
+        return detached;
+    }
+
+    private OverlayApplicationResult applyHierarchy(Map<String, TaxonomyNode> nodes, Map<String, String> uuidToCode,
+                                                   LoadedOverlay overlay) {
+        resolveUuidParents(nodes, uuidToCode);
         if (enabled) {
-            validateBaseCatalogue(overlay.definition(), baseCataloguePath);
             applyPatches(nodes, overlay.definition());
             validateStrictCoverage(nodes, overlay.definition());
         } else {
@@ -200,11 +217,17 @@ public class CatalogueOverlayService {
     }
 
     private LoadedOverlay readOverlay() {
-        CatalogueSourceBytes bytes;
-        OverlayDefinition definition;
         try {
-            bytes = CatalogueSourceBytes.capture(() -> resourceLoader.getResource(overlayResource).getInputStream());
-            try (InputStream input = bytes.openStream()) { definition = objectMapper.readValue(input, OverlayDefinition.class); }
+            return decodeOverlay(CatalogueSourceBytes.capture(() -> resourceLoader.getResource(overlayResource).getInputStream()));
+        } catch (IOException failure) {
+            throw new IllegalStateException("Cannot load taxonomy catalogue overlay");
+        }
+    }
+
+    private LoadedOverlay decodeOverlay(CatalogueSourceBytes bytes) {
+        OverlayDefinition definition;
+        try (InputStream input = bytes.openStream()) {
+            definition = objectMapper.readValue(input, OverlayDefinition.class);
         } catch (Exception exception) {
             throw new IllegalStateException("Cannot load taxonomy catalogue overlay");
         }

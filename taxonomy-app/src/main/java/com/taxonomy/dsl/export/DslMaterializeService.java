@@ -13,6 +13,7 @@ import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.validation.DslValidationResult;
 import com.taxonomy.dsl.validation.DslValidator;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.model.RelationHypothesis;
@@ -63,7 +64,12 @@ public class DslMaterializeService {
 
     private final TaxDslParser parser = new TaxDslParser();
     private final AstToModelMapper astMapper = new AstToModelMapper();
-    private final DslValidator validator = new DslValidator();
+    private DslValidator validator = new DslValidator();
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void useCatalogueDefinitions(CatalogueDefinitionResolver catalogues) {
+        validator = new DslValidator(catalogues);
+    }
     private final ModelDiffer differ = new ModelDiffer();
     private TransactionOperations materializationTransaction = TransactionOperations.withoutTransaction();
 

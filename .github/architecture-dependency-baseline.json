@@ -48,7 +48,7 @@
       "fromPackage": "com.taxonomy.analysis.cluster",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.relations.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 1
     },
     {
       "fromContext": "analysis",
@@ -104,7 +104,7 @@
       "fromPackage": "com.taxonomy.analysis.recovery",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.snapshot",
-      "classDependencyCount": 3
+      "classDependencyCount": 4
     },
     {
       "fromContext": "analysis",
@@ -139,7 +139,7 @@
       "fromPackage": "com.taxonomy.analysis.relations",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.relations.service",
-      "classDependencyCount": 4
+      "classDependencyCount": 2
     },
     {
       "fromContext": "analysis",
@@ -350,6 +350,13 @@
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.service",
       "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis.artemis",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.definition",
+      "classDependencyCount": 1
     },
     {
       "fromContext": "app-composition",
@@ -1217,6 +1224,13 @@
       "fromPackage": "com.taxonomy.dsl.export",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.repository",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "dsl-adapters",
+      "fromPackage": "com.taxonomy.dsl.export",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.definition",
       "classDependencyCount": 1
     },
     {

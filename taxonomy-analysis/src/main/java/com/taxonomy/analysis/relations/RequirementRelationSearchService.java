@@ -153,7 +153,7 @@ public class RequirementRelationSearchService {
                     + "all relationships remain unassessed.";
             return new RelationSearchDistribution.Plan(disabled.schemaVersion(), disabled.preparationId(),
                     disabled.originalSha256(), disabled.sourceResultIds(), disabled.options(), List.of(), List.of(),
-                    List.of(), List.of(), 0, disabled.durationMillis(), List.of(reason), reason, true);
+                    List.of(), List.of(), 0, disabled.durationMillis(), List.of(reason), reason, true, null, disabled.catalogueDefinition());
         }
         return engine.prepare(preparationId, original, scores, sourceResultIds, distributed, includeRelations);
     }

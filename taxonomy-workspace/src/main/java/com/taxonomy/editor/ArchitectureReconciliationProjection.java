@@ -10,7 +10,8 @@ import com.taxonomy.diagram.DiagramSceneNode;
 import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
-import com.taxonomy.dsl.model.TaxonomyRootTypes;
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.export.LayeredDiagramLayoutService;
 
 import java.util.ArrayList;
@@ -21,19 +22,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Read-only comparison of one reconciliation intent. It performs no repository reads. */
+/** Projects the frozen source, including the catalogue generation recorded by each document. */
 public final class ArchitectureReconciliationProjection {
     private static final List<String> PARTS = List.of("base", "local", "incoming", "proposed");
     private static final Set<String> PRESENTATION_PROPERTIES = Set.of("layout", "x", "y", "width", "height",
             "x-layout", "x-position", "x-bounds", "x-diagram-geometry");
     private final LayeredDiagramLayoutService layout;
 
-    ArchitectureReconciliationProjection(LayeredDiagramLayoutService layout) { this.layout = layout; }
+    private final CatalogueDefinitionResolver catalogues;
+
+    ArchitectureReconciliationProjection(LayeredDiagramLayoutService layout, CatalogueDefinitionResolver catalogues) {
+        this.layout = layout;
+        this.catalogues = catalogues;
+    }
 
     public record PropertyDifference(String blockId, String property, String category,
                                      List<String> base, List<String> local, List<String> incoming, List<String> proposed) {}
     public record Comparison(Map<String, DiagramScene> scenes, List<PropertyDifference> properties,
-                             Map<String, String> typeRoots) {}
+                             Map<String, String> typeRoots, Map<String, Map<String, String>> sceneTypeRoots) {}
     public record Preview(ArchitectureCommandPort.Context context, String headCommit, String fingerprint,
                           String baseDsl, String localDsl, String incomingDsl, String mergedDsl,
                           List<ArchitectureSemanticPatch.BlockChange> changes,
@@ -43,11 +49,26 @@ public final class ArchitectureReconciliationProjection {
     Preview project(ArchitectureEditorService.ReconciliationPreview preview) {
         List<String> sources = java.util.Arrays.asList(preview.baseDsl(), preview.localDsl(), preview.incomingDsl(), preview.mergedDsl());
         var commands = new ArchitectureDslCommands();
-        List<DiagramModel> diagrams = sources.stream().map(source -> ArchitectureEditorProjection.diagram(
-                commands.model(source), preview.context().branch())).toList();
+        Map<String, DiagramModel> diagrams = new LinkedHashMap<>();
+        Map<String, Map<String, String>> sceneTypeRoots = new LinkedHashMap<>();
+        Map<String, String> sharedTypeRoots = new LinkedHashMap<>();
+        Map<String, CatalogueDefinition> definitions = new LinkedHashMap<>();
+        for (int index = 0; index < PARTS.size(); index++) {
+            // An unresolved preview has no proposed document; an empty scene would imply deletion.
+            String source = sources.get(index);
+            if (source == null) continue;
+            var model = commands.model(source);
+            var catalogue = definitions.computeIfAbsent(model.getCatalogueRevision(), key -> catalogues.forModel(model));
+            String part = PARTS.get(index);
+            sceneTypeRoots.put(part, catalogue.typeRoots());
+            // Older renderers receive only mappings shared by every visible source.
+            if (diagrams.isEmpty()) sharedTypeRoots.putAll(catalogue.typeRoots());
+            else sharedTypeRoots.entrySet().retainAll(catalogue.typeRoots().entrySet());
+            diagrams.put(part, ArchitectureEditorProjection.diagram(model, preview.context().branch(), catalogue));
+        }
         Map<String, DiagramNode> nodes = new LinkedHashMap<>();
         Map<String, DiagramEdge> edges = new LinkedHashMap<>();
-        diagrams.forEach(diagram -> {
+        diagrams.values().forEach(diagram -> {
             diagram.nodes().forEach(node -> nodes.putIfAbsent(node.id(), node));
             diagram.edges().forEach(edge -> edges.putIfAbsent(edge.id(), edge));
         });
@@ -55,12 +76,9 @@ public final class ArchitectureReconciliationProjection {
         DiagramScene common = layout.layout(new DiagramModel("Reconciliation", List.copyOf(nodes.values()),
                 List.copyOf(edges.values()), new DiagramLayout("LR", true)));
         Map<String, DiagramScene> scenes = new LinkedHashMap<>();
-        for (int index = 0; index < PARTS.size(); index++) {
-            // An unresolved preview has no proposed document; an empty scene would incorrectly imply deletion.
-            if (sources.get(index) != null) scenes.put(PARTS.get(index), scene(diagrams.get(index), common));
-        }
+        diagrams.forEach((part, diagram) -> scenes.put(part, scene(diagram, common)));
         Comparison comparison = new Comparison(Collections.unmodifiableMap(scenes), differences(sources),
-                TaxonomyRootTypes.TYPE_TO_ROOT);
+                Collections.unmodifiableMap(sharedTypeRoots), Collections.unmodifiableMap(sceneTypeRoots));
         return new Preview(preview.context(), preview.headCommit(), preview.fingerprint(), preview.baseDsl(), preview.localDsl(),
                 preview.incomingDsl(), preview.mergedDsl(), preview.changes(), preview.conflicts(), preview.canAccept(), comparison);
     }

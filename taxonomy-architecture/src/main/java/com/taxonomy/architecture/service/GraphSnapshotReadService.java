@@ -1,7 +1,7 @@
 package com.taxonomy.architecture.service;
 
 import com.taxonomy.dsl.mapper.AstToModelMapper;
-import com.taxonomy.dsl.model.TaxonomyRootTypes;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.relations.service.RelationProjectionReadService;
 import com.taxonomy.relations.service.RelationProjectionReadService.Snapshot;
@@ -18,7 +18,14 @@ public class GraphSnapshotReadService {
     private final RelationProjectionReadService relations;
     private final WorkspaceDslReadPort reads;
 
+    private final CatalogueDefinitionResolver catalogues;
+
     public GraphSnapshotReadService(RelationProjectionReadService relations, WorkspaceDslReadPort reads) {
+        this(relations, reads, CatalogueDefinitionResolver.standard());
+    }
+    @org.springframework.beans.factory.annotation.Autowired
+    public GraphSnapshotReadService(RelationProjectionReadService relations, WorkspaceDslReadPort reads, CatalogueDefinitionResolver catalogues) {
+        this.catalogues = catalogues;
         this.relations = relations;
         this.reads = reads;
     }
@@ -30,9 +37,10 @@ public class GraphSnapshotReadService {
             String dsl = repository.dslAtCommit(proof.commitId())
                     .orElseThrow(() -> new IllegalStateException("Selected commit has no canonical DSL evidence"));
             var model = new AstToModelMapper().map(new TaxDslParser().parse(dsl, "architecture.taxdsl"));
+            var catalogue = catalogues.forModel(model);
             Map<String, SnapshotNode> nodes = new LinkedHashMap<>();
             model.getElements().forEach(element -> {
-                String root = TaxonomyRootTypes.rootFor(element.getType());
+                String root = catalogue.rootFor(element.getType());
                 if (nodes.putIfAbsent(element.getId(), new SnapshotNode(element.getId(), element.getTitle(),
                         root == null ? "" : root, element.getExtensions())) != null)
                     throw new IllegalStateException("Duplicate element in selected graph snapshot");

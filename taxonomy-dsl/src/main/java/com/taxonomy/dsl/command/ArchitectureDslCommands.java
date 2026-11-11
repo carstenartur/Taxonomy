@@ -6,7 +6,7 @@ import com.taxonomy.dsl.ast.PropertyAst;
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.dsl.mapper.AstToModelMapper;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
-import com.taxonomy.dsl.model.TaxonomyRootTypes;
+import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.validation.DslValidator;
 
@@ -21,9 +21,17 @@ import java.util.Set;
 /** Strict commands layered over the tolerant import parser. No persistence or renderer dependencies. */
 public final class ArchitectureDslCommands {
     private final com.taxonomy.dsl.planning.PlanningInformation planning;
+    private final CatalogueDefinition catalogue;
     public ArchitectureDslCommands() { this(new com.taxonomy.dsl.planning.PlanningInformation()); }
     public ArchitectureDslCommands(com.taxonomy.dsl.planning.PlanningInformation planning) {
+        this(planning, CatalogueDefinition.standard());
+    }
+    public ArchitectureDslCommands(CatalogueDefinition catalogue) {
+        this(new com.taxonomy.dsl.planning.PlanningInformation(), catalogue);
+    }
+    public ArchitectureDslCommands(com.taxonomy.dsl.planning.PlanningInformation planning, CatalogueDefinition catalogue) {
         this.planning = Objects.requireNonNull(planning);
+        this.catalogue = Objects.requireNonNull(catalogue);
     }
 
     public static final Set<String> ELEMENT_PROPERTIES = Set.of("title", "description",
@@ -454,16 +462,16 @@ public final class ArchitectureDslCommands {
                 new RelationKey(command.parentId(), "CONTAINS", command.id()), "proposed", Map.of());
     }
 
-    static void validateRelation(Map<String, BlockAst> blocks, RelationKey relation) {
+    void validateRelation(Map<String, BlockAst> blocks, RelationKey relation) {
         token(relation.sourceId(), "sourceId");
         token(relation.targetId(), "targetId");
         if (relation.sourceId().equals(relation.targetId())) throw problem("SELF_RELATION", "targetId", "Self-relations are not permitted");
         if (!DslValidator.relationTypes().contains(relation.relationType())) throw problem("UNKNOWN_RELATION_TYPE", "relationType", "Unknown relation type");
         String sourceType = elementType(require(blocks, "element:" + relation.sourceId()));
         String targetType = elementType(require(blocks, "element:" + relation.targetId()));
-        String sourceRoot = TaxonomyRootTypes.rootFor(sourceType);
-        String targetRoot = TaxonomyRootTypes.rootFor(targetType);
-        if (!com.taxonomy.dsl.validation.RelationMetamodel.isCompatible(sourceRoot, targetRoot, relation.relationType())) {
+        String sourceRoot = catalogue.rootFor(sourceType);
+        String targetRoot = catalogue.rootFor(targetType);
+        if (!catalogue.allows(sourceRoot, relation.relationType(), targetRoot)) {
             throw problem("INCOMPATIBLE_RELATION", "relationType", "Relation direction or endpoint types are incompatible");
         }
     }
@@ -558,8 +566,8 @@ public final class ArchitectureDslCommands {
         return new RelationKey(header.get(0), header.get(1), header.get(2));
     }
 
-    private static void requireType(String type) {
-        if (type == null || !TaxonomyRootTypes.TYPE_TO_ROOT.containsKey(type)) throw problem("UNKNOWN_ELEMENT_TYPE", "type", "Choose a metamodel element type");
+    void requireType(String type) {
+        if (type == null || !catalogue.typeRoots().containsKey(type)) throw problem("UNKNOWN_ELEMENT_TYPE", "type", "Choose a metamodel element type");
     }
 
     private static void requireStatus(String status) {

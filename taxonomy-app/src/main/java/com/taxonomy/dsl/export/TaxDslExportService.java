@@ -15,7 +15,7 @@ import java.util.*;
 import com.taxonomy.dsl.model.ArchitectureElement;
 import com.taxonomy.dsl.model.ArchitectureRelation;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
-import com.taxonomy.dsl.model.TaxonomyRootTypes;
+import com.taxonomy.catalog.definition.RetainedCatalogueDefinitions;
 
 /**
  * Exports the current architecture state (taxonomy nodes and relations)
@@ -25,6 +25,7 @@ import com.taxonomy.dsl.model.TaxonomyRootTypes;
 public class TaxDslExportService implements com.taxonomy.workspace.service.ProjectCatalogueSeed {
 
     private final CatalogueSourceJournal catalogueSources;
+    private final RetainedCatalogueDefinitions definitions;
     private final TaxonomyNodeRepository nodeRepository;
     private final TaxonomyRelationRepository relationRepository;
     private final ModelToAstMapper modelToAstMapper = new ModelToAstMapper();
@@ -33,6 +34,13 @@ public class TaxDslExportService implements com.taxonomy.workspace.service.Proje
     public TaxDslExportService(TaxonomyNodeRepository nodeRepository,
                                TaxonomyRelationRepository relationRepository,
                                CatalogueSourceJournal catalogueSources) {
+        this(nodeRepository, relationRepository, catalogueSources, new RetainedCatalogueDefinitions(catalogueSources));
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public TaxDslExportService(TaxonomyNodeRepository nodeRepository, TaxonomyRelationRepository relationRepository,
+                               CatalogueSourceJournal catalogueSources, RetainedCatalogueDefinitions definitions) {
+        this.definitions = definitions;
         this.catalogueSources = catalogueSources;
         this.nodeRepository = nodeRepository;
         this.relationRepository = relationRepository;
@@ -54,7 +62,7 @@ public class TaxDslExportService implements com.taxonomy.workspace.service.Proje
     @Transactional
     public String exportAll(String namespace) {
         var source = catalogueSources.lockForCapture();
-        CanonicalArchitectureModel model = buildCanonicalModel();
+        CanonicalArchitectureModel model = buildCanonicalModel(definitions.forGeneration(source));
         model.setCatalogueRevision(source.id());
         var doc = modelToAstMapper.toDocument(model, namespace);
         return serializer.serialize(doc);
@@ -65,6 +73,10 @@ public class TaxDslExportService implements com.taxonomy.workspace.service.Proje
      */
     @Transactional(readOnly = true)
     public CanonicalArchitectureModel buildCanonicalModel() {
+        return buildCanonicalModel(definitions.current());
+    }
+
+    private CanonicalArchitectureModel buildCanonicalModel(CatalogueDefinition definition) {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
 
         // Export all non-root taxonomy nodes as elements
@@ -76,7 +88,9 @@ public class TaxDslExportService implements com.taxonomy.workspace.service.Proje
             if (node.getLevel() > 0) { // Skip virtual root nodes
                 ArchitectureElement el = new ArchitectureElement();
                 el.setId(node.getCode());
-                el.setType(TaxonomyRootTypes.typeFor(node.getTaxonomyRoot()));
+                String type = definition.typeFor(node.getTaxonomyRoot());
+                if (type == null) throw new IllegalStateException("Catalogue node has no declared type: " + node.getCode());
+                el.setType(type);
                 el.setTitle(node.getNameEn());
                 el.setDescription(node.getDescriptionEn());
                 el.setTaxonomy(node.getTaxonomyRoot());

@@ -38,6 +38,7 @@ class ArchitectureEditorPortfolioReconciliationTest {
         service = fixture.service;
         var beans = new DefaultListableBeanFactory();
         beans.registerSingleton("portfolio", portfolio);
+        beans.registerSingleton("catalogueDefinitions", com.taxonomy.dsl.model.CatalogueDefinitionResolver.standard());
         beans.registerSingleton("writeBarrier", BackupWriteBarrier.disabled());
         var injection = new AutowiredAnnotationBeanPostProcessor();
         injection.setBeanFactory(beans);

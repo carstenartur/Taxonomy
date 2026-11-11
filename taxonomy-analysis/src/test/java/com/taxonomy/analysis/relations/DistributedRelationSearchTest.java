@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.relations;
 
 import com.taxonomy.dto.RelationSearchReport;
+import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.dto.RelationSearchProgress;
 import com.taxonomy.relations.service.RelationCompatibilityMatrix;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,40 @@ import static org.assertj.core.api.Assertions.*;
 
 class DistributedRelationSearchTest {
     private static final JsonMapper JSON = JsonMapper.builder().build();
+
+    @Test
+    void savedMuseumPlanReplaysItsDeclaredDirectionAndLeavesTheDeepBranchOpen() {
+        var definition = new CatalogueDefinition("museum-1", true,
+                List.of(new CatalogueDefinition.Root("Museum Collections", "MC", "MuseumCollection")),
+                List.of(new CatalogueDefinition.Direction("BP", "CONSUMES", "MC")));
+        var branch = new ArrayList<Node>();
+        branch.add(new Node("MC", "MC", "Museum collections", "Collection hierarchy", true));
+        for (int depth = 1; depth <= 10; depth++)
+            branch.add(new Node("MC-" + depth, "MC", "Collection " + depth, "Catalogue entry", depth < 10));
+        var catalogue = new RequirementRelationSearch.InputCatalogue() {
+            public Node find(String id) { return id.equals(SOURCE.id()) ? SOURCE : null; }
+            public List<Node> roots() { return List.of(branch.getFirst()); }
+            public List<Node> children(Node node) {
+                int index = branch.indexOf(node);
+                return index < 0 || index + 1 == branch.size() ? List.of() : List.of(branch.get(index + 1));
+            }
+        };
+        var options = new RequirementRelationSearch.Options(new Limits(12, 2, 10, 128), 16);
+        var coordinator = new RequirementRelationSearch(catalogue, new RelationCompatibilityMatrix(definition),
+                RequirementRelationSearchContract::answer, () -> {});
+        var prepared = coordinator.prepare("museum-plan", READ, Map.of(SOURCE.id(), 90d), List.of("scored-process"), options, true);
+        var saved = JSON.readValue(JSON.writeValueAsString(prepared), RelationSearchDistribution.Plan.class);
+        assertThat(saved.schemaVersion()).isEqualTo(2);
+        assertThat(saved.items()).anyMatch(item -> item.type().equals("CONSUMES") && item.targetRoot().code().equals("MC"));
+
+        var worker = search(catalogue, RequirementRelationSearchContract::answer);
+        var report = RelationSearchDistribution.combine(saved, execute(worker, saved, READ));
+        assertThat(report.isSearchExhausted()).isFalse();
+        assertThat(report.totalCalls()).isLessThanOrEqualTo(options.limits().maxCalls());
+        assertThat(report.result().unfinished()).anyMatch(open -> open.reason().equals("DEPTH_LIMIT")
+                && open.targetRoot().equals("MC") && !open.targets().isEmpty());
+        assertThat(report.result().edges()).isEmpty();
+    }
 
     @Test
     void persistedPreparationAndReverseShardCompletionKeepSequentialEvidenceAndPrompts() {

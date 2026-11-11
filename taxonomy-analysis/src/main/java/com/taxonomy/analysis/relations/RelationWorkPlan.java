@@ -4,7 +4,7 @@ import com.taxonomy.analysis.service.AnalysisRunControl;
 import com.taxonomy.dto.RelationSearchProgress;
 import com.taxonomy.dto.RelationSearchProgress.*;
 import com.taxonomy.model.RelationType;
-import com.taxonomy.relations.service.RelationCompatibilityMatrix;
+import com.taxonomy.dsl.model.CatalogueDefinition;
 import java.util.*;
 import static com.taxonomy.dto.RelationSearchModel.*;
 
@@ -35,16 +35,16 @@ final class RelationWorkPlan implements RelationSearchEngine.Observer {
     private Current current;
     private java.util.function.Supplier<com.taxonomy.dto.RelationSearchBudget> budget;
 
-    RelationWorkPlan(List<Node> sources, List<Node> roots, RelationCompatibilityMatrix rules, int maximum) {
+    RelationWorkPlan(List<Node> sources, List<Node> roots, CatalogueDefinition rules, int maximum) {
         this(sources, roots, rules, maximum, true);
     }
-    RelationWorkPlan(List<Node> sources, List<Node> roots, RelationCompatibilityMatrix rules, int maximum, boolean publish) {
+    RelationWorkPlan(List<Node> sources, List<Node> roots, CatalogueDefinition rules, int maximum, boolean publish) {
         this.sources = sources.size(); this.maximum = maximum; this.publish = publish;
         sources.forEach(source -> sourceRoots.put(source.id(), source.root()));
         for (Node source : sources) for (Node root : roots) {
             boolean compatible = Arrays.stream(RelationType.values()).filter(RelationDiscoveryPolicy::automatic).anyMatch(type ->
-                    rules.targetDomain(source.root(), type).allows(root.root())
-                    || rules.targetDomain(root.root(), type).allows(source.root()));
+                    rules.targetDomain(source.root(), type.name()).allows(root.root())
+                    || rules.targetDomain(root.root(), type.name()).allows(source.root()));
             Pair pair = new Pair(source.id(), root.root());
             if (compatible && !work.containsKey(pair)) {
                 Counts counts = countsByRoot.computeIfAbsent(root.root(), unused -> new Counts());

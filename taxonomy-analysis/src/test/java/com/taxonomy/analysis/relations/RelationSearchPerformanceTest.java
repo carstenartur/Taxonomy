@@ -7,6 +7,7 @@ import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.dto.RelationSearchReport;
 import com.taxonomy.relations.service.RelationCompatibilityMatrix;
+import com.taxonomy.dsl.model.CatalogueDefinition;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -31,7 +32,7 @@ class RelationSearchPerformanceTest {
         var b = new Node("BP-b", "BP", "B", "", false);
         var c = new Node("CP-c", "CP", "C", "", false);
         var otherRoot = new Node("CR", "CR", "Services", "", true);
-        var plan = new RelationWorkPlan(List.of(a, b, c), List.of(ROOT, otherRoot), new RelationCompatibilityMatrix(), 24);
+        var plan = new RelationWorkPlan(List.of(a, b, c), List.of(ROOT, otherRoot), CatalogueDefinition.standard(), 24);
         plan.assessed(new SourceAssessment(a, List.of(contribution(a)), "Required", ""));
         plan.assessed(new SourceAssessment(b, List.of(), "Uncertain", "Which function?"));
         plan.assessed(new SourceAssessment(c, List.of(), "Not requested", ""));
@@ -241,7 +242,7 @@ class RelationSearchPerformanceTest {
         var later = new Node("later", "BP", "Later", "", false);
         var pending = new Node("pending", "BP", "Pending", "", false);
         var plan = new RelationWorkPlan(List.of(SOURCE, rejected, unknown, later, pending), List.of(ROOT, otherRoot),
-                new RelationCompatibilityMatrix(), 24);
+                CatalogueDefinition.standard(), 24);
         var restoredTasks = plan.tasks().stream().map(task -> new Task(task.sourceId(), task.targetRoot(),
                 task.sourceId().equals(later.id()) ? State.COMPLETED : task.state())).toList();
         var previous = new RelationSearchReport(2, "hash", "policy", List.of(), new Result(List.of(), List.of(), List.of(), 0, 0, 0),
@@ -281,7 +282,7 @@ class RelationSearchPerformanceTest {
     }
 
     @Test void progressSnapshotsDoNotVisitTheCompleteTaskMap() throws Exception {
-        var plan = new RelationWorkPlan(List.of(SOURCE), List.of(ROOT), new RelationCompatibilityMatrix(), 24);
+        var plan = new RelationWorkPlan(List.of(SOURCE), List.of(ROOT), CatalogueDefinition.standard(), 24);
         var field = RelationWorkPlan.class.getDeclaredField("work"); field.setAccessible(true);
         @SuppressWarnings("unchecked") var original = (Map<Object, Object>) field.get(plan);
         var measured = new CountingMap(original); field.set(plan, measured);

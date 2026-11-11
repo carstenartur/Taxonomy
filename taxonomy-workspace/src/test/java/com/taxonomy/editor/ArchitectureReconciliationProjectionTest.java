@@ -1,9 +1,12 @@
 package com.taxonomy.editor;
 
+import com.taxonomy.dsl.model.CatalogueDefinition;
 import com.taxonomy.export.LayeredDiagramLayoutService;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -37,6 +40,37 @@ class ArchitectureReconciliationProjectionTest {
         assertEquals("SEMANTIC", title.category());
     }
 
+    @Test void eachSceneUsesItsRecordedCatalogueAndTheLegacyMapContainsOnlyCommonMappings() {
+        var oldGeneration = "12c55fba-893b-487d-9b04-eea4b08a33ae";
+        var newGeneration = "d9fbd53e-f190-4d44-b3da-3e538056ad6e";
+        var oldCatalogue = new CatalogueDefinition("museum-v1", true, List.of(
+                new CatalogueDefinition.Root("Museum collections", "MC", "Collection")), List.of());
+        var newCatalogue = new CatalogueDefinition("archive-v2", true, List.of(
+                new CatalogueDefinition.Root("Archives", "AR", "Collection"),
+                new CatalogueDefinition.Root("Accession", "AC", "Accession")), List.of());
+        var catalogues = Map.of(oldGeneration, oldCatalogue, newGeneration, newCatalogue);
+        var reads = new ArrayList<String>();
+        var historical = new ArchitectureEditorProjection(new LayeredDiagramLayoutService(), model -> {
+            reads.add(model.getCatalogueRevision());
+            return catalogues.get(model.getCatalogueRevision());
+        });
+        String oldSource = "meta {\n catalogueRevision: \"" + oldGeneration + "\";\n}\n"
+                + "element record type Collection {\n title: \"Record\";\n}\n";
+        String newSource = oldSource.replace(oldGeneration, newGeneration);
+        var comparison = historical.compare(preview(oldSource, oldSource, newSource, newSource)).comparison();
+        assertEquals(List.of(oldGeneration, newGeneration), reads);
+        assertEquals(oldCatalogue.typeRoots(), comparison.sceneTypeRoots().get("base"));
+        assertEquals(oldCatalogue.typeRoots(), comparison.sceneTypeRoots().get("local"));
+        assertEquals(newCatalogue.typeRoots(), comparison.sceneTypeRoots().get("incoming"));
+        assertEquals(newCatalogue.typeRoots(), comparison.sceneTypeRoots().get("proposed"));
+        assertEquals(CatalogueDefinition.standard().typeRoots(), comparison.typeRoots());
+        var before = comparison.scenes().get("local").nodes().getFirst();
+        var after = comparison.scenes().get("incoming").nodes().getFirst();
+        assertNotEquals(before.layer(), after.layer());
+        assertEquals(before.x(), after.x());
+        assertEquals(before.y(), after.y());
+    }
+
     @Test void presentationAndExchangeEvidenceChangesRemainSeparateAndRemovedObjectsRemainVisibleInTheirSource() {
         String base = "element one type CoreService {\n title: \"Original\";\n x-exchange-artifact: \"native-proof\";\n}\n"
                 + "view overview {\n include: one;\n layout: \"LR\";\n}\n";
@@ -55,6 +89,7 @@ class ArchitectureReconciliationProjectionTest {
                 "b".repeat(40), "unresolved", base, local, base, null, List.of(), List.of(), false);
         var comparison = projection.compare(unresolved).comparison();
         assertFalse(comparison.scenes().containsKey("proposed"));
+        assertFalse(comparison.sceneTypeRoots().containsKey("proposed"));
         assertNull(comparison.properties().stream().filter(row -> row.property().equals("title")).findFirst().orElseThrow().proposed());
     }
 

@@ -24,6 +24,71 @@ import static org.junit.jupiter.api.Assertions.*;
 class ClusterAnalysisStoreTest {
     private static final TaxonomyShardRoot CP = TaxonomyShardRoot.of("CP"), IP = TaxonomyShardRoot.of("IP");
 
+    @Test void configuredMuseumRootIsPersistedDispatchedAndObservedFromItsAdmittedGeneration() {
+        var catalogue = new com.taxonomy.dsl.model.CatalogueDefinition("museum-1", true,
+                List.of(new com.taxonomy.dsl.model.CatalogueDefinition.Root("Museum Collections", "MC", "MuseumCollection")),
+                List.of(new com.taxonomy.dsl.model.CatalogueDefinition.Direction("MC", "USES", "IP")));
+        var museum = TaxonomyShardRoot.of("MC");
+        assertEquals(List.of(museum), AnalysisWorkerShards.parse("MC", catalogue).roots());
+        var workId = AnalysisTaskId.relationWork("museum-run", museum, 7);
+        assertTrue(workId.matchesRelation("museum-run", List.of(museum), 2));
+        try (var db = new Database()) {
+            var context = context("museum-run");
+            var basic = command("requirement");
+            var command = new AnalyzeRequirementCommand(basic.businessText(), false, 20, basic.provider(),
+                    basic.username(), basic.workspaceContext(), null, new AnalysisScope(Set.of("MC"), AnalysisMode.TAXONOMIES_ONLY));
+            var source = DurableClusterAnalysisExecutionTest.source(context);
+            var prior = DurableClusterAnalysisExecutionTest.root(source, "IP");
+            var nodes = new ArrayList<com.taxonomy.catalog.snapshot.RootCatalogueSnapshot.Node>();
+            for (int depth = 0; depth <= 10; depth++) {
+                var entry = new com.taxonomy.catalog.model.TaxonomyNode();
+                entry.setCode(depth == 0 ? "MC" : "MC-" + depth); entry.setTaxonomyRoot("MC");
+                entry.setParentCode(depth == 0 ? null : depth == 1 ? "MC" : "MC-" + (depth - 1));
+                entry.setLevel(depth); entry.setNameEn("Collection " + depth);
+                nodes.add(com.taxonomy.catalog.snapshot.RootCatalogueSnapshot.Node.capture(entry, prior.nodes().getFirst().metadata(), false));
+            }
+            var frozen = new com.taxonomy.catalog.snapshot.RootCatalogueSnapshot(
+                    com.taxonomy.catalog.snapshot.RootCatalogueSnapshot.CONFIGURED_SCHEMA_VERSION, source, "MC", nodes,
+                    prior.overlayMetadata(), prior.catalogueProvenance(), null, catalogue.spec());
+            var json = new ObjectMapper();
+            String payload = json.writeValueAsString(frozen);
+            var progress = new ArrayList<AnalysisProgressEvent>();
+            db.store.eventPublisher(progress::add);
+            db.store.admit(context, command, null, Map.of(museum, payload), Map.of(), catalogue);
+            var task = db.task(museum);
+            assertEquals(List.of(museum), db.store.inputRoots(context));
+            assertEquals(command, db.store.command(context));
+            var recorded = json.readValue(db.store.shard(context, museum), com.taxonomy.catalog.snapshot.RootCatalogueSnapshot.class);
+            assertEquals(catalogue.spec(), recorded.catalogueDefinition());
+            assertEquals("MC-10", recorded.nodes().getLast().code());
+            var scorer = FrozenClusterAnalysisComputationTest.mockProviderWorker(db.store, json, "MC", catalogue);
+            var worker = new ClusterAnalysisService(db.store, scorer, new ClusterAnalysisSignals());
+            var completion = (SubtaxonomyAnalysisCompleted) db.completions.commit(worker.prepare(task));
+            assertEquals(AnalysisTaskOutcome.COMPLETED, completion.outcome());
+            assertTrue(db.store.accept(completion));
+            var completed = db.store.snapshot(context);
+            assertEquals(ClusterAnalysisState.COMPLETED, completed.state());
+            assertTrue(completed.result().getRawScores().containsKey("MC"));
+            var branch = completed.result().getTree().getFirst();
+            for (int level = 1; level <= 10; level++) {
+                branch = branch.getChildren().getFirst();
+                assertEquals("MC-" + level, branch.getCode());
+            }
+            assertEquals(progress.getLast().sequence(), db.store.events(context, 0, 100).getLast().sequence());
+
+            var exported = ClusterAnalysisBackupRestoreTest.archive(db, context.operationId());
+            var archive = json.readValue(json.writeValueAsString(exported), ClusterAnalysisBackupRecords.Archive.class);
+            try (var restored = new Database()) {
+                var target = context("museum-restored");
+                new ClusterAnalysisBackupRestorer(restored.em, restored.transactions, json).restore(archive, target, command);
+                assertEquals(completed.result().getRawScores(), restored.store.snapshot(target).result().getRawScores());
+                assertEquals(catalogue.spec(), json.readValue(restored.store.shard(target, museum),
+                        com.taxonomy.catalog.snapshot.RootCatalogueSnapshot.class).catalogueDefinition());
+                assertTrue(restored.sent.isEmpty(), "Archive restore cannot dispatch a fresh assessment");
+            }
+        }
+    }
+
     @Test void finalizedCopilotSurvivesDurableResultReadsAndDuplicateFinalization() {
         try (var db = new Database()) {
             var context = context("copilot-finalized");
