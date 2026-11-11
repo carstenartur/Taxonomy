@@ -57,10 +57,11 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
     // Keep only method, payload length and completion outcome. In particular,
     // never write the actual model DSL or credentials into failure diagnostics.
     const validationTraffic = [];
+    const validationStartedAt = Date.now();
     const noteValidation = (phase, request, outcome = null) => {
       if (new URL(request.url()).pathname !== validationUrl.pathname) return;
-      validationTraffic.push({ phase, method: request.method(),
-        payloadLength: request.postData()?.length ?? null, outcome });
+      validationTraffic.push({ phase, elapsedMs: Date.now() - validationStartedAt,
+        method: request.method(), payloadLength: request.postData()?.length ?? null, outcome });
     };
     const observe = request => {
       const pathname = new URL(request.url()).pathname;
@@ -70,7 +71,12 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
         noteValidation('request', request);
       }
     };
+    const observeResponse = response => noteValidation('response', response.request(), response.status());
+    const observeFailure = request => noteValidation('failed', request,
+      request.failure()?.errorText ?? 'unknown');
     page.on('request', observe);
+    page.on('response', observeResponse);
+    page.on('requestfailed', observeFailure);
     try {
       const home = new URL(base);
       home.searchParams.set('lang', locale);
@@ -245,6 +251,8 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
         liveValidationOnReveal: true });
     } finally {
       page.off('request', observe);
+      page.off('response', observeResponse);
+      page.off('requestfailed', observeFailure);
     }
   }
   await writeFile(path.join(outputDir, 'browser-sessions.json'),
