@@ -106,8 +106,8 @@ class RelationProposalRepositoryScopeTest {
 
     @Test
     void createFromHypothesisPersistsRepositoryWorkspaceAndOwnerFromContext() {
-        TaxonomyNode source = node("BP", "Business Process");
-        TaxonomyNode target = node("CP", "Capability");
+        TaxonomyNode source = root("BP", "Business Process");
+        TaxonomyNode target = root("CP", "Capability");
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "feature/a", "alice");
         when(nodeRepository.findByCode("BP")).thenReturn(Optional.of(source));
@@ -141,8 +141,8 @@ class RelationProposalRepositoryScopeTest {
     void duplicateCheckCannotSeeEquivalentProposalFromAnotherRepository() {
         RepositoryContext context = new RepositoryContext(
                 "repo-a", null, "main", "alice", RepositoryScope.CENTRAL_WRITE);
-        when(nodeRepository.findByCode("BP")).thenReturn(Optional.of(node("BP", "BP")));
-        when(nodeRepository.findByCode("CP")).thenReturn(Optional.of(node("CP", "CP")));
+        when(nodeRepository.findByCode("BP")).thenReturn(Optional.of(root("BP", "BP")));
+        when(nodeRepository.findByCode("CP")).thenReturn(Optional.of(root("CP", "CP")));
         when(proposalRepository.existsInRepositoryWorkspace(
                         "repo-a", "BP", "CP", RelationType.RELATED_TO, null))
                 .thenReturn(false);
@@ -167,9 +167,26 @@ class RelationProposalRepositoryScopeTest {
                 proposal.setRepositoryId(" "));
     }
 
-    private static TaxonomyNode node(String code, String name) {
+    @Test
+    void aStoredNodeWithoutCatalogueMembershipCannotAcquireATypeFromItsCode() {
+        RepositoryContext context = RepositoryContext.workspace("repo-a", "workspace-a", "feature/a", "alice");
+        TaxonomyNode unresolved = new TaxonomyNode();
+        unresolved.setCode("BP");
+        unresolved.setNameEn("Unresolved");
+        when(nodeRepository.findByCode("BP")).thenReturn(Optional.of(unresolved));
+        when(nodeRepository.findByCode("CP")).thenReturn(Optional.of(root("CP", "Capability")));
+
+        assertThatIllegalArgumentException().isThrownBy(() -> service.createFromHypothesisInContext(
+                "BP", "CP", RelationType.RELATED_TO, 0.5, "reason", context))
+                .withMessageContaining("incompatible endpoint types");
+        verify(proposalRepository, never()).save(any());
+        verify(relationReadService, never()).readIdentitySnapshot(any());
+    }
+
+    private static TaxonomyNode root(String code, String name) {
         TaxonomyNode node = new TaxonomyNode();
         node.setCode(code);
+        node.setTaxonomyRoot(code);
         node.setNameEn(name);
         return node;
     }

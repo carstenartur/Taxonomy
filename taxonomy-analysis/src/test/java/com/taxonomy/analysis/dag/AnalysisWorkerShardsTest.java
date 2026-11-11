@@ -12,7 +12,9 @@ class AnalysisWorkerShardsTest {
     @Test
     void blankSelectsAllEightCatalogueRoots() {
         assertThat(AnalysisWorkerShards.parse(null).roots()).isEqualTo(TaxonomyShardRoot.DEFAULT_ROOTS);
-        assertThat(AnalysisWorkerShards.parse("  ").roots()).hasSize(8);
+        assertThat(AnalysisWorkerShards.parse("  ").roots())
+                .extracting(TaxonomyShardRoot::code)
+                .containsExactlyElementsOf(com.taxonomy.dsl.model.CatalogueDefinition.standard().rootCodes());
     }
 
     @Test
