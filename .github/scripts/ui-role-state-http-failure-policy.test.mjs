@@ -95,10 +95,12 @@ async function navigationHarness({ initial = {}, after, outcome = true, pending,
     }
   };
   const start = editorAcceptanceSource.indexOf("  const base = baseUrl.replace(");
-  const end = editorAcceptanceSource.indexOf('  const initialResponse =', start);
+  // Exercise the draft gate through its own final action, independently of how the editor subscribes to HTTP.
+  const settleDraft = 'if (!leavingSessionsInventory) await settleDraftBeforeNavigation(page);';
+  const end = editorAcceptanceSource.indexOf(settleDraft, start);
   assert.ok(start >= 0 && end > start);
   return { run: () => mod.settleDraftBeforeLocaleNavigation(page), saves: () => saves,
-    runEditor: () => vm.runInNewContext('(async () => {' + editorAcceptanceSource.slice(start, end) + '})()', {
+    runEditor: () => vm.runInNewContext('(async () => {' + editorAcceptanceSource.slice(start, end + settleDraft.length) + '})()', {
       page, baseUrl, settleDraftBeforeNavigation: mod.settleDraftBeforeNavigation
     }) };
 }
