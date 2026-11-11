@@ -22,6 +22,7 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertAll;
 
 /** Prevent extracted plugin inputs from silently bypassing the existing CI lanes. */
 class PluginWorkflowTriggerTest {
@@ -153,10 +154,30 @@ class PluginWorkflowTriggerTest {
     })
     void realPerformanceScopeCommandRecognizesPluginChanges(String changedPath, boolean expected)
             throws Exception {
-        Map<?, ?> observability = map(map(workflow("ci-cd.yml").get("jobs")).get("observability"));
-        List<?> steps = (List<?>) observability.get("steps");
+        assertIsolatedScope("observability", "observability-performance-scope", changedPath, expected);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "deploy/container/apt/ubuntu-archive.sh, true",
+            "deploy/container/apt/README.md, false"
+    })
+    void isolatedImagePackageSourceTriggersTheImageAndClusterChecks(String path, boolean expected) {
+        String kubernetes = "kubernetes-constrained-smoke.yml";
+        assertAll(
+                () -> assertIsolatedScope("production-image", "production-image-scope", path, expected),
+                () -> assertThat(includesPath(triggerPaths(kubernetes, "pull_request"), path))
+                        .as("Kubernetes pull request trigger").isEqualTo(expected),
+                () -> assertThat(includesPath(triggerPaths(kubernetes, "push"), path))
+                        .as("Kubernetes main push trigger").isEqualTo(expected));
+    }
+
+    private void assertIsolatedScope(String jobId, String stepId, String changedPath, boolean expected)
+            throws Exception {
+        Map<?, ?> job = map(map(workflow("ci-cd.yml").get("jobs")).get(jobId));
+        List<?> steps = (List<?>) job.get("steps");
         Map<?, ?> scope = steps.stream().map(PluginWorkflowTriggerTest::map)
-                .filter(step -> "observability-performance-scope".equals(step.get("id")))
+                .filter(step -> stepId.equals(step.get("id")))
                 .findFirst().orElseThrow();
         String command = (String) scope.get("run");
         assertThat(command).isNotBlank();

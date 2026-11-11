@@ -207,6 +207,7 @@ jobs:
               .github/scripts/configure-docker-mirror.sh \
               .github/scripts/build-production-image.sh \
               .github/scripts/download-embedding-model.sh \
+              deploy/container/apt/ubuntu-archive.sh \
               deploy/container/onnx \
               .dockerignore \
               pom.xml \
