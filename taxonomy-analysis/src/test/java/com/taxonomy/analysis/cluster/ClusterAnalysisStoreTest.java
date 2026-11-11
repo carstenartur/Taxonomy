@@ -29,7 +29,7 @@ class ClusterAnalysisStoreTest {
                 List.of(new com.taxonomy.dsl.model.CatalogueDefinition.Root("Museum Collections", "MC", "MuseumCollection")),
                 List.of(new com.taxonomy.dsl.model.CatalogueDefinition.Direction("MC", "USES", "IP")));
         var museum = TaxonomyShardRoot.of("MC");
-        assertEquals(List.of(museum), AnalysisWorkerShards.parse("MC", catalogue).roots());
+        assertEquals(List.of(museum), AnalysisWorkerShards.parse("MC", catalogue.rootCodes()).roots());
         var workId = AnalysisTaskId.relationWork("museum-run", museum, 7);
         assertTrue(workId.matchesRelation("museum-run", List.of(museum), 2));
         try (var db = new Database()) {

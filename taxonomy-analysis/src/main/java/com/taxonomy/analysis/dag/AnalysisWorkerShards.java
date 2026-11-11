@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.dag;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -38,11 +39,14 @@ public record AnalysisWorkerShards(List<TaxonomyShardRoot> roots, Set<TaxonomySh
 
     /** Parse a comma-separated root list; blank selects {@link #all()}. */
     public static AnalysisWorkerShards parse(String value) {
-        return parse(value, com.taxonomy.dsl.model.CatalogueDefinition.standard());
+        return parseRoots(value, TaxonomyShardRoot.DEFAULT_ROOTS);
     }
 
-    public static AnalysisWorkerShards parse(String value, com.taxonomy.dsl.model.CatalogueDefinition definition) {
-        var allRoots = definition.rootCodes().stream().map(TaxonomyShardRoot::of).toList();
+    public static AnalysisWorkerShards parse(String value, Collection<String> catalogueRoots) {
+        return parseRoots(value, catalogueRoots.stream().map(TaxonomyShardRoot::of).toList());
+    }
+
+    private static AnalysisWorkerShards parseRoots(String value, List<TaxonomyShardRoot> allRoots) {
         var available = Set.copyOf(allRoots);
         if (value == null || value.isBlank()) return new AnalysisWorkerShards(allRoots, available);
         List<TaxonomyShardRoot> parsed = new ArrayList<>();
