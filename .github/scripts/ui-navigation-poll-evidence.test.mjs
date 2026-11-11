@@ -349,6 +349,39 @@ for (const endpoint of reloadEndpoints) {
   test(`${endpoint}: an explicit editor reload requires a fresh matching adopted response`, () => {
     assertReconciled(reloadFixture(endpoint), endpoint);
   });
+  test(`${endpoint}: a retained workspace pin still permits an exactly adopted canonical response`, () => {
+    const input = reloadFixture(endpoint);
+    const url = new URL(input.reads[0].url);
+    url.searchParams.set('workspaceId', 'workspace-1');
+    input.reads[0].url = url.href;
+    assertReconciled(input, endpoint);
+  });
+  for (const [boundary, mutate] of [
+    ['foreign workspace query', url => url.searchParams.set('workspaceId', 'foreign-workspace')],
+    ['duplicate workspace query', url => url.searchParams.append('workspaceId', 'workspace-1')],
+    ['unexpected query', url => url.searchParams.set('insecure', 'true')],
+    ['missing branch query', url => url.searchParams.delete('branch')]
+  ]) {
+    test(`${endpoint}: a pinned reload rejects ${boundary}`, () => {
+      const input = reloadFixture(endpoint);
+      const url = new URL(input.reads[0].url);
+      url.searchParams.set('workspaceId', 'workspace-1');
+      mutate(url);
+      input.reads[0].url = url.href;
+      if (boundary === 'missing branch query' && endpoint === reloadEndpoints[1]) return;
+      assert.equal(classifyWebKitPollCancellation(input), null);
+    });
+  }
+  test(`${endpoint}: a failed pinned request vetoes a later correct response`, () => {
+    const input = reloadFixture(endpoint);
+    const url = new URL(input.reads[0].url);
+    url.searchParams.set('workspaceId', 'workspace-1');
+    input.reads[0].url = url.href;
+    input.reads.push({...structuredClone(input.reads[0]), id:'failed-pinned-response',
+      documentEpoch:oldEpoch, sequence:25, failed:'net::ERR_ABORTED', status:null,
+      finished:false, jsonParsed:false, payload:null});
+    assert.equal(classifyWebKitPollCancellation(input), null);
+  });
   const failures = [
     ...rejectedBoundaries.filter(([name]) => !['wrong destination locale', 'no new DOM write',
       'error from a different old URL', 'read from another page URL', 'observation from another destination'].includes(name)),

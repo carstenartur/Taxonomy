@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { csrfJson } from './ui-role-fixtures.mjs';
+import { settleDraftBeforeNavigation } from './system-information-acceptance.mjs';
 
 async function confirmDraftDiscard(page, action, confirmations, intent) {
   let handled = null;
@@ -313,10 +314,13 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     await onReloadVerified?.();
   }
   const base = baseUrl.replace(/\/$/, '');
-  await page.evaluate(async () => {
-    if (window.TaxonomyAnalysisSession) await window.TaxonomyAnalysisSession.saveNow();
-  });
-  await page.waitForLoadState('networkidle');
+  const leavingSessionsInventory = await page.evaluate(expectedUrl => {
+    const expected = new URL(expectedUrl);
+    return location.origin === expected.origin && location.pathname === expected.pathname
+      && Boolean(document.getElementById('sessionInventory'))
+      && !document.getElementById('businessText') && !window.TaxonomyAnalysisSession;
+  }, base + '/admin/sessions');
+  if (!leavingSessionsInventory) await settleDraftBeforeNavigation(page);
   const initialResponse = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/api/architecture/editor') && response.request().method() === 'GET');
   await page.goto(`${base}/architecture/editor?lang=en`);
   const initial = await (await initialResponse).json();

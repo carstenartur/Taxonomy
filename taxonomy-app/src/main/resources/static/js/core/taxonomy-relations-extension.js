@@ -46,7 +46,8 @@
         render();
     });
     ['taxonomy:analysis-recovery-updated', 'taxonomy:view-rendered', 'taxonomy:analysis-evidence-imported',
-        'taxonomy:analysis-draft-restored', 'taxonomy:analysis-draft-reset', 'taxonomy:analysis-invalidated']
+        'taxonomy:analysis-draft-restored', 'taxonomy:analysis-draft-reset', 'taxonomy:analysis-invalidated',
+        'taxonomy:analysis-source-ready']
         .forEach(function (name) { document.addEventListener(name, render); });
     document.getElementById('businessText')?.addEventListener('input', render);
     document.addEventListener('change', render);

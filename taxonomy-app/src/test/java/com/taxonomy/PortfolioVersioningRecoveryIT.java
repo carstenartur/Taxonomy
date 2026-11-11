@@ -115,6 +115,8 @@ class PortfolioVersioningRecoveryIT {
         page.openHtml(PREFIX, "/signature-history", """
                 <!doctype html><html lang="%s"><head><meta charset="UTF-8">
                 <script src="/taxonomy/js/taxonomy-i18n.js"></script>
+                <script src="/taxonomy/js/api/taxonomy-api-client.js"></script>
+                <script src="/taxonomy/js/api/workspace-api.js"></script>
                 <script src="/taxonomy/js/shared/taxonomy-utils.js"></script>
                 <script src="/taxonomy/js/versioning/taxonomy-versions.js"></script>
                 </head><body><div id="versionsTimeline"></div>

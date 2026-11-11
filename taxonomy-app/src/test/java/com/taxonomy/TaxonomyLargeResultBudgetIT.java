@@ -782,15 +782,21 @@ class TaxonomyLargeResultBudgetIT {
 
     private static void installSyntheticSearchBoundary() {
         execute("""
-                window.__taxonomyBudgetOriginalFetch = window.fetch.bind(window);
+                if (window.__taxonomyBudgetInstall) return;
                 const realNode = document.querySelector(
                   '#taxonomyTree .tax-node[data-code]');
                 if (!realNode || !realNode.dataset.code) {
                   throw new Error('No real taxonomy node is available for navigation evidence');
                 }
                 window.__taxonomyBudgetRealCode = realNode.dataset.code;
+                let workload = {count: 0, responseDelayMs: 0};
                 window.__taxonomyBudgetInstall = function (count, responseDelayMs = 0) {
-                  const original = window.__taxonomyBudgetOriginalFetch;
+                  workload = {count, responseDelayMs};
+                };
+                window.TaxonomyApiClient.installTransportAdapter('large-result-budget-search', nextFetch =>
+                  function (input, init) {
+                  // Capture each workload before a later scenario replaces the fixture state.
+                  const {count, responseDelayMs} = workload;
                   const nodes = () => Array.from({length: count}, (_, index) => {
                     const longSuffix = ' — repeated bounded-label evidence segment'.repeat(12);
                     return {
@@ -808,7 +814,6 @@ class TaxonomyLargeResultBudgetIT {
                     status: 200,
                     headers: {'Content-Type': 'application/json'}
                   });
-                  window.fetch = function (input, init) {
                     const raw = input instanceof Request ? input.url : String(input);
                     const url = new URL(raw, window.location.href);
                     if (url.pathname === '/api/search') {
@@ -830,9 +835,8 @@ class TaxonomyLargeResultBudgetIT {
                       }
                       return Promise.resolve(response());
                     }
-                    return original(input, init);
-                  };
-                };
+                    return nextFetch(input, init);
+                  });
                 """);
     }
 

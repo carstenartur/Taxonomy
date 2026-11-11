@@ -1,3 +1,4 @@
+import canonicalFixture from './canonical-api-fixture.cjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -133,6 +134,7 @@ test('Sunburst keeps an unassessed branch color when the preceding zero branch i
         TaxonomyState:{currentView:'sunburst',taxonomyData:nodes,currentScores:scores,currentScoreDetails:{}}},
         document,d3,TaxonomyI18n:{t:key=>key},CustomEvent:class{},
         ResizeObserver:class{observe(){}disconnect(){}},console:{error(message,error){throw error;}}};
+    canonicalFixture.install(runtime, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js', 'api/search-api.js', 'api/relations-api.js']);
     for(const name of ['shared/taxonomy-utils.js','core/taxonomy-views.js','core/taxonomy-browse.js']) {
         vm.runInNewContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/'+name,import.meta.url),'utf8'),runtime);
         runtime.TaxonomyUtils=runtime.window.TaxonomyUtils;

@@ -1,4 +1,6 @@
-import test from 'node:test';
+import test, {afterEach} from 'node:test';
+import canonicalFixture from './canonical-api-fixture.cjs';
+afterEach(() => canonicalFixture.dispose());
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
@@ -94,7 +96,7 @@ function createProbeHarness(request) {
   return { context, runtime };
 }
 
-function createStartupHarness(workspaceResponse, loadDraft = async () => null) {
+function createStartupHarness(workspaceResponse, loadDraft = async () => null, metadata = {}) {
   const pendingStates = [], documentListeners = new Map(), windowListeners = new Map();
   const observations = [];
   const runtime = {
@@ -156,11 +158,16 @@ function createStartupHarness(workspaceResponse, loadDraft = async () => null) {
     },
     getElementById() {
       return null;
+    },
+    dispatchEvent(event) {
+      for (const listener of documentListeners.get(event.type) || []) listener(event);
+      return true;
     }
   };
   const window = {
     __TaxonomyAnalysisSessionContext: context,
     TaxonomyI18n: null,
+    ...metadata,
     console,
     location: { assign() {} },
     setInterval() {
@@ -176,6 +183,7 @@ function createStartupHarness(workspaceResponse, loadDraft = async () => null) {
   }
 
   vm.runInNewContext(projectsSource, {
+    CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options?.detail;}},
     window,
     document,
     console,
@@ -192,7 +200,7 @@ function createStartupHarness(workspaceResponse, loadDraft = async () => null) {
     encodeURIComponent
   }, { filename: 'taxonomy-analysis-session-projects.js' });
 
-  return { context, runtime, pendingStates, observations, document, session: window.TaxonomyAnalysisSession,
+  return { context, runtime, pendingStates, observations, document, window, session: window.TaxonomyAnalysisSession,
     async emit(name, detail, target = 'document') {
       const listeners = (target === 'document' ? documentListeners : windowListeners).get(name) || [];
       for (const listener of listeners) await listener({ type: name, detail, persisted: true });
@@ -363,20 +371,24 @@ test('an initial workspace outage is retried when server observation reconnects'
 const gitStatusSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/workspace/taxonomy-git-status.js', import.meta.url), 'utf8');
 function gitStatusHarness(fetcher) {
-  const events = [], documentListeners = new Map();
+  const events = [], authEvents = [], documentListeners = new Map();
   const bar = { innerHTML: '', classList: { remove() {} }, querySelector() { return null; } };
   const document = {
     addEventListener(name, listener) { documentListeners.set(name, listener); },
     getElementById: () => bar,
-    dispatchEvent(event) { events.push(event); }
+    dispatchEvent(event) {
+      if (event.type === 'taxonomy:server-contact') events.push(event);
+      else if (event.type === 'taxonomy-api-auth-failure') authEvents.push(event);
+    }
   };
   const window = { addEventListener() {}, TaxonomyUtils: { escapeHtml: String },
     TaxonomyI18n: { t: key => key } };
   const sandbox = { window, document, fetch: fetcher, TaxonomyUtils: window.TaxonomyUtils,
     TaxonomyI18n: window.TaxonomyI18n, AbortController, CustomEvent,
     setInterval() { return 1; }, clearInterval() {} };
-  vm.runInNewContext(gitStatusSource, sandbox);
-  return { events, refresh: () => { documentListeners.get('DOMContentLoaded')(); }, window };
+  canonicalFixture.install(sandbox, ['api/workspace-api.js']);
+  vm.runInContext(gitStatusSource, sandbox);
+  return { events, authEvents, bar, refresh: () => { documentListeners.get('DOMContentLoaded')(); }, window };
 }
 
 test('existing git observation publishes successful and failed server contact without caching', async () => {
@@ -392,6 +404,9 @@ test('existing git observation publishes successful and failed server contact wi
   assert.equal(h.events[0].type, 'taxonomy:server-contact');
   assert.equal(h.events[0].detail.available, false);
   assert.equal(h.events[0].detail.status, 403);
+  assert.equal(h.authEvents.length, 1, 'Central authentication handling still observes the forbidden response');
+  assert.equal(h.authEvents[0].detail.status, 403);
+  assert.equal(h.bar.innerHTML, '', 'Canonical authentication does not paint a Git error view');
   connected = true;
   h.window.TaxonomyGitStatus.refresh();
   await new Promise(resolve => setImmediate(resolve));
@@ -410,4 +425,172 @@ test('an obsolete git observation cannot report loss of the current connection',
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.events.length, 1);
   assert.equal(h.events[0].detail.available, true);
+});
+
+for (const [name, change] of [
+  ['workspace', h => { h.window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'other'; }],
+  ['analysis generation', h => { h.window.__TaxonomyAnalysisSessionContext.runtime.analysisGeneration++; }],
+  ['runtime replacement', h => { h.window.__TaxonomyAnalysisSessionContext.runtime = {workspaceId:'original',analysisGeneration:1}; }],
+  ['same-branch context navigation', h => { h.selection = {contextId:'new-context',branch:'draft',commitId:'new-commit'}; }],
+  ['context navigation', h => { h.selection = {contextId:'new-context',branch:'other',commitId:'new-commit'}; }]
+]) test(`an obsolete forbidden git observation cannot report connectivity for a new ${name}`, async () => {
+  const pending = deferred();
+  const h = gitStatusHarness(() => pending.promise);
+  h.window.__TaxonomyAnalysisSessionContext = {runtime:{workspaceId:'original',analysisGeneration:1}};
+  h.selection = {contextId:'old-context',branch:'draft',commitId:'old-commit'};
+  h.window.TaxonomyContextBar = {getCurrentContext:()=>h.selection};
+  h.refresh(); await new Promise(resolve=>setImmediate(resolve)); change(h);
+  pending.resolve({ok:false,status:403,json:async()=>({})});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(h.events.length,0,'A forbidden response from an old source does not change current connectivity');
+  assert.equal(h.authEvents.length,1,'Source fencing does not bypass central authentication handling');
+});
+
+test('an unauthorized current git poll preserves both connectivity and central authentication signals', async () => {
+  const h = gitStatusHarness(async () => ({ok:false,status:401,json:async()=>({})}));
+  h.refresh(); await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(h.events.length,1); assert.equal(h.events[0].detail.available,false);
+  assert.equal(h.events[0].detail.status,401); assert.equal(h.authEvents.length,1);
+  assert.equal(h.authEvents[0].detail.status,401); assert.equal(h.bar.innerHTML,'');
+});
+
+
+test('draft initialization settles independently while initial source publications keep analysis admission closed', async () => {
+  const lifecycle = deferred(), workspace = deferred(), bar = deferred(), publications = [];
+  const scope = {}, chrome = {}; let repositoryContext = null;
+  const h = createStartupHarness(Promise.resolve({workspaceId: 'ws-ready'}), async () => null, {
+    TaxonomyArchitectureWorkflow: {getScope: () => scope}, TaxonomyAppChrome: {getContext: () => chrome},
+    TaxonomyArchitectureLifecycle: {ready: () => lifecycle.promise.then(() => {scope.repositoryId = 'repo-a'; scope.branch = 'draft'; publications.push('working stand');})},
+    TaxonomyArchitectureWorkspace: {ready: () => workspace.promise.then(() => {chrome.architecture = {repositoryId: 'repo-a', workspaceScopeKey: 'ws-ready', branch: 'draft', modelStand: null}; publications.push('analysis source'); return true;})},
+    TaxonomyContextBar: {getCurrentContext: () => repositoryContext, fetchAndRender: () => bar.promise.then(value => {repositoryContext = value; publications.push('repository context'); return value;})}
+  });
+  const notifications = [];
+  h.document.addEventListener('taxonomy:analysis-source-ready', event => notifications.push({workspaceId: event.detail.workspaceId, ready: h.session.state().ready}));
+  canonicalFixture.install({window: h.window, document: h.document, fetch: async () => Response.json({})});
+  assert.equal(await h.session.whenInitialized(), true, 'The draft-only promise must not wait for a source that awaits it');
+  let current = h.window.TaxonomyApiClient.captureContext();
+  assert.equal(h.session.state().ready, false); assert.deepEqual(notifications, []);
+  lifecycle.resolve(); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(publications, ['working stand']); assert.equal(current(), false, 'Initial working stand changes the frozen request source');
+  current = h.window.TaxonomyApiClient.captureContext(); assert.equal(h.session.state().ready, false);
+  workspace.resolve(); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(publications, ['working stand', 'analysis source']); assert.equal(current(), false, 'Initial analysis source changes the frozen request source');
+  current = h.window.TaxonomyApiClient.captureContext(); assert.equal(h.session.state().ready, false);
+  bar.resolve({contextId: 'initial', branch: 'draft', commitId: null}); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(publications, ['working stand', 'analysis source', 'repository context']);
+  assert.equal(current(), false, 'Initial ContextBar publication changes the frozen request source');
+  assert.equal(h.session.state().ready, true);
+  assert.deepEqual(notifications, [{workspaceId: 'ws-ready', ready: true}]);
+});
+
+for (const boundary of ['workspace metadata', 'repository context']) {
+  test(`unavailable initial ${boundary} fails closed and the existing server check retries it`, async () => {
+    let available = false, attempts = 0;
+    const h = createStartupHarness(Promise.resolve({workspaceId: 'ws-ready'}), async () => null, {
+      TaxonomyArchitectureWorkspace: {ready: async () => { attempts++; return boundary === 'workspace metadata' && !available ? false : true; }},
+      TaxonomyContextBar: {fetchAndRender: async () => boundary === 'repository context' && !available ? null : {contextId: 'initial', branch: 'draft'}}
+    });
+    await h.session.whenInitialized(); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.session.state().ready, false); assert.ok(h.observations.includes('unavailable'));
+    available = true; await h.context.retryServerState();
+    assert.equal(h.session.state().ready, true); assert.equal(attempts, 2);
+  });
+}
+
+
+test('confirmed source readiness is handed off once the existing draft-confirmation barrier also opens', async () => {
+  let reads = 0;
+  const h = createStartupHarness(Promise.resolve({workspaceId: 'ws-ready'}), async () => null, {
+    TaxonomyContextBar: {fetchAndRender: async () => {reads++; return {contextId: 'initial', branch: 'draft'};}}
+  });
+  const notifications = [];
+  h.document.addEventListener('taxonomy:analysis-source-ready', event => notifications.push({workspaceId: event.detail.workspaceId, ready: h.session.state().ready}));
+  h.runtime.serverUnconfirmed = true;
+  await h.session.whenInitialized(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.runtime.sourceReady, true); assert.equal(h.session.state().ready, false);
+  assert.deepEqual(notifications, [], 'Admission consumers must not lose their one notification while the draft is unconfirmed');
+  h.runtime.serverUnconfirmed = false;
+  await h.context.retryServerState();
+  assert.deepEqual(notifications, [{workspaceId: 'ws-ready', ready: true}]);
+  await h.context.retryServerState();
+  assert.equal(notifications.length, 1); assert.equal(reads, 1, 'Confirming the draft does not repeat successful source reads');
+  h.runtime.serverUnconfirmed = true;
+  h.context.reconcileDraft = async () => {h.runtime.serverUnconfirmed = false; return true;};
+  await h.context.retryServerState();
+  assert.deepEqual(notifications.map(n => n.workspaceId), ['ws-ready', 'ws-ready']);
+  await h.context.retryServerState();
+  assert.equal(notifications.length, 2, 'Repeated observations after reconnection share one readiness handoff');
+});
+
+test('the first ContextBar publication does not discard the authoritative initial workspace', async () => {
+  const initialContext = deferred(), initialWorkspace = deferred(), requests = [];
+  let h, actualBar, contextReads = 0;
+  h = createStartupHarness(() => Promise.resolve().then(async () => {
+    const response = await h.window.TaxonomyAnalysisSessionApi.request('/api/workspace/current', {method: 'GET'});
+    return response.status === 204 ? null : response.json();
+  }), async () => null, {
+    TaxonomyContextBar: {fetchAndRender: () => actualBar.fetchAndRender('absent-context-container')},
+    TaxonomyArchitectureWorkspace: {ready: () => h.session.whenInitialized()}
+  });
+  const sandbox = {
+    window: h.window, document: h.document, console,
+    TaxonomyI18n: {t: key => key}, TaxonomyUtils: {escapeHtml: String},
+    setInterval: () => 1, clearInterval() {},
+    fetch: async (url, options) => {
+      const route = new URL(url, 'https://example.test').pathname;
+      requests.push({route, options});
+      if (route === '/api/workspace/current') return initialWorkspace.promise;
+      assert.equal(route, '/api/context/current');
+      if (++contextReads === 1) return initialContext.promise;
+      return Response.json({contextId: 'initial-context', branch: 'draft', commitId: null, mode: 'EDITABLE'});
+    }
+  };
+  canonicalFixture.install(sandbox, ['api/analysis-session-api.js', 'api/workspace-api.js', 'versioning/taxonomy-context-bar.js']);
+  actualBar = h.window.TaxonomyContextBar;
+  actualBar.init('absent-context-container');
+  await new Promise(resolve => setImmediate(resolve));
+  initialContext.resolve(Response.json({contextId: 'initial-context', branch: 'draft', commitId: null, mode: 'EDITABLE'}));
+  await new Promise(resolve => setImmediate(resolve));
+  initialWorkspace.resolve(Response.json({workspaceId: 'workspace-initial'}));
+  assert.equal(await h.session.whenInitialized(), true,
+    'Publishing the initial repository context must not lose the authoritative private workspace');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.session.state().workspaceId, 'workspace-initial');
+  assert.equal(h.session.state().ready, true);
+  assert.equal(h.observations.includes('unavailable'), false);
+});
+
+test('current ContextBar readiness observers share a read while a departed source still aborts it', async () => {
+  const responses = [], requests = [], source = {branch: 'draft'}, listeners = new Map();
+  const window = {location: new URL('https://example.test/'),
+    TaxonomyArchitectureWorkflow: {getScope: () => source}, addEventListener() {}};
+  const document = {getElementById: () => null,
+    addEventListener(type, listener) {if (!listeners.has(type)) listeners.set(type, []); listeners.get(type).push(listener);},
+    dispatchEvent(event) {for (const listener of listeners.get(event.type) || []) listener(event);}};
+  const sandbox = {window, document, console, TaxonomyI18n: {t: key => key}, TaxonomyUtils: {escapeHtml: String},
+    setInterval: () => 1, clearInterval() {}, fetch: (url, options) => {
+      const response = deferred(); responses.push(response); requests.push({url, options}); return response.promise;
+    }};
+  canonicalFixture.install(sandbox, ['api/workspace-api.js', 'versioning/taxonomy-context-bar.js']);
+  const bar = window.TaxonomyContextBar;
+  const first = bar.fetchAndRender('absent-context-container', {joinCurrent: true});
+  const sameSource = bar.fetchAndRender('absent-context-container', {joinCurrent: true});
+  const firstRequestCount = requests.length;
+  const initial = {contextId: 'initial-context', branch: 'draft', commitId: null, mode: 'EDITABLE'};
+  for (const response of responses) response.resolve(Response.json(initial));
+  assert.deepEqual(await Promise.all([first, sameSource]), [initial, initial],
+    'Initial source confirmation must receive the same authoritative result as the polling caller');
+  assert.equal(firstRequestCount, 1, 'Concurrent current-source observers must not cancel one another');
+
+  const old = bar.fetchAndRender('absent-context-container', {joinCurrent: true});
+  source.branch = 'other';
+  document.dispatchEvent({type: 'taxonomy:repository-context-changed'});
+  const next = bar.fetchAndRender('absent-context-container', {joinCurrent: true});
+  responses.at(-2).resolve(Response.json(initial));
+  const changed = {...initial, contextId: 'other-context', branch: 'other'};
+  responses.at(-1).resolve(Response.json(changed));
+  assert.equal(await old, null, 'A genuinely departed source still cannot publish its response');
+  assert.equal(requests.at(-2).options.signal.aborted, true);
+  assert.deepEqual(await next, changed);
+  assert.deepEqual(bar.getCurrentContext(), changed);
 });

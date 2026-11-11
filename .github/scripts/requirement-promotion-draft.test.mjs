@@ -1,10 +1,12 @@
-import test from 'node:test';
+import canonicalFixture from './canonical-api-fixture.cjs';
+import test, {afterEach} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 const source=await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-projects.js',import.meta.url),'utf8');
 const detailSource=await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js',import.meta.url),'utf8');
 const portfolioSource=await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio.js',import.meta.url),'utf8');
+afterEach(() => canonicalFixture.dispose());
 function harness(reset){
   const events=[];let payload={businessText:'original'};
   const C={S:{},runtime:{},text:key=>key,language:()=> 'en',currentPayload:()=>payload,
@@ -22,6 +24,34 @@ test('typing while the reset is in flight keeps the new draft and schedules its 
   let finish;const h=harness(()=>new Promise(resolve=>{finish=resolve;}));
   const result=h.C.discardDraftAndNavigate('/saved');h.edit();finish({version:2});
   assert.equal(await result,false);assert.deepEqual(h.events,['save']);
+});
+
+test('a draft already open on the first detail load retains its edits and original version identity', () => {
+  const fields = new Map();
+  const get = id => {
+    if (!fields.has(id)) fields.set(id, {textContent:'', value:''});
+    return fields.get(id);
+  };
+  const window = {location:{pathname:'/projects/7/requirements/9', search:''}};
+  const document = {documentElement:{lang:'en'}, addEventListener(){}, getElementById:get};
+  const exposed = detailSource.replace(/\}\)\(\);\s*$/, 'window.detailProbe={state,renderCurrentText};})();');
+  vm.runInNewContext(exposed, {window, document, URLSearchParams});
+  const {state,renderCurrentText} = window.detailProbe;
+  const original = {id:44, text:'Original', contentHash:'a'.repeat(64)};
+  get('versionText').value = 'Clarification entered while loading';
+  get('changeReason').value = 'Clarify evidence';
+  state.requirement = {currentVersion:original};
+
+  renderCurrentText(true);
+  assert.equal(state.versionDraftBase?.requirementVersionId, original.id);
+  assert.equal(state.versionDraftBase?.contentHash, original.contentHash);
+  state.requirement.currentVersion = {id:45, text:'Newer server version', contentHash:'b'.repeat(64)};
+  renderCurrentText(true);
+  assert.equal(get('versionText').value, 'Clarification entered while loading');
+  assert.equal(get('changeReason').value, 'Clarify evidence');
+  assert.equal(state.versionDraftBase.requirementVersionId, original.id);
+  assert.equal(state.versionDraftBase.contentHash, original.contentHash);
+  assert.equal(get('currentText').textContent, 'Newer server version');
 });
 
 test('version review remains interactive until an explicit choice starts the save',async()=>{
@@ -82,11 +112,13 @@ test('portfolio intake keeps one interactive choice, releases cancellation and p
     TaxonomyRequirementIntake:{prepare(form,payload,projectId){
       return new Promise(resolve=>reviews.push({payload,projectId,resolve}));
     },isCurrent:()=>textField.value===reviews.at(-1).payload.text},
-    TaxonomyArchitectureLifecycle:{saveRequirement(command){saves.push(command);return new Promise(resolve=>{finishSave=resolve;});}}};
+    TaxonomyArchitectureLifecycle:{isCurrentRequirementPublication:()=>true,
+      saveRequirement(command){saves.push(command);return new Promise(resolve=>{finishSave=resolve;});}}};
   const document={documentElement:{lang:'en'},addEventListener(){},getElementById:element,querySelectorAll:()=>[element('submit')]};
   class FormData {forEach(callback){callback('PUMP','requirementKey');callback('Pump control','title');callback(textField.value,'text');}}
-  vm.runInNewContext(portfolioSource.replace(/\}\)\(\);\s*$/,'window.portfolioProbe={state,createRequirement};})();'),
-    {window,document,URLSearchParams,FormData});
+  const context=canonicalFixture.install({window,document,URLSearchParams});
+  context.FormData=FormData; // This DOM fixture supplies its form-field iterator.
+  vm.runInContext(portfolioSource.replace(/\}\)\(\);\s*$/,'window.portfolioProbe={state,createRequirement};})();'),context);
   const {state,createRequirement}=window.portfolioProbe;state.selectedProjectId=7;
   const event={currentTarget:form,preventDefault(){}};
   const cancelled=createRequirement(event);
@@ -127,7 +159,7 @@ for (const surface of ['detail','portfolio']) {
     const command={choice:'CHANGE',projectId:1,requirementId:2,expectedVersionId:12,expectedContentHash:'original-hash',requirement:{text:draft.value}};
     const window={location:{pathname:'/projects/1/requirements/2',search:''},setTimeout(){},
       TaxonomyI18n:{t:key=>key},TaxonomyRequirementIntake:{attach(){},prepareVersion:async()=>command,prepare:async()=>command,isCurrent:()=>true},
-      TaxonomyArchitectureLifecycle:{async saveRequirement(value){
+      TaxonomyArchitectureLifecycle:{isCurrentRequirementPublication:()=>true,async saveRequirement(value){
         value.context={revision:2};value.metadata={commandId:'original-command'};
         return {projectId:1,requirementId:2,requirement:{id:2,currentVersion:{id:13,contentHash:'new-hash'}},publication:{state:'RECONCILIATION_REQUIRED'}};
       },showPublicationRecovery(target,value){recoveries.push(value.publication.state);}}};
@@ -136,7 +168,7 @@ for (const surface of ['detail','portfolio']) {
     class FormData {forEach(callback){callback('REQ-2','requirementKey');callback('Requirement','title');callback(draft.value,'text');}}
     if(surface==='detail') {
       const instrumented=detailSource.replace(/\}\)\(\);\s*$/,'window.detailProbe={state,createVersion,captureVersionDraftBase,setObservers:function(reload,saved){loadAll=reload;showSavedRequirement=saved;}};})();');
-      vm.runInNewContext(instrumented,{window,document,bootstrap,URLSearchParams,Date,JSON,Number});
+      vm.runInContext(instrumented,canonicalFixture.install({window,document,bootstrap,URLSearchParams,Date,JSON,Number}));
       const probe=window.detailProbe;probe.state.requirement={requirementKey:'REQ-2',title:'Requirement'};
       probe.captureVersionDraftBase({id:12,contentHash:'original-hash'});
       probe.setObservers(async()=>{reloads++;},(_saved,message)=>savedMessages.push(message));
@@ -145,7 +177,9 @@ for (const surface of ['detail','portfolio']) {
       assert.equal(probe.state.versionDraftBase.requirementVersionId,12);
     } else {
       const instrumented=portfolioSource.replace(/\}\)\(\);\s*$/,'window.portfolioProbe={state,createRequirement,setRefresh:function(reload){refreshSelectedProject=reload;}};})();');
-      vm.runInNewContext(instrumented,{window,document,bootstrap,URLSearchParams,FormData});
+      const context=canonicalFixture.install({window,document,bootstrap,URLSearchParams});
+      context.FormData=FormData;
+      vm.runInContext(instrumented,context);
       const probe=window.portfolioProbe;probe.state.selectedProjectId=1;probe.setRefresh(async()=>{reloads++;});
       await probe.createRequirement({preventDefault(){},currentTarget:form});
     }
@@ -171,3 +205,35 @@ test('analysis promotion retains the same accepted attempt while reconciliation 
   assert.equal(preparations,1,'Unpublished acceptance must not become a new intake decision');
   assert.equal(commands[1],commands[0]);
 });
+
+for (const transition of ['stay', 'pagehide', 'other requirement']) {
+  test('detail preserves lifecycle hydration before publishing its project on ' + transition, async () => {
+    const page = new EventTarget(), publications = [], reads = [];
+    const location = new URL('https://example.test/projects/7/requirements/3');
+    let initialize, confirm;
+    const overview = new Promise(resolve => {confirm = resolve;});
+    const pending = new Promise(() => {});
+    const node = {addEventListener(){}, classList:{toggle(){}}};
+    const document = {documentElement:{lang:'en'}, getElementById:() => node, querySelector:() => node,
+      querySelectorAll:() => [node,node],
+      addEventListener(type, fn) {if (type === 'DOMContentLoaded') initialize = fn;}};
+    const window = {location, addEventListener:page.addEventListener.bind(page),
+      TaxonomyI18n:{ready:() => Promise.resolve()}, TaxonomyArchitectureLifecycle:{ready:() => overview},
+      TaxonomyAppChrome:{updateContext(value) {publications.push(value.project.id);}},
+      TaxonomyPortfolioApi:{getProject(id) {reads.push(id);return pending;}, getRequirement:() => pending,
+        listRequirementVersions:() => pending, listRequirementSnapshots:() => pending,
+        getProjectPortfolio:() => pending, getAccount:() => pending}};
+    vm.runInNewContext(detailSource,{window,document,URLSearchParams});
+    const startup = initialize();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(publications, []);
+    assert.deepEqual(reads, []);
+    if (transition === 'pagehide') page.dispatchEvent(new Event('pagehide'));
+    if (transition === 'other requirement') location.pathname = '/projects/7/requirements/4';
+    confirm({context:{repositoryId:'selected-repository'}});
+    if (transition === 'stay') await new Promise(resolve => setImmediate(resolve));
+    else await startup;
+    assert.deepEqual(publications, transition === 'stay' ? [7] : []);
+    assert.deepEqual(reads, transition === 'stay' ? [7] : []);
+  });
+}

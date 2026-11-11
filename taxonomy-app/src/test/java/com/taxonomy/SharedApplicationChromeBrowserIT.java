@@ -1,5 +1,7 @@
 package com.taxonomy;
 
+import com.taxonomy.dto.ContextMode;
+import com.taxonomy.dto.ContextRef;
 import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
 import com.taxonomy.portfolio.model.AiCostPolicy;
 import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
@@ -24,6 +26,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -37,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SharedApplicationChromeBrowserIT {
     private static PortfolioClientTestPage page;
     private static WebDriverWait wait;
+    private static final Duration BROWSER_TIMEOUT = Duration.ofSeconds(20);
     private static final String REQUIREMENT_LOAD_ERROR =
             "No fixture response for GET /taxonomy/api/projects/42/requirements/7/versions";
     private static final String PINS = "projectId=42&repositoryId=architecture-a&workspaceId=private-a"
@@ -63,7 +67,7 @@ class SharedApplicationChromeBrowserIT {
 
     @BeforeAll static void openBrowser(@TempDir Path downloads) throws Exception {
         page = new PortfolioClientTestPage(downloads);
-        wait = new WebDriverWait(page.driver(), Duration.ofSeconds(20));
+        wait = new WebDriverWait(page.driver(), BROWSER_TIMEOUT);
     }
 
     @AfterAll static void closeBrowser() { if (page != null) page.close(); }
@@ -82,6 +86,7 @@ class SharedApplicationChromeBrowserIT {
                                 + "body { border-top: 9px solid rgb(14, 64, 124) !important; }"));
         page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of()));
         page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", List.of("portfolio", "architecture"))));
+        if (template.equals("index")) routeCurrentContext("context-customer-shared", "draft", null);
         String path = template.equals("index") ? "/taxonomy/" : "/taxonomy/projects";
         page.openAt(template, "/taxonomy", path, "de", "localStorage.setItem('taxonomy_onboarded','true');",
                 Map.of("customerStylesheetEnabled", true));
@@ -201,6 +206,7 @@ class SharedApplicationChromeBrowserIT {
         viewport(width, 1000);
         page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of()));
         page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", features)));
+        if (view.template().equals("index")) routeCurrentContext("context-private-a", "review/current", "a".repeat(40));
         if (view.template().equals("requirement-detail")) {
             // A single failed read makes the long error deterministic instead of racing six unrelated 404s.
             var currentVersion = PortfolioRequirementFixture.version(9, 1, "Retain this requirement while its history is unavailable.");
@@ -452,6 +458,7 @@ class SharedApplicationChromeBrowserIT {
                 "architectureTitle", "Shared Architecture Repository", "source", "GIT_CHECKPOINT", "projectionState", "READY",
                 "publicationState", "CHECKPOINTED", "mayEdit", false,
                 "projects", List.of(), "dependencies", List.of(), "requirements", List.of())));
+        routeCurrentContext("context-compact-shared", "draft", COMPACT_COMMIT);
         page.open("index", "/taxonomy", "/", "de", """
                 localStorage.clear();sessionStorage.clear();
                 history.replaceState(null,'','?lang=de&repositoryId=%s&workspaceId=&workspaceScopeKey=__shared__&branch=draft#analyze');
@@ -589,11 +596,19 @@ class SharedApplicationChromeBrowserIT {
     }
 
     private static void openLoadedWorkbench(int width) {
+        openWorkbench(width, "");
+        awaitLoadedWorkbench();
+    }
+
+    private static void openWorkbench(int width, String bootstrap) {
         page.clearRoutes(); page.clearRequests();
         viewport(width, width == 1920 ? 1080 : width == 390 ? 844 : 768);
         page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", List.of("portfolio", "architecture"))));
         var project = Map.of("id", 42, "projectKey", "QA-PROJECT", "title", "Communication architecture contribution", "status", "ACTIVE");
         page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of(project)));
+        // Explicitly pin the live context; a missing /api/context/current fixture can race the
+        // architecture workbench loader and clear its otherwise valid current/source context.
+        routeCurrentContext("qa-context-workspace", "qa-context-main", "a".repeat(40));
         page.route("GET", "/taxonomy/api/architecture/lifecycle", request -> json(200, Map.of(
                 "context", Map.of("repositoryId", "qa-architecture", "workspaceScopeKey", "qa-context-workspace",
                         "branch", "qa-context-main", "commit", "a".repeat(40), "revision", 4),
@@ -619,13 +634,75 @@ class SharedApplicationChromeBrowserIT {
         page.openAt("architecture-workbench", "/taxonomy", "/taxonomy/architecture/workbench", "de", """
                 localStorage.clear();sessionStorage.clear();
                 history.replaceState(null,'','?projectId=42&snapshotId=qa-locale&repositoryId=qa-architecture&workspaceId=qa-context-workspace&workspaceScopeKey=qa-context-workspace&branch=qa-context-main&lang=de');
-                """, Map.of("projectId", 42, "snapshotId", "qa-locale"));
-        wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#architectureCanvas .architecture-node")));
-        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("""
+                """ + bootstrap, Map.of("projectId", 42, "snapshotId", "qa-locale"));
+    }
+
+    private static void awaitLoadedWorkbench() {
+        var loaded = new WebDriverWait(page.driver(), BROWSER_TIMEOUT)
+                .withMessage(SharedApplicationChromeBrowserIT::workbenchFailure);
+        loaded.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#architectureCanvas .architecture-node")));
+        loaded.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("""
                 const c=window.TaxonomyAppChrome?.getContext();
                 return c?.architecture?.title==='Communication architecture' && c?.source?.snapshotId==='qa-locale';
                 """)));
         assertThat(page.driver().findElement(By.id("architectureAlert")).isDisplayed()).isFalse();
+    }
+
+    private static String workbenchFailure() {
+        var state = (Map<?, ?>) page.driver().executeScript("""
+                return {width:innerWidth, context:window.TaxonomyAppChrome?.getContext() ?? null,
+                    nodes:document.querySelectorAll('#architectureCanvas .architecture-node').length,
+                    lifecycle:document.querySelector('[data-lifecycle-status]')?.textContent ?? null};
+                """);
+        var requests = page.requests().stream().filter(request -> request.path().startsWith("/taxonomy/api/"))
+                .map(request -> request.method() + " " + request.path()).toList();
+        String details = PortfolioClientTestPage.json(Map.of("state", state, "requests", requests));
+        Path evidence = Path.of("target", "coherent-lifecycle", "loaded-workbench-" + state.get("width"));
+        try {
+            Files.createDirectories(evidence);
+            Files.write(evidence.resolve("viewport.png"), page.driver().getScreenshotAs(OutputType.BYTES));
+            Files.writeString(evidence.resolve("page.html"), page.driver().getPageSource());
+            Files.writeString(evidence.resolve("context.json"), details);
+        } catch (IOException error) {
+            return details + " (could not write " + evidence + ": " + error.getMessage() + ")";
+        }
+        return details;
+    }
+
+    @Test
+    void standaloneSnapshotRetainsTheCurrentArchitectureWhenItsOverviewArrivesLate() {
+        openWorkbench(1366, """
+                const nativeFetch = window.fetch.bind(window);
+                const overviewGate = new Promise(resolve => { window.releaseOverview = resolve; });
+                const diagramRendered = new Promise(resolve =>
+                    document.addEventListener('taxonomy:architecture-diagram-updated', resolve, {once:true}));
+                window.fetch = function(input, options) {
+                    const path = new URL(input.url || input, location.href).pathname;
+                    const response = nativeFetch(input, options);
+                    if (path === '/taxonomy/api/architecture/lifecycle') {
+                        window.overviewPending = true;
+                        return response.then(async value => {
+                            await overviewGate;
+                            return value;
+                        });
+                    }
+                    if (path === '/taxonomy/api/projects/42/architecture-workbench/qa-locale') {
+                        window.pendingSnapshotRender = diagramRendered;
+                    }
+                    return response;
+                };
+                """);
+        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("return window.overviewPending;")));
+        // Both readers start after translations. If the snapshot is already loading,
+        // let it publish its source before delivering the delayed architecture response.
+        page.driver().executeAsyncScript("""
+                const done = arguments[0];
+                window.TaxonomyI18n.ready().then(() => window.pendingSnapshotRender).then(() => {
+                    window.releaseOverview();
+                    done();
+                });
+                """);
+        awaitLoadedWorkbench();
     }
 
     @ParameterizedTest @ValueSource(ints = {1920, 1366, 1024, 390})
@@ -911,6 +988,13 @@ class SharedApplicationChromeBrowserIT {
         page.driver().executeScript("document.querySelector('[data-app-route=projects]').focus();");
         new Actions(page.driver()).sendKeys(Keys.TAB).perform();
         assertThat(page.driver().switchTo().activeElement().getDomAttribute("data-app-route")).isEqualTo("analysis");
+    }
+
+    private static void routeCurrentContext(String contextId, String branch, String commit) {
+        // Repository/workspace identity remains in each page's explicit pins and lifecycle response.
+        page.route("GET", "/taxonomy/api/context/current", request -> json(200,
+                new ContextRef(contextId, branch, commit, Instant.parse("2026-10-07T09:00:00Z"),
+                        ContextMode.READ_ONLY, null, null, null, null, null, false)));
     }
 
     private static final String COMPACT_REPOSITORY = "05f0a13b-7669-492d-a3e8-f10ce133dacf";

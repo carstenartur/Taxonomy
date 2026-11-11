@@ -1,15 +1,20 @@
 const DEFAULT_TIMEOUT_MS = 90_000;
 
 async function waitForAnalysisSessionReady(page, timeout) {
+  // Playwright tests the immediate predicate value; a Promise is already truthy.
   await page.waitForFunction(() => {
     const session = window.TaxonomyAnalysisSession;
+    if (typeof session?.whenInitialized !== 'function') return false;
     const state = session?.state?.();
+    const conflictMessage = document.querySelector(
+      '#statusArea[data-analysis-session-message="conflict"]');
     return Boolean(session
       && window.TaxonomyAnalysisSessionApi
       && window.TaxonomyBrowse
       && Array.isArray(window.TaxonomyState?.taxonomyData)
       && window.TaxonomyState.taxonomyData.length > 0
-      && state?.restoring === false);
+      && state?.restoring === false
+      && (state.ready === true || state.conflict === true || conflictMessage));
   }, null, { timeout });
 }
 
@@ -71,6 +76,9 @@ export async function isolateRoleStateScenario(page, timeout = DEFAULT_TIMEOUT_M
     if (stateBeforeMutation?.workspaceId !== expectedWorkspaceId) {
       throw new Error(
         'Role-state isolation workspace changed before authoritative cleanup');
+    }
+    if (stateBeforeMutation?.ready !== true) {
+      throw new Error('Role-state isolation source became unavailable before authoritative cleanup');
     }
 
     session.invalidate({

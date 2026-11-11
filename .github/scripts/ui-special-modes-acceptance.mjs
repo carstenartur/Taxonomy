@@ -21,7 +21,7 @@ function assert(condition, message) {
 function isAnalyzeResponseForText(response, expectedText) {
   try {
     const url = new URL(response.url());
-    if (response.request().method() !== 'POST' || url.pathname !== '/api/analyze') {
+    if (response.request().method() !== 'POST' || !url.pathname.endsWith('/api/analyze')) {
       return false;
     }
     return response.request().postDataJSON()?.businessText === expectedText;
@@ -60,6 +60,30 @@ async function waitForTaxonomyReady(timeout = 180_000) {
     const button = document.querySelector('#analyzeBtn');
     return Boolean(button) && button.disabled === false;
   }, null, { timeout: 30_000 });
+
+  // Server readiness and button visibility alone do not establish an analysis
+  // workspace. The session loader resolves the isolated workspace and its
+  // persisted draft asynchronously. Clicks before that transition are rejected
+  // by TaxonomyScoring without sending the expected POST.
+  try {
+    await page.waitForFunction(() => {
+      const session = window.TaxonomyAnalysisSession?.state?.();
+      return session?.ready === true
+        && typeof session.workspaceId === 'string'
+        && session.workspaceId.length > 0
+        && window.__taxonomyAnalysisSessionLoading !== true
+        && typeof window.TaxonomyAnalysisProgress?.start === 'function';
+    }, null, { timeout: 30_000 });
+  } catch (error) {
+    const diagnostic = await page.evaluate(() => ({
+      loading: window.__taxonomyAnalysisSessionLoading,
+      state: window.TaxonomyAnalysisSession?.state?.() || null,
+      progressReady: typeof window.TaxonomyAnalysisProgress?.start === 'function',
+      status: document.querySelector('#statusArea')?.textContent?.trim() || ''
+    }));
+    throw new Error('Analysis workspace did not become ready: '
+      + JSON.stringify(diagnostic), { cause: error });
+  }
 }
 
 async function selectSynchronousAnalysisView() {
@@ -162,7 +186,8 @@ async function testPartialAnalysis() {
       })
     });
   };
-  await page.route('**/api/ai-status', stableAiStatus);
+  const aiStatusEndpoint = url => url.pathname.endsWith('/api/ai-status');
+  await page.route(aiStatusEndpoint, stableAiStatus);
 
   try {
     await navigateToPage(page, 'analyze');
@@ -179,7 +204,7 @@ async function testPartialAnalysis() {
     await page.locator('#businessText').fill(successfulText);
     const fixture = await submitAnalysisAndWaitForPublishedState(successfulText, 'SUCCESS');
 
-    await page.route('**/api/analyze', async route => {
+    await page.route(url => url.pathname.endsWith('/api/analyze'), async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -226,7 +251,7 @@ async function testPartialAnalysis() {
     await runAxe('analysis-partial', '#tab-analyze');
     await screenshot('analysis-partial', '#tab-analyze');
   } finally {
-    await page.unroute('**/api/ai-status', stableAiStatus).catch(() => undefined);
+    await page.unroute(aiStatusEndpoint, stableAiStatus).catch(() => undefined);
   }
 }
 
@@ -234,7 +259,11 @@ async function testTextSpacing() {
   // WCAG 1.4.12 models an external user stylesheet. Keep the product CSP strict
   // and append the test-only override to an already allowed, same-origin CSS
   // response before reloading the authenticated page.
-  await page.route('**/css/taxonomy-ergonomics.css', async route => {
+  const stylesheetUrl = await page.locator('link[rel~="stylesheet"][href$="/css/taxonomy-ergonomics.css"]')
+    .evaluate(link => link.href);
+  assert(new URL(stylesheetUrl).origin === new URL(page.url()).origin,
+    'The text-spacing override must use the packaged same-origin stylesheet');
+  await page.route(stylesheetUrl, async route => {
     const response = await route.fetch();
     const original = await response.text();
     const override = [
@@ -249,7 +278,13 @@ async function testTextSpacing() {
     ].join('\n');
     await route.fulfill({ response, body: original + override });
   });
-  await page.reload({ waitUntil: 'networkidle' });
+  const [stylesheetResponse] = await Promise.all([
+    page.waitForResponse(response => response.url() === stylesheetUrl
+      && response.request().method() === 'GET' && response.request().resourceType() === 'stylesheet',
+    { timeout: 30_000 }),
+    page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 })
+  ]);
+  assert(stylesheetResponse.ok(), `Text-spacing stylesheet returned HTTP ${stylesheetResponse.status()}`);
   await page.locator('#mainContent').waitFor({ state: 'visible', timeout: 60_000 });
   await page.evaluate(() => window.TaxonomyI18n?.ready?.());
   await page.locator('#analysisTaskProgress').waitFor({ state: 'visible', timeout: 20_000 });

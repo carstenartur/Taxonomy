@@ -90,8 +90,15 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
         await Promise.all(headerTasks);
         assert.equal(page.url(), url, 'Status reads must not rewrite any URL, scope or selection pin');
         assert.notEqual(await page.evaluate(() => performance.timeOrigin), initialEpoch);
+        // Both legacy status observation and named ContextBar startup read
+        // the authoritative context. Check every physical read in both epochs,
+        // including the named call that bypasses the legacy fetch wrapper.
+        assert.deepEqual(headers.map(item => new URL(item.url).pathname.slice(prefix.length)),
+            ['/api/git/state', '/api/context/current', '/api/context/current',
+             '/api/git/state', '/api/context/current', '/api/context/current'],
+            'Both status transports must be exercised at startup and reload');
         assert.deepEqual(headers.map(item => [item.immediate, item.all]),
-            Array.from({length:4}, () => [workspaceId, workspaceId]),
+            Array.from({length:6}, () => [workspaceId, workspaceId]),
             'Immediate passive headers and allHeaders must both prove the exact original workspace: ' + JSON.stringify(headers));
         const observed = observer.snapshot();
         assert.deepEqual(observed.reads.map(read => read.workspaceId), headers.map(item => item.all));
@@ -102,7 +109,26 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
             JSON.stringify({browser:'chromium', nativeEngineCancellationReproduced:false, headers, observed, proofs, pageErrors}, null, 2) + '\n');
         assert.deepEqual(pageErrors, [], 'Actual renderer and script errors remain blocking');
         ledger.reconcile(proofs);
-        assert.deepEqual(errors, []);
+        // A failed cancellation proof must expose the original browser/HTTP
+        // evidence, not merely say that an artificial WebKit error remained.
+        // Keep the strict ledger assertion: never silently waive an error.
+        const diagnosis = errors.length ? JSON.stringify({
+            lifecycle: observed.events.filter(event =>
+                ['beforeunload', 'pagehide', 'poll-page-error', 'document-start'].includes(event.type)
+                || event.type.includes('navigation')).map(event => ({
+                    type:event.type, sequence:event.sequence, epoch:event.documentEpoch,
+                    url:event.url, pageUrl:event.pageUrl, message:event.message})),
+            requests: observed.reads.map(read => ({
+                id:read.id, url:read.url, epoch:read.documentEpoch, pageUrl:read.pageUrl,
+                workspaceId:read.workspaceId, sequence:read.sequence, status:read.status,
+                finished:read.finished, jsonParsed:read.jsonParsed, failed:read.failed})),
+            navigation: observed.navigations.map(item => ({
+                completed:item.completed, startSequence:item.startSequence, endSequence:item.endSequence,
+                oldDocument:item.oldDocument, newDocument:item.newDocument,
+                adoption:item.observation})),
+            pageErrors, reconciledCount:proofs.length
+        }, null, 2) : '';
+        assert.deepEqual(errors, [], 'Full native lifecycle and adoption evidence for an unreconciled cancellation: ' + diagnosis);
         assert.deepEqual(reconciled.map(proof => proof.request.payload), [git, current]);
     } finally { await context.close(); }
 });

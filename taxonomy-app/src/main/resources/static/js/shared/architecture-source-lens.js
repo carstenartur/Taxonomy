@@ -11,7 +11,7 @@ window.TaxonomyArchitectureSourceLens = (function () {
     function create(options) {
         var root = options.root, workspace = options.workspace, prefix = options.idPrefix || 'architectureSourceLens';
         var current = null, pinned = null, generation = 0, selected = null, active = false, pending = null, attachedDiagram = null;
-        var evidence = null, adopting = false;
+        var evidence = null, adopting = false, deferredActivation = null;
         var t = options.t || function () { return window.TaxonomyI18n.t.apply(null, arguments); };
         function el(suffix) { return root.querySelector('#' + prefix + suffix); }
         function problemMessage(error) {
@@ -49,7 +49,7 @@ window.TaxonomyArchitectureSourceLens = (function () {
                 && saved.workspaceId === pinned.workspaceScopeKey && saved.version === pinned.version);
         }
         function invalidate() {
-            generation++; pinned = null; evidence = null; pending = null;
+            generation++; pinned = null; evidence = null; pending = null; deferredActivation = null;
             panel.setSource(null, false); panel.setLocked(false); report(problem('CONTEXT_CHANGED'));
         }
         function requireCurrent(value, ticket) {
@@ -149,7 +149,7 @@ window.TaxonomyArchitectureSourceLens = (function () {
             locate: function (id, item) { if (canReview(item)) workspace.select(id); } });
         function activate(source, force) {
             if (active && !force && sourceKey(source) === sourceKey(current)) return refresh();
-            generation++; var ticket = generation;
+            generation++; var ticket = generation; deferredActivation = null;
             current = source && Object.freeze(Object.assign({}, source)); pinned = null; evidence = null;
             active = Boolean(source && ['analysis', 'snapshot'].includes(source.kind)); root.hidden = !active;
             panel.setSource(null, false); panel.setLocked(false); el('Error').hidden = true;
@@ -157,7 +157,16 @@ window.TaxonomyArchitectureSourceLens = (function () {
             pending = Promise.resolve().then(async function () {
                 var value = pins(current);
                 var observed = captureEvidence();
-                if (value.kind === 'ANALYSIS_DRAFT') value.version = await draftVersion(value, ticket);
+                if (value.kind === 'ANALYSIS_DRAFT') {
+                    var saved = window.TaxonomyAnalysisSession?.state?.();
+                    if (saved?.ready === false && !saved.conflict && !saved.restoring
+                            && saved.workspaceId === value.workspaceScopeKey) {
+                        // Workspace publication must settle before the source gate can become ready.
+                        // Retry on its later confirmation rather than awaiting that gate here.
+                        deferredActivation = { ticket: ticket, source: sourceKey(current), workspaceId: saved.workspaceId };
+                    }
+                    value.version = await draftVersion(value, ticket);
+                }
                 if (!active || ticket !== generation) return false;
                 if (!sameEvidence(observed)) throw problem('CONTEXT_CHANGED');
                 pinned = Object.freeze(value); evidence = observed; panel.setSource(pinned, true); panel.select(selected);
@@ -168,7 +177,7 @@ window.TaxonomyArchitectureSourceLens = (function () {
             return pending;
         }
         function suspend() {
-            generation++; active = false; current = null; pinned = null; evidence = null; pending = null;
+            generation++; active = false; current = null; pinned = null; evidence = null; pending = null; deferredActivation = null;
             panel.setSource(null, false); root.hidden = true; present({ enabled: false, states: {}, suggestions: [] });
         }
         function refresh() {
@@ -176,6 +185,15 @@ window.TaxonomyArchitectureSourceLens = (function () {
             if (pinned && !isCurrent(pinned)) { invalidate(); return Promise.resolve(false); }
             panel.refresh(); return pending || Promise.resolve(true);
         }
+        document.addEventListener('taxonomy:analysis-source-ready', function (event) {
+            var deferred = deferredActivation;
+            if (!deferred || !active || current?.kind !== 'analysis' || deferred.ticket !== generation
+                    || event.detail?.workspaceId !== deferred.workspaceId
+                    || sourceKey(current) !== deferred.source || sourceKey(workspace.getSource()) !== deferred.source
+                    || window.TaxonomyAnalysisSession?.state?.().ready !== true) return;
+            deferredActivation = null;
+            activate(current, true);
+        });
         el('Refresh')?.addEventListener('click', function () { activate(workspace.getSource(), true); });
         ['taxonomy:analysis-draft-saved', 'taxonomy:analysis-draft-restored', 'taxonomy:analysis-draft-reset',
             'taxonomy:analysis-draft-save-failed', 'taxonomy:analysis-invalidated'].forEach(function (name) {

@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import test from 'node:test';
+import test, {afterEach} from 'node:test';
+const cleanups = [];
+afterEach(() => { while (cleanups.length) cleanups.pop()(); });
 import vm from 'node:vm';
+import canonical from './canonical-api-fixture.cjs';
 
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/security/taxonomy-role-surface.js', import.meta.url), 'utf8');
 
@@ -172,6 +175,7 @@ assert.ok(pageNavigationSource, 'Exercise the complete production page router');
 // but before the browse module's independent fallback account response settles.
 function lateRoleSurfaceNavigation(page) {
   const elements = new Map(), listeners = new Map(), requests = [], activations = [];
+  const lifecycle = new Map();
   const deferred = () => {
     let resolve, reject;
     const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
@@ -221,16 +225,18 @@ function lateRoleSurfaceNavigation(page) {
   };
   const sandbox = {
     document, URL, AbortController, Promise, setTimeout, clearTimeout,
-    setInterval() {}, clearInterval() {}, addEventListener() {}, alert() {},
+    setInterval() {}, clearInterval() {},
+    addEventListener(type, callback) {if (!lifecycle.has(type)) lifecycle.set(type, []); lifecycle.get(type).push(callback);}, alert() {},
     CustomEvent: class { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } },
     MutationObserver: class { observe() {} }, Node: {ELEMENT_NODE: 1},
     console: {error() {}},
     TaxonomyState: {}, TaxonomyUtils: {escapeHtml: String},
     TaxonomyI18n: {t: key => key, ready: () => Promise.resolve(), resolveUrl: path => path},
-    TaxonomyApiClient: {getJson: () => accountRead},
     fetch(path) {
       requests.push(path);
-      return path === '/api/account/me' ? fallback.promise : new Promise(() => {});
+      if (path !== '/api/account/me') return new Promise(() => {});
+      return requests.filter(path => path === '/api/account/me').length === 1 ? fallback.promise
+        : accountRead.then(value => ({ok:true, json:async () => value}));
     },
     get location() { return location; },
     history: {replaceState(_state, _title, value) { location = new URL(value, location); }}
@@ -238,6 +244,8 @@ function lateRoleSurfaceNavigation(page) {
   sandbox.window = sandbox;
   const context = vm.createContext(sandbox);
   document.addEventListener('taxonomy:page-activated', event => activations.push(event.detail.page));
+  canonical.install(context, ['api/reference-api.js', 'api/analysis-api.js', 'api/export-api.js', 'api/proposals-api.js']);
+  cleanups.push(() => {for (const callback of lifecycle.get('pagehide') || []) callback({persisted:false});});
   vm.runInContext(browseSource, context, {filename: 'taxonomy-browse.js'});
   vm.runInContext(pageNavigationSource, context, {filename: 'index-page-navigation.js'});
   document.dispatchEvent({type: 'DOMContentLoaded'});

@@ -14,10 +14,18 @@
     var pollTimer = null;
     var pendingRead = null;
     var pageActive = true;
-    window.addEventListener('pagehide', function () {
-        pageActive = false; clearInterval(pollTimer); pollTimer = null;
+    // A hard navigation can start while a periodic poll is due. Stop the timer
+    // at beforeunload, ahead of pagehide, so WebKit never starts a fetch in a
+    // departing document; also cancel any already owned read.
+    function stopPolling() {
+        pageActive = false;
+        clearInterval(pollTimer);
+        pollTimer = null;
         if (pendingRead) pendingRead.abort();
-    });
+        pendingRead = null;
+    }
+    window.addEventListener('beforeunload', stopPolling);
+    window.addEventListener('pagehide', stopPolling);
     window.addEventListener('pageshow', function (event) {
         if (event.persisted && statusBar) {
             pageActive = true; pollGitState(); pollTimer = setInterval(pollGitState, POLL_INTERVAL);
@@ -47,26 +55,44 @@
         // Use the current context's branch if available, otherwise default to 'draft'
         var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
         var branch = (ctx && ctx.branch) ? ctx.branch : 'draft';
+        var runtime = window.__TaxonomyAnalysisSessionContext?.runtime;
+        var workspace = runtime?.workspaceId, analysis = runtime?.analysisGeneration;
+        var contextSource = sourceIdentity(ctx);
+        function ownsSource() {
+            var currentRuntime = window.__TaxonomyAnalysisSessionContext?.runtime;
+            var currentContext = window.TaxonomyContextBar?.getCurrentContext?.();
+            return runtime === currentRuntime && workspace === currentRuntime?.workspaceId
+                && analysis === currentRuntime?.analysisGeneration
+                && contextSource === sourceIdentity(currentContext);
+        }
 
-        fetch('/api/git/state?branch=' + encodeURIComponent(branch), { signal: controller.signal, cache: 'no-store' })
+        window.TaxonomyVersioningApi.state(branch, { signal: controller.signal })
             .then(function (r) {
                 if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { status: r.status });
                 return r.json();
             })
             .then(function (state) {
-                if (pageActive && pendingRead === controller && !controller.signal.aborted) {
+                if (pageActive && pendingRead === controller && !controller.signal.aborted && ownsSource()) {
                     renderStatusBar(state);
                     document.dispatchEvent(new CustomEvent('taxonomy:server-contact', { detail: { available: true } }));
                 }
             })
             .catch(function (err) {
-                if (pageActive && pendingRead === controller && !controller.signal.aborted && err.name !== 'AbortError') {
-                    renderError(err.message);
+                if (pageActive && pendingRead === controller && !controller.signal.aborted && ownsSource()
+                        && err.name !== 'AbortError' && err.code !== 'ABORTED') {
+                    // Authentication remains owned by the canonical boundary.
+                    // Its current poll still reports contact failure to session startup.
+                    if (err.status !== 401 && err.status !== 403) renderError(err.message);
                     document.dispatchEvent(new CustomEvent('taxonomy:server-contact', {
                         detail: { available: false, status: err.status }
                     }));
                 }
             });
+    }
+
+    function sourceIdentity(context) {
+        return JSON.stringify([context?.contextId, context?.repositoryId, context?.workspaceId,
+            context?.branch, context?.commitId]);
     }
 
     // ── Rendering ───────────────────────────────────────────────────

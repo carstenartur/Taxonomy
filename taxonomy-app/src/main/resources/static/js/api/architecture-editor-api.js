@@ -46,7 +46,9 @@ window.ArchitectureEditorApi = (function () {
         adoptSnapshot: function (request) { return write('/snapshot-adoptions', request, request.context); },
         preview: function (command) { return write('/preview', command, command.context); },
         setSharing: function (context, enabled) { return write('/collaboration', {context:context, enabled:enabled}, context); },
-        execute: function (command) { return write('/commands', command, command.context); },
+        // Only the command receipt needs a 412 from the preceding revision.
+        // Previews and suggestions always belong to the current displayed stand.
+        execute: function (command) { return write('/commands', command, command.context, {preservePreconditionFailure:true}); },
         checkpoint: function (command) { return write('/checkpoints', command, command.context); },
         resumeCheckpoint: function (context) { return write('/checkpoints/resume', {}, context); },
         recoverVersion: function (context) { return write('/versions/recover', {}, context); },

@@ -91,7 +91,9 @@ export async function runBasicWorkflows({ page, role, evidence }) {
     includedRelationships: []
   };
   const exportRequests = [];
-  const exportRoute = '**/api/diagram/current/visio';
+  // The canonical transport pins the active workspace in the query string.
+  // Match the endpoint path so the injected failure reaches that exact request.
+  const exportRoute = url => url.pathname.endsWith('/api/diagram/current/visio');
   const failExport = route => {
     exportRequests.push(route.request().postDataJSON());
     return route.fulfill({
@@ -118,9 +120,9 @@ export async function runBasicWorkflows({ page, role, evidence }) {
         state.lastAnalyzedText = previousText;
       }
     }, fixture);
+    assert(exportRequests.length === 1, `Expected one current-view export, got ${exportRequests.length}`);
     assert(outcome.exported === false, 'Failed backend export must not report success');
     assert(outcome.preserved, 'Failed export changed the existing architecture');
-    assert(exportRequests.length === 1, `Expected one current-view export, got ${exportRequests.length}`);
     const expectedRequest = {
       ...fixture,
       originalRequirementText: 'QA export failure requirement'

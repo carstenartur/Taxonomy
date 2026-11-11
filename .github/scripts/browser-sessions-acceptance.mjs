@@ -54,10 +54,21 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
   for (const locale of ['en', 'de']) {
     let pageInventoryRequests = 0, hiddenValidationRequests = 0;
     let validationExpected = false;
+    // Keep only method, payload length and completion outcome. In particular,
+    // never write the actual model DSL or credentials into failure diagnostics.
+    const validationTraffic = [];
+    const noteValidation = (phase, request, outcome = null) => {
+      if (new URL(request.url()).pathname !== validationUrl.pathname) return;
+      validationTraffic.push({ phase, method: request.method(),
+        payloadLength: request.postData()?.length ?? null, outcome });
+    };
     const observe = request => {
       const pathname = new URL(request.url()).pathname;
       if (pathname === apiUrl.pathname) pageInventoryRequests += 1;
-      if (pathname === validationUrl.pathname && !validationExpected) hiddenValidationRequests += 1;
+      if (pathname === validationUrl.pathname) {
+        if (!validationExpected) hiddenValidationRequests += 1;
+        noteValidation('request', request);
+      }
     };
     page.on('request', observe);
     try {
@@ -97,7 +108,16 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
       const loadedDocumentValidation = page.waitForResponse(async response =>
         new URL(response.url()).pathname === validationUrl.pathname
           && response.request().method() === 'POST'
-          && response.request().postData() === await exportedDocument);
+          && response.request().postData() === await exportedDocument).catch(async error => {
+        const state = await page.evaluate(() => ({
+          editorLength: window.dslCmView?.state.doc.length ?? null,
+          editorInView: window.dslCmView?.inView ?? null,
+          currentContext: !!window.TaxonomyContextBar?.getCurrentContext?.(),
+          analysisLoading: window.__taxonomyAnalysisSessionLoading ?? null
+        }));
+        throw new Error('Loaded-document DSL validation did not complete: '
+          + JSON.stringify({ locale, state, validationTraffic }), { cause: error });
+      });
       const [originalDocument, validation] = await Promise.all([
         exportedDocument,
         loadedDocumentValidation,

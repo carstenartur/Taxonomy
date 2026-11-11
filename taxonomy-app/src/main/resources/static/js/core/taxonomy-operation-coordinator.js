@@ -93,9 +93,7 @@
         return 'FAILED';
     }
 
-    function installFetchLifecycle() {
-        if (window.fetch.__taxonomyOperationCoordinator === true) return;
-
+    function coordinatedTransport(delegatedFetch) {
         function coordinatedFetch(input, init) {
             if (!isMainAnalysisRequest(input, init)) {
                 return delegatedFetch(input, init);
@@ -195,7 +193,13 @@
             value: true,
             writable: false
         });
-        window.fetch = coordinatedFetch;
+        return coordinatedFetch;
+    }
+
+    function installFetchLifecycle() {
+        window.TaxonomyApiClient?.installTransportAdapter?.('operation-coordinator', coordinatedTransport);
+        if (window.fetch.__taxonomyOperationCoordinator === true) return;
+        window.fetch = coordinatedTransport(delegatedFetch);
     }
 
     function setCopilotBusy(busy) {

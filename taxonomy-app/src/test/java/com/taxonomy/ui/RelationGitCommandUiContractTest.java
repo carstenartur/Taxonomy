@@ -143,8 +143,11 @@ class RelationGitCommandUiContractTest {
         String adapter = Files.readString(RELATION_ADAPTER);
 
         assertThat(api)
-                .contains("return fetch(url, { cache: 'no-store' })")
-                .contains("return fetch(commandUrl(")
+                .contains("return domainRequest(url, {cache:'no-store'},")
+                .contains("return domainRequest(commandUrl(")
+                .contains("window.TaxonomyApiClient.request(url, init,")
+                .contains("acceptedStatuses:[400,404,409,412,422]")
+                .doesNotContain("fetch(")
                 .contains("method: 'PUT'")
                 .contains("method: 'DELETE'");
         assertThat(adapter).doesNotContain("fetch(");

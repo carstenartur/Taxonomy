@@ -137,6 +137,8 @@
         }
     };
 
+    let pageActive = true;
+    window.addEventListener?.('pagehide', () => { pageActive = false; });
     document.addEventListener('DOMContentLoaded', initialize);
     // Read-only adoption refresh must not reset the separate new-version form.
     // The parsed route is shared so page add-ons never re-implement route parsing.
@@ -149,6 +151,8 @@
 
     async function initialize() {
         await window.TaxonomyI18n.ready();
+        await window.TaxonomyArchitectureLifecycle?.ready?.();
+        if (!pageActive || window.location.pathname !== pathname) return;
         window.TaxonomyAppChrome?.updateContext({project: {id: projectId}});
         translateSurface();
         wireEvents();
@@ -277,8 +281,10 @@
         const version = state.requirement.currentVersion;
         document.getElementById('currentText').textContent = version ? version.text : '—';
         const source = version && version.source;
+        // An early-opened form retains its text, but still needs the first
+        // authoritative version as its base. Later refreshes retain that base.
+        if (!preserveVersionForm || !state.versionDraftBase) captureVersionDraftBase(version);
         if (!preserveVersionForm) {
-            captureVersionDraftBase(version);
             document.getElementById('versionText').value = version ? version.text : '';
             document.getElementById('sourceSection').value = source?.sectionReference || '';
             document.getElementById('sourcePage').value = source?.pageNumber || '';

@@ -230,18 +230,25 @@
     // Project APIs use the live source pins. The two global read-only status
     // polls may start before analysis hydration; bind their initial exact page
     // workspace without changing explicit requests or later session routing.
-    var nativeFetch = window.fetch;
-    if (nativeFetch) window.fetch = function (input, options) {
-        var scoped = input;
-        if (typeof input === 'string' || typeof Request === 'function' && input instanceof Request) {
-            try {
-                var target = new URL(typeof input === 'string' ? input : input.url, window.location.href);
-                if (typeof input === 'string' && /^\/api\/(?:projects|architecture\/(?:lifecycle|editor))(?:\/|$)/.test(applicationPath(target))) scoped = scopeUrl(input);
-                options = statusOptions(target,input,options);
-            } catch (_) { /* Let the normal transport report malformed URLs. */ }
-        }
-        return nativeFetch.call(window, scoped, options);
-    };
+    function createSourceTransport(nextFetch) {
+        return function (input, options) {
+            var scoped = input;
+            if (typeof input === 'string' || typeof Request === 'function' && input instanceof Request) {
+                try {
+                    var target = new URL(typeof input === 'string' ? input : input.url, window.location.href);
+                    if (typeof input === 'string' && /^\/api\/(?:projects|architecture\/(?:lifecycle|editor))(?:\/|$)/.test(applicationPath(target))) scoped = scopeUrl(input);
+                    options = statusOptions(target,input,options);
+                } catch (_) { /* Let the normal transport report malformed URLs. */ }
+            }
+            return nextFetch(scoped, options);
+        };
+    }
+    window.TaxonomyApiClient?.installTransportAdapter?.('architecture-workflow-source', createSourceTransport);
+    if (window.fetch && window.fetch.__taxonomyArchitectureWorkflow !== true) {
+        var sourceFetch = createSourceTransport(window.fetch.bind(window));
+        Object.defineProperty(sourceFetch, '__taxonomyArchitectureWorkflow', {value: true});
+        window.fetch = sourceFetch;
+    }
     function decorateLinks() {
         document.querySelectorAll('a[href]').forEach(function (node) {
             var present = node.getAttribute('href'), previous = decoratedLinks.get(node);

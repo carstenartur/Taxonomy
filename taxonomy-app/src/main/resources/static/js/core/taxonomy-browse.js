@@ -134,11 +134,7 @@
                 const reader = new FileReader();
                 reader.onload = function (e) {
                     const jsonText = e.target.result;
-                    fetch('/api/scores/import', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: jsonText
-                    })
+                    window.AnalysisApi.importScores(jsonText)
                     .then(function (resp) { return resp.json(); })
                     .then(function (data) {
                         if (data.error) {
@@ -210,6 +206,7 @@
                         showStatus(data.warnings && data.warnings.length > 0 ? 'warning' : 'success', msg);
                     })
                     .catch(function (err) {
+                if (err?.code === 'ABORTED') return;
                         showStatus('danger', t('browse.import.failed', err.message));
                     });
                 };
@@ -343,10 +340,7 @@
         // Pending authority is not a denial: retain deep links until the account read settles.
         const account = window.TaxonomyRoleSurface
             ? window.TaxonomyRoleSurface.ready
-            : fetch('/api/account/me').then(function (response) {
-                if (!response.ok) throw new Error('Account context unavailable');
-                return response.json();
-            });
+            : window.TaxonomyApiClient.getAccountContext();
         function applyAccount(data) {
             administrator = data && data.administrator === true;
             updateAdminVisibility();
@@ -404,8 +398,7 @@
     function checkAiStatus() {
         const requestId = ++aiStatusRequestId;
         const selectedProvider = document.getElementById('providerSelect')?.value || '';
-        const url = '/api/ai-status' + (selectedProvider === 'CUSTOM_OPENAI' ? '?provider=CUSTOM_OPENAI' : '');
-        fetch(url)
+        window.TaxonomyReferenceApi.aiStatus(selectedProvider)
             .then(r => { if (!r.ok) throw new Error('AI status request failed'); return r.json(); })
             .then(status => {
                 if (requestId !== aiStatusRequestId || (document.getElementById('providerSelect')?.value || '') !== selectedProvider) return;
@@ -513,7 +506,7 @@
         if (!content) { return; }
         content.innerHTML = '<div class="text-muted">' + t('status.loading') + '</div>';
         const headers = { 'Accept': 'application/json' };
-        fetch('/api/diagnostics', { headers: headers })
+        window.TaxonomyReferenceApi.diagnostics(headers)
             .then(r => {
                 if (r.status === 401) {
                     if (content) { content.innerHTML = '<div class="text-muted">' + t('browse.diagnostics.auth.required') + '</div>'; }
@@ -553,18 +546,23 @@
                     lastErrorHtml;
             })
             .catch(err => {
+                if (err?.code === 'ABORTED') return;
                 console.error('[Taxonomy] Failed to load diagnostics', err);
                 if (content) { content.innerHTML = '<div class="text-danger">' + t('browse.diagnostics.load.failed', escapeHtml(err.message)) + '</div>'; }
             });
     }
 
+    var connectionTestGeneration = 0;
     function testLlmConnection() {
+        const generation = ++connectionTestGeneration;
+        const current = window.TaxonomyApiClient.captureContext();
         const btn = document.getElementById('testLlmConnection');
         if (btn) { btn.disabled = true; btn.textContent = t('browse.test.testing'); }
         const testText = 'Test connection: business process management';
-        fetch('/api/analyze-node?parentCode=BP&businessText=' + encodeURIComponent(testText))
+        window.AnalysisApi.analyzeNode({parentCode:'BP', businessText:testText})
             .then(r => r.json())
             .then(result => {
+                if (generation !== connectionTestGeneration || !current()) return;
                 console.log('[Taxonomy] Test connection result:', result);
                 if (result.error) {
                     showStatus('warning', t('browse.test.error', result.error));
@@ -574,11 +572,12 @@
                 loadDiagnostics();
             })
             .catch(err => {
+                if (generation !== connectionTestGeneration || !current() || err?.code === 'ABORTED') return;
                 console.error('[Taxonomy] Test connection failed', err);
                 showStatus('danger', t('browse.test.failed', err.message));
             })
             .finally(() => {
-                if (btn) { btn.disabled = false; btn.textContent = t('browse.test.btn'); }
+                if (btn && generation === connectionTestGeneration) { btn.disabled = false; btn.textContent = t('browse.test.btn'); }
             });
     }
 
@@ -637,7 +636,7 @@
         clearTimeout(startupRetryTimer); startupRetryTimer = null;
         taxonomyLoading = true;
         var controller = beginStartupRead();
-        fetch('/api/taxonomy', { signal: controller.signal })
+        window.TaxonomyReferenceApi.taxonomy(controller.signal)
             .then(function (r) {
                 if (!currentStartupRead(controller)) return null;
                 if (r.status === 503) {
@@ -664,6 +663,7 @@
                 }
             })
             .catch(function (err) {
+                if (err?.code === 'ABORTED') return;
                 if (!currentStartupRead(controller)) return;
                 taxonomyLoading = false;
                 setStartupBanner(false);
@@ -680,7 +680,7 @@
             if (!startupPageActive || startupRetryTimer !== timer) return;
             startupRetryTimer = null;
             var controller = beginStartupRead();
-            fetch('/api/status/startup', { signal: controller.signal })
+            window.TaxonomyReferenceApi.startup(controller.signal)
                 .then(function (r) { return currentStartupRead(controller) ? r.json() : null; })
                 .then(function (s) {
                     if (!currentStartupRead(controller)) return;
@@ -1012,11 +1012,7 @@
             reportRequest.language = window.TaxonomyContentLanguage?.documentLanguage(S.lastAnalysisLanguage);
             var reportHeaders = { 'Content-Type': 'application/json' };
             if (reference?.workspaceId) reportHeaders['X-Taxonomy-Workspace-Id'] = reference.workspaceId;
-            fetch('/api/report/' + format, {
-                method: 'POST',
-                headers: reportHeaders,
-                body: JSON.stringify(reportRequest)
-            })
+            window.ExportApi.report(format, reportRequest, reference ? {pinnedWorkspaceId:reference.workspaceId} : {})
             .then(function (resp) {
                 if (!resp.ok) return resp.json().catch(function () { return {}; }).then(function (problem) {
                     throw new Error(problem.detail || problem.message || 'Report generation failed (HTTP ' + resp.status + ')');
@@ -1033,7 +1029,8 @@
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
             })
-            .catch(function (err) { alert(t('browse.report.export.failed', err.message)); });
+            .catch(function (err) {
+                if (err?.code === 'ABORTED') return; alert(t('browse.report.export.failed', err.message)); });
             return;
         }
     }
@@ -1902,12 +1899,9 @@
 
         const parentScore = (S.currentScores && S.currentScores[parentCode] != null)
             ? S.currentScores[parentCode] : 100;
-        fetch('/api/analyze-node?parentCode=' + encodeURIComponent(parentCode)
-              + '&businessText=' + encodeURIComponent(S.storedBusinessText)
-              + '&parentScore=' + encodeURIComponent(parentScore)
-              + '&analysisLanguage=' + encodeURIComponent(S.activeAnalysisLanguage || S.lastAnalysisLanguage || window.TaxonomyContentLanguage?.analysis() || document.documentElement.lang)
-              + (S.analysisProviderId ? '&provider=' + encodeURIComponent(S.analysisProviderId) : '')
-              + (S.analysisOperationId ? '&operationId=' + encodeURIComponent(S.analysisOperationId) : ''))
+        window.AnalysisApi.analyzeNode({parentCode:parentCode, businessText:S.storedBusinessText, parentScore:parentScore,
+            analysisLanguage:S.activeAnalysisLanguage || S.lastAnalysisLanguage || window.TaxonomyContentLanguage?.analysis() || document.documentElement.lang,
+            provider:S.analysisProviderId || undefined, operationId:S.analysisOperationId || undefined})
             .then(r => {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
@@ -2041,6 +2035,7 @@
                 console.log('[Taxonomy] Interactive eval of', parentCode, ':', matched.length, 'matches', scores);
             })
             .catch(err => {
+                if (err?.code === 'ABORTED') return;
                 wrapper.classList.remove('tax-evaluating');
                 S.evaluatedNodes.delete(parentCode); // allow retry
                 console.error('[Taxonomy] Failed to evaluate', parentCode, err);
@@ -2164,8 +2159,7 @@
         proposalRead = controller;
         container.innerHTML = '<div class="text-muted small p-2" role="status" aria-live="polite">' + t('browse.proposals.loading') + '</div>';
         // PENDING has a dedicated endpoint; ACCEPTED/REJECTED/ALL need the full list
-        const url = statusFilter === 'PENDING' ? '/api/proposals/pending' : '/api/proposals';
-        fetch(url, { signal: controller.signal })
+        window.TaxonomyProposalsApi.list(statusFilter, { signal: controller.signal })
             .then(function (r) {
                 if (!currentProposalRead(controller)) return null;
                 if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -2178,10 +2172,10 @@
                     filtered = proposals.filter(function (p) { return p.status === statusFilter; });
                 }
                 renderProposalTable(filtered);
-                updateProposalBadge(controller);
+                updateProposalBadge(proposals, statusFilter);
             })
             .catch(function (err) {
-                if (!currentProposalRead(controller)) return;
+                if (!currentProposalRead(controller) || err?.code === 'ABORTED') return;
                 console.error('[Taxonomy] Failed to load proposals', err);
                 if (container) {
                     container.innerHTML = '<div class="text-danger small p-2">' + t('browse.proposals.load.failed', escapeHtml(err.message)) + '</div>';
@@ -2341,11 +2335,7 @@
     }
 
     function bulkAction(ids, action) {
-        fetch('/api/proposals/bulk', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids: ids, action: action })
-        })
+        window.TaxonomyProposalsApi.bulk({ids:ids, action:action})
         .then(function (r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.json();
@@ -2359,12 +2349,13 @@
             showUndoToast(ids, action);
         })
         .catch(function (err) {
+                if (err?.code === 'ABORTED') return;
             showStatus('danger', t('browse.proposals.bulk.failed', err.message));
         });
     }
 
     function acceptProposal(id) {
-        fetch('/api/proposals/' + id + '/accept', { method: 'POST' })
+        window.TaxonomyProposalsApi.review(id, 'accept')
             .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
@@ -2375,13 +2366,14 @@
                 showUndoToast([id], 'ACCEPT');
             })
             .catch(function (err) {
+                if (err?.code === 'ABORTED') return;
                 console.error('[Taxonomy] Accept proposal failed', err);
                 showStatus('danger', t('browse.proposals.accept.failed', err.message));
             });
     }
 
     function rejectProposal(id) {
-        fetch('/api/proposals/' + id + '/reject', { method: 'POST' })
+        window.TaxonomyProposalsApi.review(id, 'reject')
             .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
@@ -2392,6 +2384,7 @@
                 showUndoToast([id], 'REJECT');
             })
             .catch(function (err) {
+                if (err?.code === 'ABORTED') return;
                 console.error('[Taxonomy] Reject proposal failed', err);
                 showStatus('danger', t('browse.proposals.reject.failed', err.message));
             });
@@ -2441,7 +2434,7 @@
 
     function revertProposals(ids) {
         var promises = ids.map(function (id) {
-            return fetch('/api/proposals/' + id + '/revert', { method: 'POST' })
+            return window.TaxonomyProposalsApi.review(id, 'revert')
                 .then(function (r) {
                     if (!r.ok) throw new Error('HTTP ' + r.status);
                     return r.json();
@@ -2454,26 +2447,27 @@
                 loadProposals(S.currentProposalFilter);
             })
             .catch(function (err) {
+                if (err?.code === 'ABORTED') return;
                 showStatus('danger', t('browse.proposals.undo.failed', err.message));
             });
     }
 
+    var proposalGeneration = 0;
     function proposeRelationsForNode(nodeCode, relationType) {
+        const generation = ++proposalGeneration;
+        const current = window.TaxonomyApiClient.captureContext();
         const spinner = document.getElementById('proposeSpinner');
         const submitBtn = document.getElementById('proposeRelationsSubmit');
         if (spinner) spinner.classList.remove('d-none');
         if (submitBtn) submitBtn.disabled = true;
 
-        fetch('/api/proposals/propose', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sourceCode: nodeCode, relationType: relationType, limit: 10 })
-        })
+        window.TaxonomyProposalsApi.propose({sourceCode:nodeCode, relationType:relationType, limit:10})
             .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
             })
             .then(function (proposals) {
+                if (generation !== proposalGeneration || !current()) return;
                 // Close modal
                 const modalEl = document.getElementById('proposeRelationsModal');
                 if (modalEl && window.bootstrap) {
@@ -2485,38 +2479,30 @@
                 loadProposals(S.currentProposalFilter);
             })
             .catch(function (err) {
+                if (generation !== proposalGeneration || !current() || err?.code === 'ABORTED') return;
                 console.error('[Taxonomy] Propose relations failed', err);
                 showStatus('danger', t('browse.proposals.generate.failed', err.message));
             })
             .finally(function () {
+                if (generation !== proposalGeneration) return;
                 if (spinner) spinner.classList.add('d-none');
-                if (submitBtn) submitBtn.disabled = false;
+                if (submitBtn) submitBtn.disabled = window.TaxonomyRoleSurface?.canMutateArchitecture?.() === false;
             });
     }
 
-    function updateProposalBadge(controller) {
-        if (!currentProposalRead(controller)) return;
-        fetch('/api/proposals/pending', { signal: controller.signal })
-            .then(function (r) {
-                if (!currentProposalRead(controller)) return null;
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(function (pending) {
-                if (!currentProposalRead(controller)) return;
-                const badge = document.getElementById('proposalPendingBadge');
-                if (badge) {
-                    const count = Array.isArray(pending) ? pending.length : 0;
-                    badge.textContent = t('browse.proposals.pending', count);
-                    badge.className = count > 0
-                        ? 'badge bg-warning text-dark proposal-pending-badge'
-                        : 'badge bg-secondary proposal-pending-badge';
-                }
-            })
-            .catch(function (err) {
-                if (!currentProposalRead(controller)) return;
-                console.error('[Taxonomy] Failed to update proposal badge', err);
-            });
+    function updateProposalBadge(proposals, statusFilter) {
+        // Reuse the authoritative list from this same guarded request. A second
+        // /pending read may outlive Firefox navigation and turn a harmless
+        // cancelled page read into a console error.
+        const badge = document.getElementById('proposalPendingBadge');
+        if (!badge || !Array.isArray(proposals)) return;
+        const count = statusFilter === 'PENDING'
+            ? proposals.length
+            : proposals.filter(function (proposal) { return proposal.status === 'PENDING'; }).length;
+        badge.textContent = t('browse.proposals.pending', count);
+        badge.className = count > 0
+            ? 'badge bg-warning text-dark proposal-pending-badge'
+            : 'badge bg-secondary proposal-pending-badge';
     }
 
     // Expose accept/reject as global helpers for onclick handlers in rendered table
@@ -2548,12 +2534,12 @@
         promptEditorInitialized = true;
 
         // Try categorized endpoint first, fall back to flat list
-        fetch('/api/prompts/categories', { headers: getAdminHeaders() })
+        window.TaxonomyReferenceApi.promptCategories(getAdminHeaders())
             .then(r => {
                 if (r.status === 401) { return null; }
                 if (!r.ok) {
                     // Fall back to flat list if categories endpoint unavailable
-                    return fetch('/api/prompts', { headers: getAdminHeaders() })
+                    return window.TaxonomyReferenceApi.prompts(getAdminHeaders())
                         .then(r2 => r2.ok ? r2.json().then(list => ({ _flat: list })) : null);
                 }
                 return r.json();
@@ -2610,11 +2596,7 @@
         saveBtn.addEventListener('click', function () {
             const code     = select.value;
             const template = document.getElementById('promptTextarea').value;
-            fetch('/api/prompts/' + encodeURIComponent(code), {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', ...getAdminHeaders() },
-                body: JSON.stringify({ template: template })
-            })
+            window.TaxonomyReferenceApi.savePrompt(code, template, getAdminHeaders())
             .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
@@ -2627,25 +2609,21 @@
                 if (entry) { entry.template = template; entry.overridden = true; }
             })
             .catch(function (e) {
+                if (e?.code === 'ABORTED') return;
                 setPromptStatus('danger', t('browse.prompt.save.failed', e.message));
             });
         });
 
         resetBtn.addEventListener('click', function () {
             const code = select.value;
-            fetch('/api/prompts/' + encodeURIComponent(code), {
-                method: 'DELETE',
-                headers: getAdminHeaders()
-            })
+            window.TaxonomyReferenceApi.deletePrompt(code, getAdminHeaders())
             .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
             })
             .then(function () {
                 // Reload to get the file-based default
-                return fetch('/api/prompts/' + encodeURIComponent(code), {
-                    headers: getAdminHeaders()
-                }).then(r => r.json());
+                return window.TaxonomyReferenceApi.prompt(code, getAdminHeaders()).then(r => r.json());
             })
             .then(function (data) {
                 document.getElementById('promptTextarea').value = data.template;
@@ -2655,13 +2633,14 @@
                 if (entry) { entry.template = data.template; entry.overridden = false; }
             })
             .catch(function (e) {
+                if (e?.code === 'ABORTED') return;
                 setPromptStatus('danger', t('browse.prompt.reset.failed', e.message));
             });
         });
     }
 
     function loadPromptIntoEditor(code) {
-        fetch('/api/prompts/' + encodeURIComponent(code), { headers: getAdminHeaders() })
+        window.TaxonomyReferenceApi.prompt(code, getAdminHeaders())
             .then(r => {
                 if (r.status === 401) { return null; }
                 return r.json();

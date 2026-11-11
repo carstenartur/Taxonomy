@@ -11,6 +11,8 @@ window.TaxonomyVariants = (function () {
     'use strict';
 
     var t = TaxonomyI18n.t;
+    function ignoredError(error) { return error?.code === 'ABORTED' || error?.status === 401 || error?.status === 403; }
+
     var escapeHtml = TaxonomyUtils.escapeHtml;
     var containerId = 'variantsBrowser';
 
@@ -24,7 +26,7 @@ window.TaxonomyVariants = (function () {
 
         container.innerHTML = '<div class="text-muted small">' + escapeHtml(t('variants.loading')) + '</div>';
 
-        fetch('/api/git/state?branch=draft')
+        window.TaxonomyVersioningApi.state('draft')
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (state) {
                 if (!state || !state.branches) {
@@ -34,6 +36,7 @@ window.TaxonomyVariants = (function () {
                 renderVariants(container, state);
             })
             .catch(function (err) {
+                if (ignoredError(err)) return;
                 container.innerHTML = '<div class="text-danger small">' + escapeHtml(t('variants.load.failed', err.message)) + '</div>';
             });
     }
@@ -131,8 +134,7 @@ window.TaxonomyVariants = (function () {
         var fromDisplay = TaxonomyI18n.formatBranch(fromBranch);
         var intoDisplay = TaxonomyI18n.formatBranch(intoBranch);
 
-        fetch('/api/context/compare?leftBranch=' + encodeURIComponent(intoBranch)
-            + '&rightBranch=' + encodeURIComponent(fromBranch))
+        window.TaxonomyVersioningApi.compare(intoBranch, fromBranch)
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (comparison) {
                 var previewHtml = '';
@@ -154,7 +156,8 @@ window.TaxonomyVariants = (function () {
                     executeMerge(fromBranch, intoBranch);
                 });
             })
-            .catch(function () {
+            .catch(function (error) {
+                if (ignoredError(error)) return;
                 if (confirm(TaxonomyUtils.stripHtml(t('variants.integrate.confirm.body', fromDisplay, intoDisplay)))) {
                     executeMerge(fromBranch, intoBranch);
                 }
@@ -165,8 +168,7 @@ window.TaxonomyVariants = (function () {
         var fromDisplay = TaxonomyI18n.formatBranch(fromBranch);
         var intoDisplay = TaxonomyI18n.formatBranch(intoBranch);
 
-        fetch('/api/dsl/merge?from=' + encodeURIComponent(fromBranch)
-            + '&into=' + encodeURIComponent(intoBranch), { method: 'POST' })
+        window.TaxonomyVersioningApi.merge(fromBranch, intoBranch)
             .then(function (r) { return r.json(); })
             .then(function (result) {
                 if (result.error) {
@@ -186,6 +188,7 @@ window.TaxonomyVariants = (function () {
                 }
             })
             .catch(function (err) {
+                if (ignoredError(err)) return;
                 if (window.TaxonomyOperationResult) {
                     window.TaxonomyOperationResult.showError(t('variants.integrate.failed'), err.message);
                 } else {
@@ -209,7 +212,7 @@ window.TaxonomyVariants = (function () {
     }
 
     function executeDelete(branch) {
-        fetch('/api/dsl/branch?name=' + encodeURIComponent(branch), { method: 'DELETE' })
+        window.TaxonomyVersioningApi.deleteBranch(branch)
             .then(function (r) {
                 if (!r.ok && r.status === 404) {
                     if (window.TaxonomyOperationResult) {
@@ -237,6 +240,7 @@ window.TaxonomyVariants = (function () {
                 }
             })
             .catch(function (err) {
+                if (ignoredError(err)) return;
                 if (window.TaxonomyOperationResult) {
                     window.TaxonomyOperationResult.showError(t('variants.delete.failed'), err.message);
                 } else {

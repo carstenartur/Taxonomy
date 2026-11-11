@@ -16,7 +16,9 @@ window.ImportApi = (function () {
      * @returns {Promise<Array>}
      */
     function loadProfiles() {
-        return client.getJson('/api/import/profiles');
+        // Registered formats are application capabilities, independent of the
+        // selected repository. Keep authentication and page-lifetime guards.
+        return client.getJson('/api/import/profiles', {contextSensitive: false, workspaceScoped: false});
     }
 
     /**
@@ -70,12 +72,14 @@ window.ImportApi = (function () {
         var workspace = selection.has('workspaceId') ? selection.get('workspaceId') : undefined;
         var headers = {};
         if (workspace !== undefined) headers['X-Taxonomy-Workspace-Id'] = workspace;
-        return client.request(path + (query.size ? '?' + query.toString() : ''),
-            {method: 'POST', body: data, headers: headers}, {pinnedWorkspaceId: workspace})
-            .then(function (response) { return response.json(); });
+        return client.requestJson(path + (query.size ? '?' + query.toString() : ''),
+            {method: 'POST', body: data, headers: headers}, {pinnedWorkspaceId: workspace});
     }
 
     return {
+        uploadDocument: function (data) { return client.sendFormData('/api/documents/upload', data); },
+        extractDocumentWithAi: function (data) { return client.sendFormData('/api/documents/extract-ai', data); },
+        mapRegulation: function (data) { return client.sendFormData('/api/documents/map-regulation', data); },
         loadProfiles:    loadProfiles,
         preview:         preview,
         execute:         execute,
