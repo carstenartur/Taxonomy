@@ -4,6 +4,10 @@ package com.taxonomy.dto;
  * Represents a single element included in an impact or neighborhood view.
  */
 public class ImpactElement {
+    private GraphNodeEvidence nodeEvidence;
+    public GraphNodeEvidence getNodeEvidence() { return nodeEvidence; }
+    public void setNodeEvidence(GraphNodeEvidence value) { nodeEvidence = value; }
+
 
     private String nodeCode;
     private String title;

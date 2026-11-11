@@ -186,6 +186,11 @@ or [German](docs/de/EXAMPLES.md#1-anforderung--architektur). The
 acceptance; the [independent reference](docs/qa/scenario-reference-review.md)
 explains required functions, permitted additions and open decisions.
 
+The [versioned architecture-quality corpus](docs/testing/architecture-quality-corpus.md)
+adds independent cases for alternatives, incomplete and contradictory requirements,
+updates to existing elements, and models that need no additions. It reports missing
+obligations, unsupported additions and uncertainty separately.
+
 <details>
 <summary>Earlier hospital exporter fixture</summary>
 
@@ -637,12 +642,22 @@ storage infrastructure relevant to Taxonomy:
 | [EAM-Toolfamilie](https://github.com/Mitchel85/EAM-Toolfamilie) | Architecture creation and analysis tools. Their QEA analysis and public ADMBw model/profile examples serve as references for Taxonomy's Sparx and ADMBw work. |
 | [AAroN](https://github.com/schmitze87/AAroN) | Source of selected QEA implicit-reference mappings adapted, with attribution, in Taxonomy's optional Sparx plugin. |
 | [Archi](https://github.com/archimatetool/archi) | Open-source ArchiMate modeler used in Taxonomy's documented ArchiMate exchange verification. |
+| [coArchi](https://github.com/archimatetool/archi-modelrepository-plugin) | Reference for collaborative model versioning and review; Taxonomy retains its existing canonical Git model, semantic merge and editor renderer. |
 | [jgit-storage-hibernate](https://github.com/carstenartur/jgit-storage-hibernate) | Runtime library providing database-backed Git repositories for Taxonomy's architecture and preference history. |
 
 See the [Sparx plugin's provenance notes](plugins/taxonomy-sparx-plugin/THIRD-PARTY.md),
 [ADMBw delivery guide](docs/features/admbw-conformance-de.md),
 [ArchiMate exchange scope](docs/features/standards-interoperability.md) and
 [Git storage integration](docs/en/JGIT_STORAGE_HIBERNATE.md) for details.
+
+The adopted lessons are recorded in [ADR 0017](docs/adr/0017-evidence-model-contracts.md):
+one shared relation metamodel, [explicit evidence-based obligations](docs/architecture/obligation-profiles.md),
+[queries bound to a selected model revision](docs/architecture/graph-query-evidence.md),
+stable semantic identities and graphical reconciliation, and
+[operation-specific QEA exchange evidence](docs/features/qea-exchange-operation-evidence.md).
+The same selected revision binds live pattern detection and recommendations.
+[Pinned product artifacts](docs/dev/MAVEN_VERIFICATION.md#pinned-product-artifacts)
+support verified cache and local inputs for reproducible exchange checks.
 
 ## Project status
 

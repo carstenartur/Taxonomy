@@ -6,6 +6,7 @@ import vm from 'node:vm';
 const root = new URL('../../taxonomy-app/src/main/resources/static/js/', import.meta.url);
 const sources = new Map();
 for (const path of ['api/taxonomy-api-client.js', 'api/analysis-api.js', 'api/portfolio-api.js',
+  'api/workspace-api.js', 'versioning/taxonomy-context-bar.js',
   'api/import-api.js', 'api/analysis-session-api.js', 'core/taxonomy-analysis-session-core.js',
   'core/taxonomy-analysis-session-transport.js', 'portfolio/taxonomy-portfolio-async.js',
   'core/taxonomy-analysis.js', 'shared/taxonomy-document-import.js', 'shared/taxonomy-import.js', 'api/export-api.js',
@@ -246,12 +247,27 @@ test('portfolio startup reads the selected source only after lifecycle initializ
   assert.equal(new Headers(requests[0].init.headers).get('X-Taxonomy-Workspace-Id'),'resolved-workspace');
 });
 
+function selectedAnalysisSource(app) {
+  return {repositoryId: 'selected-model', workspaceScopeKey: app.runtime.workspaceId || '__shared__',
+    branch: 'draft', commit: 'a'.repeat(40)};
+}
+function prepareSelectedAnalysis(app) {
+  app.window.TaxonomyState ||= app.C.S;
+  app.window.TaxonomyAppChrome = {getContext: () => ({architecture: selectedAnalysisSource(app)})};
+  app.window.TaxonomyArchitectureLifecycle = {ready: async () => ({context: selectedAnalysisSource(app)}),
+    selectedContext: () => selectedAnalysisSource(app)};
+}
+function profileMetadata(url) {
+  return new URL(url, 'https://taxonomy.example').pathname.endsWith('/api/gap/profiles');
+}
+const assessmentProfiles = [{id: 'compatibility', version: '1.0.0'}];
+
 for (const barrier of ['serverUnconfirmed', 'draftDecisionPending']) {
   test(`named analysis honors ${barrier} admission before any provider request`, async () => {
     const requests = [];
     const app = boot(async (url, init) => {requests.push({url, init}); return Response.json({accepted: true});}, {analysis: true});
     app.runtime[barrier] = true;
-    await assert.rejects(app.window.AnalysisApi.analyzeGap({scores: {}}),
+    await assert.rejects(app.window.AnalysisApi.analyzeGap({scores: {}}, selectedAnalysisSource(app)),
       error => error.code === 'ANALYSIS_SESSION_NOT_READY');
     assert.equal(requests.length, 0, 'unconfirmed analysis must not reach the network');
   });
@@ -260,7 +276,7 @@ for (const barrier of ['serverUnconfirmed', 'draftDecisionPending']) {
 test('named analysis owns one active request and releases it after a successful response', async () => {
   const pending = deferred();
   const app = boot(() => pending.promise, {analysis: true});
-  const request = app.window.AnalysisApi.detectPatterns({scores: {}});
+  const request = app.window.AnalysisApi.detectPatterns({scores: {}}, selectedAnalysisSource(app));
   await flush();
   assert.equal(app.runtime.activeAnalysisControllers.size, 1);
   pending.resolve(Response.json({patterns: []}));
@@ -275,7 +291,7 @@ test('named analysis cannot publish JSON completed after its generation is aband
   const response = Response.json({recommendations: ['old']});
   response.json = () => {entered.resolve(); return body.promise;};
   const app = boot(async () => response, {analysis: true});
-  const request = app.window.AnalysisApi.recommend({scores: {}});
+  const request = app.window.AnalysisApi.recommend({scores: {}}, selectedAnalysisSource(app));
   request.then(value => rendered.push(value), () => {});
   await entered.promise;
   app.runtime.analysisGeneration++;
@@ -361,6 +377,61 @@ function startImportProfiles(fetchImpl) {
 const profileFixture = [{profileId: 'archimate', displayName: 'ArchiMate', acceptedFileFormat: 'xml',
   supportedElementTypes: ['ApplicationComponent'], supportedRelationTypes: ['Serving']}];
 
+for (const boundary of ['source hydration', 'page exit', 'other request loses authorization', 'HTTP 503', 'deadline']) {
+  test(`initial obligation-profile selector handles ${boundary} before any assessment`, async () => {
+    const held = deferred(), calls = [];
+    const profiles = [{id:'compatibility', version:'1.0.0', description:'Compatibility'},
+      {id:'service-support', version:'1.0.0', description:'Service support'}];
+    const select = {dataset:{}, value:'compatibility', options:[{value:'compatibility', textContent:'Loading profiles…'}],
+      replaceChildren() {this.options = [];}, append(option) {this.options.push(option);}};
+    const panel = node(); panel.innerHTML = 'Previous panel content';
+    const app = boot((url, init) => {
+      const path = new URL(url, 'https://taxonomy.example').pathname;
+      calls.push({path, init});
+      if (path === '/taxonomy/api/gap/profiles') return held.promise;
+      assert.equal(path, '/taxonomy/api/context/current');
+      return boundary === 'other request loses authorization' ? Response.json({}, {status:403})
+        : Response.json({contextId:'selected', branch:'draft', commitId:'a'.repeat(40)});
+    }, {nodes:new Map([['gapProfile', select], ['gapAnalysisContent', panel]])});
+    app.context.clearInterval = app.window.clearInterval;
+    app.load('api/workspace-api.js');
+    app.load('versioning/taxonomy-context-bar.js');
+    app.load('core/taxonomy-analysis.js');
+    app.document.dispatchEvent({type:'DOMContentLoaded'});
+    await flush();
+    assert.deepEqual(calls.map(c=>[c.init.method,c.path]), [['GET','/taxonomy/api/gap/profiles']]);
+    if (boundary === 'source hydration') {
+      const result = await app.window.TaxonomyContextBar.fetchAndRender('contextBar', {joinCurrent:true});
+      assert.equal(result?.contextId, 'selected');
+    } else if (boundary === 'page exit') {
+      app.window.dispatchEvent({type:'pagehide'});
+    } else if (boundary === 'other request loses authorization') {
+      await assert.rejects(app.window.TaxonomyContextApi.current(), error => error.status === 403);
+    } else if (boundary === 'deadline') {
+      const timer = [...app.timers.values()].find(t=>t.delay === 30_000);
+      assert.ok(timer, 'The canonical profile read keeps its existing 30-second deadline');
+      timer.callback();
+    }
+    held.resolve(boundary === 'HTTP 503' ? Response.json({}, {status:503}) : Response.json(profiles));
+    await flush(); await flush();
+    if (boundary === 'source hydration') {
+      assert.deepEqual(select.options.map(o=>[o.value,o.textContent]),
+        profiles.map(p=>[p.id,p.description+' ('+p.version+')']));
+      assert.equal(select.dataset.loaded, 'true');
+    } else {
+      assert.equal(select.dataset.loaded, undefined);
+      assert.deepEqual(select.options.map(o=>o.textContent), ['Loading profiles…']);
+    }
+    if (boundary === 'HTTP 503') assert.match(panel.innerHTML, /HTTP 503/);
+    else if (boundary === 'deadline') assert.match(panel.innerHTML, /timed out after 30000 ms/);
+    else assert.equal(panel.innerHTML, 'Previous panel content');
+    assert.deepEqual(calls.map(c=>[c.init.method,c.path]), [
+      ['GET','/taxonomy/api/gap/profiles'],
+      ...(['source hydration','other request loses authorization'].includes(boundary) ? [['GET','/taxonomy/api/context/current']] : [])
+    ], 'No assessment, fallback or automatic metadata retry was sent');
+  });
+}
+
 test('the import selector publishes global capabilities after initial workspace and source hydration', async () => {
   const response = deferred(), requests = [];
   const app = startImportProfiles((url, init) => {requests.push({url, init}); return response.promise;});
@@ -430,12 +501,20 @@ function node() {
 
 test('the actual analysis error handler cannot replace the next context panel with an obsolete failure', async () => {
   const requests = [], nodes = new Map([['gapAnalysisContent', node()], ['gapAnalysisPanel', node()]]);
-  const app = boot(() => {const pending = deferred(); requests.push(pending); return pending.promise;}, {nodes});
+  const app = boot(url => {
+    if (profileMetadata(url)) return Response.json(assessmentProfiles);
+    const pending = deferred(); requests.push(pending); return pending.promise;
+  }, {nodes});
+  prepareSelectedAnalysis(app);
   app.window._taxonomyCurrentScores = {BP: 80};
   app.load('core/taxonomy-analysis.js');
   app.window.TaxonomyAnalysis.runGapAnalysis();
+  await flush();
+  assert.equal(requests.length, 1, 'The first scoped assessment must be admitted before changing workspace');
   app.runtime.workspaceId = 'workspace-b';
   app.window.TaxonomyAnalysis.runGapAnalysis();
+  await flush();
+  assert.equal(requests.length, 2);
   const loading = nodes.get('gapAnalysisContent').innerHTML;
   requests[0].reject(new Error('obsolete analysis failure'));
   await flush(); await flush();
@@ -471,7 +550,7 @@ test('the actual import catch and finally handlers leave a newer upload status a
 
 const actualClients = {
   Import: app => app.window.ImportApi.uploadDocument(new FormData()),
-  Analysis: app => app.window.AnalysisApi.analyzeGap({scores: {}}),
+  Analysis: app => app.window.AnalysisApi.analyzeGap({scores: {}}, selectedAnalysisSource(app)),
   Export: app => app.window.ExportApi.scoreExport({scores: {}}),
   Copilot: app => app.window.TaxonomyCopilotApi.start(1, 2, {}),
   Workbench: app => app.window.ArchitectureWorkbenchApi.load(1, 'snapshot-1'),
@@ -533,7 +612,7 @@ for (const beforeCanonical of [false, true]) test(`real admission factories pres
       {status: 202, headers: {Location: '/taxonomy/api/projects/1/analysis-jobs/job-order'}});
     return Response.json({totalGaps: 0});
   }, {analysis: true, portfolio: true, beforeCanonical});
-  await app.window.AnalysisApi.analyzeGap({scores: {}});
+  await app.window.AnalysisApi.analyzeGap({scores: {}}, selectedAnalysisSource(app));
   assert.equal(calls.length, 1);
   assert.equal(app.events.filter(event => event.type === 'taxonomy:analysis-running-changed').length, 2);
   await app.window.TaxonomyPortfolioApi.analyzeRequirementJob(1, 2, {});
@@ -564,11 +643,11 @@ test('named durable job pin outranks a different live workflow source', async ()
   assert.equal(new URL(call.url, app.window.location.href).searchParams.get('workspaceId'), 'retained-source');
   assert.equal(new Headers(call.init.headers).get('X-Taxonomy-Workspace-Id'), 'retained-source');
 });
-test('analysis UI retains the scores-required path without starting transport', () => {
-  const nodes = new Map([['gapAnalysisContent', node()]]);
+test('pattern analysis UI retains the scores-required path without starting transport', () => {
+  const nodes = new Map([['patternDetectionContent', node()]]);
   const app = boot(() => {throw new Error('No request expected');}, {nodes}); app.load('core/taxonomy-analysis.js');
-  app.window.TaxonomyAnalysis.runGapAnalysis();
-  assert.match(nodes.get('gapAnalysisContent').innerHTML, /analyze.scores.required/);
+  app.window.TaxonomyAnalysis.runPatternDetection();
+  assert.match(nodes.get('patternDetectionContent').innerHTML, /analyze.scores.required/);
 });
 
 test('actual Portfolio success, error and finally handlers retain the newer project ownership', async () => {
@@ -592,9 +671,18 @@ test('actual Portfolio success, error and finally handlers retain the newer proj
 });
 test('actual analysis success from an earlier same-context operation cannot replace the newer loading panel', async () => {
   const requests = [], nodes = new Map([['gapAnalysisContent', node()], ['gapAnalysisPanel', node()]]);
-  const app = boot(() => {const pending = deferred(); requests.push(pending); return pending.promise;}, {nodes});
+  const app = boot(url => {
+    if (profileMetadata(url)) return Response.json(assessmentProfiles);
+    const pending = deferred(); requests.push(pending); return pending.promise;
+  }, {nodes});
+  prepareSelectedAnalysis(app);
   app.window._taxonomyCurrentScores = {BP: 80}; app.load('core/taxonomy-analysis.js');
-  app.window.TaxonomyAnalysis.runGapAnalysis(); app.window.TaxonomyAnalysis.runGapAnalysis();
+  app.window.TaxonomyAnalysis.runGapAnalysis();
+  await flush();
+  assert.equal(requests.length, 1);
+  app.window.TaxonomyAnalysis.runGapAnalysis();
+  await flush();
+  assert.equal(requests.length, 2, 'Both scoped operations must reach transport before the obsolete success');
   const loading = nodes.get('gapAnalysisContent').innerHTML;
   requests[0].resolve(Response.json({totalGaps: 0, totalAnchors: 1, gaps: []})); await flush(); await flush();
   assert.equal(nodes.get('gapAnalysisContent').innerHTML, loading);

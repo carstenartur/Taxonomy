@@ -207,9 +207,9 @@ class LocalOnnxPipelineIT {
 
     @Test
     @Order(7)
-    void graphUpstreamEndpointResponds() throws Exception {
+    void graphUpstreamEndpointRequiresExplicitSnapshot() throws Exception {
         assertThat(httpGet("/api/graph/node/BP/upstream").statusCode())
-                .isEqualTo(200);
+                .isEqualTo(400);
     }
 
     @Test

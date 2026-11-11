@@ -12,13 +12,25 @@ import java.util.List;
  */
 public class EnrichedChangeImpactView {
 
+    private GraphQueryEvidence evidence;
+    public GraphQueryEvidence getEvidence() { return evidence; }
+    public void setEvidence(GraphQueryEvidence evidence) { this.evidence = evidence; }
+
+    private List<String> uncorrelatedElementIds = new ArrayList<>();
+    /** Affected elements without a requirement mapping in the selected revision. */
+    public List<String> getUncorrelatedElementIds() { return uncorrelatedElementIds; }
+    public void setUncorrelatedElementIds(List<String> value) { uncorrelatedElementIds = List.copyOf(value); }
+
+    private String correlationCompleteness;
+    public String getCorrelationCompleteness() { return correlationCompleteness; }
+    public void setCorrelationCompleteness(String value) { this.correlationCompleteness = value; }
     private String failedNodeCode;
     private int maxHops;
     private List<EnrichedImpactElement> directlyAffected = new ArrayList<>();
     private List<EnrichedImpactElement> indirectlyAffected = new ArrayList<>();
     private List<ImpactRelationship> traversedRelationships = new ArrayList<>();
     private List<String> affectedRequirements = new ArrayList<>();
-    private double riskScore;
+    private Double riskScore;
     private int totalAffected;
     private int totalRelationships;
     private List<String> notes = new ArrayList<>();
@@ -43,8 +55,8 @@ public class EnrichedChangeImpactView {
     public List<String> getAffectedRequirements() { return affectedRequirements; }
     public void setAffectedRequirements(List<String> affectedRequirements) { this.affectedRequirements = affectedRequirements; }
 
-    public double getRiskScore() { return riskScore; }
-    public void setRiskScore(double riskScore) { this.riskScore = riskScore; }
+    public Double getRiskScore() { return riskScore; }
+    public void setRiskScore(Double riskScore) { this.riskScore = riskScore; }
 
     public int getTotalAffected() { return totalAffected; }
     public void setTotalAffected(int totalAffected) { this.totalAffected = totalAffected; }

@@ -63,7 +63,8 @@ class SavedAnalysisReportControllerTest {
             assertThat(report.path("scores").has("FORGED")).isFalse();
             assertThat(report.path("scores").path("BP").asDouble()).isEqualTo(70d);
             assertThat(report.path("gapAnalysis").path("notes").get(0).asString()).isEqualTo("Frozen gap evidence");
-            assertThat(report.path("recommendation").path("confidence").asDouble()).isEqualTo(71d);
+            assertThat(report.path("recommendation").path("meanRelevance").asDouble()).isEqualTo(71d);
+            assertThat(report.path("recommendation").has("confidence")).isFalse();
             assertThat(report.path("copilot").path("state").asString()).isEqualTo("PARTIAL");
             assertThat(report.path("pendingProposals").isEmpty()).isTrue();
         }
@@ -159,7 +160,7 @@ class SavedAnalysisReportControllerTest {
         result.setAnalysisOperationId(OPERATION);
         result.setArchitectureView(new RequirementArchitectureView());
         var retainedGaps = new GapAnalysisView(); retainedGaps.getNotes().add("Frozen gap evidence");
-        var recommendation = new ArchitectureRecommendation(); recommendation.setConfidence(71d);
+        var recommendation = new ArchitectureRecommendation(); recommendation.setMeanRelevance(71d);
         result.setCopilot(new AnalysisCopilotResult(1, "PARTIAL", retainedGaps,
                 new PatternDetectionView(), recommendation, List.of("Some retained evidence is incomplete")));
         return result;
@@ -170,7 +171,7 @@ class SavedAnalysisReportControllerTest {
         when(workspaces.resolveCurrentContext()).thenReturn(workspace);
         var context = new AnnotationConfigApplicationContext();
         context.registerBean(ArchitectureReportService.class, () -> new ArchitectureReportService(
-                architecture, gaps, patterns, recommendations, new DiagramProjectionService(),
+                architecture, gaps, recommendations, new DiagramProjectionService(),
                 new MermaidExportService(), proposals, metadata));
         context.registerBean(ReportRendererRegistry.class, () -> mock(ReportRendererRegistry.class));
         context.registerBean(RepositoryStateService.class, () -> mock(RepositoryStateService.class));

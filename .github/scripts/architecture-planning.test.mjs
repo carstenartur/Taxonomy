@@ -88,7 +88,7 @@ test('malformed namespace is visible and cannot be overwritten through the profi
 
 // Run the production planning, focus and editor modules together: do not replace the panel's stage callback.
 // Only browser rendering and the remote API boundary are fixtures, not retry logic.
-async function editorFixture(conflictAt, history = [], serverUndo = history[0] || null, lifecycleOptions = null) {
+async function editorFixture(conflictAt, history = [], serverUndo = history[0] || null, lifecycleOptions = null, configure = () => {}) {
     const html = fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/templates/architecture-editor.html'), 'utf8');
     const ids = Object.fromEntries([...html.matchAll(/<([a-z0-9]+)\b[^>]*\bid="([^"]+)"/gi)]
         .map(([, tag, id]) => [id, new Element(tag)]));
@@ -112,6 +112,7 @@ async function editorFixture(conflictAt, history = [], serverUndo = history[0] |
         model:{views:[], requirements:[{id:'R',title:'Original'}], elements:[], relations:[], evidence:[], packages:[]},
         scene:{nodes:[],edges:[]}, searchIndex:[], planningInformation:{R:[{supported:true, entry:{id:'launch',
             profile:'go-live', version:'1', origin:'MANUAL', values:{precision:'YEAR',value:'2030'}}}]} };
+    configure(view);
     const previews = [], executions = [], loads = [], lifecycleReads = [], contextReads = [];
     let finishLifecycle, finishAdoptionPreview;
     const lifecycleResponse = lifecycleOptions?.deferred ? new Promise(resolve => { finishLifecycle = resolve; }) : null;
@@ -125,6 +126,7 @@ async function editorFixture(conflictAt, history = [], serverUndo = history[0] |
             responseBody:{code:'REVISION_MOVED',expectedRevision:1,currentRevision:2}});
     }
     const api = {
+        exportUrl: () => "/fixture-export",
         async load(scope, revision) { loads.push({scope:structuredClone(scope),revision}); return structuredClone(view); },
         async preview(command) {
             previews.push(structuredClone(command));
@@ -236,10 +238,10 @@ async function editorFixture(conflictAt, history = [], serverUndo = history[0] |
     }
     await settleUi();
     assert.equal(loads.length, 1);
-    assert.equal(ids.editorPlanningActions.disabled, false);
+    assert.equal(ids.editorPlanningActions.disabled, false, ids.editorError.textContent);
     ids.editorPlanningEntry.value = 'launch';
     ids.editorPlanningEntry.events.change();
-    return {ids, previews, executions, loads, window, lifecycleReads,
+    return {ids, previews, executions, loads, window, lifecycleReads, instance:document.body.__architectureEditor,
         finishLifecycle:() => finishLifecycle?.(Response.json(overview)),
         finishAdoptionPreview:() => finishAdoptionPreview(Response.json({fingerprint:'retained-preview',
             summary:{addedElements:[],reusedElements:[],addedRelations:[],reusedRelations:[],conflicts:[],differences:[]}})), document};
@@ -421,4 +423,59 @@ async function checkPlanningRetry(conflictAt, generalReason, deletion) {
     assert.deepEqual(f.executions.at(-1), retried, 'Acceptance must use exactly the re-reviewed command');
     assert.equal(f.ids.editorPreviewDialog.open, false);
     assert.equal(f.loads.length, 3, 'Initial load, conflict refresh and accepted-revision reload');
+}
+
+
+test('editor consumes explicit relation domains and prevents forbidden target previews', async () => {
+    const f = await editorFixture(null, [], null, null, view => {
+        view.schema.elementTypes=['CoreService','Capability','BusinessProcess'];
+        view.schema.typeRoots={CoreService:'CR',Capability:'CP',BusinessProcess:'BP'};
+        view.schema.relationTypes=['SUPPORTS','REALIZES','RELATED_TO'];
+        view.schema.relationDomains={
+            SUPPORTS:{defaultDomain:{state:'FORBIDDEN',roots:[]},sourceDomains:{CR:{state:'RESTRICTED',roots:['BP']}}},
+            REALIZES:{defaultDomain:{state:'FORBIDDEN',roots:[]},sourceDomains:{CP:{state:'RESTRICTED',roots:['CR']}}},
+            RELATED_TO:{defaultDomain:{state:'UNRESTRICTED',roots:[]},sourceDomains:{}}};
+        view.model.elements=[{id:'S',type:'CoreService',title:'Service'},{id:'C',type:'Capability',title:'Capability'},{id:'P',type:'BusinessProcess',title:'Process'}];
+        view.model.elements.forEach(e=>e.extensions={});
+        view.scene.nodes=view.model.elements;view.searchIndex=view.model.elements.map(e=>({id:e.id,text:e.id}));
+    });
+    f.instance.select('S');
+    assert.deepEqual(f.ids.editorRelationType.children.map(e=>e.value),['SUPPORTS','RELATED_TO']);
+    f.ids.editorRelationType.value='SUPPORTS';f.ids.editorRelationType.events.change();
+    const suggestions=f.ids.editorRelationForm.children.find(e=>e.tagName==='DATALIST');
+    assert.deepEqual(suggestions.children.map(e=>e.value),['P']);
+    f.ids.editorRelationTarget.value='C';f.ids.editorRelationForm.events.submit({preventDefault(){}});await settleUi();
+    assert.equal(f.previews.length,0);assert.ok(f.ids.editorRelationTarget.validationMessage);
+    f.ids.editorRelationTarget.value='P';f.ids.editorRelationForm.events.submit({preventDefault(){}});await settleUi();
+    assert.equal(f.previews.length,1);assert.equal(f.previews[0].targetId,'P');
+    f.ids.editorRelationType.value='RELATED_TO';f.ids.editorRelationType.events.change();
+    assert.deepEqual(suggestions.children.map(e=>e.value),['S','C','P']);
+});
+
+for (const [sourceType,targetType] of [['CoreService','Process'],['CR','Process'],['CoreService','BP'],['CR','BP']]) {
+    test(`relation domains resolve canonical named types and root aliases (${sourceType} -> ${targetType})`,async()=>{
+        const f=await editorFixture(null,[],null,null,view=>{
+            view.schema.typeRoots={CoreService:'CR',Process:'BP',Capability:'CP'};
+            view.schema.relationTypes=['SUPPORTS','REALIZES','RELATED_TO'];
+            view.schema.relationDomains={
+                SUPPORTS:{defaultDomain:{state:'FORBIDDEN',roots:[]},sourceDomains:{CR:{state:'RESTRICTED',roots:['BP']}}},
+                REALIZES:{defaultDomain:{state:'FORBIDDEN',roots:[]},sourceDomains:{}},
+                RELATED_TO:{defaultDomain:{state:'UNRESTRICTED',roots:[]},sourceDomains:{}}};
+            view.model.elements=[{id:'service',type:sourceType},{id:'process',type:targetType},{id:'unknown',type:'Unrecognized'}];
+            view.model.elements.forEach(element=>element.extensions={});
+            view.scene.nodes=view.model.elements;view.searchIndex=view.model.elements.map(element=>({id:element.id,text:element.id}));
+        });
+        f.instance.select('service');
+        assert.deepEqual(f.ids.editorRelationType.children.map(item=>item.value),['SUPPORTS','RELATED_TO']);
+        f.ids.editorRelationType.value='SUPPORTS';f.ids.editorRelationType.events.change();
+        const targets=f.ids.editorRelationForm.children.find(item=>item.tagName==='DATALIST');
+        assert.deepEqual(targets.children.map(item=>item.value),['process']);
+        f.ids.editorRelationTarget.value='unknown';f.ids.editorRelationForm.events.submit({preventDefault(){}});await settleUi();
+        assert.equal(f.previews.length,0);assert.ok(f.ids.editorRelationTarget.validationMessage);
+        f.ids.editorRelationTarget.value='process';f.ids.editorRelationForm.events.submit({preventDefault(){}});await settleUi();
+        assert.equal(f.previews.length,1);assert.equal(f.previews[0].targetId,'process');
+        f.instance.select('unknown');
+        assert.deepEqual(f.ids.editorRelationType.children.map(item=>item.value),['RELATED_TO']);
+        assert.deepEqual(targets.children.map(item=>item.value),['service','process','unknown']);
+    });
 }

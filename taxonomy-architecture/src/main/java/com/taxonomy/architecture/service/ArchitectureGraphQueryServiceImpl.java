@@ -1,11 +1,10 @@
 package com.taxonomy.architecture.service;
 
 import com.taxonomy.dto.*;
-import com.taxonomy.catalog.model.TaxonomyNode;
-import com.taxonomy.catalog.model.TaxonomyRelation;
-import com.taxonomy.model.RelationType;
-import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
-import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.architecture.service.GraphSnapshotReadService.SelectedGraphSnapshot;
+import com.taxonomy.relations.service.RelationProjectionReadService.Snapshot;
+import com.taxonomy.relations.service.RelationProjectionReadService.SnapshotRelation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -13,20 +12,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
-import com.taxonomy.catalog.service.TaxonomyRelationService;
 import com.taxonomy.dto.ChangeImpactView;
 import com.taxonomy.dto.GraphNeighborhoodView;
 import com.taxonomy.dto.ImpactElement;
 import com.taxonomy.dto.ImpactRelationship;
 import com.taxonomy.dto.RequirementImpactView;
-import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.pipeline.PipelineConstants;
 
 /**
  * Implementation of {@link ArchitectureGraphQueryService}.
  *
  * <p>Traverses taxonomy relations using BFS with relevance decay per hop.
- * Only whitelisted relation types (SUPPORTS, REALIZES, USES) are traversed.
+ * Only Git-present relations of policy types (SUPPORTS, REALIZES, USES) are traversed.
  */
 @Service
 public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQueryService {
@@ -59,38 +56,34 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
             "USES", 0.60
     );
 
-    /** Whitelisted relation types for traversal. */
-    private static final List<RelationType> WHITELISTED_TYPES = List.of(
-            RelationType.SUPPORTS,
-            RelationType.REALIZES,
-            RelationType.USES
-    );
+    private final GraphSnapshotReadService snapshots;
 
-    private final TaxonomyNodeRepository nodeRepository;
-    private final TaxonomyRelationRepository relationRepository;
-    private final TaxonomyRelationService relationService;
-
-    public ArchitectureGraphQueryServiceImpl(TaxonomyNodeRepository nodeRepository,
-                                              TaxonomyRelationRepository relationRepository,
-                                              TaxonomyRelationService relationService) {
-        this.nodeRepository = nodeRepository;
-        this.relationRepository = relationRepository;
-        this.relationService = relationService;
+    public ArchitectureGraphQueryServiceImpl(GraphSnapshotReadService snapshots) {
+        this.snapshots = snapshots;
     }
 
     // ── 1. Requirement Impact ──────────────────────────────────────────────
 
     @Override
     @Transactional(readOnly = true)
-    public RequirementImpactView findImpactForRequirement(Map<String, Double> scores,
+    public RequirementImpactView findImpactForRequirement(RepositoryContext context, String commitId, Map<String, Double> scores,
                                                            String businessText, int maxHops) {
         RequirementImpactView view = new RequirementImpactView();
         view.setBusinessText(businessText);
         int clampedHops = clampHops(maxHops);
         view.setMaxHops(clampedHops);
+        SelectedGraphSnapshot selected = snapshots.read(context, commitId);
+        Snapshot snapshot = selected.proof();
+        view.setEvidence(evidence(snapshot, maxHops, clampedHops, "git-present-weighted-bfs-v1"));
 
+        if (scores != null) scores.values().forEach(score -> {
+            if (score == null || !Double.isFinite(score) || score < 0 || score > 100)
+                throw new IllegalArgumentException("Scores must be finite percentages");
+        });
         if (scores == null || scores.isEmpty()) {
             view.getNotes().add("No scores provided; impact analysis cannot be performed.");
+            view.setEvidence(view.getEvidence().withCompleteness("NOT_EVALUATED_NO_ANCHORS"));
+            snapshots.verifyHead(selected);
             return view;
         }
 
@@ -98,6 +91,8 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
         List<Map.Entry<String, Double>> anchors = selectAnchors(scores);
         if (anchors.isEmpty()) {
             view.getNotes().add("No nodes met the anchor threshold; impact view is empty.");
+            view.setEvidence(view.getEvidence().withCompleteness("NOT_EVALUATED_NO_ANCHORS"));
+            snapshots.verifyHead(selected);
             return view;
         }
 
@@ -108,21 +103,22 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
         }
 
         // BFS traversal from anchors
-        TraversalResult traversal = bfsTraversal(anchorRelevances, clampedHops, Direction.BOTH);
+        TraversalResult traversal = bfsTraversal(snapshot, anchorRelevances, clampedHops, Direction.BOTH);
 
         // Convert to view elements
-        view.setImpactedElements(toImpactElements(traversal));
+        view.setImpactedElements(toImpactElements(traversal, selected));
         view.setTraversedRelationships(traversal.relationships);
         view.setTotalElements(view.getImpactedElements().size());
         view.setTotalRelationships(view.getTraversedRelationships().size());
 
         if (view.getImpactedElements().isEmpty()) {
-            view.getNotes().add("Anchors were found but no connected elements via accepted relations.");
+            view.getNotes().add("Anchors were found but no connected elements via relations in the selected snapshot.");
         }
 
         log.info("Requirement impact: {} anchors, {} elements, {} relationships (maxHops={})",
                 anchors.size(), view.getTotalElements(), view.getTotalRelationships(), clampedHops);
 
+        snapshots.verifyHead(selected);
         return view;
     }
 
@@ -130,34 +126,36 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
 
     @Override
     @Transactional(readOnly = true)
-    public GraphNeighborhoodView findUpstream(String nodeCode, int maxHops) {
-        return findNeighborhood(nodeCode, maxHops, Direction.UPSTREAM);
+    public GraphNeighborhoodView findUpstream(RepositoryContext context, String commitId, String nodeCode, int maxHops) {
+        return findNeighborhood(context, commitId, nodeCode, maxHops, Direction.UPSTREAM);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public GraphNeighborhoodView findDownstream(String nodeCode, int maxHops) {
-        return findNeighborhood(nodeCode, maxHops, Direction.DOWNSTREAM);
+    public GraphNeighborhoodView findDownstream(RepositoryContext context, String commitId, String nodeCode, int maxHops) {
+        return findNeighborhood(context, commitId, nodeCode, maxHops, Direction.DOWNSTREAM);
     }
 
-    private GraphNeighborhoodView findNeighborhood(String nodeCode, int maxHops, Direction direction) {
+    private GraphNeighborhoodView findNeighborhood(RepositoryContext context, String commitId, String nodeCode, int maxHops, Direction direction) {
         GraphNeighborhoodView view = new GraphNeighborhoodView();
         view.setOriginNodeCode(nodeCode);
         view.setDirection(direction.name());
         int clampedHops = clampHops(maxHops);
         view.setMaxHops(clampedHops);
+        SelectedGraphSnapshot selected = snapshots.read(context, commitId);
+        Snapshot snapshot = selected.proof();
+        view.setEvidence(evidence(snapshot, maxHops, clampedHops, "git-present-weighted-bfs-v1"));
 
-        Optional<TaxonomyNode> originOpt = nodeRepository.findByCode(nodeCode);
-        if (originOpt.isEmpty()) {
-            view.getNotes().add("Node not found: " + nodeCode);
-            return view;
+        if (!selected.nodes().containsKey(nodeCode) && snapshot.relations().stream().noneMatch(
+                edge -> edge.sourceCode().equals(nodeCode) || edge.targetCode().equals(nodeCode))) {
+            view.getNotes().add("Node is not declared or connected in the selected snapshot: " + nodeCode);
         }
 
         Map<String, Double> startMap = Map.of(nodeCode, 1.0);
-        TraversalResult traversal = bfsTraversal(startMap, clampedHops, direction);
+        TraversalResult traversal = bfsTraversal(snapshot, startMap, clampedHops, direction);
 
         // Remove the origin node from results
-        List<ImpactElement> neighbors = toImpactElements(traversal).stream()
+        List<ImpactElement> neighbors = toImpactElements(traversal, selected).stream()
                 .filter(e -> !e.getNodeCode().equals(nodeCode))
                 .collect(Collectors.toList());
 
@@ -173,6 +171,7 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
         log.info("{} query for {}: {} neighbors, {} relationships (maxHops={})",
                 direction, nodeCode, neighbors.size(), traversal.relationships.size(), clampedHops);
 
+        snapshots.verifyHead(selected);
         return view;
     }
 
@@ -180,23 +179,29 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
 
     @Override
     @Transactional(readOnly = true)
-    public ChangeImpactView findFailureImpact(String nodeCode, int maxHops) {
+    public ChangeImpactView findFailureImpact(RepositoryContext context, String commitId, String nodeCode, int maxHops) {
+        return findFailureImpact(snapshots.read(context, commitId), nodeCode, maxHops);
+    }
+
+    @Override
+    public ChangeImpactView findFailureImpact(SelectedGraphSnapshot selected, String nodeCode, int maxHops) {
         ChangeImpactView view = new ChangeImpactView();
         view.setFailedNodeCode(nodeCode);
         int clampedHops = clampHops(maxHops);
         view.setMaxHops(clampedHops);
+        Snapshot snapshot = selected.proof();
+        view.setEvidence(evidence(snapshot, maxHops, clampedHops, "git-present-weighted-bfs-v1"));
 
-        Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(nodeCode);
-        if (nodeOpt.isEmpty()) {
-            view.getNotes().add("Node not found: " + nodeCode);
-            return view;
+        if (!selected.nodes().containsKey(nodeCode) && snapshot.relations().stream().noneMatch(
+                edge -> edge.sourceCode().equals(nodeCode) || edge.targetCode().equals(nodeCode))) {
+            view.getNotes().add("Node is not declared or connected in the selected snapshot: " + nodeCode);
         }
 
         // Failure propagates through both directions (anything connected is at risk)
         Map<String, Double> startMap = Map.of(nodeCode, 1.0);
-        TraversalResult traversal = bfsTraversal(startMap, clampedHops, Direction.BOTH);
+        TraversalResult traversal = bfsTraversal(snapshot, startMap, clampedHops, Direction.BOTH);
 
-        List<ImpactElement> allAffected = toImpactElements(traversal).stream()
+        List<ImpactElement> allAffected = toImpactElements(traversal, selected).stream()
                 .filter(e -> !e.getNodeCode().equals(nodeCode))
                 .collect(Collectors.toList());
 
@@ -221,6 +226,7 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
         log.info("Failure impact for {}: {} direct, {} indirect, {} relationships (maxHops={})",
                 nodeCode, direct.size(), indirect.size(), traversal.relationships.size(), clampedHops);
 
+        snapshots.verifyHead(selected);
         return view;
     }
 
@@ -249,7 +255,7 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
     /**
      * Generic BFS traversal with relevance propagation and direction control.
      */
-    private TraversalResult bfsTraversal(Map<String, Double> startRelevances,
+    private TraversalResult bfsTraversal(Snapshot snapshot, Map<String, Double> startRelevances,
                                           int maxHops, Direction direction) {
         Map<String, Double> relevanceMap = new LinkedHashMap<>(startRelevances);
         Map<String, Integer> hopMap = new LinkedHashMap<>();
@@ -262,23 +268,31 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
             reasonMap.put(entry.getKey(), "origin");
         }
 
-        Set<String> currentFrontier = new LinkedHashSet<>(startRelevances.keySet());
-        Set<Long> visitedRelationIds = new HashSet<>();
+        Map<String, Double> currentFrontier = new LinkedHashMap<>(startRelevances);
+        Set<String> visitedRelationIds = new HashSet<>();
+        Map<String, List<SnapshotRelation>> adjacency = new LinkedHashMap<>();
+        for (var edge : snapshot.relations()) {
+            if (!TYPE_WEIGHTS.containsKey(edge.relationType().name())) continue;
+            if (direction != Direction.UPSTREAM) adjacency.computeIfAbsent(edge.sourceCode(), ignored -> new ArrayList<>()).add(edge);
+            if (direction != Direction.DOWNSTREAM) adjacency.computeIfAbsent(edge.targetCode(), ignored -> new ArrayList<>()).add(edge);
+        }
 
         for (int hop = 1; hop <= maxHops; hop++) {
-            Set<String> nextFrontier = new LinkedHashSet<>();
+            Map<String, Double> nextFrontier = new LinkedHashMap<>();
 
-            for (String nodeCode : currentFrontier) {
-                double sourceRelevance = relevanceMap.getOrDefault(nodeCode, 0.0);
+            // Freeze each layer's scores: discoveries in this hop are expanded only next hop.
+            for (var frontierEntry : currentFrontier.entrySet()) {
+                String nodeCode = frontierEntry.getKey();
+                double sourceRelevance = frontierEntry.getValue();
                 if (sourceRelevance < MIN_RELEVANCE) continue;
 
-                List<TaxonomyRelationDto> relations = getDirectedRelations(nodeCode, direction);
+                List<SnapshotRelation> relations = adjacency.getOrDefault(nodeCode, List.of());
 
-                for (TaxonomyRelationDto rel : relations) {
+                for (SnapshotRelation rel : relations) {
                     String targetCode = determineTarget(rel, nodeCode, direction);
                     if (targetCode == null) continue;
 
-                    Double typeWeight = TYPE_WEIGHTS.get(rel.getRelationType());
+                    Double typeWeight = TYPE_WEIGHTS.get(rel.relationType().name());
                     if (typeWeight == null) continue;
 
                     double propagated = sourceRelevance * typeWeight;
@@ -293,19 +307,21 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
                         relevanceMap.put(targetCode, propagated);
                         hopMap.put(targetCode, hop);
                         reasonMap.put(targetCode,
-                                "propagated via " + rel.getRelationType() + " from " + nodeCode);
-                        nextFrontier.add(targetCode);
+                                "propagated via " + rel.relationType().name() + " from " + nodeCode);
+                        nextFrontier.put(targetCode, propagated);
                     }
 
                     // Record traversed relationship (deduplicate by relation ID)
-                    if (rel.getId() != null && visitedRelationIds.add(rel.getId())) {
+                    if (visitedRelationIds.add(rel.sourceCode() + "\u0000" + rel.relationType() + "\u0000" + rel.targetCode())) {
                         ImpactRelationship ir = new ImpactRelationship();
-                        ir.setRelationId(rel.getId());
-                        ir.setSourceCode(rel.getSourceCode());
-                        ir.setTargetCode(rel.getTargetCode());
-                        ir.setRelationType(rel.getRelationType());
+                        ir.setRelationId(rel.id());
+                        ir.setSourceCode(rel.sourceCode());
+                        ir.setTargetCode(rel.targetCode());
+                        ir.setRelationType(rel.relationType().name());
                         ir.setPropagatedRelevance(propagated);
                         ir.setHopDistance(hop);
+                        ir.setEvidence(new GraphEdgeEvidence(rel.authoritativeCommitId(), rel.causationId(),
+                                rel.provenance(), rel.status(), rel.confidence()));
                         relationships.add(ir);
                     }
                 }
@@ -318,97 +334,34 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
         return new TraversalResult(relevanceMap, hopMap, reasonMap, relationships);
     }
 
-    /**
-     * Gets relations for a node in the specified direction.
-     */
-    private List<TaxonomyRelationDto> getDirectedRelations(String nodeCode, Direction direction) {
-        List<TaxonomyRelationDto> result = new ArrayList<>();
-
-        if (direction == Direction.DOWNSTREAM || direction == Direction.BOTH) {
-            // Outgoing: this node is the source
-            List<TaxonomyRelation> outgoing =
-                    relationRepository.findBySourceNodeCodeAndRelationTypeIn(nodeCode, WHITELISTED_TYPES);
-            for (TaxonomyRelation r : outgoing) {
-                result.add(relationService.toDto(r));
-            }
-        }
-
-        if (direction == Direction.UPSTREAM || direction == Direction.BOTH) {
-            // Incoming: this node is the target
-            List<TaxonomyRelation> incoming =
-                    relationRepository.findByTargetNodeCodeAndRelationTypeIn(nodeCode, WHITELISTED_TYPES);
-            for (TaxonomyRelation r : incoming) {
-                result.add(relationService.toDto(r));
-            }
-        }
-
-        // Also add bidirectional relations traversed in the opposite direction
-        if (direction == Direction.DOWNSTREAM || direction == Direction.BOTH) {
-            List<TaxonomyRelation> incomingBidir =
-                    relationRepository.findByTargetNodeCodeAndRelationTypeIn(nodeCode, WHITELISTED_TYPES);
-            for (TaxonomyRelation r : incomingBidir) {
-                if (r.isBidirectional()) {
-                    result.add(relationService.toDto(r));
-                }
-            }
-        }
-
-        if (direction == Direction.UPSTREAM || direction == Direction.BOTH) {
-            List<TaxonomyRelation> outgoingBidir =
-                    relationRepository.findBySourceNodeCodeAndRelationTypeIn(nodeCode, WHITELISTED_TYPES);
-            for (TaxonomyRelation r : outgoingBidir) {
-                if (r.isBidirectional()) {
-                    result.add(relationService.toDto(r));
-                }
-            }
-        }
-
-        return result;
+    private String determineTarget(SnapshotRelation rel, String nodeCode, Direction direction) {
+        if (direction != Direction.UPSTREAM && rel.sourceCode().equals(nodeCode)) return rel.targetCode();
+        if (direction != Direction.DOWNSTREAM && rel.targetCode().equals(nodeCode)) return rel.sourceCode();
+        return null;
     }
 
-    /**
-     * Determines the traversal target given a relation and direction.
-     */
-    private String determineTarget(TaxonomyRelationDto rel, String nodeCode, Direction direction) {
-        switch (direction) {
-            case DOWNSTREAM:
-                // Follow outgoing edges: source → target
-                if (rel.getSourceCode().equals(nodeCode)) {
-                    return rel.getTargetCode();
-                }
-                // Bidirectional incoming can be traversed in reverse
-                if (rel.getTargetCode().equals(nodeCode) && rel.isBidirectional()) {
-                    return rel.getSourceCode();
-                }
-                return null;
-
-            case UPSTREAM:
-                // Follow incoming edges: target ← source
-                if (rel.getTargetCode().equals(nodeCode)) {
-                    return rel.getSourceCode();
-                }
-                // Bidirectional outgoing can be traversed in reverse
-                if (rel.getSourceCode().equals(nodeCode) && rel.isBidirectional()) {
-                    return rel.getTargetCode();
-                }
-                return null;
-
-            case BOTH:
-            default:
-                if (rel.getSourceCode().equals(nodeCode)) {
-                    return rel.getTargetCode();
-                }
-                if (rel.getTargetCode().equals(nodeCode)) {
-                    return rel.getSourceCode();
-                }
-                return null;
-        }
+    static GraphQueryEvidence evidence(Snapshot snapshot, int requested, int effective, String policy) {
+        var context = snapshot.context();
+        boolean weightedTraversal = "git-present-weighted-bfs-v1".equals(policy);
+        return new GraphQueryEvidence(context.repositoryId(), context.workspaceId(),
+                com.taxonomy.relations.model.RelationDecisionProjection.scopeKeyFor(context.workspaceId()),
+                context.branch(), snapshot.commitId(), "GIT_BRANCH_PROJECTION", "READY", snapshot.relations().size(), policy,
+                requested, effective, weightedTraversal ? MIN_RELEVANCE : 0, weightedTraversal ? HOP_DECAY : 1,
+                weightedTraversal ? ANCHOR_THRESHOLD_HIGH : 0, weightedTraversal ? ANCHOR_THRESHOLD_LOW : 0,
+                weightedTraversal ? MIN_ANCHORS : 0, weightedTraversal ? TYPE_WEIGHTS : Map.of(),
+                "COMPLETE_WITHIN_QUERY_POLICY",
+                "No path means no path in the selected snapshot under this query policy; it does not establish universal absence.");
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────
 
-    private List<ImpactElement> toImpactElements(TraversalResult traversal) {
+    private List<ImpactElement> toImpactElements(TraversalResult traversal, SelectedGraphSnapshot selected) {
         List<ImpactElement> elements = new ArrayList<>();
+        Set<String> endpointCodes = new HashSet<>();
+        selected.proof().relations().forEach(edge -> {
+            endpointCodes.add(edge.sourceCode());
+            endpointCodes.add(edge.targetCode());
+        });
 
         for (Map.Entry<String, Double> entry : traversal.relevanceMap.entrySet()) {
             String code = entry.getKey();
@@ -418,11 +371,13 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
             el.setHopDistance(traversal.hopMap.getOrDefault(code, 0));
             el.setIncludedBecause(traversal.reasonMap.getOrDefault(code, "unknown"));
 
-            // Lookup title and taxonomy sheet
-            nodeRepository.findByCode(code).ifPresent(node -> {
-                el.setTitle(node.getNameEn());
-                el.setTaxonomySheet(node.getTaxonomyRoot());
-            });
+            var node = selected.nodes().get(code);
+            el.setTitle(node == null || node.title() == null ? code : node.title());
+            el.setTaxonomySheet(node == null ? "" : node.taxonomyRoot());
+            boolean endpoint = endpointCodes.contains(code);
+            el.setNodeEvidence(new GraphNodeEvidence(node != null ? "SELECTED_DSL_ELEMENT"
+                    : endpoint ? "SELECTED_RELATION_ENDPOINT" : "REQUEST_ANCHOR",
+                    node != null || endpoint ? selected.proof().commitId() : null, node != null));
 
             elements.add(el);
         }

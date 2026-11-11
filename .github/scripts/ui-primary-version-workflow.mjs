@@ -89,16 +89,26 @@ export async function runVersionComparisonWorkflow({ page, role, evidence }) {
     const fixture = comparisonDocuments('', branch);
     const versions = await page.evaluate(async ({ branch, fixture }) => {
       const api = window.TaxonomyApiClient;
-      const head = await api.getJson('/api/dsl/git/head?branch=draft');
+      // Preserve the failed phase without logging a DSL, URL or response body.
+      async function requestStep(phase, operation) {
+        try { return await operation(); } catch (error) {
+          const status = Number(error?.status ?? error?.statusCode ?? error?.httpStatus);
+          throw new Error('Version comparison API ' + phase + ' failed'
+            + (Number.isInteger(status) && status >= 400 && status <= 599 ? ' (HTTP ' + status + ')' : ''));
+        }
+      }
+      const head = await requestStep('draft head read',
+        () => api.getJson('/api/dsl/git/head?branch=draft'));
       const original = head?.dslText;
       if (!original) throw new Error('A real DSL baseline is required');
       if (original.includes(fixture.sourceId) || original.includes(fixture.targetId)) throw new Error('Comparison fixture identity already exists');
       const { before, after } = fixture;
       async function commit(text, message) {
-        const response = await api.request('/api/dsl/commit?branch=' + encodeURIComponent(branch)
-          + '&message=' + encodeURIComponent(message), {
-          method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: text
-        });
+        const response = await requestStep('isolated comparison commit',
+          () => api.request('/api/dsl/commit?branch=' + encodeURIComponent(branch)
+            + '&message=' + encodeURIComponent(message), {
+            method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: text
+          }));
         const result = await response.json();
         return result?.valid && result.commitId;
       }
@@ -106,9 +116,11 @@ export async function runVersionComparisonWorkflow({ page, role, evidence }) {
       if (!left) throw new Error('Invalid baseline commit result');
       const right = await commit(original + fixture.right, 'QA isolated relation status change');
       if (!right) throw new Error('Invalid relation change commit result');
-      const diff = await api.getJson('/api/dsl/diff/' + left + '/' + right);
+      const diff = await requestStep('semantic diff',
+        () => api.getJson('/api/dsl/diff/' + left + '/' + right));
       if (diff.changedRelations !== 1 || diff.totalChanges !== 1) throw new Error('Expected exactly one changed relation');
-      const unchanged = await api.getJson('/api/dsl/git/head?branch=draft');
+      const unchanged = await requestStep('draft isolation verification',
+        () => api.getJson('/api/dsl/git/head?branch=draft'));
       if (unchanged.dslText !== original) throw new Error('Comparison commits changed the active draft');
       return { branch, left, right, before, after, description: diff.semanticChanges[0].description };
     }, { branch, fixture });

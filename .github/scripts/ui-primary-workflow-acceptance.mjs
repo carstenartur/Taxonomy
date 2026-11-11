@@ -70,6 +70,44 @@ function installSessionVisualAssertions(page, evidence) {
   };
 }
 
+function diagnosticNavigationUrl(value) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    // Exclude credentials, query values and fragments from diagnostic output.
+    return ['http:', 'https:'].includes(url.protocol)
+      ? (url.origin + url.pathname).slice(0, 512) : url.protocol;
+  } catch {
+    return '[unavailable]';
+  }
+}
+
+function observeMainFrameNavigation(page, diagnostics) {
+  const mainFrame = page.mainFrame();
+  const record = (event, url) => {
+    if (diagnostics.events.length === 20) {
+      diagnostics.events.shift();
+      diagnostics.omittedEarlierEvents++;
+    }
+    diagnostics.events.push({ event, at: new Date().toISOString(), url: diagnosticNavigationUrl(url) });
+  };
+  const navigated = frame => {
+    if (frame === mainFrame) record('framenavigated', frame.url());
+  };
+  const requested = request => {
+    if (!request.isNavigationRequest()) return;
+    try {
+      if (request.frame() === mainFrame) record('navigation-request', request.url());
+    } catch { /* A navigation without an attributable frame is outside this diagnostic scope. */ }
+  };
+  page.on('framenavigated', navigated);
+  page.on('request', requested);
+  return () => {
+    page.off('framenavigated', navigated);
+    page.off('request', requested);
+  };
+}
+
 let auditError = null;
 let browser;
 let context;
@@ -77,12 +115,18 @@ let page;
 let account;
 let evidence;
 let failureEvidence = null;
+const navigationDiagnostics = {
+  purpose: 'Diagnostic navigation evidence only; not a fix or retry.',
+  events: [], omittedEarlierEvents: 0, failureUrl: null, failureAt: null
+};
+let stopNavigationDiagnostics = () => {};
 await mkdir(outputDir, { recursive: true });
 
 try {
   ({ browser, context, page, account } = await openRoleSession({
     baseUrl, role, browserName, adminUsername, adminPassword
   }));
+  stopNavigationDiagnostics = observeMainFrameNavigation(page, navigationDiagnostics);
   evidence = createEvidence(page, outputDir);
   installSessionVisualAssertions(page, evidence);
   const workflow = { page, role, account, baseUrl, evidence };
@@ -108,8 +152,11 @@ try {
   if (role === 'USER') await runPasswordWorkflows(workflow);
 } catch (error) {
   auditError = error?.stack || String(error);
+  navigationDiagnostics.failureUrl = diagnosticNavigationUrl(page?.url());
+  navigationDiagnostics.failureAt = new Date().toISOString();
   process.exitCode = 1;
 } finally {
+  stopNavigationDiagnostics();
   if (auditError && page) {
     try {
       failureEvidence = await captureFailureEvidence({
@@ -121,7 +168,7 @@ try {
   }
   const details = evidence ? evidence.report(auditError)
     : { checks: [], axeFindings: [], states: [], screenshots: [], auditError };
-  const report = { role, browserName, ...details, failureEvidence };
+  const report = { role, browserName, ...details, failureEvidence, navigationDiagnostics };
   await writeFile(path.join(outputDir, 'report.json'),
     `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   if (auditError) console.error(`Primary workflow acceptance failed for ${role}:\n${auditError}`);

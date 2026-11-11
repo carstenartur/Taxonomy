@@ -19,8 +19,6 @@ import com.taxonomy.dto.ArchitectureRecommendation;
 import com.taxonomy.dto.ArchitectureReport;
 import com.taxonomy.dto.DetectedPattern;
 import com.taxonomy.dto.GapAnalysisView;
-import com.taxonomy.dto.IncompletePattern;
-import com.taxonomy.dto.MissingRelation;
 import com.taxonomy.dto.PatternDetectionView;
 import com.taxonomy.dto.RecommendedElement;
 import com.taxonomy.dto.RelationProposalDto;
@@ -41,7 +39,6 @@ public class ArchitectureReportService {
 
     private final RequirementArchitectureViewService architectureViewService;
     private final ArchitectureGapService gapService;
-    private final ArchitecturePatternService patternService;
     private final ArchitectureRecommendationService recommendationService;
     private final DiagramProjectionService diagramProjectionService;
     private final MermaidExportService mermaidExportService;
@@ -50,7 +47,6 @@ public class ArchitectureReportService {
 
     public ArchitectureReportService(RequirementArchitectureViewService architectureViewService,
                                       ArchitectureGapService gapService,
-                                      ArchitecturePatternService patternService,
                                       ArchitectureRecommendationService recommendationService,
                                       DiagramProjectionService diagramProjectionService,
                                       MermaidExportService mermaidExportService,
@@ -58,7 +54,6 @@ public class ArchitectureReportService {
                                       ArchitectureReportMetadataPort metadataPort) {
         this.architectureViewService = architectureViewService;
         this.gapService = gapService;
-        this.patternService = patternService;
         this.recommendationService = recommendationService;
         this.diagramProjectionService = diagramProjectionService;
         this.mermaidExportService = mermaidExportService;
@@ -96,15 +91,16 @@ public class ArchitectureReportService {
         report.setArchitectureView(archView);
 
         // 2. Gap Analysis
-        GapAnalysisView gaps = gapService.analyze(safeScores, businessText, threshold);
+        GapAnalysisView gaps = ArchitectureGapService.compatibilityAssessment(businessText);
         report.setGapAnalysis(gaps);
 
         // 3. Pattern Detection
-        PatternDetectionView patterns = patternService.detectForScores(safeScores, threshold);
+        PatternDetectionView patterns = new PatternDetectionView();
+        patterns.getNotes().add("Pattern detection was not assessed: this report has no explicitly selected canonical model revision. Retained reports use only their frozen pattern evidence.");
         report.setPatternDetection(patterns);
 
         // 4. Recommendation
-        ArchitectureRecommendation recommendation = recommendationService.recommend(
+        ArchitectureRecommendation recommendation = recommendationService.rankMatches(
                 safeScores, businessText, threshold);
         report.setRecommendation(recommendation);
 
@@ -124,7 +120,7 @@ public class ArchitectureReportService {
                 archView.getTotalAnchors(),
                 gaps.getTotalGaps(),
                 patterns.getMatchedPatterns().size(),
-                recommendation.getConfirmedElements().size());
+                recommendation.getMatchedElements().size());
 
         return report;
     }

@@ -216,12 +216,23 @@ Beide Abgleichrouten benötigen das `If-Match` der exakten Revision. Die Anfrage
 ordnet zurückgegebenen Konflikt-IDs `LOCAL` oder `INCOMING` zu. Jede Entscheidung
 wählt einen vollständigen Quellblock; der reservierte Konflikt `$document` wählt
 Dokumentmetadaten außerhalb der Blöcke. Die Vorschau liefert `context`, `headCommit`,
-`fingerprint`, `baseDsl`, `localDsl`, `incomingDsl`, `mergedDsl`, `changes`, `conflicts`
+`fingerprint`, `baseDsl`, `localDsl`, `incomingDsl`, `mergedDsl`, `changes`, `conflicts`, `comparison`
 und `canAccept`. Ein Konflikt enthält `id`, `reason`, `base`, `local`, `incoming` und
 `resolution`. Fehlende Entscheidungen ergeben `canAccept=false`; das kombinierte
 Modell muss ebenfalls die Validierung bestehen. Nach der Auswahl erneut vorschauen.
 Die Annahme bindet dieselben Entscheidungen, Metadaten, Kontext, erfassten HEAD und
 `fingerprint` als `previewFingerprint`. Geänderte Eingaben benötigen eine neue Vorschau.
+
+`comparison.scenes` ordnet `base`, `local`, `incoming` und, soweit verfügbar,
+`proposed` dem vorhandenen Diagrammszenenformat zu. Die Koordinaten sind gemeinsam;
+Beschriftungen und Mitgliedschaften stammen aus der jeweiligen eingefrorenen Quelle.
+`comparison.properties` enthält Zeilen mit `{blockId, property, category, base,
+local, incoming, proposed}` und Wertelisten. Die Kategorien heißen `SEMANTIC`,
+`PRESENTATION` und `EXCHANGE_EVIDENCE`. Eine fehlende Eigenschaft verwendet eine
+leere Liste. Ein noch nicht aufgelöstes Ergebnis verwendet `proposed=null` und
+enthält keine `proposed`-Szene. `comparison.typeRoots` liefert dieselbe kanonische
+Typzuordnung wie der Editor. Die Projektion liest kein Repository erneut und
+verändert weder Fingerprint noch Annahmeautorität.
 
 Die schreibfreie Prüfung des Portfolio-Fachmoduls gleicht verwalteten kanonischen
 Titel, Text, `x-version` und `x-content-hash` mit dem portablen Fachdatensatz und

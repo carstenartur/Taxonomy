@@ -8,6 +8,10 @@ import java.util.List;
  * Each element carries a list of requirements that cover it.
  */
 public class EnrichedImpactElement {
+    private GraphNodeEvidence nodeEvidence;
+    public GraphNodeEvidence getNodeEvidence() { return nodeEvidence; }
+    public void setNodeEvidence(GraphNodeEvidence value) { nodeEvidence = value; }
+
 
     private String nodeCode;
     private String title;

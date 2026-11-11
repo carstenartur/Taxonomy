@@ -10,6 +10,10 @@ import java.util.List;
  */
 public class ChangeImpactView {
 
+    private GraphQueryEvidence evidence;
+    public GraphQueryEvidence getEvidence() { return evidence; }
+    public void setEvidence(GraphQueryEvidence evidence) { this.evidence = evidence; }
+
     private String failedNodeCode;
     private int maxHops;
     private List<ImpactElement> directlyAffected = new ArrayList<>();

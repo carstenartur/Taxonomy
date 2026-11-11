@@ -10,6 +10,7 @@ import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ElementHistoryAggregation;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort;
 import com.taxonomy.workspace.service.RepositoryStateGuard;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -17,6 +18,7 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.io.IOException;
 import java.util.List;
@@ -182,7 +184,11 @@ public class DslOperationsFacade {
     }
 
     public boolean deleteBranch(String name) throws IOException {
-        return resolveRepository().deleteBranch(name);
+        RepositoryContext context = resolveRepositoryContext();
+        if (context.scope() == RepositoryScope.CENTRAL_READ) {
+            throw new AccessDeniedException("A central read selection cannot delete architecture branches; use a working copy");
+        }
+        return repositoryFactory.resolveRepository(context).deleteBranch(name);
     }
 
     public String getDslAtHead(String branch) throws IOException {

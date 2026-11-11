@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import com.taxonomy.architecture.service.ObligationEvaluator;
 
 import static com.taxonomy.acceptance.DirectedRelationMetrics.*;
 
@@ -31,6 +32,42 @@ public final class ScenarioRelationQuality {
     private static final QualityReference ORACLE = loadReference();
 
     private ScenarioRelationQuality() { }
+
+    /** Reuses the directed metric contract for the additional independent architecture cases. */
+    record CorpusRelations(Evaluation classified, Evaluation accepted, List<Relation> unsupportedAccepted,
+            List<Relation> dangling, List<ObligationEvaluator.Relation> obligationEvidence) { }
+
+    static CorpusRelations assessCorpusRelations(JsonNode reference, JsonNode observation,
+            Set<String> elementIds, RunState state) {
+        Reference oracle = new Reference(corpusRelations(array(reference, "requiredRelations")),
+                corpusRelations(array(reference, "allowedRelations")), corpusRelations(array(reference, "unresolvedRelations")));
+        var predictions = new ArrayList<Relation>(); var accepted = new ArrayList<Relation>();
+        var evidence = new ArrayList<ObligationEvaluator.Relation>();
+        for (JsonNode value : array(observation, "relations")) {
+            Relation relation = corpusRelation(value);
+            String status = text(value, "status");
+            if (!Set.of("accepted", "proposed").contains(status))
+                throw new IllegalArgumentException("Unknown observation relation status: " + status);
+            predictions.add(relation);
+            if (status.equals("accepted")) accepted.add(relation);
+            evidence.add(new ObligationEvaluator.Relation(relation.source(), relation.target(), relation.type(), status));
+        }
+        return new CorpusRelations(evaluate(oracle, predictions, state), evaluate(oracle, accepted, state),
+                accepted.stream().filter(oracle.unresolved()::contains).sorted().toList(),
+                predictions.stream().filter(r -> !elementIds.contains(r.source()) || !elementIds.contains(r.target())).sorted().toList(),
+                List.copyOf(evidence));
+    }
+
+    static Set<Relation> corpusRelations(JsonNode values) {
+        var result = new TreeSet<Relation>();
+        for (JsonNode value : values) if (!result.add(corpusRelation(value)))
+            throw new IllegalArgumentException("Duplicate relation in independent corpus reference");
+        return Collections.unmodifiableSet(result);
+    }
+
+    private static Relation corpusRelation(JsonNode value) {
+        return new Relation(text(value, "source"), text(value, "type"), text(value, "target"));
+    }
 
     public static void clearReports(Path directory) throws IOException {
         for (String report : REPORTS) Files.deleteIfExists(directory.resolve(report));

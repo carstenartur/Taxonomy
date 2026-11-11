@@ -2,52 +2,21 @@ package com.taxonomy.architecture.service;
 
 import com.taxonomy.dto.DetectedPattern;
 import com.taxonomy.dto.PatternDetectionView;
-import com.taxonomy.catalog.model.TaxonomyNode;
-import com.taxonomy.catalog.model.TaxonomyRelation;
-import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
-import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.taxonomy.dto.PatternDetectionEvidence;
+import com.taxonomy.relations.service.RelationProjectionReadService.SnapshotRelation;
+import com.taxonomy.workspace.service.RepositoryContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.util.*;
-import java.util.stream.Collectors;
 
-/**
- * Detects standard architecture patterns by checking whether defined
- * relation chains exist from a given starting node.
- *
- * <p>Pattern templates define expected chains of
- * {@code sourceRoot → relationType → targetRoot} steps. The service
- * traverses the graph from a starting node and checks whether each step
- * in a pattern can be fulfilled.
- */
+/** Evaluates connected accepted chains in one explicitly selected canonical snapshot. */
 @Service
 public class ArchitecturePatternService {
-
-    private static final Logger log = LoggerFactory.getLogger(ArchitecturePatternService.class);
-
+    public static final String TEMPLATE_VERSION = "1.0.0";
     private static final int DEFAULT_MIN_SCORE = 50;
+    private final GraphSnapshotReadService snapshots;
+    public ArchitecturePatternService(GraphSnapshotReadService snapshots) { this.snapshots = snapshots; }
 
-    private final TaxonomyNodeRepository nodeRepository;
-    private final TaxonomyRelationRepository relationRepository;
-
-    /** Pre-defined pattern templates. */
-    private final List<PatternTemplate> patterns;
-
-    public ArchitecturePatternService(TaxonomyNodeRepository nodeRepository,
-                                       TaxonomyRelationRepository relationRepository) {
-        this.nodeRepository = nodeRepository;
-        this.relationRepository = relationRepository;
-        this.patterns = patternTemplates();
-    }
-
-    // ── Pattern Templates ──────────────────────────────────────────────────
-
-    /**
-     * A single step in a pattern: source root → relation type → target root.
-     */
     record PatternStep(String sourceRoot, String relationType, String targetRoot) {
         @Override
         public String toString() {
@@ -60,7 +29,7 @@ public class ArchitecturePatternService {
      */
     record PatternTemplate(String name, List<PatternStep> steps) {}
 
-    /** Shared definitions; evaluation may use live or retained evidence. */
+    /** Shared definitions; evaluation uses selected canonical or frozen retained evidence. */
     static List<PatternTemplate> patternTemplates() {
         return List.of(
                 new PatternTemplate("Full Stack", List.of(
@@ -79,155 +48,86 @@ public class ArchitecturePatternService {
         );
     }
 
-    // ── Public API ─────────────────────────────────────────────────────────
 
-    /**
-     * Detects patterns starting from a specific node.
-     *
-     * @param nodeCode the starting node code
-     * @return pattern detection view
-     */
     @Transactional(readOnly = true)
-    public PatternDetectionView detectForNode(String nodeCode) {
-        PatternDetectionView view = new PatternDetectionView();
-        view.setNodeCode(nodeCode);
-
-        Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(nodeCode);
-        if (nodeOpt.isEmpty()) {
-            view.getNotes().add("Node not found: " + nodeCode);
-            return view;
-        }
-
-        TaxonomyNode node = nodeOpt.get();
-        String nodeRoot = node.getTaxonomyRoot();
-
-        List<DetectedPattern> matched = new ArrayList<>();
-        List<DetectedPattern> incomplete = new ArrayList<>();
-
-        for (PatternTemplate pattern : patterns) {
-            // Only check patterns whose first step starts from this node's root
-            if (!pattern.steps().isEmpty()
-                    && pattern.steps().get(0).sourceRoot().equals(nodeRoot)) {
-                DetectedPattern detected = checkPattern(nodeCode, pattern);
-                if (detected.getCompleteness() >= 100.0) {
-                    matched.add(detected);
-                } else if (detected.getCompleteness() > 0.0) {
-                    incomplete.add(detected);
-                }
-            }
-        }
-
-        view.setMatchedPatterns(matched);
-        view.setIncompletePatterns(incomplete);
-
-        int totalPatterns = matched.size() + incomplete.size();
-        view.setPatternCoverage(totalPatterns > 0
-                ? matched.size() * 100.0 / totalPatterns
-                : 0.0);
-
-        log.info("Pattern detection for {}: {} matched, {} incomplete",
-                nodeCode, matched.size(), incomplete.size());
-
-        return view;
+    public PatternDetectionView detectForNode(RepositoryContext context, String commitId, String nodeCode) {
+        var result = detectForScores(context, commitId, Map.of(nodeCode, 100d), DEFAULT_MIN_SCORE);
+        result.setNodeCode(nodeCode);
+        return result;
     }
 
-    /**
-     * Detects patterns across all anchor nodes from scored results.
-     *
-     * @param scores       map of nodeCode → score (0–100)
-     * @param minScore     minimum score threshold
-     * @return pattern detection view aggregated across all anchors
-     */
     @Transactional(readOnly = true)
-    public PatternDetectionView detectForScores(Map<String, Double> scores, int minScore) {
-        PatternDetectionView view = new PatternDetectionView();
-
-        if (scores == null || scores.isEmpty()) {
-            view.getNotes().add("No scores provided; pattern detection cannot be performed.");
-            return view;
-        }
-
-        int threshold = minScore > 0 ? minScore : DEFAULT_MIN_SCORE;
-
-        List<DetectedPattern> allMatched = new ArrayList<>();
-        List<DetectedPattern> allIncomplete = new ArrayList<>();
-        Set<String> seenPatterns = new HashSet<>();
-
-        for (Map.Entry<String, Double> entry : scores.entrySet()) {
-            if (entry.getValue() == null || entry.getValue() < threshold) continue;
-
-            PatternDetectionView nodeView = detectForNode(entry.getKey());
-
-            for (DetectedPattern p : nodeView.getMatchedPatterns()) {
-                String key = p.getPatternName() + "|" + String.join(",", p.getPresentSteps());
-                if (seenPatterns.add(key)) {
-                    allMatched.add(p);
-                }
+    public PatternDetectionView detectForScores(RepositoryContext context, String commitId,
+                                                Map<String, Double> scores, int minScore) {
+        if (minScore < 0 || minScore > 100) throw new IllegalArgumentException("minScore must be between 0 and 100");
+        int threshold = minScore == 0 ? DEFAULT_MIN_SCORE : minScore;
+        var selected = snapshots.read(context, commitId);
+        var nodes = selected.nodes();
+        boolean complete = nodes.values().stream().allMatch(node -> !node.taxonomyRoot().isBlank());
+        Map<String, List<SnapshotRelation>> outgoing = new TreeMap<>();
+        for (var relation : selected.proof().relations()) {
+            if (!"accepted".equals(relation.status())) continue;
+            var source = nodes.get(relation.sourceCode()); var target = nodes.get(relation.targetCode());
+            if (source == null || target == null || source.taxonomyRoot().isBlank() || target.taxonomyRoot().isBlank()) {
+                complete = false;
+                continue;
             }
-            for (DetectedPattern p : nodeView.getIncompletePatterns()) {
-                String key = p.getPatternName() + "|" + String.join(",", p.getPresentSteps());
-                if (seenPatterns.add(key)) {
-                    allIncomplete.add(p);
-                }
+            outgoing.computeIfAbsent(relation.sourceCode(), key -> new ArrayList<>()).add(relation);
+        }
+        outgoing.values().forEach(edges -> edges.sort(Comparator.comparing(SnapshotRelation::targetCode)
+                .thenComparing(edge -> edge.relationType().name())));
+        var result = new PatternDetectionView();
+        int eligible = 0, evaluated = 0;
+        for (var anchor : new TreeMap<>(scores == null ? Map.<String,Double>of() : scores).entrySet()) {
+            if (anchor.getValue() == null || !Double.isFinite(anchor.getValue()) || anchor.getValue() < threshold) continue;
+            var node = nodes.get(anchor.getKey());
+            if (node == null) continue;
+            var applicable = patternTemplates().stream().filter(template -> template.steps().getFirst().sourceRoot().equals(node.taxonomyRoot())).toList();
+            if (applicable.isEmpty()) continue;
+            eligible++;
+            for (var template : applicable) {
+                evaluated++;
+                var detected = checkPattern(anchor.getKey(), template, outgoing, nodes);
+                if (detected.getCompleteness() == 100d) result.getMatchedPatterns().add(detected);
+                else result.getIncompletePatterns().add(detected);
             }
         }
-
-        view.setMatchedPatterns(allMatched);
-        view.setIncompletePatterns(allIncomplete);
-
-        int totalPatterns = allMatched.size() + allIncomplete.size();
-        view.setPatternCoverage(totalPatterns > 0
-                ? allMatched.size() * 100.0 / totalPatterns
-                : 0.0);
-
-        log.info("Pattern detection for scores: {} matched, {} incomplete across {} anchors",
-                allMatched.size(), allIncomplete.size(), scores.size());
-
-        return view;
+        result.setPatternCoverage(evaluated == 0 ? null : result.getMatchedPatterns().size() * 100d / evaluated);
+        String completeness = !complete ? "INCOMPLETE_CANONICAL_EVIDENCE"
+                : eligible == 0 ? "NOT_EVALUATED_NO_ANCHORS" : "COMPLETE_WITHIN_PATTERN_TEMPLATES";
+        result.setEvidence(new PatternDetectionEvidence(context.repositoryId(), context.workspaceId(),
+                com.taxonomy.model.WorkspaceOverlayScope.keyFor(context.workspaceId()), context.branch(), selected.proof().commitId(),
+                "CANONICAL_SNAPSHOT", "GIT_BRANCH_PROJECTION", "READY", TEMPLATE_VERSION, threshold, eligible, completeness));
+        if (eligible == 0) result.getNotes().add("No declared, threshold-qualified anchors have an applicable pattern template; pattern coverage was not assessed.");
+        if (!complete) result.getNotes().add("Unknown canonical element types or unresolved accepted endpoints prevent complete pattern evidence.");
+        result.getNotes().add("Coverage counts evaluated anchor/template pairs within this selected revision. Missing steps are not evidenced by accepted canonical relations; they are not business obligation violations or claims about external architecture.");
+        snapshots.verifyHead(selected);
+        return result;
     }
 
-    // ── Internal ───────────────────────────────────────────────────────────
-
-    private DetectedPattern checkPattern(String startNodeCode, PatternTemplate pattern) {
-        List<String> expectedSteps = pattern.steps().stream()
-                .map(PatternStep::toString)
-                .collect(Collectors.toList());
-
-        List<String> presentSteps = new ArrayList<>();
-        List<String> missingSteps = new ArrayList<>();
-
-        // Track current set of node codes at each traversal step
-        Set<String> currentNodes = Set.of(startNodeCode);
-
-        for (PatternStep step : pattern.steps()) {
-            Set<String> nextNodes = new HashSet<>();
-            boolean stepFound = false;
-
-            for (String nodeCode : currentNodes) {
-                List<TaxonomyRelation> outgoing = relationRepository.findBySourceNodeCode(nodeCode);
-                for (TaxonomyRelation rel : outgoing) {
-                    if (rel.getRelationType().name().equals(step.relationType())
-                            && rel.getTargetNode() != null
-                            && step.targetRoot().equals(rel.getTargetNode().getTaxonomyRoot())) {
-                        nextNodes.add(rel.getTargetNode().getCode());
-                        stepFound = true;
-                    }
+    private DetectedPattern checkPattern(String anchor, PatternTemplate template,
+            Map<String, List<SnapshotRelation>> outgoing, Map<String, GraphSnapshotReadService.SnapshotNode> nodes) {
+        Map<String,List<SnapshotRelation>> frontier = new TreeMap<>();
+        frontier.put(anchor,List.of());
+        List<SnapshotRelation> longest = List.of();
+        for (var step : template.steps()) {
+            Map<String,List<SnapshotRelation>> next = new TreeMap<>();
+            for (var current : frontier.entrySet()) {
+                if (!step.sourceRoot().equals(nodes.get(current.getKey()).taxonomyRoot())) continue;
+                for (var edge : outgoing.getOrDefault(current.getKey(),List.of())) {
+                    if (!step.relationType().equals(edge.relationType().name())
+                            || !step.targetRoot().equals(nodes.get(edge.targetCode()).taxonomyRoot())) continue;
+                    var path = new ArrayList<>(current.getValue()); path.add(edge);
+                    next.putIfAbsent(edge.targetCode(), List.copyOf(path));
                 }
             }
-
-            if (stepFound) {
-                presentSteps.add(step.toString());
-            } else {
-                missingSteps.add(step.toString());
-            }
-
-            currentNodes = nextNodes.isEmpty() ? currentNodes : nextNodes;
+            // An absent middle step ends this connected path; never reuse its old frontier.
+            if (next.isEmpty()) break;
+            frontier = next; longest = next.values().iterator().next();
         }
-
-        double completeness = expectedSteps.isEmpty() ? 0.0
-                : (double) presentSteps.size() / expectedSteps.size() * 100.0;
-
-        return new DetectedPattern(pattern.name(), expectedSteps,
-                presentSteps, missingSteps, completeness);
+        var expected = template.steps().stream().map(PatternStep::toString).toList();
+        var present = longest.stream().map(edge -> edge.sourceCode()+" "+edge.relationType()+" "+edge.targetCode()).toList();
+        var missing = expected.subList(present.size(),expected.size()).stream().map(step -> step+" — not evidenced in selected canonical snapshot").toList();
+        return new DetectedPattern(template.name(),expected,present,missing,present.size()*100d/expected.size());
     }
 }

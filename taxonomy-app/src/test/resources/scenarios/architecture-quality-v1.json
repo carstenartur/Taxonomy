@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "referenceVersion": "architecture-quality-1.0.0",
+  "authorship": "Independently authored bounded expectations, not extracted from generated answers or from the observation fixtures. Catalogue identifiers reuse the checked-in C3 catalogue; these are evaluation cases, not expert-certified reference architectures.",
+  "catalogue": "C3_Taxonomy_Catalogue_25AUG2025.xlsx",
+  "catalogueSha256": "6b19743eff1487a76ea3e5b788d90831ba1705da31790cf58f2d69a979b14130",
+  "profiles": {
+    "none": {"id":"corpus-no-obligations","version":"1.0.0","description":"No additional cardinality requirement in this authored case.","rules":[]},
+    "channel-choice": {"id":"corpus-channel-choice","version":"1.0.0","description":"Exactly one channel is required by this case, not by relation legality.","rules":[{"id":"choose-one-channel","sourceRoots":["BP"],"relationType":"USES","targetRoots":["CR"],"minCount":1,"maxCount":1,"severity":"ERROR","requiredEvidence":"Complete accepted channel selection for the authored requirement"}]},
+    "input-feed": {"id":"corpus-input-feed","version":"1.0.0","description":"One input is needed, but its identity must remain open when unspecified.","rules":[{"id":"input-feed","sourceRoots":["UA"],"relationType":"CONSUMES","targetRoots":["IP"],"minCount":1,"maxCount":null,"severity":"ERROR","requiredEvidence":"Identified source and complete accepted input relations"}]}
+  },
+  "cases": [
+    {
+      "id":"clear-read-only", "category":"CLEAR", "profile":"none", "evidenceCompleteness":"COMPLETE",
+      "requirement":"Read published environmental observations in the hydrographic application. This requirement does not authorize creating observations.",
+      "clauses":{"C1":"Read published environmental observations in the hydrographic application.","C2":"This requirement does not authorize creating observations."},
+      "quoteIds":["C1","C2"],
+      "rationale":"A directed CONSUMES relation represents reading. An inverse or PRODUCES relation is an unjustified assertion in this bounded case.",
+      "requiredElements":{"UA-1580":{"root":"UA","properties":{}},"IP-1116":{"root":"IP","properties":{}}}, "allowedElements":{}, "initialElements":{}, "initialRelations":[],
+      "requiredRelations":[{"source":"UA-1580","type":"CONSUMES","target":"IP-1116"}], "allowedRelations":[], "unresolvedRelations":[], "questions":[]
+    },
+    {
+      "id":"one-notification-channel", "category":"ALTERNATIVE", "profile":"channel-choice", "evidenceCompleteness":"COMPLETE",
+      "requirement":"The information dissemination process shall use exactly one selected notification channel: text-based communication or informal email messaging. Either choice is acceptable; do not require both.",
+      "clauses":{"C1":"The information dissemination process shall use exactly one selected notification channel: text-based communication or informal email messaging.","C2":"Either choice is acceptable; do not require both."},
+      "quoteIds":["C1","C2"],
+      "rationale":"The obligation counts one channel across the union of the two independently permitted targets; neither particular target is individually mandatory.",
+      "requiredElements":{"BP-1535":{"root":"BP","properties":{}}},
+      "allowedElements":{"CR-1060":{"root":"CR","properties":{}},"CR-1037":{"root":"CR","properties":{}}}, "initialElements":{}, "initialRelations":[],
+      "requiredRelations":[], "allowedRelations":[{"source":"BP-1535","type":"USES","target":"CR-1060"},{"source":"BP-1535","type":"USES","target":"CR-1037"}], "unresolvedRelations":[], "questions":[]
+    },
+    {
+      "id":"unknown-observation-source", "category":"INCOMPLETE", "profile":"input-feed", "evidenceCompleteness":"INCOMPLETE",
+      "requirement":"The hydrographic application shall read observations from a source that has not yet been identified. Keep the source identity open until the owner provides it.",
+      "clauses":{"C1":"The hydrographic application shall read observations from a source that has not yet been identified.","C2":"Keep the source identity open until the owner provides it."},
+      "quoteIds":["C1","C2"],
+      "rationale":"Missing source evidence is an open question, not proof of a missing required edge and not permission to assert a particular product identity.",
+      "requiredElements":{"UA-1580":{"root":"UA","properties":{}}}, "allowedElements":{"IP-1116":{"root":"IP","properties":{}}}, "initialElements":{}, "initialRelations":[],
+      "requiredRelations":[], "allowedRelations":[], "unresolvedRelations":[{"source":"UA-1580","type":"CONSUMES","target":"IP-1116"}],
+      "questions":[{"id":"source-identity","kind":"MISSING_EVIDENCE","quoteIds":["C1","C2"],"text":"Which observation source is intended?"}]
+    },
+    {
+      "id":"contradictory-retention", "category":"CONTRADICTORY", "profile":"none", "evidenceCompleteness":"INCOMPLETE",
+      "requirement":"The dissemination process must delete delivery history immediately. The same delivery history must be retained for thirty days. Identify this conflict without selecting one policy as accepted.",
+      "clauses":{"C1":"The dissemination process must delete delivery history immediately.","C2":"The same delivery history must be retained for thirty days.","C3":"Identify this conflict without selecting one policy as accepted."},
+      "quoteIds":["C1","C2","C3"],
+      "rationale":"The conflicting retention clauses cannot both be adopted. Preserve an unresolved property and a question bound to both clauses.",
+      "requiredElements":{"BP-1535":{"root":"BP","properties":{"retention":"UNRESOLVED"}}}, "allowedElements":{}, "initialElements":{}, "initialRelations":[],
+      "requiredRelations":[], "allowedRelations":[], "unresolvedRelations":[],
+      "questions":[{"id":"retention-conflict","kind":"CONTRADICTION","quoteIds":["C1","C2"],"text":"Which retention clause should be revised by the owner?"}]
+    },
+    {
+      "id":"rename-existing-view", "category":"UPDATE_EXISTING", "profile":"none", "evidenceCompleteness":"COMPLETE",
+      "requirement":"Rename the existing hydrographic application to Flood observation viewer. Preserve its identity, source label and observation input; create no replacement application.",
+      "clauses":{"C1":"Rename the existing hydrographic application to Flood observation viewer.","C2":"Preserve its identity, source label and observation input; create no replacement application."},
+      "quoteIds":["C1","C2"],
+      "rationale":"An update changes the named property on the same model object. A copied replacement, deleted input or lost retained property is an error.",
+      "requiredElements":{"UA-1580":{"root":"UA","properties":{"title":"Flood observation viewer","sourceLabel":"official observations"}},"IP-1116":{"root":"IP","properties":{}}}, "allowedElements":{},
+      "initialElements":{"UA-1580":{"root":"UA","properties":{"title":"Flood overview","sourceLabel":"official observations"}},"IP-1116":{"root":"IP","properties":{}}},
+      "initialRelations":[{"source":"UA-1580","type":"CONSUMES","target":"IP-1116"}],
+      "requiredRelations":[{"source":"UA-1580","type":"CONSUMES","target":"IP-1116"}], "allowedRelations":[], "unresolvedRelations":[], "questions":[]
+    },
+    {
+      "id":"already-satisfied", "category":"NO_EXTRA_ELEMENT", "profile":"none", "evidenceCompleteness":"COMPLETE",
+      "requirement":"The existing hydrographic application already reads the published observation product. Confirm the existing read-only arrangement; add no application, service or relation.",
+      "clauses":{"C1":"The existing hydrographic application already reads the published observation product.","C2":"Confirm the existing read-only arrangement; add no application, service or relation."},
+      "quoteIds":["C1","C2"],
+      "rationale":"No new model element is needed. An unnecessary service or edge is observable over-modelling even if required relation recall remains perfect.",
+      "requiredElements":{"UA-1580":{"root":"UA","properties":{"title":"Published observation view"}},"IP-1116":{"root":"IP","properties":{}}}, "allowedElements":{},
+      "initialElements":{"UA-1580":{"root":"UA","properties":{"title":"Published observation view"}},"IP-1116":{"root":"IP","properties":{}}},
+      "initialRelations":[{"source":"UA-1580","type":"CONSUMES","target":"IP-1116"}],
+      "requiredRelations":[{"source":"UA-1580","type":"CONSUMES","target":"IP-1116"}], "allowedRelations":[], "unresolvedRelations":[], "questions":[]
+    }
+  ]
+}

@@ -10,6 +10,10 @@ import java.util.List;
  */
 public class GraphNeighborhoodView {
 
+    private GraphQueryEvidence evidence;
+    public GraphQueryEvidence getEvidence() { return evidence; }
+    public void setEvidence(GraphQueryEvidence evidence) { this.evidence = evidence; }
+
     private String originNodeCode;
     private String direction; // "UPSTREAM" or "DOWNSTREAM"
     private int maxHops;

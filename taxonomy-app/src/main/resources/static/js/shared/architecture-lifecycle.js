@@ -691,6 +691,7 @@
     window.addEventListener('popstate',function () { if (!isEditor()) refresh(scope(),selectionFromUrl()); });
     window.TaxonomyArchitectureLifecycle = {state:function () { return clone(state.overview); },
         ready:ready,
+        selectedContext:function () { return state.suspended ? null : clone(state.overview?.context || null); },
         suspend:function(){state.suspended=true;state.sequence++;clearHistory();invalidateStand();if(root)root.hidden=true;},
         refresh:refresh, beginSelection:beginSelection, observe:observe,
         failedSelection:failedSelection, saveRequirement:saveRequirement,isCurrentRequirementPublication:isCurrentRequirementPublication,

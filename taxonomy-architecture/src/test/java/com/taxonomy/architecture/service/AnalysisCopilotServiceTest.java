@@ -50,12 +50,10 @@ class AnalysisCopilotServiceTest {
         );
         AnalysisCopilotResult result = service.analyze(analysis, "Retained requirement");
         assertEquals("COMPLETED", result.state());
-        assertEquals(1, result.schemaVersion());
+        assertEquals(2, result.schemaVersion());
         assertEquals(List.of("Full Stack"), result.patterns().getMatchedPatterns().stream().map(DetectedPattern::getPatternName).toList());
         assertEquals(100.0, result.patterns().getMatchedPatterns().getFirst().getCompleteness());
-        assertTrue(
-            result.gaps().getMissingRelations().stream().noneMatch(g -> "cap".equals(g.getSourceNodeCode()) && "REALIZES".equals(g.getExpectedRelationType()))
-        );
+        assertTrue(result.gaps().getJudgments().isEmpty());
         analysis.setCopilot(result);
         JsonNode wire = mapper.valueToTree(analysis);
         AnalysisResult restored = mapper.treeToValue(wire, AnalysisResult.class);
@@ -123,12 +121,7 @@ class AnalysisCopilotServiceTest {
         assertTrue(steps.contains("deployment-choice"));
         assertTrue(pattern.getCompleteness() < 100.0);
         assertTrue(pattern.getMissingSteps().stream().anyMatch(s -> s.contains("applicability")));
-        assertTrue(
-            result.gaps()
-                .getMissingRelations()
-                .stream()
-                .anyMatch(g -> "cap".equals(g.getSourceNodeCode()) && "REALIZES".equals(g.getExpectedRelationType()) && g.getDescription().contains("conditional"))
-        );
+        assertTrue(result.gaps().getJudgments().isEmpty());
     }
 
     @Test
@@ -150,9 +143,7 @@ class AnalysisCopilotServiceTest {
 
         assertEquals("PARTIAL", result.state());
         assertTrue(result.patterns().getMatchedPatterns().isEmpty());
-        assertTrue(result.gaps().getMissingRelations().stream().anyMatch(g ->
-                "cap".equals(g.getSourceNodeCode()) && "REALIZES".equals(g.getExpectedRelationType())
-                        && g.getDescription().contains("not evidenced")));
+        assertTrue(result.gaps().getJudgments().isEmpty());
         assertTrue(result.notes().stream().anyMatch(note -> note.contains("identities")));
     }
 
@@ -190,13 +181,8 @@ class AnalysisCopilotServiceTest {
         analysis.setRelationSearchReport(report(List.of()));
         assertTrue(analysis.getRelationSearchReport().isSearchExhausted());
         AnalysisCopilotResult result = service.analyze(analysis, "Requirement");
-        assertFalse(result.gaps().getMissingRelations().isEmpty());
-        assertTrue(
-            result.gaps()
-                .getMissingRelations()
-                .stream()
-                .allMatch(g -> g.getDescription().contains("not evidenced") && g.getDescription().contains("needs checking"))
-        );
+        assertTrue(result.gaps().getJudgments().isEmpty());
+        assertEquals("compatibility", result.gaps().getProfileId());
         assertTrue(result.notes().stream().anyMatch(s -> s.contains("completeness")));
     }
 
@@ -209,13 +195,13 @@ class AnalysisCopilotServiceTest {
         AnalysisCopilotResult result = service.analyze(analysis, "Requirement");
         assertEquals("PARTIAL", result.state());
         ArchitectureRecommendation recommendation = result.recommendation();
-        assertEquals(List.of("cap", "service"), recommendation.getConfirmedElements().stream().map(RecommendedElement::getNodeCode).toList());
-        assertEquals("Retained cap", recommendation.getConfirmedElements().getFirst().getTitle());
-        assertTrue(recommendation.getConfirmedElements().getFirst().getReasoning().contains("Recorded capability reason"));
-        assertEquals(90.0, recommendation.getConfirmedElements().getFirst().getScore());
-        assertEquals(80.0, recommendation.getConfidence());
+        assertEquals(List.of("cap", "service"), recommendation.getMatchedElements().stream().map(RecommendedElement::getNodeCode).toList());
+        assertEquals("Retained cap", recommendation.getMatchedElements().getFirst().getTitle());
+        assertTrue(recommendation.getMatchedElements().getFirst().getReasoning().contains("Recorded capability reason"));
+        assertEquals(90.0, recommendation.getMatchedElements().getFirst().getScore());
+        assertEquals(80.0, recommendation.getMeanRelevance());
         assertEquals(List.of("process"), recommendation.getProposedElements().stream().map(RecommendedElement::getNodeCode).toList());
-        assertTrue(recommendation.getNotes().stream().anyMatch(s -> s.contains("human approval")));
+        assertTrue(recommendation.getNotes().stream().anyMatch(s -> s.contains("accepted model membership")));
         assertEquals(mapper.valueToTree(result).toString(), mapper.valueToTree(service.analyze(analysis, "Requirement")).toString());
     }
 
@@ -225,8 +211,8 @@ class AnalysisCopilotServiceTest {
         analysis.setStatus("PARTIAL");
         AnalysisCopilotResult partial = service.analyze(analysis, "Requirement");
         assertEquals("SKIPPED_PARTIAL", partial.state());
-        assertTrue(partial.recommendation().getConfirmedElements().isEmpty());
-        assertTrue(partial.gaps().getMissingRelations().isEmpty());
+        assertTrue(partial.recommendation().getMatchedElements().isEmpty());
+        assertTrue(partial.gaps().getJudgments().isEmpty());
         analysis.setStatus("SUCCESS");
         analysis.setAnalysisScope(new AnalysisScope(Set.of("CP"), AnalysisMode.FULL));
         assertEquals("SKIPPED_SCOPE", service.analyze(analysis, "Requirement").state());
@@ -254,7 +240,7 @@ class AnalysisCopilotServiceTest {
         AnalysisResult analysis = new AnalysisResult(Map.of("family", 30.0, "product", 100.0), List.of(family));
         analysis.setStatus("SUCCESS");
         AnalysisCopilotResult result = service.analyze(analysis, "Requirement");
-        assertTrue(result.recommendation().getConfirmedElements().isEmpty());
+        assertTrue(result.recommendation().getMatchedElements().isEmpty());
         assertTrue(result.recommendation().getProposedElements().isEmpty());
         assertEquals(0, result.gaps().getTotalAnchors());
     }
@@ -275,8 +261,8 @@ class AnalysisCopilotServiceTest {
         analysis.setRelationSearchReport(report(List.of()));
         AnalysisCopilotResult result = service.analyze(analysis, "Requirement");
         assertEquals("PARTIAL", result.state());
-        assertTrue(result.recommendation().getConfirmedElements().size() <= 200);
-        assertTrue(result.gaps().getMissingRelations().size() <= 500);
+        assertTrue(result.recommendation().getMatchedElements().size() <= 200);
+        assertTrue(result.gaps().getJudgments().isEmpty());
         assertTrue(result.notes().stream().anyMatch(s -> s.contains("limit")));
     }
 

@@ -88,10 +88,10 @@ function fixture(language = 'en') {
     html(id) { return document.getElementById(id).innerHTML; } };
 }
 function report(state = 'COMPLETED') {
-  return { schemaVersion: 1, state,
-    gaps: { totalAnchors: 0, totalGaps: 0, missingRelations: [], notes: [] },
+  return { schemaVersion: 2, state,
+    gaps: { profileId:'compatibility', profileVersion:'1.0.0', totalAnchors: 0, totalGaps: 0, judgments: [], notes: [] },
     patterns: { matchedPatterns: [], incompletePatterns: [], patternCoverage: 0, notes: [] },
-    recommendation: { confirmedElements: [], proposedElements: [], suggestedRelations: [], reasoning: [], confidence: 0 },
+    recommendation: { matchedElements: [], acceptedElements: [], proposedElements: [], suggestedRelations: [], reasoning: [], meanRelevance: null },
     notes: ['Retained evidence is bounded; human review remains necessary.'] };
 }
 function referencePayload(extra = {}) {
@@ -187,11 +187,11 @@ test('an EMPTY tombstone does not dereference an attached stale reference', asyn
   await f.C.applyDraft({ version: 2, payload: referencePayload({ draftState: 'EMPTY' }) });
   assert.equal(f.requests.length, 0); assert.equal(f.input.value, ''); assert.equal(f.state.currentScores, null);
 });
-test('retained legacy successful checkpoints remain visible without being rerun or called canonical completion', () => {
+test('obsolete browser checkpoints do not become a canonical assessment or trigger a recalculation', () => {
   const f = fixture(); f.state.recoveryContext = { followups: { gap: { state: 'SUCCESS', result: report().gaps } } };
   f.window.TaxonomyAnalysis.renderCopilotResult(null);
-  assert.match(f.html('copilotContent'), /historical partial reports/); assert.doesNotMatch(f.html('copilotContent'), /analyze.copilot.complete/);
-  assert.match(f.html('gapAnalysisContent'), /open compatibility checks/); assert.equal(f.requests.length, 0);
+  assert.match(f.html('copilotContent'), /historical result/); assert.doesNotMatch(f.html('copilotContent'), /analyze.copilot.complete/);
+  assert.doesNotMatch(f.html('gapAnalysisContent'), /bg-success/); assert.equal(f.requests.length, 0);
 });
 test('clearing editable input does not make a referenced analysis an empty unsaved draft', async () => {
   const f = fixture(); await f.install(); f.edit(''); const payload = f.C.currentPayload();
@@ -199,7 +199,7 @@ test('clearing editable input does not make a referenced analysis an empty unsav
 });
 for (const language of ['en', 'de']) test(`${language}: retained zero-anchor checks do not claim architectural completeness`, () => {
   const f = fixture(language); f.window.TaxonomyAnalysis.renderCopilotResult(report());
-  assert.match(f.html('gapAnalysisContent'), language === 'de' ? /keine vollständige Architektur/ : /does not establish architectural completeness/);
+  assert.match(f.html('gapAnalysisContent'), /analysis.evidence.noObligations/);
   assert.doesNotMatch(f.html('gapAnalysisContent'), /analyze.gap.no.gaps|bg-success/);
   assert.match(f.html('copilotContent'), /human review/);
 });

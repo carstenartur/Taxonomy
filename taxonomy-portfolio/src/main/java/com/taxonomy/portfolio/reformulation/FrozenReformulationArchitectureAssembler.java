@@ -112,11 +112,8 @@ final class FrozenReformulationArchitectureAssembler {
         var gaps = new ArrayList<String>();
         if (detail.gapAnalysis() != null) {
             var gap = detail.gapAnalysis();
-            gap.getMissingRelations().forEach(g -> gaps.add("Relation: " + g.getSourceNodeCode() + " → "
-                    + g.getExpectedTargetRoot() + " · " + g.getExpectedRelationType() + " · " + g.getDescription()));
-            gap.getIncompletePatterns().forEach(g -> gaps.add("Pattern: " + g.getNodeCode() + " · "
-                    + g.getPatternDescription() + " · " + g.getMissingElement()));
-            gap.getCoverageGaps().forEach(g -> gaps.add("Coverage: " + g.getNodeCode() + " · " + g.getGapDescription()));
+            gap.getJudgments().forEach(g -> gaps.add("Obligation: " + g.ruleId() + " · " + g.sourceNodeCode()
+                    + " · " + g.status() + " · " + g.description()));
             gaps.addAll(gap.getNotes());
         }
         var warnings = new ArrayList<String>();

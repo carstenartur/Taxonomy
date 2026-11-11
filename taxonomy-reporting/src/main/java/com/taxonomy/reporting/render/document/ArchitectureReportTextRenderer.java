@@ -113,25 +113,16 @@ public final class ArchitectureReportTextRenderer {
             gaps.getNotes().forEach(note -> md.append(note).append("\n\n"));
             md.append("**").append(labels.totalGaps()).append(":** ").append(gaps.getTotalGaps()).append("\n\n");
 
-            if (!gaps.getMissingRelations().isEmpty()) {
-                md.append("### ").append(labels.missingRelations()).append("\n\n");
-                tableHeader(md, labels.source(), labels.expectedType(), labels.expectedTargetRoot(), labels.description());
-                for (MissingRelation mr : gaps.getMissingRelations()) {
-                    md.append("| ").append(tableCode(mr.getSourceNodeCode())).append(" | ");
-                    md.append(tableText(mr.getExpectedRelationType())).append(" | ");
-                    md.append(tableText(mr.getExpectedTargetRoot())).append(" | ");
-                    md.append(tableText(mr.getDescription())).append(" |\n");
-                }
-                md.append("\n");
-            }
-
-            if (!gaps.getIncompletePatterns().isEmpty()) {
-                md.append("### ").append(labels.incompletePatterns()).append("\n\n");
-                tableHeader(md, labels.node(), labels.pattern(), labels.missing());
-                for (IncompletePattern ip : gaps.getIncompletePatterns()) {
-                    md.append("| ").append(tableCode(ip.getNodeCode())).append(" | ");
-                    md.append(tableText(ip.getPatternDescription())).append(" | ");
-                    md.append(tableText(ip.getMissingElement())).append(" |\n");
+            md.append("Profile: ").append(tableText(gaps.getProfileId())).append(" @ ").append(tableText(gaps.getProfileVersion())).append("\n\n");
+            md.append("Evidence: ").append(tableText(gaps.getEvidenceAuthority())).append(" / ").append(gaps.getEvidenceCompleteness())
+                    .append("; revision ").append(tableText(gaps.getCommitId())).append("\n\n");
+            if (!gaps.getJudgments().isEmpty()) {
+                tableHeader(md, "Rule", labels.source(), "Status", "Observed / cardinality", labels.description());
+                for (var judgment : gaps.getJudgments()) {
+                    md.append("| ").append(tableText(judgment.ruleId())).append(" | ").append(tableCode(judgment.sourceNodeCode()))
+                            .append(" | ").append(judgment.status()).append(" | ").append(judgment.observedCount()).append(" / ")
+                            .append(judgment.minCount()).append("..").append(judgment.maxCount() == null ? "*" : judgment.maxCount())
+                            .append(" | ").append(tableText(judgment.description())).append(" |\n");
                 }
                 md.append("\n");
             }
@@ -143,7 +134,7 @@ public final class ArchitectureReportTextRenderer {
         if (patterns != null) {
             patterns.getNotes().forEach(note -> md.append(note).append("\n\n"));
             md.append("**").append(labels.patternCoverage()).append(":** ").append(
-                    formatBoundedPercentage(patterns.getPatternCoverage(), 1)).append("\n\n");
+                    patterns.getPatternCoverage() == null ? labels.notAssessed() : formatBoundedPercentage(patterns.getPatternCoverage(), 1)).append("\n\n");
 
             if (!patterns.getMatchedPatterns().isEmpty()) {
                 md.append("### ").append(labels.matchedPatterns()).append("\n\n");
@@ -173,16 +164,24 @@ public final class ArchitectureReportTextRenderer {
         md.append("## 4. ").append(labels.recommendation()).append("\n\n");
         ArchitectureRecommendation rec = report.getRecommendation();
         if (rec != null) {
-            md.append("**").append(labels.confidence()).append(":** ").append(String.format(Locale.ROOT, "%.1f%%", rec.getConfidence())).append("\n\n");
+            md.append("**").append(labels.meanRelevance()).append(":** ").append((rec.getMeanRelevance() == null ? labels.unknown() : String.format(Locale.ROOT, "%.1f%%", rec.getMeanRelevance()))).append("\n\n");
 
             rec.getReasoning().forEach(reason -> md.append(reason).append("\n\n"));
             rec.getNotes().forEach(note -> md.append(note).append("\n\n"));
 
-            if (!rec.getConfirmedElements().isEmpty()) {
+            if (!rec.getAcceptedElements().isEmpty()) {
+                md.append("### ").append(labels.acceptedModelElements()).append("\n\n");
+                tableHeader(md, labels.node(), labels.titleLabel(), labels.taxonomyRoot(), labels.rationale());
+                for (var element : rec.getAcceptedElements()) md.append("| ").append(tableCode(element.getNodeCode()))
+                        .append(" | ").append(tableText(element.getTitle())).append(" | ").append(tableText(element.getTaxonomyRoot()))
+                        .append(" | ").append(tableText(element.getReasoning())).append(" |\n");
+                md.append("\n");
+            }
+            if (!rec.getMatchedElements().isEmpty()) {
                 md.append("### ").append(labels.matchedElements()).append("\n\n");
                 md.append(labels.matchedElementNotice()).append("\n\n");
                 tableHeader(md, labels.node(), labels.titleLabel(), labels.taxonomyRoot(), labels.score(), labels.rationale());
-                for (RecommendedElement el : rec.getConfirmedElements()) {
+                for (RecommendedElement el : rec.getMatchedElements()) {
                     md.append("| ").append(tableCode(el.getNodeCode())).append(" | ");
                     md.append(tableText(el.getTitle())).append(" | ");
                     md.append(tableText(el.getTaxonomyRoot())).append(" | ");
