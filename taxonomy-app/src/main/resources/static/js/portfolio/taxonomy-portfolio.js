@@ -768,6 +768,9 @@
         event.preventDefault();
         if (state.requirementCreateInFlight) return;
         state.requirementCreateInFlight = true;
+        const current = window.TaxonomyApiClient.captureContext();
+        const activePage = window.TaxonomyApiClient.captureContext({contextSensitive:false});
+        const projectId = state.selectedProjectId;
         const form = event.currentTarget;
         try {
             requireProject();
@@ -779,16 +782,23 @@
             payload.reviewStatus = 'PROPOSED';
             payload.changeReason = 'Created in the project portfolio';
             const command = await window.TaxonomyRequirementIntake.prepare(form, payload, state.selectedProjectId);
-            if (!command) return;
+            if (!command || !current() || state.selectedProjectId !== projectId) return;
             await withBusy(async function () {
                 const saved = await window.TaxonomyArchitectureLifecycle.saveRequirement(command);
-                if (['CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(saved.publication?.state)) {
+                if (!activePage() || state.selectedProjectId !== projectId
+                        || !window.TaxonomyArchitectureLifecycle.isCurrentRequirementPublication(saved)) return;
+                const pendingPublication = ['CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(saved.publication?.state);
+                if (!window.TaxonomyRequirementIntake.isCurrent(form)) {
+                    if (!pendingPublication) showInfo(command.choice === 'LINK'
+                        ? window.TaxonomyI18n.t('lifecycle.linked') : t('status.requirement.created'));
+                    return;
+                }
+                if (pendingPublication) {
                     window.TaxonomyArchitectureLifecycle.showPublicationRecovery(form,saved); return;
                 }
                 form.querySelector('[data-lifecycle-publication-recovery]')?.remove();
                 if (command.choice === 'LINK') { showInfo(window.TaxonomyI18n.t('lifecycle.linked')); return; }
                 const requirement = saved.requirement;
-                if (!window.TaxonomyRequirementIntake.isCurrent(form)) { showInfo(t('status.requirement.created')); return; }
                 window.TaxonomyUtils.hideModal(document.getElementById('requirementModal'));
                 form.reset();
                 state.selectedRequirementId = requirement.id;
@@ -796,7 +806,7 @@
                 await refreshSelectedProject(false);
             }).catch(function () {});
         } catch (error) {
-            showError(error);
+            if (current() && state.selectedProjectId === projectId && error.code !== 'ABORTED') showError(error);
         } finally {
             state.requirementCreateInFlight = false;
         }

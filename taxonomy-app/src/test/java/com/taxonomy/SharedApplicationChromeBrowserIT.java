@@ -1,5 +1,7 @@
 package com.taxonomy;
 
+import com.taxonomy.dto.ContextMode;
+import com.taxonomy.dto.ContextRef;
 import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
 import com.taxonomy.portfolio.model.AiCostPolicy;
 import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
@@ -24,6 +26,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -82,6 +85,7 @@ class SharedApplicationChromeBrowserIT {
                                 + "body { border-top: 9px solid rgb(14, 64, 124) !important; }"));
         page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of()));
         page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", List.of("portfolio", "architecture"))));
+        if (template.equals("index")) routeCurrentContext("context-customer-shared", "draft", null);
         String path = template.equals("index") ? "/taxonomy/" : "/taxonomy/projects";
         page.openAt(template, "/taxonomy", path, "de", "localStorage.setItem('taxonomy_onboarded','true');",
                 Map.of("customerStylesheetEnabled", true));
@@ -201,6 +205,7 @@ class SharedApplicationChromeBrowserIT {
         viewport(width, 1000);
         page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of()));
         page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", features)));
+        if (view.template().equals("index")) routeCurrentContext("context-private-a", "review/current", "a".repeat(40));
         if (view.template().equals("requirement-detail")) {
             // A single failed read makes the long error deterministic instead of racing six unrelated 404s.
             var currentVersion = PortfolioRequirementFixture.version(9, 1, "Retain this requirement while its history is unavailable.");
@@ -452,6 +457,7 @@ class SharedApplicationChromeBrowserIT {
                 "architectureTitle", "Shared Architecture Repository", "source", "GIT_CHECKPOINT", "projectionState", "READY",
                 "publicationState", "CHECKPOINTED", "mayEdit", false,
                 "projects", List.of(), "dependencies", List.of(), "requirements", List.of())));
+        routeCurrentContext("context-compact-shared", "draft", COMPACT_COMMIT);
         page.open("index", "/taxonomy", "/", "de", """
                 localStorage.clear();sessionStorage.clear();
                 history.replaceState(null,'','?lang=de&repositoryId=%s&workspaceId=&workspaceScopeKey=__shared__&branch=draft#analyze');
@@ -911,6 +917,13 @@ class SharedApplicationChromeBrowserIT {
         page.driver().executeScript("document.querySelector('[data-app-route=projects]').focus();");
         new Actions(page.driver()).sendKeys(Keys.TAB).perform();
         assertThat(page.driver().switchTo().activeElement().getDomAttribute("data-app-route")).isEqualTo("analysis");
+    }
+
+    private static void routeCurrentContext(String contextId, String branch, String commit) {
+        // Repository/workspace identity remains in each page's explicit pins and lifecycle response.
+        page.route("GET", "/taxonomy/api/context/current", request -> json(200,
+                new ContextRef(contextId, branch, commit, Instant.parse("2026-10-07T09:00:00Z"),
+                        ContextMode.READ_ONLY, null, null, null, null, null, false)));
     }
 
     private static final String COMPACT_REPOSITORY = "05f0a13b-7669-492d-a3e8-f10ce133dacf";
