@@ -1,5 +1,7 @@
 package com.taxonomy.composition.analysis.artemis;
 
+import com.taxonomy.catalog.definition.RetainedCatalogueDefinitions;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.analysis.dag.AnalysisTaskCompletionStore;
 import com.taxonomy.analysis.dispatch.AnalysisDispatchService;
 import com.taxonomy.analysis.dispatch.AnalysisDispatchStore;
@@ -15,7 +17,8 @@ import static org.mockito.Mockito.mock;
 class ArtemisAnalysisTransportConfigurationTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
-            .withUserConfiguration(ArtemisAnalysisTransportConfiguration.class)
+            .withBean(CatalogueSourceJournal.class, () -> mock(CatalogueSourceJournal.class))
+            .withUserConfiguration(RetainedCatalogueDefinitions.class, ArtemisAnalysisTransportConfiguration.class)
             .withBean(AnalysisDispatchStore.class, () -> mock(AnalysisDispatchStore.class))
             .withBean(AnalysisTaskCompletionStore.class, () -> mock(AnalysisTaskCompletionStore.class));
 

@@ -321,10 +321,17 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
       && !document.getElementById('businessText') && !window.TaxonomyAnalysisSession;
   }, base + '/admin/sessions');
   if (!leavingSessionsInventory) await settleDraftBeforeNavigation(page);
-  const initialResponse = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/api/architecture/editor') && response.request().method() === 'GET');
-  await page.goto(`${base}/architecture/editor?lang=en`);
-  const initial = await (await initialResponse).json();
-  await page.waitForFunction(() => document.getElementById('architectureEditor')?.getAttribute('aria-busy') === 'false');
+  async function readEditorAfter(action) {
+    const response = page.waitForResponse(result => new URL(result.url()).pathname.endsWith('/api/architecture/editor')
+      && result.request().method() === 'GET');
+    await action();
+    const result = await response;
+    assert.equal(result.status(), 200, await result.text());
+    const projection = await result.json();
+    await page.waitForFunction(() => document.getElementById('architectureEditor')?.getAttribute('aria-busy') === 'false');
+    return projection;
+  }
+  const initial = await readEditorAfter(() => page.goto(`${base}/architecture/editor?lang=en`));
   assert.ok(initial.document.context.repositoryId);
   assert.ok(initial.document.context.workspaceScopeKey);
   assert.ok(initial.document.context.actor);
@@ -418,17 +425,30 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     assert.equal(await page.locator('#editorType').isDisabled(), true);
     await reflow();
   } else {
-    if (!initial.mayEdit) {
-      await page.locator('#editorWorkspace').click();
-      await page.locator('#editorNew').waitFor();
+    const writable = initial.mayEdit ? initial : await readEditorAfter(() => page.locator('#editorWorkspace').click());
+    assert.equal(writable.mayEdit, true);
+    if (writable.model.elements.length === 0) {
+      assert.equal(await page.locator('#editorTree button').count(), 0);
+      // A compact project starts without catalogue elements. Persist a sparse record before reviewing it in the form.
+      const created = await page.evaluate(async context => {
+        const id = crypto.randomUUID();
+        const command = { context, kind: 'CREATE_ELEMENT', type: 'System', properties: { title: 'Archive registry' },
+          metadata: { commandId: id, correlationId: id, causationId: id, rationale: 'Prepare a sparse editor review record' } };
+        await window.ArchitectureEditorApi.preview(command);
+        return window.ArchitectureEditorApi.execute(command);
+      }, writable.document.context);
+      const reloaded = await readEditorAfter(() => page.locator('#editorRefresh').click());
+      assert.equal(reloaded.document.context.revision, created.context.revision);
+      assert.deepEqual(reloaded.model.elements.map(item => item.id), [`arch-${created.commandId}`]);
+      assert.equal(await page.locator('#editorTree button').count(), 1);
     }
     await page.locator('#editorRationale').fill('Browser acceptance architecture decision');
     await confirmDraftDiscard(page, () => page.locator('#editorTree button').first().click(),
-      measurements.explicitDraftDiscards, 'select initial imported element');
-    assert.deepEqual(measurements.explicitDraftDiscards, ['select initial imported element'],
+      measurements.explicitDraftDiscards, 'select initial project element');
+    assert.deepEqual(measurements.explicitDraftDiscards, ['select initial project element'],
       'Selecting another element must explicitly confirm the unaccepted rationale');
     const unchanged = await preview(() => page.locator('#editorPreviewElement').click());
-    assert.deepEqual(unchanged.change.changes, [], 'Unchanged imported properties must not gain empty fields or defaults');
+    assert.deepEqual(unchanged.change.changes, [], 'Unchanged properties must not gain empty fields or defaults');
     assert.equal(await page.locator('#editorAccept').isDisabled(), true);
     await page.locator('#editorCancel').click();
     const suffix = Date.now().toString(36);
