@@ -266,6 +266,17 @@
                 if (!headers.has(WORKSPACE_HEADER)) {
                     if (url.searchParams.has('workspaceId')) headers.set(WORKSPACE_HEADER, url.searchParams.get('workspaceId'));
                     else if (runtime.workspaceId) headers.set(WORKSPACE_HEADER, runtime.workspaceId);
+                    else if (apiPath === '/api/git/state' || apiPath === '/api/context/current') {
+                        // These passive reads run before analysis-session hydration. A
+                        // reload of an explicitly scoped root URL must keep its
+                        // exact workspace even before runtime.workspaceId is known.
+                        // Do not infer this pin for writes or installation setup.
+                        var locationScope = new URL(window.location.href).searchParams;
+                        var locationWorkspace = locationScope.get('workspaceId');
+                        if (locationWorkspace && locationScope.get('workspaceScopeKey') === locationWorkspace) {
+                            headers.set(WORKSPACE_HEADER, locationWorkspace);
+                        }
+                    }
                 }
                 request.headers = headers;
             }
