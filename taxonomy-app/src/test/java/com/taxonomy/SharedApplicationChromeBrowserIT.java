@@ -600,6 +600,9 @@ class SharedApplicationChromeBrowserIT {
         page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", List.of("portfolio", "architecture"))));
         var project = Map.of("id", 42, "projectKey", "QA-PROJECT", "title", "Communication architecture contribution", "status", "ACTIVE");
         page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of(project)));
+        // Explicitly pin the live context; a missing /api/context/current fixture can race the
+        // architecture workbench loader and clear its otherwise valid current/source context.
+        routeCurrentContext("qa-context-workspace", "qa-context-main", "a".repeat(40));
         page.route("GET", "/taxonomy/api/architecture/lifecycle", request -> json(200, Map.of(
                 "context", Map.of("repositoryId", "qa-architecture", "workspaceScopeKey", "qa-context-workspace",
                         "branch", "qa-context-main", "commit", "a".repeat(40), "revision", 4),
