@@ -141,6 +141,16 @@ public class ProjectRequirementAnalysisService {
                                           String username,
                                           WorkspaceContext context) {
         AnalysisJobView job = prepareJob(projectId, request, username, context);
+        return dispatchPending(job, projectId, username, context);
+    }
+
+    public AnalysisJobView enqueueVerificationPass(Long projectId, Long requirementId, CopilotOperationKey key,
+                                                  String username, WorkspaceContext context) {
+        var job = persistenceService.createOrReuseVerificationPass(projectId, requirementId, key, username, context);
+        return dispatchPending(job, projectId, username, context);
+    }
+
+    private AnalysisJobView dispatchPending(AnalysisJobView job, Long projectId, String username, WorkspaceContext context) {
         if (job.status() == AnalysisStatus.PENDING) {
             dispatch(job.id(), projectId, username, context);
         }

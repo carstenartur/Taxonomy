@@ -2,6 +2,7 @@ package com.taxonomy.portfolio.reformulation;
 
 import com.taxonomy.TaxonomyApplication;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
@@ -22,7 +23,7 @@ public final class ReformulationRestartDriver {
             Path identity=Path.of(args[2]);
             if(args[1].equals("write")) {
                 var workspace=workspaces.createWorkspace("architect","Restart reformulation","Persistence proof");
-                workspace=workspaces.provisionWorkspaceRepository("architect",workspace.getWorkspaceId());
+                workspace=PortfolioAnalysisWorkspace.provisionSelected(workspaces, "architect", workspace.getWorkspaceId());
                 var scope=new WorkspaceContext("architect",workspace.getWorkspaceId(),workspace.getCurrentBranch(),workspace.getSourceRepositoryId());
                 var project=projects.createProject(new CreateProjectRequest("P","Restart","Context",ProjectStatus.ACTIVE,null,null,null,null),"architect",scope);
                 var requirement=projects.createRequirement(project.id(),new CreateRequirementRequest("R","Original","Only terminal. 2 seconds.",

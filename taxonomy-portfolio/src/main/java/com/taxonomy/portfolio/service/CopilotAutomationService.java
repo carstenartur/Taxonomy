@@ -394,15 +394,14 @@ public class CopilotAutomationService {
             String username,
             WorkspaceContext context) {
         CopilotOperationKey key = definition.key(pass);
+        if (pass > 1) {
+            return analysisService.enqueueVerificationPass(
+                    definition.projectId(), definition.requirementId(), key, username, context);
+        }
         try (var language = com.taxonomy.analysis.service.AnalysisLanguageContext.open(definition.analysisLanguage())) {
-        return analysisService.enqueueRequirement(
-                definition.projectId(),
-                definition.requirementId(),
-                definition.provider(),
-                definition.maxArchitectureNodes(),
-                key.value(),
-                username,
-                context);
+            return analysisService.enqueueRequirement(
+                    definition.projectId(), definition.requirementId(), definition.provider(),
+                    definition.maxArchitectureNodes(), key.value(), username, context);
         }
     }
 

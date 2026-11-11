@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio.reformulation;
 
+import com.taxonomy.portfolio.RetainedPortfolioCatalogue;
+
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
@@ -27,7 +29,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /** Real HTTP/database contract: proposals cannot rewrite original or active architecture. */
-abstract class ReformulationWorkflowFixture {
+abstract class ReformulationWorkflowFixture extends RetainedPortfolioCatalogue {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @Autowired ProjectPortfolioService projects;
@@ -82,9 +84,11 @@ abstract class ReformulationWorkflowFixture {
     void select(WorkspaceContext selected) {
         when(resolver.resolveCurrentUsername()).thenReturn("architect");
         when(resolver.resolveCurrentContext()).thenReturn(selected);
-        when(resolver.resolveCurrentRepositoryContext()).thenReturn(selected.workspaceId()==null
+        var repository = selected.workspaceId()==null
                 ? RepositoryContext.centralRead(selected.repositoryId(), selected.currentBranch(), "architect")
-                : RepositoryContext.workspace(selected.repositoryId(),selected.workspaceId(),selected.currentBranch(),"architect"));
+                : RepositoryContext.workspace(selected.repositoryId(),selected.workspaceId(),selected.currentBranch(),"architect");
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(repository);
+        when(resolver.resolveCurrentRepositoryContextForRead()).thenReturn(repository);
     }
     RequirementView createRequirement(String key) {
         return projects.createRequirement(project.id(), new CreateRequirementRequest(key,"Capture time",originalText,

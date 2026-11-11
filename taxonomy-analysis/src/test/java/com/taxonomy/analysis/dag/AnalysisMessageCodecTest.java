@@ -60,7 +60,8 @@ class AnalysisMessageCodecTest {
             String json = new String(encoded, StandardCharsets.UTF_8);
             assertThat(json).contains("\"schemaVersion\":3")
                     .doesNotContain("com.taxonomy").doesNotContain("@class").doesNotContain("@type")
-                    .doesNotContain(REQUIREMENT_TEXT);
+                    .contains("\"workspaceId\":null")
+                    .doesNotContain(REQUIREMENT_TEXT, "requirementVersionId", "semanticModelSha256");
             assertThat(codec.decode(encoded)).isEqualTo(message);
         }
     }

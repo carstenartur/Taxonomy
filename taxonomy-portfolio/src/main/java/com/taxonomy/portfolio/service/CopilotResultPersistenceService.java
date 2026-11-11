@@ -36,6 +36,8 @@ public class CopilotResultPersistenceService {
         this.itemRepository = itemRepository;
     }
 
+    private enum SelectionMode { AUTOMATIC, EXPLICIT }
+
     /** A stale status reader cannot promote or enrich a superseded pass generation. */
     @Transactional
     public String selectCurrentSnapshot(Long projectId, Long requirementId, String snapshotId,
@@ -68,7 +70,7 @@ public class CopilotResultPersistenceService {
                     && Objects.equals(current.snapshotId(), snapshotId);
         }
         return selectedCurrentResult
-                ? selectCurrentSnapshot(projectId, requirementId, snapshotId, username, context) : null;
+                ? selectLockedSnapshot(projectId, requirementId, snapshotId, scopeKey, SelectionMode.AUTOMATIC) : null;
     }
 
     @Transactional
@@ -78,7 +80,12 @@ public class CopilotResultPersistenceService {
             String snapshotId,
             String username,
             WorkspaceContext context) {
-        String scopeKey = PortfolioScope.key(username, context);
+        return selectLockedSnapshot(projectId, requirementId, snapshotId, PortfolioScope.key(username, context),
+                SelectionMode.EXPLICIT);
+    }
+
+    private String selectLockedSnapshot(Long projectId, Long requirementId, String snapshotId, String scopeKey,
+                                        SelectionMode mode) {
         // The coordinator and any status readers can finalize the same operation.
         // Serialize the version check and pointer update across transactions/nodes.
         RequirementAnalysisSelectionRow selected = requirementRepository
@@ -94,6 +101,7 @@ public class CopilotResultPersistenceService {
                     "Selected snapshot does not belong to requirement " + requirementId);
         }
         if (!Objects.equals(snapshot.requirementVersionId(), selected.currentVersionId())) {
+            if (mode == SelectionMode.AUTOMATIC) return null;
             throw PortfolioException.conflict(
                     "Selected snapshot is stale for the current requirement version");
         }

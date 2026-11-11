@@ -38,7 +38,7 @@ import com.taxonomy.portfolio.service.PortfolioFingerprintService;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
-import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -68,10 +68,10 @@ import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @Tag("ci-app-shard-domain-integration")
-class PortfolioAnalysisCoverageRegressionTest {
+class PortfolioAnalysisCoverageRegressionTest extends RetainedPortfolioCatalogue {
 
     @Autowired
-    private SystemRepositoryService systemRepositoryService;
+    private WorkspaceResolver workspaceResolver;
 
     @Autowired
     private ProjectPortfolioService projectService;
@@ -435,11 +435,7 @@ class PortfolioAnalysisCoverageRegressionTest {
     }
 
     private WorkspaceContext context(String username) {
-        return new WorkspaceContext(
-                username + "-" + shortId(),
-                "ws-" + username + "-" + shortId(),
-                "draft",
-                systemRepositoryService.getPrimaryRepository().getRepositoryId());
+        return PortfolioAnalysisWorkspace.select(workspaceResolver, username + "-" + shortId());
     }
 
     private String shortId() {

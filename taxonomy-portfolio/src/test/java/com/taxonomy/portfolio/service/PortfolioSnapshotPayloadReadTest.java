@@ -371,17 +371,48 @@ class PortfolioSnapshotPayloadReadTest {
     }
 
     @Test
-    void explicitTerminalResumeStillRejectsAChangedCurrentRequirementVersion() {
+    void terminalResumeArchivesSupersededResultsWhileExplicitSnapshotSelectionRejectsThem() {
         try (var f = new Fixture()) {
+            String currentSnapshot = UUID.randomUUID().toString();
             f.transaction(em -> {
                 var requirement = em.find(ProjectRequirement.class, f.requirementId);
                 var version = new ProjectRequirementVersion(requirement, 2, "Changed source text", "b".repeat(64),
                         "User revision", "owner", Fixture.TIME.plusSeconds(20), null, null, null, null, null, null);
                 em.persist(version); em.flush();
                 requirement.pointToVersion(version.getId(), Fixture.TIME.plusSeconds(20));
+                var project = em.find(ArchitectureProject.class, f.projectId);
+                var job = new RequirementAnalysisJob(UUID.randomUUID().toString(), project, "v2-analysis", "CUSTOM_OPENAI",
+                        50, "owner", f.scope.workspaceId(), 1, Fixture.TIME.plusSeconds(21));
+                em.persist(job);
+                var item = new RequirementAnalysisJobItem(job, requirement, version);
+                em.persist(item);
+                em.persist(new RequirementAnalysisSnapshot(currentSnapshot, project, requirement, version, job, AnalysisStatus.SUCCESS,
+                        "v2-source", "CUSTOM_OPENAI", "model", "p".repeat(64), "t".repeat(64), f.scope.workspaceId(),
+                        f.scope.currentBranch(), "c".repeat(40), "owner", Fixture.TIME.plusSeconds(22), 100L, 0, null,
+                        f.codec.write(new AnalysisResult(Map.of("BP-1000", 90d), List.of())), null, null, null));
+                em.flush();
+                item.complete(AnalysisStatus.SUCCESS, currentSnapshot, Fixture.TIME.plusSeconds(22), null);
+                job.complete(1, 0, 0, null, Fixture.TIME.plusSeconds(22));
+                requirement.pointToAnalysis(currentSnapshot, Fixture.TIME.plusSeconds(22));
             });
+            var historical = f.persistence.createOrReuseJob(f.projectId, List.of(f.requirementId), "CUSTOM_OPENAI", 50,
+                    "historical-verification", "owner", f.scope, null, f.versionId);
+            var item = historical.items().getFirst();
+            var analysis = new AnalysisResult(Map.of("BP-1000", 90d), List.of());
+            analysis.setStatus("SUCCESS");
+            String archivedSnapshot = UUID.randomUUID().toString();
+            var summary = f.persistence.persistSnapshot(item.id(), historical.id(), f.projectId, PortfolioScope.key("owner", f.scope),
+                    archivedSnapshot, "v1-late", analysis, null, null, null, "CUSTOM_OPENAI", "model", "p".repeat(64),
+                    "t".repeat(64), "owner", f.scope, 20);
+            assertThat(summary.id()).isEqualTo(archivedSnapshot);
+            assertThat(summary.requirementVersionId()).isEqualTo(f.versionId);
+            assertThat(f.shared.find(ProjectRequirement.class, f.requirementId).getCurrentAnalysisSnapshotId()).isEqualTo(currentSnapshot);
             f.resetReads();
-            assertThatThrownBy(() -> f.copilot.resumeOperation(f.projectId, Fixture.OPERATION, "owner", f.scope))
+            var archived = f.copilot.resumeOperation(f.projectId, Fixture.OPERATION, "owner", f.scope);
+            assertThat(archived.completedPasses()).isEqualTo(2);
+            assertThat(archived.selectedSnapshotId()).isNull();
+            assertThat(f.shared.find(ProjectRequirement.class, f.requirementId).getCurrentAnalysisSnapshotId()).isEqualTo(currentSnapshot);
+            assertThatThrownBy(() -> f.selection.selectCurrentSnapshot(f.projectId, f.requirementId, f.snapshotIds.getFirst(), "owner", f.scope))
                     .isInstanceOfSatisfying(PortfolioException.class, failure ->
                             assertThat(failure.getKind()).isEqualTo(PortfolioException.Kind.CONFLICT));
             verifyNoInteractions(f.completion);

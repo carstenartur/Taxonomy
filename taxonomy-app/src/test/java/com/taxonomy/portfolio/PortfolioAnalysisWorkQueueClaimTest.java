@@ -15,7 +15,7 @@ import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisWorkQueue;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
-import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,10 +29,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @Tag("ci-app-shard-domain-integration")
-class PortfolioAnalysisWorkQueueClaimTest {
+class PortfolioAnalysisWorkQueueClaimTest extends RetainedPortfolioCatalogue {
 
     @Autowired
-    private SystemRepositoryService systemRepositoryService;
+    private WorkspaceResolver workspaceResolver;
 
     @Autowired
     private ProjectPortfolioService projectService;
@@ -46,9 +46,7 @@ class PortfolioAnalysisWorkQueueClaimTest {
     @Test
     void pendingWorkItemCanBeClaimedOnlyOnceWithoutPrematureJobCompletion() {
         String suffix = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        WorkspaceContext context = new WorkspaceContext(
-                "claim-" + suffix.toLowerCase(), "ws-claim-" + suffix, "draft",
-                systemRepositoryService.getPrimaryRepository().getRepositoryId());
+        WorkspaceContext context = PortfolioAnalysisWorkspace.select(workspaceResolver, "claim-" + suffix.toLowerCase());
         var project = projectService.createProject(
                 new CreateProjectRequest(
                         "P-" + suffix,

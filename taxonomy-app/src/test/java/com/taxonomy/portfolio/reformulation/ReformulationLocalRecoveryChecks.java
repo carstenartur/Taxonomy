@@ -9,6 +9,7 @@ import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.composition.reformulation.ReformulationExecutionService;
 import com.taxonomy.composition.reformulation.ReformulationRecoveryCoordinator;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
@@ -89,7 +90,7 @@ public final class ReformulationLocalRecoveryChecks {
             app.getBean(ReformulationRecoveryCoordinator.class).stop();
             var projects = app.getBean(ProjectPortfolioService.class); var proposals = app.getBean(ReformulationService.class);
             var workspaces = app.getBean(WorkspaceManager.class); var w = workspaces.createWorkspace("architect", "Local recovery", "Claim capacity regression");
-            w = workspaces.provisionWorkspaceRepository("architect", w.getWorkspaceId());
+            w = PortfolioAnalysisWorkspace.provisionSelected(workspaces, "architect", w.getWorkspaceId());
             var context = new WorkspaceContext("architect", w.getWorkspaceId(), w.getCurrentBranch(), w.getSourceRepositoryId());
             var project = projects.createProject(new CreateProjectRequest("P", "Recovery", "Fixture", ProjectStatus.ACTIVE, null, null, null, null), "architect", context);
             var r = projects.createRequirement(project.id(), new CreateRequirementRequest("R", "Time", ORIGINAL, RequirementStatus.APPROVED,

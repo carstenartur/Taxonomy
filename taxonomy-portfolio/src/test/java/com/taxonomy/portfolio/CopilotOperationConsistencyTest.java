@@ -228,14 +228,8 @@ class CopilotOperationConsistencyTest {
                         List.of(completedPass),
                         List.of(completedPass),
                         List.of(completedPass, cancelledMarker));
-        when(analysisService.enqueueRequirement(
-                org.mockito.ArgumentMatchers.eq(41L),
-                org.mockito.ArgumentMatchers.eq(7L),
-                org.mockito.ArgumentMatchers.eq("CUSTOM_OPENAI"),
-                org.mockito.ArgumentMatchers.eq(50),
-                org.mockito.ArgumentMatchers.any(String.class),
-                org.mockito.ArgumentMatchers.eq(context.username()),
-                org.mockito.ArgumentMatchers.eq(context)))
+        when(analysisService.enqueueVerificationPass(41L, 7L,
+                CopilotOperationKey.parse(pendingMarker.idempotencyKey()).orElseThrow(), context.username(), context))
                 .thenReturn(pendingMarker);
         when(projectService.getRequirement(
                 41L, 7L, context.username(), context)).thenReturn(requirement);
@@ -246,14 +240,8 @@ class CopilotOperationConsistencyTest {
 
         assertThat(result.status()).isEqualTo(AnalysisStatus.CANCELLED);
         assertThat(result.completedPasses()).isEqualTo(2);
-        verify(analysisService).enqueueRequirement(
-                org.mockito.ArgumentMatchers.eq(41L),
-                org.mockito.ArgumentMatchers.eq(7L),
-                org.mockito.ArgumentMatchers.eq("CUSTOM_OPENAI"),
-                org.mockito.ArgumentMatchers.eq(50),
-                org.mockito.ArgumentMatchers.any(String.class),
-                org.mockito.ArgumentMatchers.eq(context.username()),
-                org.mockito.ArgumentMatchers.eq(context));
+        verify(analysisService).enqueueVerificationPass(41L, 7L,
+                CopilotOperationKey.parse(pendingMarker.idempotencyKey()).orElseThrow(), context.username(), context);
         verify(jobControlService).cancel(
                 "job-2", 41L, context.username(), context);
         verifyNoInteractions(

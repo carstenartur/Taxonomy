@@ -3,6 +3,7 @@ package com.taxonomy.portfolio.reformulation;
 import com.taxonomy.TaxonomyApplication;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
@@ -53,8 +54,7 @@ public final class ReformulationProgressChecks {
                 workspaces.switchWorkspace("admin", scope.workspaceId());
             } else {
                 var workspace = workspaces.createWorkspace("admin", "Partial result inspection", "Read-only HTTP regression");
-                workspace = workspaces.provisionWorkspaceRepository("admin", workspace.getWorkspaceId());
-                workspaces.switchWorkspace("admin", workspace.getWorkspaceId());
+                workspace = PortfolioAnalysisWorkspace.provisionSelected(workspaces, "admin", workspace.getWorkspaceId());
                 scope = new WorkspaceContext("admin", workspace.getWorkspaceId(), workspace.getCurrentBranch(), workspace.getSourceRepositoryId());
                 var p = projects.createProject(new CreateProjectRequest("PROGRESS", "Progress", "Read fixture", ProjectStatus.ACTIVE, null, null, null, null), "admin", scope);
                 project = p.id();

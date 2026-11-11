@@ -251,6 +251,35 @@ public class PortfolioAnalysisPersistenceService {
         return toJobView(job);
     }
 
+    /** Verification runs on a coordinator thread. Its authority is the persisted first pass. */
+    @Transactional
+    public AnalysisJobView createOrReuseVerificationPass(Long projectId, Long requirementId, CopilotOperationKey key,
+                                                         String username, WorkspaceContext context) {
+        if (key.pass() == 1) throw new IllegalArgumentException("A verification pass must follow the first pass");
+        String scopeKey = PortfolioScope.key(username, context);
+        var project = projectRepository.lockForAnalysisAdmission(projectId, scopeKey)
+                .orElseThrow(() -> PortfolioException.notFound("Project not found: " + projectId));
+        var first = jobRepository.findByProjectIdAndScopeKeyAndIdempotencyKey(projectId, scopeKey, key.forPass(1).value())
+                .orElseThrow(() -> PortfolioException.notFound("First Copilot pass not found"));
+        var source = itemRepository.findByJobIdAndProjectIdAndScopeKeyAndRequirementId(
+                        first.getId(), projectId, scopeKey, requirementId)
+                .orElseThrow(() -> PortfolioException.conflict("First Copilot pass does not admit this requirement"));
+        var existing = jobRepository.findByProjectIdAndScopeKeyAndIdempotencyKey(projectId, scopeKey, key.value());
+        if (existing.isPresent()) return toJobView(existing.get());
+
+        requireRetainedProviderBinding(projectId, first.getId(), first.getProvider(),
+                List.of(new ProjectProviderBinding.Target(requirementId, source.getRequirementVersionId())), username, context);
+        var job = new RequirementAnalysisJob(UUID.randomUUID().toString(), project, key.value(), first.getProvider(),
+                first.getMaxArchitectureNodes(), first.getRequestedBy(), first.getWorkspaceId(), 1, Instant.now());
+        job.bindProvider(first.getProvider(), first.getProviderBinding());
+        if (first.getAnalysisLanguage() != null) job.recordAnalysisLanguage(first.getAnalysisLanguage());
+        if (first.getAnalysisReasonLength() != null) job.recordAnalysisReasonLength(first.getAnalysisReasonLength());
+        if (first.getAdmittedModelJson() != null) job.recordAdmittedModel(first.getAdmittedModelJson());
+        jobRepository.save(job);
+        itemRepository.save(new RequirementAnalysisJobItem(job, source.getRequirement(), source.getRequirementVersion()));
+        return toJobView(job);
+    }
+
     @Transactional(readOnly = true)
     public com.taxonomy.dto.AnalysisModelBinding admittedModel(String jobId, Long projectId, String username,
                                                                WorkspaceContext context) {
@@ -295,7 +324,9 @@ public class PortfolioAnalysisPersistenceService {
         RequirementAnalysisJobItem item = requireItem(
                 itemId, jobId, projectId, exactScope);
         RequirementAnalysisJob job = item.getJob();
-        ProjectRequirement requirement = item.getRequirement();
+        ProjectRequirement requirement = requirementRepository.findByIdAndProjectIdAndScopeKeyForUpdate(
+                        item.getRequirementId(), projectId, exactScope)
+                .orElseThrow(() -> PortfolioException.notFound("Requirement not found: " + item.getRequirementId()));
         AnalysisStatus status = analysisStatus(analysis);
         if (status != AnalysisStatus.SUCCESS && status != AnalysisStatus.PARTIAL) {
             throw PortfolioException.validation("Only successful or partial analyses can create snapshots");
@@ -338,8 +369,11 @@ public class PortfolioAnalysisPersistenceService {
                 snapshotId,
                 context);
 
-        requirement.pointToAnalysis(snapshotId, Instant.now());
-        requirementRepository.save(requirement);
+        // A historical result is archived even if another version became current during analysis.
+        if (Objects.equals(item.getRequirementVersionId(), requirement.getCurrentVersionId())) {
+            requirement.pointToAnalysis(snapshotId, Instant.now());
+            requirementRepository.save(requirement);
+        }
         item.complete(status, snapshotId, Instant.now(),
                 status == AnalysisStatus.PARTIAL ? partialDiagnostic(analysis) : null);
         return toSnapshotSummary(snapshot);

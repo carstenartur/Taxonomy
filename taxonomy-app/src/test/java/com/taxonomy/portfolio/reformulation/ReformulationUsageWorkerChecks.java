@@ -5,6 +5,7 @@ import com.taxonomy.TaxonomyApplication;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.composition.reformulation.*;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
@@ -90,7 +91,7 @@ public final class ReformulationUsageWorkerChecks {
                 project = Long.parseLong(saved.get(3)); requirement = Long.parseLong(saved.get(4)); offer = saved.get(5); run = saved.get(6);
             } else {
                 var workspaces = app.getBean(WorkspaceManager.class); var w = workspaces.createWorkspace("architect", "Usage worker", "Actual catalogue root");
-                w = workspaces.provisionWorkspaceRepository("architect", w.getWorkspaceId()); context = new WorkspaceContext("architect", w.getWorkspaceId(), w.getCurrentBranch(), w.getSourceRepositoryId());
+                w = PortfolioAnalysisWorkspace.provisionSelected(workspaces, "architect", w.getWorkspaceId()); context = new WorkspaceContext("architect", w.getWorkspaceId(), w.getCurrentBranch(), w.getSourceRepositoryId());
                 var p = projects.createProject(new CreateProjectRequest("P", "Usage", "Fixture", ProjectStatus.ACTIVE, null, null, null, null), "architect", context); project = p.id();
                 var r = projects.createRequirement(project, new CreateRequirementRequest("R", "Time", ORIGINAL, RequirementStatus.APPROVED,
                         50, Criticality.HIGH, RequirementType.FUNCTIONAL, ReviewStatus.CONFIRMED, "architect", "Source", null), "architect", context); requirement = r.id();

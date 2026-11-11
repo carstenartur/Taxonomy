@@ -21,7 +21,6 @@ import java.util.regex.Pattern;
  * @param requirementVersionId immutable portfolio version when available at admission
  */
 public record RequirementReference(Long projectId, Long requirementId, String snapshotId, String textSha256,
-                                   @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
                                    Long requirementVersionId) {
 
     public RequirementReference(Long projectId, Long requirementId, String snapshotId, String textSha256) {

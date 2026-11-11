@@ -1,5 +1,7 @@
 package com.taxonomy.analysis.cluster;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.taxonomy.analysis.dag.json.AnalysisContextJson;
 import com.taxonomy.analysis.backup.AnalysisBackupContributor.ResumePolicy;
 import com.taxonomy.analysis.dag.AnalysisOperationContext;
 import com.taxonomy.backup.SourceRecordId;
@@ -8,7 +10,8 @@ import java.util.List;
 /** Explicit archive DTOs. Source IDs name archive-local evidence, never target database keys. */
 public final class ClusterAnalysisBackupRecords {
     private ClusterAnalysisBackupRecords() { }
-    public record Run(SourceRecordId sourceId, String principalScope, AnalysisOperationContext context,
+    public record Run(SourceRecordId sourceId, String principalScope,
+                      @JsonSerialize(converter = AnalysisContextJson.class) AnalysisOperationContext context,
                       String commandJson, String viewJson, String resultJson, String relationPlanJson,
                       String sourceState, ResumePolicy resumePolicy, int totalRoots, int completedRoots,
                       long revision, long createdAt, long updatedAt) { }

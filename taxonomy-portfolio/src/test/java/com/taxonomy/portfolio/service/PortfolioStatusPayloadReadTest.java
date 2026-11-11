@@ -543,6 +543,57 @@ class PortfolioStatusPayloadReadTest {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void verificationPassesRetainTheFirstScopedAdmission(boolean recordedModel) {
+        try (var f = new Fixture()) {
+            var key = new CopilotOperationKey(false, "d".repeat(64), 1, 3, AnalysisAutomationProfile.EXHAUSTIVE,
+                    true, true);
+            var scope = new com.taxonomy.dto.AnalysisScope(java.util.Set.of("CP"), com.taxonomy.dto.AnalysisMode.TAXONOMIES_ONLY);
+            var binding = new com.taxonomy.dto.AnalysisModelBinding(com.taxonomy.dto.AnalysisModelBinding.State.RESOLVED,
+                    "repository", "owned-workspace", "draft", "a".repeat(40), 2L, "PROJECT_DSL", "b".repeat(64),
+                    "catalogue-A", "1", java.util.Set.of("CP"), scope, "brief-1", java.util.Map.of("objective", "Museum"),
+                    List.of(), java.util.Set.of("REALIZES"), null);
+            var selection = new AnalysisModelSelection(binding.commit(), binding.semanticRevision(), scope);
+            if (recordedModel) f.persistence.admissionModels((workspace, commit, revision, selected) -> {
+                assertThat(selected).isEqualTo(scope);
+                return binding;
+            });
+            var plugin = new com.taxonomy.extension.api.plugin.PluginInvocation(
+                    new com.taxonomy.extension.api.plugin.PluginIdentity("status.provider", "1.2.3", "c".repeat(64)), "d".repeat(64));
+            var providers = mock(com.taxonomy.analysis.service.LlmProviderConfig.class);
+            when(providers.captureProviderBinding("CUSTOM_OPENAI")).thenReturn(plugin);
+            f.persistence.providerConfiguration(providers);
+            f.transaction(em -> em.find(ProjectRequirement.class, f.requirementId).pointToVersion(f.oldVersionId, Fixture.TIME));
+            var first = f.persistence.createOrReuseJob(f.projectId, List.of(f.requirementId), "CUSTOM_OPENAI", 25,
+                    key.value(), "owner", f.scope, com.taxonomy.dto.AnalysisLanguage.GERMAN, null, recordedModel ? selection : null);
+            assertThat(first.items().getFirst().requirementVersionId()).isEqualTo(f.oldVersionId);
+            f.transaction(em -> em.find(ProjectRequirement.class, f.requirementId).pointToVersion(f.currentVersionId, Fixture.TIME));
+            f.persistence.admissionModels((workspace, commit, revision, selected) -> {
+                throw new AssertionError("A coordinator cannot resolve a live request workspace");
+            });
+
+            for (int pass = 2; pass <= 3; pass++) {
+                var next = f.persistence.createOrReuseVerificationPass(f.projectId, f.requirementId, key.forPass(pass), "owner", f.scope);
+                assertThat(next.items()).singleElement().satisfies(item -> assertThat(item.requirementVersionId()).isEqualTo(f.oldVersionId));
+                assertThat(next.analysisLanguage()).isEqualTo(first.analysisLanguage());
+                assertThat(next.analysisReasonLength()).isEqualTo(first.analysisReasonLength());
+                assertThat(next.provider()).isEqualTo(first.provider());
+                assertThat(next.providerBinding()).isEqualTo(plugin);
+                assertThat(next.maxArchitectureNodes()).isEqualTo(first.maxArchitectureNodes());
+                assertThat(f.persistence.admittedModel(next.id(), f.projectId, "owner", f.scope)).isEqualTo(recordedModel ? binding : null);
+                assertThat(f.persistence.createOrReuseVerificationPass(f.projectId, f.requirementId,
+                        key.forPass(pass), "owner", f.scope).id()).isEqualTo(next.id());
+            }
+            verify(providers, times(1)).captureProviderBinding("CUSTOM_OPENAI");
+            var foreign = new WorkspaceContext("owner", "other-workspace", "draft", "repository");
+            assertThatThrownBy(() -> f.persistence.createOrReuseVerificationPass(f.projectId, f.requirementId,
+                    key.forPass(2), "owner", foreign)).isInstanceOf(PortfolioException.class).hasMessageContaining("Project not found");
+            assertThatThrownBy(() -> f.persistence.createOrReuseVerificationPass(f.projectId, Long.MAX_VALUE,
+                    key.forPass(2), "owner", f.scope)).isInstanceOf(PortfolioException.class).hasMessageContaining("does not admit");
+        }
+    }
+
     @Test
     void completionResponseIncludesTheUncommittedAggregateUpdate() {
         try (var f = new Fixture()) {

@@ -78,6 +78,22 @@ class ClusterAnalysisBackupRestoreTest {
                 command.provider(), command.username(), command.workspaceContext(), provenance, command.analysisScope());
     }
 
+    @Test void portableRunRetainsTheLegacyContextShapeAndIncludesBoundSources() throws Exception {
+        var old = context("legacy-context");
+        var archiveJson = PortableRows.json();
+        var oldRow = new Run(null, "alice", old, null, null, null, null, "QUEUED", null, 1, 0, 1, 0, 0);
+        var oldWire = archiveJson.readTree(archiveJson.writeValueAsBytes(oldRow)).required("context");
+        assertFalse(oldWire.required("authority").has("semanticModelSha256"));
+        assertFalse(oldWire.required("requirement").has("requirementVersionId"));
+        assertEquals(old, JSON.treeToValue(JSON.readTree(oldWire.toString()), AnalysisOperationContext.class));
+
+        var source = new AnalysisSourceAuthority("repo", "workspace", "draft", null, "c".repeat(64));
+        var requirement = new RequirementReference(1L, 2L, null, RequirementReference.sha256("requirement"), 7L);
+        var bound = new AnalysisOperationContext(old.operationId(), source, requirement, old.correlationId());
+        var boundRow = new Run(null, "alice", bound, null, null, null, null, "QUEUED", null, 1, 0, 1, 0, 0);
+        assertEquals(bound, archiveJson.readValue(archiveJson.writeValueAsBytes(boundRow), Run.class).context());
+    }
+
     @Test void archivedRootClarificationRemainsInspectableWithoutRestartingWork() throws Exception {
         try (var source = new Database(); var target = new Database()) {
             var original = context("clarification-source"); source.admitFrozen(original);

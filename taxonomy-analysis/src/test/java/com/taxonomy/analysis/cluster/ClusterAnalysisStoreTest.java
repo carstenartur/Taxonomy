@@ -290,6 +290,25 @@ class ClusterAnalysisStoreTest {
         }
     }
 
+    @Test void existingRunWithoutVersionFourContextFieldsCanStartItsAdmittedTask() {
+        try (var db = new Database()) {
+            var context = context("older-admission");
+            db.admit(context);
+            new TransactionTemplate(db.transactions).executeWithoutResult(status -> {
+                var run = db.em.find(ClusterAnalysisRun.class, context.operationId());
+                var json = new ObjectMapper();
+                var stored = json.readTree(run.contextJson);
+                ((tools.jackson.databind.node.ObjectNode) stored.required("authority")).remove("semanticModelSha256");
+                ((tools.jackson.databind.node.ObjectNode) stored.required("requirement")).remove("requirementVersionId");
+                run.contextJson = json.writeValueAsString(stored);
+            });
+
+            db.admit(context);
+            assertEquals(1, db.sent.size());
+            assertEquals(context, db.store.start(db.task(CP)).context());
+        }
+    }
+
     @Test void rejectsEveryAdmissionIdentityMismatchWithoutDurableOrPublishedEffects() {
         try (var db = new Database()) {
             var context = context("rejected-admission");

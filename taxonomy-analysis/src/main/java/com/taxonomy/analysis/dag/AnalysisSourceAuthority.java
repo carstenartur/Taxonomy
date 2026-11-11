@@ -24,7 +24,6 @@ import java.util.Objects;
  */
 public record AnalysisSourceAuthority(String repositoryId, String workspaceId, String branch,
                                       String sourceCommit,
-                                      @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
                                       String semanticModelSha256) {
     public AnalysisSourceAuthority(String repositoryId, String workspaceId, String branch, String sourceCommit) {
         this(repositoryId, workspaceId, branch, sourceCommit, null);

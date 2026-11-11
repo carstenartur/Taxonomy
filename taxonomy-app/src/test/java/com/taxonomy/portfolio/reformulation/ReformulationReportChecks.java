@@ -3,6 +3,7 @@ package com.taxonomy.portfolio.reformulation;
 import com.taxonomy.TaxonomyApplication;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.portfolio.PortfolioAnalysisWorkspace;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
@@ -135,7 +136,7 @@ public final class ReformulationReportChecks {
     }
     static Fixture fixture(ConfigurableApplicationContext app) {
         var wsManager=app.getBean(WorkspaceManager.class); var projects=app.getBean(ProjectPortfolioService.class); var proposals=app.getBean(ReformulationService.class);
-        var ws=wsManager.createWorkspace("admin","Report "+UUID.randomUUID(),"Read-only history"); ws=wsManager.provisionWorkspaceRepository("admin",ws.getWorkspaceId());wsManager.switchWorkspace("admin",ws.getWorkspaceId());
+        var ws=wsManager.createWorkspace("admin","Report "+UUID.randomUUID(),"Read-only history"); ws=PortfolioAnalysisWorkspace.provisionSelected(wsManager, "admin", ws.getWorkspaceId());
         var scope=new WorkspaceContext("admin",ws.getWorkspaceId(),ws.getCurrentBranch(),ws.getSourceRepositoryId());
         var p=projects.createProject(new CreateProjectRequest("P","Report","Fixture",ProjectStatus.ACTIVE,null,null,null,null),"admin",scope);
         var r=projects.createRequirement(p.id(),new CreateRequirementRequest("R","Time",ORIGINAL,RequirementStatus.APPROVED,50,Criticality.HIGH,RequirementType.FUNCTIONAL,ReviewStatus.CONFIRMED,"admin","Original",null),"admin",scope);
