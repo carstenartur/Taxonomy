@@ -84,6 +84,9 @@ export async function removeComparisonBranch(name, api = window.TaxonomyApiClien
 /** Full application acceptance. The happy path compares real Git versions; no LLM calls. */
 export async function runVersionComparisonWorkflow({ page, role, evidence }) {
   if (role !== 'ADMIN') return;
+  // Returning from the graph fixture reloads the application. The API client
+  // invalidates outstanding Git requests while the initial selection is published.
+  await page.waitForFunction(() => window.TaxonomyAnalysisSession?.state?.().ready === true);
   let previousBranch;
   await usingComparisonBranch(async branch => {
     const fixture = comparisonDocuments('', branch);
@@ -94,7 +97,8 @@ export async function runVersionComparisonWorkflow({ page, role, evidence }) {
         try { return await operation(); } catch (error) {
           const status = Number(error?.status ?? error?.statusCode ?? error?.httpStatus);
           throw new Error('Version comparison API ' + phase + ' failed'
-            + (Number.isInteger(status) && status >= 400 && status <= 599 ? ' (HTTP ' + status + ')' : ''));
+            + (Number.isInteger(status) && status >= 400 && status <= 599 ? ' (HTTP ' + status + ')'
+              : ['ABORTED', 'TIMEOUT', 'NETWORK_ERROR'].includes(error?.code) ? ' (' + error.code + ')' : ''));
         }
       }
       const head = await requestStep('draft head read',

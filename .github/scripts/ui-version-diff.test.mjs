@@ -213,9 +213,19 @@ for (const failAt of ['before opening Versions', 'during branch selection', 'aft
       const ref = new URL(path, 'https://fixture.test').searchParams.get('name');
       assert.equal(init.method, 'DELETE'); assert.ok(refs.delete(ref)); removed.push(ref);
     }};
+    let sourceReady = false;
     const page = {
+      async waitForFunction(predicate) {
+        const state = {window: {TaxonomyRoleSurface: {getContext: () => ({role: 'ADMIN'})},
+          TaxonomyAnalysisSession: {state: () => ({ready: sourceReady})}}};
+        const check = () => vm.runInNewContext('(' + predicate.toString() + ')()', state);
+        assert.equal(check(), false, 'the role is available before the model and repository context settle');
+        sourceReady = true;
+        assert.equal(check(), true);
+      },
       async evaluate(fn, arg) {
         if (arg?.branch) {
+          assert.equal(sourceReady, true, 'the first Git request needs the confirmed source after navigation');
           allocated = arg.branch; refs.add(allocated);
           if (failAt === 'before opening Versions') throw original;
           return {branch:allocated, left:'a'.repeat(40), right:'b'.repeat(40)};
