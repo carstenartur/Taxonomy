@@ -180,6 +180,7 @@
                         S.currentReasons = data.reasons || {};
                         // Portable reports remain display evidence, not an owned execution reference.
                         S.currentCopilot = data.copilot || null;
+                        S.currentModelBinding = data.modelBinding || null;
                         const sessionRuntime = window.__TaxonomyAnalysisSessionContext?.runtime;
                         if (sessionRuntime) { sessionRuntime.analysisReference = null; sessionRuntime.analysisEvidence = null; }
                         window.TaxonomyAnalysis?.renderCopilotResult?.(S.currentCopilot);

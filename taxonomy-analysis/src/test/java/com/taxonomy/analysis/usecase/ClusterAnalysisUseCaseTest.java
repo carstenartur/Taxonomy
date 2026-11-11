@@ -33,6 +33,33 @@ class ClusterAnalysisUseCaseTest {
     private final ViewContext view = new ViewContext("commit", "draft", null, false, false, false);
 
     @Test
+    void admittedHistoricalOrUncommittedModelKeepsItsOwnIdentityWhenHeadMoves() {
+        var scope = command.analysisScope();
+        var moved = new ViewContext("b".repeat(40), "draft", null, false, false, false);
+        for (String recordedCommit : java.util.Arrays.asList("a".repeat(40), null)) {
+            var binding = new AnalysisModelBinding(AnalysisModelBinding.State.MODEL_UNCOMMITTED, "repo", "workspace",
+                    "draft", recordedCommit, 4L, "WORKSPACE_REVISION", "c".repeat(64), "generation-A", "1",
+                    Set.of("CP"), scope, null, Map.of(), List.of(), Set.of(), null);
+            var submitted = command.withModelBinding(binding);
+            var admitted = AnalysisOperationContexts.create("model-selection", submitted, moved);
+            assertThat(admitted.authority().sourceCommit()).isEqualTo(recordedCommit);
+            assertThat(admitted.authority().semanticModelSha256()).isEqualTo(recordedCommit == null ? binding.modelSha256() : null);
+            assertThat(AnalysisOperationContexts.selectedView(submitted, moved).basedOnCommit()).isEqualTo(recordedCommit);
+        }
+    }
+
+    @Test
+    void missingHistoricalWorkbookStopsAtAdmission() {
+        var unresolved = new AnalysisModelBinding(AnalysisModelBinding.State.CATALOGUE_UNRESOLVED,
+                "repo", "workspace", "draft", "a".repeat(40), 1L, "GIT_CHECKPOINT", "c".repeat(64),
+                "missing-workbook", null, Set.of(), command.analysisScope(), null, Map.of(), List.of(), Set.of(), null);
+        assertThatThrownBy(() -> AnalysisRequestModelAdmission.capture((workspace, commit, revision, scope) -> unresolved,
+                command.workspaceContext(), unresolved.commit(), 1L, command.analysisScope()))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("409");
+    }
+
+    @Test
     void analyzeUsesExactDurableResultWithoutLocalScoringRelationsOrSecondEnrichment() {
         var architecture = mock(RequirementArchitectureViewService.class);
         var generator = mock(AnalysisRelationGenerator.class);

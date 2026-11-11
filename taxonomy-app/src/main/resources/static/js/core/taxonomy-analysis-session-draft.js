@@ -401,6 +401,7 @@
         }
         S.currentScores = null;
         S.currentCopilot = null;
+        S.currentModelBinding = null;
         runtime.analysisReference = null; runtime.analysisEvidence = null;
         S.analysisCoverage = null;
         S.lastAnalysisScope = null;
@@ -514,6 +515,7 @@
             S.analysisRecovery = payload.analysisRecovery || null;
             S.recoveryContext = payload.recoveryContext || null;
             S.currentCopilot = payload.copilot || null;
+            S.currentModelBinding = payload.modelBinding || null;
             S.lastAnalysisProvider = payload.lastAnalysisProvider || null;
             S.analysisOperationId = payload.analysisOperationId || null;
             S.analysisProviderId = payload.analysisProviderId || null;

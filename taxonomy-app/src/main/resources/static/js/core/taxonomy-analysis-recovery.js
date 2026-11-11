@@ -281,6 +281,7 @@
         context.pauseReason = recordedPauseReason(result);
         S.analysisCoverage = result.analysisCoverage || null;
         S.currentCopilot = result.copilot || null;
+        S.currentModelBinding = result.modelBinding || null;
         S.lastAnalysisScope = result.analysisScope || context.request.analysisScope || null;
         S.lastAnalysisReasonLength = result.analysisReasonLength || null;
         S.lastAnalysisLanguage = result.analysisLanguage || null;
@@ -469,6 +470,7 @@
             if (!result?.recovery) throw new Error(text('Keine bestätigte Fortsetzungsantwort.', 'No confirmed continuation response.'));
             S.analysisRecovery = result.recovery; S.analysisCoverage = result.analysisCoverage;
             S.currentCopilot = result.copilot || null;
+            S.currentModelBinding = result.modelBinding || null;
             rememberNodeEvidence(result, c);
             S.lastAnalysisStatus = result.status || 'UNKNOWN';
             c.confirmed = true; c.syncState = null; c.recoveryEvent = null; c.decisionDiagnostic = null;

@@ -112,10 +112,14 @@ public class ArchitectureEditorProjection {
                 catalogue.relationDomains(), catalogue.typeRoots(), properties(catalogue),
                 strategy == Strategy.STABLE ? "DERIVED_SERVER_LAYOUT" : "DERIVED_SERVER_LAYOUT_REDUCE_CROSSINGS",
                 strategy.id(), layoutRevision);
-        return new View(document, model, scene, schema, mayEdit && List.of("PRIVATE_WORKSPACE", "SHARED_WORKSPACE").contains(document.context().writeMode())
-                && "READY".equals(document.projectionState()),
+        return new View(document, model, scene, schema, editable(document, mayEdit),
                 model.getElements().stream().map(element -> new SearchEntry(element.getId(),
                         (element.getId() + " " + element.getTitle() + " " + element.getType()).toLowerCase(java.util.Locale.ROOT))).toList());
+    }
+
+    public static boolean editable(ArchitectureEditorService.Document document, boolean mayEdit) {
+        return mayEdit && List.of("PRIVATE_WORKSPACE", "SHARED_WORKSPACE").contains(document.context().writeMode())
+                && "READY".equals(document.projectionState());
     }
 
     public static void requireLayoutRevision(ArchitectureEditorService.Document document, Strategy strategy, Long revision) {

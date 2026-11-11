@@ -481,6 +481,7 @@
         window.TaxonomyAnalysisScope?.acceptResult?.(S.lastAnalysisScope);
         S.analysisRecovery = result.recovery || null;
         S.currentCopilot = result.copilot || null;
+        S.currentModelBinding = result.modelBinding || null;
         acceptAnalysisReasonLength(result, true);
         S.currentReasons = result.reasons || {};
         S.currentDiscrepancies = result.discrepancies || [];
@@ -767,6 +768,7 @@
             requestBody.provider = provider;
         }
 
+        Object.assign(requestBody, window.TaxonomyArchitectureLifecycle?.selectedAnalysisModel?.());
         if (options.continuation) requestBody = Object.assign({}, options.continuation);
         else if (requestBody.includeArchitectureView) {
             requestBody.resumable = true;
@@ -988,6 +990,11 @@
         S.activeAnalysisLanguage = window.TaxonomyContentLanguage?.analysis() || (isGermanLocale() ? 'de' : 'en');
         var url = '/api/analyze-stream?businessText=' + encodeURIComponent(text)
             + '&analysisLanguage=' + encodeURIComponent(S.activeAnalysisLanguage);
+        var selectedModel = window.TaxonomyArchitectureLifecycle?.selectedAnalysisModel?.();
+        if (selectedModel) {
+            var modelQuery = new URLSearchParams(selectedModel).toString();
+            if (modelQuery) url += '&' + modelQuery;
+        }
         if (requestedScope) {
             url += '&analysisMode=' + encodeURIComponent(requestedScope.mode);
             requestedScope.taxonomyRoots.forEach(function (root) { url += '&taxonomyRoots=' + encodeURIComponent(root); });
@@ -1600,6 +1607,7 @@
 
     function clearDerivedAnalysisView() {
         S.currentCopilot = null;
+        S.currentModelBinding = null;
         acceptRelationSearchReport(null);
         S.currentArchView = null;
         // Only the derived summary requires a fallback when its evidence is cleared.

@@ -75,6 +75,8 @@ public final class DecisionReportPresentation {
         if (scope.options().includes(DecisionReportOptions.Section.ARCHITECTURE) && report.architecture() != null)
             lines.addAll(com.taxonomy.reporting.render.document.ReportInventory.diagram(report.architecture().diagram(), de));
         lines.addAll(report.warnings());
+        com.taxonomy.reporting.render.document.AnalysisModelEvidence.rows(scope.modelBinding(), scope.analysisScope(), labels)
+                .forEach(row -> lines.add(row.get(0) + ": " + row.get(1)));
         return List.copyOf(lines);
     }
 }

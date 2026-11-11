@@ -43,7 +43,13 @@ public interface ClusterAnalysisObservation {
 
     record RecoveryInput(String operationId, String businessText, String provider, AnalysisScope analysisScope,
                          ClusterAnalysisView.ObservationScope scope, AnalysisReasonLength analysisReasonLength,
-                         com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+                         com.taxonomy.dto.AnalysisLanguage analysisLanguage, Long requirementVersionId) {
+        public RecoveryInput(String operationId, String businessText, String provider, AnalysisScope analysisScope,
+                             ClusterAnalysisView.ObservationScope scope, AnalysisReasonLength analysisReasonLength,
+                             com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+            this(operationId, businessText, provider, analysisScope, scope, analysisReasonLength, analysisLanguage, null);
+        }
+
         public RecoveryInput(String operationId, String businessText, String provider, AnalysisScope analysisScope,
                              ClusterAnalysisView.ObservationScope scope, AnalysisReasonLength analysisReasonLength) {
             this(operationId, businessText, provider, analysisScope, scope, analysisReasonLength, null);

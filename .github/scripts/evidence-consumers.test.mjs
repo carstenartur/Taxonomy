@@ -98,6 +98,15 @@ test('portfolio shows rule judgments, source and matched versus canonical member
     assert.ok(!recommendation.includes('0%'));assert.ok(!recommendation.includes('text-bg-success'));
 });
 
+test('portfolio snapshot identifies the retained catalogue, model, scope and profile versions',()=>{
+    const html=detailHtml({analysis:{modelBinding:{commit:'b'.repeat(40),semanticRevision:8,modelSha256:'a'.repeat(64),
+        catalogueRevision:null,executionCatalogueRevision:'used-3',briefVersion:'brief-7',
+        scope:{mode:'TAXONOMIES_ONLY',taxonomyRoots:['BP']},references:[{id:'standard',sourceVersionId:'<edition-4>'}]}}});
+    for(const evidence of ['Catalogue assigned to the project','Catalogue used for analysis','used-3','brief-7',
+        '&lt;edition-4&gt;','b'.repeat(40),'BP']) assert.ok(html.includes(evidence),evidence);
+    assert.ok(!html.includes('<edition-4>'));
+});
+
 for (const field of ['repositoryId','workspaceScopeKey','branch','commit']) test(`evidence fence rejects different ${field} and absent proof`,async()=>{
     const f=graphFixture();
     assert.equal(await f.graph.isCurrentEvidence(selected,evidence),true);

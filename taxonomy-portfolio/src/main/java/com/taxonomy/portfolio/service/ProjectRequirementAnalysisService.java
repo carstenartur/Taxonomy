@@ -284,6 +284,12 @@ public class ProjectRequirementAnalysisService {
 
         List<Long> requirementIds = selectRequirementIds(projectId, request, username, context);
         int maxNodes = normalizeMaxNodes(request.maxArchitectureNodes());
+        if (request.requirementVersionId() != null || request.model() != null) {
+            if (request.requirementVersionId() != null && request.analyzeAll()) throw PortfolioException.validation("Select one requirement to analyze a specific version");
+            return persistenceService.createOrReuseJob(projectId, requirementIds, normalizeProvider(request.provider()),
+                    maxNodes, request.idempotencyKey(), username, context, request.analysisLanguage(),
+                    request.requirementVersionId(), request.model());
+        }
         if (request.analysisLanguage() != null) return persistenceService.createOrReuseJob(
                 projectId, requirementIds, normalizeProvider(request.provider()), maxNodes, request.idempotencyKey(),
                 username, context, request.analysisLanguage());
@@ -339,7 +345,8 @@ public class ProjectRequirementAnalysisService {
                                                 WorkspaceContext context) {
         String scopeKey = PortfolioScope.key(username, context);
         AnalysisJobView job = persistenceService.getJob(jobId, projectId, username, context);
-        String taxonomyFingerprint = fingerprintService.taxonomyFingerprint();
+        var admittedModel = persistenceService.admittedModel(jobId, projectId, username, context);
+        String taxonomyFingerprint = admittedModel == null ? fingerprintService.taxonomyFingerprint() : null;
         String promptFingerprint = fingerprintService.promptFingerprint();
         if (job.analysisLanguage() != null) promptFingerprint = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(
                 promptFingerprint, com.taxonomy.analysis.service.AnalysisLanguageContext.POLICY, job.analysisLanguage().value());
@@ -374,15 +381,18 @@ public class ProjectRequirementAnalysisService {
                                         projectId,
                                         workItem.requirementId(),
                                         snapshotId,
-                                        analysisSessionId), com.taxonomy.dto.AnalysisScope.full(), job.providerBinding())
+                                        analysisSessionId, workItem.requirementVersionId()),
+                                admittedModel == null ? com.taxonomy.dto.AnalysisScope.full() : admittedModel.scope(),
+                                job.providerBinding())
                                 .withAnalysisReasonLength(job.analysisReasonLength() == null
                                         ? com.taxonomy.dto.AnalysisReasonLength.STANDARD : job.analysisReasonLength())
-                                .withAnalysisLanguage(job.analysisLanguage());
+                                .withAnalysisLanguage(job.analysisLanguage())
+                                .withModelBinding(admittedModel);
                 AnalysisResult analysis;
                 // Close the question journal before optional snapshot enrichment. Only
                 // the actual classification/relation procedure owns these checkpoints.
                 try (var continuation = budgetContinuations == null ? null
-                        : budgetContinuations.begin(workItem, job, username, context)) {
+                        : budgetContinuations.begin(workItem, job, username, context, admittedModel)) {
                     if (continuation == null) {
                         analysis = analyzeRequirementUseCase.analyze(command).analysisResult();
                     } else if (continuation.replay() != null) {
@@ -420,7 +430,8 @@ public class ProjectRequirementAnalysisService {
                         effectiveProvider,
                         null,
                         promptFingerprint,
-                        taxonomyFingerprint,
+                        admittedModel == null ? taxonomyFingerprint
+                                : com.taxonomy.dto.TaxonomyDataFingerprint.sha256(analysis.getTree()),
                         username,
                         context,
                         durationMs);

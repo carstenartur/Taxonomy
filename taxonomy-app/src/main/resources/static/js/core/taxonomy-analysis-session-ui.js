@@ -164,6 +164,7 @@
         S.currentProductCoverageGaps = [];
         S.currentArchView = null;
         S.currentCopilot = null;
+        S.currentModelBinding = null;
         runtime.analysisReference = null; runtime.analysisEvidence = null;
         S.currentRelationSearchReport = null;
         S.storedBusinessText = null;

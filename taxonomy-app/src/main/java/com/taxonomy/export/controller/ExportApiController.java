@@ -329,6 +329,14 @@ public class ExportApiController {
         String provider = body.get("provider") instanceof String p
                 ? p : exportFacade.getActiveProviderName();
         SavedAnalysis exported = exportFacade.buildExport(requirement, scores, reasons, provider);
+        if (body.get("modelBinding") != null) {
+            try {
+                exported.setModelBinding(recoveryObjectMapper.convertValue(body.get("modelBinding"),
+                        com.taxonomy.dto.AnalysisModelBinding.class));
+            } catch (IllegalArgumentException | tools.jackson.core.JacksonException invalid) {
+                return ResponseEntity.badRequest().build();
+            }
+        }
         if (body.get("copilot") != null) {
             try {
                 exported.setCopilot(recoveryObjectMapper.convertValue(body.get("copilot"),
@@ -417,6 +425,7 @@ public class ExportApiController {
             result.put("reasons", saved.getReasons() != null ? saved.getReasons() : Map.of());
             result.put("provider", saved.getProvider());
             result.put("copilot", saved.getCopilot());
+            if (saved.getModelBinding() != null) result.put("modelBinding", saved.getModelBinding());
             result.put("analysisOperationId", saved.getAnalysisOperationId());
             result.put("analysisProviderId", saved.getAnalysisProviderId());
             result.put("warnings", warnings);

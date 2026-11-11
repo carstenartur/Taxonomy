@@ -20,8 +20,30 @@ public class RetainedCatalogueDefinitions implements com.taxonomy.dsl.model.Cata
     public CatalogueDefinition forModel(com.taxonomy.dsl.model.CanonicalArchitectureModel model) {
         String revision = model.getCatalogueRevision();
         if (revision == null) return CatalogueDefinition.standard();
-        return forGeneration(sources.findRevision(revision)
-                .orElseThrow(() -> new IllegalStateException("The project's catalogue revision is unavailable")));
+        return forGeneration(generation(revision));
+    }
+
+    @Override
+    public CatalogueDefinition forRevision(String revision) {
+        var retained = generation(revision);
+        if (retained.workbook().use() != CatalogueSourceJournal.Use.APPLIED)
+            throw new IllegalStateException("The recorded catalogue workbook was not retained as applied");
+        return forGeneration(retained);
+    }
+
+    private CatalogueSourceJournal.Snapshot generation(String revision) {
+        return sources.findRevision(revision)
+                .orElseThrow(() -> new IllegalStateException("The project's catalogue revision is unavailable"));
+    }
+
+    public record AppliedGeneration(String revision, CatalogueDefinition definition) { }
+
+    /** Resolve a project pin, or capture the current pointer once when the project has no pin. */
+    public java.util.Optional<AppliedGeneration> appliedGeneration(String projectRevision) {
+        var selected = projectRevision == null ? sources.current() : sources.findRevision(projectRevision).orElse(null);
+        if (selected == null || selected.workbook().use() != CatalogueSourceJournal.Use.APPLIED)
+            return java.util.Optional.empty();
+        return java.util.Optional.of(new AppliedGeneration(selected.id(), forGeneration(selected)));
     }
 
     public CatalogueDefinition current() {

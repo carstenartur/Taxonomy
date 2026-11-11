@@ -108,6 +108,24 @@ class ArchitectureEditorServiceTest {
         assertThat(fixture.journal.read(alice).operations()).hasSize(3);
     }
 
+    @Test void historicalCheckpointReceiptRequiresTheExactWorkspaceRevisionContentAndOptionalCommit() throws Exception {
+        execute(update("Published service interface"));
+        String historical = service.read(alice, null).dsl();
+        var first = service.checkpoint(alice, new CreateCheckpointCommand(service.read(alice, null).context(), metadata()));
+        execute(update("Revised service interface"));
+        var second = service.checkpoint(alice, new CreateCheckpointCommand(service.read(alice, null).context(), metadata()));
+        var selected = service.read(alice, null, 1L);
+        assertThat(selected.dsl()).isEqualTo(historical);
+        assertThat(service.historicalCheckpoint(alice, selected, null)).isEqualTo(first.commitId());
+        assertThat(service.historicalCheckpoint(alice, selected, first.commitId())).isEqualTo(first.commitId());
+        assertThat(service.historicalCheckpoint(alice, selected, second.commitId())).isNull();
+        var otherWorkspace = RepositoryContext.workspace("repo-a", "workspace-b", "draft", "alice");
+        assertCode(() -> service.historicalCheckpoint(otherWorkspace, selected, null), "CONTEXT_CHANGED");
+        assertThatThrownBy(() -> service.historicalCheckpoint(alice, service.read(alice, null), null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(fixture.journal.checkpointAtRevision(alice, 1, service.read(alice, null).dsl(), null)).isNull();
+    }
+
     @Test void hundredMixedEditsAreJournaledWithoutMovingGitAndCheckpointsCollectTheirSnapshots() throws Exception {
         var git = fixture.repositories.resolveRepository(alice);
         String original = git.getHeadCommit("draft");

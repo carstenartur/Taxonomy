@@ -441,6 +441,7 @@
         }
         return initialReady;
     };
+    workspace.analysisScope = resolveAnalysisScope;
     workspace.ready();
     function report(error) { var target=el('architectureWorkspaceError');target.textContent=error.message;target.hidden=false; }
 }());

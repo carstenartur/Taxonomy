@@ -26,6 +26,19 @@ class AnalysisMessageCodecTest {
     private final AnalysisTaskGraph graph = AnalysisTaskGraph.plan(OP,
             List.of(TaxonomyShardRoot.of("CP"), TaxonomyShardRoot.of("IP")), true);
 
+    @Test
+    void commitFreeModelDigestUsesTheStrictVersionFourEnvelope() {
+        var authority = new AnalysisSourceAuthority("repo-1", "workspace", "draft", null, "c".repeat(64));
+        var model = new AnalysisOperationContext(OP, authority, RequirementReference.adHoc(REQUIREMENT_TEXT), OP);
+        var request = new AnalysisMessageFactory(model, Clock.systemUTC()).task(graph.tasks().getFirst());
+        var bytes = codec.encode(request);
+        assertThat(request.envelope().schemaVersion()).isEqualTo(4);
+        assertThat(codec.decode(bytes).envelope().authority()).isEqualTo(authority);
+        var incompatible = new String(bytes, StandardCharsets.UTF_8).replace("\"schemaVersion\":4", "\"schemaVersion\":3");
+        assertThatThrownBy(() -> codec.decode(incompatible.getBytes(StandardCharsets.UTF_8)))
+                .isInstanceOf(AnalysisMessageFormatException.class);
+    }
+
     private List<AnalysisMessage> allContracts() {
         var subtaxonomy = (SubtaxonomyAnalysisTask) messages.task(graph.tasks().get(0));
         var relation = (RelationAnalysisTask) messages.task(graph.tasks().get(2));
@@ -50,6 +63,20 @@ class AnalysisMessageCodecTest {
                     .doesNotContain(REQUIREMENT_TEXT);
             assertThat(codec.decode(encoded)).isEqualTo(message);
         }
+    }
+
+    @Test
+    void versionedRequirementSurvivesDispatchAndRedelivery() {
+        var source = new RequirementReference(1L, 2L, "snap-1", RequirementReference.sha256(REQUIREMENT_TEXT), 7L);
+        var operation = new AnalysisOperationContext(OP, new AnalysisSourceAuthority("repo", null, "draft", "abc"), source, OP);
+        var task = new AnalysisMessageFactory(operation, Clock.systemUTC()).task(graph.tasks().getFirst());
+        var json = new String(codec.encode(task), StandardCharsets.UTF_8);
+        assertThat(task.envelope().schemaVersion()).isEqualTo(4);
+        assertThat(json).contains("requirementVersionId").doesNotContain(REQUIREMENT_TEXT);
+        assertThat(codec.decode(codec.encode(task)).envelope().nextAttempt().requirement()).isEqualTo(source);
+        assertKind(json.replace("\"schemaVersion\":4", "\"schemaVersion\":3"), Kind.INVALID_CONTRACT);
+        assertThat(new String(codec.encode(allContracts().getFirst()), StandardCharsets.UTF_8))
+                .doesNotContain("requirementVersionId");
     }
 
     @Test

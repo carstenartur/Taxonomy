@@ -26,6 +26,25 @@ import static org.assertj.core.api.Assertions.*;
 
 /** Actual persisted relationships, including historical and foreign records with the same business keys. */
 class PortfolioRecordsExportIT {
+    @Test void portableJobPreservesItsOriginalAdmittedModelEvidence() throws Exception {
+        try (var fixture = new Fixture()) {
+            graph(fixture, "repo-a", "private-a", "ALICE");
+            var binding = new com.taxonomy.dto.AnalysisModelBinding(com.taxonomy.dto.AnalysisModelBinding.State.CATALOGUE_UNRESOLVED,
+                    "repo-a", "private-a", "draft", "a".repeat(40), 9L, "GIT_CHECKPOINT", "f".repeat(64), null,
+                    null, java.util.Set.of(), com.taxonomy.dto.AnalysisScope.full(), null, java.util.Map.of(),
+                    java.util.List.of(), java.util.Set.of(), null);
+            var json = new tools.jackson.databind.ObjectMapper();
+            String stored = json.writeValueAsString(binding);
+            fixture.jdbc.update("update req_analysis_job set admitted_model_json=?", stored);
+            var contents = new Contents();
+            new PortfolioBackupContributor(fixture.database).write(snapshot(BackupProfile.CURRENT_STATE,
+                    new BackupScope.Workspace("repo-a", "private-a")), contents);
+            var recorded = one(contents, "analysis-job").path("admittedModelJson").asText();
+            assertThat(recorded).isEqualTo(stored);
+            assertThat(json.readValue(recorded, com.taxonomy.dto.AnalysisModelBinding.class)).isEqualTo(binding);
+        }
+    }
+
     @Test void largeAnalysisSnapshotExportsCompletelyWithoutChangingItsDatabaseProjection() throws Exception {
         String original = "{\"reasons\":{\"CP\":\"" + "Complete snapshot evidence. ".repeat(500_000) + "\"}}";
         assertThat(original.length()).isGreaterThan(12_000_000);
@@ -63,6 +82,11 @@ class PortfolioRecordsExportIT {
                     new BackupScope.Workspace("repo-a", "private-a")), contents);
             assertThat(one(contents, "analysis-job").path("analysisReasonLength").isNull()).isTrue();
             assertThat(one(contents, "analysis-job").path("analysisLanguage").isNull()).isTrue();
+            var oldRecord = (com.fasterxml.jackson.databind.node.ObjectNode) one(contents, "analysis-job").deepCopy();
+            assertThat(oldRecord.path("admittedModelJson").isNull()).isTrue();
+            oldRecord.remove("admittedModelJson");
+            var legacy = PortableRows.json().treeToValue(oldRecord, PortfolioBackupContributor.RequirementAnalysisJobRecord.class);
+            assertThat(legacy.admittedModelJson()).isNull();
         }
     }
 

@@ -52,7 +52,8 @@ final class ClusterAnalysisCoverage {
                 || !Objects.equals(authority.repositoryId(), snapshot.source().repositoryId())
                 || !Objects.equals(authority.workspaceId(), snapshot.source().workspaceId())
                 || !Objects.equals(authority.branch(), snapshot.source().branch())
-                || !Objects.equals(authority.sourceCommit(), snapshot.source().sourceCommit()))
+                || !Objects.equals(authority.sourceCommit(), snapshot.source().sourceCommit())
+                || !Objects.equals(authority.semanticModelSha256(), snapshot.source().semanticModelSha256()))
             throw new IllegalStateException("Frozen coverage source differs from admitted authority");
         var parents = new HashSet<String>();
         for (var node : snapshot.nodes()) if (node.parentCode() != null) parents.add(node.parentCode());

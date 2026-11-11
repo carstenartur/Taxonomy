@@ -80,14 +80,33 @@ class DecisionSourceFingerprintTest {
         assertNotEquals(fingerprint(standard), fingerprint(detailed));
     }
 
+    @Test
+    void historicalModelAndExecutedCatalogueDetermineSnapshotSourceIdentity() {
+        var first = report(Map.of(), Map.of(), null, "generation-a");
+        var second = report(Map.of(), Map.of(), null, "generation-b");
+        assertEquals("generation-a", first.scope().modelBinding().executionCatalogueRevision());
+        assertEquals(null, first.scope().modelBinding().catalogueRevision());
+        assertNotEquals(fingerprint(first), fingerprint(second));
+        assertTrue(fingerprint(first).matches("[a-f0-9]{64}"));
+    }
+
     private DecisionRationaleReport report(Map<String, String> displayReasons, Map<String, String> recordedReasons) {
         return report(displayReasons, recordedReasons, null);
     }
 
     private DecisionRationaleReport report(Map<String, String> displayReasons, Map<String, String> recordedReasons,
             com.taxonomy.dto.AnalysisReasonLength length) {
+        return report(displayReasons, recordedReasons, length, null);
+    }
+
+    private DecisionRationaleReport report(Map<String, String> displayReasons, Map<String, String> recordedReasons,
+            com.taxonomy.dto.AnalysisReasonLength length, String executionCatalogue) {
+        var model = executionCatalogue == null ? null : new com.taxonomy.dto.AnalysisModelBinding(
+                com.taxonomy.dto.AnalysisModelBinding.State.CATALOGUE_UNRESOLVED, "repo", "workspace", "draft",
+                null, 7L, "WORKSPACE_REVISION", "a".repeat(64), null, "definition-3",
+                Set.of("CP"), AnalysisScope.full(), "brief-2", Map.of(), List.of(), Set.of(), null, executionCatalogue);
         var provenance = new AnalysisSnapshotProvenance("snapshot", 1L, 2L, 3L, 1, Instant.EPOCH,
-                "author", "mock-model", TaxonomyDataFingerprint.sha256(tree), "prompt");
+                "author", "mock-model", TaxonomyDataFingerprint.sha256(tree), "prompt", model);
         var input = new DecisionAnalysisInput("Frozen requirement", scores, displayReasons, "MOCK", "SUCCESS",
                 List.of(), List.of(), tree, provenance, details).withRecordedReasons(recordedReasons)
                 .withScope(new AnalysisScope(Set.of("CP"), AnalysisMode.TAXONOMIES_ONLY), null)

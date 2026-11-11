@@ -44,8 +44,7 @@ public final class FrozenClusterRelationComputation implements ClusterRelationCo
         if (!input.executable() || !context.equals(ClusterAnalysisStore.context(task.envelope()))
                 || !context.requirement().matches(input.command().businessText()))
             throw new IllegalArgumentException("Relation input does not match its immutable task authority");
-        var source = context.authority();
-        var identity = new CatalogueSourceIdentity(source.repositoryId(), source.workspaceId(), source.branch(), source.sourceCommit());
+        var identity = DurableClusterAnalysisExecution.source(context);
         var ordinal = task.taskId().relationWorkOrdinal();
         var work = ordinal.isPresent() ? mapper.readValue(Objects.requireNonNull(input.taskInput()), RelationSearchDistribution.Work.class) : null;
         var plan = work == null ? null : Objects.requireNonNull(store.relationPlan(context), "persisted relation preparation");
@@ -70,7 +69,8 @@ public final class FrozenClusterRelationComputation implements ClusterRelationCo
                 AnalysisRunControl.checkpoint();
                 roots.add(mapper.readValue(store.shard(context, root), RootCatalogueSnapshot.class));
             }
-            try (var frozen = snapshots.bind(identity, required, roots)) {
+            try (var profile = com.taxonomy.relations.service.AdmittedRelationRules.open(input.command().modelBinding());
+                 var frozen = snapshots.bind(identity, required, roots)) {
                 var catalogue = catalogue(work == null);
                 if (work != null) {
                     if (!relations.isEnabled()) throw new IllegalStateException("Hierarchical relation search is disabled");

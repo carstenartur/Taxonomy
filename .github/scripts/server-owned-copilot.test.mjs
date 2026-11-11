@@ -124,8 +124,10 @@ for (const [name, edit] of [
   assert.ok(f.C.currentPayload().reasons);
 });
 test('reference restoration hydrates authorized server result and retains stale edited text and selected view', async () => {
-  const f = fixture(); f.canonical();
+  const f = fixture(); const saved = f.canonical();
+  saved.result.modelBinding = { state: 'CATALOGUE_UNRESOLVED', catalogueRevision: null, executionCatalogueRevision: 'executed-2' };
   await f.C.applyDraft({ version: 2, payload: referencePayload() });
+  assert.deepEqual(clone(f.C.currentPayload(true).modelBinding), saved.result.modelBinding);
   assert.equal(f.requests[0].workspaceId, 'ws-1'); assert.match(f.requests[0].path, /continuation-1$/);
   assert.equal(f.input.value, 'Edited requirement'); assert.equal(f.state.lastAnalyzedText, 'Original requirement');
   assert.equal(f.state.currentView, 'tree'); assert.equal(f.C.isStale(), true);

@@ -17,6 +17,31 @@ class AnalysisContinuationBackupRestorerTest {
     static final String SUCCESS = "a".repeat(64), UNCERTAIN = "R" + "b".repeat(63);
     static final WorkspaceContext TARGET = new WorkspaceContext("target-owner", "target-workspace", "target-branch", "target-repository");
 
+    @Test void historicalBindingSurvivesAnInterruptedContinuationWithoutGrantingTargetAuthority() {
+        try (var db = new ClusterAnalysisStoreTest.Database()) {
+            var model = new AnalysisModelBinding(AnalysisModelBinding.State.CATALOGUE_UNRESOLVED,
+                    "archive-repository", "archive-workspace", "archive-branch", "a".repeat(40), 6L,
+                    "GIT_CHECKPOINT", "f".repeat(64), null, null, Set.of(), AnalysisScope.full(),
+                    null, Map.of(), List.of(), Set.of(), null);
+            var archive = source("RUNNING", ResumePolicy.REVIEW_REQUIRED);
+            var request = JSON.readValue(archive.requestJson(), AnalysisRequest.class);
+            request.setModelBinding(model);
+            var tree = (tools.jackson.databind.node.ObjectNode) JSON.valueToTree(archive);
+            tree.put("requestJson", JSON.writeValueAsString(request));
+            var restore = new AnalysisContinuationBackupRestorer(db.em, db.transactions, JSON);
+            String targetId = UUID.randomUUID().toString();
+            assertThatThrownBy(() -> restore.restore(JSON.treeToValue(tree, ContinuationRecord.class),
+                    List.of(), targetId, TARGET)).isInstanceOf(IllegalArgumentException.class);
+            tree.putNull("resultJson");
+            restore.restore(JSON.treeToValue(tree, ContinuationRecord.class), List.of(), targetId, TARGET);
+            var snapshot = tx(db).execute(status -> new AnalysisContinuationStore(db.em, JSON).read(targetId, TARGET));
+            assertThat(snapshot.request().getModelBinding()).isEqualTo(model);
+            assertThat(snapshot.result().getModelBinding()).isEqualTo(model);
+            assertThat(snapshot.recovery().state()).isEqualTo("STOPPED");
+            assertThat(db.sent).isEmpty();
+        }
+    }
+
     @Test void interruptedArchiveRetainsAnswersAndUncertaintyAcrossANewFactoryWithoutRuntimeAuthority() {
         String id = UUID.randomUUID().toString(), url = "jdbc:hsqldb:mem:restored-continuation-" + id;
         try (var db = new ClusterAnalysisStoreTest.Database(url, "create", sql -> sql)) {

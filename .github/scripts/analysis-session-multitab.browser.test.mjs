@@ -18,6 +18,9 @@ test('two pages can open and observe the same running draft without writes or co
   const context = await browser.newContext();
   let draft = null;
   const writes = [], failures = [], errors = [];
+  const template = await readFile(path.join(resources, 'templates/index.html'), 'utf8');
+  const intakeChoices = template.match(/<section id="analysisIntakeChoices"[\s\S]*?<\/section>/)?.[0];
+  assert.ok(intakeChoices, 'the real analysis entry controls are mounted');
   const continuation = { request: { businessText: 'Hospital communications', provider: 'LOCAL' },
     recovery: { id: 'continuation-1', version: 1, state: 'RUNNING', completedCalls: 0, openQuestions: [] },
     clusterOperationId: 'operation-1' };
@@ -28,6 +31,7 @@ test('two pages can open and observe the same running draft without writes or co
       <script data-taxonomy-analysis-session></script>
       </head><body>
       <textarea id="businessText" aria-label="Anforderung"></textarea>
+      ${intakeChoices}
       <select id="providerSelect"><option value="LOCAL">LOCAL</option></select>
       <input type="checkbox" id="interactiveMode"><input type="checkbox" id="includeArchitectureView">
       <button id="analyzeBtn">Analyse</button><button id="copilotBtn">Copilot</button>
@@ -46,11 +50,11 @@ test('two pages can open and observe the same running draft without writes or co
     } else assert.equal(request.method(), 'GET');
     return draft ? json(draft) : route.fulfill({ status: 204 });
   });
-  async function openPage() {
+  async function openPage(query = '') {
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
     await page.clock.install();
-    await page.goto('http://taxonomy.test/');
+    await page.goto('http://taxonomy.test/' + query);
     await page.evaluate(() => {
       // This component fixture loads session modules explicitly below. Keep
       // the API client's unrelated companion surfaces from bootstrapping a
@@ -116,6 +120,18 @@ test('two pages can open and observe the same running draft without writes or co
     assert.equal(await second.evaluate(() => window.TaxonomyAnalysisSession.state().conflict), true);
     assert.equal(await second.locator('#businessText').inputValue(), 'Independent second edit');
     assert.equal(draft.payload.businessText, 'First edit');
+    assert.equal(await first.locator('#analysisIntakeChoices').isVisible(), true);
+    assert.equal(await first.locator('#analysisIntakeVersion').isVisible(), false);
+    const selected = await openPage('?projectId=1&requirementId=2&requirementVersionId=7');
+    assert.equal(await selected.locator('#businessText').inputValue(), 'First edit');
+    assert.equal(await selected.locator('#analysisIntakeChoices').isVisible(), false);
+    const before = writes.length;
+    await selected.locator('#businessText').fill('A proposed new text version');
+    assert.equal(await selected.locator('#analysisIntakeVersion').isVisible(), true);
+    assert.equal(await selected.locator('#analysisIntakeProject').isVisible(), true);
+    assert.equal(writes.length, before, 'displaying intake choices never creates a job or requirement');
+    assert.deepEqual(errors, []);
+
   } finally { await context.close(); }
 });
 

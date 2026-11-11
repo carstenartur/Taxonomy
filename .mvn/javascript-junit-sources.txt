@@ -6,6 +6,7 @@
 .github/scripts/analysis-navigation.browser.test.mjs
 .github/scripts/analysis-operation-controller.test.mjs
 .github/scripts/analysis-partial-results.test.mjs
+.github/scripts/analysis-profile-choice.test.mjs
 .github/scripts/analysis-queue.test.mjs
 .github/scripts/analysis-readiness.test.mjs
 .github/scripts/analysis-recovery-viewport.test.mjs

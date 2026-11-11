@@ -74,7 +74,7 @@ class PortfolioAnalysisRecoveryAndLimitsTest {
     }
 
     @Test
-    void recoversExpiredClaimExactlyOnceAndIncrementsAttemptOnce() {
+    void recoversExpiredClaimUsingAdmittedTextEvenWhenANewerVersionExists() {
         WorkspaceContext context = context("claim-recovery");
         var project = createProject(context);
         var requirement = createRequirement(project.id(), context, "REQ-001");
@@ -103,7 +103,7 @@ class PortfolioAnalysisRecoveryAndLimitsTest {
                 requirement.id(),
                 new CreateRequirementVersionRequest(
                         "Updated requirement text for the recovered attempt",
-                        "Rebind the retry to the current immutable version",
+                        "New text for a future analysis",
                         null),
                 context.username(),
                 context);
@@ -131,9 +131,14 @@ class PortfolioAnalysisRecoveryAndLimitsTest {
                     assertThat(item.status()).isEqualTo(AnalysisStatus.PENDING);
                     assertThat(item.attempt()).isEqualTo(2);
                     assertThat(item.startedAt()).isNull();
+                    assertThat(item.requirementVersionId()).isEqualTo(job.items().getFirst().requirementVersionId());
+                    assertThat(item.requirementVersionNumber()).isEqualTo(job.items().getFirst().requirementVersionNumber());
+                });
+        var reanalysis = persistenceService.createOrReuseJob(project.id(), List.of(requirement.id()),
+                "MOCK", 25, "new-analysis-" + UUID.randomUUID(), context.username(), context);
+        assertThat(reanalysis.items()).singleElement().satisfies(item -> {
                     assertThat(item.requirementVersionId()).isEqualTo(retryVersion.id());
-                    assertThat(item.requirementVersionNumber())
-                            .isEqualTo(retryVersion.versionNumber());
+                    assertThat(item.requirementVersionNumber()).isEqualTo(retryVersion.versionNumber());
                 });
     }
 

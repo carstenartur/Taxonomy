@@ -112,7 +112,8 @@ public class AnalyzeRequirementUseCase {
         long startedNanos = System.nanoTime();
         InProcessAnalysisOperation operation = null;
         com.taxonomy.catalog.snapshot.FrozenCatalogueContext.Scope catalogueScope = null;
-        try (var reasonScope = com.taxonomy.analysis.service.AnalysisReasonContext.open(command.analysisReasonLength());
+        try (var profile = com.taxonomy.relations.service.AdmittedRelationRules.open(command.modelBinding());
+             var reasonScope = com.taxonomy.analysis.service.AnalysisReasonContext.open(command.analysisReasonLength());
              var languageScope = com.taxonomy.analysis.service.AnalysisLanguageContext.open(command.analysisLanguage());
              var mockScope = command.retainedAnalysis() != null || command.providerBinding() != null || "MOCK".equalsIgnoreCase(command.provider())
                 ? llmService.withProviderBinding(command.provider(), command.providerBinding()) : null) {
@@ -124,13 +125,14 @@ public class AnalyzeRequirementUseCase {
             ViewContext viewContext = resolveViewContext(command);
             operation = InProcessAnalysisOperation.open(operationContext(command, viewContext), null);
 
+            catalogueScope = AdmittedCatalogue.open(catalogueSnapshots, command.modelBinding(), command.workspaceContext());
             if (command.retainedAnalysis() != null) {
                 var original = command.retainedAnalysis().getViewContext();
                 if (original == null || viewContext == null || !java.util.Objects.equals(original.basedOnCommit(), viewContext.basedOnCommit())
                         || !java.util.Objects.equals(original.basedOnBranch(), viewContext.basedOnBranch()))
                     throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
                             "The original source changed before relation execution");
-                catalogueScope = bindRetainedCatalogue(command, viewContext);
+                if (catalogueScope == null) catalogueScope = bindRetainedCatalogue(command, viewContext);
             }
             AnalysisResult result = command.retainedAnalysis() != null
                     ? new tools.jackson.databind.ObjectMapper().readValue(new tools.jackson.databind.ObjectMapper().writeValueAsString(command.retainedAnalysis()), AnalysisResult.class)
@@ -140,6 +142,7 @@ public class AnalyzeRequirementUseCase {
             // Reports from an earlier retained result do not describe this new execution.
             result.setCopilot(null);
             result.setAnalysisScope(command.analysisScope());
+            result.setModelBinding(command.modelBinding());
             result.setAnalysisReasonLength(command.analysisReasonLength());
             result.setAnalysisLanguage(command.analysisLanguage());
             if (command.retainedAnalysis() != null) {
@@ -345,9 +348,7 @@ public class AnalyzeRequirementUseCase {
     private ViewContext resolveViewContext(AnalyzeRequirementCommand command) {
         String effectiveUsername = command.workspaceContext().username();
         String branch = command.workspaceContext().currentBranch();
-        return repositoryStateService.getViewContext(
-                effectiveUsername,
-                branch,
-                command.workspaceContext());
+        var view = repositoryStateService.getViewContext(effectiveUsername, branch, command.workspaceContext());
+        return AnalysisOperationContexts.selectedView(command, view);
     }
 }

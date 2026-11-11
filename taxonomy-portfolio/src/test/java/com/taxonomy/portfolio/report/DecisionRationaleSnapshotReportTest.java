@@ -133,6 +133,11 @@ class DecisionRationaleSnapshotReportTest {
                 "main", "commit-a", AnalysisStatus.SUCCESS);
         AnalysisResult analysis = reportableAnalysis();
         analysis.setProvider("ANALYSIS_PROVIDER");
+        var model = new com.taxonomy.dto.AnalysisModelBinding(com.taxonomy.dto.AnalysisModelBinding.State.CATALOGUE_UNRESOLVED,
+                "repository-a", "workspace-a", "draft", null, 8L, "WORKSPACE_REVISION", "c".repeat(64), null,
+                "definition-4", java.util.Set.of("CP"), com.taxonomy.dto.AnalysisScope.full(), "brief-3",
+                Map.of(), List.of(), java.util.Set.of(), null, "used-catalogue-4");
+        analysis.setModelBinding(model);
         analysis.setAnalysisReasonLength(com.taxonomy.dto.AnalysisReasonLength.DETAILED);
         analysis.setAnalysisScope(new com.taxonomy.dto.AnalysisScope(java.util.Set.of("CP"), com.taxonomy.dto.AnalysisMode.TAXONOMIES_ONLY));
         analysis.setAnalysisCoverage(com.taxonomy.dto.AnalysisCoverage.derive(analysis.getTree(), analysis.getScores(), analysis.getScores(), Map.of()));
@@ -167,6 +172,9 @@ class DecisionRationaleSnapshotReportTest {
                 inputCaptor.capture(), eq(CONTEXT), viewCaptor.capture(), eq(Locale.GERMAN));
 
         DecisionAnalysisInput input = inputCaptor.getValue();
+        var mapper = new tools.jackson.databind.ObjectMapper();
+        assertThat(mapper.treeToValue(mapper.valueToTree(input.snapshotProvenance()).path("modelBinding"),
+                com.taxonomy.dto.AnalysisModelBinding.class)).isEqualTo(model);
         assertThat(input.analysisScope()).isEqualTo(analysis.getAnalysisScope());
         assertThat(input.analysisReasonLength()).isEqualTo(com.taxonomy.dto.AnalysisReasonLength.DETAILED);
         assertThat(input.analysisCoverage()).isEqualTo(analysis.getAnalysisCoverage());

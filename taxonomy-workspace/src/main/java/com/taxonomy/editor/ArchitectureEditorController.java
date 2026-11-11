@@ -277,11 +277,7 @@ public class ArchitectureEditorController {
     }
 
     private boolean mayEdit() {
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication != null && authentication.isAuthenticated()
-                && authentication.getAuthorities().stream()
-                        .anyMatch(authority -> "ROLE_ARCHITECT".equals(authority.getAuthority()))
-                && editPermission.map(permission -> permission.mayEdit(authentication)).orElse(true);
+        return ArchitectureEditPermission.allowed(SecurityContextHolder.getContext().getAuthentication(), editPermission);
     }
 
     private static ResponseEntity.BodyBuilder documentResponse(ArchitectureEditorService.Document document) {

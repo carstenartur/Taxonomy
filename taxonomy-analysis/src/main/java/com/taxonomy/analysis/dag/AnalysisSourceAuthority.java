@@ -20,15 +20,23 @@ import java.util.Objects;
  *                     scope could not resolve one (never substituted by a guess)
  * @param sourceCommit exact architecture commit the analysis reads, or {@code null} when the
  *                     repository has not yet recorded a commit
+ * @param semanticModelSha256 verified content identity when the selected model has no Git commit
  */
 public record AnalysisSourceAuthority(String repositoryId, String workspaceId, String branch,
-                                      String sourceCommit) {
+                                      String sourceCommit,
+                                      @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                                      String semanticModelSha256) {
+    public AnalysisSourceAuthority(String repositoryId, String workspaceId, String branch, String sourceCommit) {
+        this(repositoryId, workspaceId, branch, sourceCommit, null);
+    }
 
     public AnalysisSourceAuthority {
         requireBounded(repositoryId, "repositoryId", false);
         requireBounded(workspaceId, "workspaceId", true);
         requireBounded(branch, "branch", true);
         requireBounded(sourceCommit, "sourceCommit", true);
+        if (semanticModelSha256 != null && !semanticModelSha256.matches("[0-9a-f]{64}"))
+            throw new IllegalArgumentException("Expected the complete semantic model digest");
     }
 
     private static void requireBounded(String value, String name, boolean nullable) {

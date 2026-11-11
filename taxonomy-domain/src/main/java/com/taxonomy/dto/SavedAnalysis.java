@@ -22,6 +22,12 @@ import java.util.Map;
  */
 public class SavedAnalysis {
 
+    /** Informational model evidence from the score file. It grants no authority over a server operation. */
+    private AnalysisModelBinding modelBinding;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public AnalysisModelBinding getModelBinding() { return modelBinding; }
+    public void setModelBinding(AnalysisModelBinding value) { modelBinding = value; }
+
     /** Portable evidence for display/export, never proof of an owned server operation. */
     private AnalysisCopilotResult copilot;
     public AnalysisCopilotResult getCopilot() { return copilot; }

@@ -74,6 +74,17 @@ public class RequirementAnalysisJob {
     @Column(name = "provider_plugin_sha256", length = 64) private String providerPluginSha256;
     @Column(name = "provider_config_revision", length = 64) private String providerConfigRevision;
 
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONG32VARCHAR)
+    @Column(name = "admitted_model_json", updatable = false)
+    private String admittedModelJson;
+
+    public void recordAdmittedModel(String json) {
+        if (admittedModelJson != null) throw new IllegalStateException("Analysis model admission is immutable");
+        admittedModelJson = Objects.requireNonNull(json);
+    }
+
+    public String getAdmittedModelJson() { return admittedModelJson; }
+
     @Column(name = "max_architecture_nodes", nullable = false)
     private int maxArchitectureNodes;
 

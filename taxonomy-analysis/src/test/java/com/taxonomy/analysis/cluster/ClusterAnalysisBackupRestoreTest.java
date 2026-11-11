@@ -33,6 +33,51 @@ class ClusterAnalysisBackupRestoreTest {
     private static final TaxonomyShardRoot CP = TaxonomyShardRoot.of("CP"), IP = TaxonomyShardRoot.of("IP");
     private static final ObjectMapper JSON = new ObjectMapper();
 
+    @Test void restoreKeepsOriginalModelEvidenceAndRequiresAnAllocatedTargetRequirementVersion() throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var origin = context("source-library");
+            var sourceRequirement = new RequirementReference(1L, 2L, "source-snapshot", origin.requirement().textSha256(), 7L);
+            var sourceContext = new AnalysisOperationContext(origin.operationId(), origin.authority(), sourceRequirement, origin.correlationId());
+            var base = command("requirement");
+            var binding = new com.taxonomy.dto.AnalysisModelBinding(com.taxonomy.dto.AnalysisModelBinding.State.CATALOGUE_UNRESOLVED,
+                    "repo", "workspace", "draft", "a".repeat(40), 4L, "GIT_CHECKPOINT", "f".repeat(64),
+                    null, null, Set.of(), base.analysisScope(), null, Map.of(), List.of(), Set.of(), null);
+            var srcCommand = versioned(base, sourceRequirement).withModelBinding(binding);
+            var identity = DurableClusterAnalysisExecutionTest.source(sourceContext);
+            source.store.admit(sourceContext, srcCommand, null, Map.of(
+                    CP, JSON.writeValueAsString(DurableClusterAnalysisExecutionTest.root(identity, "CP")),
+                    IP, JSON.writeValueAsString(DurableClusterAnalysisExecutionTest.root(identity, "IP"))));
+            var archive = archive(source, sourceContext.operationId());
+
+            var destination = targetContext("restored-library");
+            var targetRequirement = new RequirementReference(11L, 12L, "restored-snapshot", sourceRequirement.textSha256(), 17L);
+            var mapped = new AnalysisOperationContext(destination.operationId(), destination.authority(), targetRequirement, destination.correlationId());
+            var command = versioned(targetCommand(), targetRequirement).withModelBinding(binding);
+            var owner = new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON);
+            var srcVersion = new SourceRecordId("portfolio.requirement-version", "7");
+            assertThrows(IllegalArgumentException.class, () -> owner.restore(archive, mapped, command));
+            assertThrows(IllegalArgumentException.class, () -> owner.restore(archive, mapped, command, Map.of(srcVersion, 7L)));
+            assertThrows(IllegalArgumentException.class, () -> owner.restore(archive, mapped, command.withModelBinding(null), Map.of(srcVersion, 17L)));
+            owner.restore(archive, mapped, command, Map.of(srcVersion, 17L));
+
+            var saved = archive(target, mapped.operationId());
+            var restored = JSON.readValue(saved.run().commandJson(), AnalyzeRequirementCommand.class);
+            assertEquals(17L, restored.provenance().requirementVersionId());
+            assertEquals("restored-repository", restored.workspaceContext().repositoryId());
+            assertEquals(binding, restored.modelBinding());
+            assertEquals(binding, JSON.readValue(saved.run().resultJson(), AnalysisResult.class).getModelBinding());
+            assertEquals(ClusterAnalysisState.CANCELLED, target.store.snapshot(mapped).state());
+            assertTrue(target.sent.isEmpty());
+        }
+    }
+
+    private static AnalyzeRequirementCommand versioned(AnalyzeRequirementCommand command, RequirementReference requirement) {
+        var provenance = new com.taxonomy.dto.AnalysisProvenance(requirement.projectId(), requirement.requirementId(),
+                requirement.snapshotId(), "library-session", requirement.requirementVersionId());
+        return new AnalyzeRequirementCommand(command.businessText(), command.includeArchitectureView(), command.maxArchitectureNodes(),
+                command.provider(), command.username(), command.workspaceContext(), provenance, command.analysisScope());
+    }
+
     @Test void archivedRootClarificationRemainsInspectableWithoutRestartingWork() throws Exception {
         try (var source = new Database(); var target = new Database()) {
             var original = context("clarification-source"); source.admitFrozen(original);

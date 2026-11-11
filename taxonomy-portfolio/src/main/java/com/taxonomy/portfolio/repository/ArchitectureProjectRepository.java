@@ -23,6 +23,11 @@ public interface ArchitectureProjectRepository extends JpaRepository<Architectur
     @Query("select p from ArchitectureProject p where p.id=:id and p.scopeKey=:scope")
     Optional<ArchitectureProject> findByIdAndScopeKeyForUpdate(@Param("id") Long id, @Param("scope") String scope);
 
+    /** Serialize keyed job admission without advancing the project editing version. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from ArchitectureProject p where p.id=:id and p.scopeKey=:scope")
+    Optional<ArchitectureProject> lockForAnalysisAdmission(@Param("id") Long id, @Param("scope") String scope);
+
     Optional<ArchitectureProject> findByScopeKeyAndProjectKeyIgnoreCase(String scopeKey, String projectKey);
 
     boolean existsByScopeKeyAndProjectKeyIgnoreCase(String scopeKey, String projectKey);

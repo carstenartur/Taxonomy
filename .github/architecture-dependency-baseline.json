@@ -41,14 +41,14 @@
       "fromPackage": "com.taxonomy.analysis.cluster",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.snapshot",
-      "classDependencyCount": 29
+      "classDependencyCount": 28
     },
     {
       "fromContext": "analysis",
       "fromPackage": "com.taxonomy.analysis.cluster",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.relations.service",
-      "classDependencyCount": 1
+      "classDependencyCount": 2
     },
     {
       "fromContext": "analysis",
@@ -97,14 +97,14 @@
       "fromPackage": "com.taxonomy.analysis.recovery",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
-      "classDependencyCount": 3
+      "classDependencyCount": 2
     },
     {
       "fromContext": "analysis",
       "fromPackage": "com.taxonomy.analysis.recovery",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.snapshot",
-      "classDependencyCount": 4
+      "classDependencyCount": 6
     },
     {
       "fromContext": "analysis",
@@ -118,7 +118,7 @@
       "fromPackage": "com.taxonomy.analysis.recovery",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 6
+      "classDependencyCount": 7
     },
     {
       "fromContext": "analysis",
@@ -216,21 +216,21 @@
       "fromPackage": "com.taxonomy.analysis.usecase",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.snapshot",
-      "classDependencyCount": 3
+      "classDependencyCount": 9
     },
     {
       "fromContext": "analysis",
       "fromPackage": "com.taxonomy.analysis.usecase",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.relations.service",
-      "classDependencyCount": 1
+      "classDependencyCount": 3
     },
     {
       "fromContext": "analysis",
       "fromPackage": "com.taxonomy.analysis.usecase",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 4
+      "classDependencyCount": 8
     },
     {
       "fromContext": "app-composition",
@@ -291,9 +291,37 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.analysis",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.usecase",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.definition",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis",
       "toContext": "preferences",
       "toPackage": "com.taxonomy.preferences",
       "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.editor",
+      "classDependencyCount": 6
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 3
     },
     {
       "fromContext": "app-composition",
@@ -1630,7 +1658,7 @@
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.usecase",
-      "classDependencyCount": 3
+      "classDependencyCount": 5
     },
     {
       "fromContext": "portfolio",

@@ -71,6 +71,22 @@ public class EditorJournal {
                 .getResultList().stream().findFirst().map(EditorJournal::unframe).orElse(null));
     }
 
+    /** A later workspace checkpoint cannot establish the Git identity of a historical semantic revision. */
+    public String checkpointAtRevision(RepositoryContext context, long revision, String source, String expectedCommit) {
+        return transaction.execute(status -> {
+            var query = em.createQuery("select c.commitId, c.dsl from EditorCheckpoint c where c.scopeId = :scope "
+                    + "and c.revision = :revision and c.completed = true and c.commitId is not null "
+                    + (expectedCommit == null ? "" : "and c.commitId = :commit ")
+                    + "order by c.occurredAt desc, c.commandId desc", Object[].class)
+                    .setParameter("scope", scope(context)).setParameter("revision", revision);
+            if (expectedCommit != null) query.setParameter("commit", expectedCommit);
+            try (var receipts = query.getResultStream()) {
+                return receipts.filter(row -> source.equals(unframe((String) row[1])))
+                        .map(row -> (String) row[0]).findFirst().orElse(null);
+            }
+        });
+    }
+
     public List<Checkpoint> checkpoints(RepositoryContext context) {
         return transaction.execute(status -> em.createQuery(
                 "select c from EditorCheckpoint c where c.scopeId = :scope and c.completed = true order by c.revision desc", EditorCheckpoint.class)

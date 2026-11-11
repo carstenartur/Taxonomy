@@ -36,9 +36,13 @@ public class RelationCompatibilityMatrix {
     public CatalogueDefinition definition() { return definitions.get(); }
 
     public RelationMetamodel.TargetDomain targetDomain(String sourceRoot, RelationType type) {
+        if (AdmittedRelationRules.excludes(type)) {
+            return new RelationMetamodel.TargetDomain(RelationMetamodel.DomainState.FORBIDDEN, java.util.Set.of());
+        }
         return definition().targetDomain(sourceRoot, type == null ? null : type.name());
     }
     public boolean isCompatible(String sourceRoot, String targetRoot, RelationType type) {
-        return definition().allows(sourceRoot, type == null ? null : type.name(), targetRoot);
+        return !AdmittedRelationRules.excludes(type)
+                && definition().allows(sourceRoot, type == null ? null : type.name(), targetRoot);
     }
 }

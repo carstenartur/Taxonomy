@@ -193,6 +193,11 @@ Version-1 record schemas and review-required continuation policy are unchanged.
 
 Portfolio publishes 25 explicit datasets, including requirements, analysis
 snapshots and decisions, solution/product decisions and reformulation work.
+An analysis job carries its original `admittedModelJson` when the server
+recorded one. Earlier archives can omit the field. The cluster restore helper
+keeps this model and catalogue evidence under its original identity. Restoring
+a run with a recorded requirement version requires the portfolio owner's
+explicit archive-to-target version mapping.
 Current snapshots must belong to the current requirement version; obsolete
 snapshot pointers become absent in stand exports. Full history keeps the
 original pointers. Cross-tenant project/solution/product/requirement links and

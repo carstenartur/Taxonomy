@@ -1,5 +1,6 @@
 package com.taxonomy.portfolio.controller;
 
+import com.taxonomy.dto.AnalysisModelBinding;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisContinuationView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalyzeProjectRequest;
@@ -16,6 +17,10 @@ import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -69,6 +74,12 @@ public class ProjectAnalysisController {
         RequestScope scope = scope();
         AnalyzeProjectRequest effective = request != null
                 ? request : new AnalyzeProjectRequest(List.of(requirementId), false, null, null, null);
+        if (effective.requirementVersionId() != null || effective.model() != null) {
+            var pinned = new AnalyzeProjectRequest(List.of(requirementId), false, effective.provider(),
+                    effective.maxArchitectureNodes(), effective.idempotencyKey(), effective.analysisLanguage(),
+                    effective.requirementVersionId(), effective.model());
+            return accepted(projectId, analysisService.enqueueProject(projectId, pinned, scope.username(), scope.context()));
+        }
         AnalysisJobView job = effective.analysisLanguage() != null
                 ? analysisService.enqueueRequirement(projectId, requirementId, effective.provider(),
                         effective.maxArchitectureNodes(), effective.idempotencyKey(), scope.username(), scope.context(),
@@ -82,6 +93,22 @@ public class ProjectAnalysisController {
                 scope.username(),
                 scope.context());
         return accepted(projectId, job);
+    }
+
+    @GetMapping("/analysis-jobs/{jobId}/model")
+    @Operation(summary = "Read the model recorded for an analysis job",
+            description = "Returns the architecture revision, catalogue generation, profile and search scope recorded "
+                    + "when the authorized project job was accepted.")
+    @ApiResponse(responseCode = "200", description = "Model recorded when the job was accepted",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = AnalysisModelBinding.class)))
+    @ApiResponse(responseCode = "204", description = "The job has no recorded model", content = @Content)
+    @ApiResponse(responseCode = "404", description = "The job is unavailable in the selected project and workspace")
+    public ResponseEntity<AnalysisModelBinding> admittedModel(
+            @Parameter(description = "Project containing the analysis job") @PathVariable Long projectId,
+            @Parameter(description = "Identifier returned when the analysis was queued") @PathVariable String jobId) {
+        RequestScope scope = scope();
+        var model = persistenceService.admittedModel(jobId, projectId, scope.username(), scope.context());
+        return model == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(model);
     }
 
     @GetMapping("/analysis-jobs")

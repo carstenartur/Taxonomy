@@ -52,11 +52,16 @@ for (const scopeKind of ['missing', 'null', 'selected']) {
         f.state.recoveryContext = {stale: true};
         f.state.analysisRecovery = {state: 'PAUSED'};
         const selected = {taxonomyRoots: ['BP'], mode: 'TAXONOMIES_ONLY'};
+        const recordedModel = {state: 'CATALOGUE_UNRESOLVED', catalogueRevision: null,
+            executionCatalogueRevision: 'used-generation', scope: selected};
+        f.state.currentModelBinding = {catalogueRevision: 'previous-result'};
+        f.window.__TaxonomyAnalysisSessionContext = {runtime: {analysisReference: {operationId: 'previous'}}};
         const incoming = {requirement: 'Imported requirement', scores: {BP: 70}, rawScores: {BP: 50},
             analysisCoverage: {nodes: {BP: {state: 'RELEVANT', score: 50, effectiveRelevance: 70,
                 descendants: 'PARTIAL'}, 'BP-unknown': {state: 'UNKNOWN', score: null, effectiveRelevance: null,
                 descendants: 'UNASSESSED', reason: 'LEFT_OPEN:q'}}, assessedNodes: 1, unknownNodes: 1, failedOrBlockedNodes: 1},
             analysisStatus: 'PARTIAL', warnings: []};
+        if (scopeKind === 'selected') incoming.modelBinding = recordedModel;
         if (scopeKind !== 'missing') incoming.analysisScope = scopeKind === 'null' ? null : selected;
         const file = f.element('input'); file.files = [{text: JSON.stringify(incoming)}];
         f.elements.set('importJsonFile', file);
@@ -105,6 +110,8 @@ for (const scopeKind of ['missing', 'null', 'selected']) {
         const payload = JSON.parse(f.requests[1].options.body);
         assert.equal(f.requests[1].url, '/api/scores/export');
         assert.deepEqual(payload.analysisScope, scopeKind === 'selected' ? selected : null);
+        assert.deepEqual(payload.modelBinding, scopeKind === 'selected' ? recordedModel : null);
+        assert.equal(f.window.__TaxonomyAnalysisSessionContext.runtime.analysisReference, null);
         assert.deepEqual(payload.rawScores, {BP: 50});
         assert.deepEqual(payload.scores, {BP: 70});
         assert.deepEqual(payload.analysisCoverage, incoming.analysisCoverage);

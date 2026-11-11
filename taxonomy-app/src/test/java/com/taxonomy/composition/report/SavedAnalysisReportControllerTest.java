@@ -24,6 +24,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
@@ -48,18 +49,28 @@ class SavedAnalysisReportControllerTest {
     @Test
     void durableReferenceExportsRetainedReportsAndIgnoresForgedClientEvidence() throws Exception {
         var saved = savedResult();
+        var binding = new AnalysisModelBinding(AnalysisModelBinding.State.CATALOGUE_UNRESOLVED,
+                "repo-a", "ws-a", "historical", "b".repeat(40), 17L, "GIT", "c".repeat(64),
+                null, "catalogue-definition-5", Set.of("BP"), new AnalysisScope(Set.of("BP"), AnalysisMode.TAXONOMIES_ONLY),
+                "brief-3", Map.of(), List.of(new AnalysisModelBinding.Reference("reference", "standard",
+                        "standard-edition-2", "paragraph-7", Map.of())), Set.of(), null, "used-generation-9");
+        saved.setModelBinding(binding);
         when(cluster.request(OPERATION, "alice", workspace)).thenReturn(new ClusterAnalysisObservation.RecoveryInput(
                 OPERATION, "Frozen requirement", "MOCK", null,
-                new ClusterAnalysisView.ObservationScope("ws-a", "repo-a", "branch-a", "commit-a")));
+                new ClusterAnalysisView.ObservationScope("ws-a", "repo-a", "branch-a", "commit-a"), null, null, 23L));
         when(cluster.result(OPERATION, "alice", workspace)).thenReturn(saved);
         try (var context = context()) {
             String body = mvc(context).perform(post("/api/report/json").contentType(MediaType.APPLICATION_JSON)
                     .content(mapper.writeValueAsString(Map.of("analysisReference", reference(),
+                            "modelBinding", Map.of("catalogueRevision", "forged"),
                             "scores", Map.of("FORGED", 99), "businessText", "Forged text",
                             "reasons", Map.of("FORGED", "forged rationale")))))
                     .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
             var report = mapper.readTree(body);
             assertThat(report.path("businessText").asString()).isEqualTo("Frozen requirement");
+            assertThat(report.path("requirementVersionId").asLong()).isEqualTo(23L);
+            assertThat(report.path("analysisScope").path("mode").asString()).isEqualTo("FULL");
+            assertThat(mapper.treeToValue(report.path("modelBinding"), AnalysisModelBinding.class)).isEqualTo(binding);
             assertThat(report.path("scores").has("FORGED")).isFalse();
             assertThat(report.path("scores").path("BP").asDouble()).isEqualTo(70d);
             assertThat(report.path("gapAnalysis").path("notes").get(0).asString()).isEqualTo("Frozen gap evidence");

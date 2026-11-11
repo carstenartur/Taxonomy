@@ -65,6 +65,10 @@ public class PortfolioAnalysisPersistenceService {
     @org.springframework.beans.factory.annotation.Autowired
     void providerConfiguration(com.taxonomy.analysis.service.LlmProviderConfig configuration) { this.providerConfiguration=configuration; }
 
+    private com.taxonomy.analysis.usecase.AnalysisAdmissionModelPort admissionModels;
+    @org.springframework.beans.factory.annotation.Autowired
+    void admissionModels(com.taxonomy.analysis.usecase.AnalysisAdmissionModelPort port) { admissionModels = port; }
+
     private com.taxonomy.analysis.service.AnalysisRuntimeSettings analysisSettings;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void analysisSettings(com.taxonomy.analysis.service.AnalysisRuntimeSettings settings) { this.analysisSettings = settings; }
@@ -127,11 +131,38 @@ public class PortfolioAnalysisPersistenceService {
     public AnalysisJobView createOrReuseJob(Long projectId, List<Long> requirementIds, String provider,
                                             int maxArchitectureNodes, String idempotencyKey, String username,
                                             WorkspaceContext context, com.taxonomy.dto.AnalysisLanguage requestedLanguage) {
+        return createOrReuseJob(projectId, requirementIds, provider, maxArchitectureNodes, idempotencyKey,
+                username, context, requestedLanguage, null);
+    }
+
+    @Transactional
+    public AnalysisJobView createOrReuseJob(Long projectId, List<Long> requirementIds, String provider,
+                                            int maxArchitectureNodes, String idempotencyKey, String username,
+                                            WorkspaceContext context, com.taxonomy.dto.AnalysisLanguage requestedLanguage,
+                                            Long requestedVersionId) {
+        return createOrReuseJob(projectId, requirementIds, provider, maxArchitectureNodes, idempotencyKey,
+                username, context, requestedLanguage, requestedVersionId, null);
+    }
+
+    @Transactional
+    public AnalysisJobView createOrReuseJob(Long projectId, List<Long> requirementIds, String provider,
+                                            int maxArchitectureNodes, String idempotencyKey, String username,
+                                            WorkspaceContext context, com.taxonomy.dto.AnalysisLanguage requestedLanguage,
+                                            Long requestedVersionId, com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisModelSelection selection) {
+        if (requestedVersionId != null && (requirementIds == null || requirementIds.size() != 1
+                || requirementIds.getFirst() == null)) {
+            throw PortfolioException.validation("A specific version requires exactly one requirement");
+        }
         String scopeKey = PortfolioScope.key(username, context);
-        ArchitectureProject project = projectRepository
-                .findByIdAndScopeKey(projectId, scopeKey)
+        // A key has no row to lock on its first use. Take the project lock before checking the job.
+        var projectLookup = idempotencyKey == null || idempotencyKey.isBlank()
+                ? projectRepository.findByIdAndScopeKey(projectId, scopeKey)
+                : projectRepository.lockForAnalysisAdmission(projectId, scopeKey);
+        ArchitectureProject project = projectLookup
                 .orElseThrow(() -> PortfolioException.notFound("Project not found: " + projectId));
 
+        boolean expectsModel = selection != null && (selection.expectedCommit() != null
+                || selection.expectedSemanticRevision() != null || selection.scope() != null);
         String normalizedIdempotency = normalizeIdempotencyKey(idempotencyKey);
         if (normalizedIdempotency != null) {
             RequirementAnalysisJob existing = jobRepository
@@ -139,7 +170,21 @@ public class PortfolioAnalysisPersistenceService {
                             projectId, scopeKey, normalizedIdempotency)
                     .orElse(null);
             if (existing != null) {
-                return toJobView(existing);
+                var admitted = toJobView(existing);
+                if (requestedVersionId != null && (admitted.items().size() != 1
+                        || !requestedVersionId.equals(admitted.items().getFirst().requirementVersionId())
+                        || !requirementIds.getFirst().equals(admitted.items().getFirst().requirementId()))) {
+                    throw PortfolioException.conflict("This idempotency key already identifies a different analysis source");
+                }
+                if (expectsModel) {
+                    var saved = jsonCodec.read(existing.getAdmittedModelJson(), com.taxonomy.dto.AnalysisModelBinding.class);
+                    if (saved == null || selection.expectedCommit() != null && !selection.expectedCommit().equals(saved.commit())
+                            || selection.expectedSemanticRevision() != null && !selection.expectedSemanticRevision().equals(saved.semanticRevision())
+                            || selection.scope() != null && !selection.scope().equals(saved.scope())) {
+                        throw PortfolioException.conflict("This idempotency key already identifies a different analysis model");
+                    }
+                }
+                return admitted;
             }
         }
 
@@ -175,7 +220,11 @@ public class PortfolioAnalysisPersistenceService {
         if (language != null) job.recordAnalysisLanguage(language);
         job.recordAnalysisReasonLength(analysisSettings == null ? AnalysisReasonLength.STANDARD
                 : AnalysisReasonLength.fromValue(analysisSettings.getString("analysis.reason-length", "standard")));
-        var bound = providerBinding.admittedProvider(projectId, targets(requirements), provider, username, context);
+        var items = requirements.stream().map(requirement -> new RequirementAnalysisJobItem(
+                job, requirement, resolveVersion(requirement, requestedVersionId))).toList();
+        var targets = items.stream().map(item -> new ProjectProviderBinding.Target(
+                item.getRequirementId(), item.getRequirementVersionId())).toList();
+        var bound = providerBinding.admittedProvider(projectId, targets, provider, username, context);
         if (bound.isPresent()) {
             // A bound project uses exactly its admitted provider: no mock, live or fallback provider.
             job.bindProvider(bound.get(), null);
@@ -187,19 +236,26 @@ public class PortfolioAnalysisPersistenceService {
                     ? providerConfiguration.getActiveProviderId().value() : provider.strip().toUpperCase(java.util.Locale.ROOT);
             job.bindProvider(admitted, providerConfiguration.captureProviderBinding(admitted));
         }
+        var model = com.taxonomy.analysis.usecase.AnalysisRequestModelAdmission.capture(admissionModels, context,
+                selection == null ? null : selection.expectedCommit(), selection == null ? null : selection.expectedSemanticRevision(),
+                com.taxonomy.dto.AnalysisScope.orDefault(selection == null ? null : selection.scope()));
+        if (model != null) {
+            job.recordAdmittedModel(jsonCodec.write(model));
+        } else if (expectsModel) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                    "The requested analysis scope requires a recorded model");
+        }
         jobRepository.save(job);
 
-        List<RequirementAnalysisJobItem> items = requirements.stream()
-                .map(requirement -> new RequirementAnalysisJobItem(
-                        job, requirement, requireCurrentVersion(requirement)))
-                .toList();
         itemRepository.saveAll(items);
         return toJobView(job);
     }
 
-    private List<ProjectProviderBinding.Target> targets(List<ProjectRequirement> requirements) {
-        return requirements.stream().map(requirement -> new ProjectProviderBinding.Target(
-                requirement.getId(), requireCurrentVersion(requirement).getId())).toList();
+    @Transactional(readOnly = true)
+    public com.taxonomy.dto.AnalysisModelBinding admittedModel(String jobId, Long projectId, String username,
+                                                               WorkspaceContext context) {
+        var job = requireJob(jobId, projectId, PortfolioScope.key(username, context));
+        return jsonCodec.read(job.getAdmittedModelJson(), com.taxonomy.dto.AnalysisModelBinding.class);
     }
 
     @Transactional
@@ -341,11 +397,12 @@ public class PortfolioAnalysisPersistenceService {
         if (failedItems.isEmpty()) {
             throw PortfolioException.conflict("Analysis job has no failed items to retry: " + jobId);
         }
-        // A retry re-admits the current versions with the job's recorded provider.
+        // Recheck access for the originally admitted versions before retrying the job.
         requireRetainedProviderBinding(projectId, job.getId(), job.getProvider(),
-                targets(failedItems.stream().map(RequirementAnalysisJobItem::getRequirement).toList()), username, context);
+                failedItems.stream().map(item -> new ProjectProviderBinding.Target(
+                        item.getRequirementId(), item.getRequirementVersionId())).toList(), username, context);
         for (RequirementAnalysisJobItem item : failedItems) {
-            item.prepareRetry(requireCurrentVersion(item.getRequirement()));
+            item.prepareRetry(item.getRequirementVersion());
         }
         job.markRunning(Instant.now());
         return toJobView(job);
@@ -662,20 +719,19 @@ public class PortfolioAnalysisPersistenceService {
                                 + " was not found in project " + projectId));
     }
 
-    private ProjectRequirementVersion requireCurrentVersion(
-            ProjectRequirement requirement) {
-        if (requirement.getCurrentVersionId() == null) {
+    private ProjectRequirementVersion resolveVersion(ProjectRequirement requirement, Long requestedVersionId) {
+        Long versionId = requestedVersionId == null ? requirement.getCurrentVersionId() : requestedVersionId;
+        if (versionId == null) {
             throw PortfolioException.conflict(
                     "Requirement has no current text version: "
                             + requirement.getRequirementKey());
         }
         return versionRepository.findByIdAndRequirementIdAndScopeKey(
-                        requirement.getCurrentVersionId(),
+                        versionId,
                         requirement.getId(),
                         requirement.getScopeKey())
                 .orElseThrow(() -> PortfolioException.notFound(
-                        "Current requirement version not found: "
-                                + requirement.getCurrentVersionId()));
+                        "Requirement version not found: " + versionId));
     }
 
     private AnalysisJobView toJobView(RequirementAnalysisJob job) {

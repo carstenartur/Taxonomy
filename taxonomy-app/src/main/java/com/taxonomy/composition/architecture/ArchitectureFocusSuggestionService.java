@@ -106,18 +106,21 @@ public class ArchitectureFocusSuggestionService {
         if (model.findElement(request.sourceId()).isEmpty())
             throw problem("NOT_FOUND", "sourceId", "The element is not present in this exact editor revision");
         String hash = sha256(document.dsl());
-        var result = investigateModel(model, request.sourceId(), request.candidateLimit(), request.useAi(),
+        var result = investigateModel(model, catalogues.forModel(model),
+                com.taxonomy.dsl.planning.ArchitectureBrief.read(model).excludedRelationTypes(),
+                request.sourceId(), request.candidateLimit(), request.useAi(),
                 request.language(), hash, Map.of("x-focus-revision", Long.toString(request.context().revision())));
         return new Response(request.context(),request.sourceId(),hash,result.method(),result.outcome(),
                 result.modelCalls(),result.candidateCount(),result.suggestions());
     }
 
-    EngineResult investigateModel(CanonicalArchitectureModel model, String sourceId, int candidateLimit,
+    EngineResult investigateModel(CanonicalArchitectureModel model, CatalogueDefinition catalogue, Set<String> excluded,
+                                  String sourceId, int candidateLimit,
                                   boolean useAi, String language, String hash, Map<String, String> provenance) {
         var request = new EngineRequest(sourceId,candidateLimit,useAi,language,Map.copyOf(provenance));
         var source = model.findElement(request.sourceId())
                 .orElseThrow(() -> problem("NOT_FOUND", "sourceId", "The element is not present in this exact source"));
-        List<Triple> candidates = candidates(model, catalogues.forModel(model), source, request.candidateLimit());
+        List<Triple> candidates = candidates(model, catalogue, excluded, source, request.candidateLimit());
         if (candidates.isEmpty()) return response(LOCAL, "NO_CANDIDATES", 0, candidates, List.of());
         var local = local(request, hash, candidates, LOCAL);
         if (!request.useAi()) return response(LOCAL, "LOCAL_CANDIDATES", 0, candidates, local);
@@ -170,7 +173,7 @@ public class ArchitectureFocusSuggestionService {
             throw problem("NOT_FOUND", "context", "This exact editor context is not selected or accessible");
     }
 
-    private static List<Triple> candidates(CanonicalArchitectureModel model, CatalogueDefinition catalogue,
+    private static List<Triple> candidates(CanonicalArchitectureModel model, CatalogueDefinition catalogue, Set<String> excluded,
                                            ArchitectureElement focus, int limit) {
         Set<String> existing = new HashSet<>();
         model.getRelations().forEach(r -> existing.add(r.getSourceId() + " " + r.getRelationType() + " " + r.getTargetId()));
@@ -179,7 +182,6 @@ public class ArchitectureFocusSuggestionService {
                 .sorted(Comparator.<ArchitectureElement>comparingInt(e -> overlap(focusTokens, tokens(e))).reversed()
                         .thenComparing(ArchitectureElement::getId)).toList();
         List<Triple> offered = new ArrayList<>();
-        var excluded = com.taxonomy.dsl.planning.ArchitectureBrief.read(model).excludedRelationTypes();
         var generatableTypes = catalogue.relationDomains().keySet().stream()
                 .filter(type -> !"CONTAINS".equals(type) && !excluded.contains(type)).sorted().toList();
         // Bound expansion independently from the total architecture size; peers retain deterministic text rank.

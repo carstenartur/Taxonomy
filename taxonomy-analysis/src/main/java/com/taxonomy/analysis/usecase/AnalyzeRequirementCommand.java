@@ -19,7 +19,23 @@ public record AnalyzeRequirementCommand(
         com.taxonomy.analysis.recovery.AnalysisContinuationBinding continuationBinding,
         AnalysisReasonLength analysisReasonLength,
         com.taxonomy.dto.AnalysisResult retainedAnalysis,
-        AnalysisLanguage analysisLanguage) {
+        AnalysisLanguage analysisLanguage,
+        com.taxonomy.dto.AnalysisModelBinding modelBinding) {
+
+    public AnalyzeRequirementCommand(String businessText, boolean includeArchitectureView, int maxArchitectureNodes,
+            String provider, String username, WorkspaceContext workspaceContext, AnalysisProvenance provenance,
+            AnalysisScope analysisScope, com.taxonomy.extension.api.plugin.PluginInvocation providerBinding,
+            com.taxonomy.analysis.recovery.AnalysisContinuationBinding continuationBinding, AnalysisReasonLength reasonLength,
+            com.taxonomy.dto.AnalysisResult retainedAnalysis, AnalysisLanguage analysisLanguage) {
+        this(businessText, includeArchitectureView, maxArchitectureNodes, provider, username, workspaceContext,
+                provenance, analysisScope, providerBinding, continuationBinding, reasonLength, retainedAnalysis, analysisLanguage, null);
+    }
+
+    public AnalyzeRequirementCommand withModelBinding(com.taxonomy.dto.AnalysisModelBinding binding) {
+        return new AnalyzeRequirementCommand(businessText, includeArchitectureView, maxArchitectureNodes, provider,
+                username, workspaceContext, provenance, analysisScope, providerBinding,
+                continuationBinding, analysisReasonLength, retainedAnalysis, analysisLanguage, binding);
+    }
 
     public AnalyzeRequirementCommand {
         analysisScope = AnalysisScope.orDefault(analysisScope);
@@ -28,7 +44,7 @@ public record AnalyzeRequirementCommand(
     public AnalyzeRequirementCommand withAnalysisLanguage(AnalysisLanguage value) {
         return new AnalyzeRequirementCommand(businessText, includeArchitectureView, maxArchitectureNodes, provider,
                 username, workspaceContext, provenance, analysisScope, providerBinding, continuationBinding,
-                analysisReasonLength, retainedAnalysis, value);
+                analysisReasonLength, retainedAnalysis, value, modelBinding);
     }
 
     public AnalyzeRequirementCommand(String businessText, boolean includeArchitectureView, int maxArchitectureNodes,
@@ -43,12 +59,12 @@ public record AnalyzeRequirementCommand(
     /** Admission fills a missing mode; older persisted commands retain their absent provenance. */
     public AnalyzeRequirementCommand withAnalysisReasonLength(AnalysisReasonLength value) {
         return new AnalyzeRequirementCommand(businessText, includeArchitectureView, maxArchitectureNodes, provider,
-                username, workspaceContext, provenance, analysisScope, providerBinding, continuationBinding, value, retainedAnalysis, analysisLanguage);
+                username, workspaceContext, provenance, analysisScope, providerBinding, continuationBinding, value, retainedAnalysis, analysisLanguage, modelBinding);
     }
 
     public AnalyzeRequirementCommand withRetainedAnalysis(com.taxonomy.dto.AnalysisResult retained) {
         return new AnalyzeRequirementCommand(businessText, includeArchitectureView, maxArchitectureNodes, provider,
-                username, workspaceContext, provenance, analysisScope, providerBinding, continuationBinding, analysisReasonLength, retained, analysisLanguage);
+                username, workspaceContext, provenance, analysisScope, providerBinding, continuationBinding, analysisReasonLength, retained, analysisLanguage, modelBinding);
     }
 
     public AnalyzeRequirementCommand(String businessText, boolean includeArchitectureView, int maxArchitectureNodes,
@@ -76,7 +92,7 @@ public record AnalyzeRequirementCommand(
 
     public AnalyzeRequirementCommand withContinuationBinding(com.taxonomy.analysis.recovery.AnalysisContinuationBinding binding) {
         return new AnalyzeRequirementCommand(businessText, includeArchitectureView, maxArchitectureNodes, provider,
-                username, workspaceContext, provenance, analysisScope, providerBinding, binding, analysisReasonLength, retainedAnalysis, analysisLanguage);
+                username, workspaceContext, provenance, analysisScope, providerBinding, binding, analysisReasonLength, retainedAnalysis, analysisLanguage, modelBinding);
     }
 
     /** Old persisted commands have no plugin binding and remain readable for built-in providers only. */

@@ -10,8 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -38,7 +36,7 @@ public class PortfolioAnalysisRecoveryService {
      * Resets failed items and RUNNING items whose claim is older than the supplied
      * cutoff. Active claims remain untouched. Every successful compare-and-set
      * includes job, project and exact tenant identity, increments the attempt and
-     * binds the retry to the requirement's current immutable text version. The
+     * keeps the immutable requirement version recorded when the job was admitted. The
      * job remains PENDING until a worker actually claims its prepared items.
      *
      * @return number of items atomically prepared for another attempt
@@ -63,13 +61,9 @@ public class PortfolioAnalysisRecoveryService {
                 .findByJobIdAndProjectIdAndScopeKeyAndStatusAndStartedAtBeforeOrderByRequirementRequirementKeyAsc(
                         jobId, projectId, scopeKey, AnalysisStatus.RUNNING, staleBefore);
 
-        var retryVersionIds = new HashMap<Long, Long>();
-        var retryTargets = new ArrayList<ProjectProviderBinding.Target>();
-        for (var item : Stream.concat(failed.stream(), stale.stream()).toList()) {
-            Long versionId = projectService.currentVersion(item.getRequirement()).getId();
-            retryVersionIds.put(item.getId(), versionId);
-            retryTargets.add(new ProjectProviderBinding.Target(item.getRequirementId(), versionId));
-        }
+        var retryTargets = Stream.concat(failed.stream(), stale.stream())
+                .map(item -> new ProjectProviderBinding.Target(item.getRequirementId(), item.getRequirementVersionId()))
+                .toList();
         if (!retryTargets.isEmpty()) {
             // Admission and resets share this transaction and the exact version IDs captured above.
             persistenceService.requireRetainedProviderBinding(projectId, job.getId(), job.getProvider(),
@@ -78,7 +72,6 @@ public class PortfolioAnalysisRecoveryService {
 
         int prepared = 0;
         for (RequirementAnalysisJobItem item : failed) {
-            Long versionId = retryVersionIds.get(item.getId());
             prepared += itemRepository.resetFailed(
                     item.getId(),
                     jobId,
@@ -86,10 +79,9 @@ public class PortfolioAnalysisRecoveryService {
                     scopeKey,
                     AnalysisStatus.FAILED,
                     AnalysisStatus.PENDING,
-                    versionId);
+                    item.getRequirementVersionId());
         }
         for (RequirementAnalysisJobItem item : stale) {
-            Long versionId = retryVersionIds.get(item.getId());
             prepared += itemRepository.resetExpiredRunning(
                     item.getId(),
                     jobId,
@@ -98,7 +90,7 @@ public class PortfolioAnalysisRecoveryService {
                     AnalysisStatus.RUNNING,
                     AnalysisStatus.PENDING,
                     staleBefore,
-                    versionId);
+                    item.getRequirementVersionId());
         }
 
         if (prepared == 0) {

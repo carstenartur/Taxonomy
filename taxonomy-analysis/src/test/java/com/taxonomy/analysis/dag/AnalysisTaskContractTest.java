@@ -196,7 +196,7 @@ class AnalysisTaskContractTest {
 
         var completion = (SubtaxonomyAnalysisCompleted) handlers.prepare(legacy).completion();
 
-        assertThat(completion.envelope().schemaVersion()).isEqualTo(AnalysisEnvelope.SCHEMA_VERSION);
+        assertThat(completion.envelope().schemaVersion()).isEqualTo(AnalysisEnvelope.FRACTIONAL_SCORE_VERSION);
         assertThat(completion.rootScore()).isEqualTo(0.5d);
     }
 

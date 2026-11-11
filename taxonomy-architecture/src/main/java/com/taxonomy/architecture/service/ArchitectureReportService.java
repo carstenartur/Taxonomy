@@ -132,6 +132,8 @@ public class ArchitectureReportService {
         report.setBusinessText(businessText);
         report.setScores(result.getEffectiveScores() != null ? result.getEffectiveScores() : result.getScores());
         report.setViewContext(result.getViewContext());
+        report.setModelBinding(result.getModelBinding());
+        if (result.getModelBinding() != null) report.setAnalysisScope(result.getAnalysisScope());
         report.setArchitectureView(result.getArchitectureView());
         report.setCopilot(result.getCopilot());
         report.setGapAnalysis(result.getCopilot().gaps());

@@ -311,6 +311,37 @@
         });
     }
 
+    function installAnalysisIntakeChoices() {
+        var choices = document.getElementById('analysisIntakeChoices');
+        var input = businessTextElement();
+        if (!choices || !input) return;
+        var version = document.getElementById('analysisIntakeVersion');
+        var enteredText = false;
+        function refresh() {
+            var context = C.projectContextFromUrl();
+            var bound = Boolean(context?.requirementVersionId);
+            choices.hidden = !input.value.trim() || (bound && !enteredText);
+            version.hidden = !bound;
+        }
+        document.getElementById('analysisIntakeProject').addEventListener('click', function () {
+            var context = C.projectContextFromUrl();
+            openRequirementDialog(input.value, {projectId: context?.projectId, preserveDraft: true});
+        });
+        document.getElementById('analysisIntakeNewProject').addEventListener('click', function () {
+            openNewProjectDialog({seedRequirementText: input.value, preserveDraft: true});
+        });
+        version.addEventListener('click', function () {
+            saveAsRequirementVersion(C.projectContextFromUrl(), input.value);
+        });
+        input.addEventListener('input', function () { enteredText = true; refresh(); });
+        document.addEventListener('taxonomy:entity-context-changed', function () {
+            refresh();
+        });
+        document.addEventListener('taxonomy:view-rendered', refresh);
+        initialization.then(refresh);
+        refresh();
+    }
+
     function installLifecycleCommands() {
         var commands = {
             fileNewAnalysisAction: function () {
@@ -771,6 +802,7 @@
         if (runtime.initialized) return;
         runtime.initialized = true;
         installLifecycleCommands();
+        installAnalysisIntakeChoices();
         installObservers();
         resolveWorkspaceAndLoad().then(function () {
             settleInitialization(runtime.workspaceResolved === true);

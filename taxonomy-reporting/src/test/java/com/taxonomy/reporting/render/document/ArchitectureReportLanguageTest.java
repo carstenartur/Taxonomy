@@ -14,6 +14,25 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ArchitectureReportLanguageTest {
+    @Test void retainedModelAndCatalogueAreReadableInEveryDeliveredDocument() throws Exception {
+        var report = new ArchitectureReport();
+        report.setBusinessText("Museum catalogue");
+        report.setModelBinding(new AnalysisModelBinding(AnalysisModelBinding.State.CATALOGUE_UNRESOLVED,
+                "museum-repo", "museum-workspace", "past", null, 17L, "SEMANTIC", "a".repeat(64),
+                null, "definition-4", java.util.Set.of("BP"), AnalysisScope.full(), "brief-9", Map.of(),
+                List.of(new AnalysisModelBinding.Reference("standard", "standard-source", "edition-3",
+                        "section-5", Map.of())), java.util.Set.of(), null, "executed-7"));
+        var renderer = new ArchitectureReportTextRenderer();
+        try (var doc = new XWPFDocument(new ByteArrayInputStream(new ArchitectureReportDocxRenderer().render(report, "de")));
+             var extractor = new XWPFWordExtractor(doc)) {
+            for (String visible : List.of(renderer.renderMarkdown(report, "de"), renderer.renderHtml(report, "de"),
+                    extractor.getText())) {
+                assertThat(visible).contains("Katalogzuordnung im Projekt", "Ausgeführte Kataloggeneration",
+                        "executed-7", "definition-4", "edition-3", "section-5", "brief-9", "a".repeat(64));
+            }
+        }
+    }
+
     @Test void markdownLinksKeepInheritedForegroundAndUnderlineOnDarkPaperAndLightPanels() {
         var report = new ArchitectureReport();
         report.setBusinessText("""

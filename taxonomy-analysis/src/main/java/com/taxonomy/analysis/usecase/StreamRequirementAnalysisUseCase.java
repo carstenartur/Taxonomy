@@ -1,5 +1,7 @@
 package com.taxonomy.analysis.usecase;
 
+import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
+import com.taxonomy.relations.service.AdmittedRelationRules;
 import com.taxonomy.extension.api.llm.ProviderId;
 
 import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
@@ -22,6 +24,8 @@ public class StreamRequirementAnalysisUseCase {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.taxonomy.analysis.cluster.ClusterAnalysisExecution clusterExecution;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private CatalogueSnapshotService catalogueSnapshots;
     private final LlmService llmService;
     private final AiPromptBudgetPolicy promptBudgetPolicy;
 
@@ -41,7 +45,9 @@ public class StreamRequirementAnalysisUseCase {
         var reasonLength = command.analysisReasonLength() != null ? command.analysisReasonLength()
                 : llmService.resolveAnalysisReasonLength(null);
         var language = com.taxonomy.analysis.service.AnalysisLanguageContext.resolve(command.analysisLanguage(), command.requestLocale());
-        try (var reasonScope = com.taxonomy.analysis.service.AnalysisReasonContext.open(reasonLength);
+        try (var catalogue = AdmittedCatalogue.open(catalogueSnapshots, command.modelBinding(), command.workspace());
+             var profile = AdmittedRelationRules.open(command.modelBinding());
+             var reasonScope = com.taxonomy.analysis.service.AnalysisReasonContext.open(reasonLength);
              var languageScope = com.taxonomy.analysis.service.AnalysisLanguageContext.open(language);
              var mockScope = "MOCK".equalsIgnoreCase(command.provider())
                 ? llmService.withProviderBinding("MOCK", null) : null) {
@@ -143,6 +149,7 @@ public class StreamRequirementAnalysisUseCase {
         if (!command.businessText().equals(analyzeCommand.businessText())
                 || !java.util.Objects.equals(command.provider(), analyzeCommand.provider())
                 || !command.analysisScope().equals(analyzeCommand.analysisScope())
+                || !java.util.Objects.equals(command.modelBinding(), analyzeCommand.modelBinding())
                 || command.analysisReasonLength() != null && analyzeCommand.analysisReasonLength() != null
                     && command.analysisReasonLength() != analyzeCommand.analysisReasonLength()
                 || command.analysisLanguage() != null && (analyzeCommand.analysisLanguage() != null

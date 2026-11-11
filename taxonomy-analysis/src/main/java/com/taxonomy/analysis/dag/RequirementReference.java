@@ -18,13 +18,23 @@ import java.util.regex.Pattern;
  * @param requirementId persisted requirement, otherwise {@code null}
  * @param snapshotId    immutable snapshot identity, otherwise {@code null}
  * @param textSha256    lower-case hex SHA-256 of the exact UTF-8 requirement text
+ * @param requirementVersionId immutable portfolio version when available at admission
  */
-public record RequirementReference(Long projectId, Long requirementId, String snapshotId, String textSha256) {
+public record RequirementReference(Long projectId, Long requirementId, String snapshotId, String textSha256,
+                                   @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                                   Long requirementVersionId) {
+
+    public RequirementReference(Long projectId, Long requirementId, String snapshotId, String textSha256) {
+        this(projectId, requirementId, snapshotId, textSha256, null);
+    }
 
     private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
 
     public RequirementReference {
         Objects.requireNonNull(textSha256, "textSha256");
+        if (requirementVersionId != null && (requirementVersionId < 1 || projectId == null || requirementId == null)) {
+            throw new IllegalArgumentException("A stored requirement version requires a project and requirement identity");
+        }
         if (!SHA256.matcher(textSha256).matches()) {
             throw new IllegalArgumentException("textSha256 must be a lower-case SHA-256 hex digest");
         }

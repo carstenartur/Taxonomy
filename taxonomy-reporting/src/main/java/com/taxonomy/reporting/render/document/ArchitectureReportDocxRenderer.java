@@ -239,6 +239,8 @@ public final class ArchitectureReportDocxRenderer {
             }
             w.heading(labels.provenance(), 1, null);
             w.paragraph(labels.generatedAt() + ": " + report.getGeneratedAt());
+            var modelEvidence = AnalysisModelEvidence.rows(report, labels);
+            if (!modelEvidence.isEmpty()) w.table(List.of(labels.titleLabel(), labels.value()), modelEvidence);
             if (report.getViewContext() != null) {
                 w.paragraph(labels.branch() + ": " + report.getViewContext().basedOnBranch());
                 w.paragraph(

@@ -2,6 +2,19 @@ package com.taxonomy.dto;
 
 public class AnalysisRequest {
 
+    private String expectedCommit;
+    private Long expectedSemanticRevision;
+    private AnalysisModelBinding modelBinding;
+
+    public String getExpectedCommit() { return expectedCommit; }
+    public void setExpectedCommit(String value) { expectedCommit = value; }
+    public Long getExpectedSemanticRevision() { return expectedSemanticRevision; }
+    public void setExpectedSemanticRevision(Long value) { expectedSemanticRevision = value; }
+
+    /** Stored with a durable request. The HTTP adapter clears untrusted input before admission. */
+    public AnalysisModelBinding getModelBinding() { return modelBinding; }
+    public void setModelBinding(AnalysisModelBinding value) { modelBinding = value; }
+
     /** Recorded content language; absent historical values stay unknown. */
     private AnalysisLanguage analysisLanguage;
     public AnalysisLanguage getAnalysisLanguage() { return analysisLanguage; }

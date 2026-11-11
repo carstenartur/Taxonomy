@@ -190,6 +190,13 @@ public final class ClusterAnalysisBackupExport {
     }
     static void validateCommand(AnalysisOperationContext context, String owner, AnalyzeRequirementCommand command) throws IOException {
         var workspace = command.workspaceContext();
+        var requirement = context.requirement();
+        var provenance = command.provenance();
+        if (!Objects.equals(requirement.requirementVersionId(), provenance == null ? null : provenance.requirementVersionId())
+                || (requirement.requirementVersionId() != null
+                    && (!Objects.equals(requirement.projectId(), provenance.projectId())
+                        || !Objects.equals(requirement.requirementId(), provenance.requirementId()))))
+            throw new IOException("Cluster analysis requirement version authority is inconsistent");
         if (workspace == null || !owner.equals(command.username()) || !owner.equals(workspace.username())
                 || !context.requirement().matches(command.businessText()) || !context.authority().repositoryId().equals(workspace.repositoryId())
                 || !Objects.equals(context.authority().workspaceId(), workspace.workspaceId()) || !Objects.equals(context.authority().branch(), workspace.currentBranch()))
