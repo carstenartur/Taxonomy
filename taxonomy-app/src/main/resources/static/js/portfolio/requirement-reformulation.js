@@ -101,7 +101,7 @@
     const el = (tag, text, cls) => { const node=document.createElement(tag); if(text!==undefined)node.textContent=text; if(cls)node.className=cls; return node; };
     const button = (label, action, cls) => { const node=el('button',label,cls || 'btn btn-sm btn-outline-primary'); node.type='button'; node.addEventListener('click',()=>perform(action)); return node; };
     function announce(message) { status.textContent=message; }
-    async function perform(action) { try { announce(t('working')); await action(); } catch(error) { announce(t('failed')+error.message); status.tabIndex=-1; status.focus(); } }
+    async function perform(action) { try { announce(t('working')); await action(); } catch(error) { if(error.code==='ABORTED')return; announce(t('failed')+error.message); status.tabIndex=-1; status.focus(); } }
     function field(label, control) { const wrapper=el('label',label,'d-block mb-2'); wrapper.append(control); return wrapper; }
     function pre(text) { return el('pre',text,'text-break'); }
     function rationale() { return host.querySelector('[data-rationale]')?.value || t('defaultRationale'); }
@@ -466,5 +466,14 @@
         render();if(offer)await refreshRuns();else announce(t('empty'));
     }
     window.addEventListener('beforeunload',event=>{if(hasDrafts() || mutationInFlight){event.preventDefault();event.returnValue='';}});
-    perform(start);
+    perform(async () => {
+        try {
+            if (window.TaxonomyRequirementDetail?.whenReady) await window.TaxonomyRequirementDetail.whenReady();
+        } catch (error) {
+            // The source reports this error and owns the keyboard focus.
+            if (error.code !== 'ABORTED') announce(t('failed') + error.message);
+            return;
+        }
+        await start();
+    });
 }());

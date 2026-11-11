@@ -857,13 +857,21 @@ test('full analysis result pipeline retains relations with the architecture opti
             window.TaxonomyAnalysisSession={state:()=>({ready:true,workspaceId:'test-workspace'})};
             window.TaxonomyAnalysisSessionApi={getRunStatus:async id=>({status:200,json:async()=>({operationId:id,status:'COMPLETED',phase:'FINISHED',sequence:1,serverTime:3000,lastActivityAt:3000,elapsedMillis:1000,calls:[],evaluatedNodes:1})})};
             window.__taxonomyFixtureFetch=async(url,options)=>{
-                if(url!=='/api/analyze')throw new Error('Unexpected request '+url);
-                window.analysisRequest=JSON.parse(options.body);
+                if(new URL(url,location.href).pathname!=='/api/analyze')throw new Error('Unexpected request '+url);
+                window.analysisRequest={url:String(url),method:options.method,
+                    headers:Object.fromEntries(new Headers(options.headers)),body:JSON.parse(options.body)};
                 return {ok:true,json:async()=>({status:'SUCCESS',scores:{'BP-1000':70},rawScores:{'BP-1000':70},reasons:{},warnings:[],architectureView:null,relationSearchReport:report})};
             };
         },relationReport);
         await page.evaluate(()=>TaxonomyScoring.runAnalysis());
-        assert.equal(await page.evaluate(()=>analysisRequest.includeArchitectureView),false);
+        const request=await page.evaluate(()=>window.analysisRequest);
+        assert.ok(request,'The actual named analysis request must reach the captured transport');
+        const url=new URL(request.url,'http://taxonomy.fixture');
+        assert.equal(url.pathname,'/api/analyze');
+        assert.deepEqual([...url.searchParams],[['workspaceId','test-workspace']]);
+        assert.equal(request.headers['x-taxonomy-workspace-id'],'test-workspace');
+        assert.equal(request.method,'POST');
+        assert.equal(request.body.includeArchitectureView,false);
         assert.deepEqual(await page.evaluate(()=>TaxonomyState.currentRelationSearchReport),relationReport);
         assert.equal(await page.locator('#relationSearchReportPanel').isVisible(),true);
     }finally{await finish(page);}

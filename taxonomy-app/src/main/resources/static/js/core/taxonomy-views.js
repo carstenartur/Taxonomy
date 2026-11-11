@@ -364,6 +364,7 @@
 
     /** Called before the dispatcher clears a diagram, including empty/list projections. */
     function prepareDiagramContext(container, context) {
+        hideTooltip();
         captureDiagramReadState(container);
         rememberDiagramFocus(container);
         var store = container._taxDiagramReadState;
@@ -377,6 +378,7 @@
     }
 
     function beginDiagramReadState(container, view, data) {
+        hideTooltip();
         captureDiagramReadState(container);
         rememberDiagramFocus(container);
         container._canvasRenderer = false;
@@ -613,6 +615,10 @@
             tip.id = 'tax-d3-tooltip';
             tip.className = 'tax-tooltip';
             document.body.appendChild(tip);
+            // The body-level tooltip outlives its diagram DOM. Its recorded
+            // pointer position is invalid after viewport or page changes.
+            window.addEventListener('resize', hideTooltip);
+            document.addEventListener('taxonomy:page-activated', hideTooltip);
         }
         return tip;
     }

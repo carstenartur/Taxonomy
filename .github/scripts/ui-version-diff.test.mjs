@@ -204,6 +204,85 @@ test('QA cleanup errors preserve the original assertion failure', async () => {
     });
 });
 
+for (const failAt of ['before opening Versions', 'during branch selection', 'after branch selection']) {
+  test('comparison restores only its own branch selection after failure ' + failAt, async () => {
+    const {runVersionComparisonWorkflow, removeComparisonBranch} = await import('./ui-primary-version-workflow.mjs');
+    const original = new Error(failAt), selected = [], refs = new Set(['release/prior']), removed = [];
+    let allocated, visible = false, listed = false, active = '';
+    const api = {getJson:async () => ({branches:[...refs]}), request:async (path, init) => {
+      const ref = new URL(path, 'https://fixture.test').searchParams.get('name');
+      assert.equal(init.method, 'DELETE'); assert.ok(refs.delete(ref)); removed.push(ref);
+    }};
+    const page = {
+      async evaluate(fn, arg) {
+        if (arg?.branch) {
+          allocated = arg.branch; refs.add(allocated);
+          if (failAt === 'before opening Versions') throw original;
+          return {branch:allocated, left:'a'.repeat(40), right:'b'.repeat(40)};
+        }
+        if (fn === removeComparisonBranch) return fn(arg, api);
+        return vm.runInNewContext('('+fn.toString()+')()', {window:{TaxonomyVersions:{loadTimeline() {}}}});
+      },
+      locator(selector) {
+        return {
+          async inputValue() {return active;},
+          async isVisible() {return false;},
+          async getAttribute() {return 'open';},
+          async click() {
+            if (selector === '#applicationMenuGroups [data-page="versions"]') visible = true;
+            else if (selector.includes('data-action="compare"')) throw original;
+          },
+          async waitFor() {
+            if (selector.startsWith('#versionsBranchSelect option')) {
+              assert.equal(visible, true); listed = true; active = 'release/prior';
+            }
+          },
+          async selectOption(value) {
+            selected.push(value);
+            assert.ok(visible && listed && refs.has(value), 'Cannot select an absent option on a hidden or unloaded Versions page');
+            active = value;
+            if (value === allocated && failAt === 'during branch selection') throw original;
+          }
+        };
+      }
+    };
+    await assert.rejects(runVersionComparisonWorkflow({page,role:'ADMIN',evidence:{}}), error => error === original);
+    assert.match(allocated, /^qa-compare-[0-9a-f-]{36}$/);
+    assert.deepEqual(removed, [allocated]);
+    assert.deepEqual([...refs], ['release/prior']);
+    assert.deepEqual(selected, failAt === 'before opening Versions' ? [] : [allocated, 'release/prior']);
+    if (failAt !== 'before opening Versions') assert.equal(active, 'release/prior');
+  });
+}
+
+test('reported comparison aggregate distinguishes both causes without including untrusted messages', async () => {
+  const {usingComparisonBranch} = await import('./ui-primary-version-workflow.mjs');
+  const first = new Error('page.evaluate: Error: HTTP 409: <html>private work</html> ?token=secret-query');
+  const second = new Error('locator.selectOption: Timeout 30000ms exceeded. Authorization: Bearer secret-token');
+  await assert.rejects(usingComparisonBranch(() => { throw first; }, () => { throw second; }), error => {
+    assert.deepEqual(error.errors, [first, second]);
+    const reported = error.stack.split('\n')[0]; // The native reporter retains the outer stack.
+    assert.match(reported, /comparison[^;\n]*HTTP 409/i);
+    assert.match(reported, /cleanup[^;\n]*timeout/i);
+    assert.doesNotMatch(reported, /private work|<html>|secret-query|Authorization|secret-token/);
+    assert.ok(reported.length < 300);
+    return true;
+  });
+});
+
+test('comparison evidence and a surviving QA ref retain distinct safe reasons in the outer stack', async () => {
+  const {usingComparisonBranch, removeComparisonBranch} = await import('./ui-primary-version-workflow.mjs');
+  const original = new Error('Real version comparison omitted <html>private relation</html>?token=secret');
+  await assert.rejects(usingComparisonBranch(() => { throw original; }, branch =>
+    removeComparisonBranch(branch, {getJson: async () => ({branches:[branch]}), request: async () => {}})), error => {
+    assert.equal(error.errors[0], original);
+    assert.equal(error.errors[1].message, 'QA branch cleanup was not confirmed');
+    assert.equal(error.stack.split('\n')[0], 'AggregateError: comparison: incomplete comparison evidence; branch cleanup: ref still present');
+    assert.doesNotMatch(error.stack, /private relation|<html>|token=secret/);
+    return true;
+  });
+});
+
 for (const baseline of ['element BP-1 type Process { title: "Überprüfung"; taxonomy: "BP"; }\n',
     'element BP-1 type Process {}\nrelation BP-1 CONSUMES IP-1 { status: proposed; }\n']) {
   test('relation-only comparison supplies an isolated QA relation without altering the baseline', async () => {

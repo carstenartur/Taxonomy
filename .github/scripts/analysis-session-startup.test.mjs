@@ -498,6 +498,71 @@ for (const boundary of ['workspace metadata', 'repository context']) {
 }
 
 
+for (const unavailable of [false, true]) test(`real session admission waits for ${unavailable ? 'the explicit retry of unavailable' : 'the first'} ContextBar metadata before main analysis retains its measured result`, async () => {
+  const messages = await readFile(new URL('../../taxonomy-app/src/main/resources/i18n/messages.properties', import.meta.url), 'utf8');
+  const warning = messages.match(/^scoring\.lifecycle\.not\.ready=(.*)$/m)[1];
+  let actualBar;
+  const workingInitialization = Promise.resolve(null);
+  const h = createStartupHarness(Promise.resolve({workspaceId: 'ws-ready'}), async () => null, {
+    TaxonomyArchitectureLifecycle: {ready: () => workingInitialization},
+    TaxonomyContextBar: {fetchAndRender: () => actualBar.fetchAndRender('absent-context-container')}
+  });
+  const requests = [], announcements = [];
+  const feedback = {dataset: {}, innerHTML: ''};
+  const text = {value: 'communications', classList: {remove() {}}};
+  h.document.documentElement = {lang: 'en'};
+  h.document.getElementById = id => id === 'businessText' ? text : id === 'includeArchitectureView' ? {checked: false} : id === 'statusArea' ? feedback : null;
+  h.document.querySelectorAll = () => [];
+  h.window.TaxonomyState = h.context.S;
+  h.window.TaxonomyState.taxonomyData = [];
+  h.window.TaxonomyBrowse = {clearStatus() {}, renderView() {}};
+  h.window.TaxonomyArchitectureWorkflow = {getScope: () => ({workspaceId: 'ws-ready', repositoryId: 'repo-a', branch: 'draft'})};
+  h.window.TaxonomyAnalysisProgress = {start: () => ({acceptsResult: () => true, finish() {}, stop() {}})};
+  const sandbox = {window: h.window, document: h.document, setInterval: () => 1, clearInterval() {},
+    setTimeout: () => 1, clearTimeout() {}, console: {log() {}, error() {}}, CSS: {escape: String},
+    TaxonomyI18n: {t: key => key === 'scoring.lifecycle.not.ready' ? warning : key}, TaxonomyUtils: {escapeHtml: String},
+    escapeHtml: String, rememberStatusFeedback() {}, announceStatus: message => announcements.push(message), announceAlert() {},
+    fetch: (url, options) => new Promise(resolve => requests.push({url, options, resolve}))};
+  canonicalFixture.install(sandbox, ['api/analysis-api.js', 'api/workspace-api.js', 'versioning/taxonomy-context-bar.js']);
+  actualBar = h.window.TaxonomyContextBar;
+  const browse = await readFile(new URL(`${sourceRoot}taxonomy-browse.js`, import.meta.url), 'utf8');
+  vm.runInContext(browse.slice(browse.indexOf('    function showStatus('), browse.indexOf('    function clearStatus('))
+    + '\nwindow.TaxonomyBrowse.showStatus = showStatus;', sandbox);
+  vm.runInContext(await readFile(new URL(`${sourceRoot}taxonomy-scoring.js`, import.meta.url), 'utf8'), sandbox);
+  assert.equal(await h.session.whenInitialized(), true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.session.state().ready, false);
+  h.window.TaxonomyScoring.runAnalysis();
+  assert.ok(feedback.innerHTML.includes('alert-warning'));
+  assert.ok(feedback.innerHTML.includes(warning), 'An early Analyze action renders the existing visible retry guidance');
+  assert.deepEqual(announcements, [warning], 'The same warning is announced to assistive technology');
+  assert.equal(requests.length, 1, 'Only initial source metadata may be requested before admission');
+  assert.match(requests[0].url, /context\/current/);
+  let metadataRequest = 0;
+  if (unavailable) {
+    requests[0].resolve(Response.json({detail: 'Metadata unavailable'}, {status: 503}));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.session.state().ready, false);
+    assert.equal(requests.length, 1, 'A failed initial read has no automatic retry');
+    const retried = h.context.retryServerState();
+    await new Promise(resolve => setImmediate(resolve));
+    metadataRequest = 1;
+    requests[1].resolve(Response.json({contextId: 'initial-context', branch: 'draft', commitId: null, mode: 'EDITABLE'}));
+    await retried;
+  } else {
+    requests[0].resolve(Response.json({contextId: 'initial-context', branch: 'draft', commitId: null, mode: 'EDITABLE'}));
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  assert.equal(h.session.state().ready, true, 'A retained null working-lifecycle result cannot permanently block the confirmed private source');
+  const pending = h.window.TaxonomyScoring.runAnalysis();
+  assert.equal(requests.length, metadataRequest + 2); assert.match(requests[metadataRequest + 1].url, /api\/analyze/);
+  requests[metadataRequest + 1].resolve(Response.json({status: 'SUCCESS', scores: {CP: 80}, reasons: {}, warnings: [], analysisDurationMillis: 1200}));
+  await pending;
+  assert.equal(h.context.S.lastAnalysisStatus, 'SUCCESS');
+  assert.equal(h.context.S.lastAnalysisDurationMillis, 1200);
+  assert.equal(h.context.S.currentScores.CP, 80);
+});
+
 test('confirmed source readiness is handed off once the existing draft-confirmation barrier also opens', async () => {
   let reads = 0;
   const h = createStartupHarness(Promise.resolve({workspaceId: 'ws-ready'}), async () => null, {

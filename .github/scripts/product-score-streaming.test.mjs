@@ -164,9 +164,11 @@ function harness(locale = 'en') {
       controls.includeArchitectureView = { checked: false };
       context.crypto = { randomUUID: () => 'cb2a3d71-e849-4a50-9855-1f9cb8f81402' };
       context.fetch = url => {
-        assert.equal(url, '/api/analyze');
+        assert.equal(url, '/api/analyze?workspaceId=workspace-a');
         return new Promise(() => {});
       };
+      context.setTimeout = () => 1; context.clearTimeout = () => {};
+      canonicalFixture.install(context, ['api/analysis-api.js']);
       window.TaxonomyScoring.runAnalysis();
       assert.equal(typeof receive, 'function');
       return receive;

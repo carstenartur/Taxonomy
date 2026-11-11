@@ -127,7 +127,7 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         driver.get(operationUrl);
         wait.until(browser -> sourceText.equals(browser.findElement(By.id("sourceText")).getDomProperty("textContent")));
 
-        refreshAuthenticatedOperation(driver, wait, operationUrl);
+        refreshAuthenticatedOperation(driver, wait, operationUrl, app.browserSessions);
         assertThat(driver.getCurrentUrl()).isEqualTo(operationUrl);
         assertThat(driver.manage().getCookieNamed("JSESSIONID").getValue().equals(sessionId))
                 .as("A live refresh retains its session").isTrue();
@@ -136,7 +136,7 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
 
         servletSession.invalidate();
         assertThat(app.browserSessions.sessions.containsKey(sessionId)).as("The actual session was destroyed").isFalse();
-        refreshAuthenticatedOperation(driver, wait, operationUrl);
+        refreshAuthenticatedOperation(driver, wait, operationUrl, app.browserSessions);
         assertThat(driver.getCurrentUrl()).as("Expired-session recovery restores the exact requirement URL").isEqualTo(operationUrl);
         assertThat(app.browserSessions.successfulLogins.get()).as("Exactly one real login recovers the expired session").isEqualTo(logins + 1);
         assertThat(driver.manage().getCookieNamed("JSESSIONID").getValue().equals(sessionId)).isFalse();
@@ -151,16 +151,45 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         wait.until(ExpectedConditions.elementToBeClickable(By.id("copilotRun")));
     }
 
-    static void refreshAuthenticatedOperation(WebDriver browser, WebDriverWait wait, String operationUrl) {
+    static void refreshAuthenticatedOperation(WebDriver browser, WebDriverWait wait, String operationUrl,
+                                               ScenarioArchitectureAcceptanceTest.BrowserSessions sessions) {
+        int requestSequence = sessions.loginRequests.get();
+        int loginsBefore = sessions.successfulLogins.get();
+        Object beforeRefresh = ((JavascriptExecutor) browser).executeScript("""
+                const state = window.TaxonomyAnalysisSession?.state?.();
+                return {sessionApiPresent: Boolean(window.TaxonomyAnalysisSession),
+                    ready: state?.ready === true, restoring: state?.restoring === true,
+                    workspacePresent: Boolean(state?.workspaceId)};
+                """);
         browser.navigate().refresh();
         if (!"/login".equals(java.net.URI.create(browser.getCurrentUrl()).getPath())) return;
         // HTTP-only analysis can outlive this browser's separate servlet session.
         // Sign in through the real form, then restore the operation being reviewed.
         var form = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("loginForm")));
+        var csrfFields = form.findElements(By.cssSelector("input[name='_csrf']"));
+        var formMetadata = Map.of("postMethod", "post".equalsIgnoreCase(form.getDomAttribute("method")),
+                "loginAction", "/login".equals(java.net.URI.create(form.getDomProperty("action")).getPath()),
+                "csrfFieldCount", csrfFields.size(), "csrfValuePresent", csrfFields.stream()
+                        .anyMatch(field -> !Objects.toString(field.getDomProperty("value"), "").isBlank()));
         form.findElement(By.name("username")).sendKeys("admin");
         form.findElement(By.name("password")).sendKeys(ScenarioArchitectureAcceptanceTest.PASSWORD);
         form.findElement(By.cssSelector("button[type='submit']")).click();
-        wait.until(current -> !"/login".equals(java.net.URI.create(current.getCurrentUrl()).getPath()));
+        try {
+            wait.until(current -> {
+                var observed = sessions.loginObservationsAfter(requestSequence);
+                boolean rejected = observed.stream().anyMatch(response -> "POST".equals(response.method())
+                        && (response.status() == 403 || response.redirectsToLogin()));
+                assertThat(rejected).withFailMessage("Scenario browser login was definitively rejected; "
+                        + "beforeRefresh=%s, form=%s, successfulLoginsBefore=%s, successfulLoginsNow=%s, responses=%s",
+                        beforeRefresh, formMetadata, loginsBefore, sessions.successfulLogins.get(), observed).isFalse();
+                return !"/login".equals(java.net.URI.create(current.getCurrentUrl()).getPath());
+            });
+        } catch (TimeoutException timeout) {
+            throw new TimeoutException("Scenario browser login did not leave the login route; beforeRefresh="
+                    + beforeRefresh + ", form=" + formMetadata + ", successfulLoginsBefore=" + loginsBefore
+                    + ", successfulLoginsNow=" + sessions.successfulLogins.get()
+                    + ", responses=" + sessions.loginObservationsAfter(requestSequence), timeout);
+        }
         browser.get(operationUrl);
     }
 
@@ -188,7 +217,7 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         // A partial analysis stays on its operation surface so its questions and
         // continuation actions remain reviewable. Open the selected result explicitly.
         refreshAuthenticatedOperation(driver, wait,
-                origin + "/projects/" + projectId + "/requirements/" + requirementId + "?lang=en");
+                origin + "/projects/" + projectId + "/requirements/" + requirementId + "?lang=en", app.browserSessions);
         wait.until(ExpectedConditions.attributeContains(By.id("copilotOpenResult"), "href", "snapshot=" + snapshotId));
         click(By.id("copilotOpenResult"));
         wait.until(browser -> browser.getCurrentUrl().contains("snapshot=" + snapshotId));

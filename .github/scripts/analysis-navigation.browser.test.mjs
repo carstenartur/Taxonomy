@@ -1,3 +1,4 @@
+import {installBrowserApiFixture} from './canonical-browser-fixture.mjs';
 /** Native Chromium component acceptance of the production header and controllers.
  * BOOTSTRAP_CSS must name the exact Bootstrap 5.3.8 stylesheet from the project's WebJar.
  * No server/provider requests; account responses are explicit test fixtures, not auth acceptance.
@@ -40,6 +41,7 @@ async function fixture(locale='de',width=1366,entry=null){
     const page=await browser.newPage({viewport:{width,height:768}});page.setDefaultTimeout(2500);
     page.uiErrors=[]; page.on('pageerror',error=>page.uiErrors.push(error.message));
     await page.route('http://taxonomy.test/taxonomy/',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><html></html>'}));
+    await page.route('http://taxonomy.test/taxonomy/api/**',route=>route.fulfill({contentType:'application/json',body:'[]'}));
     await page.goto('http://taxonomy.test/taxonomy/');
     if(entry)await page.evaluate(url=>history.replaceState(null,'',url),entry);
     let dict={};
@@ -56,23 +58,20 @@ async function fixture(locale='de',width=1366,entry=null){
     await page.evaluate(dict=>{
         const store=new Map([['taxonomy_onboarded','true']]);
         Object.defineProperty(window,'localStorage',{value:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)}});
-        window.TaxonomyI18n={ready:()=>Promise.resolve(),getLocale:()=>document.documentElement.lang,resolveUrl:p=>'/taxonomy'+p,
+        window.TaxonomyI18n={ready:()=>Promise.resolve(),getLocale:()=>document.documentElement.lang,getBasePath:()=>'/taxonomy',resolveUrl:p=>p.startsWith('/taxonomy/')?p:'/taxonomy'+p,
             t:(key,...args)=>(dict[key]||key).replace(/\{(\d+)\}/g,(_,n)=>String(args[n]??''))};
         document.querySelectorAll('[th\\:text]').forEach(e=>{const m=e.getAttribute('th:text').match(/^#\{(.+)\}$/);if(m)e.textContent=TaxonomyI18n.t(m[1]);});
         window.account={username:'admin',roles:['ADMIN'],administrator:true,architectureMutationAllowed:true,localUserManagementAllowed:false};
-        window.TaxonomyApiClient={
-            getJson:()=>window.accountError?Promise.reject(new Error('Account unavailable')):Promise.resolve(window.account),
-            // Component tests stub the HTTP boundary, but load the production
-            // reference client to verify its consumers instead of inventing globals.
-            request:(url,init)=>window.fetch(window.TaxonomyI18n.resolveUrl(url),init)
-        };
+        window.__taxonomyFixtureFetch=(url,init)=>String(url).includes('/api/account/me')
+            ? window.accountError?Promise.reject(new Error('Account unavailable')):Promise.resolve(Response.json(window.account))
+            : window.__taxonomyFixtureNativeFetch(url,init);
     },dict);
+    await installBrowserApiFixture(page,resources);
     await page.addStyleTag({content:bootstrapCss});
     for(const css of ['taxonomy.css','taxonomy-ergonomics.css','context-help.css','application-chrome.css','architecture-lifecycle.css'])
         await page.addStyleTag({path:path.join(resources,'static/css',css)});
     await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-state.js')});
     await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-utils.js')});
-    await page.addScriptTag({path:path.join(resources,'static/js/api/reference-api.js')});
     await page.addScriptTag({path:path.join(resources,'static/js/shared/application-chrome.js')});
     await page.addScriptTag({path:path.join(resources,'static/js/shared/application-commands.js')});
     const nav=template.match(/<!-- Page Navigation Script -->\s*<script>([\s\S]*?)<\/script>/);
@@ -459,7 +458,7 @@ for(const legacyStatus of ['unavailable','password-off'])test(`browse bootstrap 
             for(const id of ['expandAll','collapseAll']){const b=document.createElement('button');b.id=id;document.body.append(b);}
             for(const id of ['taxonomyTree','aiProviderInfo']){const d=document.createElement('div');d.id=id;document.body.append(d);}
             window.requests=[];
-            window.fetch=url=>{
+            window.__taxonomyFixtureFetch=url=>{
                 requests.push(String(url));
                 if(String(url).includes('/api/admin/status'))return status==='unavailable'?Promise.reject(new Error('status unavailable')):Promise.resolve({ok:true,json:async()=>({passwordRequired:false})});
                 if(String(url).includes('/api/account/me'))return Promise.resolve({ok:true,json:async()=>window.account});
@@ -490,7 +489,7 @@ for (const locale of ['de','en']) test(`${locale}: Help loads once through the c
         await page.evaluate(()=>{
             document.getElementById('tab-help').innerHTML='<ul id="helpTocList"></ul><h2 id="helpDocTitle"></h2><div id="helpDocBody"></div><button id="helpBackToTop">Top</button>';
             window.helpRequests=[];
-            window.fetch=async url=>{helpRequests.push(String(url));return {ok:true,json:async()=>[{filename:'USER_GUIDE',icon:'',title:'Handbuch',audience:'Users'}],text:async()=>'<h2>Bedienung der Anwendung</h2>'};};
+            window.__taxonomyFixtureFetch=async url=>{helpRequests.push(String(url));return {ok:true,json:async()=>[{filename:'USER_GUIDE',icon:'',title:'Handbuch',audience:'Users'}],text:async()=>'<h2>Bedienung der Anwendung</h2>'};};
         });
         await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-help.js')});
         await navigateToPage(page,'help');
@@ -508,7 +507,7 @@ for (const locale of ['de','en']) test(`${locale}: bundled Markdown links open t
         await page.evaluate(()=>{
             document.getElementById('tab-help').innerHTML='<ul id="helpTocList"></ul><h2 id="helpDocTitle"></h2><div id="helpDocBody"></div><button id="helpBackToTop">Top</button>';
             window.helpRequests=[];
-            window.fetch=url=>{
+            window.__taxonomyFixtureFetch=url=>{
                 helpRequests.push(String(url));
                 if (String(url).includes('/help?')) return new Promise(resolve=>{window.finishToc=()=>resolve({ok:true,json:async()=>[
                     {filename:'USER_GUIDE',icon:'',title:'Guide',audience:'Users'},

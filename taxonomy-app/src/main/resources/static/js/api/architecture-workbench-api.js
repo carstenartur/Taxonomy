@@ -2,24 +2,13 @@
 window.ArchitectureWorkbenchApi = (function () {
     'use strict';
 
-    async function getJson(url, signal, source) {
-        const headers = { Accept: 'application/json' };
+    function getJson(url, signal, source) {
+        const options = {signal: signal};
         if (source && (source.workspaceScopeKey !== undefined || source.workspaceId !== undefined)) {
             const workspace = source.workspaceScopeKey || source.workspaceId || '__shared__';
-            headers['X-Taxonomy-Workspace-Id'] = workspace === '__shared__' ? '' : String(workspace);
+            options.pinnedWorkspaceId = workspace === '__shared__' ? '' : String(workspace);
         }
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: headers,
-            credentials: 'same-origin',
-            cache: 'no-store', signal: signal
-        });
-        if (response.ok) return response.json();
-        const problem = await response.json().catch(function () { return null; });
-        const message = problem?.detail || problem?.message || ('HTTP ' + response.status);
-        const error = new Error(message);
-        error.status = response.status;
-        throw error;
+        return window.TaxonomyApiClient.getJson(url, options);
     }
 
     function positiveInteger(value, field) {

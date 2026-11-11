@@ -5,17 +5,23 @@
     // operation stream below carries its original explicit workspace pin.
     var RunEventSource = window.EventSource;
 
-    function request(url, options, pinnedWorkspaceId) {
+    function request(url, options, pinnedWorkspaceId, preserveDraftReceipt) {
         var client = window.TaxonomyApiClient;
         if (!client || typeof client.request !== 'function') {
             return Promise.reject(new Error('Taxonomy API client is not available'));
         }
         var method = String((options && options.method) || 'GET').toUpperCase();
-        return client.request(url, options, {
+        var policy = {
             idempotent: method === 'GET' || method === 'HEAD',
             signal: options && options.signal,
             pinnedWorkspaceId: pinnedWorkspaceId
-        });
+        };
+        // The draft queue owns an admitted PUT's optimistic acknowledgement.
+        // Retain that receipt across display/reanalysis changes; its workspace,
+        // discard and reset fences still decide whether it may advance state.
+        // Authentication, page lifetime and response deadlines remain canonical.
+        if (preserveDraftReceipt === true && method === 'PUT') policy.contextSensitive = false;
+        return client.request(url, options, policy);
     }
 
     // Return the raw Response: an initial 202 has no JSON body. The canonical

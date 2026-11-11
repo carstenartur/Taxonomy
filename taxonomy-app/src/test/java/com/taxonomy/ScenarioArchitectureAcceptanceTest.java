@@ -8,6 +8,10 @@ import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.export.service.ExportFormatExtensionRegistry;
 import com.taxonomy.export.spi.ExportContext;
 import com.taxonomy.testsupport.BrowserSession;
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.Filter;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.HttpSessionEvent;
 import jakarta.servlet.http.HttpSessionIdListener;
@@ -23,9 +27,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.event.EventListener;
 import org.springframework.security.authentication.event.InteractiveAuthenticationSuccessEvent;
+import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
+import org.springframework.security.web.csrf.XorCsrfTokenRequestAttributeHandler;
 import org.springframework.test.annotation.DirtiesContext;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -42,6 +51,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -79,6 +89,8 @@ class ScenarioArchitectureAcceptanceTest {
     static class BrowserSessions implements HttpSessionListener, HttpSessionIdListener {
         final Map<String, HttpSession> sessions = new ConcurrentHashMap<>();
         final AtomicInteger successfulLogins = new AtomicInteger();
+        final AtomicInteger loginRequests = new AtomicInteger();
+        final List<LoginObservation> loginObservations = new CopyOnWriteArrayList<>();
         @EventListener void loggedIn(InteractiveAuthenticationSuccessEvent event) { successfulLogins.incrementAndGet(); }
         @Override public void sessionCreated(HttpSessionEvent event) {
             sessions.put(event.getSession().getId(), event.getSession());
@@ -90,6 +102,59 @@ class ScenarioArchitectureAcceptanceTest {
             sessions.remove(oldSessionId);
             sessions.put(event.getSession().getId(), event.getSession());
         }
+
+        /** Observe the existing form/session contract without generating, saving or disclosing tokens. */
+        @Bean
+        FilterRegistrationBean<Filter> scenarioLoginDiagnostics() {
+            var tokens = new HttpSessionCsrfTokenRepository();
+            var tokenValues = new XorCsrfTokenRequestAttributeHandler();
+            Filter filter = (request, response, chain) -> {
+                var http = (HttpServletRequest) request;
+                var result = (HttpServletResponse) response;
+                int sequence = loginRequests.incrementAndGet();
+                String before = sessionId(http);
+                boolean requestedSession = http.getRequestedSessionId() != null;
+                boolean validRequestedSession = http.isRequestedSessionIdValid();
+                long sessionCookies = http.getCookies() == null ? 0 : Arrays.stream(http.getCookies())
+                        .filter(cookie -> "JSESSIONID".equals(cookie.getName())).count();
+                var expected = tokens.loadToken(http);
+                String supplied = http.getParameter("_csrf");
+                boolean csrfPresent = supplied != null && !supplied.isBlank();
+                boolean csrfMatches = expected != null
+                        && expected.getToken().equals(tokenValues.resolveCsrfTokenValue(http, expected));
+                try {
+                    chain.doFilter(request, response);
+                } finally {
+                    String after = sessionId(http);
+                    String location = result.getHeader("Location");
+                    boolean loginRedirect = location != null
+                            && "/login".equals(java.net.URI.create(location).getPath());
+                    loginObservations.add(new LoginObservation(sequence, http.getMethod(), result.getStatus(),
+                            sessionCookies, requestedSession, validRequestedSession, before != null, after != null,
+                            !Objects.equals(before, after), csrfPresent, expected != null, csrfMatches, loginRedirect));
+                }
+            };
+            var registration = new FilterRegistrationBean<>(filter);
+            registration.setUrlPatterns(List.of("/login"));
+            registration.setDispatcherTypes(DispatcherType.REQUEST);
+            registration.setOrder(SecurityFilterProperties.DEFAULT_FILTER_ORDER - 1);
+            return registration;
+        }
+
+        List<LoginObservation> loginObservationsAfter(int sequence) {
+            return loginObservations.stream().filter(observation -> observation.sequence() > sequence).toList();
+        }
+
+        private static String sessionId(HttpServletRequest request) {
+            var session = request.getSession(false);
+            return session == null ? null : session.getId();
+        }
+
+        record LoginObservation(int sequence, String method, int status, long sessionCookieCount,
+                                boolean requestedSessionPresent, boolean requestedSessionValid,
+                                boolean sessionPresentBefore, boolean sessionPresentAfter, boolean sessionChanged,
+                                boolean csrfParameterPresent, boolean sessionCsrfPresent, boolean csrfMatchesSession,
+                                boolean redirectsToLogin) { }
     }
 
     static final String PASSWORD = "Scenario-Acceptance-2026!";

@@ -36,7 +36,8 @@ class ReformulationProgressTest {
         Path script = resource("/reformulation/progress-contract.cjs", "progress.cjs");
         Path api = resource("/static/js/api/portfolio-api.js", "api.js");
         Path workspace = resource("/static/js/portfolio/requirement-reformulation.js", "workspace.js");
-        execute(List.of(System.getProperty("taxonomy.node.executable"), script.toString(), api.toString(), workspace.toString()), "controls", 30,
+        execute(List.of(System.getProperty("taxonomy.node.executable"), script.toString(), api.toString(), workspace.toString(),
+                Path.of("..").toAbsolutePath().normalize().resolve(".github/scripts/canonical-api-fixture.cjs").toString()), "controls", 30,
                 "REFORMULATION_PROGRESS_CONTROLS_OK");
     }
 

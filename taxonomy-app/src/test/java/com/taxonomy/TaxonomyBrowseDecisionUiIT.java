@@ -110,19 +110,21 @@ class TaxonomyBrowseDecisionUiIT {
     private Map<String, Object> capturedReasonLengthExports() {
         return (Map<String, Object>) browser.executeAsyncScript("""
             const done=arguments[arguments.length-1], requests={};
-            const fetchBefore=window.fetch;
-            window.fetch=async (url, options)=>{
+            const routes=window.fixtureApiHandlers;
+            const previousScores=routes['/api/scores/export'], previousDecision=routes['/api/decision-report/docx'];
+            routes['/api/scores/export']=async (url, options)=>{
                 requests.scores=JSON.parse(options.body);
-                return new Response(JSON.stringify(requests.scores),{status:200,headers:{'Content-Type':'application/json'}});
+                return Response.json(requests.scores);
+            };
+            routes['/api/decision-report/docx']=async(url,options)=>{
+                requests.decision=JSON.parse(options.body); throw new Error('fixture stops before download');
             };
             window.TaxonomyDecisionExport={open:dialog=>{requests.report=dialog;}};
             TaxonomyExport.exportJson(TaxonomyState.currentScores,TaxonomyState.currentReasons,'fixture requirement','MOCK');
             TaxonomyBrowse.fixtureHandleExport('exportDecisionReportDocx');
-            window.TaxonomyApiClient={requestBlob:async(url,options)=>{
-                requests.decision=JSON.parse(options.body); throw new Error('fixture stops before download');
-            }};
             requests.report.submit({format:'docx',options:{}}).catch(()=>{}).finally(()=>{
-                window.fetch=fetchBefore;
+                routes['/api/scores/export']=previousScores;
+                routes['/api/decision-report/docx']=previousDecision;
                 done({scores:requests.scores.analysisReasonLength,decision:requests.decision.analysisReasonLength});
             });
             """);
@@ -312,7 +314,14 @@ class TaxonomyBrowseDecisionUiIT {
             window.TaxonomyAnalysisProgress={start:(operation,onSnapshot)=>{
                 window.fixtureSnapshot=onSnapshot; return {acceptsResult:()=>true};
             }};
-            window.fetch=(url)=>{window.fixturePostedUrl=url;return new Promise(()=>{});};
+            window.fixtureApiHandlers['/api/analyze']=(url,options)=>{
+                const request=new URL(url,location.href);
+                window.fixturePostedRequestUrl=String(url);
+                window.fixturePostedUrl=request.pathname;
+                window.fixturePostedWorkspace=request.searchParams.get('workspaceId');
+                window.fixturePostedWorkspaceHeader=new Headers(options.headers).get('X-Taxonomy-Workspace-Id');
+                return new Promise(()=>{});
+            };
             const architecture=document.createElement('input');architecture.type='checkbox';architecture.id='includeArchitectureView';document.body.append(architecture);
             TaxonomyScoring.runAnalysis();
             if(arguments[0])TaxonomyBrowse.fixtureCollapseAll();
@@ -338,6 +347,8 @@ class TaxonomyBrowseDecisionUiIT {
                 rendered:document.querySelectorAll('#taxonomyTree .tax-node').length};
             """);
         assertThat(browser.executeScript("return window.fixturePostedUrl")).isEqualTo("/api/analyze");
+        assertThat(browser.executeScript("return window.fixturePostedWorkspace")).isEqualTo("fixture-workspace");
+        assertThat(browser.executeScript("return window.fixturePostedWorkspaceHeader")).isEqualTo("fixture-workspace");
         assertThat(result.get("changed")).isEqualTo(250L);
         assertThat(result.get("refreshes")).as("one source summary pass per polling batch").isEqualTo(1L);
         assertThat(result.get("scans")).as("all positive-path ancestor updates share one tab-stop scan per tree").isEqualTo(2L);

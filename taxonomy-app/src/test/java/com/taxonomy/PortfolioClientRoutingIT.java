@@ -1,6 +1,8 @@
 package com.taxonomy;
 
 import com.sun.net.httpserver.HttpServer;
+import com.taxonomy.dto.ContextMode;
+import com.taxonomy.dto.ContextRef;
 import com.taxonomy.portfolio.dto.PortfolioDtos;
 import com.taxonomy.portfolio.model.PortfolioTypes;
 import com.taxonomy.shared.config.I18nConfig;
@@ -62,6 +64,7 @@ class PortfolioClientRoutingIT {
     void contextualHelpOpensTheGraphSectionInANewTabAndPreservesWork(String language) throws Exception {
         String prefix = "/taxonomy";
         page.clearRoutes();
+        routeCurrentContext(prefix);
         // The full workspace loads capabilities on startup; a missing response opens
         // the export-error dialog and correctly blocks interaction with the page beneath it.
         page.route("GET", prefix + "/api/capabilities", request -> PortfolioClientTestPage.json(200,
@@ -330,7 +333,7 @@ class PortfolioClientRoutingIT {
                     .isEqualTo(prefix + "/architecture/workbench?projectId=42&snapshotId=" + snapshotId
                             + "&lang=de" + (workspaceQuery == null ? "" : "&" + workspaceQuery));
             assertThat(requests("GET", prefix + "/api/projects/42/snapshots/" + snapshotId)).singleElement()
-                    .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
+                    .extracting(request -> queryPairs(request.query())).isEqualTo(queryPairs(workspaceQuery));
         }
     }
 
@@ -433,12 +436,12 @@ class PortfolioClientRoutingIT {
                 + (workspaceQuery == null ? "" : "&" + workspaceQuery);
         assertProjectReturn(prefix, workspaceId);
         assertThat(requests("GET", prefix + "/api/projects/42")).singleElement()
-                .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
+                .extracting(request -> queryPairs(request.query())).isEqualTo(queryPairs(workspaceQuery));
         click(By.id("confirmImport"));
         wait.until(ignored -> !hidden("importInfo") && hidden("importBusy"));
         assertThat(text("importError")).isEmpty();
         assertThat(requests("POST", prefix + "/api/projects/42/requirements/import-review")).singleElement()
-                .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
+                .extracting(request -> queryPairs(request.query())).isEqualTo(queryPairs(workspaceQuery));
         JsonNode stored = readJobs();
         assertThat(stored.size()).isEqualTo(1);
         assertThat(stored.get(0).path("url").asText()).isEqualTo(page.origin() + prefix + "/api/projects/42/analysis-jobs/job-7");
@@ -455,8 +458,12 @@ class PortfolioClientRoutingIT {
         assertThat(readJobs().get(0).path("url").asText()).isEqualTo(page.origin() + prefix + "/api/projects/42/analysis-jobs/job-7");
         assertThat(readJobs().get(0).path("projectId").asInt()).isEqualTo(42);
         wait.until(ignored -> readJobs().get(0).path("job").path("status").asText().equals("SUCCESS"));
-        assertThat(requests("GET", prefix + "/api/projects/42/analysis-jobs/job-7")).hasSize(1);
-        assertSameOriginCredentials(page.origin() + prefix + "/api/projects/42/analysis-jobs/job-7");
+        assertThat(requests("GET", prefix + "/api/projects/42/analysis-jobs/job-7"))
+                .singleElement().satisfies(request -> {
+                    assertThat(request.query()).isEqualTo("workspaceId=");
+                    assertThat(request.header("X-Taxonomy-Workspace-Id")).isEmpty();
+                });
+        assertSameOriginCredentials(prefix + "/api/projects/42/analysis-jobs/job-7?workspaceId=");
     }
 
     @Test void leavingPortfolioAbortsItsPendingJobReadAndRetainsTheServerJob() {
@@ -1101,9 +1108,10 @@ class PortfolioClientRoutingIT {
                 <script>localStorage.clear();%s%s</script>
                 <script src="%s/js/taxonomy-i18n.js"></script>
                 <script src="%s/js/shared/taxonomy-utils.js"></script>
+                <script src="%s/js/api/taxonomy-api-client.js"></script>
                 <script src="%s/js/api/portfolio-api.js"></script>
                 <script src="%s/js/portfolio/taxonomy-portfolio-async.js"></script></body></html>
-                """.formatted(OBSERVE_FETCH, setup, prefix, prefix, prefix, prefix);
+                """.formatted(OBSERVE_FETCH, setup, prefix, prefix, prefix, prefix, prefix);
         page.openHtml(prefix, "/projects", html);
         wait.until(ignored -> Boolean.TRUE.equals(driver.executeScript("return typeof window.taxonomyPortfolioRegisterJob === 'function';")));
     }
@@ -1126,6 +1134,12 @@ class PortfolioClientRoutingIT {
 
     private static String workspaceScopeAssertion(String workspaceId) {
         return "&workspaceScopeKey=" + (workspaceId.isEmpty() ? "__shared__" : workspaceId);
+    }
+
+    private static List<String> queryPairs(String query) {
+        // Parameter order is not part of the scope contract. Preserve every pair,
+        // including duplicates or empty values, so extra or missing scope is rejected.
+        return query == null ? List.of() : Stream.of(query.split("&", -1)).sorted().toList();
     }
 
     private static String workspaceSetup(String workspaceId) {
@@ -1274,6 +1288,7 @@ class PortfolioClientRoutingIT {
     private static void installRoutes(String prefix) {
         page.clearRoutes();
         page.clearRequests();
+        routeCurrentContext(prefix);
         Map<String, Object> routes = new LinkedHashMap<>();
         routes.put("/api/projects", List.of(project(42), project(63)));
         routes.put("/api/account/me", Map.of("architectureMutationAllowed", true));
@@ -1295,6 +1310,13 @@ class PortfolioClientRoutingIT {
                 "projectCount", 1, "requirementCount", 1, "solutionCount", 0, "productCount", 0,
                 "exportedAt", "2026-10-07T09:00:00Z"));
         routes.forEach((path, body) -> page.route("GET", prefix + path, request -> PortfolioClientTestPage.json(200, body)));
+    }
+
+    private static void routeCurrentContext(String prefix) {
+        // Use the same main/head stand as this owner's Git-state fixture.
+        page.route("GET", prefix + "/api/context/current", request -> PortfolioClientTestPage.json(200,
+                new ContextRef("context-portfolio-main", "main", String.valueOf(repository().get("headCommit")),
+                        LABEL_TIME, ContextMode.EDITABLE, null, null, null, null, null, false)));
     }
 
     private static Map<String, Object> repository() {

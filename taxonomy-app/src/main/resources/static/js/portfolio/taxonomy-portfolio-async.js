@@ -333,14 +333,13 @@
         });
     }
 
+    function durableJobOptions(job, extra) {
+        return Object.assign({contextSensitive: false, pinnedWorkspaceId: job.workspaceId || ''}, extra);
+    }
+
     async function loadAccountCapabilities() {
         try {
-            const response = await originalFetch('/api/account/me', {
-                headers: { Accept: 'application/json' },
-                credentials: 'same-origin',
-                cache: 'no-store'
-            });
-            account = response.ok ? await response.json() : null;
+            account = await window.TaxonomyPortfolioApi.getAccount();
         } catch (error) {
             account = null;
         }
@@ -480,16 +479,8 @@
                 return pageActive && jobPolls.get(url) === poll && jobs.get(url) === current && !poll.controller.signal.aborted;
             }
             try {
-                const response = await originalFetch(url, {
-                    method: 'GET',
-                    headers: { Accept: 'application/json' },
-                    credentials: 'same-origin',
-                    cache: 'no-store',
-                    signal: poll.controller.signal
-                });
-                if (!stillCurrent()) return;
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                const nextJob = await response.json();
+                const nextJob = await window.TaxonomyPortfolioApi.getAnalysisJob(current.projectId,
+                    current.job.id, durableJobOptions(current.job, {signal: poll.controller.signal}));
                 if (!stillCurrent()) return;
                 const previousStatus = current.job.status;
                 current.job = nextJob;
@@ -504,6 +495,11 @@
                 }
                 if (previousStatus !== current.job.status) announce(statusLabel(current.job.status));
             } catch (error) {
+                // The canonical transport can cancel before our pagehide listener runs.
+                if (error?.code === 'ABORTED') {
+                    retryDelay = null;
+                    return;
+                }
                 if (!stillCurrent()) return;
                 current.lastPollError = String(error && error.message || error);
                 current.updatedAt = Date.now();
@@ -701,14 +697,14 @@
             }
             try {
                 const updated = await window.TaxonomyPortfolioApi.continueAnalysis(entry.job.projectId,
-                    entry.job.id, itemId, decision);
+                    entry.job.id, itemId, decision, durableJobOptions(entry.job));
                 registerContinuationUpdate(updated);
             } catch (error) {
                 showError(error);
                 continuationDecisions.delete(continuation.dataset.decisionKey);
                 // Observe a potentially accepted request after connection loss; never resubmit it.
                 try {
-                    const current = await window.TaxonomyPortfolioApi.getAnalysisJob(entry.job.projectId, entry.job.id);
+                    const current = await window.TaxonomyPortfolioApi.getAnalysisJob(entry.job.projectId, entry.job.id, durableJobOptions(entry.job));
                     registerContinuationUpdate(current);
                 } catch (statusError) { showError(statusError); }
             }
@@ -718,13 +714,8 @@
         if (!retry) return;
         retry.disabled = true;
         try {
-            const response = await originalFetch(entry.url + '/retry-failed', {
-                method: 'POST',
-                headers: jsonHeaders(),
-                credentials: 'same-origin',
-                body: '{}'
-            });
-            if (!response.ok) throw await responseError(response);
+            const response = await window.TaxonomyPortfolioApi.retryAnalysisJob(entry.job.projectId,
+                entry.job.id, durableJobOptions(entry.job));
             const job = await response.json();
             const location = response.headers.get('Location') || entry.url;
             registerJob(location, job);
@@ -753,7 +744,7 @@
         let saved = continuationDecisions.get(key);
         if (!saved) {
             saved = {};
-            saved.promise = window.TaxonomyPortfolioApi.getAnalysisContinuation(job.projectId, job.id, item.id)
+            saved.promise = window.TaxonomyPortfolioApi.getAnalysisContinuation(job.projectId, job.id, item.id, durableJobOptions(job))
                 .then(function (decision) { saved.decision = decision; return decision; })
                 .catch(function (error) {
                     // Keep this failure visible, but let a later render retry the read.
@@ -887,15 +878,13 @@
         const mappingId = Number(button.dataset.mappingId);
         const action = document.querySelector(
             '.mapping-action-select[data-mapping-id="' + mappingId + '"]').value;
-        const decision = await showDecisionDialog({
+        const decision = await requestDecision({
             title: m('evidenceTitle'),
             evidenceRequired: action !== 'UNDECIDED'
         });
         if (!decision) return;
         await guardedRequest(button,
-            '/api/projects/' + currentProjectId()
-                + '/analysis-mappings/elements/' + mappingId,
-            'PATCH', {
+            body => window.TaxonomyPortfolioApi.updateElementMapping(currentProjectId(), mappingId, body), {
                 reviewStatus: 'CONFIRMED',
                 actionStatus: action,
                 actionEvidence: decision.evidence || null,
@@ -904,14 +893,12 @@
     }
 
     async function confirmRequirementLink(button) {
-        const decision = await showDecisionDialog({
+        const decision = await requestDecision({
             title: m('evidenceTitle'), evidenceRequired: true
         });
         if (!decision) return;
         await guardedRequest(button,
-            '/api/projects/' + currentProjectId() + '/solutions/'
-                + Number(button.dataset.projectSolutionId) + '/requirements',
-            'POST', {
+            body => window.TaxonomyPortfolioApi.linkSolutionRequirement(currentProjectId(), Number(button.dataset.projectSolutionId), body), {
                 requirementId: Number(button.dataset.requirementId),
                 snapshotId: button.dataset.snapshotId || null,
                 coveragePercent: Number(button.dataset.coverage),
@@ -925,13 +912,12 @@
         const projectSolutionId = Number(button.dataset.projectSolutionId);
         const review = document.querySelector(
             '.solution-node-review[data-project-solution-id="' + projectSolutionId + '"]').value;
-        const decision = await showDecisionDialog({
+        const decision = await requestDecision({
             title: m('evidenceTitle'), evidenceRequired: review === 'CONFIRMED'
         });
         if (!decision) return;
         await guardedRequest(button,
-            '/api/solutions/' + Number(button.dataset.solutionId) + '/taxonomy-coverage',
-            'POST', {
+            body => window.TaxonomyPortfolioApi.addCatalogSolutionCoverage(Number(button.dataset.solutionId), body), {
                 nodeCode: document.querySelector(
                     '.solution-node-code[data-project-solution-id="' + projectSolutionId + '"]').value,
                 coveragePercent: Number(document.querySelector(
@@ -945,13 +931,12 @@
         const productId = Number(button.dataset.productId);
         const review = document.querySelector(
             '.product-node-review[data-product-id="' + productId + '"]').value;
-        const decision = await showDecisionDialog({
+        const decision = await requestDecision({
             title: m('evidenceTitle'), evidenceRequired: review === 'CONFIRMED'
         });
         if (!decision) return;
         await guardedRequest(button,
-            '/api/products/' + productId + '/taxonomy-coverage',
-            'POST', {
+            body => window.TaxonomyPortfolioApi.addProductCoverage(productId, body), {
                 nodeCode: document.querySelector(
                     '.product-node-code[data-product-id="' + productId + '"]').value,
                 coveragePercent: Number(document.querySelector(
@@ -963,41 +948,45 @@
 
     async function reviewConflict(button) {
         const status = button.dataset.status;
-        const decision = await showDecisionDialog({
+        const decision = await requestDecision({
             title: status === 'RESOLVED' ? m('resolutionTitle') : m('evidenceTitle'),
             evidenceLabel: status === 'RESOLVED' ? m('resolutionNote') : m('evidence'),
             evidenceRequired: status === 'RESOLVED'
         });
         if (!decision) return;
         await guardedRequest(button,
-            '/api/projects/' + currentProjectId() + '/conflicts/' + button.dataset.conflictId,
-            'PATCH', {
+            body => window.TaxonomyPortfolioApi.updateConflict(currentProjectId(), button.dataset.conflictId, body), {
                 status: status,
                 resolutionNote: decision.evidence || decision.comment || null
             });
     }
 
-    async function guardedRequest(button, path, method, body) {
+    async function guardedRequest(button, execute, body) {
+        const isCurrent = window.TaxonomyApiClient.captureContext();
+        const projectId = currentProjectId();
         button.disabled = true;
         try {
-            const response = await originalFetch(path, {
-                method: method,
-                headers: jsonHeaders(),
-                credentials: 'same-origin',
-                body: JSON.stringify(body)
-            });
-            if (!response.ok) throw await responseError(response);
+            await execute(body);
+            if (!isCurrent() || currentProjectId() !== projectId) return;
             announce(locale === 'de' ? 'Entscheidung wurde gespeichert.' : 'Decision saved.');
             refreshCurrentProject(currentProjectId());
             window.setTimeout(function () {
+                if (!isCurrent() || currentProjectId() !== projectId) return;
                 const selected = document.querySelector('.snapshot-select.active');
                 if (selected) selected.click();
             }, 800);
         } catch (error) {
-            showError(error);
+            if (isCurrent() && currentProjectId() === projectId && error.code !== 'ABORTED') showError(error);
         } finally {
             button.disabled = false;
         }
+    }
+
+    async function requestDecision(options) {
+        const isCurrent = window.TaxonomyApiClient.captureContext();
+        const projectId = currentProjectId();
+        const decision = await showDecisionDialog(options);
+        return isCurrent() && projectId === currentProjectId() ? decision : null;
     }
 
     function ensureDecisionDialog() {
@@ -1075,25 +1064,6 @@
                 dialog.querySelector('#portfolioDecisionEvidence').focus();
             });
         });
-    }
-
-    function jsonHeaders() {
-        const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
-        const token = document.querySelector('meta[name="_csrf"]')?.content;
-        const name = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
-        if (token) headers[name] = token;
-        return headers;
-    }
-
-    async function responseError(response) {
-        const type = response.headers.get('content-type') || '';
-        const payload = type.includes('json')
-            ? await response.json().catch(function () { return null; })
-            : await response.text().catch(function () { return ''; });
-        const detail = payload && typeof payload === 'object'
-            ? (payload.detail || payload.message || payload.title || payload.error)
-            : payload;
-        return new Error(detail || m('requestFailed') + ' HTTP ' + response.status);
     }
 
     function showError(error) {

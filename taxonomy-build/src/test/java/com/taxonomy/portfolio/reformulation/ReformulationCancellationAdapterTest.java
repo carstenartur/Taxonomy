@@ -19,8 +19,11 @@ class ReformulationCancellationAdapterTest {
         Path script = copyResource("/reformulation/cancellation-api-contract.cjs", "contract.cjs");
         Path adapter = Files.writeString(directory.resolve("portfolio-api.js"),
                 RepositoryResources.applicationResource("static/js/api/portfolio-api.js"));
+        Path client = Files.writeString(directory.resolve("taxonomy-api-client.js"),
+                RepositoryResources.applicationResource("static/js/api/taxonomy-api-client.js"));
         Path log = directory.resolve("adapter.log");
-        Process process = new ProcessBuilder(System.getProperty("taxonomy.node.executable"), script.toString(), adapter.toString())
+        Process process = new ProcessBuilder(System.getProperty("taxonomy.node.executable"),
+                script.toString(), adapter.toString(), client.toString())
                 .redirectErrorStream(true).redirectOutput(log.toFile()).start();
         boolean done = process.waitFor(30, TimeUnit.SECONDS);
         if (!done) {

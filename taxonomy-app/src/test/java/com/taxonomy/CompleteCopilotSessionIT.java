@@ -708,7 +708,8 @@ class CompleteCopilotSessionIT {
         fill(modal, "projectTitle", "Complete Copilot session");
         fill(modal, "projectDescription",
                 "Created by the authoritative complete-session JUnit acceptance test.");
-        modal.findElement(By.cssSelector("button[type='submit']")).click();
+        wait.until(ExpectedConditions.elementToBeClickable(
+                By.cssSelector("#projectModal button[type='submit']"))).click();
         waitForModalClosed("projectModal");
         wait.until(textPresent(By.id("selectedProjectKey"), projectKey));
     }

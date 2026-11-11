@@ -6,6 +6,7 @@
     var t = TaxonomyI18n.t;
     var S = window.TaxonomyState;
     var recoverySelection = 0;
+    var leafRequests = new WeakMap();
     // B (browse functions) resolved lazily — script may load before taxonomy-browse.js
     function B() { return window.TaxonomyBrowse || {}; }
 
@@ -774,11 +775,9 @@
         }
         S.activeAnalysisLanguage = requestBody.analysisLanguage || null;
         const workspacePin = sessionState.workspaceId == null ? '' : sessionState.workspaceId;
-        var posted = fetch('/api/analyze', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Analysis-Operation-Id': operationId,
-                'X-Taxonomy-Workspace-Id': workspacePin },
-            body: JSON.stringify(requestBody)
+        var posted = window.AnalysisApi.main(requestBody, {
+            headers: {'X-Analysis-Operation-Id': operationId, 'X-Taxonomy-Workspace-Id': workspacePin},
+            pinnedWorkspaceId: workspacePin
         })
             .then(async r => {
                 if (!r.ok) {
@@ -799,7 +798,10 @@
             .then(acceptResult)
             .catch(err => {
                 if (resultHandled) return acceptedResult;
-                if (clusterObserved && !err.httpStatus && progress.acceptsResult()) {
+                if (err.code === 'ABORTED') return;
+                var httpStatus = err.httpStatus || err.status;
+                if (typeof err.detail === 'string' && err.detail.trim()) err.message = err.detail.trim().slice(0, 1024);
+                if (clusterObserved && !httpStatus && progress.acceptsResult()) {
                     B().showStatus('warning', isGermanLocale()
                         ? 'Verbindung zur Startanfrage unterbrochen; der gespeicherte Lauf wird weiter beobachtet.'
                         : 'The start request disconnected; observation of the saved run continues.');
@@ -808,7 +810,7 @@
                 if (progress && !progress.acceptsResult()) return;
                 if (progress) {
                     // A rejected HTTP request is not an active job. A lost connection may be.
-                    if (!err.httpStatus && !options.recoveryManaged) progress.transportFailed();
+                    if (!httpStatus && !options.recoveryManaged) progress.transportFailed();
                     else progress.finish('ERROR', false);
                 }
                 setAnalyzing(false);
@@ -1434,38 +1436,36 @@
             return;
         }
         if (!canRequestFollowUp()) return;
-        const originalText = btnEl.textContent;
+        const previous = leafRequests.get(btnEl);
+        const originalText = previous?.originalText || btnEl.textContent;
+        const token = {originalText};
+        leafRequests.set(btnEl, token);
+        const currentContext = window.TaxonomyApiClient.captureContext();
+        const isCurrent = () => leafRequests.get(btnEl) === token && currentContext();
         btnEl.disabled = true;
         btnEl.textContent = t('scoring.generating');
 
-        fetch('/api/justify-leaf', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                nodeCode: nodeCode,
-                analysisLanguage: S.activeAnalysisLanguage || S.lastAnalysisLanguage || window.TaxonomyContentLanguage?.analysis(),
-                businessText: S.storedBusinessText,
-                scores: S.currentScores || {},
-                reasons: S.currentReasons || {},
-                provider: S.analysisProviderId || null,
-                operationId: S.analysisOperationId || null
-            })
-        })
-            .then(r => {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(data => {
-                btnEl.disabled = false;
-                btnEl.textContent = originalText;
-                showLeafJustificationModal(nodeCode, data.justification || t('scoring.no.justification'));
-            })
-            .catch(err => {
-                btnEl.disabled = false;
-                btnEl.textContent = originalText;
-                console.error('[Taxonomy] Failed to get leaf justification for', nodeCode, err);
+        return window.AnalysisApi.justifyLeaf({
+            nodeCode: nodeCode,
+            analysisLanguage: S.activeAnalysisLanguage || S.lastAnalysisLanguage || window.TaxonomyContentLanguage?.analysis(),
+            businessText: S.storedBusinessText,
+            scores: S.currentScores || {},
+            reasons: S.currentReasons || {},
+            provider: S.analysisProviderId || null,
+            operationId: S.analysisOperationId || null
+        }).then(r => r.json()).then(data => {
+            if (isCurrent()) showLeafJustificationModal(nodeCode, data.justification || t('scoring.no.justification'));
+        }).catch(err => {
+            if (isCurrent() && err.code !== 'ABORTED') {
                 B().showStatus('danger', t('scoring.justify.failed', nodeCode, err.message));
-            });
+            }
+        }).finally(() => {
+            if (leafRequests.get(btnEl) === token) {
+                leafRequests.delete(btnEl);
+                btnEl.disabled = false;
+                btnEl.textContent = originalText;
+            }
+        });
     }
 
     /** Displays the leaf justification in the modal. */
@@ -2184,43 +2184,45 @@
         var row = document.getElementById('suggested-row-' + idx);
         if (row) row.style.opacity = '0.5';
 
-        fetch('/api/proposals/from-hypothesis', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                sourceCode: h.sourceCode,
-                targetCode: h.targetCode,
-                relationType: h.relationType,
-                confidence: h.confidence,
-                rationale: h.reasoning
-            })
-        })
-        .then(function (r) {
-            if (r.status === 409) {
-                // Proposal already exists, mark as already processed
+        var isCurrent = window.TaxonomyApiClient.captureContext();
+        return window.TaxonomyProposalsApi.fromHypothesis({
+            sourceCode: h.sourceCode,
+            targetCode: h.targetCode,
+            relationType: h.relationType,
+            confidence: h.confidence,
+            rationale: h.reasoning
+        }).then(async function (response) {
+            if (response.status === 409) {
+                await response.text();
+                if (!isCurrent()) return;
                 if (row) { row.classList.add('table-info'); row.style.opacity = '1'; }
                 var actions = row && row.querySelector('td:last-child');
                 if (actions) actions.innerHTML = '<span class="badge bg-info">' + escapeHtml(t('scoring.badge.already.exists')) + '</span>';
                 B().showStatus('info', t('analyze.proposal.exists', h.sourceCode, h.targetCode));
-                return null;
+                return;
             }
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-        })
-        .then(function (proposal) {
-            if (proposal === null) return; // already handled (409)
-            if (proposal && proposal.id) {
-                // Auto-accept the created proposal
-                return fetch('/api/proposals/' + proposal.id + '/accept', { method: 'POST' });
-            }
-        })
-        .then(function () {
-            if (row) { row.classList.add('table-success'); row.style.opacity = '1'; }
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            var proposal = await response.json();
+            if (!isCurrent()) return;
+            if (!proposal || !proposal.id) throw new Error('Proposal identity is missing');
+            var accepted = await window.TaxonomyProposalsApi.review(proposal.id, 'accept');
+            await accepted.text();
+            if (!isCurrent()) return;
+            if (!accepted.ok) throw new Error('HTTP ' + accepted.status);
+            var pending = accepted.status === 202;
+            if (row) { row.classList.add(pending ? 'table-warning' : 'table-success'); row.style.opacity = '1'; }
             var actions = row && row.querySelector('td:last-child');
-            if (actions) actions.innerHTML = '<span class="badge bg-success">' + escapeHtml(t('scoring.badge.accepted')) + '</span>';
-            B().showStatus('success', t('scoring.relation.accepted', h.sourceCode, h.targetCode));
-        })
-        .catch(function (err) {
+            if (pending) {
+                var message = isGermanLocale() ? 'Git-Entscheidung gespeichert; die lesbare Projektion muss noch wiederhergestellt werden.'
+                    : 'Git decision recorded; the readable projection still requires recovery.';
+                if (actions) actions.textContent = message;
+                B().showStatus('warning', message);
+            } else {
+                if (actions) actions.innerHTML = '<span class="badge bg-success">' + escapeHtml(t('scoring.badge.accepted')) + '</span>';
+                B().showStatus('success', t('scoring.relation.accepted', h.sourceCode, h.targetCode));
+            }
+        }).catch(function (err) {
+            if (!isCurrent() || err.code === 'ABORTED') return;
             if (row) row.style.opacity = '1';
             B().showStatus('danger', t('scoring.relation.accept.failed', err.message));
         });
@@ -2249,7 +2251,7 @@
 
         // Mark as applied in current analysis via API
         if (h.hypothesisId) {
-            fetch('/api/dsl/hypotheses/' + h.hypothesisId + '/apply-session', { method: 'POST' })
+            window.TaxonomyHypothesesApi.applyForSession(h.hypothesisId)
                 .catch(function () { /* best effort */ });
         }
 
