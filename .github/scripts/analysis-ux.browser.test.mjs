@@ -1083,7 +1083,10 @@ for (const edited of [false,true]) test(`report export ${edited ? 'retains manua
         },edited);
         await page.locator('#exportReportMd').click();await page.waitForFunction(()=>window.reportRequest);
         const request=await page.evaluate(()=>window.reportRequest);
-        assert.equal(request.url,'/api/report/markdown');
+        assert.equal(request.url,'/api/report/markdown?workspaceId=ws-owned',
+            'The saved analysis report must keep its exact owned workspace in the URL');
+        assert.equal(request.headers['X-Taxonomy-Workspace-Id'],'ws-owned',
+            'The same exact workspace must be carried in the request header');
         if(edited){assert.equal(request.body.analysisReference,undefined);assert.equal(request.body.reasons['BP-1000'],'Manual rationale');}
         else {assert.equal(request.body.analysisReference.operationId,'owned-operation');
             assert.equal(request.headers['X-Taxonomy-Workspace-Id'],'ws-owned');assert.equal(request.body.scores,undefined);}

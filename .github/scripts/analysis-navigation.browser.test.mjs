@@ -60,13 +60,19 @@ async function fixture(locale='de',width=1366,entry=null){
             t:(key,...args)=>(dict[key]||key).replace(/\{(\d+)\}/g,(_,n)=>String(args[n]??''))};
         document.querySelectorAll('[th\\:text]').forEach(e=>{const m=e.getAttribute('th:text').match(/^#\{(.+)\}$/);if(m)e.textContent=TaxonomyI18n.t(m[1]);});
         window.account={username:'admin',roles:['ADMIN'],administrator:true,architectureMutationAllowed:true,localUserManagementAllowed:false};
-        window.TaxonomyApiClient={getJson:()=>window.accountError?Promise.reject(new Error('Account unavailable')):Promise.resolve(window.account)};
+        window.TaxonomyApiClient={
+            getJson:()=>window.accountError?Promise.reject(new Error('Account unavailable')):Promise.resolve(window.account),
+            // Component tests stub the HTTP boundary, but load the production
+            // reference client to verify its consumers instead of inventing globals.
+            request:(url,init)=>window.fetch(url,init)
+        };
     },dict);
     await page.addStyleTag({content:bootstrapCss});
     for(const css of ['taxonomy.css','taxonomy-ergonomics.css','context-help.css','application-chrome.css','architecture-lifecycle.css'])
         await page.addStyleTag({path:path.join(resources,'static/css',css)});
     await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-state.js')});
     await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-utils.js')});
+    await page.addScriptTag({path:path.join(resources,'static/js/api/reference-api.js')});
     await page.addScriptTag({path:path.join(resources,'static/js/shared/application-chrome.js')});
     await page.addScriptTag({path:path.join(resources,'static/js/shared/application-commands.js')});
     const nav=template.match(/<!-- Page Navigation Script -->\s*<script>([\s\S]*?)<\/script>/);
