@@ -61,7 +61,8 @@ test('document cache preparation uses the protected mirror and retains the compl
   const f = await fixture(t);
   const result = await f.run('--only-download');
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.commands, /https:\/\/archive\.ubuntu\.com\/ubuntu\/\tpriority:0/);
+  assert.match(result.commands, /https:\/\/mirrors\.kernel\.org\/ubuntu\/\tpriority:0/);
+  assert.match(result.commands, /https:\/\/archive\.ubuntu\.com\/ubuntu\/\tpriority:10/);
   assert.match(result.commands, /Acquire::Retries=4/);
   assert.match(result.commands, /Acquire::https::Timeout=30/);
   assert.match(result.commands, /--download-only.*libreoffice-writer poppler-utils/);
