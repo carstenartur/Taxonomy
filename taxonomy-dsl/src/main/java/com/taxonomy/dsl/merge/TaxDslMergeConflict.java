@@ -3,7 +3,7 @@ package com.taxonomy.dsl.merge;
 /**
  * One semantic three-way merge conflict in a Taxonomy DSL document.
  *
- * @param blockIdentity stable block identity ({@code kind + header tokens})
+ * @param blockIdentity stable block identity ({@code kind:identifier}, composite for association blocks)
  * @param propertyKey property that conflicts, or {@code null} for a whole-block conflict
  * @param reason human-readable conflict classification
  * @param baseValue value in the merge base

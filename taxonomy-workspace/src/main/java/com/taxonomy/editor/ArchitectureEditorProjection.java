@@ -67,6 +67,11 @@ public class ArchitectureEditorProjection {
         return project(document, mayEdit, Strategy.STABLE, null);
     }
 
+    /** All visual and property evidence comes from the already frozen, fingerprinted preview. */
+    public ArchitectureReconciliationProjection.Preview compare(ArchitectureEditorService.ReconciliationPreview preview) {
+        return new ArchitectureReconciliationProjection(layout).project(preview);
+    }
+
     public View project(ArchitectureEditorService.Document document, boolean mayEdit, Strategy strategy,
                         ArchitectureEditorService.Document layoutReference) {
         return project(document, mayEdit, strategy, layoutReference, null);
@@ -116,7 +121,7 @@ public class ArchitectureEditorProjection {
                         && (recorded == null || relations.contains(edge.id()))).toList(), diagram.layout());
     }
 
-    private DiagramModel diagram(CanonicalArchitectureModel model, String branch) {
+    static DiagramModel diagram(CanonicalArchitectureModel model, String branch) {
         Map<String, String> parents = new java.util.LinkedHashMap<>();
         model.getRelations().stream().filter(relation -> "CONTAINS".equals(relation.getRelationType()))
                 .forEach(relation -> parents.putIfAbsent(relation.getTargetId(), relation.getSourceId()));

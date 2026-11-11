@@ -304,7 +304,7 @@ public class ArchitectureEditorController {
     @ResponseBody
     @io.swagger.v3.oas.annotations.Operation(summary = "Preview explicit reconciliation of local edits and a moved Git version",
             description = "Reads both original sources at the exact workspace revision. Shared block or document annotation changes require LOCAL/INCOMING choices and a fresh preview of those choices. Does not write the journal or Git.")
-    public ResponseEntity<ArchitectureEditorService.ReconciliationPreview> previewReconciliation(
+    public ResponseEntity<ArchitectureReconciliationProjection.Preview> previewReconciliation(
             @RequestBody ArchitectureEditorService.ReconciliationRequest request,
             @Parameter(description = "Required ETag of the request context's exact semantic revision, in the form \"workspace-revision-N\"; a missing header returns 428", required = true, schema = @Schema(type = "string", pattern = "\"workspace-revision-[0-9]+\""))
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
@@ -312,7 +312,7 @@ public class ArchitectureEditorController {
             @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
         requireRevision(request.context(), ifMatch, ifNoneMatch);
         var result = service.previewReconciliation(resolver.resolveCurrentRepositoryContext(), request);
-        return response(HttpStatus.OK, result.context()).body(result);
+        return response(HttpStatus.OK, result.context()).body(projection.compare(result));
     }
 
     @PostMapping("/api/architecture/editor/versions/reconciliation/accept")

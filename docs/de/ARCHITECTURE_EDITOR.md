@@ -94,6 +94,18 @@ gilt nur, sofern keine neueren uncheckpointeten lokalen Änderungen bestehen.
 5. Nur für diese exakte Vorschau **Geprüfte Änderung übernehmen** wählen.
    Ändern sich Workspace-Revision oder Git-HEAD, eine neue Vorschau erstellen und prüfen.
 
+Die vier Diagramme verwenden eine gemeinsame Anordnung der Objektidentitäten.
+Umbenennungen und Typänderungen verschieben das Objekt dadurch nicht zwischen den
+Ansichten. Gelöschte Objekte bleiben in den Ständen sichtbar, die sie enthalten.
+Ein ausgewähltes Objekt hebt seine Eigenschaftszeilen hervor. Die Tabelle trennt
+Modellbedeutung, Änderungen an Ansichten und Anordnung sowie Austauschnachweise.
+Unbekannte wiederholte Eigenschaften behalten alle Werte. Die aufklappbaren
+vollständigen Quellen zeigen auch Kommentare und Dokumentmetadaten, die ein
+Diagramm nicht abbildet. Solange Entscheidungen offen sind, ist das vorgeschlagene
+Modell ausdrücklich noch nicht verfügbar. Änderungen an Begründung oder Auswahl
+und ein Wechsel des gewählten Kontexts verwerfen den angezeigten Vergleich und
+erfordern eine neue Vorschau.
+
 Verwalteter Anforderungstext, Titel, Version und Hash müssen zur portablen aktuellen
 unveränderlichen Version passen. Die Quelle einer vorhandenen unveränderlichen
 Version darf nicht umgeschrieben werden. Lokale Blöcke behalten und für geänderten

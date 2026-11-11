@@ -1,6 +1,7 @@
 package com.taxonomy.dsl.merge;
 
 import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.BlockIdentity;
 import com.taxonomy.dsl.ast.DocumentAst;
 import com.taxonomy.dsl.ast.MetaAst;
 import com.taxonomy.dsl.ast.PropertyAst;
@@ -22,7 +23,7 @@ import java.util.function.Function;
 /**
  * Three-way semantic merge for Taxonomy DSL documents.
  *
- * <p>Blocks are identified by their kind and complete header rather than by
+ * <p>Blocks are identified by their kind-aware stable identity rather than by
  * line numbers. Independent requirements, mappings, solutions and products can
  * therefore be added on different branches without textual conflicts.
  * Concurrent edits to the same property remain explicit review conflicts.</p>
@@ -131,9 +132,9 @@ public final class TaxDslSemanticMerger {
         return indexed;
     }
 
-    /** Stable identity: block kind plus every header token. */
+    /** Canonical identity shared with semantic patches. */
     public String identity(BlockAst block) {
-        return block.getKind() + " " + String.join(" ", block.getHeaderTokens());
+        return BlockIdentity.key(block);
     }
 
     private BlockAst mergeBlock(String identity,
@@ -164,50 +165,70 @@ public final class TaxDslSemanticMerger {
             return null;
         }
 
-        if (hasDuplicatePropertyKeys(base) || hasDuplicatePropertyKeys(ours)
-                || hasDuplicatePropertyKeys(theirs)) {
-            conflicts.add(blockConflict(identity,
-                    "concurrent edits to a block with repeated property keys require review",
-                    base, ours, theirs));
-            return null;
-        }
-
-        Map<String, PropertyAst> baseProperties = propertyMap(base);
-        Map<String, PropertyAst> ourProperties = propertyMap(ours);
-        Map<String, PropertyAst> theirProperties = propertyMap(theirs);
+        int conflictsBefore = conflicts.size();
+        List<String> header = mergeValue(identity, "header", base.getHeaderTokens(),
+                ours.getHeaderTokens(), theirs.getHeaderTokens(), values -> String.join(" ", values), conflicts);
+        Map<String, List<String>> baseProperties = propertyMap(base);
+        Map<String, List<String>> ourProperties = propertyMap(ours);
+        Map<String, List<String>> theirProperties = propertyMap(theirs);
         Set<String> keys = new TreeSet<>();
         keys.addAll(baseProperties.keySet());
         keys.addAll(ourProperties.keySet());
         keys.addAll(theirProperties.keySet());
 
-        int conflictsBefore = conflicts.size();
         List<PropertyAst> mergedProperties = new ArrayList<>();
         for (String key : keys) {
-            PropertyAst baseProperty = baseProperties.get(key);
-            PropertyAst ourProperty = ourProperties.get(key);
-            PropertyAst theirProperty = theirProperties.get(key);
-            String mergedValue = mergeScalar(
-                    identity,
-                    key,
-                    propertyValue(baseProperty),
-                    propertyValue(ourProperty),
-                    propertyValue(theirProperty),
-                    conflicts);
-            if (mergedValue != null) {
-                mergedProperties.add(new PropertyAst(
-                        key, mergedValue,
-                        firstPropertyLocation(ourProperty, theirProperty, baseProperty)));
+            List<String> baseValues = baseProperties.getOrDefault(key, List.of());
+            List<String> ourValues = ourProperties.getOrDefault(key, List.of());
+            List<String> theirValues = theirProperties.getOrDefault(key, List.of());
+            List<String> mergedValues = unorderedMembership(ours.getKind(), key)
+                    ? mergeMembership(baseValues, ourValues, theirValues)
+                    : mergeValue(identity, key, baseValues, ourValues, theirValues,
+                            TaxDslSemanticMerger::renderValues, conflicts);
+            if (mergedValues != null) {
+                for (String value : mergedValues) {
+                    mergedProperties.add(new PropertyAst(key, value, firstBlockLocation(ours, theirs, base)));
+                }
             }
         }
         if (conflicts.size() > conflictsBefore) return null;
 
-        return new BlockAst(
-                ours.getKind(),
-                List.copyOf(ours.getHeaderTokens()),
-                mergedProperties,
-                List.of(),
-                Map.of(),
-                firstBlockLocation(ours, theirs, base));
+        Map<String, String> extensions = new LinkedHashMap<>();
+        mergedProperties.stream().filter(PropertyAst::isExtension)
+                .forEach(property -> extensions.put(property.key(), property.value()));
+        return new BlockAst(ours.getKind(), header, mergedProperties,
+                ours.getChildren(), extensions, firstBlockLocation(ours, theirs, base));
+    }
+
+    /** Only declared memberships are unordered; unknown repeated properties retain sequence semantics. */
+    private static boolean unorderedMembership(String kind, String key) {
+        return "view".equals(kind) && "include".equals(key);
+    }
+
+    private static List<String> mergeMembership(List<String> base, List<String> ours, List<String> theirs) {
+        Set<String> merged = new TreeSet<>(ours);
+        merged.addAll(theirs);
+        Set<String> ourSet = new LinkedHashSet<>(ours);
+        Set<String> theirSet = new LinkedHashSet<>(theirs);
+        // A baseline membership is removed if either branch removed it. Independent new members survive.
+        for (String value : base) {
+            if (!ourSet.contains(value) || !theirSet.contains(value)) merged.remove(value);
+        }
+        return List.copyOf(merged);
+    }
+
+    private static String renderValues(List<String> values) {
+        return values.isEmpty() ? null : String.join("\n", values);
+    }
+
+    private <T> T mergeValue(String identity, String property, T base, T ours, T theirs,
+                             Function<T, String> render, List<TaxDslMergeConflict> conflicts) {
+        if (Objects.equals(ours, theirs)) return ours;
+        if (Objects.equals(base, ours)) return theirs;
+        if (Objects.equals(base, theirs)) return ours;
+        conflicts.add(new TaxDslMergeConflict(identity, property, "concurrent property modification",
+                render.apply(base), render.apply(ours), render.apply(theirs)));
+        return null;
     }
 
     private String mergeScalar(String identity,
@@ -224,19 +245,6 @@ public final class TaxDslSemanticMerger {
         return null;
     }
 
-    private static String propertyValue(PropertyAst property) {
-        return property == null ? null : property.value();
-    }
-
-    private static SourceLocation firstPropertyLocation(PropertyAst... properties) {
-        for (PropertyAst property : properties) {
-            if (property != null && property.sourceLocation() != null) {
-                return property.sourceLocation();
-            }
-        }
-        return GENERATED;
-    }
-
     private static SourceLocation firstBlockLocation(BlockAst... blocks) {
         for (BlockAst block : blocks) {
             if (block != null && block.getSourceLocation() != null) {
@@ -246,20 +254,14 @@ public final class TaxDslSemanticMerger {
         return GENERATED;
     }
 
-    private static Map<String, PropertyAst> propertyMap(BlockAst block) {
-        Map<String, PropertyAst> result = new LinkedHashMap<>();
+    private static Map<String, List<String>> propertyMap(BlockAst block) {
+        Map<String, List<String>> result = new LinkedHashMap<>();
         for (PropertyAst property : block.getProperties()) {
-            result.put(property.key(), property);
+            result.computeIfAbsent(property.key(), ignored -> new ArrayList<>()).add(property.value());
         }
+        result.replaceAll((key, values) -> unorderedMembership(block.getKind(), key)
+                ? List.copyOf(new TreeSet<>(values)) : List.copyOf(values));
         return result;
-    }
-
-    private static boolean hasDuplicatePropertyKeys(BlockAst block) {
-        Set<String> keys = new LinkedHashSet<>();
-        for (PropertyAst property : block.getProperties()) {
-            if (!keys.add(property.key())) return true;
-        }
-        return false;
     }
 
     private static boolean equivalent(BlockAst left, BlockAst right) {
@@ -267,14 +269,7 @@ public final class TaxDslSemanticMerger {
         if (left == null || right == null) return false;
         return Objects.equals(left.getKind(), right.getKind())
                 && Objects.equals(left.getHeaderTokens(), right.getHeaderTokens())
-                && normalizedProperties(left).equals(normalizedProperties(right));
-    }
-
-    private static List<String> normalizedProperties(BlockAst block) {
-        return block.getProperties().stream()
-                .map(property -> property.key() + "\u0000" + property.value())
-                .sorted()
-                .toList();
+                && propertyMap(left).equals(propertyMap(right));
     }
 
     private static BlockAst copy(BlockAst block) {
