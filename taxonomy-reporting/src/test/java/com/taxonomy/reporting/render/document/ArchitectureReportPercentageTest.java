@@ -36,6 +36,19 @@ class ArchitectureReportPercentageTest {
     private final ArchitectureReportTextRenderer reportService = new ArchitectureReportTextRenderer();
 
     @Test
+    void absentPatternCoverageIsNotAssessedAcrossEveryTextualFormat() throws IOException {
+        var report = report(new PatternDetectionView());
+        for (var output : renderedTextFormats(report).entrySet()) {
+            assertThat(output.getValue()).as(output.getKey()).contains("Pattern Coverage: Not assessed")
+                    .doesNotContain("Pattern Coverage: 0", "null%");
+        }
+        try (var document = new XWPFDocument(new ByteArrayInputStream(reportService.renderDocx(report)));
+             var extractor = new XWPFWordExtractor(document)) {
+            assertThat(extractor.getText()).contains("Pattern Coverage: Not assessed").doesNotContain("null%");
+        }
+    }
+
+    @Test
     void rendersTheExistingZeroToHundredScaleAcrossEveryTextualFormat() throws IOException {
         PatternDetectionView patterns = new PatternDetectionView();
         patterns.setPatternCoverage(100.0 / 3.0);

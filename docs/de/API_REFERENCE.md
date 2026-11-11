@@ -186,40 +186,36 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/sim
 
 ## Graph-Exploration
 
+Jede Anfrage an `/api/graph/*` benötigt ein autorisiertes `repositoryId`, `branch`, eine vollständige 40-stellige `commitId` und ein ausdrückliches `workspaceId`. Eine leere Workspace-Angabe wählt den zentralen Kontext. `TAXONOMY_REPOSITORY_ID` und `TAXONOMY_MODEL_COMMIT` aus dem gespeicherten Modell im Editor bzw. der Lifecycle-API übernehmen; die Beispiele verwenden dessen Branch `main`.
+
+Antworten nennen unter `evidence` die genaue Version, Datenquelle, Abfrageregel, Vollständigkeit und wirksamen Grenzen. Ein fehlender Pfad gilt nur innerhalb dieser Auswahl. Veraltete oder nicht bereite Projektionen führen zu einem Fehler statt zu einem erfolgreichen leeren Ergebnis. Siehe [Graphnachweise](../architecture/graph-query-evidence.md).
+
 ### Upstream-Nachbarn
 
 ```bash
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/graph/node/CR-1047/upstream?maxHops=2"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/graph/node/CR-1047/upstream?repositoryId=${TAXONOMY_REPOSITORY_ID}&workspaceId=&branch=main&commitId=${TAXONOMY_MODEL_COMMIT}&maxHops=2"
 ```
 
 **Antwort (200):**
 
-```json
-{
-  "sourceNode": "CR-1047",
-  "sourceTitle": "Infrastructure Services",
-  "nodes": [
-    { "code": "CO-1011", "title": "Communications Access Services", "distance": 1 }
-  ]
-}
-```
+Die Antwort enthält `originNodeCode`, `direction`, `maxHops`, `neighbors`, `traversedRelationships`, Anzahlen, Hinweise und `evidence`. Knoten und Beziehungen behalten ihre Herkunft. Die APQC-Hierarchie liefert `{nodes, evidence}` im selben Kontext. Bei angereicherter Ausfallanalyse kann `riskScore` ohne Anforderungsnachweise null sein; dies bedeutet kein Nullrisiko.
 
 ### Downstream-Nachbarn
 
 ```bash
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/graph/node/CR-1047/downstream?maxHops=2"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/graph/node/CR-1047/downstream?repositoryId=${TAXONOMY_REPOSITORY_ID}&workspaceId=&branch=main&commitId=${TAXONOMY_MODEL_COMMIT}&maxHops=2"
 ```
 
 ### Ausfallwirkungsanalyse
 
 ```bash
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/graph/node/CR-1047/failure-impact?maxHops=3"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/graph/node/CR-1047/failure-impact?repositoryId=${TAXONOMY_REPOSITORY_ID}&workspaceId=&branch=main&commitId=${TAXONOMY_MODEL_COMMIT}&maxHops=3"
 ```
 
 ### Anforderungswirkungsanalyse
 
 ```bash
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/graph/impact \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/graph/impact?repositoryId=${TAXONOMY_REPOSITORY_ID}&workspaceId=&branch=main&commitId=${TAXONOMY_MODEL_COMMIT}" \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CR-1047": 87, "CP-1023": 92}, "businessText": "Secure voice", "maxHops": 2}'
 ```
@@ -363,35 +359,46 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/rep
 
 ### Lückenanalyse
 
+Profile mit `GET /api/gap/profiles` abrufen und die gewählte ID samt genauer Version senden. `compatibility` definiert keine fachlichen Pflichten; `service-support` ist eine ausdrücklich zu wählende fachliche Annahme. `evidenceCompleteness` bleibt `INCOMPLETE`, solange das gewählte Modell die für dieses Profil benötigten akzeptierten Nachweise nicht vollständig enthält.
+
 ```bash
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/gap/analyze \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/gap/analyze?repositoryId=${TAXONOMY_REPOSITORY_ID}&workspaceId=&branch=main&commitId=${TAXONOMY_MODEL_COMMIT}" \
   -H "Content-Type: application/json" \
-  -d '{"scores": {"CP-1023": 92, "CO-1011": 88}, "businessText": "Secure voice"}'
+  -d '{"profileId":"service-support","profileVersion":"1.0.0","evidenceCompleteness":"INCOMPLETE","businessText":"Secure voice"}'
 ```
 
-**Antwort:** Identifiziert fehlende Beziehungen und unvollständige Architekturmuster.
+**Antwort:** Prüfprofil, Modellherkunft und `judgments` mit `SATISFIED`, `VIOLATED` oder `INCONCLUSIVE`. `totalGaps` zählt ausschließlich verletzte Pflichten. Null Verletzungen oder ein leeres Profil belegen keine vollständige Architektur. Siehe [Prüfprofile](../architecture/obligation-profiles.md).
 
 ### Empfehlungen
 
 ```bash
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/recommend \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/recommend?repositoryId=${TAXONOMY_REPOSITORY_ID}&workspaceId=&branch=main&commitId=${TAXONOMY_MODEL_COMMIT}" \
   -H "Content-Type: application/json" \
-  -d '{"scores": {"CO-1056": 88, "CR-1047": 81}, "businessText": "Satellite communications"}'
+  -d '{"profileId":"service-support","profileVersion":"1.0.0","evidenceCompleteness":"INCOMPLETE","scores":{"CO-1056":88,"CR-1047":81},"businessText":"Satellite communications"}'
 ```
 
-**Antwort:** Schlägt zusätzliche Knoten und Beziehungen vor.
+**Antwort:** Trennt `matchedElements` (gewichtete Treffer), `acceptedElements` (Elemente des gewählten Modells), `proposedElements` und `suggestedRelations`. Das nullable `meanRelevance` beschreibt eine Rangfolgestatistik, keine Architekturqualität. Vorschläge zu verletzten Pflichten bevorzugen geeignete vorhandene Modellelemente.
 
 ### Mustererkennung
 
+Wie bei der Lückenanalyse ist die genaue gespeicherte Modellversion auszuwählen.
+Die Erkennung verwendet deren deklarierte Elementtypen und akzeptierte Beziehungen;
+Relevanzwerte wählen lediglich die Startknoten.
+
 ```bash
 # Für einen einzelnen Knoten
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/patterns/detect?nodeCode=CP-1023"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/patterns/detect?nodeCode=CP-1023&repositoryId=${TAXONOMY_REPOSITORY_ID}&workspaceId=&branch=main&commitId=${TAXONOMY_MODEL_COMMIT}"
 
 # Für bewertete Knoten
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/patterns/detect \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/patterns/detect?repositoryId=${TAXONOMY_REPOSITORY_ID}&workspaceId=&branch=main&commitId=${TAXONOMY_MODEL_COMMIT}" \
   -H "Content-Type: application/json" \
-  -d '{"scores": {"CP-1023": 92, "CO-1011": 88}}'
+  -d '{"scores": {"CP-1023": 92, "CO-1011": 88}, "minScore": 50}'
 ```
+
+**Antwort:** `evidence` bindet das genaue Modell, die Vorlagenversion, die
+Relevanzschwelle und die begrenzte Vollständigkeit. `patternCoverage` ist null,
+wenn keine anwendbare Vorlage ausgewertet wurde. Ein fehlendes Muster ist keine
+fachliche Pflicht. Siehe [Modellnachweise](../architecture/graph-query-evidence.md#pattern-detection-uses-the-same-source-boundary).
 
 ---
 

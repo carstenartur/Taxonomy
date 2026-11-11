@@ -165,9 +165,9 @@ class HypothesisServiceTest {
     }
 
     @Test
-    void persistFromAnalysisSavesHypotheses() {
+    void persistFromAnalysisSavesHypotheses() throws Exception {
         List<RelationHypothesisDto> dtos = List.of(
-                new RelationHypothesisDto("BP", "Process One", "CP", "Capability One",
+                new RelationHypothesisDto("CP", "Capability One", "CR", "Core Service One",
                         "REALIZES", 0.80, "Inferred from compatibility matrix"));
 
         List<RelationHypothesis> persisted =
@@ -177,18 +177,19 @@ class HypothesisServiceTest {
         RelationHypothesis h = persisted.get(0);
         assertThat(h.getId()).isNotNull();
         assertThat(h.getRepositoryId()).isEqualTo(centralWrite.repositoryId());
-        assertThat(h.getSourceNodeId()).isEqualTo("BP");
-        assertThat(h.getTargetNodeId()).isEqualTo("CP");
+        assertThat(h.getSourceNodeId()).isEqualTo("CP");
+        assertThat(h.getTargetNodeId()).isEqualTo("CR");
         assertThat(h.getStatus()).isEqualTo(HypothesisStatus.PROVISIONAL);
         assertThat(h.getConfidence()).isEqualTo(0.80);
         assertThat(h.getAnalysisSessionId()).isEqualTo("test-persist-1");
         assertThat(h.getWorkspaceId()).isNull();
+        assertCentralSnapshotCanBeReconciled();
     }
 
     @Test
-    void persistFromAnalysisCreatesEvidence() {
+    void persistFromAnalysisCreatesEvidence() throws Exception {
         List<RelationHypothesisDto> dtos = List.of(
-                new RelationHypothesisDto("BP", "Process", "CP", "Capability",
+                new RelationHypothesisDto("CR", "Core Service", "BP", "Process",
                         "SUPPORTS", 0.70, "Test reasoning for evidence"));
 
         List<RelationHypothesis> persisted =
@@ -200,6 +201,16 @@ class HypothesisServiceTest {
         assertThat(evidence).hasSize(1);
         assertThat(evidence.get(0).getSummary()).isEqualTo("Test reasoning for evidence");
         assertThat(evidence.get(0).getEvidenceType()).isEqualTo("analysis-rule");
+        assertCentralSnapshotCanBeReconciled();
+    }
+
+    private void assertCentralSnapshotCanBeReconciled() throws Exception {
+        String saved = gitRepositories.resolveRepository(centralWrite)
+                .getDslAtHead(centralWrite.branch());
+        assertThat(saved).as("actual saved central hypothesis model").isNotBlank();
+        var commands = new com.taxonomy.dsl.command.ArchitectureDslCommands();
+        assertThat(commands.model(saved).getRelations()).hasSize(1);
+        commands.validateReconciledSource(saved);
     }
 
     @Test

@@ -29,7 +29,7 @@ import com.taxonomy.dto.RequirementImpactView;
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
-class GraphQueryTests {
+class GraphQueryTests extends GraphSnapshotFixtureSupport {
 
     @Autowired
     private MockMvc mockMvc;
@@ -52,7 +52,7 @@ class GraphQueryTests {
 
     @Test
     void requirementImpactWithNoScoresReturnsNote() {
-        RequirementImpactView view = graphQueryService.findImpactForRequirement(
+        RequirementImpactView view = graphQueryService.findImpactForRequirement(graphContext, graphCommit,
                 Map.of(), "test requirement", 2);
 
         assertThat(view.getBusinessText()).isEqualTo("test requirement");
@@ -63,7 +63,7 @@ class GraphQueryTests {
 
     @Test
     void requirementImpactWithNullScoresReturnsNote() {
-        RequirementImpactView view = graphQueryService.findImpactForRequirement(
+        RequirementImpactView view = graphQueryService.findImpactForRequirement(graphContext, graphCommit,
                 null, "test requirement", 2);
 
         assertThat(view.getNotes()).isNotEmpty();
@@ -73,12 +73,12 @@ class GraphQueryTests {
     @Test
     void requirementImpactFindsAnchorAndPropagatedNodes() {
         // Create relation: BP → CP via SUPPORTS
-        relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
+        graphRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
 
         Map<String, Double> scores = new LinkedHashMap<>();
         scores.put("BP", 91d);
 
-        RequirementImpactView view = graphQueryService.findImpactForRequirement(
+        RequirementImpactView view = graphQueryService.findImpactForRequirement(graphContext, graphCommit,
                 scores, "secure voice communications", 2);
 
         assertThat(view.getImpactedElements()).hasSizeGreaterThanOrEqualTo(2);
@@ -91,21 +91,21 @@ class GraphQueryTests {
     @Test
     void requirementImpactRespectsMaxHops() {
         // Chain: BP → CP → CR (2 hops)
-        relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
-        relationService.createRelation("CP", "CR", RelationType.SUPPORTS, null, "test");
+        graphRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
+        graphRelation("CP", "CR", RelationType.SUPPORTS, null, "test");
 
         Map<String, Double> scores = new LinkedHashMap<>();
         scores.put("BP", 91d);
 
         // With maxHops=1, CR should NOT appear
-        RequirementImpactView view1 = graphQueryService.findImpactForRequirement(scores, "test", 1);
+        RequirementImpactView view1 = graphQueryService.findImpactForRequirement(graphContext, graphCommit, scores, "test", 1);
         assertThat(view1.getImpactedElements().stream()
                 .map(ImpactElement::getNodeCode).toList())
                 .contains("BP", "CP")
                 .doesNotContain("CR");
 
         // With maxHops=2, CR should appear
-        RequirementImpactView view2 = graphQueryService.findImpactForRequirement(scores, "test", 2);
+        RequirementImpactView view2 = graphQueryService.findImpactForRequirement(graphContext, graphCommit, scores, "test", 2);
         assertThat(view2.getImpactedElements().stream()
                 .map(ImpactElement::getNodeCode).toList())
                 .contains("BP", "CP", "CR");
@@ -113,12 +113,12 @@ class GraphQueryTests {
 
     @Test
     void requirementImpactTracksRelationships() {
-        relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
+        graphRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
 
         Map<String, Double> scores = new LinkedHashMap<>();
         scores.put("BP", 91d);
 
-        RequirementImpactView view = graphQueryService.findImpactForRequirement(scores, "test", 2);
+        RequirementImpactView view = graphQueryService.findImpactForRequirement(graphContext, graphCommit, scores, "test", 2);
 
         assertThat(view.getTraversedRelationships()).isNotEmpty();
         assertThat(view.getTraversedRelationships().get(0).getRelationType()).isEqualTo("SUPPORTS");
@@ -130,9 +130,9 @@ class GraphQueryTests {
     @Test
     void upstreamFindsIncomingRelations() {
         // CP → BP via SUPPORTS means BP has CP as upstream
-        relationService.createRelation("CP", "BP", RelationType.SUPPORTS, null, "test");
+        graphRelation("CP", "BP", RelationType.SUPPORTS, null, "test");
 
-        GraphNeighborhoodView view = graphQueryService.findUpstream("BP", 2);
+        GraphNeighborhoodView view = graphQueryService.findUpstream(graphContext, graphCommit, "BP", 2);
 
         assertThat(view.getOriginNodeCode()).isEqualTo("BP");
         assertThat(view.getDirection()).isEqualTo("UPSTREAM");
@@ -146,9 +146,9 @@ class GraphQueryTests {
     void upstreamDoesNotIncludeOutgoingRelations() {
         // BP → CP (BP is source, CP is target)
         // For upstream of BP, CP should NOT appear as a neighbor
-        relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
+        graphRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
 
-        GraphNeighborhoodView view = graphQueryService.findUpstream("BP", 2);
+        GraphNeighborhoodView view = graphQueryService.findUpstream(graphContext, graphCommit, "BP", 2);
 
         assertThat(view.getNeighbors().stream()
                 .map(ImpactElement::getNodeCode).toList())
@@ -157,7 +157,7 @@ class GraphQueryTests {
 
     @Test
     void upstreamForNonExistentNodeReturnsNote() {
-        GraphNeighborhoodView view = graphQueryService.findUpstream("NONEXISTENT", 2);
+        GraphNeighborhoodView view = graphQueryService.findUpstream(graphContext, graphCommit, "NONEXISTENT", 2);
 
         assertThat(view.getNotes()).isNotEmpty();
         assertThat(view.getNeighbors()).isEmpty();
@@ -166,10 +166,10 @@ class GraphQueryTests {
     @Test
     void upstreamChainsMultipleHops() {
         // CR → CP → BP: upstream of BP should find CP (hop 1) and CR (hop 2)
-        relationService.createRelation("CP", "BP", RelationType.SUPPORTS, null, "test");
-        relationService.createRelation("CR", "CP", RelationType.SUPPORTS, null, "test");
+        graphRelation("CP", "BP", RelationType.SUPPORTS, null, "test");
+        graphRelation("CR", "CP", RelationType.SUPPORTS, null, "test");
 
-        GraphNeighborhoodView view = graphQueryService.findUpstream("BP", 2);
+        GraphNeighborhoodView view = graphQueryService.findUpstream(graphContext, graphCommit, "BP", 2);
 
         assertThat(view.getNeighbors().stream()
                 .map(ImpactElement::getNodeCode).toList())
@@ -181,9 +181,9 @@ class GraphQueryTests {
     @Test
     void downstreamFindsOutgoingRelations() {
         // BP → CP via SUPPORTS means CP is downstream of BP
-        relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
+        graphRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
 
-        GraphNeighborhoodView view = graphQueryService.findDownstream("BP", 2);
+        GraphNeighborhoodView view = graphQueryService.findDownstream(graphContext, graphCommit, "BP", 2);
 
         assertThat(view.getOriginNodeCode()).isEqualTo("BP");
         assertThat(view.getDirection()).isEqualTo("DOWNSTREAM");
@@ -197,9 +197,9 @@ class GraphQueryTests {
     void downstreamDoesNotIncludeIncomingRelations() {
         // CP → BP (CP is source, BP is target)
         // For downstream of BP, CP should NOT appear
-        relationService.createRelation("CP", "BP", RelationType.SUPPORTS, null, "test");
+        graphRelation("CP", "BP", RelationType.SUPPORTS, null, "test");
 
-        GraphNeighborhoodView view = graphQueryService.findDownstream("BP", 2);
+        GraphNeighborhoodView view = graphQueryService.findDownstream(graphContext, graphCommit, "BP", 2);
 
         assertThat(view.getNeighbors().stream()
                 .map(ImpactElement::getNodeCode).toList())
@@ -208,7 +208,7 @@ class GraphQueryTests {
 
     @Test
     void downstreamForNonExistentNodeReturnsNote() {
-        GraphNeighborhoodView view = graphQueryService.findDownstream("NONEXISTENT", 2);
+        GraphNeighborhoodView view = graphQueryService.findDownstream(graphContext, graphCommit, "NONEXISTENT", 2);
 
         assertThat(view.getNotes()).isNotEmpty();
         assertThat(view.getNeighbors()).isEmpty();
@@ -217,10 +217,10 @@ class GraphQueryTests {
     @Test
     void downstreamChainsMultipleHops() {
         // BP → CP → CR: downstream of BP should find CP (hop 1) and CR (hop 2)
-        relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
-        relationService.createRelation("CP", "CR", RelationType.SUPPORTS, null, "test");
+        graphRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
+        graphRelation("CP", "CR", RelationType.SUPPORTS, null, "test");
 
-        GraphNeighborhoodView view = graphQueryService.findDownstream("BP", 2);
+        GraphNeighborhoodView view = graphQueryService.findDownstream(graphContext, graphCommit, "BP", 2);
 
         assertThat(view.getNeighbors().stream()
                 .map(ImpactElement::getNodeCode).toList())
@@ -232,9 +232,9 @@ class GraphQueryTests {
     @Test
     void failureImpactFindsDirectlyAffected() {
         // BP → CP via SUPPORTS: if BP fails, CP is directly affected
-        relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
+        graphRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
 
-        ChangeImpactView view = graphQueryService.findFailureImpact("BP", 3);
+        ChangeImpactView view = graphQueryService.findFailureImpact(graphContext, graphCommit, "BP", 3);
 
         assertThat(view.getFailedNodeCode()).isEqualTo("BP");
         assertThat(view.getDirectlyAffected()).isNotEmpty();
@@ -246,10 +246,10 @@ class GraphQueryTests {
     @Test
     void failureImpactSplitsDirectAndIndirect() {
         // BP → CP → CR: direct = CP, indirect = CR
-        relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
-        relationService.createRelation("CP", "CR", RelationType.SUPPORTS, null, "test");
+        graphRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
+        graphRelation("CP", "CR", RelationType.SUPPORTS, null, "test");
 
-        ChangeImpactView view = graphQueryService.findFailureImpact("BP", 3);
+        ChangeImpactView view = graphQueryService.findFailureImpact(graphContext, graphCommit, "BP", 3);
 
         assertThat(view.getDirectlyAffected().stream()
                 .map(ImpactElement::getNodeCode).toList())
@@ -262,7 +262,7 @@ class GraphQueryTests {
 
     @Test
     void failureImpactForNonExistentNodeReturnsNote() {
-        ChangeImpactView view = graphQueryService.findFailureImpact("NONEXISTENT", 3);
+        ChangeImpactView view = graphQueryService.findFailureImpact(graphContext, graphCommit, "NONEXISTENT", 3);
 
         assertThat(view.getNotes()).isNotEmpty();
         assertThat(view.getDirectlyAffected()).isEmpty();
@@ -272,9 +272,9 @@ class GraphQueryTests {
     @Test
     void failureImpactAlsoTraversesIncomingRelations() {
         // CP → BP: if BP fails, CP is also affected (upstream dependency)
-        relationService.createRelation("CP", "BP", RelationType.SUPPORTS, null, "test");
+        graphRelation("CP", "BP", RelationType.SUPPORTS, null, "test");
 
-        ChangeImpactView view = graphQueryService.findFailureImpact("BP", 3);
+        ChangeImpactView view = graphQueryService.findFailureImpact(graphContext, graphCommit, "BP", 3);
 
         assertThat(view.getDirectlyAffected().stream()
                 .map(ImpactElement::getNodeCode).toList())
@@ -283,9 +283,9 @@ class GraphQueryTests {
 
     @Test
     void failureImpactTracksRelationships() {
-        relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
+        graphRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
 
-        ChangeImpactView view = graphQueryService.findFailureImpact("BP", 3);
+        ChangeImpactView view = graphQueryService.findFailureImpact(graphContext, graphCommit, "BP", 3);
 
         assertThat(view.getTraversedRelationships()).isNotEmpty();
         assertThat(view.getTotalRelationships()).isGreaterThanOrEqualTo(1);
@@ -295,14 +295,14 @@ class GraphQueryTests {
 
     @Test
     void maxHopsClampedToMinimum1() {
-        RequirementImpactView view = graphQueryService.findImpactForRequirement(
+        RequirementImpactView view = graphQueryService.findImpactForRequirement(graphContext, graphCommit,
                 Map.of("BP", 91d), "test", 0);
         assertThat(view.getMaxHops()).isEqualTo(1);
     }
 
     @Test
     void maxHopsClampedToMaximum5() {
-        RequirementImpactView view = graphQueryService.findImpactForRequirement(
+        RequirementImpactView view = graphQueryService.findImpactForRequirement(graphContext, graphCommit,
                 Map.of("BP", 91d), "test", 10);
         assertThat(view.getMaxHops()).isEqualTo(5);
     }
@@ -311,7 +311,7 @@ class GraphQueryTests {
 
     @Test
     void requirementImpactEndpointReturnsOk() throws Exception {
-        mockMvc.perform(post("/api/graph/impact")
+        mockMvc.perform(graphRequest(post("/api/graph/impact"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"businessText\":\"secure voice communications\"," +
                                 "\"scores\":{\"BP\":91},\"maxHops\":2}"))
@@ -324,7 +324,7 @@ class GraphQueryTests {
 
     @Test
     void requirementImpactEndpointRejectsMissingBusinessText() throws Exception {
-        mockMvc.perform(post("/api/graph/impact")
+        mockMvc.perform(graphRequest(post("/api/graph/impact"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scores\":{\"BP\":91}}"))
                 .andExpect(status().isBadRequest());
@@ -332,7 +332,7 @@ class GraphQueryTests {
 
     @Test
     void upstreamEndpointReturnsOk() throws Exception {
-        mockMvc.perform(get("/api/graph/node/BP/upstream")
+        mockMvc.perform(graphRequest(get("/api/graph/node/BP/upstream"))
                         .param("maxHops", "2"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.originNodeCode").value("BP"))
@@ -342,7 +342,7 @@ class GraphQueryTests {
 
     @Test
     void downstreamEndpointReturnsOk() throws Exception {
-        mockMvc.perform(get("/api/graph/node/BP/downstream")
+        mockMvc.perform(graphRequest(get("/api/graph/node/BP/downstream"))
                         .param("maxHops", "2"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.originNodeCode").value("BP"))
@@ -352,7 +352,7 @@ class GraphQueryTests {
 
     @Test
     void failureImpactEndpointReturnsOk() throws Exception {
-        mockMvc.perform(get("/api/graph/node/BP/failure-impact")
+        mockMvc.perform(graphRequest(get("/api/graph/node/BP/failure-impact"))
                         .param("maxHops", "3"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.failedNodeCode").value("BP"))
@@ -363,14 +363,14 @@ class GraphQueryTests {
 
     @Test
     void upstreamEndpointDefaultsMaxHopsTo2() throws Exception {
-        mockMvc.perform(get("/api/graph/node/BP/upstream"))
+        mockMvc.perform(graphRequest(get("/api/graph/node/BP/upstream")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.maxHops").value(2));
     }
 
     @Test
     void failureImpactEndpointDefaultsMaxHopsTo3() throws Exception {
-        mockMvc.perform(get("/api/graph/node/BP/failure-impact"))
+        mockMvc.perform(graphRequest(get("/api/graph/node/BP/failure-impact")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.maxHops").value(3));
     }
@@ -379,9 +379,9 @@ class GraphQueryTests {
 
     @Test
     void failureImpactDoesNotTraverseNonWhitelistedRelations() {
-        relationService.createRelation("BP", "CP", RelationType.RELATED_TO, null, "test");
+        graphRelation("BP", "CP", RelationType.RELATED_TO, null, "test");
 
-        ChangeImpactView view = graphQueryService.findFailureImpact("BP", 3);
+        ChangeImpactView view = graphQueryService.findFailureImpact(graphContext, graphCommit, "BP", 3);
 
         assertThat(view.getDirectlyAffected().stream()
                 .map(ImpactElement::getNodeCode).toList())
@@ -390,9 +390,9 @@ class GraphQueryTests {
 
     @Test
     void downstreamTraversesRealizesRelation() {
-        relationService.createRelation("BP", "CP", RelationType.REALIZES, null, "test");
+        graphRelation("BP", "CP", RelationType.REALIZES, null, "test");
 
-        GraphNeighborhoodView view = graphQueryService.findDownstream("BP", 2);
+        GraphNeighborhoodView view = graphQueryService.findDownstream(graphContext, graphCommit, "BP", 2);
 
         assertThat(view.getNeighbors().stream()
                 .map(ImpactElement::getNodeCode).toList())
@@ -401,9 +401,9 @@ class GraphQueryTests {
 
     @Test
     void upstreamTraversesUsesRelation() {
-        relationService.createRelation("CP", "BP", RelationType.USES, null, "test");
+        graphRelation("CP", "BP", RelationType.USES, null, "test");
 
-        GraphNeighborhoodView view = graphQueryService.findUpstream("BP", 2);
+        GraphNeighborhoodView view = graphQueryService.findUpstream(graphContext, graphCommit, "BP", 2);
 
         assertThat(view.getNeighbors().stream()
                 .map(ImpactElement::getNodeCode).toList())

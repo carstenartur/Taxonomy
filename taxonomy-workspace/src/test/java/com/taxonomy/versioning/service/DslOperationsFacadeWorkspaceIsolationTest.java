@@ -7,6 +7,7 @@ import com.taxonomy.workspace.service.RepositoryStateGuard;
 import com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.io.IOException;
 
@@ -23,6 +24,23 @@ class DslOperationsFacadeWorkspaceIsolationTest {
             return action.run();
         }
     };
+
+    @Test
+    void aCentralReadSelectionCannotDeleteBranches() {
+        DslGitRepositoryFactory repositoryFactory = mock(DslGitRepositoryFactory.class);
+        RepositoryStateService repositoryStateService = mock(RepositoryStateService.class);
+        WorkspaceResolver workspaceResolver = mock(WorkspaceResolver.class);
+        DslOperationsFacade facade = new DslOperationsFacade(repositoryFactory, mock(CommitIndexService.class),
+                mock(ConflictDetectionService.class), mock(RepositoryStateGuard.class), repositoryStateService,
+                workspaceResolver, DIRECT_VERSIONS);
+        when(workspaceResolver.resolveCurrentUsername()).thenReturn("architect");
+        when(workspaceResolver.resolveCurrentRepositoryContext())
+                .thenReturn(RepositoryContext.centralRead("public-repository", "release", "architect"));
+
+        assertThatThrownBy(() -> facade.deleteBranch("published"))
+                .isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(repositoryFactory);
+    }
 
     @Test
     void doesNotFallBackToSharedRepositoryWhenWorkspaceProvisioningFails() {

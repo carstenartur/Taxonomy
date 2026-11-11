@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "AUTHORED_OBSERVATIONS_NOT_MODEL_OUTPUT",
+  "observations": [
+    {"caseId":"clear-read-only","state":"SUCCESS","evidenceCompleteness":"COMPLETE","elements":[{"id":"UA-1580","root":"UA","properties":{}},{"id":"IP-1116","root":"IP","properties":{}}],"relations":[{"source":"UA-1580","type":"CONSUMES","target":"IP-1116","status":"accepted"}],"questions":[]},
+    {"caseId":"one-notification-channel","state":"SUCCESS","evidenceCompleteness":"COMPLETE","elements":[{"id":"BP-1535","root":"BP","properties":{}},{"id":"CR-1060","root":"CR","properties":{}}],"relations":[{"source":"BP-1535","type":"USES","target":"CR-1060","status":"accepted"}],"questions":[]},
+    {"caseId":"unknown-observation-source","state":"PARTIAL","evidenceCompleteness":"INCOMPLETE","elements":[{"id":"UA-1580","root":"UA","properties":{}}],"relations":[],"questions":["source-identity"]},
+    {"caseId":"contradictory-retention","state":"PARTIAL","evidenceCompleteness":"INCOMPLETE","elements":[{"id":"BP-1535","root":"BP","properties":{"retention":"UNRESOLVED"}}],"relations":[],"questions":["retention-conflict"]},
+    {"caseId":"rename-existing-view","state":"SUCCESS","evidenceCompleteness":"COMPLETE","elements":[{"id":"UA-1580","root":"UA","properties":{"title":"Flood observation viewer","sourceLabel":"official observations"}},{"id":"IP-1116","root":"IP","properties":{}}],"relations":[{"source":"UA-1580","type":"CONSUMES","target":"IP-1116","status":"accepted"}],"questions":[]},
+    {"caseId":"already-satisfied","state":"SUCCESS","evidenceCompleteness":"COMPLETE","elements":[{"id":"UA-1580","root":"UA","properties":{"title":"Published observation view"}},{"id":"IP-1116","root":"IP","properties":{}}],"relations":[{"source":"UA-1580","type":"CONSUMES","target":"IP-1116","status":"accepted"}],"questions":[]}
+  ]
+}

@@ -3,41 +3,49 @@ package com.taxonomy.dto;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Result of an architecture gap analysis.
- * Identifies missing relations and incomplete architectural patterns
- * based on the {@link com.taxonomy.service.RelationCompatibilityMatrix}.
- */
+/** Scoped obligation judgments. Absence is meaningful only within the identified complete snapshot. */
 public class GapAnalysisView {
-
     private String businessText;
-    private List<MissingRelation> missingRelations = new ArrayList<>();
-    private List<IncompletePattern> incompletePatterns = new ArrayList<>();
-    private List<CoverageGap> coverageGaps = new ArrayList<>();
+    private String profileId;
+    private String profileVersion;
+    private String metamodelVersion;
+    private String repositoryId;
+    private String workspaceId;
+    private String workspaceScopeKey;
+    public String getWorkspaceId() { return workspaceId; }
+    public void setWorkspaceId(String value) { workspaceId = value; }
+    public String getWorkspaceScopeKey() { return workspaceScopeKey; }
+    public void setWorkspaceScopeKey(String value) { workspaceScopeKey = value; }
+    private String branch;
+    private String commitId;
+    private String evidenceAuthority;
+    private EvidenceCompleteness evidenceCompleteness;
+    private List<ObligationJudgment> judgments = new ArrayList<>();
     private int totalAnchors;
-    private int totalGaps;
     private List<String> notes = new ArrayList<>();
-
-    public GapAnalysisView() {}
-
     public String getBusinessText() { return businessText; }
-    public void setBusinessText(String businessText) { this.businessText = businessText; }
-
-    public List<MissingRelation> getMissingRelations() { return missingRelations; }
-    public void setMissingRelations(List<MissingRelation> missingRelations) { this.missingRelations = missingRelations; }
-
-    public List<IncompletePattern> getIncompletePatterns() { return incompletePatterns; }
-    public void setIncompletePatterns(List<IncompletePattern> incompletePatterns) { this.incompletePatterns = incompletePatterns; }
-
-    public List<CoverageGap> getCoverageGaps() { return coverageGaps; }
-    public void setCoverageGaps(List<CoverageGap> coverageGaps) { this.coverageGaps = coverageGaps; }
-
+    public void setBusinessText(String value) { businessText = value; }
+    public String getProfileId() { return profileId; }
+    public void setProfileId(String value) { profileId = value; }
+    public String getProfileVersion() { return profileVersion; }
+    public void setProfileVersion(String value) { profileVersion = value; }
+    public String getMetamodelVersion() { return metamodelVersion; }
+    public void setMetamodelVersion(String value) { metamodelVersion = value; }
+    public String getRepositoryId() { return repositoryId; }
+    public void setRepositoryId(String value) { repositoryId = value; }
+    public String getBranch() { return branch; }
+    public void setBranch(String value) { branch = value; }
+    public String getCommitId() { return commitId; }
+    public void setCommitId(String value) { commitId = value; }
+    public String getEvidenceAuthority() { return evidenceAuthority; }
+    public void setEvidenceAuthority(String value) { evidenceAuthority = value; }
+    public EvidenceCompleteness getEvidenceCompleteness() { return evidenceCompleteness; }
+    public void setEvidenceCompleteness(EvidenceCompleteness value) { evidenceCompleteness = value; }
+    public List<ObligationJudgment> getJudgments() { return judgments; }
+    public void setJudgments(List<ObligationJudgment> value) { judgments = List.copyOf(value); }
     public int getTotalAnchors() { return totalAnchors; }
-    public void setTotalAnchors(int totalAnchors) { this.totalAnchors = totalAnchors; }
-
-    public int getTotalGaps() { return totalGaps; }
-    public void setTotalGaps(int totalGaps) { this.totalGaps = totalGaps; }
-
+    public void setTotalAnchors(int value) { totalAnchors = value; }
+    public int getTotalGaps() { return (int) judgments.stream().filter(j -> j.status() == ObligationJudgment.Status.VIOLATED).count(); }
     public List<String> getNotes() { return notes; }
-    public void setNotes(List<String> notes) { this.notes = notes; }
+    public void setNotes(List<String> value) { notes = value; }
 }

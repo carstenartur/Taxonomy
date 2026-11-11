@@ -111,3 +111,7 @@ taxonomy-app/src/test/js/contextual-help.cjs
 .github/scripts/user-management-navigation.browser.test.mjs
 .github/scripts/integrations.browser.test.mjs
 .github/scripts/named-workspace-versioning.test.mjs
+.github/scripts/analysis-evidence-contract.test.mjs
+.github/scripts/evidence-consumers.test.mjs
+.github/scripts/visible-analysis-context.test.mjs
+.github/scripts/ui-primary-graph-fixture.test.mjs

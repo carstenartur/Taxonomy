@@ -39,7 +39,8 @@ const ready = {outcome: 'READY', role: 'CREATE', database: 'CREATE',
 const complete = {outcome: 'COMPLETE', role: 'CREATED', database: 'CREATED',
     finding: {key: 'database.provision.complete', status: 'OK', message: 'Application login verified'}};
 
-async function fixture({locale = 'en', width = 1000, height = 850, responses = [success], realTransport = false} = {}) {
+async function fixture({locale = 'en', width = 1000, height = 850, responses = [success], realTransport = false,
+    honorBodyAbort = true} = {}) {
     const page = await browser.newPage({viewport: {width, height}});
     page.errors = [];
     page.on('pageerror', error => page.errors.push(error.message));
@@ -55,7 +56,7 @@ async function fixture({locale = 'en', width = 1000, height = 850, responses = [
             if (match) translations[match[1]] = match[2].replace(/\\u([0-9a-fA-F]{4})/g, (_, value) => String.fromCharCode(parseInt(value, 16)));
         }
     }
-    await page.evaluate(({translations, responses, realTransport}) => {
+    await page.evaluate(({translations, responses, realTransport, honorBodyAbort}) => {
         window.TaxonomyI18n = {t: (key, ...args) => (translations[key] || key).replace(/\{(\d+)\}/g, (_, index) => args[index] ?? '')};
         document.querySelectorAll('[th\\:text], [th\\:aria-label]').forEach(node => {
             for (const attribute of ['text', 'aria-label']) {
@@ -94,18 +95,23 @@ async function fixture({locale = 'en', width = 1000, height = 850, responses = [
                 window.databaseRequests.push({url, body});
                 const result = window.databaseResponses.shift();
                 if (result?.pending) {
+                    let aborted = false;
+                    window.databaseBodyAbortObserved = false;
+                    window.databaseLateCompletionAttempts = 0;
                     const stream = new ReadableStream({start(controller) {
-                        let cancelled = false;
                         window.finishDatabaseRequest = () => {
-                            // The simulated producer may finish after the response deadline.
-                            // No bytes may be enqueued into an already errored stream.
-                            if (cancelled) return;
+                            window.databaseLateCompletionAttempts++;
+                            // An aborted network body cannot receive another chunk. A second
+                            // fixture mode deliberately delivers late to exercise the client fence.
+                            if (aborted && honorBodyAbort) return false;
                             controller.enqueue(new TextEncoder().encode(JSON.stringify(result.value)));
                             controller.close();
+                            return true;
                         };
                         init.signal?.addEventListener('abort', () => {
-                            cancelled = true;
-                            controller.error(new DOMException('Aborted', 'AbortError'));
+                            aborted = true;
+                            window.databaseBodyAbortObserved = true;
+                            if (honorBodyAbort) controller.error(new DOMException('Aborted', 'AbortError'));
                         }, {once: true});
                     }});
                     window.databaseHeadersReceived = true;
@@ -115,7 +121,7 @@ async function fixture({locale = 'en', width = 1000, height = 850, responses = [
                 return json(result);
             };
         }
-    }, {translations, responses, realTransport});
+    }, {translations, responses, realTransport, honorBodyAbort});
     // The actual component styles are used, including its mobile layout and result hierarchy.
     await page.addStyleTag({content: bootstrap});
     await page.addStyleTag({path: path.join(resources, 'static/css/taxonomy-database-setup.css')});
@@ -265,8 +271,8 @@ test('creation locks navigation and a lost response requires inspection before a
     } finally { await lost.close(); }
 });
 
-test('a stalled JSON body releases creation controls into UNKNOWN and ignores late success', async () => {
-    const page = await fixture({realTransport: true,
+for (const honorBodyAbort of [true, false]) test(`a stalled JSON body releases creation controls into UNKNOWN and ignores late success (${honorBodyAbort ? 'abort-aware body' : 'late body after abort'})`, async () => {
+    const page = await fixture({realTransport: true, honorBodyAbort,
         responses: [ready, {pending: true, value: complete}, {...ready, role: 'REUSE', database: 'REUSE'}]});
     try {
         await page.clock.install();
@@ -282,7 +288,11 @@ test('a stalled JSON body releases creation controls into UNKNOWN and ignores la
         assert.equal(await page.locator('#databaseSetupHost').isDisabled(), false);
         assert.equal(await page.locator('#databaseSetupProvision').isVisible(), false);
         assert.equal(await page.locator('#databaseSetupNext').isVisible(), false);
-        await page.evaluate(() => window.finishDatabaseRequest());
+        assert.equal(await page.evaluate(() => window.databaseBodyAbortObserved), true,
+            'The original request must be aborted when its JSON body reaches the deadline');
+        assert.equal(await page.evaluate(() => window.finishDatabaseRequest()), !honorBodyAbort,
+            'An abort-aware body rejects delivery; the uncooperative body really delivers late success');
+        assert.equal(await page.evaluate(() => window.databaseLateCompletionAttempts), 1);
         assert.match(await page.locator('#databaseSetupStatus').innerText(), /outcome.*unknown|could not be confirmed/i);
         assert.equal(await page.locator('#databaseSetupAdminPassword').inputValue(), 'ADMIN_SECRET_SENTINEL');
         await check(page);

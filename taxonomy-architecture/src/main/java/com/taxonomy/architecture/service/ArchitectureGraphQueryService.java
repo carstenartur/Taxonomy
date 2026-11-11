@@ -1,5 +1,6 @@
 package com.taxonomy.architecture.service;
 
+import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.dto.ChangeImpactView;
 import com.taxonomy.dto.GraphNeighborhoodView;
 import com.taxonomy.dto.RequirementImpactView;
@@ -14,22 +15,26 @@ import com.taxonomy.dto.RequirementImpactView;
  *   <li><b>Failure / Change Impact</b> — What is affected if an element fails or changes?</li>
  * </ol>
  *
- * <p>All queries traverse only ACCEPTED relations (SUPPORTS, REALIZES, USES) and
- * apply relevance decay per hop.
+ * <p>Queries traverse Git-present relations (SUPPORTS, REALIZES, USES) under
+ * their declared score and hop policy. Canonical presence does not imply human
+ * acceptance. Every query requires an explicitly selected exact revision.
  */
 public interface ArchitectureGraphQueryService {
+    /** Internal composition entry point, reusing the same frozen snapshot for enriched answers. */
+    ChangeImpactView findFailureImpact(GraphSnapshotReadService.SelectedGraphSnapshot snapshot, String nodeCode, int maxHops);
+
 
     /**
      * Finds elements impacted by a business requirement text.
-     * Uses the LLM scoring pipeline to identify anchors, then traverses
-     * the graph to find all affected elements.
+     * Uses supplied scores to select anchors, then traverses the selected graph.
+     * Scores never establish model membership, acceptance or relation evidence.
      *
      * @param scores    map of nodeCode → LLM score (0–100)
      * @param businessText  the requirement text
      * @param maxHops   maximum graph hops from anchors (1–5, clamped)
      * @return view of impacted elements and relationships
      */
-    RequirementImpactView findImpactForRequirement(java.util.Map<String, Double> scores,
+    RequirementImpactView findImpactForRequirement(RepositoryContext context, String commitId, java.util.Map<String, Double> scores,
                                                     String businessText, int maxHops);
 
     /**
@@ -40,7 +45,7 @@ public interface ArchitectureGraphQueryService {
      * @param maxHops   maximum graph hops (1–5, clamped)
      * @return upstream neighborhood view
      */
-    GraphNeighborhoodView findUpstream(String nodeCode, int maxHops);
+    GraphNeighborhoodView findUpstream(RepositoryContext context, String commitId, String nodeCode, int maxHops);
 
     /**
      * Finds downstream neighbors of a node (elements that depend on it).
@@ -50,7 +55,7 @@ public interface ArchitectureGraphQueryService {
      * @param maxHops   maximum graph hops (1–5, clamped)
      * @return downstream neighborhood view
      */
-    GraphNeighborhoodView findDownstream(String nodeCode, int maxHops);
+    GraphNeighborhoodView findDownstream(RepositoryContext context, String commitId, String nodeCode, int maxHops);
 
     /**
      * Analyzes failure/change impact for a node.
@@ -61,5 +66,5 @@ public interface ArchitectureGraphQueryService {
      * @param maxHops   maximum graph hops (1–5, clamped)
      * @return change impact view with directly and indirectly affected elements
      */
-    ChangeImpactView findFailureImpact(String nodeCode, int maxHops);
+    ChangeImpactView findFailureImpact(RepositoryContext context, String commitId, String nodeCode, int maxHops);
 }

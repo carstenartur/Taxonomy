@@ -1,5 +1,11 @@
 # Directed-relation quality: bounded first delivery for #927
 
+The [independent architecture-quality corpus](architecture-quality-corpus.md)
+extends these same evaluators with explicit alternatives, incomplete and
+contradictory input, updates to existing identities and no-addition cases. Its
+separate missing-obligation, unjustified-addition and uncertainty diagnostics do
+not replace the directed metric or the original Flood export gate.
+
 The existing `ScenarioArchitectureAcceptanceTest` still executes the real application,
 HTTP authentication, catalogue, two-pass analysis, persistence, export/reopen and
 optional browser checks. Only the outbound model responses are authored playback.

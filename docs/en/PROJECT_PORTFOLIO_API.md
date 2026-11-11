@@ -203,11 +203,21 @@ Both reconciliation routes require the exact revision `If-Match`. Their request 
 maps returned conflict IDs to `LOCAL` or `INCOMING`. Each selects a whole source
 block; the reserved `$document` conflict selects document metadata outside blocks.
 Preview returns `context`, `headCommit`, `fingerprint`, `baseDsl`, `localDsl`,
-`incomingDsl`, `mergedDsl`, `changes`, `conflicts` and `canAccept`. Each conflict has
+`incomingDsl`, `mergedDsl`, `changes`, `conflicts`, `canAccept` and `comparison`. Each conflict has
 `id`, `reason`, `base`, `local`, `incoming` and `resolution`. Missing choices make
 `canAccept=false`; the combined model must also pass validation. After choosing,
 preview again. Acceptance binds the same choices, metadata, context, captured HEAD
 and `fingerprint` as `previewFingerprint`. Changed inputs require a new preview.
+
+`comparison.scenes` maps `base`, `local`, `incoming` and, when available, `proposed`
+to the existing diagram scene format. Coordinates are shared across versions;
+labels and membership come from each frozen source. `comparison.properties`
+contains `{blockId, property, category, base, local, incoming, proposed}` rows with
+value arrays. Categories are `SEMANTIC`, `PRESENTATION` and `EXCHANGE_EVIDENCE`.
+An absent property uses an empty array; an unresolved proposed document uses
+`proposed=null` and has no `proposed` scene. `comparison.typeRoots` supplies the
+same canonical type mapping used by the editor. This projection performs no new
+repository reads and cannot change the fingerprint or acceptance authority.
 
 Read-only portfolio-owner validation checks managed canonical title, text, `x-version`
 and `x-content-hash` against the portable business record and current immutable

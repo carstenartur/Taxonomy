@@ -51,26 +51,62 @@ class SavedScopeExchangeTest {
 
     @Test
     void retainedCopilotSurvivesPortableExportImportAndReExportWithoutCreatingAuthority() throws Exception {
-        var copilot = Map.of("schemaVersion", 1, "state", "PARTIAL",
-                "gaps", Map.of("totalAnchors", 1, "totalGaps", 2,
-                        "notes", List.of("Retained compatibility checks, not confirmed gaps")),
-                "patterns", Map.of("patternCoverage", 0),
-                "recommendation", Map.of("confidence", 70),
-                "notes", List.of("Retained report fixture"));
+        var copilot = retainedCopilot();
+        var retainedEnvelope = mapper.valueToTree(copilot);
         var body = Map.<String, Object>of("requirement", "Retained requirement",
-                "scores", Map.of("BP", 70d), "provider", "MOCK", "copilot", copilot);
+                "scores", Map.of("BP", 70d), "provider", "MOCK", "copilot",
+                mapper.convertValue(copilot, new TypeReference<Map<String, Object>>() {}));
         var exported = controller().exportScores(body);
         assertThat(exported.getStatusCode().value()).isEqualTo(200);
         var imported = controller().importScores(mapper.writeValueAsString(exported.getBody()));
         assertThat(imported.getStatusCode().value()).isEqualTo(200);
         var reExported = controller().exportScores(imported.getBody());
+        assertThat(reExported.getStatusCode().value()).isEqualTo(200);
         for (var value : List.of(exported.getBody(), imported.getBody(), reExported.getBody())) {
             var json = mapper.valueToTree(value);
+            assertThat(json.path("copilot")).isEqualTo(retainedEnvelope);
+            assertThat(json.path("copilot").path("schemaVersion").asInt()).isEqualTo(2);
             assertThat(json.path("copilot").path("state").asString()).isEqualTo("PARTIAL");
             assertThat(json.path("copilot").path("notes").get(0).asString()).isEqualTo("Retained report fixture");
             assertThat(json.path("copilot").path("gaps").path("totalGaps").asInt()).isEqualTo(2);
+            // The scored catalogue node must not become a new accepted model element during exchange.
+            var accepted = json.path("copilot").path("recommendation").path("acceptedElements");
+            assertThat(accepted.size()).isEqualTo(1);
+            assertThat(accepted.get(0).path("nodeCode").asString()).isEqualTo("retained-process");
             assertThat(json.hasNonNull("analysisReference")).isFalse();
         }
+    }
+
+    private AnalysisCopilotResult retainedCopilot() {
+        var gaps = new GapAnalysisView();
+        gaps.setProfileId("fixture-process-obligations");
+        gaps.setProfileVersion("1.0.0");
+        gaps.setMetamodelVersion("1.0.0");
+        gaps.setRepositoryId("fixture-repository");
+        gaps.setWorkspaceScopeKey("__shared__");
+        gaps.setBranch("fixture-retained-branch");
+        gaps.setCommitId("a".repeat(40));
+        gaps.setEvidenceAuthority("CANONICAL_SNAPSHOT");
+        gaps.setEvidenceCompleteness(EvidenceCompleteness.COMPLETE);
+        gaps.setTotalAnchors(1);
+        gaps.setJudgments(List.of(
+                new ObligationJudgment("fixture-realization", "retained-process", "BP", "REALIZES", Set.of("CP"),
+                        1, null, 0, ObligationProfile.Severity.WARNING, ObligationJudgment.Status.VIOLATED,
+                        "Recorded capability realization obligation"),
+                new ObligationJudgment("fixture-product", "retained-process", "BP", "PRODUCES", Set.of("IP"),
+                        1, null, 0, ObligationProfile.Severity.WARNING, ObligationJudgment.Status.VIOLATED,
+                        "Recorded information product obligation")));
+        gaps.setNotes(List.of("Retained judgments apply only to their recorded profile and commit"));
+        var patterns = new PatternDetectionView();
+        patterns.setNotes(List.of("Retained pattern assessment unavailable"));
+        var recommendation = new ArchitectureRecommendation();
+        recommendation.setMatchedElements(List.of(new RecommendedElement("BP", "Catalogue match", "BP", 70,
+                "Retained relevance match")));
+        recommendation.setMeanRelevance(70d);
+        recommendation.setAcceptedElements(List.of(new RecommendedElement("retained-process", "Recorded process", "BP", 0,
+                "Explicit member of the recorded model")));
+        recommendation.setGapAnalysis(gaps);
+        return new AnalysisCopilotResult(2, "PARTIAL", gaps, patterns, recommendation, List.of("Retained report fixture"));
     }
 
     @org.junit.jupiter.api.Test

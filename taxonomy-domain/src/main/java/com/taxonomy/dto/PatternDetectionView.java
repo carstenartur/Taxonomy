@@ -13,7 +13,10 @@ public class PatternDetectionView {
     private String nodeCode;
     private List<DetectedPattern> matchedPatterns = new ArrayList<>();
     private List<DetectedPattern> incompletePatterns = new ArrayList<>();
-    private double patternCoverage;
+    private Double patternCoverage;
+    private PatternDetectionEvidence evidence;
+    public PatternDetectionEvidence getEvidence() { return evidence; }
+    public void setEvidence(PatternDetectionEvidence evidence) { this.evidence = evidence; }
     private List<String> notes = new ArrayList<>();
 
     public PatternDetectionView() {}
@@ -27,8 +30,8 @@ public class PatternDetectionView {
     public List<DetectedPattern> getIncompletePatterns() { return incompletePatterns; }
     public void setIncompletePatterns(List<DetectedPattern> incompletePatterns) { this.incompletePatterns = incompletePatterns; }
 
-    public double getPatternCoverage() { return patternCoverage; }
-    public void setPatternCoverage(double patternCoverage) { this.patternCoverage = patternCoverage; }
+    public Double getPatternCoverage() { return patternCoverage; }
+    public void setPatternCoverage(Double patternCoverage) { this.patternCoverage = patternCoverage; }
 
     public List<String> getNotes() { return notes; }
     public void setNotes(List<String> notes) { this.notes = notes; }

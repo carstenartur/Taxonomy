@@ -44,7 +44,7 @@ import com.taxonomy.relations.service.RequirementCoverageService;
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(roles = {"USER", "ARCHITECT", "ADMIN"})
-class ArchitectureAnalysisTests {
+class ArchitectureAnalysisTests extends GraphSnapshotFixtureSupport {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ArchitectureGapService gapService;
@@ -68,93 +68,21 @@ class ArchitectureAnalysisTests {
     // ═══════════════════════════════════════════════════════════════════════
 
     @Test
-    void gapAnalysisWithNoScoresReturnsNote() {
-        GapAnalysisView view = gapService.analyze(Map.of(), "test", 50);
-        assertThat(view.getNotes()).isNotEmpty();
-        assertThat(view.getMissingRelations()).isEmpty();
+    void compatibilityProfileNeverInventsObligationsFromLegalRelations() {
+        var view = ArchitectureGapService.compatibilityAssessment("test");
+        assertThat(view.getJudgments()).isEmpty();
+        assertThat(view.getTotalGaps()).isZero();
+        assertThat(view.getProfileId()).isEqualTo("compatibility");
+        assertThat(view.getEvidenceCompleteness()).isEqualTo(com.taxonomy.dto.EvidenceCompleteness.INCOMPLETE);
     }
 
     @Test
-    void gapAnalysisWithNullScoresReturnsNote() {
-        GapAnalysisView view = gapService.analyze(null, "test", 50);
-        assertThat(view.getNotes()).isNotEmpty();
-    }
-
-    @Test
-    void gapAnalysisDetectsMissingRelationsForCapability() {
-        // CP nodes should have REALIZES → CR according to the compatibility matrix
-        // No relations exist, so gap analysis should find this gap
-        GapAnalysisView view = gapService.analyze(Map.of("CP", 80d), "test requirement", 50);
-
-        assertThat(view.getTotalAnchors()).isEqualTo(1);
-        assertThat(view.getMissingRelations()).isNotEmpty();
-        assertThat(view.getMissingRelations().stream()
-                .anyMatch(m -> "REALIZES".equals(m.getExpectedRelationType())
-                        && "CR".equals(m.getExpectedTargetRoot()))).isTrue();
-    }
-
-    @Test
-    void gapAnalysisDetectsNoGapWhenRelationExists() {
-        // Create the expected relation CP → CR via REALIZES (matches compatibility matrix)
-        relationService.createRelation("CP", "CR", RelationType.REALIZES, null, "test");
-
-        GapAnalysisView view = gapService.analyze(Map.of("CP", 80d), "test requirement", 50);
-
-        // Should not report REALIZES → CR as missing for the CP node
-        boolean realizesToCrMissing = view.getMissingRelations().stream()
-                .anyMatch(m -> "REALIZES".equals(m.getExpectedRelationType())
-                        && "CR".equals(m.getExpectedTargetRoot())
-                        && "CP".equals(m.getSourceNodeCode()));
-        assertThat(realizesToCrMissing).isFalse();
-    }
-
-    @Test
-    void gapAnalysisReportsCoverageGapsForAnchorNodes() {
-        GapAnalysisView view = gapService.analyze(Map.of("CP", 80d), "test", 50);
-        assertThat(view.getCoverageGaps()).isNotEmpty();
-        assertThat(view.getCoverageGaps().stream()
-                .anyMatch(g -> "CP".equals(g.getNodeCode()))).isTrue();
-    }
-
-    @Test
-    void gapAnalysisReportsIncompletePatternsForMissingRelations() {
-        GapAnalysisView view = gapService.analyze(Map.of("CP", 80d), "test", 50);
-        assertThat(view.getIncompletePatterns()).isNotEmpty();
-    }
-
-    @Test
-    void gapAnalysisFiltersBelowThreshold() {
-        GapAnalysisView view = gapService.analyze(Map.of("CP", 30d), "test", 50);
-        assertThat(view.getTotalAnchors()).isZero();
-        assertThat(view.getNotes()).isNotEmpty();
-    }
-
-    @Test
-    void gapAnalysisUsesDefaultThresholdWhenZero() {
-        GapAnalysisView view = gapService.analyze(Map.of("CP", 55d), "test", 0);
-        assertThat(view.getTotalAnchors()).isEqualTo(1);
-    }
-
-    // ── Gap Analysis Compatibility Matrix Extension Tests ──────────────────
-
-    @Test
-    void getExpectedOutgoingRelationsForCapability() {
-        Map<RelationType, Set<String>> expected = compatibilityMatrix.getExpectedOutgoingRelations("CP");
-        assertThat(expected).containsKey(RelationType.REALIZES);
-        assertThat(expected.get(RelationType.REALIZES)).contains("CR");
-    }
-
-    @Test
-    void getExpectedOutgoingRelationsForService() {
-        Map<RelationType, Set<String>> expected = compatibilityMatrix.getExpectedOutgoingRelations("CR");
-        assertThat(expected).containsKey(RelationType.SUPPORTS);
-        assertThat(expected.get(RelationType.SUPPORTS)).contains("BP");
-    }
-
-    @Test
-    void getExpectedOutgoingRelationsForUnknownRootReturnsEmpty() {
-        Map<RelationType, Set<String>> expected = compatibilityMatrix.getExpectedOutgoingRelations("UNKNOWN");
-        assertThat(expected).isEmpty();
+    void targetDomainsDistinguishForbiddenFromUnrestricted() {
+        assertThat(compatibilityMatrix.targetDomain("UNKNOWN", RelationType.REALIZES).state())
+                .isEqualTo(com.taxonomy.dsl.validation.RelationMetamodel.DomainState.FORBIDDEN);
+        assertThat(compatibilityMatrix.targetDomain("UNKNOWN", RelationType.RELATED_TO).state())
+                .isEqualTo(com.taxonomy.dsl.validation.RelationMetamodel.DomainState.UNRESTRICTED);
+        assertThat(compatibilityMatrix.targetDomain("CP", RelationType.REALIZES).roots()).containsExactly("CR");
     }
 
     @Test
@@ -179,29 +107,19 @@ class ArchitectureAnalysisTests {
     }
 
     @Test
-    void compatibilityMatrixExpectedOutgoingForSystem() {
-        Map<RelationType, Set<String>> expected = compatibilityMatrix.getExpectedOutgoingRelations("SY");
-        assertThat(expected).containsKey(RelationType.USES);
-        assertThat(expected.get(RelationType.USES)).containsExactlyInAnyOrder("SY", "CR");
-        assertThat(expected).containsKey(RelationType.DEPENDS_ON);
-        assertThat(expected.get(RelationType.DEPENDS_ON)).contains("SY");
-        assertThat(expected).containsKey(RelationType.CONTAINS);
-        assertThat(expected.get(RelationType.CONTAINS)).containsExactlyInAnyOrder("UA", "CM");
+    void systemLegalityDoesNotImposeAllAllowedTargets() {
+        assertThat(compatibilityMatrix.targetDomain("SY", RelationType.USES).roots()).containsExactlyInAnyOrder("SY", "CR");
+        assertThat(compatibilityMatrix.targetDomain("SY", RelationType.CONTAINS).roots()).containsExactlyInAnyOrder("UA", "CM");
     }
 
     // ── Gap Analysis API Tests ────────────────────────────────────────────
 
     @Test
-    void gapAnalysisEndpointReturnsOk() throws Exception {
+    void gapAnalysisEndpointRejectsUnscopedScoreBody() throws Exception {
         mockMvc.perform(post("/api/gap/analyze")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scores\":{\"CP\":80},\"businessText\":\"test\",\"minScore\":50}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.businessText").value("test"))
-                .andExpect(jsonPath("$.missingRelations").isArray())
-                .andExpect(jsonPath("$.incompletePatterns").isArray())
-                .andExpect(jsonPath("$.coverageGaps").isArray())
-                .andExpect(jsonPath("$.totalAnchors").value(1));
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -209,53 +127,47 @@ class ArchitectureAnalysisTests {
         mockMvc.perform(post("/api/gap/analyze")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scores\":{},\"businessText\":\"test\",\"minScore\":50}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.notes").isNotEmpty());
+                .andExpect(status().isBadRequest());
     }
 
     // ── APQC Coverage Tests ──────────────────────────────────────────────
 
     @Test
-    void apqcCoverageWithNoApqcDataReturnsZeroCoverage() {
-        ApqcCoverageResult result = gapService.analyzeApqcCoverage(null);
-        assertThat(result.totalCategories()).isGreaterThanOrEqualTo(0);
-        assertThat(result.coverageByLevel()).isNotNull();
-        assertThat(result.uncoveredCategories()).isNotNull();
+    void apqcCoverageWithoutExplicitProvenanceIsInconclusive() throws Exception {
+        ApqcCoverageResult result = gapService.analyzeApqcCoverage(graphContext, graphCommit);
+        assertThat(result.state()).isEqualTo("INCONCLUSIVE");
+        assertThat(result.linkedPercent()).isNull();
+        assertThat(result.observedElements()).isZero();
     }
 
     @Test
-    void apqcCoverageEndpointReturnsOk() throws Exception {
-        mockMvc.perform(get("/api/gap/apqc-coverage"))
+    void apqcCoverageEndpointReportsScopedInconclusiveEvidence() throws Exception {
+        mockMvc.perform(graphRequest(get("/api/gap/apqc-coverage")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalCategories").isNumber())
-                .andExpect(jsonPath("$.coveredCategories").isNumber())
-                .andExpect(jsonPath("$.coveragePercent").isNumber())
-                .andExpect(jsonPath("$.uncoveredCategories").isArray())
-                .andExpect(jsonPath("$.coverageByLevel").isMap());
+                .andExpect(jsonPath("$.state").value("INCONCLUSIVE"))
+                .andExpect(jsonPath("$.observedElements").value(0))
+                .andExpect(jsonPath("$.commitId").value(graphCommit));
     }
 
     @Test
-    void apqcCoverageEndpointWithBusinessTextReturnsOk() throws Exception {
-        mockMvc.perform(get("/api/gap/apqc-coverage")
-                        .param("businessText", "Supply chain management"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalCategories").isNumber());
+    void apqcCoverageEndpointRequiresExplicitContext() throws Exception {
+        mockMvc.perform(get("/api/gap/apqc-coverage").param("businessText", "Supply chain management"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
     void apqcHierarchyEndpointReturnsOk() throws Exception {
-        mockMvc.perform(get("/api/graph/apqc-hierarchy"))
+        mockMvc.perform(graphRequest(get("/api/graph/apqc-hierarchy")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray());
+                .andExpect(jsonPath("$.nodes").isArray());
     }
 
     @Test
-    void apqcCoverageWithApqcRelationsCountsCategories() {
-        // Create a relation with APQC provenance
-        relationService.createRelation("CP", "BP", RelationType.REALIZES, "apqc test", "APQC_IMPORT");
-
-        ApqcCoverageResult result = gapService.analyzeApqcCoverage("test");
-        assertThat(result.totalCategories()).isGreaterThanOrEqualTo(1);
+    void relationDescriptionDoesNotEstablishApqcElementProvenance() throws Exception {
+        graphRelation("CP", "BP", RelationType.RELATED_TO, "apqc text", "APQC_IMPORT");
+        var result = gapService.analyzeApqcCoverage(graphContext, graphCommit);
+        assertThat(result.state()).isEqualTo("INCONCLUSIVE");
+        assertThat(result.observedElements()).isZero();
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -264,7 +176,7 @@ class ArchitectureAnalysisTests {
 
     @Test
     void enrichedFailureImpactBasicStructure() {
-        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact("BP", 3);
+        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact(graphContext, graphCommit, "BP", 3);
         assertThat(view.getFailedNodeCode()).isEqualTo("BP");
         assertThat(view.getMaxHops()).isEqualTo(3);
         assertThat(view.getDirectlyAffected()).isNotNull();
@@ -276,9 +188,10 @@ class ArchitectureAnalysisTests {
     void enrichedFailureImpactIncludesRequirements() {
         // Create relation and coverage data
         relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
-        coverageService.analyzeCoverage(Map.of("CP", 80d), "REQ-ENRICH-01", "test req", 50);
+        graphRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
+        graphMapping("REQ-ENRICH-01", "CP");
 
-        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact("BP", 3);
+        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact(graphContext, graphCommit, "BP", 3);
 
         // CP should be directly affected and have requirement correlation
         assertThat(view.getDirectlyAffected()).isNotEmpty();
@@ -292,16 +205,17 @@ class ArchitectureAnalysisTests {
     @Test
     void enrichedFailureImpactComputesRiskScore() {
         relationService.createRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
-        coverageService.analyzeCoverage(Map.of("CP", 80d), "REQ-RISK-01", "test req", 50);
+        graphRelation("BP", "CP", RelationType.SUPPORTS, null, "test");
+        graphMapping("REQ-RISK-01", "CP");
 
-        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact("BP", 3);
+        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact(graphContext, graphCommit, "BP", 3);
 
         assertThat(view.getRiskScore()).isGreaterThanOrEqualTo(0.0);
     }
 
     @Test
     void enrichedFailureImpactForNonExistentNodeReturnsNote() {
-        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact("NONEXISTENT", 3);
+        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact(graphContext, graphCommit, "NONEXISTENT", 3);
         assertThat(view.getNotes()).isNotEmpty();
         assertThat(view.getDirectlyAffected()).isEmpty();
     }
@@ -310,7 +224,7 @@ class ArchitectureAnalysisTests {
 
     @Test
     void enrichedFailureImpactEndpointReturnsOk() throws Exception {
-        mockMvc.perform(get("/api/graph/node/BP/enriched-failure-impact")
+        mockMvc.perform(graphRequest(get("/api/graph/node/BP/enriched-failure-impact"))
                         .param("maxHops", "3"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.failedNodeCode").value("BP"))
@@ -318,12 +232,13 @@ class ArchitectureAnalysisTests {
                 .andExpect(jsonPath("$.directlyAffected").isArray())
                 .andExpect(jsonPath("$.indirectlyAffected").isArray())
                 .andExpect(jsonPath("$.affectedRequirements").isArray())
-                .andExpect(jsonPath("$.riskScore").isNumber());
+                .andExpect(jsonPath("$.riskScore").doesNotExist())
+                .andExpect(jsonPath("$.correlationCompleteness").value("INCONCLUSIVE"));
     }
 
     @Test
     void enrichedFailureImpactEndpointDefaultsMaxHopsTo3() throws Exception {
-        mockMvc.perform(get("/api/graph/node/BP/enriched-failure-impact"))
+        mockMvc.perform(graphRequest(get("/api/graph/node/BP/enriched-failure-impact")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.maxHops").value(3));
     }
@@ -334,24 +249,24 @@ class ArchitectureAnalysisTests {
 
     @Test
     void recommendationWithNoScoresReturnsNote() {
-        ArchitectureRecommendation rec = recommendationService.recommend(Map.of(), "test", 50);
+        ArchitectureRecommendation rec = recommendationService.rankMatches(Map.of(), "test", 50);
         assertThat(rec.getNotes()).isNotEmpty();
-        assertThat(rec.getConfirmedElements()).isEmpty();
+        assertThat(rec.getMatchedElements()).isEmpty();
     }
 
     @Test
     void recommendationWithNullScoresReturnsNote() {
-        ArchitectureRecommendation rec = recommendationService.recommend(null, "test", 50);
+        ArchitectureRecommendation rec = recommendationService.rankMatches(null, "test", 50);
         assertThat(rec.getNotes()).isNotEmpty();
     }
 
     @Test
-    void recommendationIdentifiesConfirmedElements() {
-        ArchitectureRecommendation rec = recommendationService.recommend(
+    void recommendationRanksMatchesWithoutAcceptance() {
+        ArchitectureRecommendation rec = recommendationService.rankMatches(
                 Map.of("CP", 85d, "BP", 75d), "secure voice comms", 50);
 
-        assertThat(rec.getConfirmedElements()).isNotEmpty();
-        assertThat(rec.getConfirmedElements().stream()
+        assertThat(rec.getMatchedElements()).isNotEmpty();
+        assertThat(rec.getMatchedElements().stream()
                 .map(RecommendedElement::getNodeCode).toList())
                 .contains("CP", "BP");
     }
@@ -359,18 +274,19 @@ class ArchitectureAnalysisTests {
     @Test
     void recommendationProposesElementsForGaps() {
         // CP needs REALIZES → CR, so the recommendation should propose CR nodes
-        ArchitectureRecommendation rec = recommendationService.recommend(
+        ArchitectureRecommendation rec = recommendationService.rankMatches(
                 Map.of("CP", 85d), "secure voice communications", 50);
 
-        assertThat(rec.getConfirmedElements()).isNotEmpty();
+        assertThat(rec.getMatchedElements()).isNotEmpty();
         // Proposals depend on available nodes in the CR root
-        assertThat(rec.getReasoning()).isNotEmpty();
-        assertThat(rec.getConfidence()).isGreaterThanOrEqualTo(0.0);
+        assertThat(rec.getAcceptedElements()).isEmpty();
+        assertThat(rec.getProposedElements()).isEmpty();
+        assertThat(rec.getMeanRelevance()).isGreaterThanOrEqualTo(0.0);
     }
 
     @Test
     void recommendationSuggestsRelations() {
-        ArchitectureRecommendation rec = recommendationService.recommend(
+        ArchitectureRecommendation rec = recommendationService.rankMatches(
                 Map.of("CP", 85d), "secure voice communications", 50);
 
         // Should suggest REALIZES relations to fill gaps
@@ -379,26 +295,20 @@ class ArchitectureAnalysisTests {
 
     @Test
     void recommendationComputesConfidence() {
-        ArchitectureRecommendation rec = recommendationService.recommend(
+        ArchitectureRecommendation rec = recommendationService.rankMatches(
                 Map.of("CP", 85d), "test", 50);
-        assertThat(rec.getConfidence()).isGreaterThanOrEqualTo(0.0);
-        assertThat(rec.getConfidence()).isLessThanOrEqualTo(100.0);
+        assertThat(rec.getMeanRelevance()).isGreaterThanOrEqualTo(0.0);
+        assertThat(rec.getMeanRelevance()).isLessThanOrEqualTo(100.0);
     }
 
     // ── Recommendation API Tests ──────────────────────────────────────────
 
     @Test
-    void recommendationEndpointReturnsOk() throws Exception {
+    void recommendationEndpointRejectsUnscopedScoreBody() throws Exception {
         mockMvc.perform(post("/api/recommend")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scores\":{\"CP\":80},\"businessText\":\"test\",\"minScore\":50}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.businessText").value("test"))
-                .andExpect(jsonPath("$.confirmedElements").isArray())
-                .andExpect(jsonPath("$.proposedElements").isArray())
-                .andExpect(jsonPath("$.suggestedRelations").isArray())
-                .andExpect(jsonPath("$.confidence").isNumber())
-                .andExpect(jsonPath("$.reasoning").isArray());
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -406,8 +316,7 @@ class ArchitectureAnalysisTests {
         mockMvc.perform(post("/api/recommend")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scores\":{},\"businessText\":\"test\",\"minScore\":50}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.notes").isNotEmpty());
+                .andExpect(status().isBadRequest());
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -416,14 +325,15 @@ class ArchitectureAnalysisTests {
 
     @Test
     void patternDetectionForNonExistentNodeReturnsNote() {
-        PatternDetectionView view = patternService.detectForNode("NONEXISTENT");
+        PatternDetectionView view = patternService.detectForNode(graphContext, graphCommit, "NONEXISTENT");
         assertThat(view.getNotes()).isNotEmpty();
     }
 
     @Test
     void patternDetectionForCapabilityNodeChecksFullStack() {
+        patternModel();
         // CP is a starting root for the "Full Stack" pattern
-        PatternDetectionView view = patternService.detectForNode("CP");
+        PatternDetectionView view = patternService.detectForNode(graphContext, graphCommit, "CP");
 
         // Without relations, the Full Stack pattern should be incomplete
         boolean hasFullStack = view.getIncompletePatterns().stream()
@@ -436,12 +346,13 @@ class ArchitectureAnalysisTests {
 
     @Test
     void patternDetectionFindsCompleteFullStackPattern() {
+        patternModel();
         // Create the full chain: CP → REALIZES → CR → SUPPORTS → BP → CONSUMES → IP
-        relationService.createRelation("CP", "CR", RelationType.REALIZES, null, "test");
-        relationService.createRelation("CR", "BP", RelationType.SUPPORTS, null, "test");
-        relationService.createRelation("BP", "IP", RelationType.CONSUMES, null, "test");
+        graphRelation("CP", "CR", RelationType.REALIZES, null, "test");
+        graphRelation("CR", "BP", RelationType.SUPPORTS, null, "test");
+        graphRelation("BP", "IP", RelationType.CONSUMES, null, "test");
 
-        PatternDetectionView view = patternService.detectForNode("CP");
+        PatternDetectionView view = patternService.detectForNode(graphContext, graphCommit, "CP");
 
         assertThat(view.getMatchedPatterns()).isNotEmpty();
         assertThat(view.getMatchedPatterns().stream()
@@ -451,10 +362,11 @@ class ArchitectureAnalysisTests {
 
     @Test
     void patternDetectionFindsIncompletePattern() {
+        patternModel();
         // Only first step: CP → REALIZES → CR
-        relationService.createRelation("CP", "CR", RelationType.REALIZES, null, "test");
+        graphRelation("CP", "CR", RelationType.REALIZES, null, "test");
 
-        PatternDetectionView view = patternService.detectForNode("CP");
+        PatternDetectionView view = patternService.detectForNode(graphContext, graphCommit, "CP");
 
         assertThat(view.getIncompletePatterns()).isNotEmpty();
         assertThat(view.getIncompletePatterns().stream()
@@ -465,21 +377,22 @@ class ArchitectureAnalysisTests {
 
     @Test
     void patternDetectionWithEmptyScoresReturnsNote() {
-        PatternDetectionView view = patternService.detectForScores(Map.of(), 50);
+        PatternDetectionView view = patternService.detectForScores(graphContext, graphCommit, Map.of(), 50);
         assertThat(view.getNotes()).isNotEmpty();
     }
 
     @Test
     void patternDetectionWithNullScoresReturnsNote() {
-        PatternDetectionView view = patternService.detectForScores(null, 50);
+        PatternDetectionView view = patternService.detectForScores(graphContext, graphCommit, null, 50);
         assertThat(view.getNotes()).isNotEmpty();
     }
 
     @Test
     void patternDetectionForScoresAggregatesResults() {
-        relationService.createRelation("CP", "CR", RelationType.REALIZES, null, "test");
+        patternModel();
+        graphRelation("CP", "CR", RelationType.REALIZES, null, "test");
 
-        PatternDetectionView view = patternService.detectForScores(Map.of("CP", 80d), 50);
+        PatternDetectionView view = patternService.detectForScores(graphContext, graphCommit, Map.of("CP", 80d), 50);
 
         // Should find the incomplete Full Stack pattern
         int totalDetected = view.getMatchedPatterns().size() + view.getIncompletePatterns().size();
@@ -490,7 +403,8 @@ class ArchitectureAnalysisTests {
 
     @Test
     void patternDetectionGetEndpointReturnsOk() throws Exception {
-        mockMvc.perform(get("/api/patterns/detect")
+        patternModel();
+        mockMvc.perform(graphRequest(get("/api/patterns/detect"))
                         .param("nodeCode", "CP"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nodeCode").value("CP"))
@@ -501,7 +415,8 @@ class ArchitectureAnalysisTests {
 
     @Test
     void patternDetectionPostEndpointReturnsOk() throws Exception {
-        mockMvc.perform(post("/api/patterns/detect")
+        patternModel();
+        mockMvc.perform(graphRequest(post("/api/patterns/detect"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scores\":{\"CP\":80},\"minScore\":50}"))
                 .andExpect(status().isOk())
@@ -512,10 +427,16 @@ class ArchitectureAnalysisTests {
 
     @Test
     void patternDetectionPostEndpointWithEmptyScores() throws Exception {
-        mockMvc.perform(post("/api/patterns/detect")
+        mockMvc.perform(graphRequest(post("/api/patterns/detect"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scores\":{},\"minScore\":50}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.notes").isNotEmpty());
+    }
+    private void patternModel() {
+        graphElement("CP", "Capability", Map.of());
+        graphElement("CR", "CoreService", Map.of());
+        graphElement("BP", "Process", Map.of());
+        graphElement("IP", "InformationProduct", Map.of());
     }
 }

@@ -99,11 +99,7 @@ class SolutionProductPortfolioIntegrationTest {
                 .thenAnswer(invocation -> sha256(invocation.getArgument(0)));
         when(fingerprintService.taxonomyFingerprint()).thenReturn("taxonomy-v1");
         when(fingerprintService.promptFingerprint()).thenReturn("prompts-v1");
-        when(gapService.analyze(anyMap(), anyString(), anyInt()))
-                .thenAnswer(invocation -> new GapAnalysisView());
-        when(patternService.detectForScores(anyMap(), anyInt()))
-                .thenAnswer(invocation -> new PatternDetectionView());
-        when(recommendationService.recommend(anyMap(), anyString(), anyInt()))
+        when(recommendationService.rankMatches(anyMap(), anyString(), anyInt()))
                 .thenAnswer(invocation -> new ArchitectureRecommendation());
         when(analyzeRequirementUseCase.analyze(any(AnalyzeRequirementCommand.class)))
                 .thenAnswer(invocation -> new AnalyzeRequirementResult(
