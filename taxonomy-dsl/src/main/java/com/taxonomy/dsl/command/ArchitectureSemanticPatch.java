@@ -1,6 +1,7 @@
 package com.taxonomy.dsl.command;
 
 import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.BlockIdentity;
 import com.taxonomy.dsl.ast.DocumentAst;
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
@@ -11,7 +12,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * A reconstructible semantic patch between canonical workspace or checkpoint documents.
@@ -22,8 +22,6 @@ import java.util.Set;
 public final class ArchitectureSemanticPatch {
     private static final TaxDslParser PARSER = new TaxDslParser();
     private static final TaxDslSerializer SERIALIZER = new TaxDslSerializer();
-    private static final Set<String> COMPOSITE_IDENTITY_KINDS =
-            Set.of("relation", "mapping", "projectRequirement", "requirementVersion");
 
     private ArchitectureSemanticPatch() {}
 
@@ -120,13 +118,12 @@ public final class ArchitectureSemanticPatch {
     }
 
     public static String key(BlockAst block) {
-        List<String> tokens = block.getHeaderTokens();
-        if (tokens.isEmpty()) {
+        try {
+            return BlockIdentity.key(block);
+        } catch (IllegalArgumentException missingIdentity) {
             throw new ArchitectureDslCommands.CommandProblem("INVALID_HEADER", block.getKind(),
-                    "Block identity is missing", List.of());
+                    missingIdentity.getMessage(), List.of());
         }
-        return block.getKind() + ":" + (COMPOSITE_IDENTITY_KINDS.contains(block.getKind())
-                ? String.join(" ", tokens) : tokens.getFirst());
     }
 
     public static String replace(String source, BlockAst existing, BlockAst replacement) {

@@ -3,6 +3,7 @@
 <th:block th:fragment="styles">
     <link rel="stylesheet" th:href="@{/css/application-chrome.css}" href="/css/application-chrome.css"/>
     <link rel="stylesheet" th:href="@{/css/architecture-lifecycle.css}" href="/css/architecture-lifecycle.css"/>
+    <link rel="stylesheet" th:href="@{/css/shared/architecture-diagram.css}" href="/css/shared/architecture-diagram.css"/>
 </th:block>
 </head><body>
 <header th:fragment="navigation(active, localActions, helpDocument, helpSection)" class="taxonomy-app-chrome">
@@ -132,6 +133,10 @@
         <script th:src="@{/js/shared/application-commands.js}" src="/js/shared/application-commands.js"></script>
         <script th:src="@{/js/shared/application-chrome.js}" src="/js/shared/application-chrome.js"></script>
     </th:block>
+    <script th:src="@{/webjars/d3/7.9.0/dist/d3.min.js}" src="/webjars/d3/7.9.0/dist/d3.min.js"></script>
+    <script th:src="@{/js/shared/architecture-diagram.js}" src="/js/shared/architecture-diagram.js"></script>
+    <script th:src="@{/js/architecture-editor-renderer.js}" src="/js/architecture-editor-renderer.js"></script>
+    <script th:src="@{/js/shared/architecture-reconciliation.js}" src="/js/shared/architecture-reconciliation.js"></script>
     <script th:src="@{/js/api/architecture-lifecycle-api.js}" src="/js/api/architecture-lifecycle-api.js"></script>
     <script th:src="@{/js/shared/architecture-lifecycle.js}" src="/js/shared/architecture-lifecycle.js"></script>
     <script th:src="@{/js/shared/requirement-intake.js}" src="/js/shared/requirement-intake.js"></script>

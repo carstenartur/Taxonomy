@@ -86,6 +86,16 @@ version** action applies only when no newer uncheckpointed local changes exist.
 5. Choose **Accept reviewed change** only for that exact preview. If the
    workspace revision or Git HEAD changes, obtain and review a new preview.
 
+The four diagrams use one shared arrangement of object identities, so a rename or
+type change does not move the object between views. Deleted objects remain visible
+in the versions that contain them. Select an object to highlight its property rows;
+the table distinguishes model meaning, view/layout changes and exchange evidence.
+Unknown repeated properties retain all their values. Complete source disclosures
+also show comments and document metadata that diagrams do not represent.
+While choices remain unresolved, the proposed model is explicitly unavailable.
+Editing the rationale, changing a choice or leaving the selected context discards
+the displayed comparison and requires another preview.
+
 Managed requirement text, title, version and hash must remain consistent with the
 portable current immutable version. Existing immutable version source cannot be
 rewritten. Keep the local blocks and create a new requirement version for changed

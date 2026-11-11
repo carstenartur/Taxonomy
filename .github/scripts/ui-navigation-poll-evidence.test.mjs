@@ -604,6 +604,21 @@ test('a later unadopted body does not displace the actual freshly adopted respon
     return proof;
   }
 
+  test('the canonical JSON transport retains the same completed job and destination proof', () => {
+    const input = fixture();
+    const oldFrame = 'getResponse (http://127.0.0.1:8080/js/api/portfolio-api.js:59:37)';
+    const currentFrame = 'attempt (http://127.0.0.1:8080/js/api/taxonomy-api-client.js:555:41)';
+    input.error.stack = input.error.stack.replace(oldFrame, currentFrame);
+    assertProven(input);
+    for (const unexpected of [currentFrame.replace('attempt', 'request'), currentFrame.replace('taxonomy-api-client', 'portfolio-api'),
+        currentFrame.replace('127.0.0.1:8080', '127.0.0.1:8081')]) {
+      assert.equal(classifyPortfolioSnapshotPollCancellation({...input, error:{...input.error,
+        stack:input.error.stack.replace(currentFrame, unexpected)}}), null);
+    }
+    input.observation.snapshot.rendered = false;
+    assert.equal(classifyPortfolioSnapshotPollCancellation(input), null);
+  });
+
   test('the captured native signature needs a completed original source job and adopted snapshot', () => {
     const proof = assertProven(fixture());
     assert.equal(proof.endpoint,
