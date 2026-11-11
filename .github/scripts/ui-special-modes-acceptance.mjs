@@ -60,6 +60,30 @@ async function waitForTaxonomyReady(timeout = 180_000) {
     const button = document.querySelector('#analyzeBtn');
     return Boolean(button) && button.disabled === false;
   }, null, { timeout: 30_000 });
+
+  // Server readiness and button visibility alone do not establish an analysis
+  // workspace. The session loader resolves the isolated workspace and its
+  // persisted draft asynchronously. Clicks before that transition are rejected
+  // by TaxonomyScoring without sending the expected POST.
+  try {
+    await page.waitForFunction(() => {
+      const session = window.TaxonomyAnalysisSession?.state?.();
+      return session?.ready === true
+        && typeof session.workspaceId === 'string'
+        && session.workspaceId.length > 0
+        && window.__taxonomyAnalysisSessionLoading !== true
+        && typeof window.TaxonomyAnalysisProgress?.start === 'function';
+    }, null, { timeout: 30_000 });
+  } catch (error) {
+    const diagnostic = await page.evaluate(() => ({
+      loading: window.__taxonomyAnalysisSessionLoading,
+      state: window.TaxonomyAnalysisSession?.state?.() || null,
+      progressReady: typeof window.TaxonomyAnalysisProgress?.start === 'function',
+      status: document.querySelector('#statusArea')?.textContent?.trim() || ''
+    }));
+    throw new Error('Analysis workspace did not become ready: '
+      + JSON.stringify(diagnostic), { cause: error });
+  }
 }
 
 async function selectSynchronousAnalysisView() {
