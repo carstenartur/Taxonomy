@@ -70,7 +70,7 @@ class TaxDslSemanticMergerTest {
 
         assertThat(result.isSuccessful()).isFalse();
         assertThat(result.conflictIdentifiers())
-                .containsExactly("projectRequirement P-001 REQ-001:text");
+                .containsExactly("projectRequirement:P-001 REQ-001:text");
     }
 
     @Test
@@ -87,7 +87,7 @@ class TaxDslSemanticMergerTest {
     }
 
     @Test
-    void treatsRepeatedPropertyBlocksAtomicallyWhenBothSidesEdit() {
+    void mergesIndependentViewMembershipReplacements() {
         String base = document("""
                 view OPERATIONS {
                   include: "CP-1000";
@@ -109,9 +109,10 @@ class TaxDslSemanticMergerTest {
 
         TaxDslMergeResult result = merger.merge(base, ours, theirs);
 
-        assertThat(result.isSuccessful()).isFalse();
-        assertThat(result.conflicts().getFirst().reason())
-                .contains("repeated property keys");
+        assertThat(result.isSuccessful()).isTrue();
+        assertThat(new com.taxonomy.dsl.parser.TaxDslParser().parse(result.mergedText())
+                .getBlocks().getFirst().propertyValues("include"))
+                .containsExactly("CP-1001", "CR-1001");
     }
 
     private static String requirement(String text) {

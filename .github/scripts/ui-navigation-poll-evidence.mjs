@@ -449,9 +449,12 @@ export const classifyPortfolioSnapshotPollCancellation = (() => {
     const rawUrl = lines[0].slice(lead.length, -tail.length);
     const url = exactUrl(rawUrl, base, path, scope);
     if (!url || url.href !== rawUrl || error.message !== `/${url.host}${url.pathname}${url.search}${tail}`) return null;
+    // The retained portfolio client used getResponse before its JSON reads moved to the canonical transport.
+    const transportFrame = lines[2]?.startsWith('    at attempt (')
+      ? ['attempt', '/js/api/taxonomy-api-client.js'] : ['getResponse', '/js/api/portfolio-api.js'];
     const frames = [
       ['portfolioAwareFetch', '/js/portfolio/taxonomy-portfolio-async.js'],
-      ['getResponse', '/js/api/portfolio-api.js'],
+      transportFrame,
       ['getJson', '/js/api/portfolio-api.js'],
       ['synchronizeCurrentProjectJobs', '/js/portfolio/portfolio-analysis-job-synchronizer.js']
     ];

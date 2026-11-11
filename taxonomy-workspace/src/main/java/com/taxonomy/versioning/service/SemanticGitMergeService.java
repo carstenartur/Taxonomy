@@ -1,5 +1,6 @@
 package com.taxonomy.versioning.service;
 
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.merge.TaxDslMergeResult;
 import com.taxonomy.dsl.merge.TaxDslSemanticMerger;
 import com.taxonomy.workspace.storage.DslGitRepository;
@@ -45,6 +46,7 @@ public class SemanticGitMergeService {
     private static final String DSL_FILE = "architecture.taxdsl";
 
     private final TaxDslSemanticMerger semanticMerger = new TaxDslSemanticMerger();
+    private final ArchitectureDslCommands architectureCommands = new ArchitectureDslCommands();
 
     public MergeOutcome mergeBranches(DslGitRepository repository,
                                       String fromBranch,
@@ -69,9 +71,13 @@ public class SemanticGitMergeService {
                                       String message,
                                       Consumer<String> validateMergedSource) throws IOException {
         Objects.requireNonNull(validateMergedSource);
+        Consumer<String> validateCandidate = candidate -> {
+            architectureCommands.validateReconciledSource(candidate);
+            validateMergedSource.accept(candidate);
+        };
         String requestedMessage = normalizeMessage(message);
         String ordinaryCommit = repository.merge(fromBranch, intoBranch,
-                requestedMessage == null ? null : author, requestedMessage, validateMergedSource);
+                requestedMessage == null ? null : author, requestedMessage, validateCandidate);
         if (ordinaryCommit != null) {
             return new MergeOutcome(true, ordinaryCommit, false, List.of(), null);
         }
@@ -87,7 +93,7 @@ public class SemanticGitMergeService {
                     false, null, true, merge.conflictIdentifiers(), merge);
         }
 
-        validateMergedSource.accept(merge.mergedText());
+        validateCandidate.accept(merge.mergedText());
         repository.verifyExpectedHead(fromBranch, inputs.theirsCommit().name());
         repository.verifyExpectedHead(intoBranch, inputs.oursCommit().name());
 

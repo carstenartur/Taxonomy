@@ -144,3 +144,15 @@ Do not use `ExecutorService.close()` around a deadlock regression: it waits inde
 ### 2026-09-09 — CodeMirror validation owns the document lifecycle
 
 CodeMirror's linter already debounces calls. A second shared timer can strand an earlier promise and start a validation request after navigation begins; WebKit reports that interrupted request as an access-control console error. Cancel validation on `pagehide`, refuse delayed callbacks while suspended, resume on `pageshow`, and discard diagnostics if the source document changed. Keep HTTP/console failures visible in acceptance tests.
+
+### 2026-11-10 — Stable DSL identity and ordered extension values
+
+Use `BlockIdentity.key` for semantic patch and merge identity. An element's type
+is a mutable header value; using the entire header as its identity turns type
+edits into false deletions/additions and can conceal conflicting types. Keep all
+association key components for portfolio coverage, decisions, versions and
+reformulation evidence, as well as relations and mappings. Their first token
+alone is not unique. Only `view.include` is declared unordered membership. Compare
+other repeated properties in their original per-key order: sorting them can
+silently erase a reorder when the other branch edits a value. Merged documents
+still need the existing final reference and relation-type validation.
