@@ -44,14 +44,16 @@ class RequirementLifecycleBrowserIT {
     private static final String PINS = "repositoryId=control-architecture&workspaceId=control-workspace"
             + "&workspaceScopeKey=control-workspace&branch=review%2Fcurrent";
     private static final String OBSERVE_HISTORY = """
-            window.lifecycleHistoryResponses=0;
+            window.lifecycleHistorySettlements=0;
+            window.lifecycleHistoryAborts=0;
             const realFetch=window.fetch.bind(window);
             window.fetch=function(input,options){
+                const history=new URL(typeof input==='string'?input:input.url,location.href).pathname.endsWith('/lifecycle/history');
                 return realFetch(input,options).then(async response=>{
-                    if(new URL(response.url,location.href).pathname.endsWith('/lifecycle/history')){
-                        await response.clone().text();window.lifecycleHistoryResponses++;
-                    }
+                    if(history)await response.clone().text();
                     return response;
+                }).finally(()=>{
+                    if(history){window.lifecycleHistorySettlements++;if(options?.signal?.aborted)window.lifecycleHistoryAborts++;}
                 });
             };
             """;
@@ -66,7 +68,7 @@ class RequirementLifecycleBrowserIT {
     @AfterAll static void closeBrowser() { if (page != null) page.close(); }
 
     @ParameterizedTest @ValueSource(strings = {"en", "de"})
-    void initialArchitectureLoadCannotOrphanTheRequirementSubmit(String locale) throws Exception {
+    void initialArchitectureLoadKeepsTheRequirementDraftBlockedUntilItsProjectIsReady(String locale) throws Exception {
         prepareProjects(1366);
         var seen = new CountDownLatch(1);
         var release = new CountDownLatch(1);
@@ -100,26 +102,33 @@ class RequirementLifecycleBrowserIT {
                 Map.of("project", project(1), "metrics", Map.of(), "requirements", accepted.get() ? List.of(requirement) : List.of(),
                         "solutions", List.of(), "conflicts", List.of(), "taxonomyNodes", List.of())));
         try {
-            // An unpinned project page becomes usable before its independent architecture read finishes.
+            // Browser-restored form values must survive the source and project startup gate.
             page.open("projects", "", "/projects", locale,
                     "localStorage.clear();sessionStorage.clear();history.replaceState(null,'','?lang=" + locale + "&projectId=1');");
             assertThat(seen.await(5, TimeUnit.SECONDS)).isTrue();
-            wait.until(ExpectedConditions.textToBe(By.id("selectedProjectKey"), "PROJECT"));
-            wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("portfolioBusy")));
-            click(By.cssSelector("[data-bs-target='#requirementModal']"));
-            wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("requirementModal")));
-            page.driver().findElement(By.id("requirementKey")).sendKeys("REQ-NEW");
-            page.driver().findElement(By.id("requirementTitle")).sendKeys("New scoped requirement");
-            page.driver().findElement(By.id("requirementText")).sendKeys(text);
-            click(By.cssSelector("#requirementForm button[type='submit']"));
-            String loading = locale.equals("de") ? "Architekturkontext wird" : "Loading the architecture context";
-            wait.until(ExpectedConditions.textToBePresentInElementLocated(By.cssSelector("#requirementForm .requirement-intake-review"), loading));
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("portfolioBusy")));
+            page.driver().executeScript("""
+                    Object.entries(arguments[0]).forEach(([id,value])=>{document.getElementById(id).value=value;});
+                    """, Map.of("requirementKey", "REQ-NEW", "requirementTitle", "New scoped requirement", "requirementText", text));
+            assertThat(page.driver().findElements(By.cssSelector(
+                    "#projectForm button[type='submit'], #requirementForm button[type='submit'], "
+                            + "#solutionForm button[type='submit'], #productForm button[type='submit']")))
+                    .hasSize(4).allMatch(button -> !button.isEnabled(), "Initial source preparation blocks every portfolio form submit");
+            assertThat(page.driver().findElement(By.id("selectedProjectKey")).getText()).isEmpty();
             assertThat(page.requests()).filteredOn(request -> request.method().equals("POST")
                     && (request.path().endsWith("/intake-review") || request.path().endsWith("/editor/requirements"))).isEmpty();
             assertThat(page.driver().findElements(By.cssSelector("#requirementForm [data-intake-choice]"))).isEmpty();
             assertThat(page.driver().findElement(By.id("requirementText")).getDomProperty("value")).isEqualTo(text);
 
             release.countDown();
+            wait.until(ExpectedConditions.textToBe(By.id("selectedProjectKey"), "PROJECT"));
+            wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("portfolioBusy")));
+            click(By.cssSelector("[data-bs-target='#requirementModal']"));
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("requirementModal")));
+            assertThat(page.driver().findElement(By.id("requirementKey")).getDomProperty("value")).isEqualTo("REQ-NEW");
+            assertThat(page.driver().findElement(By.id("requirementTitle")).getDomProperty("value")).isEqualTo("New scoped requirement");
+            assertThat(page.driver().findElement(By.id("requirementText")).getDomProperty("value")).isEqualTo(text);
+            click(By.cssSelector("#requirementForm button[type='submit']"));
             click(By.cssSelector("#requirementForm > .requirement-intake-review > [data-intake-choice='NEW']"));
             wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("requirementModal")));
             wait.until(ExpectedConditions.textToBePresentInElementLocated(By.cssSelector("#requirementsTable tbody"), "REQ-NEW"));
@@ -191,7 +200,8 @@ class RequirementLifecycleBrowserIT {
             wait.until(ExpectedConditions.textToBe(By.id("selectedProjectKey"), "OTHER"));
             wait.until(ignored -> lifecycleRows().size() == 7);
             release.countDown();
-            wait.until(ignored -> ((Number) page.driver().executeScript("return window.lifecycleHistoryResponses;")).intValue() == 1);
+            wait.until(ignored -> ((Number) page.driver().executeScript("return window.lifecycleHistorySettlements;")).intValue() == 1);
+            assertThat(page.driver().executeScript("return window.lifecycleHistoryAborts;")).isEqualTo(1L);
             assertThat(page.driver().findElement(By.cssSelector("[data-lifecycle-history-list]")).isDisplayed()).isFalse();
             assertThat(page.driver().findElement(By.id("architectureLifecycle")).getText()).doesNotContain("Project one history");
             assertThat(page.requests()).filteredOn(request -> request.path().equals(HISTORY))

@@ -292,13 +292,35 @@
         busyCount: 0
     };
 
+    let initialSourceReady = null;
+    let sourceInitialized = false;
+
     document.addEventListener('DOMContentLoaded', initialize);
 
     async function initialize() {
+        // Initial lifecycle hydration establishes the source used by every read.
+        // Only page/auth ownership is captured before that intentional transition.
+        const activePage = window.TaxonomyApiClient.captureContext({contextSensitive:false});
+        state.busyCount += 1;
+        updateBusyState();
+        initialSourceReady = Promise.resolve(window.TaxonomyArchitectureLifecycle?.ready?.()).then(async function () {
+            if (!activePage()) return false;
+            // Initial selection also publishes context. Finish it before a
+            // submission accepted during hydration can create its own target.
+            await loadProjects(undefined, {sourceBootstrap:true});
+            if (!activePage()) return false;
+            sourceInitialized = true;
+            return true;
+        }).finally(function () {
+            state.busyCount = Math.max(0, state.busyCount - 1);
+            updateBusyState();
+        });
         translatePage();
+        // The visible forms must already prevent native submission while their
+        // first source is loading. withBusy admits their work after hydration.
         wireStaticEvents();
         setDefaultVerifiedAt();
-        await loadProjects();
+        await initialSourceReady;
     }
 
     function resolveLocale() {
@@ -379,11 +401,14 @@
         return payload;
     }
 
-    async function withBusy(operation) {
+    async function withBusy(operation, options) {
+        const preparingSource = !sourceInitialized && !options?.sourceBootstrap && initialSourceReady;
+        const activePage = preparingSource && window.TaxonomyApiClient.captureContext({contextSensitive:false});
         state.busyCount += 1;
         updateBusyState();
         clearMessage('portfolioError');
         try {
+            if (preparingSource && (!await preparingSource || !activePage())) return;
             return await operation();
         } catch (error) {
             showError(error);
@@ -422,7 +447,7 @@
         target.textContent = '';
     }
 
-    async function loadProjects(preferredProjectId) {
+    async function loadProjects(preferredProjectId, options) {
         await withBusy(async function () {
             const [projects] = await Promise.all([
                 api('/api/projects'),
@@ -444,7 +469,7 @@
                     showError(new Error(window.TaxonomyI18n.t('workflow.projectUnavailable')));
                 }
             }
-        }).catch(function () {});
+        }, options).catch(function () {});
     }
 
     function renderProjectList() {

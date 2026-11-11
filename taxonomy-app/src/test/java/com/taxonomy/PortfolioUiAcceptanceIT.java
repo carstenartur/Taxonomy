@@ -281,8 +281,13 @@ class PortfolioUiAcceptanceIT {
         fill("versionText","The architecture shall retain immutable evidence for capability 9, including supplier clarifications.");
         fill("changeReason","Clarify requirement 9 after requirement 10 was completed");
         click(By.cssSelector("#newVersionForm button[type='submit']"));
-        click(By.cssSelector("#newVersionForm [data-intake-choice='CHANGE']"));
-        wait.until(textPresent(By.id("currentText"),"supplier clarifications"));
+        click(By.cssSelector("#newVersionForm > .requirement-intake-review > [data-intake-choice='CHANGE']"));
+        try {
+            wait.until(textPresent(By.id("currentText"),"supplier clarifications"));
+        } catch (RuntimeException failure) {
+            captureModalFailure("newVersionModal", failure);
+            throw failure;
+        }
         open("/projects?projectId="+projectId+"&lang=en&"+scope,By.id("portfolioMain"));
         wait.until(browser->lifecycleRequirement("REQ-9").path("version").asInt()==2);
         assertLifecycleTwelve();

@@ -26,6 +26,34 @@ test('typing while the reset is in flight keeps the new draft and schedules its 
   assert.equal(await result,false);assert.deepEqual(h.events,['save']);
 });
 
+test('a draft already open on the first detail load retains its edits and original version identity', () => {
+  const fields = new Map();
+  const get = id => {
+    if (!fields.has(id)) fields.set(id, {textContent:'', value:''});
+    return fields.get(id);
+  };
+  const window = {location:{pathname:'/projects/7/requirements/9', search:''}};
+  const document = {documentElement:{lang:'en'}, addEventListener(){}, getElementById:get};
+  const exposed = detailSource.replace(/\}\)\(\);\s*$/, 'window.detailProbe={state,renderCurrentText};})();');
+  vm.runInNewContext(exposed, {window, document, URLSearchParams});
+  const {state,renderCurrentText} = window.detailProbe;
+  const original = {id:44, text:'Original', contentHash:'a'.repeat(64)};
+  get('versionText').value = 'Clarification entered while loading';
+  get('changeReason').value = 'Clarify evidence';
+  state.requirement = {currentVersion:original};
+
+  renderCurrentText(true);
+  assert.equal(state.versionDraftBase?.requirementVersionId, original.id);
+  assert.equal(state.versionDraftBase?.contentHash, original.contentHash);
+  state.requirement.currentVersion = {id:45, text:'Newer server version', contentHash:'b'.repeat(64)};
+  renderCurrentText(true);
+  assert.equal(get('versionText').value, 'Clarification entered while loading');
+  assert.equal(get('changeReason').value, 'Clarify evidence');
+  assert.equal(state.versionDraftBase.requirementVersionId, original.id);
+  assert.equal(state.versionDraftBase.contentHash, original.contentHash);
+  assert.equal(get('currentText').textContent, 'Newer server version');
+});
+
 test('version review remains interactive until an explicit choice starts the save',async()=>{
   const elements=new Map();
   function element(id){
