@@ -1,4 +1,12 @@
-# Taxonomy 1.5.3
+# Taxonomy 1.5.4 development
+
+Graph exploration, gap assessments and reports now use the repository, working
+copy, branch and commit selected by the user. Relation discovery, the DSL
+validator and the architecture editor share the rules for permitted relations.
+The application also verifies ADMBw and Sparx QEA exchange and uses
+jgit-storage-hibernate 0.12.1.
+
+## Earlier changes in the 1.5.3 source
 
 Taxonomy 1.5.3 develops the path from retained requirements and analysis results
 to reviewed, editable architecture. It adds shared working copies, optional

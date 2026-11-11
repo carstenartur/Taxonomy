@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.taxonomy</groupId>
         <artifactId>taxonomy</artifactId>
-        <version>1.5.3-SNAPSHOT</version>
+        <version>1.5.4-SNAPSHOT</version>
     </parent>
     <artifactId>taxonomy-app</artifactId>
     <name>Taxonomy Application</name>
@@ -457,7 +457,7 @@
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>license-maven-plugin</artifactId>
-                <version>2.7.1</version>
+                <version>2.8.0</version>
                 <executions>
                     <execution>
                         <id>generate-runtime-third-party-report</id>
