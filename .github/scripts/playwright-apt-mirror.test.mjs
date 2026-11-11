@@ -11,6 +11,9 @@ const mirrors = '# Hosted runner mirrors\n'
   + 'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n'
   + 'https://archive.ubuntu.com/ubuntu/\tpriority:2\n';
 
+const hostedMirrors = mirrors.replace('priority:2', 'priority:0')
+  + 'https://mirrors.kernel.org/ubuntu/\tpriority:10\n';
+
 async function fixture(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'taxonomy-apt-mirror-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -66,10 +69,10 @@ test('hosted package preparation prefers the official HTTPS archive before apt r
   const result = await f.run();
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.commands, /https:\/\/archive\.ubuntu\.com\/ubuntu\/\tpriority:0/);
-  assert.equal(await readFile(f.mirrorFile, 'utf8'), mirrors.replace('priority:2', 'priority:0'));
+  assert.equal(await readFile(f.mirrorFile, 'utf8'), hostedMirrors);
   assert.doesNotMatch(result.commands, /playwright install /);
   assert.equal((await f.run()).status, 0);
-  assert.equal(await readFile(f.mirrorFile, 'utf8'), mirrors.replace('priority:2', 'priority:0'));
+  assert.equal(await readFile(f.mirrorFile, 'utf8'), hostedMirrors);
 });
 
 test('local and self-hosted installations retain their mirror configuration', async t => {
@@ -100,7 +103,7 @@ test('standalone hosted WebKit installation uses the same mirror preference', as
   const result = await f.run([]);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.commands, /playwright install-deps webkit/);
-  assert.equal(await readFile(f.mirrorFile, 'utf8'), mirrors.replace('priority:2', 'priority:0'));
+  assert.equal(await readFile(f.mirrorFile, 'utf8'), hostedMirrors);
 });
 
 test('unknown mirror entries are preserved and a missing mirrorlist is supported', async t => {
