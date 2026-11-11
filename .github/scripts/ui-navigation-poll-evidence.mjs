@@ -110,8 +110,22 @@ export function classifyWebKitPollCancellation(input) {
     const endpointUrl = base.origin + endpoint;
     const scopedSync = endpoint === scopedSyncPath;
     const bootstrapSyncUrl = base.origin + syncPath;
+    // The original WebKit cancellation signature names the unpinned status
+    // endpoint. A successful destination GET can carry the exact retained
+    // workspace as a canonical query pin, in addition to its verified header.
+    // Construct that one permitted URL instead of ignoring query parameters:
+    // a foreign/duplicate pin or any other query parameter remains blocking.
+    let retainedReloadUrl = null;
+    if (reload && workspace && oldUrl.searchParams.getAll('workspaceId').length === 1) {
+      const url = new URL(endpointUrl);
+      url.searchParams.set('workspaceId', workspace);
+      retainedReloadUrl = url.href;
+    }
     // The destination may poll before its workspace session has hydrated.
-    const matchesPoll = read => read.url === endpointUrl || scopedSync && read.url === bootstrapSyncUrl;
+    // Include the pinned request in the failure veto as well as in adoption.
+    const matchesPoll = read => read.url === endpointUrl
+      || retainedReloadUrl !== null && read.url === retainedReloadUrl
+      || scopedSync && read.url === bootstrapSyncUrl;
     // A real network/HTTP failure is not the engine's pre-request cancellation.
     if (reads.some(read => matchesPoll(read) && (read.failed || read.status >= 400)
         && (read.documentEpoch === newDocument.epoch
