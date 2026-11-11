@@ -40,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SharedApplicationChromeBrowserIT {
     private static PortfolioClientTestPage page;
     private static WebDriverWait wait;
+    private static final Duration BROWSER_TIMEOUT = Duration.ofSeconds(20);
     private static final String REQUIREMENT_LOAD_ERROR =
             "No fixture response for GET /taxonomy/api/projects/42/requirements/7/versions";
     private static final String PINS = "projectId=42&repositoryId=architecture-a&workspaceId=private-a"
@@ -66,7 +67,7 @@ class SharedApplicationChromeBrowserIT {
 
     @BeforeAll static void openBrowser(@TempDir Path downloads) throws Exception {
         page = new PortfolioClientTestPage(downloads);
-        wait = new WebDriverWait(page.driver(), Duration.ofSeconds(20));
+        wait = new WebDriverWait(page.driver(), BROWSER_TIMEOUT);
     }
 
     @AfterAll static void closeBrowser() { if (page != null) page.close(); }
@@ -595,6 +596,11 @@ class SharedApplicationChromeBrowserIT {
     }
 
     private static void openLoadedWorkbench(int width) {
+        openWorkbench(width, "");
+        awaitLoadedWorkbench();
+    }
+
+    private static void openWorkbench(int width, String bootstrap) {
         page.clearRoutes(); page.clearRequests();
         viewport(width, width == 1920 ? 1080 : width == 390 ? 844 : 768);
         page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", List.of("portfolio", "architecture"))));
@@ -628,13 +634,75 @@ class SharedApplicationChromeBrowserIT {
         page.openAt("architecture-workbench", "/taxonomy", "/taxonomy/architecture/workbench", "de", """
                 localStorage.clear();sessionStorage.clear();
                 history.replaceState(null,'','?projectId=42&snapshotId=qa-locale&repositoryId=qa-architecture&workspaceId=qa-context-workspace&workspaceScopeKey=qa-context-workspace&branch=qa-context-main&lang=de');
-                """, Map.of("projectId", 42, "snapshotId", "qa-locale"));
-        wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#architectureCanvas .architecture-node")));
-        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("""
+                """ + bootstrap, Map.of("projectId", 42, "snapshotId", "qa-locale"));
+    }
+
+    private static void awaitLoadedWorkbench() {
+        var loaded = new WebDriverWait(page.driver(), BROWSER_TIMEOUT)
+                .withMessage(SharedApplicationChromeBrowserIT::workbenchFailure);
+        loaded.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#architectureCanvas .architecture-node")));
+        loaded.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("""
                 const c=window.TaxonomyAppChrome?.getContext();
                 return c?.architecture?.title==='Communication architecture' && c?.source?.snapshotId==='qa-locale';
                 """)));
         assertThat(page.driver().findElement(By.id("architectureAlert")).isDisplayed()).isFalse();
+    }
+
+    private static String workbenchFailure() {
+        var state = (Map<?, ?>) page.driver().executeScript("""
+                return {width:innerWidth, context:window.TaxonomyAppChrome?.getContext() ?? null,
+                    nodes:document.querySelectorAll('#architectureCanvas .architecture-node').length,
+                    lifecycle:document.querySelector('[data-lifecycle-status]')?.textContent ?? null};
+                """);
+        var requests = page.requests().stream().filter(request -> request.path().startsWith("/taxonomy/api/"))
+                .map(request -> request.method() + " " + request.path()).toList();
+        String details = PortfolioClientTestPage.json(Map.of("state", state, "requests", requests));
+        Path evidence = Path.of("target", "coherent-lifecycle", "loaded-workbench-" + state.get("width"));
+        try {
+            Files.createDirectories(evidence);
+            Files.write(evidence.resolve("viewport.png"), page.driver().getScreenshotAs(OutputType.BYTES));
+            Files.writeString(evidence.resolve("page.html"), page.driver().getPageSource());
+            Files.writeString(evidence.resolve("context.json"), details);
+        } catch (IOException error) {
+            return details + " (could not write " + evidence + ": " + error.getMessage() + ")";
+        }
+        return details;
+    }
+
+    @Test
+    void standaloneSnapshotRetainsTheCurrentArchitectureWhenItsOverviewArrivesLate() {
+        openWorkbench(1366, """
+                const nativeFetch = window.fetch.bind(window);
+                const overviewGate = new Promise(resolve => { window.releaseOverview = resolve; });
+                const diagramRendered = new Promise(resolve =>
+                    document.addEventListener('taxonomy:architecture-diagram-updated', resolve, {once:true}));
+                window.fetch = function(input, options) {
+                    const path = new URL(input.url || input, location.href).pathname;
+                    const response = nativeFetch(input, options);
+                    if (path === '/taxonomy/api/architecture/lifecycle') {
+                        window.overviewPending = true;
+                        return response.then(async value => {
+                            await overviewGate;
+                            return value;
+                        });
+                    }
+                    if (path === '/taxonomy/api/projects/42/architecture-workbench/qa-locale') {
+                        window.pendingSnapshotRender = diagramRendered;
+                    }
+                    return response;
+                };
+                """);
+        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("return window.overviewPending;")));
+        // Both readers start after translations. If the snapshot is already loading,
+        // let it publish its source before delivering the delayed architecture response.
+        page.driver().executeAsyncScript("""
+                const done = arguments[0];
+                window.TaxonomyI18n.ready().then(() => window.pendingSnapshotRender).then(() => {
+                    window.releaseOverview();
+                    done();
+                });
+                """);
+        awaitLoadedWorkbench();
     }
 
     @ParameterizedTest @ValueSource(ints = {1920, 1366, 1024, 390})

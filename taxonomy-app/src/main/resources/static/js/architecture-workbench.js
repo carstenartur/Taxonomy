@@ -684,6 +684,7 @@
         }
         try {
             await window.TaxonomyI18n.ready();
+            await window.TaxonomyArchitectureLifecycle?.ready?.();
             if (!active || ticket !== generation) return false;
             const saved = retained.get(key);
             const data = saved?.data || await ArchitectureWorkbenchApi.load(
