@@ -58,11 +58,13 @@ export function createDslValidationSource(apiClient, lifecycle) {
             const document = view.state.doc;
             const text = document.toString();
             try {
+                // The server validates the submitted text independently of repository metadata.
+                // The editor still cancels on departure and discards results for a replaced document.
                 const response = await apiClient.request('/api/dsl/validate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain' },
                     body: text
-                }, { timeoutMillis: 10000, signal: controller.signal });
+                }, { contextSensitive: false, timeoutMillis: 10000, signal: controller.signal });
                 const data = await response.json();
                 if (!available(view)) {
                     wasVisible = false;

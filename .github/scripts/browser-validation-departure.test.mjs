@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
@@ -8,37 +9,40 @@ import test from 'node:test';
 const source = readFileSync(new URL('./browser-sessions-acceptance.mjs', import.meta.url), 'utf8');
 const start = source.indexOf('    let pageInventoryRequests = 0, hiddenValidationRequests = 0;');
 const end = source.indexOf('      const health = ', start);
-assert.ok(start >= 0 && end > start, 'The acceptance setup must remain inspectable');
+const cleanup = source.indexOf('    } finally {', end);
+const afterCleanup = source.indexOf('\n  }', cleanup);
+assert.ok(start >= 0 && end > start && cleanup > end && afterCleanup > cleanup,
+  'The acceptance setup and its listener cleanup must remain inspectable');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const inspectDeparture = new AsyncFunction('assert', 'page', 'navigateToPage', 'base', 'apiUrl',
-  'validationUrl', 'locale', source.slice(start, end) + `
-      return hiddenValidationRequests;
-    } finally {
-      page.off('request', observe);
-    }
-`);
+  'validationUrl', 'locale', source.slice(start, end) + 'return hiddenValidationRequests;\n'
+    + source.slice(cleanup, afterCleanup));
 
 async function scenario(leakAt) {
   const base = new URL('https://example.invalid/prefix/');
   const validationUrl = new URL('api/dsl/validate', base);
   const document = 'taxonomy IP { name "Information products"; }';
-  let observer, destination, waitCount = 0, editorVisits = 0;
+  let destination, waitCount = 0, editorVisits = 0;
+  const events = new EventEmitter();
   const waiters = [];
   const request = { url: () => validationUrl.href, method: () => 'POST', postData: () => document };
   const response = { url: () => validationUrl.href, request: () => request,
     status: () => 200, finished: async () => null };
   const exported = { url: () => new URL('api/dsl/export', base).href,
-    request: () => ({ method: () => 'GET' }), status: () => 200,
+    request: () => ({ url: () => exported.url(), method: () => 'GET' }), status: () => 200,
     finished: async () => null, text: async () => document };
   const emptyValidation = { ...response,
     request: () => ({ ...request, postData: () => '' }) };
-  const deliver = value => waiters.forEach(({ predicate, resolve }) => {
-    Promise.resolve(predicate(value)).then(matches => { if (matches) resolve(value); });
-  });
-  const emit = () => observer(request);
+  const deliver = value => {
+    events.emit('response', value);
+    waiters.forEach(({ predicate, resolve }) => {
+      Promise.resolve(predicate(value)).then(matches => { if (matches) resolve(value); });
+    });
+  };
+  const emit = () => events.emit('request', request);
   const page = {
-    on(event, callback) { assert.equal(event, 'request'); observer = callback; },
-    off(event, callback) { assert.equal(callback, observer); observer = null; },
+    on: events.on.bind(events),
+    off: events.off.bind(events),
     async evaluate() { return document; },
     async waitForLoadState() {},
     async goto() { if (leakAt === 'startup') emit(); },
@@ -73,7 +77,7 @@ async function scenario(leakAt) {
     assert.equal(waitCount, 4);
     return count;
   } finally {
-    assert.equal(observer, null, 'The request observer must be removed even on assertion failure');
+    assert.deepEqual(events.eventNames(), [], 'All page observers must be removed even on assertion failure');
   }
 }
 
