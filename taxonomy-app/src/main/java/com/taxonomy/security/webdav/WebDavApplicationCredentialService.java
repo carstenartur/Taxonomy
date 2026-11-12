@@ -125,15 +125,16 @@ public class WebDavApplicationCredentialService {
     @Transactional
     public void revoke(Authentication owner, String credentialId) {
         requireAuthenticated(owner);
+        String username = owner.getName();
         WebDavApplicationCredential credential = repository
-                .findByCredentialIdAndUsername(credentialId, owner.getName())
+                .findByCredentialIdAndUsername(credentialId, username)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "WebDAV application credential was not found"));
         if (credential.getRevokedAt() == null) {
             credential.setRevokedAt(clock.instant());
             repository.save(credential);
-            log.info("audit.webdav_credential.revoked id={} user={}",
-                    credentialId, owner.getName());
+            auditAfterCommit(() -> log.info("audit.webdav_credential.revoked id={} user={}",
+                    credentialId, username));
         }
     }
 
@@ -197,9 +198,12 @@ public class WebDavApplicationCredentialService {
 
     private static void auditCreatedAfterCommit(
             String id, String username, boolean readAllowed, boolean writeAllowed, Instant expiresAt) {
-        Runnable audit = () -> log.info(
+        auditAfterCommit(() -> log.info(
                 "audit.webdav_credential.created id={} user={} read={} write={} expires={}",
-                id, username, readAllowed, writeAllowed, expiresAt);
+                id, username, readAllowed, writeAllowed, expiresAt));
+    }
+
+    private static void auditAfterCommit(Runnable audit) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             audit.run();
             return;

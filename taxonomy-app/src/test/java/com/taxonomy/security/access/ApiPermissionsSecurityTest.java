@@ -86,6 +86,20 @@ class ApiPermissionsSecurityTest {
     }
 
     @Test
+    void mappingReviewHistorySubmissionAndDownloadsRequireTechnicalAdministration() throws Exception {
+        String history = "/api/admin/catalogue/provisional-information-products/IP-1/reviews";
+        String proposal = history + "/0000000000000000000000000000000000000001/overlay";
+        for (String path : java.util.List.of(history, proposal)) {
+            mvc.perform(get(path)).andExpect(status().isUnauthorized());
+            mvc.perform(get(path).with(user("architect").roles("ARCHITECT"))).andExpect(status().isForbidden());
+            mvc.perform(get(path).with(user("admin").roles("ADMIN"))).andExpect(status().isOk());
+        }
+        mvc.perform(post(history).with(csrf()).with(user("reader").roles("READER"))).andExpect(status().isForbidden());
+        mvc.perform(post(history).with(csrf()).with(user("architect").roles("ARCHITECT"))).andExpect(status().isForbidden());
+        mvc.perform(post(history).with(csrf()).with(user("admin").roles("ADMIN"))).andExpect(status().isOk());
+    }
+
+    @Test
     void readerCanUsePureValidationAndPermittedExportPosts() throws Exception {
         mvc.perform(post("/api/dsl/validate").with(csrf()).with(user("reader").roles("READER")))
                 .andExpect(status().isOk());
@@ -397,7 +411,9 @@ class ApiPermissionsSecurityTest {
 
     @RestController
     static class Probe {
-        @RequestMapping({"/api/projects/p", "/api/analyze", "/api/analysis-drafts", "/api/workspace/provision",
+        @RequestMapping({"/api/admin/catalogue/provisional-information-products/IP-1/reviews",
+                "/api/admin/catalogue/provisional-information-products/IP-1/reviews/0000000000000000000000000000000000000001/overlay",
+                "/api/projects/p", "/api/analyze", "/api/analysis-drafts", "/api/workspace/provision",
                 "/api/workspace/upstream/fetch", "/api/workspace/upstream/fetch-tag",
                 "/api/export/mermaid", "/api/dsl/validate", "/api/admin/users", "/api/unclassified-write", "/api/account/me",
                 "/api/analyze-stream", "/api/analyze-node", "/api/workspace/external/push", "/api/workspace/external/full-sync",

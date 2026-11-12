@@ -394,6 +394,10 @@ Die Eingabe `produktdemo` (Groß-/Kleinschreibung und umgebende Leerzeichen sind
 - **Referenzbewertung.** `GET /api/product-demo/runs/{id}/comparison` bewertet A0/A1 unabhängig gegen die Szenario-Referenz; nicht ausgeführte Schritte erscheinen als `NOT_EXECUTED`, nicht als Fehlbefund.
 - **API.** `GET /api/product-demo/scenarios`, `POST /api/product-demo/runs`, `GET /api/product-demo/runs[?projectId=…]`, `GET /api/product-demo/runs/{id}`, `POST /api/product-demo/runs/{id}/close`. Lesen erfordert die Rolle `USER`, `ARCHITECT` oder `ADMIN`; Starten und Beenden erfordern `ARCHITECT` oder `ADMIN`.
 
+Die vier Download-Schaltflächen für eine gespeicherte Angebotsrevision oder einen Übernahmebeleg liefern JSON, Markdown, HTML und Word. Jede Datei enthält die Quellversion, den Hash des ursprünglichen Texts und den Analysestand des ausgewählten Datensatzes. Der Browser verwirft Antworten, die eine andere Revision oder Übernahme benennen. Entscheidungsberichte zu A0 oder A1 verwenden die für diesen Berichtstyp installierten Formate, behalten die Snapshot-ID und kennzeichnen Replay-Ausgaben mit `DEMO-` im Dateinamen. Die Portfolio-CSV enthält die ausgewählte aktuelle Matrix.
+
+Die Auftragszentrale zeigt auf jeder Karte das zugehörige Projekt. Laufende, wartende, fehlgeschlagene und teilweise abgeschlossene Aufträge bleiben zusammen mit bis zu zwanzig erfolgreichen oder abgebrochenen Aufträgen sichtbar. Während einer laufenden Wiederholung bleibt die Schaltfläche auch beim Aktualisieren oder Öffnen der Karte gesperrt.
+
 ## Rollen und Barrierefreiheit
 
 Benutzer mit Leserechten können Portfolioinformationen einsehen, aber keine Architekturänderungen ausführen. Deaktivierte Steuerelemente erläutern die fehlende Berechtigung. Architekten und Administratoren können die durch die Sicherheitskonfiguration zugelassenen geprüften Schreiboperationen durchführen.

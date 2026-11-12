@@ -99,6 +99,11 @@ class SourceBootstrapBrowserContractTest {
         run("versioning-" + transition);
     }
 
+    @Test
+    void provisionalProductSearchShowsPinnedSourcesAndClearsStaleOrDeniedData() throws Exception {
+        run("provisional-products");
+    }
+
     private void run(String scenario) throws Exception {
         Path script = temporary.resolve("source-bootstrap.cjs");
         try (var input = getClass().getResourceAsStream("/ui/source-bootstrap-contract.cjs")) {

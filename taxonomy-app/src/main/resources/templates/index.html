@@ -1195,6 +1195,19 @@
                     </div>
                 </details>
 
+                <details id="provisionalProductPanel" class="mt-2">
+                    <summary class="fw-semibold" th:text="#{admin.productReview.title}">Provisional Information Product mappings</summary>
+                    <form id="provisionalProductFilter" class="mt-2">
+                        <label class="form-label" for="provisionalProductQuery" th:text="#{admin.productReview.filter}">Product code or title</label>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <input class="form-control w-auto" id="provisionalProductQuery" type="search" maxlength="160">
+                            <button class="btn btn-outline-primary" type="submit" th:text="#{admin.productReview.search}">Search mappings</button>
+                        </div>
+                    </form>
+                    <p id="provisionalProductStatus" class="mt-2" role="status" aria-live="polite"></p>
+                    <div id="provisionalProductResults" class="text-break"></div>
+                </details>
+
                 <!-- Log Viewer -->
                 <details id="logViewerPanel" class="mt-2">
                     <summary class="fw-semibold" style="cursor:pointer;" th:text="#{log.viewer.title}">&#128220; Log Viewer</summary>
@@ -1611,6 +1624,7 @@
 <script th:src="@{/js/api/import-api.js}"></script>
 <script th:src="@{/js/api/analysis-api.js}"></script>
 <script th:src="@{/js/api/reference-api.js}"></script>
+<script th:src="@{/js/core/provisional-product-review.js}"></script>
 <script th:src="@{/js/api/search-api.js}"></script>
 <script th:src="@{/js/api/dsl-api.js}"></script>
 <script th:src="@{/js/api/proposals-api.js}"></script>

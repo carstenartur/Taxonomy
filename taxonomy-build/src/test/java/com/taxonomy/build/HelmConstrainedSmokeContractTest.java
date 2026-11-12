@@ -176,6 +176,37 @@ class HelmConstrainedSmokeContractTest {
                 .contains("constrained-cluster release-floor verification");
     }
 
+    @Test
+    void smallProfileSamplesRequireMonotonicCountersAndAnUninterruptedPod() throws Exception {
+        Path filter = findRepositoryRoot().resolve("deploy/helm/taxonomy/small-search-budget.jq");
+        String initial = "[1000,100000,4,40,0,200,100,0]";
+        String idle = "[2000,200000,5,60,0,210,102,0]";
+        String loaded = "[3000,500000,7,90,0,230,112,0]";
+        for (String last : List.of(loaded, "[2000,500000,7,90,0,230,112,0]",
+                "[3000,190000,7,90,0,230,112,0]", "[3000,500000,7,90,1,230,112,0]",
+                "[3000,500000,7,90,0,230,112,1]", "[3000,500000,7,90,0,null,112,0]")) {
+            var process = new ProcessBuilder("jq", "-ce", "-f", filter.toString())
+                    .redirectErrorStream(true).start();
+            // The producer serializes measurements as named fields, never positional arrays.
+            String rows = "[%s,%s,%s]".formatted(initial, idle, last);
+            var named = new ProcessBuilder("jq", "-c",
+                    "map({ms:.[0],cpuUsec:.[1],throttledPeriods:.[2],throttledUsec:.[3],"
+                            + "oomKills:.[4],memoryBytes:.[5],ephemeralBytes:.[6],restarts:.[7]})")
+                    .start();
+            try (var input = named.getOutputStream()) { input.write(rows.getBytes(StandardCharsets.UTF_8)); }
+            try (var input = process.getOutputStream()) { named.getInputStream().transferTo(input); }
+            assertThat(named.waitFor()).isZero();
+            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            if (last.equals(loaded)) {
+                assertThat(process.waitFor()).as(output).isZero();
+                assertThat(output).contains("\"steadyCpuMillicores\":100", "\"peakIntervalCpuMillicores\":300",
+                        "\"peakSampledMemoryBytes\":230", "\"peakSampledEphemeralBytes\":112");
+            } else {
+                assertThat(process.waitFor()).as(last).isNotZero();
+            }
+        }
+    }
+
     private static String read(Path path) throws Exception {
         return Files.readString(path, StandardCharsets.UTF_8);
     }

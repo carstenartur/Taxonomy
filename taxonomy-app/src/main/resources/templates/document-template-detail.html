@@ -48,6 +48,9 @@
                 <a th:if="${templatePreviewAvailable}" class="btn btn-outline-primary"
                    th:href="${templatePreviewPinned} ? @{/admin/document-templates/{id}/test.docx(id=${template.templateId},revision=${template.headCommit})} : @{/admin/document-templates/{id}/test.docx(id=${template.templateId})}"
                    th:text="#{document.template.detail.test}">Generate test report</a>
+                <a class="btn btn-outline-primary" th:if="${templatePreviewPinned}"
+                   th:href="@{/admin/document-templates/{id}/candidates(id=${template.templateId})}"
+                   th:text="#{document.template.candidate.stage}">Preflight a candidate</a>
             </div>
         </div>
     </section>

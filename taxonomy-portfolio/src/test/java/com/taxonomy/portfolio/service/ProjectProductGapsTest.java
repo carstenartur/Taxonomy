@@ -2,14 +2,21 @@ package com.taxonomy.portfolio.service;
 
 import com.taxonomy.dto.AnalysisCoverage;
 import com.taxonomy.dto.ProductCoverageGap;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.repository.ProductGapSnapshotRow;
+import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class ProjectProductGapsTest {
     private static final ProductCoverageGap GAP = new ProductCoverageGap("F", "Family", 80, List.of("P"), "Unmet",
@@ -57,6 +64,25 @@ class ProjectProductGapsTest {
         var observation = groups.families().getFirst().observations().getFirst();
         assertThat(observation.minimumSuitabilityScore()).isNull();
         assertThat(observation.candidates()).containsExactly(new ProjectProductGaps.Candidate("P", null, 0d, null));
+    }
+
+    @Test void readerKeepsOnlyConfirmedEvidenceAndClosesTheScopedSnapshotStream() {
+        var repository = mock(RequirementAnalysisSnapshotRepository.class);
+        var json = JsonMapper.builder().build();
+        var evidence = new ProjectProductGaps.Evidence(List.of(GAP), SCORES, null, Map.of(), null);
+        var retained = new ProductGapSnapshotRow("retained", 3L, "REQ-3", 2L, 2, "catalogue-a",
+                json.writeValueAsString(evidence));
+        var unassessed = new ProductGapSnapshotRow("unassessed", 3L, "REQ-3", 1L, 1, "catalogue-a", "{}");
+        var closed = new AtomicBoolean();
+        when(repository.streamProductGapEvidence(7L, "scope", 3L, Set.of(AnalysisStatus.SUCCESS, AnalysisStatus.PARTIAL)))
+                .thenReturn(Stream.of(unassessed, retained, row("missing-projection", 3, "catalogue-a"))
+                        .onClose(() -> closed.set(true)));
+
+        var families = new ProjectGapEvidenceReader(repository, json).read(7L, 3L, "scope");
+
+        assertThat(families).singleElement().satisfies(family -> assertThat(family.observations())
+                .extracting(ProjectProductGaps.Observation::snapshotId).containsExactly("retained"));
+        assertThat(closed).isTrue();
     }
 
     private static ProductGapSnapshotRow row(String id, int version, String catalogue) {

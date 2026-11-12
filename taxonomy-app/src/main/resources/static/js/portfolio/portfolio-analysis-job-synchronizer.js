@@ -10,7 +10,6 @@
     'use strict';
 
     const retryDelaysMs = [250, 1500, 4000];
-    const maximumJobs = 20;
     const timers = new Set();
     const requests = new Set();
     let pageActive = true;
@@ -76,7 +75,7 @@
         try {
             const jobs = await api.listAnalysisJobs(projectId, { signal: controller.signal });
             if (!stillCurrent(projectId, scheduledGeneration) || !Array.isArray(jobs)) return;
-            jobs.slice(0, maximumJobs).forEach(function (job) {
+            api.retainedAnalysisJobs(jobs, job => job).forEach(function (job) {
                 if (!stillCurrent(projectId, scheduledGeneration) || !job || !job.id) return;
                 const location = '/api/projects/' + encodeURIComponent(projectId)
                     + '/analysis-jobs/' + encodeURIComponent(job.id);

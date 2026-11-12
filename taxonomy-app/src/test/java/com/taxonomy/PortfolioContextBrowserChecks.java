@@ -324,7 +324,7 @@ final class PortfolioContextBrowserChecks {
         checks.assertThat(pending.get("progress")).isEqualTo("0");
         select("portfolioJobFilter", "FAILED");
         Map<?, ?> failed = jobState("qa-failed");
-        checks.assertThat((String) failed.get("text")).contains("Fehlgeschlagen");
+        checks.assertThat((String) failed.get("text")).contains("Fehlgeschlagen", "Projekt #" + PROJECT_A);
         checks.assertThat(failed.get("retryVisible")).isEqualTo(true);
         verifyJobInteractionContinuity(checks);
         checks.assertThat((String) jobState("qa-failed").get("details"))
@@ -332,6 +332,7 @@ final class PortfolioContextBrowserChecks {
         viewport(390, 844);
         noOverflow();
         scrollJob("qa-failed"); screenshot("jobs-failed-mobile");
+        verifyRetryWhileCardIsReplaced();
         viewport(1366, 768);
 
         select("portfolioJobFilter", "RUNNING");
@@ -367,6 +368,31 @@ final class PortfolioContextBrowserChecks {
         driver.executeScript("localStorage.setItem('taxonomy.portfolio.analysisJobs.v2','[]')");
         open("/projects?lang=de");
         pageReady("selectedProjectKey", "QA-CONTEXT-A", "portfolioBusy");
+    }
+
+    private void verifyRetryWhileCardIsReplaced() {
+        select("portfolioJobFilter", "FAILED");
+        String card = "#portfolioJobList .portfolio-job[data-job-url$='/qa-failed']";
+        By retry = By.cssSelector(card + " .job-retry");
+        By toggle = By.cssSelector(card + " .job-toggle");
+        var gate = fixtures.holdFailedJobRetry();
+        try {
+            WebElement oldButton = driver.findElement(retry);
+            click(retry);
+            wait.until(browser -> gate.requests.get() == 1);
+            click(toggle);
+            wait.until(ExpectedConditions.stalenessOf(oldButton));
+            WebElement replacement = driver.findElement(retry);
+            assertThat(replacement.isEnabled()).as("Retry remains disabled across a card refresh").isFalse();
+            // Bootstrap disables pointer events on this button. Exercise the actual pointer hit target.
+            new Actions(driver).moveToElement(replacement).click().perform();
+            assertThat(gate.requests.get()).isEqualTo(1);
+            click(toggle);
+        } finally {
+            gate.release.countDown();
+        }
+        wait.until(browser -> driver.findElement(retry).isEnabled());
+        assertThat(gate.requests.get()).isEqualTo(1);
     }
 
     private void verifyJobInteractionContinuity(SoftAssertions checks) throws IOException {

@@ -11,14 +11,13 @@ import com.taxonomy.analysis.service.ProviderConcurrencyPermits;
 import jakarta.jms.DeliveryMode;
 import jakarta.jms.Message;
 import org.apache.activemq.artemis.api.core.SimpleString;
-import org.apache.activemq.artemis.api.core.QueueConfiguration;
-import org.apache.activemq.artemis.api.core.RoutingType;
 import org.apache.activemq.artemis.core.config.impl.ConfigurationImpl;
 import org.apache.activemq.artemis.core.server.JournalType;
 import org.apache.activemq.artemis.core.server.embedded.EmbeddedActiveMQ;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.apache.activemq.artemis.jms.client.ActiveMQMessage;
+import org.apache.activemq.artemis.jms.client.ActiveMQSession;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -77,7 +76,7 @@ class ArtemisProviderConcurrencyPermitsTest {
                 .setPagingDirectory(data.resolve("paging").toString());
         config.addAcceptorConfiguration("tcp", "tcp://127.0.0.1:" + port);
         config.addAddressSetting(PREFIX + ".#", new AddressSettings().setMaxDeliveryAttempts(-1)
-                .setRedeliveryDelay(0).setExpiryDelay(-1L).setAutoCreateQueues(false).setAutoDeleteQueues(false));
+                .setRedeliveryDelay(0).setExpiryDelay(-1L).setAutoCreateAddresses(false).setAutoCreateQueues(false).setAutoDeleteQueues(false));
         broker = new EmbeddedActiveMQ().setConfiguration(config);
         broker.start();
     }
@@ -272,8 +271,10 @@ class ArtemisProviderConcurrencyPermitsTest {
 
     @Test
     void failedProvisioningGapDoesNotReplenishAnExistingEmptyQueue() throws Exception {
-        broker.getActiveMQServer().createQueue(QueueConfiguration.of(QUEUE).setAddress(QUEUE)
-                .setRoutingType(RoutingType.ANYCAST).setDurable(true));
+        try (var factory = factory(); var connection = factory.createConnection();
+             var session = connection.createSession()) {
+            ArtemisProviderCapacityQueue.create(((ActiveMQSession) session).getCoreSession(), QUEUE, false);
+        }
         assertThatThrownBy(() -> provision(2)).isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("already exists");
         assertThatThrownBy(() -> permits(connect(), 100).acquire(LlmProvider.OPENAI, () -> {}))

@@ -62,6 +62,7 @@ window.TaxonomyContextCompare = (function () {
     var currentRawDslDiff = null;
     var compareRequest = 0;
     var branchesReady = false;
+    var activeModal = null;
     var dialogWorkspaceId;
     var boundDialogs = new WeakSet();
 
@@ -80,13 +81,44 @@ window.TaxonomyContextCompare = (function () {
         });
     }
 
+    function clearDialog() {
+        if (!activeModal) return;
+        var button = activeModal.querySelector('[onclick="TaxonomyContextCompare.doCompare()"]');
+        if (button) button.disabled = true;
+        activeModal = null;
+        compareRequest++;
+        branchesReady = false;
+        currentRawDslDiff = null;
+        setSidesDisabled(true);
+        ['compareLeftBranch', 'compareRightBranch'].forEach(function (id) {
+            document.getElementById(id)?.replaceChildren();
+        });
+        ['compareLeftCommit', 'compareRightCommit'].forEach(function (id) {
+            var input = document.getElementById(id);
+            if (input) input.value = '';
+        });
+        var results = document.getElementById('contextCompareResults');
+        if (results) results.innerHTML = '';
+    }
+
+    function dismissDialog() {
+        if (!activeModal) return;
+        var modal = activeModal;
+        clearDialog();
+        bootstrap.Modal.getInstance(modal)?.hide();
+    }
+
+    document.addEventListener('taxonomy:repository-context-changed', function (event) {
+        if (event.detail?.selectionChanged) dismissDialog();
+    });
+    window.addEventListener('pagehide', dismissDialog);
+
     function bindDialog(modal) {
         if (boundDialogs.has(modal)) return;
         boundDialogs.add(modal);
-        modal.addEventListener('hide.bs.modal', function () {
-            compareRequest++;
-            branchesReady = false;
-            currentRawDslDiff = null;
+        modal.addEventListener('hide.bs.modal', clearDialog);
+        modal.addEventListener('shown.bs.modal', function () {
+            if (!activeModal) bootstrap.Modal.getInstance(modal)?.hide();
         });
         ['compareLeftBranch', 'compareRightBranch', 'compareLeftCommit', 'compareRightCommit'].forEach(function (id) {
             var control = document.getElementById(id);
@@ -113,6 +145,7 @@ window.TaxonomyContextCompare = (function () {
         var modal = document.getElementById('contextCompareModal');
         if (!modal) return;
         bindDialog(modal);
+        activeModal = modal;
         setSidesDisabled(true);
         branchesReady = false;
         dialogWorkspaceId = workspaceId();

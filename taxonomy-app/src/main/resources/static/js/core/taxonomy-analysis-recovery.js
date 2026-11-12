@@ -87,6 +87,9 @@
             'Der aktuelle Laufstatus wird geladen. Es wird keine weitere KI-Anfrage gesendet.',
             'Loading the current run status. No additional model request is being sent.');
         if (context.syncState === 'UNAVAILABLE') {
+            if (context.observationStatus === 410) return text(
+                'Die Aufbewahrungsfrist für diesen Analyselauf ist abgelaufen. Gespeicherte Portfolio-Snapshots sind weiterhin abrufbar.',
+                'The retention period for this analysis run has ended. Saved portfolio snapshots remain available.');
             if ([401, 403].includes(context.observationStatus)) return text(
                 'Der Laufstatus kann mit den aktuellen Zugriffsrechten nicht geladen werden. Prüfe den Zugang zu diesem Arbeitsbereich. Weitere Bewertungen bleiben bis zur Statusklärung gesperrt.',
                 'The run status cannot be loaded with the current access rights. Check access to this workspace. Further assessments remain unavailable until the status is confirmed.');
@@ -217,7 +220,8 @@
         if (c?.followupState === 'COMPLETED_WITH_GAPS') label = text('Copilot beendet – Teilergebnis', 'Copilot finished – partial result');
         if (c?.evidenceConflict) label = text('Frühere lokale Evidenz – Serverergebnis verfügbar', 'Earlier local evidence – server result available');
         if (c?.syncState === 'CHECKING') label = text('Aktuellen Laufstatus laden', 'Loading current run status');
-        if (c?.syncState === 'UNAVAILABLE') label = c.observationKind === 'CONNECTION'
+        if (c?.syncState === 'UNAVAILABLE') label = c.observationStatus === 410 ? text('Analyse abgelaufen', 'Analysis expired')
+            : c.observationKind === 'CONNECTION'
             ? text('Verbindung gestört – Status unbekannt', 'Connection interrupted – status unknown')
             : text('Status unbekannt – erneute Prüfung erforderlich', 'Run status unknown – check again');
         var openCount = (r.openQuestions || []).length;
