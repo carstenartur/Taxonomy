@@ -6,11 +6,24 @@ window.TaxonomyReferenceApi = (function () {
     function read(path, headers, options) {
         return client.request(path, {headers:headers}, Object.assign({contextSensitive:false, workspaceScoped:false}, options));
     }
+    function reviewHistory(product) {
+        return '/api/admin/catalogue/provisional-information-products/' + encodeURIComponent(product) + '/reviews';
+    }
     function prompt(code) { return '/api/prompts/' + encodeURIComponent(code); }
     return {
         provisionalInformationProducts: function (query, signal) {
             return read('/api/admin/catalogue/provisional-information-products?q=' + encodeURIComponent(query),
                 null, {signal: signal});
+        },
+        mappingReviewHistory: function (product, cursor, signal) {
+            return client.getJson(reviewHistory(product) + (cursor ? '?after=' + encodeURIComponent(cursor) : ''),
+                {contextSensitive: false, workspaceScoped: false, signal: signal});
+        },
+        reviewMapping: function (product, command) {
+            return client.sendJson(reviewHistory(product), command, 'POST', {contextSensitive: false, workspaceScoped: false});
+        },
+        mappingOverlayUrl: function (product, commit) {
+            return window.TaxonomyI18n.resolveUrl(reviewHistory(product) + '/' + encodeURIComponent(commit) + '/overlay');
         },
         about: function () { return read('/api/about'); },
         aiStatus: function (provider) { return read('/api/ai-status' + (provider === 'CUSTOM_OPENAI' ? '?provider=CUSTOM_OPENAI' : '')); },

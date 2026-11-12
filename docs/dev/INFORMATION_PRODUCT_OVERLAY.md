@@ -124,8 +124,23 @@ Technical administrators can read the provisional queue at
 `GET /api/admin/catalogue/provisional-information-products`. The optional `q` filter matches a code
 or title. The response identifies the applied catalogue generation and overlay version, and shows
 the original parent reference from the retained workbook alongside the overlay parent. A workbook
-status of `NOT_RETAINED` identifies older generations without recorded source parents. Review and
-promotion continue through the Git overlay workflow.
+status of `NOT_RETAINED` identifies older generations without recorded source parents. Technical administrators can accept, change or reject a provisional mapping in the administration tab.
+Every decision takes the exact current catalogue revision, mapping version, overlay fingerprint and previous review commit.
+The isolated review repository retains the original mapping, replacement, reviewer, timestamp and rationale.
+History remains addressable by product code across catalogue remapping. A rejected decision carries no candidate.
+
+For an acceptance or change, download the review record and candidate overlay from the same history entry.
+Before opening a pull request, verify both files against the checked-out workbook and overlay.
+
+```sh
+tools/catalogue-overlay/generate.sh --verify-review /path/to/review.json --candidate /path/to/candidate.json
+```
+
+Verification checks both source fingerprints, the precise one-product change, the proposed version and the resulting hierarchy.
+Copy the verified candidate to `taxonomy-knowledge/src/main/resources/data/nato-taxonomy.json` on a review branch.
+Include the administrative review commit and candidate fingerprint in the pull request and run the overlay integrity tests.
+The application continues to use its applied generation until the normal Git review and deployment take place.
+The internal decision is distinct from the external semantic approval owned by EXT-09.
 
 Changes to the overlay should include:
 

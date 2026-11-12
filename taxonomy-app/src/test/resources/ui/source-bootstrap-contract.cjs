@@ -49,6 +49,7 @@ function element(tag = 'div') {
         removeAttribute: name => attributes.delete(name),
         append(...values) {for (const value of values) {this.children.push(value); value.parentNode = this;}},
         appendChild(value) {this.append(value); return value;},
+        prepend(value) {this.children.unshift(value); value.parentNode = this;},
         replaceChildren(...values) {this.children = []; this.append(...values);},
         querySelector() {return null;}, querySelectorAll() {return [];},
         getClientRects() {return [];}, scrollIntoView() {}, focus() {},
@@ -727,8 +728,19 @@ async function provisionalProducts() {
             proposedParentCode: 'IP-F', secondaryClassificationCodes: ['IP-S'], confidence: 0.7,
             state: 'PROVISIONAL', sourceState: 'draft', justification: 'Fixture rationale'}]
     };
-    const filters = [];
+    const filters = [], writes = [];
     const app = fixture('analysis', request => {
+        if (request.url.pathname.endsWith('/IP-1/reviews')) {
+            if (request.options.method === 'POST') {
+                writes.push(JSON.parse(request.options.body));
+                if (writes.length > 1) return Response.json({}, {status: 409});
+                return Response.json({commit: '1'.repeat(40), decision: {action: 'CHANGE', reviewer: 'admin',
+                    reviewedAt: '2026-11-12', mappingVersion: 'v1', original: applied.mappings[0],
+                    proposedParent: 'IP-NEW', secondary: [], rationale: 'Controlled review',
+                    proposedVersion: 'candidate-1', proposedSha256: 'candidate digest'}});
+            }
+            return Response.json({head: '0'.repeat(40), decisions: [], next: null});
+        }
         assert.equal(request.url.pathname, '/taxonomy/api/admin/catalogue/provisional-information-products');
         const query = request.url.searchParams.get('q'); filters.push(query);
         if (query === '') return delayed.promise;
@@ -752,6 +764,24 @@ async function provisionalProducts() {
     for (const text of ['frozen workbook','frozen overlay','v1','IP-1 — Fixture product','Source parent','IP-F','IP-S','draft','Fixture rationale']) {
         assert.ok(visible.includes(text), text);
     }
+    const details = results.children[1];
+    details.open = true; details.dispatchEvent({type: 'toggle'}); await settle();
+    const review = details.children.at(-1).children[0];
+    const action = review.children.find(item => item.tagName === 'SELECT');
+    action.value = 'CHANGE'; action.dispatchEvent({type: 'change'});
+    review.children.find(item => item.id === 'mapping-parent-IP-1').value = 'IP-NEW';
+    review.children.find(item => item.id === 'mapping-secondary-IP-1').value = '';
+    review.children.find(item => item.tagName === 'TEXTAREA').value = 'Controlled review';
+    review.dispatchEvent({type: 'submit'}); await settle();
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].expectedHead, '0'.repeat(40)); assert.equal(writes[0].overlaySha256, 'frozen overlay');
+    assert.equal(writes[0].proposedParent, 'IP-NEW'); assert.deepEqual(writes[0].secondary, []);
+    assert.ok(content(details).includes('candidate digest'));
+    review.children.find(item => item.tagName === 'TEXTAREA').value = 'Concurrent decision';
+    review.dispatchEvent({type: 'submit'}); await settle();
+    assert.equal(writes[1].expectedHead, '1'.repeat(40));
+    assert.ok(content(details).includes('admin.productReview.conflict'));
+    assert.equal(review.children.find(item => item.tagName === 'BUTTON').disabled, true);
     delayed.resolve(Response.json({...applied, mappingVersion: 'late-v0'})); await settle();
     assert.ok(!content(results).includes('late-v0'));
     filter.value = 'denied'; form.dispatchEvent({type: 'submit'}); await settle();

@@ -248,6 +248,44 @@ class CatalogueOverlayProposalGeneratorTest {
                 "", "", "fixture", "", "1", state, level);
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void verifiesOnlyTheSelectedReviewAgainstTheExactGitBaseline(@TempDir Path root) throws Exception {
+        var workbook = root.resolve("fixture.xlsx");
+        var current = root.resolve("overlay.json");
+        var candidate = root.resolve("candidate.json");
+        var receipt = root.resolve("review.json");
+        writeWorkbook(workbook, fixtureRows());
+        Files.writeString(current, overlay("Medical Treatment Report"));
+        var updated = FlatJson.parseObject(Files.readString(current));
+        updated.put("mappingVersion", "fixture-v2");
+        var patches = (List<Map<String,Object>>) updated.get("nodePatches");
+        var product = patches.stream().filter(item -> "IP-3001".equals(item.get("code"))).findFirst().orElseThrow();
+        product.put("justification", "Reviewed the catalogue evidence");
+        product.put("reviewRequired", false);
+        Files.writeString(candidate, FlatJson.pretty(updated).replace("0.90", "0.9"));
+        var decision = new LinkedHashMap<String,Object>();
+        decision.put("code", "IP-3001"); decision.put("action", "ACCEPT");
+        decision.put("mappingVersion", "fixture-v1"); decision.put("proposedVersion", "fixture-v2");
+        decision.put("secondary", product.get("secondaryClassificationCodes")); decision.put("proposedParent", "IP-2100");
+        decision.put("rationale", "Reviewed the catalogue evidence");
+        decision.put("workbookSha256", CatalogueOverlayProposalGenerator.sha256(workbook));
+        decision.put("overlaySha256", CatalogueOverlayProposalGenerator.sha256(current));
+        decision.put("proposedSha256", CatalogueOverlayProposalGenerator.sha256(candidate));
+        var review = Map.of("commit", "a".repeat(40), "decision", decision);
+        Files.writeString(receipt, FlatJson.pretty(review));
+        assertThat(CatalogueReviewedOverlay.verify(workbook, current, receipt, candidate)).isEqualTo("a".repeat(40));
+        patches.getFirst().put("justification", "Unreviewed change to another mapping");
+        Files.writeString(candidate, FlatJson.pretty(updated));
+        decision.put("proposedSha256", CatalogueOverlayProposalGenerator.sha256(candidate));
+        Files.writeString(receipt, FlatJson.pretty(review));
+        assertThatThrownBy(() -> CatalogueReviewedOverlay.verify(workbook, current, receipt, candidate))
+                .hasMessageContaining("Unreviewed");
+        Files.writeString(current, Files.readString(current) + "\n");
+        assertThatThrownBy(() -> CatalogueReviewedOverlay.verify(workbook, current, receipt, candidate))
+                .hasMessageContaining("differs from the review");
+    }
+
     private static String overlay(String reviewedProductTitle) {
         return """
                 {
