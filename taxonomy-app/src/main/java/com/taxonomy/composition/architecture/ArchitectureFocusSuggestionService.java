@@ -125,7 +125,7 @@ public class ArchitectureFocusSuggestionService {
                 () -> editorSourceCurrent(scope, request.context(), hash));
     }
 
-    private boolean editorSourceCurrent(RepositoryContext scope, Context context, String hash) {
+    public boolean editorSourceCurrent(RepositoryContext scope, Context context, String hash) {
         try {
             var current = editor.read(scope, null, null);
             return context.equals(current.context()) && "WORKSPACE_REVISION".equals(current.source())
@@ -184,8 +184,9 @@ public class ArchitectureFocusSuggestionService {
                 return Execution.local(response(fallbackMethod, "UNASSESSED", 0, candidates,
                         local(request, hash, candidates, fallbackMethod)));
             }
+            var admittedProvider = llm.captureInteractiveProvider(providerId);
             return new Execution(true, () -> {
-                try {
+                try (var lease = llm.withProviderBinding(providerId, admittedProvider)) {
                     String raw = AnalysisRunControl.call(provider, "ARCHITECTURE_FOCUS", () -> {
                         var detail = new LlmCallDetail();
                         detail.setProvider(provider);

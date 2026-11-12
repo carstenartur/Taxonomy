@@ -13,14 +13,18 @@ public final class ChildAnalysisReceipt {
     private ChildAnalysisReceipt() { }
 
     public static JsonNode publicResult(String kind, JsonNode stored) {
-        return "NODE_CHILDREN".equals(kind) ? stored.path("result") : stored;
+        return switch (kind) {
+            case "NODE_CHILDREN", "LEAF_JUSTIFICATION" -> stored.path("result");
+            default -> stored;
+        };
     }
 
     public static void validate(String kind, String operationId, JsonNode stored) {
         if (stored == null || !stored.isObject()) throw invalid();
         switch (kind) {
             case "NODE_CHILDREN" -> {
-                allowed(stored, Set.of("result", "parentBinding"));
+                allowed(stored, Set.of("result", "parentBinding", "source"));
+                var source = source(stored, operationId);
                 JsonNode result = stored.path("result");
                 allowed(result, Set.of("scores", "reasons", "prompt", "rawResponse", "provider", "durationMs", "error",
                         "analysisOperationId", "analysisProviderId", "analysisReasonLength", "analysisLanguage"));
@@ -29,7 +33,8 @@ public final class ChildAnalysisReceipt {
                         || !result.path("rawResponse").isString() || !result.path("prompt").asString().isEmpty()
                         || !result.path("rawResponse").asString().isEmpty()) throw invalid();
                 var node = JSON.treeToValue(result, AnalyzeNodeChildrenResult.class);
-                if (node.durationMs() < 0 || node.analysisOperationId() == null || node.analysisProviderId() == null
+                if (node.scores().values().stream().anyMatch(score -> !com.taxonomy.dto.AnalysisPercentages.valid(score))
+                        || node.durationMs() < 0 || node.analysisOperationId() == null || node.analysisProviderId() == null
                         || node.analysisLanguage() == null || node.analysisReasonLength() == null
                         || node.error() != null && !"ANALYSIS_FAILED".equals(node.error())) throw invalid();
                 if (stored.hasNonNull("parentBinding")) {
@@ -41,14 +46,17 @@ public final class ChildAnalysisReceipt {
                         allowed(pin.path("binding").path("plugin"), Set.of("id", "version", "artifactSha256"));
                     }
                     Binding parent = JSON.treeToValue(pin, Binding.class);
-                    if (!operationId.equals(node.analysisOperationId()) || !parent.provider().equals(node.analysisProviderId())
+                    if (source.parentId() != null || !operationId.equals(node.analysisOperationId()) || !parent.provider().equals(node.analysisProviderId())
                             || parent.analysisLanguage() != node.analysisLanguage() || parent.reasonLength() != node.analysisReasonLength())
                         throw invalid();
-                }
+                } else if (!node.analysisOperationId().equals(source.parentId())) throw invalid();
             }
             case "LEAF_JUSTIFICATION" -> {
-                allowed(stored, Set.of("nodeCode", "justification"));
-                JSON.treeToValue(stored, JustifyLeafResult.class);
+                allowed(stored, Set.of("result", "source"));
+                var source = source(stored, operationId);
+                allowed(stored.path("result"), Set.of("nodeCode", "justification"));
+                var leaf = JSON.treeToValue(stored.path("result"), JustifyLeafResult.class);
+                if (!source.nodeCode().equals(leaf.nodeCode())) throw invalid();
             }
             case "FOCUS_INVESTIGATION" -> {
                 allowed(stored, Set.of("source", "context", "sourceId", "sourceHash", "method", "outcome", "modelCalls",
@@ -57,15 +65,36 @@ public final class ChildAnalysisReceipt {
                         || !stored.path("sourceHash").asString("").matches("[a-f0-9]{64}")
                         || !Set.of("ASSESSED", "FAILED").contains(stored.path("outcome").asString(""))
                         || !stored.path("method").isString() || stored.path("modelCalls").asInt(-1) != 1
-                        || !stored.path("candidateCount").isIntegralNumber() || !stored.path("suggestions").isArray()) throw invalid();
+                        || !stored.path("candidateCount").isIntegralNumber() || stored.path("candidateCount").asInt(-1) < 1
+                        || stored.path("candidateCount").asInt() > 24 || !stored.path("suggestions").isArray()
+                        || stored.path("suggestions").size() > stored.path("candidateCount").asInt()) throw invalid();
+                if (stored.hasNonNull("context"))
+                    allowed(stored.get("context"), Set.of("repositoryId", "workspaceScopeKey", "branch", "commit", "revision", "actor", "writeMode"));
+                else allowed(stored.get("source"), Set.of("kind", "repositoryId", "workspaceScopeKey", "branch", "version",
+                        "projectId", "requirementId", "requirementVersionId", "snapshotId"));
                 for (var item : stored.path("suggestions")) {
                     allowed(item, Set.of("id", "sourceId", "targetId", "relationType", "rationale", "evidence", "properties"));
                     if (!item.path("evidence").isArray() || !item.path("properties").isObject()) throw invalid();
+                    allowed(item.get("properties"), Set.of("provenance","x-focus-rationale","x-focus-evidence","x-focus-method",
+                            "x-focus-source-hash","x-focus-revision","x-focus-continuation-id","x-focus-continuation-version",
+                            "x-focus-execution-catalogue","x-focus-operation-id","x-focus-source-kind","x-focus-source-version",
+                            "x-analysis-branch","x-analysis-catalogue-fingerprint","x-analysis-commit","x-analysis-created-at",
+                            "x-analysis-model","x-analysis-project-id","x-analysis-provider","x-analysis-repository-id",
+                            "x-analysis-requirement-id","x-analysis-requirement-version-id","x-analysis-snapshot-id",
+                            "x-analysis-status","x-analysis-workspace-scope"));
                     for (var evidence : item.path("evidence")) allowed(evidence, Set.of("elementId","field","quote"));
                 }
             }
             default -> throw invalid();
         }
+    }
+
+    private static AnalysisNodeReceipts.Source source(JsonNode stored, String operationId) {
+        var value = stored.path("source");
+        allowed(value, Set.of("nodeCode", "fingerprint", "parentId"));
+        var source = JSON.treeToValue(value, AnalysisNodeReceipts.Source.class);
+        if (operationId.equals(source.parentId())) throw invalid();
+        return source;
     }
 
     private static void allowed(JsonNode value, Set<String> fields) {

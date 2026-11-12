@@ -36,6 +36,9 @@ public class AnalysisFollowUpProviders {
     private final LlmProviderConfig providers;
     private final LinkedHashMap<String, Pin> local = new LinkedHashMap<>();
     @Autowired(required = false) private ClusterAnalysisStore cluster;
+    @Autowired(required = false) private com.taxonomy.catalog.snapshot.CatalogueSnapshotService snapshots;
+    @Autowired(required = false) private com.taxonomy.analysis.usecase.AnalysisAdmissionModelPort models;
+    @Autowired(required = false) private tools.jackson.databind.ObjectMapper mapper;
     @Autowired(required = false) private AnalysisRuntimeSettings analysisRuntimeSettings;
 
     public AnalysisFollowUpProviders(LlmProviderConfig providers) { this.providers = providers; }
@@ -125,6 +128,53 @@ public class AnalysisFollowUpProviders {
         var binding = nodeReceipts.readParent(operationId);
         return new Pin(binding.provider(), binding.binding(), binding.reasonLength(), binding.analysisLanguage(),
                 binding.requirement(), owner, workspace, Instant.MAX);
+    }
+
+    /** Cluster follow-ups read the exact catalogue shards accepted by their parent. */
+    public com.taxonomy.catalog.snapshot.FrozenCatalogueContext.Scope openParentCatalogue(String id, String owner,
+                                                                                          WorkspaceContext workspace) {
+        if (cluster == null || id == null || id.isBlank()) return null;
+        java.util.Optional<com.taxonomy.analysis.dag.AnalysisOperationContext> selected;
+        try { selected = cluster.findAuthorized(id, owner, workspace); }
+        catch (SecurityException denied) { throw unavailable(); }
+        if (selected.isEmpty()) return null;
+        var context = selected.get();
+        var authority = context.authority();
+        var identity = new com.taxonomy.catalog.snapshot.CatalogueSourceIdentity(authority.repositoryId(), authority.workspaceId(),
+                authority.branch(), authority.sourceCommit(), authority.semanticModelSha256());
+        if (snapshots == null || mapper == null)
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Parent catalogue unavailable");
+        var roots = cluster.inputRoots(context);
+        var required = roots.stream().map(root -> root.code()).collect(java.util.stream.Collectors.toSet());
+        var shards = roots.stream().map(root -> mapper.readValue(cluster.shard(context, root),
+                com.taxonomy.catalog.snapshot.RootCatalogueSnapshot.class)).toList();
+        return snapshots.bind(identity, required, shards);
+    }
+
+    /** The workspace's current semantic generation must still match its historical parent. */
+    public boolean parentCurrent(String id, String owner, WorkspaceContext workspace) {
+        if (id == null || id.isBlank()) return true;
+        try {
+            if (cluster != null) {
+                var selected = cluster.findAuthorized(id, owner, workspace);
+                if (selected.isPresent()) {
+                    var context = selected.get();
+                    var command = cluster.command(context);
+                    if (models == null) return false;
+                    var current = models.capture(workspace, null, null, command.analysisScope());
+                    var accepted = command.modelBinding();
+                    var authority = context.authority();
+                    return Objects.equals(current.commit(), authority.sourceCommit())
+                            && (authority.semanticModelSha256() == null || authority.semanticModelSha256().equals(current.modelSha256()))
+                            && (accepted == null || Objects.equals(accepted.semanticRevision(), current.semanticRevision())
+                                && Objects.equals(accepted.modelSha256(), current.modelSha256()));
+                }
+            }
+            resolve(id, owner, workspace);
+            return true;
+        } catch (ResponseStatusException | SecurityException unavailable) {
+            return false;
+        }
     }
 
     private String effectiveProvider(String requested) {

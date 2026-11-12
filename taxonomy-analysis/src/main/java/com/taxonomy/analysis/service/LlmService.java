@@ -1620,6 +1620,10 @@ public class LlmService {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    public com.taxonomy.extension.api.plugin.PluginInvocation captureInteractiveProvider(String provider) {
+        return providerConfig.captureProviderBinding(provider);
+    }
+
     /** Interactive operations reserve durable work only when the selected provider can perform inference. */
     public boolean interactiveDispatchAvailable(boolean scoring) {
         if (providerConfig.isMockMode() || isReplayActive()) return false;
@@ -1839,7 +1843,7 @@ public class LlmService {
             AnalysisExecutionFailures.rethrow(e);
             log.error("Failed to generate leaf justification for {}", leafCode, e);
             recordFailure(e.getMessage());
-            return "Error generating justification: " + e.getMessage();
+            return "Error generating justification. Please try again.";
         }
     }
 

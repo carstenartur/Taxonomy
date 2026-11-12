@@ -73,7 +73,10 @@ class ArchitectureFocusSuggestionServiceTest {
             }
         });
         assertThat(service.investigate(scope, request(false)).modelCalls()).isZero();
-        assertThat(service.investigate(scope, request(true)).outcome()).isEqualTo("ASSESSED");
+        var assessed = service.investigate(scope, request(true));
+        assertThat(assessed.outcome()).isEqualTo("ASSESSED");
+        var stored = new tools.jackson.databind.ObjectMapper().valueToTree(assessed);
+        com.taxonomy.analysis.operation.ChildAnalysisReceipt.validate("FOCUS_INVESTIGATION", "focus", stored);
         assertThat(calls).hasValue(1);
     }
 

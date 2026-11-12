@@ -69,7 +69,15 @@ public class ArchitectureSourceFocusService {
                 ArchitectureSourceFocusDtos.Response.class,
                 result -> new ArchitectureSourceFocusDtos.Response(source, request.sourceId(), evidence.hash(), result.method(),
                         result.outcome(), result.modelCalls(), result.candidateCount(), result.suggestions()),
-                () -> evidence.hash().equals(evidence(selected, source).hash()));
+                () -> sourceCurrent(selected, source, evidence.hash()));
+    }
+
+    public boolean sourceCurrent(RepositoryContext selected, ArchitectureSourceFocusDtos.Source source, String hash) {
+        try {
+            return hash.equals(evidence(selected, source).hash());
+        } catch (CommandProblem | SecurityException deniedOrStale) {
+            return false;
+        }
     }
 
     private record Evidence(Retained retained, CanonicalArchitectureModel model, CatalogueDefinition catalogue,
