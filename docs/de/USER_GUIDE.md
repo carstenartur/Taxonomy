@@ -932,7 +932,7 @@ Nach der Annahme zeigt der Vorschlag in der Prüfungsansicht ein grünes **Accep
 
 ![Akzeptierter Vorschlag](../images/36-proposal-accepted.png)
 
-Nach jeder Annahme- oder Ablehnungsaktion erscheint eine **Rückgängig-Toast-Benachrichtigung** in der unteren rechten Ecke für 8 Sekunden. Klicken Sie auf **↩️ Undo**, um den Vorschlag auf den Status PENDING zurückzusetzen (und, falls er akzeptiert wurde, die erstellte Relation zu löschen).
+Nach jeder Annahme- oder Ablehnungsaktion erscheint eine **Rückgängig-Toast-Benachrichtigung** in der unteren rechten Ecke für 8 Sekunden. Klicken Sie auf **↩️ Undo**, um den Vorschlag auf den Status PENDING zurückzusetzen (und, falls er akzeptiert wurde, die erstellte Relation zu löschen). Beim Rückgängigmachen prüft die Anwendung Vorschlags-ID, Herkunft und Entscheidung am ausgewählten Git-Stand. Enthält eine andere Bearbeitung oder ein anderer Branch eine abweichende Entscheidung für dieselbe Relation, öffnen Sie die Prüfung erneut in dem Branch, in dem sie gespeichert wurde.
 
 ### Massenaktionen
 

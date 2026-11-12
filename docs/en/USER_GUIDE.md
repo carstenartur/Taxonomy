@@ -908,7 +908,7 @@ Once accepted, the proposal displays a green **Accepted** badge in the review vi
 
 ![Accepted proposal](../images/36-proposal-accepted.png)
 
-After each accept or reject action, an **Undo toast notification** appears in the bottom-right corner for 8 seconds. Click **↩️ Undo** to revert the proposal back to PENDING status (and, if it was accepted, delete the created relation).
+After each accept or reject action, an **Undo toast notification** appears in the bottom-right corner for 8 seconds. Click **↩️ Undo** to revert the proposal back to PENDING status (and, if it was accepted, delete the created relation). Undo checks the proposal ID, review provenance and decision at the selected Git head. If another edit or branch supplies a different decision for the same relation, reload the review in the branch where it was recorded.
 
 ### Bulk Actions
 
