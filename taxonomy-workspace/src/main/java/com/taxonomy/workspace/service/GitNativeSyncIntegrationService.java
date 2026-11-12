@@ -609,9 +609,15 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
 
     @Override
     public SyncState getSyncState(String username) {
-        var selected = contextResolver.resolveRepositoryContextForRead(username);
+        var observation = contextResolver.resolveSyncObservation(username);
+        var selected = observation.source();
         var scope = new WorkspaceSyncScope(selected.username(), selected.repositoryId(), selected.workspaceId(), selected.branch());
         requireSourceAuthority(username, systemRepositoryService.getRepository(selected.repositoryId()), false);
+        if (observation.lifecycle() != com.taxonomy.workspace.model.WorkspaceProvisioningStatus.READY) {
+            var unavailable = new com.taxonomy.workspace.model.WorkspaceBranchSyncState(scope).view();
+            unavailable.setSyncStatus(observation.lifecycle().name());
+            return unavailable;
+        }
         // Older username-wide observations cannot prove which working branch produced them.
         return syncStateRepository.readScope(scope);
     }
