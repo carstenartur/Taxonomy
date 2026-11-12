@@ -159,10 +159,13 @@ class ArchitectureWorkbenchControllerTest {
                 .thenReturn("alice");
         when(workspaceResolver.resolveCurrentContext())
                 .thenReturn(context);
-        when(service.renderSvg(42L, "snapshot-1", "alice", context))
+        var projection = mock(Projection.class);
+        when(service.load(42L, "snapshot-1", "alice", context)).thenReturn(projection);
+        when(projection.exportLabel()).thenReturn(com.taxonomy.portfolio.service.SnapshotExportLabel.STANDARD);
+        when(service.renderSvg(projection))
                 .thenReturn(
                         "<svg><title>Architecture</title></svg>");
-        when(service.renderPdf(42L, "snapshot-1", "alice", context))
+        when(service.renderPdf(projection))
                 .thenReturn(
                         "%PDF-test".getBytes(
                                 StandardCharsets.ISO_8859_1));
@@ -182,18 +185,8 @@ class ArchitectureWorkbenchControllerTest {
         assertThat(pdf.getHeaders().getFirst(
                 "Content-Disposition"))
                 .contains("architecture.pdf");
-        verify(service)
-                .renderSvg(
-                        42L,
-                        "snapshot-1",
-                        "alice",
-                        context);
-        verify(service)
-                .renderPdf(
-                        42L,
-                        "snapshot-1",
-                        "alice",
-                        context);
+        verify(service).renderSvg(projection);
+        verify(service).renderPdf(projection);
     }
 
     @Test

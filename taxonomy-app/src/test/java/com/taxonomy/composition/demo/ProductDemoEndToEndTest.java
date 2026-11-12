@@ -319,6 +319,8 @@ class ProductDemoEndToEndTest {
 
         assertFrozenDecisionReports(run.projectId(), a0Snapshot, 1, "DEMO.TIME-TRACKING-V1.R0");
         assertFrozenDecisionReports(run.projectId(), a1Snapshot, 2, "DEMO.TIME-TRACKING-V1.R1");
+        assertArchitectureDownloads(run.projectId(), a0Snapshot, "DEMO.TIME-TRACKING-V1.R0");
+        assertArchitectureDownloads(run.projectId(), a1Snapshot, "DEMO.TIME-TRACKING-V1.R1");
         assertThat(analyses.listJobs(run.projectId(), USER, context)).isEqualTo(jobsBeforeExport);
 
         // Exports of the demo project stay labelled as demo output.
@@ -360,18 +362,58 @@ class ProductDemoEndToEndTest {
             assertThat(payload).isNotEmpty();
             if (id.equals("json")) {
                 var parsed = json.readTree(payload);
+                assertThat(parsed.path("title").asString()).startsWith("DEMO · ");
                 assertThat(parsed.at("/metadata/analysisSnapshotId").asString()).isEqualTo(snapshotId);
                 assertThat(parsed.at("/metadata/analysisProvider").asString()).isEqualTo(provider);
                 assertThat(parsed.path("languageTag").asString()).isEqualTo("de");
             } else if (id.equals("html")) {
-                assertThat(new String(payload, StandardCharsets.UTF_8)).contains(provider, snapshotId);
+                assertThat(new String(payload, StandardCharsets.UTF_8)).contains("<h1>DEMO · ", provider, snapshotId);
             } else if (id.equals("docx")) {
                 try (var document = new XWPFDocument(new ByteArrayInputStream(payload));
                      var text = new org.apache.poi.xwpf.extractor.XWPFWordExtractor(document)) {
+                    assertThat(document.getParagraphs().getFirst().getText()).startsWith("DEMO · ");
                     assertThat(text.getText()).contains(provider, snapshotId);
                 }
             }
         }
+    }
+
+    private void assertArchitectureDownloads(Long projectId, String snapshotId, String provider) throws Exception {
+        String base = "/api/projects/" + projectId;
+        String graph = base + "/architecture-workbench/" + snapshotId;
+        var word = architectureDownload(base + "/snapshots/" + snapshotId + "/architecture-report/docx");
+        assertThat(word.getHeader("X-Taxonomy-Snapshot-Id")).isEqualTo(snapshotId);
+        try (var document = new XWPFDocument(new ByteArrayInputStream(word.getContentAsByteArray()))) {
+            assertThat(document.getParagraphs().getFirst().getText()).startsWith("DEMO · ");
+        }
+        assertThat(architectureDownload(graph + ".svg").getContentAsString(StandardCharsets.UTF_8))
+                .contains("<title>DEMO · ");
+        try (var pdf = org.apache.pdfbox.Loader.loadPDF(architectureDownload(graph + ".pdf").getContentAsByteArray())) {
+            assertThat(pdf.getDocumentInformation().getTitle()).startsWith("DEMO · ");
+        }
+        for (String format : List.of("archimate", "visio")) {
+            var download = architectureDownload(graph + "." + format + ".zip");
+            assertThat(download.getHeader("X-Taxonomy-Snapshot-Id")).isEqualTo(snapshotId);
+            try (var archive = new java.util.zip.ZipInputStream(new ByteArrayInputStream(download.getContentAsByteArray()))) {
+                java.util.zip.ZipEntry entry;
+                do {
+                    entry = archive.getNextEntry();
+                    assertThat(entry).as("offline manifest for %s", format).isNotNull();
+                } while (!entry.getName().equals("manifest.json"));
+                var manifest = json.readTree(archive.readAllBytes());
+                var source = format.equals("archimate") ? manifest.path("provenance") : manifest.at("/handoff/authority");
+                assertThat(source.at("/taxonomy.analysisProvider/value").asString()).isEqualTo(provider);
+                assertThat(source.at("/taxonomy.snapshotId/value").asString()).isEqualTo(snapshotId);
+            }
+        }
+    }
+
+    private MockHttpServletResponse architectureDownload(String path) throws Exception {
+        var response = mvc.perform(get(path).param("language", "de")).andExpect(status().isOk())
+                .andReturn().getResponse();
+        var disposition = org.springframework.http.ContentDisposition.parse(response.getHeader("Content-Disposition"));
+        assertThat(disposition.getFilename()).startsWith("DEMO-");
+        return response;
     }
 
     private record DemoReports(JsonNode json, List<String> word, String markdown, String html) { }

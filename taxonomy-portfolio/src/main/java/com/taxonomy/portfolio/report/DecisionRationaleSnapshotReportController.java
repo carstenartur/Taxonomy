@@ -16,6 +16,7 @@ import com.taxonomy.extension.api.report.ReportRenderResult;
 import com.taxonomy.extension.api.report.ReportRendererExtension;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.ProjectProviderBinding;
+import com.taxonomy.portfolio.service.SnapshotExportLabel;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
@@ -136,9 +137,12 @@ public class DecisionRationaleSnapshotReportController {
                     ? wordReportService.load(projectId, snapshotId, username, context, resolveLocale(language), options)
                     : wordReportService.loadEvidence(projectId, snapshotId, username, context, resolveLocale(language), options)).decision();
         } else report = snapshotReportService.generate(projectId, snapshotId, username, context, resolveLocale(language), options);
+        var label = SnapshotExportLabel.forReplay(providerBinding.isRecordedReplay(report.metadata().analysisProvider()));
+        if (label == SnapshotExportLabel.DEMO) {
+            report = report.withTitle(label.title(report.title()));
+        }
         ReportRenderResult rendered = renderer.render(ReportRenderContext.ofPayload(report));
-        String filename = (providerBinding.isRecordedReplay(report.metadata().analysisProvider()) ? "DEMO-" : "")
-                + DecisionRationaleReportPlugin.BASE_FILENAME
+        String filename = label.fileName(DecisionRationaleReportPlugin.BASE_FILENAME)
                 + "-v" + valueOrUnknown(report.metadata().requirementVersionNumber())
                 + "." + format.fileExtension();
         ResponseEntity.BodyBuilder response = ResponseEntity.ok()

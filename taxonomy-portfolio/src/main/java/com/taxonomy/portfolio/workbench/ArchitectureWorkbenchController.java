@@ -148,16 +148,13 @@ public class ArchitectureWorkbenchController {
             @PathVariable Long projectId,
             @PathVariable String snapshotId) {
         RequestScope scope = scope();
-        String content = service.renderSvg(
-                projectId,
-                snapshotId,
-                scope.username(),
-                scope.context());
+        var projection = service.load(projectId, snapshotId, scope.username(), scope.context());
+        String content = service.renderSvg(projection);
         return ResponseEntity.ok()
                 .contentType(SVG)
                 .header(
                         HttpHeaders.CONTENT_DISPOSITION,
-                        disposition("architecture", "svg"))
+                        disposition(projection.exportLabel().fileName("architecture.svg")))
                 .body(content);
     }
 
@@ -172,17 +169,14 @@ public class ArchitectureWorkbenchController {
             @PathVariable Long projectId,
             @PathVariable String snapshotId) {
         RequestScope scope = scope();
-        byte[] content = service.renderPdf(
-                projectId,
-                snapshotId,
-                scope.username(),
-                scope.context());
+        var projection = service.load(projectId, snapshotId, scope.username(), scope.context());
+        byte[] content = service.renderPdf(projection);
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .contentLength(content.length)
                 .header(
                         HttpHeaders.CONTENT_DISPOSITION,
-                        disposition("architecture", "pdf"))
+                        disposition(projection.exportLabel().fileName("architecture.pdf")))
                 .body(content);
     }
 
@@ -281,10 +275,6 @@ public class ArchitectureWorkbenchController {
                 .header(ARTIFACT_HEADER, artifact.artifactSha256())
                 .header("X-Content-Type-Options", "nosniff")
                 .body(content);
-    }
-
-    private static String disposition(String name, String extension) {
-        return disposition(name + "." + extension);
     }
 
     private static String disposition(String fileName) {

@@ -1,5 +1,6 @@
 package com.taxonomy.portfolio.workbench;
 
+import com.taxonomy.portfolio.service.SnapshotExportLabel;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramScene;
 import com.taxonomy.portfolio.model.PortfolioTypes.ActionStatus;
@@ -79,6 +80,10 @@ public final class ArchitectureWorkbenchDtos {
             String policyTitleKey,
             String persistedViewTitle,
             Map<String, String> nodeReasons) {
+
+        public SnapshotExportLabel exportLabel() {
+            return SnapshotExportLabel.forReplay(exportProvenance != null && exportProvenance.recordedReplay());
+        }
 
         /** Source-compatible constructor for projections without separate recorded node explanations. */
         public Projection(Long projectId, String projectKey, String projectTitle,
@@ -176,7 +181,14 @@ public final class ArchitectureWorkbenchDtos {
     }
 
     public record SnapshotProvenance(Long requirementVersionId, String taxonomyFingerprint,
-                                     String repositoryId, String requirementVersionCreatedBy, Instant requirementVersionCreatedAt) {
+                                     String repositoryId, String requirementVersionCreatedBy, Instant requirementVersionCreatedAt,
+                                     boolean recordedReplay) {
+        public SnapshotProvenance(Long requirementVersionId, String taxonomyFingerprint, String repositoryId,
+                                  String requirementVersionCreatedBy, Instant requirementVersionCreatedAt) {
+            this(requirementVersionId, taxonomyFingerprint, repositoryId, requirementVersionCreatedBy,
+                    requirementVersionCreatedAt, false);
+        }
+
         public SnapshotProvenance(Long requirementVersionId, String taxonomyFingerprint, String repositoryId) {
             this(requirementVersionId, taxonomyFingerprint, repositoryId, null, null);
         }

@@ -16,10 +16,12 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.ProjectProviderBinding;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.ElementMetadata;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.RelationMetadata;
+import com.taxonomy.portfolio.service.SnapshotExportLabel;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +43,12 @@ public class ArchitectureWorkbenchService {
     private final LayeredDiagramLayoutService layoutService;
     private final SvgDiagramRenderer svgRenderer;
     private final ArchitecturePdfRenderer pdfRenderer;
+    private ProjectProviderBinding providerBinding = ProjectProviderBinding.NONE;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setProviderBinding(ProjectProviderBinding binding) {
+        providerBinding = binding;
+    }
 
     public ArchitectureWorkbenchService(
             PortfolioAnalysisPersistenceService persistenceService,
@@ -126,8 +134,9 @@ public class ArchitectureWorkbenchService {
         if (architectureView.getAnalysisCoverage() == null) {
             architectureView.setAnalysisCoverage(analysis.getAnalysisCoverage());
         }
+        boolean recordedReplay = providerBinding.isRecordedReplay(snapshot.summary().provider());
         DiagramModel diagram = PersistedDiagramProjection.project(
-                diagramProjectionService, architectureView, title);
+                diagramProjectionService, architectureView, SnapshotExportLabel.forReplay(recordedReplay).title(title));
         if (diagram.nodes() == null || diagram.nodes().isEmpty()) {
             throw PortfolioException.conflict(
                     "The persisted architecture view contains no exportable architecture elements");
@@ -182,7 +191,7 @@ public class ArchitectureWorkbenchService {
                 snapshot.summary().commitSha(), diagram, scene, elements, relations,
                 new ArrayList<>(warnings), new ArchitectureWorkbenchDtos.SnapshotProvenance(
                         snapshot.summary().requirementVersionId(), snapshot.summary().taxonomyFingerprint(),
-                        context.repositoryId(), version.createdBy(), version.createdAt()), policyTitleKey, persistedTitle, nodeReasons);
+                        context.repositoryId(), version.createdBy(), version.createdAt(), recordedReplay), policyTitleKey, persistedTitle, nodeReasons);
     }
 
     @Transactional(readOnly = true)
@@ -190,7 +199,10 @@ public class ArchitectureWorkbenchService {
                             String snapshotId,
                             String username,
                             WorkspaceContext context) {
-        var projection = load(projectId, snapshotId, username, context);
+        return renderSvg(load(projectId, snapshotId, username, context));
+    }
+
+    String renderSvg(Projection projection) {
         return svgRenderer.render(projection.scene(), projection.nodeReasons(), projection.relationReasons());
     }
 
@@ -199,7 +211,11 @@ public class ArchitectureWorkbenchService {
                             String snapshotId,
                             String username,
                             WorkspaceContext context) {
-        return pdfRenderer.render(load(projectId, snapshotId, username, context));
+        return renderPdf(load(projectId, snapshotId, username, context));
+    }
+
+    byte[] renderPdf(Projection projection) {
+        return pdfRenderer.render(projection);
     }
 
     private static <T> List<T> safe(List<T> values) {
