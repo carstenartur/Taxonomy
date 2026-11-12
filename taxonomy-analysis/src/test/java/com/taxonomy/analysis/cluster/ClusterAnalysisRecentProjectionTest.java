@@ -115,13 +115,19 @@ class ClusterAnalysisRecentProjectionTest {
 
     @Test void projectedViewsRetainEveryStateTaskSummaryRevisionAndTimeMeaning() {
         try (var db = new Database(); var observer = observer(db)) {
-            for (var state : ClusterAnalysisState.values()) {
+            var reference = RequirementReference.of(7L, 8L, "requirement-version", "requirement");
+            persist(db, "expired-marker", 1, ClusterAnalysisState.CANCELLED, SCOPE, reference, null);
+            var retention = new ClusterAnalysisRetention(db.em, new TransactionTemplate(db.transactions));
+            assertEquals(1, retention.sweepScope(SCOPE, java.time.Duration.ofDays(31).toMillis()));
+            var retained = java.util.EnumSet.complementOf(java.util.EnumSet.of(ClusterAnalysisState.EXPIRED));
+            for (var state : retained) {
                 persist(db, state.name(), 1000, state, SCOPE,
                         RequirementReference.of(7L, 8L, "requirement-version", "requirement"),
                         "{\"rawScores\":{\"IP\":100,\" CP \":0},\"tree\":[],\"warnings\":[\"large optional evidence\"]}");
             }
             var recent = observer.recent("alice", SCOPE, null, null);
-            assertEquals(7, recent.size());
+            assertEquals(retained.stream().map(Enum::name).collect(java.util.stream.Collectors.toSet()), java.util.Set.copyOf(ids(recent)));
+            assertEquals(retained.size(), recent.size());
             for (var view : recent) {
                 var baseline = observer.snapshot(view.snapshot().operationId(), "alice", SCOPE).orElseThrow();
                 assertEquivalent(baseline, view);

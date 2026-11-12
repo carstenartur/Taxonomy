@@ -169,6 +169,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         errorBody.put("error", status.getReasonPhrase());
         errorBody.put("message", message);
         errorBody.put("path", request.getDescription(false).replace("uri=", ""));
+        if (status == HttpStatus.GONE && exception instanceof org.springframework.web.ErrorResponse response
+                && response.getBody().getProperties() != null
+                && "ANALYSIS_EXPIRED".equals(response.getBody().getProperties().get("code"))) {
+            errorBody.put("code", "ANALYSIS_EXPIRED");
+        }
         // Retain Spring's uncommitted-response handling and servlet error attributes.
         return super.handleExceptionInternal(exception, errorBody, headers, status, request);
     }
