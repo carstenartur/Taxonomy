@@ -102,6 +102,12 @@ public final class VerifiedLegacyOwnerMigration {
         transaction.executeWithoutResult(status -> {
             lockRegistry();
             PrincipalId actor = requireAdministrator(administrator);
+            // V3 ran once: a LEGACY writer may have inserted new ownership afterwards.
+            // Never accept an apparently complete approved plan while such rows are absent
+            // from the reserved-principal inventory.
+            if (LegacyOwnerMigrationReadiness.inspect(jdbc).missingReservations() != 0) {
+                throw new IllegalStateException("New historical owners lack reserved principal identities");
+            }
             var current = snapshot(MAX_APPLY);
             if (current.total() == 0 || current.total() > MAX_APPLY
                     || !current.fingerprint().equals(expectedFingerprint)
