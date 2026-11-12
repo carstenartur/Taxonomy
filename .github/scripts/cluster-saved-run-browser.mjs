@@ -18,9 +18,12 @@ const page = await browser.newPage();
 page.setDefaultTimeout(45_000);
 const apiPath = '/api/analysis-runs/' + encodeURIComponent(operation);
 const release = Promise.withResolvers();
-let submissions = 0;
+let analysisPosts = 0;
+let analysisStreams = 0;
 page.on('request', request => {
-    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/analyze') submissions++;
+    const pathname = new URL(request.url()).pathname;
+    if (request.method() === 'POST' && pathname === '/api/analyze') analysisPosts++;
+    if (request.method() === 'GET' && pathname === '/api/analyze-stream') analysisStreams++;
 });
 
 async function ready() {
@@ -145,11 +148,13 @@ try {
         && window.TaxonomyState.lastAnalysisStatus === status, {operation,status:result.status});
     const scores = await page.evaluate(() => window.TaxonomyState.currentRawScores);
     assert.deepEqual(scores, result.rawScores);
-    assert.equal(submissions, 0);
+    assert.equal(analysisPosts, 0, 'Recovery submitted a new analysis');
+    assert.equal(analysisStreams, 0, 'Recovery started a new analysis stream');
     await writeFile(evidenceFile, JSON.stringify({browser:browser.version(), operation, originalWorkspace,
         originalRepository:input.scope.repositoryId, secondWorkspace:second.workspaceId, secondRepository:second.sourceRepositoryId,
         sourceCommit:input.scope.sourceCommit, branch:input.scope.branch, recoveredStatus:result.status,
-        oldRunAbsentInSecondWorkspace:true, originalInputRestored:true, restoredRawScores:Object.keys(scores).length, analysisSubmissions:submissions}, null, 2) + '\n');
+        oldRunAbsentInSecondWorkspace:true, originalInputRestored:true, restoredRawScores:Object.keys(scores).length,
+        analysisPosts, analysisStreams, analysisSubmissions:analysisPosts + analysisStreams}, null, 2) + '\n');
 } finally {
     release.resolve();
     await browser.close();
