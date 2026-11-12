@@ -10,6 +10,7 @@ import com.taxonomy.relations.service.RelationProjectionOperationsService.Rebuil
 import com.taxonomy.relations.service.RelationProjectionOperationsService.RecoveryReconciliationPendingException;
 import com.taxonomy.relations.service.RelationProjectionRecoveryService.ReconciliationResult;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -18,10 +19,17 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.AdditionalAnswers.delegatesTo;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class RelationProjectionOperationsServiceTest {
@@ -58,7 +66,7 @@ class RelationProjectionOperationsServiceTest {
                 head, 1, 1, 0);
         Readiness readiness = new Readiness(
                 ReadinessState.READY, head, head, List.of());
-        when(rebuildService.rebuild(context)).thenReturn(rebuilt);
+        when(rebuildService.rebuildAtVerifiedHead(eq(context), any(), eq(head))).thenReturn(rebuilt);
         when(readinessService.inspect(context)).thenReturn(readiness);
         when(recoveryService.reconcileAfterRebuild(context, head))
                 .thenReturn(reconciliation);
@@ -74,7 +82,7 @@ class RelationProjectionOperationsServiceTest {
         assertThat(operation.readiness()).isSameAs(readiness);
         InOrder order = inOrder(
                 rebuildService, readinessService, recoveryService);
-        order.verify(rebuildService).rebuild(context);
+        order.verify(rebuildService).rebuildAtVerifiedHead(eq(context), any(), eq(head));
         order.verify(readinessService).inspect(context);
         order.verify(recoveryService).reconcileAfterRebuild(context, head);
     }
@@ -101,10 +109,40 @@ class RelationProjectionOperationsServiceTest {
                 .hasMessageContaining("requires If-Match");
 
         verify(repositoryFactory, never()).resolveRepository(context);
-        verify(rebuildService, never()).rebuild(context);
+        verifyNoInteractions(rebuildService);
         verify(readinessService, never()).inspect(context);
         verify(recoveryService, never()).reconcileAfterRebuild(
                 context, null);
+    }
+
+    @Test
+    void advanceAfterAdmissionCannotReplaceTheProjectionForAnotherCommit() throws Exception {
+        var context = RepositoryContext.workspace("repo-a", "workspace-a", "review", "alice");
+        repositoryFactory = new DslGitRepositoryFactory(null);
+        var git = repositoryFactory.resolveRepository(context);
+        String expected = git.commitDsl("review", "", "alice", "Initial revision");
+        var selected = new DslWorkspaceReadAdapter(repositoryFactory).openRead(context);
+        var changing = mock(WorkspaceDslReadPort.RepositoryRead.class, delegatesTo(selected));
+        doAnswer(call -> {
+            String verified = selected.verifyExpectedHead(expected);
+            git.commitDsl("review", "element APP-1 type Application {\n}\n", "alice", "Advance branch");
+            return verified;
+        }).when(changing).verifyExpectedHead(expected);
+        WorkspaceDslReadPort reads = ignored -> changing;
+        var writer = mock(RelationBranchProjectionRebuildWriter.class);
+        when(writer.replace(eq(context), anyString(), anyList())).thenAnswer(call ->
+                new RebuildResult(context.repositoryId(), context.workspaceId(), context.branch(), call.getArgument(1), 0));
+        var readiness = mock(RelationBranchProjectionReadinessService.class);
+        var recovery = mock(RelationProjectionRecoveryService.class);
+        var operations = new RelationProjectionOperationsService(reads, readiness,
+                new RelationBranchProjectionRebuildService(reads, writer), recovery);
+
+        assertThatThrownBy(() -> operations.rebuild(context, expected))
+                .isInstanceOfSatisfying(BranchHeadConflictException.class, conflict -> {
+                    assertThat(conflict.getExpectedHeadCommit()).isEqualTo(expected);
+                    assertThat(conflict.getActualHeadCommit()).isNotEqualTo(expected);
+                });
+        verifyNoInteractions(writer, readiness, recovery);
     }
 
     @Test
@@ -133,7 +171,7 @@ class RelationProjectionOperationsServiceTest {
         assertThatThrownBy(() -> service.rebuild(
                 context, "a".repeat(40)))
                 .isInstanceOf(BranchHeadConflictException.class);
-        verify(rebuildService, never()).rebuild(context);
+        verifyNoInteractions(rebuildService);
     }
 
     @Test
@@ -157,7 +195,7 @@ class RelationProjectionOperationsServiceTest {
                 "repo-a", "workspace-a", "review", head, 1);
         Readiness corrupt = new Readiness(
                 ReadinessState.CORRUPT, head, head, List.of());
-        when(rebuildService.rebuild(context)).thenReturn(rebuilt);
+        when(rebuildService.rebuildAtVerifiedHead(eq(context), any(), eq(head))).thenReturn(rebuilt);
         when(readinessService.inspect(context)).thenReturn(corrupt);
 
         assertThatThrownBy(() -> new RelationProjectionOperationsService(
@@ -195,7 +233,7 @@ class RelationProjectionOperationsServiceTest {
                 "repo-a", "workspace-a", "review", head, 0);
         Readiness readiness = new Readiness(
                 ReadinessState.READY, head, head, List.of());
-        when(rebuildService.rebuild(context)).thenReturn(rebuilt);
+        when(rebuildService.rebuildAtVerifiedHead(eq(context), any(), eq(head))).thenReturn(rebuilt);
         when(readinessService.inspect(context)).thenReturn(readiness);
         when(recoveryService.reconcileAfterRebuild(context, head))
                 .thenThrow(new IllegalStateException("recovery unavailable"));
