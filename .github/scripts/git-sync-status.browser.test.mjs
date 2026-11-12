@@ -50,6 +50,24 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
             headers.push(item);
             headerTasks.push(request.allHeaders().then(all => { item.all = all['x-taxonomy-workspace-id'] || null; }));
         });
+        // Drive the two production poll intervals independently of the runner's wall clock.
+        // Startup, reload, requests, response bodies and renderer adoption remain native.
+        await context.addInitScript(() => {
+            const schedule = window.setInterval.bind(window), cancel = window.clearInterval.bind(window);
+            const statusIntervals = new Map();
+            let next = -1;
+            window.setInterval = (callback, delay, ...args) => {
+                if (delay !== 10000) return schedule(callback, delay, ...args);
+                const id = next--;
+                statusIntervals.set(id, () => callback(...args));
+                return id;
+            };
+            window.clearInterval = id => { if (!statusIntervals.delete(id)) cancel(id); };
+            window.__fixturePollStatus = () => {
+                for (const callback of statusIntervals.values()) callback();
+                return statusIntervals.size;
+            };
+        });
         await observer.attach(page, context);
         // The engine signature is a controlled fixture at a real beforeunload.
         // Original HTTP, routing, DTO adoption and document epochs are native Chromium evidence.
@@ -117,8 +135,6 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
         assert.ok(observed.reads.every(read => read.finished && read.jsonParsed && read.status === 200));
         assert.equal(observed.navigations[0].oldDocument.url, observed.navigations[0].newDocument.url);
         const proofs = observer.reconciliations();
-        await writeFile(path.resolve('target/native-status-reload-' + (prefix ? 'mounted' : 'root') + '.json'),
-            JSON.stringify({browser:'chromium', nativeEngineCancellationReproduced:false, headers, observed, proofs, pageErrors}, null, 2) + '\n');
         assert.deepEqual(pageErrors, [], 'Actual renderer and script errors remain blocking');
         ledger.reconcile(proofs);
         // A failed cancellation proof must expose the original browser/HTTP
@@ -142,6 +158,29 @@ for (const prefix of ['', '/taxonomy']) test(`root-shell reload pins original st
         }, null, 2) : '';
         assert.deepEqual(errors, [], 'Full native lifecycle and adoption evidence for an unreconciled cancellation: ' + diagnosis);
         assert.deepEqual(reconciled.map(proof => proof.request.payload), [git, current]);
+        // Exercise one complete periodic cycle after both document-start pairs have been verified.
+        const endpoints = ['/api/git/state', '/api/context/current'];
+        const writes = await page.evaluate(() => [__taxonomyPollEvidence.gitWrites, __taxonomyPollEvidence.contextWrites]);
+        const offset = headers.length;
+        const cycle = await Promise.all([
+            ...endpoints.map(endpoint => page.waitForEvent('requestfinished',
+                request => new URL(request.url()).pathname === prefix + endpoint)),
+            page.evaluate(() => window.__fixturePollStatus())
+        ]);
+        assert.equal(cycle.pop(), 2, 'Each status owner schedules exactly one ten-second poll');
+        await page.waitForFunction(([gitBefore, contextBefore]) =>
+            __taxonomyPollEvidence.gitWrites > gitBefore && __taxonomyPollEvidence.contextWrites > contextBefore, writes);
+        await Promise.all(headerTasks);
+        assert.deepEqual(headers.slice(offset).map(read => new URL(read.url).pathname.slice(prefix.length)), endpoints);
+        assert.deepEqual(headers.slice(offset).map(read => [read.immediate, read.all]), endpoints.map(() => [workspaceId, workspaceId]));
+        const responses = await Promise.all(cycle.map(request => request.response()));
+        assert.deepEqual(responses.map(response => response.status()), [200, 200]);
+        assert.deepEqual(await Promise.all(responses.map(response => response.json())), [git, current]);
+        assert.deepEqual(observed.reads.slice(offset).map(read => read.documentEpoch), endpoints.map(() => epochs[1]));
+        assert.deepEqual(pageErrors, []);
+        await writeFile(path.resolve('target/native-status-reload-' + (prefix ? 'mounted' : 'root') + '.json'),
+            JSON.stringify({browser:'chromium', nativeEngineCancellationReproduced:false, headers, observed, proofs, pageErrors}, null, 2) + '\n');
+
     } finally { await context.close(); }
 });
 
