@@ -214,7 +214,7 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
                     var heldRetry = retryGate;
                     String failedJob = "/api/projects/" + PROJECT_A + "/analysis-jobs/qa-failed";
                     if (heldRetry != null && method.equals("POST") && (failedJob + "/retry-failed").equals(relative)
-                            && "workspaceId=qa-context-workspace".equals(exchange.getRequestURI().getRawQuery())
+                            && exactScope(exchange)
                             && "qa-context-workspace".equals(exchange.getRequestHeaders().getFirst("X-Taxonomy-Workspace-Id"))) {
                         heldRetry.requests.incrementAndGet();
                         if (!heldRetry.release.await(30, TimeUnit.SECONDS)) {
