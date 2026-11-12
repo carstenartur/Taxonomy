@@ -185,7 +185,7 @@ public class ArchitectureFocusSuggestionService {
                         local(request, hash, candidates, fallbackMethod)));
             }
             var admittedProvider = llm.captureInteractiveProvider(providerId);
-            return new Execution(true, () -> {
+            return new Execution(llm.interactiveDispatchAvailable(false), () -> {
                 // Re-acquisition can fail before a single provider call. The receipt records that failure.
                 var pinned = llm.withProviderBinding(providerId, admittedProvider);
                 try (pinned) {
