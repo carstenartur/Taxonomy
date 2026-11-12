@@ -284,6 +284,7 @@ window.TaxonomyApiClient = (function () {
         var chrome = window.TaxonomyAppChrome?.getContext?.() || {};
         var source = window.TaxonomyArchitectureWorkflow?.getScope?.() || {};
         return JSON.stringify([value?.contextId, value?.branch, value?.commitId,
+            window.TaxonomyContextBar?.getSelectionGeneration?.(),
             chrome.project?.id, chrome.requirement?.id, chrome.requirement?.version,
             chrome.architecture?.repositoryId, chrome.architecture?.workspaceScopeKey,
             chrome.architecture?.branch, ignoreModelStand ? null : chrome.architecture?.modelStand,

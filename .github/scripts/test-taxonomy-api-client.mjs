@@ -1024,6 +1024,30 @@ async function confirmWorkspaceBadgeSource(f, status = 200) {
   await f.settle();
 }
 
+test('returning to a branch preserves fresh work and leaves previous callbacks obsolete', async () => {
+  const f = await loadWorkspaceBadgeStartup();
+  await confirmWorkspaceBadgeSource(f);
+  const bar = f.w.TaxonomyContextBar, client = f.w.TaxonomyApiClient;
+  const original = bar.getCurrentContext();
+  const firstVisit = client.captureContext();
+  const page = client.captureContext({contextSensitive: false});
+
+  async function refresh(context) {
+    const read = bar.fetchAndRender('contextBar');
+    f.reads('/api/context/current').at(-1).resolve(Response.json(context));
+    await read;
+  }
+
+  await refresh({...original, dirty: true});
+  assert.equal(firstVisit(), true, 'A dirty badge update keeps the same selection');
+  await refresh({...original, contextId: 'review-B', branch: 'review', mode: 'READ_ONLY'});
+  assert.equal(firstVisit(), false);
+  await refresh(original);
+  assert.equal(firstVisit(), false, 'Returning to the original branch cannot revive completed-work callbacks');
+  assert.equal(client.captureContext()(), true);
+  assert.equal(page(), true, 'An installation-wide read remains current across repository switches');
+});
+
 test('the live workspace badge waits for the initial repository context in the same workspace', async () => {
   const f = await loadWorkspaceBadgeStartup();
   assert.equal(f.reads('/api/workspace/current').length, 0, 'Do not admit the badge read before source readiness');
