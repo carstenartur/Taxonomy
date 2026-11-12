@@ -2,15 +2,18 @@ package com.taxonomy.composition.dsl.controller;
 
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.catalog.provenance.CatalogueSourceBytes;
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.dsl.model.ProjectCatalogue;
 import com.taxonomy.editor.ArchitectureCommandPort;
 import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayInputStream;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
@@ -33,6 +36,42 @@ class ProjectDslControllerTest {
         when(document.dsl()).thenReturn(dsl);
         when(document.context()).thenReturn(ArchitectureCommandPort.Context.of(context, COMMIT, 3));
         when(document.source()).thenReturn("GIT_CHECKPOINT");
+    }
+
+    @Test void missingSemanticRevisionDoesNotSubstituteTheCurrentDocument() throws Exception {
+        when(resolver.resolveCurrentRepositoryContextForRead()).thenReturn(context);
+        var missing = new CommandProblem("NOT_FOUND", "revision", "Unknown workspace revision", List.of());
+        when(editor.read(context, null, 17L)).thenThrow(missing);
+
+        var response = assertThrows(ResponseStatusException.class, () -> api.read("r", "draft", null, 17L));
+
+        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
+        assertEquals(missing.getMessage(), response.getReason());
+        assertSame(missing, response.getCause());
+        verify(editor).read(context, null, 17L);
+        verifyNoMoreInteractions(editor);
+        verifyNoInteractions(journal);
+    }
+
+    @Test void commitAndSemanticRevisionCannotSelectTheSameDocument() throws Exception {
+        when(resolver.resolveCurrentRepositoryContextForRead()).thenReturn(context);
+        when(editor.read(context, COMMIT, 3L)).thenCallRealMethod();
+
+        var response = assertThrows(ResponseStatusException.class, () -> api.catalogues("r", "draft", COMMIT, 3L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals("Invalid requested architecture revision", response.getReason());
+        verifyNoInteractions(journal);
+    }
+
+    @Test void changedBranchStopsTheReadBeforeLookingUpAnArchivedInput() {
+        when(resolver.resolveCurrentRepositoryContextForRead()).thenReturn(context);
+
+        var response = assertThrows(ResponseStatusException.class,
+                () -> api.archivedSource("r", "other", COMMIT, null, "workbook", false));
+
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        verifyNoInteractions(editor, journal);
     }
 
     @Test void journaledLegacyImportRetainsItsIdentityWithoutClaimingAnArchivedWorkbook() throws Exception {
