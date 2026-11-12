@@ -19,6 +19,11 @@ import static com.taxonomy.backup.runtime.CurrentStateExportIT.*;
 import static org.assertj.core.api.Assertions.*;
 
 class WorkspaceRecordsExportIT {
+    private static final List<String> WORKSPACE_DATASETS = List.of("repositories","workspaces","memberships","synchronization",
+            "branch-synchronization","fetch-journal","central-fetch-journal","publication-journal","publication-decisions",
+            "working-states","operations","checkpoints","commit-index","context-history").stream()
+            .map(name -> "data/workspace/" + name + ".ndjson").toList();
+
     @ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings = {"control", "long"})
     void legacyJournalLabelsOutsideTheIdentityDomainDoNotBecomePrincipalReferences(String shape) throws Exception {
         try (var fixture = new Fixture()) {
@@ -125,7 +130,7 @@ class WorkspaceRecordsExportIT {
             var scope = new BackupScope.Workspace("repo-a", "private-a");
             var current = new Contents();
             contributor.write(snapshot(BackupProfile.CURRENT_STATE, scope), current);
-            assertThat(current.entries).hasSize(9);
+            assertThat(current.entries.keySet()).containsExactlyInAnyOrderElementsOf(WORKSPACE_DATASETS);
             for (String dataset : List.of("repositories", "workspaces", "memberships", "synchronization", "working-states")) {
                 assertThat(records(current, dataset)).as(dataset).hasSize(1);
             }
@@ -173,14 +178,16 @@ class WorkspaceRecordsExportIT {
             assertThat(full.text()).contains("NAVIGATION-ALICE", "NAVIGATION-BOB").doesNotContain("SOURCE-STORAGE", "SOURCE-CREDENTIAL");
             var selected = new Contents();
             contributor.write(snapshot(BackupProfile.SELECTED_VERSION, new BackupScope.Workspace("repo-a", "private-a")), selected);
-            assertThat(selected.entries).hasSize(9);
+            assertThat(selected.entries.keySet()).containsExactlyInAnyOrderElementsOf(WORKSPACE_DATASETS);
             for (var entry : selected.entries.entrySet()) {
                 assertThat(new String(entry.getValue(), StandardCharsets.UTF_8).lines()).as(entry.getKey())
                         .hasSize(1).allMatch(line -> line.contains("\"schemaVersion\":1") && line.contains("SELECTED_VERSION"));
             }
             assertThat(contributor.componentId()).isEqualTo(new BackupComponentId("workspace"));
             assertThat(contributor.schemaVersion()).isEqualTo(1);
-            assertThat(contributor.categories()).hasSize(9).contains(UserWorkspace.class.getName(), ContextHistoryRecord.class.getName());
+            assertThat(contributor.categories()).hasSize(14).contains(UserWorkspace.class.getName(), ContextHistoryRecord.class.getName(),
+                    com.taxonomy.workspace.service.WorkspacePublicationOperation.class.getName(),
+                    com.taxonomy.workspace.service.WorkspacePublicationDecision.class.getName());
             assertThat(contributor.omissions(BackupProfile.SELECTED_VERSION)).anyMatch(value -> value.contains("selected Git state is authoritative"));
             assertThat(contributor.omissions(BackupProfile.INSTALLATION_FULL)).noneMatch(value -> value.contains("context navigation"));
         }

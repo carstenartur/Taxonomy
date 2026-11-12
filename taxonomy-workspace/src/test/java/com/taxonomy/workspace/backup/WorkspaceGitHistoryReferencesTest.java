@@ -66,6 +66,32 @@ class WorkspaceGitHistoryReferencesTest {
         }
     }
 
+    @Test void publicationCandidatesRequireTheirOriginalSelectedGitStorage() throws Exception {
+        try (var f = new Fixture()) {
+            String source = f.orphan("central-a","Unpublished central candidate");
+            String local = f.orphan("ws-private-a","Unpublished workspace candidate");
+            f.base.sql("update user_workspace set username='alice'");
+            var operation = "1".repeat(64);
+            f.base.sql("insert into workspace_publication_operation values(?,'repo-a','private-a','alice',?,?,?,?,?,?,?,?,?)",
+                    operation,local,source,local,local,local,local,source,local,local);
+            var full = f.inspect(repositories());
+            var personal = f.inspect(workspace());
+            for (var field : List.of(PUBLICATION_INPUT_SOURCE,PUBLICATION_PREPARED_SOURCE)) {
+                assertThat(full.references()).contains(proof("workspace.publication",operation,field,CENTRAL,source));
+                assertThat(personal.references()).noneMatch(ref -> ref.field()==field);
+            }
+            for (var field : List.of(PUBLICATION_FORK_POINT,PUBLICATION_INPUT_LOCAL,PUBLICATION_INPUT_TRACKING,
+                    PUBLICATION_EXPECTED_LOCAL,PUBLICATION_EXPECTED_TRACKING,PUBLICATION_PREPARED_LOCAL,PUBLICATION_PREPARED_TRACKING)) {
+                var proof = proof("workspace.publication",operation,field,WORKSPACE,local);
+                assertThat(full.references()).contains(proof);
+                assertThat(personal.references()).contains(proof);
+            }
+            assertThat(personal.requiredCommits()).containsOnlyKeys(WORKSPACE);
+            f.base.sql("update workspace_publication_operation set prepared_local=?",source);
+            assertThatThrownBy(() -> f.inspect(repositories())).isInstanceOf(IOException.class).hasMessageContaining("missing");
+        }
+    }
+
     @Test void doesNotOpenAnUnselectedCentralRepositoryToRepairAMissingWorkspaceClosure() throws Exception {
         try (var f = new Fixture()) {
             String central = f.commit("central-a", "NOT AUTHORIZED FOR THIS EXPORT");
@@ -192,6 +218,10 @@ class WorkspaceGitHistoryReferencesTest {
                 base.sql("alter table system_repository add column " + name + " varchar(255)");
             for (String name : List.of("base_commit", "current_commit", "last_fetched_commit", "last_integrated_commit"))
                 base.sql("alter table user_workspace add column " + name + " varchar(40)");
+            base.sql("alter table user_workspace add column username varchar(255)");
+            base.sql("create table workspace_publication_operation(operation_id varchar(64) primary key,repository_id varchar(255),workspace_id varchar(255),actor_scope varchar(255),"
+                    + "fork_point varchar(40),input_source varchar(40),input_local varchar(40),input_tracking varchar(40),"
+                    + "expected_local varchar(40),expected_tracking varchar(40),prepared_source varchar(40),prepared_local varchar(40),prepared_tracking varchar(40))");
             base.sql("create table workspace_branch_sync(scope_key varchar(64) primary key,repository_id varchar(255),workspace_id varchar(255),last_synced_commit_id varchar(40),last_published_commit_id varchar(40))");
             base.sql("create table sync_state(id bigint primary key,workspace_id varchar(255),last_synced_commit_id varchar(40),last_published_commit_id varchar(40))");
             base.sql("create table architecture_commit_index(id bigint primary key,repository_id varchar(255),workspace_id varchar(255),commit_id varchar(40))");

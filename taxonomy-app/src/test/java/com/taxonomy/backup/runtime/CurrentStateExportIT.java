@@ -232,6 +232,9 @@ class CurrentStateExportIT {
             configuration.getProperties().put("hibernate.connection.datasource", database);
             for (var type : List.of(EditorWorkspace.class, EditorOperation.class, EditorCheckpoint.class,
                     SystemRepository.class, UserWorkspace.class, RepositoryMembership.class, SyncState.class,
+                    com.taxonomy.workspace.model.WorkspaceBranchSyncState.class, com.taxonomy.workspace.service.WorkspaceFetchOperation.class,
+                    com.taxonomy.workspace.service.CentralFetchOperation.class, com.taxonomy.workspace.service.WorkspacePublicationOperation.class,
+                    com.taxonomy.workspace.service.WorkspacePublicationDecision.class,
                     com.taxonomy.versioning.model.ArchitectureCommitIndex.class, com.taxonomy.versioning.model.ContextHistoryRecord.class,
                     AnalysisWorkingDraft.class, AnalysisContinuationRun.class, AnalysisQuestionCheckpoint.class,
                     com.taxonomy.analysis.operation.AnalysisAdapterOperation.class, com.taxonomy.analysis.cluster.ClusterAnalysisRun.class, com.taxonomy.analysis.cluster.ClusterAnalysisWork.class,

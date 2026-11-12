@@ -12,7 +12,8 @@ import java.util.Objects;
 @Entity
 @Table(name = "workspace_publication_operation", indexes = {
         @Index(name = "ix_ws_publish_due", columnList = "phase,next_attempt_at"),
-        @Index(name = "ix_ws_publish_archive", columnList = "archived_at,completed_at")})
+        @Index(name = "ix_ws_publish_archive", columnList = "archived_at,completed_at"),
+        @Index(name = "ix_ws_publish_cleanup", columnList = "cleanup_due_at,operation_id")})
 public class WorkspacePublicationOperation extends LeasedRepositoryOperation {
     enum Step { PREPARE, CANDIDATES, SOURCE_REF, WORKSPACE_REF, TRACKING_REF, CENTRAL_PORTFOLIO, LOCAL_PORTFOLIO,
         WORKSPACE_METADATA, SOURCE_METADATA, PROGRESS, COMPLETE }
@@ -35,6 +36,8 @@ public class WorkspacePublicationOperation extends LeasedRepositoryOperation {
     @Column(name = "input_tracking", length = 40) String inputTracking;
     @Column(name = "expected_local", length = 40) String expectedLocal;
     @Column(name = "expected_tracking", length = 40) String expectedTracking;
+    @Column(name = "central_portfolio_digest", length = 64) String centralPortfolioDigest;
+    @Column(name = "local_portfolio_digest", length = 64) String localPortfolioDigest;
     @Column(name = "merged_digest", length = 64) String mergedDigest;
     @Column(name = "prepared_source", length = 40) String preparedSource;
     @Column(name = "prepared_local", length = 40) String preparedLocal;
@@ -42,6 +45,10 @@ public class WorkspacePublicationOperation extends LeasedRepositoryOperation {
     @Enumerated(EnumType.STRING) @Column(name = "operation_step", nullable = false, length = 28) Step step;
     @Column(name = "created_at", nullable = false) long createdAt;
     @Column(name = "published_at") Long publishedAt;
+    @Column(name = "source_observed_at") Long sourceObservedAt;
+    @Column(name = "pins_released_at") Long pinsReleasedAt;
+    @Column(name = "cleanup_due_at") Long cleanupDueAt;
+    @Column(name = "redacted_at") Long redactedAt;
     @Column(name = "archived_by", length = 64) String archivedBy;
 
     protected WorkspacePublicationOperation() { }

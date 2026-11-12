@@ -14,20 +14,20 @@ final class WorkspaceRestoreReferences {
     record Rows(List<RepositoryRecord> repositories,List<WorkspaceRecord> workspaces,List<MembershipRecord> memberships,
                 List<SyncRecord> synchronization,List<WorkingStateRecord> workingStates,List<OperationRecord> operations,
                 List<CheckpointRecord> checkpoints,List<CommitIndexRecord> commitIndex,List<ContextHistoryRecord> contextHistory,
-                List<BranchSyncRecord> branchProgress) {
+                List<BranchSyncRecord> branchProgress,List<PublicationRecord> publications) {
         Rows(List<RepositoryRecord> repositories,List<WorkspaceRecord> workspaces,List<MembershipRecord> memberships,
                 List<SyncRecord> synchronization,List<WorkingStateRecord> workingStates,List<OperationRecord> operations,
                 List<CheckpointRecord> checkpoints,List<CommitIndexRecord> commitIndex,List<ContextHistoryRecord> contextHistory) {
-            this(repositories,workspaces,memberships,synchronization,workingStates,operations,checkpoints,commitIndex,contextHistory,List.of());
+            this(repositories,workspaces,memberships,synchronization,workingStates,operations,checkpoints,commitIndex,contextHistory,List.of(),List.of());
         }
 
         Rows {
-            branchProgress=List.copyOf(branchProgress);
+            branchProgress=List.copyOf(branchProgress);publications=List.copyOf(publications);
             repositories=List.copyOf(repositories);workspaces=List.copyOf(workspaces);memberships=List.copyOf(memberships);
             synchronization=List.copyOf(synchronization);workingStates=List.copyOf(workingStates);operations=List.copyOf(operations);
             checkpoints=List.copyOf(checkpoints);commitIndex=List.copyOf(commitIndex);contextHistory=List.copyOf(contextHistory);
             long total=(long)repositories.size()+workspaces.size()+memberships.size()+synchronization.size()+workingStates.size()
-                    +operations.size()+checkpoints.size()+commitIndex.size()+contextHistory.size()+branchProgress.size();
+                    +operations.size()+checkpoints.size()+commitIndex.size()+contextHistory.size()+branchProgress.size()+publications.size();
             if(total>100_000)throw new IllegalArgumentException("Workspace owner row budget exceeded");
         }
     }
@@ -98,6 +98,16 @@ final class WorkspaceRestoreReferences {
                     ||!RepositoryContext.workspace(row.repositoryId(),row.workspaceId(),row.branch(),"restore-source-check").repositoryWorkspaceScopeKey().equals(row.sourceId().value())
                     ||editors.putIfAbsent(row.sourceId(),row)!=null)throw working();
             add(expected,row.sourceId(),Field.EDITOR_CHECKPOINT,row.checkpointCommit(),Set.of(key));
+        }
+        for (var row : rows.publications()) {
+            checkpoint.check(); id(row.sourceId(), "workspace.publication");
+            if (row.commits() == null) throw reference();
+            if (row.detachedWorkspace()) continue;
+            var workspace = key(row.repositoryId(), row.workspaceId(), sourceKeys);
+            for (var commit : row.commits().recorded().entrySet()) {
+                var owners = com.taxonomy.workspace.backup.WorkspaceGitHistoryReferences.publicationOwners(commit.getKey(), workspace, sourceKeys);
+                if (!owners.isEmpty()) add(expected,row.sourceId(),commit.getKey(),commit.getValue(),Set.copyOf(owners));
+            }
         }
         for(var row:rows.checkpoints()) {
             checkpoint.check();id(row.sourceId(),"workspace.checkpoint");id(row.editor(),"workspace.editor");var parent=editors.get(row.editor());if(parent==null)throw reference();
