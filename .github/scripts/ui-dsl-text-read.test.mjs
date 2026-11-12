@@ -128,6 +128,44 @@ test('initial DSL read waits for resolved workspace, context and branch selectio
  h.resolveContext();await settle();assert.equal(h.calls.length,1);
  h.calls[0].resolve(response('initial architecture'));await settle();assert.equal(h.view.state.doc.toString(),'initial architecture');
 });
+
+test('direct editor startup reads the project selected by asynchronous source restoration', async () => {
+ const h = startupHarness(), source = deferred();
+ h.window.TaxonomyArchitectureWorkspace = {ready: () => source.promise};
+ h.resolveWorkspace();
+ h.resolveContext({branch:'draft', commitId:null, mode:'EDITABLE'});
+ await settle();
+ assert.equal(h.calls.length, 0, 'No project read before its repository is resolved');
+ const architecture = {repositoryId:'retained-project', workspaceScopeKey:'resolved-workspace', branch:'project-branch'};
+ h.window.TaxonomyAppChrome = {getContext: () => ({architecture})};
+ source.resolve(true);
+ await settle();
+ assert.equal(h.calls.length, 1);
+ const query = new URL(h.calls[0].url, 'https://example.test').searchParams;
+ assert.equal(query.get('repositoryId'), architecture.repositoryId);
+ assert.equal(query.get('branch'), architecture.branch);
+ assert.equal(query.get('workspaceId'), architecture.workspaceScopeKey);
+ h.calls[0].resolve(response('retained project document'));
+ await settle();
+ assert.equal(h.view.state.doc.toString(), 'retained project document');
+});
+
+test('source restoration leaves a newer draft intact and fails closed when unavailable', async () => {
+ for (const typed of [false,true]) {
+  const h = startupHarness(), source = deferred();
+  h.window.TaxonomyArchitectureWorkspace = {ready: () => source.promise};
+  h.resolveWorkspace();
+  h.resolveContext();
+  await settle();
+  if (typed) h.view.state.doc = h.doc('user draft');
+  source.resolve(typed);
+  await settle();
+  assert.equal(h.calls.length, 0);
+  if (typed) assert.equal(h.view.state.doc.toString(), 'user draft');
+  else assert.equal(h.status.textContent, 'dsl.load.failed');
+ }
+});
+
 for(const stage of ['workspace','context'])test(`initialization preserves text typed while ${stage} is pending`,async()=>{
  const h=startupHarness();if(stage==='context'){h.resolveWorkspace();await settle();}
  h.view.state.doc=h.doc('human draft before initialization');h.resolveWorkspace();h.resolveContext();await settle();
@@ -236,4 +274,18 @@ for (const change of ['workspaceId','analysisGeneration']) test(`startup does no
 test('failed context resolution reports an error without an initial export',async()=>{
  const h=startupHarness();h.resolveWorkspace();h.resolveContext(null);await settle();
  assert.equal(h.calls.length,0);assert.equal(h.status.textContent,'dsl.load.failed');
+});
+
+test('project load pins a historical architecture while the independent catalogue export stays available', async () => {
+ const h=harness(), commit='a'.repeat(40);
+ h.window.TaxonomyContextBar={getCurrentContext:()=>({branch:'draft',commitId:commit,mode:'READ_ONLY'})};
+ h.window.TaxonomyArchitectureWorkflow={getScope:()=>({repositoryId:'historical-project',workspaceId:'qa-original'})};
+ h.window.__qaLoadCurrent();
+ const url=new URL(h.calls[0].url,'https://example.test');
+ assert.equal(url.pathname,'/api/dsl/project');
+ assert.equal(url.searchParams.get('commit'),commit);
+ assert.equal(url.searchParams.get('repositoryId'),'historical-project');
+ assert.equal(url.searchParams.get('workspaceId'),'qa-original');
+ h.calls[0].resolve(response('project with a standalone element')); await settle();
+ assert.equal(h.view.state.doc.toString(),'project with a standalone element');
 });

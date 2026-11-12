@@ -7,7 +7,10 @@ import com.taxonomy.catalog.provenance.CatalogueSourceJournal.*;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
 import com.taxonomy.catalog.model.PrimaryRepositorySeedRelationListener;
+import com.taxonomy.dsl.model.ProjectCatalogue;
+import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.storage.DslGitRepository;
 import jakarta.persistence.*;
 import org.hibernate.cfg.Configuration;
 import org.hsqldb.jdbc.JDBCDataSource;
@@ -96,8 +99,44 @@ class CatalogueSourceJournalIT {
             assertThat(old).isNotNull();
             var current = f.tx.execute(s -> f.journal.initialize(newInput, SourceUse.notUsed(), SourceUse.notUsed()));
             assertThat(current.id()).isNotEqualTo(old.id()); assertThat(f.journal.current()).isEqualTo(current);
+            assertThat(f.journal.findRevision(old.id())).contains(old);
+            assertThat(f.journal.findRevision(current.id())).contains(current);
+            assertThat(f.journal.retainedWorkbook(f.journal.findRevision(old.id()).orElseThrow().workbook()).sha256())
+                    .isEqualTo(oldInput.sha256());
+            assertThat(f.journal.findRevision(null)).isEmpty();
+            assertThat(f.journal.findRevision(java.util.UUID.randomUUID().toString())).isEmpty();
             assertThat(f.blob(oldInput.sha256())).isEqualTo("old catalogue".getBytes(StandardCharsets.UTF_8));
             assertThat(f.count("catalogue_source_revision")).isEqualTo(2);
+        }
+    }
+
+    @Test void historicalProjectKeepsItsOriginalCatalogueAfterImportAndExplicitComparison() throws Exception {
+        try (var fixture = new Fixture(); var git = new DslGitRepository()) {
+            var workbookA = bytes("original public library catalogue");
+            var workbookB = bytes("revised public library catalogue");
+            var a = fixture.tx.execute(status ->
+                    fixture.journal.initialize(workbookA, SourceUse.notUsed(), SourceUse.notUsed()));
+            String initial = ProjectCatalogue.initial("library", UUID.fromString(a.id()))
+                    + "element READING-ROOM type System {\n  title: \"Lesesaal\";\n}\n";
+            String firstCommit = git.commitDsl("draft", initial, "librarian", "Create reading room");
+
+            var b = fixture.tx.execute(status ->
+                    fixture.journal.initialize(workbookB, SourceUse.notUsed(), SourceUse.notUsed()));
+            String original = git.getDslAtCommit(firstCommit);
+            var parser = new TaxDslParser();
+            var historic = parser.parse(original).getMeta();
+            assertThat(historic.catalogueRevision()).isEqualTo(a.id());
+            assertThat(historic.comparisonCatalogueRevision()).isNull();
+            var retainedA = fixture.journal.findRevision(historic.catalogueRevision()).orElseThrow();
+            assertThat(fixture.journal.retainedWorkbook(retainedA.workbook()).sha256()).isEqualTo(workbookA.sha256());
+            String draft = ProjectCatalogue.compareWith(original, UUID.fromString(b.id()));
+            assertThat(git.getDslAtHead("draft")).isEqualTo(initial);
+            String laterCommit = git.commitDsl("draft", draft, "librarian", "Compare with revised catalogue");
+            var compared = parser.parse(git.getDslAtCommit(laterCommit)).getMeta();
+            assertThat(compared.catalogueRevision()).isEqualTo(a.id());
+            var retainedB = fixture.journal.findRevision(compared.comparisonCatalogueRevision()).orElseThrow();
+            assertThat(fixture.journal.retainedWorkbook(retainedB.workbook()).sha256()).isEqualTo(workbookB.sha256());
+            assertThat(git.getDslAtCommit(firstCommit)).isEqualTo(initial);
         }
     }
 

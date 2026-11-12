@@ -97,24 +97,24 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
       // Exercise on-demand editor creation and the real CodeMirror -> HTTP path,
       // without editing text or invoking the linter directly from the test.
       validationExpected = true;
-      const exportedDocument = page.waitForResponse(response =>
-        new URL(response.url()).pathname === new URL('api/dsl/export', base).pathname
+      const projectDocument = page.waitForResponse(response =>
+        new URL(response.url()).pathname === new URL('api/dsl/project', base).pathname
           && response.request().method() === 'GET').then(async response => {
         assert.equal(response.status(), 200);
         assert.equal(await response.finished(), null);
         await page.waitForFunction(() => window.dslCmView?.state.doc.length > 0);
         const text = await page.evaluate(() => window.dslCmView.state.doc.toString());
-        assert.ok(text.length > 0, 'Opening the editor loads the scoped catalogue document');
+        assert.ok(text.length > 0, 'Opening the editor loads the selected project document');
         return text;
       });
-      // An empty editor can validate while a slow initial export is pending.
+      // An empty editor can validate while a slow initial project read is pending.
       // Arm both listeners before navigation and accept only the loaded document.
-      // Read its browser text after export completion: WebDriver/CDP response
+      // Read its browser text after the project read completes: WebDriver/CDP response
       // decoding can differ from fetch's decoding of a Unicode text response.
       const loadedDocumentValidation = page.waitForResponse(async response =>
         new URL(response.url()).pathname === validationUrl.pathname
           && response.request().method() === 'POST'
-          && response.request().postData() === await exportedDocument).catch(async error => {
+          && response.request().postData() === await projectDocument).catch(async error => {
         const state = await page.evaluate(() => ({
           editorLength: window.dslCmView?.state.doc.length ?? null,
           editorInView: window.dslCmView?.inView ?? null,
@@ -125,7 +125,7 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
           + JSON.stringify({ locale, state, validationTraffic }), { cause: error });
       });
       const [originalDocument, validation] = await Promise.all([
-        exportedDocument,
+        projectDocument,
         loadedDocumentValidation,
         navigateToPage(page, 'dsl-editor').then(() =>
           page.locator('#dslEditorContainer').scrollIntoViewIfNeeded())

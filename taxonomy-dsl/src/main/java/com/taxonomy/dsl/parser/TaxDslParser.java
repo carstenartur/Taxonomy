@@ -105,7 +105,9 @@ public class TaxDslParser {
                     String language = findProperty(properties, "language");
                     String version = findProperty(properties, "version");
                     String namespace = findProperty(properties, "namespace");
-                    meta = new MetaAst(language, version, namespace, loc);
+                    meta = new MetaAst(language, version, namespace,
+                            findProperty(properties, "catalogueRevision"),
+                            findProperty(properties, "comparisonCatalogueRevision"), loc);
                 } else {
                     BlockAst block = new BlockAst(keyword, headerTokens, properties,
                             List.of(), extensions, loc);

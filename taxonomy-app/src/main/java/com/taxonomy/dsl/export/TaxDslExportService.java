@@ -1,6 +1,7 @@
 package com.taxonomy.dsl.export;
 
 import com.taxonomy.dsl.mapper.ModelToAstMapper;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.dsl.model.*;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import com.taxonomy.catalog.model.TaxonomyNode;
@@ -21,17 +22,27 @@ import com.taxonomy.dsl.model.TaxonomyRootTypes;
  * as DSL text.
  */
 @Service
-public class TaxDslExportService {
+public class TaxDslExportService implements com.taxonomy.workspace.service.ProjectCatalogueSeed {
 
+    private final CatalogueSourceJournal catalogueSources;
     private final TaxonomyNodeRepository nodeRepository;
     private final TaxonomyRelationRepository relationRepository;
     private final ModelToAstMapper modelToAstMapper = new ModelToAstMapper();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
 
     public TaxDslExportService(TaxonomyNodeRepository nodeRepository,
-                               TaxonomyRelationRepository relationRepository) {
+                               TaxonomyRelationRepository relationRepository,
+                               CatalogueSourceJournal catalogueSources) {
+        this.catalogueSources = catalogueSources;
         this.nodeRepository = nodeRepository;
         this.relationRepository = relationRepository;
+    }
+
+    /** A new project begins with a pinned source and zero adopted architecture objects. */
+    @Transactional
+    public String newProject(String namespace) {
+        var generation = catalogueSources.lockForCapture();
+        return ProjectCatalogue.initial(namespace, UUID.fromString(generation.id()));
     }
 
     /**
@@ -40,9 +51,11 @@ public class TaxDslExportService {
      * @param namespace the namespace for the meta block
      * @return serialized DSL text
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public String exportAll(String namespace) {
+        var source = catalogueSources.lockForCapture();
         CanonicalArchitectureModel model = buildCanonicalModel();
+        model.setCatalogueRevision(source.id());
         var doc = modelToAstMapper.toDocument(model, namespace);
         return serializer.serialize(doc);
     }
@@ -67,6 +80,8 @@ public class TaxDslExportService {
                 el.setTitle(node.getNameEn());
                 el.setDescription(node.getDescriptionEn());
                 el.setTaxonomy(node.getTaxonomyRoot());
+                if (node.getParentCode() != null) el.getExtensions().put("x-catalogue-parent", node.getParentCode());
+                if (node.getSortOrder() != null) el.getExtensions().put("x-catalogue-order", node.getSortOrder().toString());
                 model.getElements().add(el);
                 elementIds.add(node.getCode());
             }

@@ -27,6 +27,7 @@ public class ArchitectureRepositoryProvisioningService {
     private static final String MINIMAL_DSL = "meta { language: \"taxdsl\"; }\n";
     private static final String INITIAL_MESSAGE = "Initialize architecture repository";
 
+    private final ProjectCatalogueSeed projectSeed;
     private final SystemRepositoryService systemRepositoryService;
     private final RepositoryMembershipService membershipService;
     private final DslGitRepositoryFactory repositoryFactory;
@@ -34,7 +35,9 @@ public class ArchitectureRepositoryProvisioningService {
     public ArchitectureRepositoryProvisioningService(
             SystemRepositoryService systemRepositoryService,
             RepositoryMembershipService membershipService,
-            DslGitRepositoryFactory repositoryFactory) {
+            DslGitRepositoryFactory repositoryFactory,
+            ProjectCatalogueSeed projectSeed) {
+        this.projectSeed = projectSeed;
         this.systemRepositoryService = systemRepositoryService;
         this.membershipService = membershipService;
         this.repositoryFactory = repositoryFactory;
@@ -75,7 +78,7 @@ public class ArchitectureRepositoryProvisioningService {
         }
     }
 
-    private static void initializeOrVerifyCreation(DslGitRepository git, SystemRepository metadata, String owner) throws IOException {
+    private void initializeOrVerifyCreation(DslGitRepository git, SystemRepository metadata, String owner) throws IOException {
         String branch = metadata.getDefaultBranch();
         var repository = git.getGitRepository();
         synchronized (repository) {
@@ -83,11 +86,13 @@ public class ArchitectureRepositoryProvisioningService {
             String head = git.getHeadCommit(branch);
             if (head == null) {
                 if (!refs.isEmpty()) throw retainedSourceConflict();
-                git.commitDslIfHeadMatches(branch, null, MINIMAL_DSL, owner, INITIAL_MESSAGE);
+                git.commitDslIfHeadMatches(branch, null, projectSeed.newProject("default"), owner, INITIAL_MESSAGE);
                 return;
             }
-            if (refs.size() != 1 || !refs.getFirst().getName().equals(Constants.R_HEADS + branch)
-                    || !MINIMAL_DSL.equals(git.getDslAtCommit(head))) throw retainedSourceConflict();
+            if (refs.size() != 1 || !refs.getFirst().getName().equals(Constants.R_HEADS + branch)) throw retainedSourceConflict();
+            String retained = git.getDslAtCommit(head);
+            if (!MINIMAL_DSL.equals(retained) && !com.taxonomy.dsl.model.ProjectCatalogue.isInitial(retained, "default"))
+                throw retainedSourceConflict();
             try (var walk = new RevWalk(repository); var tree = new TreeWalk(repository)) {
                 var initial = walk.parseCommit(ObjectId.fromString(head));
                 if (initial.getParentCount() != 0 || !INITIAL_MESSAGE.equals(initial.getFullMessage())
@@ -208,7 +213,7 @@ public class ArchitectureRepositoryProvisioningService {
             storageAttempted = true;
             DslGitRepository git = repositoryFactory.createCentralRepository(
                     repositoryId, metadata.getStorageRepositoryName());
-            git.commitDsl(metadata.getDefaultBranch(), MINIMAL_DSL, ownerId, INITIAL_MESSAGE);
+            git.commitDsl(metadata.getDefaultBranch(), projectSeed.newProject("default"), ownerId, INITIAL_MESSAGE);
             return systemRepositoryService.markProvisioningReady(repositoryId);
         } catch (IOException | RuntimeException exception) {
             if (storageAttempted) {

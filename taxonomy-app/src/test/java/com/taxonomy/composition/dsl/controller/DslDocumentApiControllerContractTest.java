@@ -34,6 +34,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class DslDocumentApiControllerContractTest {
+    private final com.taxonomy.composition.dsl.service.ProjectDslSource projects =
+            mock(com.taxonomy.composition.dsl.service.ProjectDslSource.class);
+
     private final DslDocumentOperationsFacade documents = mock(DslDocumentOperationsFacade.class);
     private final DslOperationsFacade dslOps = mock(DslOperationsFacade.class);
     private final WorkspaceResolver workspace = mock(WorkspaceResolver.class);
@@ -45,7 +48,7 @@ class DslDocumentApiControllerContractTest {
     @BeforeEach
     void setUp() {
         var resolver = new DslReadWorkspaceContextResolver(workspace,state);
-        controller = new DslDocumentApiController(documents,dslOps,workspace,resolver);
+        controller = new DslDocumentApiController(documents,dslOps,workspace,resolver, projects);
         mvc = MockMvcBuilders.standaloneSetup(controller,new DslApiController(dslOps,workspace,resolver)).build();
         when(workspace.resolveCurrentUsername()).thenReturn("alice");
         when(workspace.resolveCurrentContext()).thenReturn(context);
@@ -61,15 +64,19 @@ class DslDocumentApiControllerContractTest {
     }
     @Test
     void currentIncludesAllModelCollectionsAndExplicitWorkspaceView() throws Exception {
-        when(documents.buildCanonicalModel()).thenReturn(new CanonicalArchitectureModel());
-        when(dslOps.resolveWorkspaceBranch("alice")).thenReturn("review");
-        when(dslOps.getViewContext("alice","review",context)).thenReturn(view);
+        var selected = mock(com.taxonomy.editor.ArchitectureEditorService.Document.class);
+        when(projects.read(null, null, null, null)).thenReturn(selected);
+        when(selected.dsl()).thenReturn("element standalone type System {\n title: Example;\n}\n");
+        when(selected.context()).thenReturn(com.taxonomy.editor.ArchitectureCommandPort.Context.of(
+                RepositoryContext.workspace("repo-a", "workspace", "review", "alice"), "head"));
+        when(selected.versions()).thenReturn(List.of());
+        when(dslOps.getViewContext(eq("alice"), eq("review"), any())).thenReturn(view);
         mvc.perform(get("/api/dsl/current")).andExpect(status().isOk()).andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.elements").isArray()).andExpect(jsonPath("$.relations").isArray())
                 .andExpect(jsonPath("$.requirements").isArray()).andExpect(jsonPath("$.mappings").isArray())
                 .andExpect(jsonPath("$.views").isArray()).andExpect(jsonPath("$.evidence").isArray())
                 .andExpect(jsonPath("$.viewContext.basedOnCommit").value("head"));
-        verify(state).ensureWorkspaceState("alice");
+        verify(documents, never()).buildCanonicalModel();
     }
     @Test
     void materializePreservesBodyParametersSelectedBranchAndInvalidEnvelope() throws Exception {
@@ -162,13 +169,15 @@ class DslDocumentApiControllerContractTest {
                 .andExpect(jsonPath("$[0].branch").value("review")).andExpect(jsonPath("$[0].rawContent").value("dsl"));
     }
     @Test
-    void nonemptyModelAndDiffRetainValuesAndSharedCurrentFallback() throws Exception {
+    void nonemptySelectedModelAndDiffRetainTheirOwnValues() throws Exception {
         var element = new com.taxonomy.dsl.model.ArchitectureElement("BP","Capability","Business Processes",null,null);
-        var model = new CanonicalArchitectureModel(); model.getElements().add(element);
-        when(documents.buildCanonicalModel()).thenReturn(model);
-        doThrow(new IllegalStateException("unavailable")).when(state).ensureWorkspaceState("alice");
-        when(dslOps.resolveWorkspaceBranch(WorkspaceContext.SHARED.username())).thenReturn("draft");
-        when(dslOps.getViewContext(WorkspaceContext.SHARED.username(),"draft",WorkspaceContext.SHARED)).thenReturn(view);
+        var selected = mock(com.taxonomy.editor.ArchitectureEditorService.Document.class);
+        when(projects.read(null, null, null, null)).thenReturn(selected);
+        when(selected.dsl()).thenReturn("element BP type Capability {\n title: Business Processes;\n}\n");
+        when(selected.context()).thenReturn(com.taxonomy.editor.ArchitectureCommandPort.Context.of(
+                RepositoryContext.workspace("repo-a", "workspace", "review", "alice"), "head"));
+        when(selected.versions()).thenReturn(List.of());
+        when(dslOps.getViewContext(eq("alice"), eq("review"), any())).thenReturn(view);
         mvc.perform(get("/api/dsl/current")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.elements[0].id").value("BP")).andExpect(jsonPath("$.viewContext.basedOnCommit").value("head"));
         var diff = new ModelDiff(List.of(element),List.of(),List.of(),List.of(),List.of(),List.of());
@@ -186,7 +195,7 @@ class DslDocumentApiControllerContractTest {
         var realDocuments = new DslDocumentOperationsFacade(mock(com.taxonomy.dsl.export.TaxDslExportService.class),
                 materialize,mock(com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository.class),dslOps);
         var resolver = new DslReadWorkspaceContextResolver(workspace,state);
-        var routedMvc = MockMvcBuilders.standaloneSetup(new DslDocumentApiController(realDocuments,dslOps,workspace,resolver),
+        var routedMvc = MockMvcBuilders.standaloneSetup(new DslDocumentApiController(realDocuments,dslOps,workspace,resolver, projects),
                 new DslApiController(dslOps,workspace,resolver)).build();
         for (String[] pair : List.of(new String[]{"a".repeat(40),"2"}, new String[]{"1","b".repeat(40)},
                 new String[]{"A".repeat(40),"b".repeat(40)},new String[]{"abc","def"},

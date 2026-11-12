@@ -69,7 +69,7 @@ class RepositoryWorkspaceSnapshotTest {
                     isNull(), any(), eq("owner"))).thenReturn(fork);
             var memberships = mock(RepositoryMembershipService.class);
             when(memberships.canContribute(metadata, "owner")).thenReturn(true);
-            var service = new ArchitectureRepositoryProvisioningService(catalog, memberships, factory);
+            var service = new ArchitectureRepositoryProvisioningService(catalog, memberships, factory, namespace -> "meta { language: \"taxdsl\"; }\n");
             assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
                     () -> service.createFork("source", "approved", "Fork", "fork", null, RepositoryVisibility.PRIVATE, "owner"))
                     .getStatusCode());

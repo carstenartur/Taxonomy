@@ -2,10 +2,12 @@ package com.taxonomy;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.dsl.export.TaxDslExportService;
 import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.mapper.AstToModelMapper;
 import com.taxonomy.model.RelationType;
 import org.junit.jupiter.api.Test;
 import java.util.List;
@@ -14,6 +16,8 @@ import static org.mockito.Mockito.*;
 
 /** The initial catalogue DSL must be referentially closed without inventing virtual components. */
 class TaxDslExportClosureTest {
+    private static final String LEGACY_REVISION = "016cd9ec-0cd7-49b2-a750-6accccc35fad";
+
     @Test void virtualRootTemplatesAreNotAcceptedArchitectureRelationships() {
         var root = node("IP", "IP", 0);
         var process = node("BP-1017", "BP", 1);
@@ -47,6 +51,23 @@ class TaxDslExportClosureTest {
         assertEquals(1, blocks.values().stream().filter(b -> "relation".equals(b.getKind())).count());
     }
 
+    @Test void emptySeedAndExplicitFullExportKeepDistinctObjectSetsAndTheSameGeneration() {
+        var standalone = node("IP-standalone", "IP", 2);
+        standalone.setParentCode("IP-parent");
+        standalone.setSortOrder(13);
+        var exporter = exporter(List.of(standalone), List.of());
+        var parser = new com.taxonomy.dsl.parser.TaxDslParser();
+        var seed = parser.parse(exporter.newProject("project"));
+        var catalogue = parser.parse(exporter.exportAll("catalogue"));
+        assertTrue(seed.blocksOfKind("element").isEmpty());
+        assertEquals(LEGACY_REVISION, seed.getMeta().catalogueRevision());
+        assertEquals(LEGACY_REVISION, catalogue.getMeta().catalogueRevision());
+        var single = catalogue.blocksOfKind("element").getFirst();
+        assertEquals("InformationProduct", new AstToModelMapper().map(catalogue).getElements().getFirst().getType());
+        assertEquals("IP-parent", single.property("x-catalogue-parent"));
+        assertEquals("13", single.property("x-catalogue-order"));
+    }
+
     @Test void missingConcreteEndpointFailsInsteadOfBeingSilentlyDropped() {
         var process = node("BP-1017", "BP", 1);
         var missing = node("IP-1116", "IP", 2);
@@ -76,7 +97,12 @@ class TaxDslExportClosureTest {
         var nodeRepository = mock(TaxonomyNodeRepository.class);
         var relationRepository = mock(TaxonomyRelationRepository.class);
         when(nodeRepository.findAll()).thenReturn(nodes); when(relationRepository.findAll()).thenReturn(relations);
-        return new TaxDslExportService(nodeRepository, relationRepository);
+        var journal = mock(CatalogueSourceJournal.class);
+        var unknown = new CatalogueSourceJournal.InputReference(CatalogueSourceJournal.Use.NOT_RETAINED, null, 0);
+        var noOverlay = new CatalogueSourceJournal.InputReference(CatalogueSourceJournal.Use.NOT_USED, null, 0);
+        when(journal.lockForCapture()).thenReturn(new CatalogueSourceJournal.Snapshot(
+                LEGACY_REVISION, java.time.Instant.EPOCH, unknown, noOverlay, unknown));
+        return new TaxDslExportService(nodeRepository, relationRepository, journal);
     }
     public static void main(String[] args) throws Exception {
         int passed = 0, failed = 0;

@@ -18,6 +18,10 @@ public class AstToModelMapper {
      */
     public CanonicalArchitectureModel map(DocumentAst document) {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
+        if (document.getMeta() != null) {
+            model.setCatalogueRevision(document.getMeta().catalogueRevision());
+            model.setComparisonCatalogueRevision(document.getMeta().comparisonCatalogueRevision());
+        }
 
         for (BlockAst block : document.getBlocks()) {
             switch (block.getKind()) {

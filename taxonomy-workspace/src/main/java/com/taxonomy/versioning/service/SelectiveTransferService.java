@@ -1,12 +1,11 @@
 package com.taxonomy.versioning.service;
 
 import com.taxonomy.dsl.mapper.AstToModelMapper;
-import com.taxonomy.dsl.mapper.ModelToAstMapper;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
 import com.taxonomy.dsl.model.ArchitectureElement;
 import com.taxonomy.dsl.model.ArchitectureRelation;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.parser.TaxDslParser;
-import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.storage.CommitProvenance;
@@ -45,8 +44,6 @@ public class SelectiveTransferService {
     private final WorkspaceResolver workspaceResolver;
     private final TaxDslParser parser = new TaxDslParser();
     private final AstToModelMapper astMapper = new AstToModelMapper();
-    private final ModelToAstMapper modelToAstMapper = new ModelToAstMapper();
-    private final TaxDslSerializer serializer = new TaxDslSerializer();
 
     public SelectiveTransferService(DslGitRepositoryFactory repositoryFactory,
                                     ContextNavigationService contextNavigationService,
@@ -121,43 +118,16 @@ public class SelectiveTransferService {
         String expectedHead = WorkspaceDslReadPort.normalizeCommitId(selection.targetContextId());
         DslGitRepository repo = resolveRepository(ctx);
         repo.verifyExpectedHead(targetBranch, expectedHead);
-        CanonicalArchitectureModel sourceModel = loadModel(repo, sourceCommit);
-        CanonicalArchitectureModel targetModel = loadModel(repo, expectedHead);
-
-        // Merge selected elements
-        Map<String, ArchitectureElement> targetElements = targetModel.getElements().stream()
-                .collect(Collectors.toMap(ArchitectureElement::getId, Function.identity()));
-
-        for (ArchitectureElement sourceEl : sourceModel.getElements()) {
-            if (selection.selectedElementIds().contains(sourceEl.getId())) {
-                targetElements.put(sourceEl.getId(), sourceEl);
-            }
-        }
-
-        // Merge selected relations
-        Map<String, ArchitectureRelation> targetRelations = targetModel.getRelations().stream()
-                .collect(Collectors.toMap(this::relationKey, Function.identity()));
-
-        for (ArchitectureRelation sourceRel : sourceModel.getRelations()) {
-            String key = relationKey(sourceRel);
-            if (selection.selectedRelationIds().contains(key)) {
-                targetRelations.put(key, sourceRel);
-            }
-        }
-
-        // Build merged model
-        targetModel.getElements().clear();
-        targetModel.getElements().addAll(targetElements.values());
-        targetModel.getRelations().clear();
-        targetModel.getRelations().addAll(targetRelations.values());
-
-        // Serialize merged model back to DSL and commit
-        String targetDsl = repo.getDslAtCommit(expectedHead);
-        var originalDoc = parser.parse(targetDsl);
-        String namespace = originalDoc.getMeta() != null
-                ? originalDoc.getMeta().namespace() : "default";
-        var mergedDoc = modelToAstMapper.toDocument(targetModel, namespace);
-        String mergedDsl = serializer.serialize(mergedDoc);
+        repo.verifySnapshot(sourceCommit);
+        repo.verifySnapshot(expectedHead);
+        String sourceDsl = repo.getDslAtCommit(sourceCommit);
+        String mergedDsl = repo.getDslAtCommit(expectedHead);
+        // Apply only the chosen semantic blocks. Rebuilding the whole target from a projection
+        // would drop its catalogue pin, unknown extensions, comments and unrelated source blocks.
+        var blockIds = new java.util.LinkedHashSet<String>();
+        selection.selectedElementIds().forEach(id -> blockIds.add("element:" + id));
+        selection.selectedRelationIds().forEach(id -> blockIds.add("relation:" + id));
+        mergedDsl = ArchitectureSemanticPatch.copyBlocks(mergedDsl, sourceDsl, blockIds);
 
         String repositoryId = "workspace:" + ctx.workspaceId();
         var sourceEvidence = CommitProvenance.capture("selective-transfer", repo, repositoryId,

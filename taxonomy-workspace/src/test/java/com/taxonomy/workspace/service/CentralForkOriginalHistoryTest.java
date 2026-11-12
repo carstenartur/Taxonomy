@@ -122,7 +122,7 @@ class CentralForkOriginalHistoryTest {
                 }
                 return target;
             }).when(racingFactory).createCentralRepository(anyString(), anyString());
-            var service = new ArchitectureRepositoryProvisioningService(fixture.catalog, fixture.memberships, racingFactory);
+            var service = new ArchitectureRepositoryProvisioningService(fixture.catalog, fixture.memberships, racingFactory, namespace -> "meta { language: \"taxdsl\"; }\n");
             RepositoryVisibility visibility = publicSource ? RepositoryVisibility.PUBLIC : RepositoryVisibility.PRIVATE;
             org.junit.jupiter.api.function.Executable fork = () ->
                     service.createFork(sourceId, null, "Fork", "central-fork", null, visibility, actor);
@@ -152,7 +152,7 @@ class CentralForkOriginalHistoryTest {
             String captured = sourceGit.commitDsl(branch, "source architecture", OWNER, "Selected source");
             var failingCatalog = mock(SystemRepositoryService.class, delegatesTo(fixture.catalog));
             doThrow(new IllegalStateException("Catalog completion failed")).when(failingCatalog).markProvisioningReady(anyString());
-            var service = new ArchitectureRepositoryProvisioningService(failingCatalog, fixture.memberships, fixture.git);
+            var service = new ArchitectureRepositoryProvisioningService(failingCatalog, fixture.memberships, fixture.git, namespace -> "meta { language: \"taxdsl\"; }\n");
 
             assertThrows(IllegalStateException.class,
                     () -> service.createFork(sourceId, branch, "Fork", "central-fork", null, null, OWNER));
@@ -184,7 +184,7 @@ class CentralForkOriginalHistoryTest {
             memberships = transactional(new RepositoryMembershipService(repositories.getRepository(RepositoryMembershipRepository.class)),
                     RepositoryMembershipService.class, transactions);
             git = new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(persistence.factory), catalog, signatures);
-            service = new ArchitectureRepositoryProvisioningService(catalog, memberships, git);
+            service = new ArchitectureRepositoryProvisioningService(catalog, memberships, git, namespace -> "meta { language: \"taxdsl\"; }\n");
         }
 
         private static <T> T transactional(T target, Class<T> type, TransactionInterceptor transactions) {

@@ -1040,6 +1040,8 @@
                             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                                 <span class="fw-semibold" th:text="#{dsl.editor.title}">&#128221; Architecture DSL Editor</span>
                                 <div class="d-flex gap-1 flex-wrap">
+                                    <button id="dslCompareCatalogueBtn" class="btn btn-sm btn-outline-secondary" th:text="#{dsl.btn.catalogue.compare}">Compare with current catalogue</button>
+                                    <a class="btn btn-sm btn-outline-secondary" th:href="@{/api/dsl/export}" download="taxonomy-catalogue.taxdsl" th:text="#{dsl.btn.catalogue.export}">Export full catalogue</a>
                                     <button id="dslLoadCurrentBtn" class="btn btn-sm btn-outline-secondary" th:title="#{dsl.btn.load.title}" title="Load current architecture as DSL" th:text="#{dsl.btn.load.text}">&#128260; Load Current</button>
                                     <button id="dslParseBtn" class="btn btn-sm btn-outline-primary" th:title="#{dsl.btn.parse.title}" title="Parse DSL and show structure" th:text="#{dsl.btn.parse.text}">&#128269; Parse</button>
                                     <button id="dslValidateBtn" class="btn btn-sm btn-outline-info" th:title="#{dsl.btn.validate.title}" title="Validate DSL for errors" th:text="#{dsl.btn.validate.text}">&#9989; Validate</button>

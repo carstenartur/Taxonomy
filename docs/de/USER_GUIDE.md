@@ -1658,7 +1658,7 @@ Der DSL-Editor-Tab in der Anwendung bietet eine vollwertige Code-Bearbeitungsobe
 1. **Syntaxhervorhebung** — DSL-Schlüsselwörter (`element`, `relation`, `meta`, `view`), Taxonomie-Codes, Beziehungstypen und Eigenschaftsnamen werden farblich hervorgehoben
 2. **Autovervollständigung** — Kontextbezogene Vorschläge erscheinen während der Eingabe: Block-Schlüsselwörter, Elementtypen, Beziehungstypen und Taxonomie-Codes
 3. **Live-Validierung** — Fehler und Warnungen vom serverseitigen Validator werden inline mit roten/gelben Markierungen im Randbereich angezeigt
-4. **Load Current** — Exportiert den aktuellen Architekturzustand als DSL-Text
+4. **Aktuellen Stand laden** öffnet die gewählte Architektur, Bearbeitungsrevision oder den Git-Checkpoint als Projekt-DSL. Bewusst aufgenommene Einzelobjekte, Pakete, Sichten, Zuordnungen, Nachweise und Erweiterungen bleiben enthalten. **Vollständigen Katalog exportieren** lädt den Gesamtkatalog als separate Datei. Bei älteren Revisionen bleibt eine ungeklärte Katalogquelle als solche gekennzeichnet. **Mit aktuellem Katalog vergleichen** ergänzt dessen Generation als eigenen Vergleich im Entwurf. Zum Speichern den Entwurf committen.
 5. **Edit** — Bearbeiten Sie den DSL-Text direkt im Editor
 6. **Validate** — Prüft die DSL auf Fehler und Warnungen
 7. **Format** — DSL in kanonischen Stil formatieren (Shift+Alt+F)

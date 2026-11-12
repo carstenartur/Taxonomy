@@ -15,7 +15,8 @@ public class ModelToAstMapper {
      * Map a complete canonical model to a document AST including meta header.
      */
     public DocumentAst toDocument(CanonicalArchitectureModel model, String namespace) {
-        MetaAst meta = new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION, namespace, null);
+        MetaAst meta = new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION, namespace, model.getCatalogueRevision(),
+                model.getComparisonCatalogueRevision(), null);
         List<BlockAst> blocks = new ArrayList<>();
 
         for (ArchitecturePackage pkg : model.getPackages()) {

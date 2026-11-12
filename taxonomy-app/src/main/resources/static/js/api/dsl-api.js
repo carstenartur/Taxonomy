@@ -8,6 +8,18 @@ window.TaxonomyDslApi = (function () {
     }
     function post(path) { return client.request('/api/dsl' + path, {method:'POST'}, {retries:0}); }
     return {
+        projectText: function (scope, options) {
+            var params = new URLSearchParams();
+            ['repositoryId', 'branch', 'commit', 'revision'].forEach(function (key) {
+                if (scope[key] !== undefined && scope[key] !== null) params.set(key, scope[key]);
+            });
+            if (scope.workspaceId !== undefined && scope.workspaceId !== null) {
+                params.set('workspaceId', scope.workspaceId);
+                options = Object.assign({}, options, {pinnedWorkspaceId:scope.workspaceId});
+            }
+            return read('/project?' + params, options);
+        },
+        compareCatalogue: function (value, options) { return text('/project/compare-current', value, options); },
         exportText: function (options) { return read('/export', options); },
         format: function (value, options) { return text('/format', value, options); },
         gitCommit: function (commit, options) { return read('/git/commit/' + encodeURIComponent(commit), options); },

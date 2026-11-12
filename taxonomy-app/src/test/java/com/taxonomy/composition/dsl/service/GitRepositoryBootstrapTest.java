@@ -119,13 +119,13 @@ class GitRepositoryBootstrapTest {
                 assertThat(repository.getCommitCount("draft")).isEqualTo(1);
                 assertThat(repository.getDslHistory("draft")).singleElement().satisfies(commit -> {
                     assertThat(commit.author()).isEqualTo("system");
-                    assertThat(commit.message()).isEqualTo("Initial taxonomy materialization");
+                    assertThat(commit.message()).isEqualTo("Initialize project with catalogue generation");
                 });
                 assertThat(repository.getBranchNames()).containsExactly("draft");
 
                 verify(factory).getSystemRepository();
                 verifyNoMoreInteractions(factory);
-                verify(exporter).exportAll("default");
+                verify(exporter).newProject("default");
                 verifyNoMoreInteractions(exporter);
             }
         }
@@ -156,7 +156,7 @@ class GitRepositoryBootstrapTest {
             TaxonomyRelationRepository relations = mock(TaxonomyRelationRepository.class);
             when(nodes.findAll()).thenReturn(List.of());
             when(relations.findAll()).thenReturn(List.of());
-            TaxDslExportService workerExporter = spy(new TaxDslExportService(nodes, relations));
+            TaxDslExportService workerExporter = spy(new TaxDslExportService(nodes, relations, mock(com.taxonomy.catalog.provenance.CatalogueSourceJournal.class)));
             AppInitializationStateService workerState = new AppInitializationStateService();
             workerState.update(State.READY, "Catalogue worker is ready for exact-source root snapshots");
 
@@ -181,7 +181,7 @@ class GitRepositoryBootstrapTest {
                 coordinatorState.update(State.READY, "Global taxonomy is loaded");
                 assertThat(repository.getDslAtHead("draft")).isEqualTo(DSL);
                 assertThat(repository.getCommitCount("draft")).isEqualTo(1);
-                verify(coordinatorExporter).exportAll("default");
+                verify(coordinatorExporter).newProject("default");
             }
         }
     }
@@ -254,7 +254,7 @@ class GitRepositoryBootstrapTest {
     void runtimeFailureReleasesGuardForSuccessfulRetry() throws IOException {
         try (DslGitRepository repository = new DslGitRepository()) {
             TaxDslExportService exporter = mock(TaxDslExportService.class);
-            when(exporter.exportAll("default"))
+            when(exporter.newProject("default"))
                     .thenThrow(new IllegalStateException("temporary export failure"))
                     .thenReturn(DSL);
 
@@ -313,7 +313,7 @@ class GitRepositoryBootstrapTest {
         var exportStarted = new CountDownLatch(1);
         var releaseExport = new CountDownLatch(1);
         var exporter = mock(TaxDslExportService.class);
-        when(exporter.exportAll("default")).thenAnswer(call -> {
+        when(exporter.newProject("default")).thenAnswer(call -> {
             exportStarted.countDown();
             assertThat(releaseExport.await(10, TimeUnit.SECONDS)).as("The first workspace read releases bootstrap").isTrue();
             return DSL;
@@ -369,7 +369,7 @@ class GitRepositoryBootstrapTest {
 
     private static TaxDslExportService exporterReturning(String dsl) {
         TaxDslExportService exporter = mock(TaxDslExportService.class);
-        when(exporter.exportAll("default")).thenReturn(dsl);
+        when(exporter.newProject("default")).thenReturn(dsl);
         return exporter;
     }
 
