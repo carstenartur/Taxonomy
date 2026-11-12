@@ -42,7 +42,9 @@ class DocumentAnalysisOperationHttpTest {
                 assertTrue(entered.await(10,TimeUnit.SECONDS));
                 var accepted = fixture.mvc.perform(multipart("/api/documents/extract-ai").file(fixture.file)
                         .header("Idempotency-Key","active-command")).andExpect(status().isAccepted())
-                        .andExpect(jsonPath("$.state").value("RUNNING")).andReturn().getResponse();
+                        .andExpect(jsonPath("$.state").value("RUNNING")).andExpect(jsonPath("$.phase").value("RUNNING"))
+                        .andExpect(header().string("X-Analysis-Sequence","0")).andExpect(jsonPath("$.startedAt").isNumber())
+                        .andReturn().getResponse();
                 String location = accepted.getHeader("Content-Location");
                 assertNotNull(location);
                 fixture.mvc.perform(get(location)).andExpect(status().isAccepted());
@@ -59,7 +61,8 @@ class DocumentAnalysisOperationHttpTest {
         try (var fixture = new Fixture()) {
             when(fixture.analysis.mapRegulationToArchitecture(anyString())).thenReturn(List.of());
             var result = fixture.mvc.perform(multipart("/api/documents/map-regulation").file(fixture.file))
-                    .andExpect(status().isOk()).andExpect(jsonPath("$.matches").isArray()).andReturn().getResponse();
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.matches").isArray()).andExpect(header().string("X-Analysis-Phase","COMPLETED"))
+                    .andExpect(header().exists("X-Analysis-Updated-At")).andReturn().getResponse();
             String id = result.getHeader("X-Analysis-Operation-Id");
             String location = result.getHeader("Content-Location"); assertNotNull(id); assertNotNull(location);
             when(fixture.analysis.providerAvailable()).thenReturn(false);

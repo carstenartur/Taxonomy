@@ -157,6 +157,10 @@ public class ScopedAnalysisAdapterExecution {
         var builder = ResponseEntity.status(status).cacheControl(CacheControl.noStore())
                 .header("X-Analysis-Operation-Id",o.id()).header("X-Analysis-Source-Commit",o.sourceCommit())
                 .header("Content-Location","/api/analysis-adapters/" + o.id());
+        builder.header("X-Analysis-Phase",o.state())
+                .header("X-Analysis-Sequence",Long.toString(o.revision()))
+                .header("X-Analysis-Started-At",Long.toString(o.createdAt()))
+                .header("X-Analysis-Updated-At",Long.toString(o.updatedAt()));
         if (status == 202) builder.header("Retry-After","2");
         if (status == 410) return builder.body(Map.of("operationId",o.id(),"code","ANALYSIS_EXPIRED"));
         if ("ANALYSIS_FAILED".equals(o.failureCode())) {
@@ -166,7 +170,8 @@ public class ScopedAnalysisAdapterExecution {
                 return builder.body(Map.of("error","REGULATION_MAPPING_FAILED","message","Regulation mapping could not be completed"));
         }
         if (o.resultJson() != null) return builder.body(com.taxonomy.analysis.operation.ChildAnalysisReceipt.publicResult(o.kind(),json.readTree(o.resultJson())));
-        return builder.body(Map.of("operationId",o.id(),"state",o.state(),"sequence",o.revision(),
-                "sourceCommit",o.sourceCommit(),"code",o.failureCode() == null ? o.state() : o.failureCode()));
+        return builder.body(Map.of("operationId",o.id(),"state",o.state(),"phase",o.state(),"sequence",o.revision(),
+                "startedAt",o.createdAt(),"updatedAt",o.updatedAt(),"sourceCommit",o.sourceCommit(),
+                "code",o.failureCode() == null ? o.state() : o.failureCode()));
     }
 }
