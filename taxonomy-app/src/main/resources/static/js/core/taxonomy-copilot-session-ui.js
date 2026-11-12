@@ -326,27 +326,33 @@
         return targets;
     }
 
+    var copilotOverlayPlacement = {
+        positions: ['bottom-end', 'bottom-start', 'top-end', 'top-start'],
+        targets: copilotOverlayTargets
+    };
+
     function scheduleOverlayReposition() {
-        window.TaxonomyOnboarding.refreshOverlayLane();
+        var onboarding = window.TaxonomyOnboarding;
+        if (!onboarding) return;
+        // Translations can create the lane before the shared placement API is available.
+        if (onboarding.overlayPlacement !== copilotOverlayPlacement) {
+            onboarding.isElementUnobscured = unobscured;
+            onboarding.overlayPlacement = copilotOverlayPlacement;
+        }
+        if (typeof onboarding.refreshOverlayLane === 'function') onboarding.refreshOverlayLane();
     }
 
     function installOverlayHardening() {
         if (overlayObserverInstalled) return;
         var lane = document.getElementById('taxonomyOverlayLane');
-        var onboarding = window.TaxonomyOnboarding;
-        if (!lane || !onboarding || typeof onboarding.refreshOverlayLane !== 'function') return;
+        if (!lane || !window.TaxonomyOnboarding) return;
         overlayObserverInstalled = true;
-        onboarding.isElementUnobscured = unobscured;
-        onboarding.overlayPlacement = {
-            positions: ['bottom-end', 'bottom-start', 'top-end', 'top-start'],
-            targets: copilotOverlayTargets
-        };
         if (typeof MutationObserver === 'function') {
             new MutationObserver(scheduleOverlayReposition)
                 .observe(lane, { childList: true, subtree: true });
         }
         window.addEventListener('scroll', scheduleOverlayReposition, { passive: true });
-        scheduleOverlayReposition();
+        window.requestAnimationFrame(scheduleOverlayReposition);
     }
 
     function syncCopilotResultFreshness() {

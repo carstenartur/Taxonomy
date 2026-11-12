@@ -535,10 +535,16 @@ class PortfolioStatusPayloadReadTest {
             assertThat(f.persistence.admittedModel(job.id(), f.projectId, "owner", f.scope)).isEqualTo(binding);
             assertThat(f.persistence.createOrReuseJob(f.projectId, ids, "CUSTOM_OPENAI", 25, "model-queue-key",
                     "owner", f.scope, null, f.oldVersionId, selection).id()).isEqualTo(job.id());
-            var other = new com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisModelSelection("c".repeat(40), null, selected);
-            assertThatThrownBy(() -> f.persistence.createOrReuseJob(f.projectId, ids, "CUSTOM_OPENAI", 25,
-                    "model-queue-key", "owner", f.scope, null, f.oldVersionId, other))
-                    .isInstanceOf(PortfolioException.class).hasMessageContaining("different analysis model");
+            var otherScope = new com.taxonomy.dto.AnalysisScope(java.util.Set.of("IP"), selected.mode());
+            for (var changed : List.of(
+                    new AnalysisModelSelection("c".repeat(40), null, selected),
+                    new AnalysisModelSelection(binding.commit(), 3L, selected),
+                    new AnalysisModelSelection(binding.commit(), binding.semanticRevision(), otherScope))) {
+                assertThatThrownBy(() -> f.persistence.createOrReuseJob(f.projectId, ids, "CUSTOM_OPENAI", 25,
+                        "model-queue-key", "owner", f.scope, null, f.oldVersionId, changed))
+                        .as("replay with %s", changed)
+                        .isInstanceOf(PortfolioException.class).hasMessageContaining("different analysis model");
+            }
             assertThat(f.persistence.admittedModel(f.jobId, f.projectId, "owner", f.scope)).isNull();
         }
     }
