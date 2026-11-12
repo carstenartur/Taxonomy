@@ -11,11 +11,15 @@ export async function measureCatalogueSearch(context, baseUrl) {
   const query = 'service', count = 100;
   try {
     await page.goto(baseUrl + '/?lang=en', {waitUntil: 'domcontentloaded'});
-    await page.locator('#taxonomyTree .tax-node').first().waitFor();
     await page.waitForFunction(() => window.TaxonomyAnalysisSession?.state().ready
-      && window.TaxonomyContextBar?.getCurrentContext());
+      && window.TaxonomyContextBar?.getCurrentContext() && window.TaxonomyState?.taxonomyData?.length);
     const closeOnboarding = page.locator('#onboardingDismiss');
     if (await closeOnboarding.isVisible()) await closeOnboarding.click();
+
+    // A new tab restores the prior role task's saved diagram. Measure the same list baseline in each engine.
+    const restoredView = await page.evaluate(() => window.TaxonomyState.currentView);
+    if (restoredView !== 'list') await page.locator('#viewList').click();
+    await page.locator('#taxonomyTree[data-view-rendered="list"]').waitFor();
 
     const [response, metrics] = await Promise.all([
       page.waitForResponse(response => {
@@ -92,7 +96,7 @@ export async function measureCatalogueSearch(context, baseUrl) {
     await page.waitForFunction(() => document.activeElement?.id === 'searchResultSummary');
     const scrollTop = await page.locator('#searchResultsArea').evaluate(area => area.scrollTop);
     assert.equal(scrollTop, 0);
-    return {query, count, workbook, interactionMs, scrollTop, workbookSha256: createHash('sha256').update(workbookBytes).digest('hex'),
+    return {query, count, restoredView, workbook, interactionMs, scrollTop, workbookSha256: createHash('sha256').update(workbookBytes).digest('hex'),
       responseSha256: createHash('sha256').update(bytes).digest('hex'), selectedCode: selected.code,
       descriptionLength: selected.descriptionEn.length, ...metrics};
   } finally {
