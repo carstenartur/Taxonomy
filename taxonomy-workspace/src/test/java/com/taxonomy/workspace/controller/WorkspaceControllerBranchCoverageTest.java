@@ -196,7 +196,8 @@ class WorkspaceControllerBranchCoverageTest {
 
     @Test
     void syncStateDirtyHistoryAndProjectionReturnMappedData() {
-        SyncState state = new SyncState();
+        var scope = new com.taxonomy.workspace.model.WorkspaceSyncScope("alice", "repo-A", "work-A", "review");
+        SyncState state = new com.taxonomy.workspace.model.WorkspaceBranchSyncState(scope).view();
         state.setSyncStatus("AHEAD");
         state.setLastSyncedCommitId("s1");
         state.setLastPublishedCommitId("p1");
@@ -206,6 +207,8 @@ class WorkspaceControllerBranchCoverageTest {
         when(contextHistoryService.getHistory("alice")).thenReturn(List.of());
         when(workspaceProjectionService.getProjectionInfo("alice")).thenReturn(Map.of("status", "READY"));
 
+        assertThat(controller.getSyncState().getBody()).containsEntry("repositoryId", "repo-A")
+                .containsEntry("workspaceId","work-A").containsEntry("branch","review");
         assertThat(controller.getSyncState().getBody())
                 .containsEntry("syncStatus", "AHEAD").containsEntry("unpublishedCommitCount", 2);
         assertThat(controller.isDirty().getBody())

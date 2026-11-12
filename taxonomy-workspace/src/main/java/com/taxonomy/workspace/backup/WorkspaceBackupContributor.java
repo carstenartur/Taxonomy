@@ -32,6 +32,10 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                     + repositories.sql() + " order by id", repositories.parameters()));
             queries.add(new Query("select source_repository_id as repository_id,workspace_id,workspace_id as linked_workspace_id,0 as repository_only,username as principal_scope from user_workspace where "
                     + workspaces.sql() + " order by workspace_id", workspaces.parameters()));
+            var branchProgress = scope.repositories("repository_id", "workspace_id");
+            queries.add(new Query("select repository_id,workspace_id,workspace_id as linked_workspace_id,0 as repository_only,"
+                    + "username as principal_scope from workspace_branch_sync where " + branchProgress.sql()
+                    + " order by scope_key", branchProgress.parameters()));
             queries.add(new Query("select w.source_repository_id as repository_id,w.workspace_id,s.workspace_id as linked_workspace_id,0 as repository_only,s.username as principal_scope from sync_state s join user_workspace w on w.workspace_id=s.workspace_id where "
                     + sync.sql() + " order by s.id", sync.parameters()));
         }
@@ -71,7 +75,7 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
     @Override public Set<String> categories() {
         return Set.of("com.taxonomy.workspace.model.SystemRepository", "com.taxonomy.workspace.model.UserWorkspace",
                 "com.taxonomy.workspace.model.RepositoryMembership", "com.taxonomy.workspace.model.SyncState",
-                "com.taxonomy.workspace.service.WorkspaceFetchOperation",
+                "com.taxonomy.workspace.service.WorkspaceFetchOperation", "com.taxonomy.workspace.model.WorkspaceBranchSyncState",
                 "com.taxonomy.editor.persistence.EditorWorkspace", "com.taxonomy.editor.persistence.EditorOperation",
                 "com.taxonomy.editor.persistence.EditorCheckpoint", "com.taxonomy.versioning.model.ArchitectureCommitIndex",
                 "com.taxonomy.versioning.model.ContextHistoryRecord");
@@ -108,6 +112,19 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                 scoped(scope,"captured_repository_id","captured_workspace_id",linked("captured_workspace_id","workspace_id",r -> new SyncRecord(reference(r,"workspace.sync","id"),text(r,"username"),text(r,"workspace_id"),text(r,"last_synced_commit_id"),instant(r,"last_sync_timestamp"),
                         text(r,"last_published_commit_id"),instant(r,"last_publish_timestamp"),text(r,"sync_status"),r.getInt("unpublished_commit_count"),instant(r,"created_at"),instant(r,"updated_at")))));
         var fetchScope = scope.repositories("f.repository_id", "f.workspace_id");
+        var branchProgress = scope.repositories("repository_id", "workspace_id");
+        write(sink, "branch-synchronization", profile, query(scope, false, """
+                select scope_key,username,repository_id,workspace_id,sync_branch,last_synced_commit_id,last_sync_timestamp,
+                       last_published_commit_id,last_publish_timestamp,sync_status,unpublished_commit_count,created_at,updated_at
+                from workspace_branch_sync""", branchProgress, "scope_key"), scoped(scope,"repository_id","workspace_id",r -> {
+            var identity = new com.taxonomy.workspace.model.WorkspaceSyncScope(text(r,"username"), text(r,"repository_id"),
+                    text(r,"workspace_id"), text(r,"sync_branch"));
+            if (!identity.key().equals(text(r,"scope_key"))) throw new IOException("Invalid branch synchronization scope");
+            return new BranchSyncRecord(new SourceRecordId("workspace.branch-sync", identity.key()), identity.username(),
+                    identity.repositoryId(), identity.workspaceId(), identity.branch(), text(r,"last_synced_commit_id"),
+                    instant(r,"last_sync_timestamp"), text(r,"last_published_commit_id"), instant(r,"last_publish_timestamp"),
+                    text(r,"sync_status"), r.getInt("unpublished_commit_count"), instant(r,"created_at"), instant(r,"updated_at"));
+        }));
         String parentJoin = profile == BackupProfile.INSTALLATION_FULL ? "left join" : "join";
         write(sink, "fetch-journal", profile, query(scope, false, """
                 select f.operation_id, f.actor_id, f.actor_scope, f.repository_id, f.workspace_id, f.local_branch,
@@ -177,6 +194,9 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                               String expectedCommit, String observedCommit, String resultCommit, String causationId,
                               String phase, int attempts, String decisionCode, long createdAt, Long lastAttemptAt, Long completedAt,
                               String authorizationKind, String requiredPolicy, Long archivedAt, String archivedBy, Boolean detachedWorkspace) { }
+    public record BranchSyncRecord(SourceRecordId sourceId, String principalScope, String repositoryId, String workspaceId,
+            String branch, String lastSyncedCommit, String lastSyncAt, String lastPublishedCommit, String lastPublishAt,
+            String syncStatus, int unpublishedCommitCount, String createdAt, String updatedAt) { }
     public record SyncRecord(SourceRecordId sourceId,String principalScope,String workspaceId,String lastSyncedCommit,String lastSyncAt,String lastPublishedCommit,String lastPublishAt,String syncStatus,int unpublishedCommitCount,String createdAt,String updatedAt) { }
     public record WorkingStateRecord(SourceRecordId sourceId,String repositoryId,String workspaceId,String branch,String dsl,long semanticRevision,String checkpointCommit,long checkpointRevision,String interruptedCheckpoint) { }
     public record OperationRecord(SourceRecordId sourceId,SourceRecordId editor,String commandId,String actor,String occurredAt,String rationale,String correlationId,String causationId,String kind,String targetOperationId,long previousRevision,long semanticRevision,String fingerprint,int bodyVersion,String beforeDsl,String afterDsl,String affectedIds) { }

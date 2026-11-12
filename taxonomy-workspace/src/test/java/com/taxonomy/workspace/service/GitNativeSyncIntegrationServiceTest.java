@@ -12,6 +12,8 @@ import com.taxonomy.versioning.service.SemanticGitMergeService;
 import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.SyncState;
+import com.taxonomy.workspace.model.WorkspaceBranchSyncState;
+import com.taxonomy.workspace.model.WorkspaceSyncScope;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.repository.SyncStateRepository;
@@ -138,6 +140,36 @@ class GitNativeSyncIntegrationServiceTest {
     }
 
     @Test
+    void readingTheSecondWorkspaceNeverReturnsTheFirstWorkspacesPublishedCommit() {
+        state.setLastPublishedCommitId("private-workspace-a-commit");
+        when(contextResolver.resolveRepositoryContextForRead("alice")).thenReturn(
+                RepositoryContext.workspace("repo-b", "workspace-b", "main", "alice"));
+        var secondSource = new SystemRepository();
+        secondSource.setRepositoryId("repo-b");
+        when(systemRepositoryService.getRepository("repo-b")).thenReturn(secondSource);
+        var exact = new WorkspaceSyncScope("alice", "repo-b", "workspace-b", "main");
+        when(syncStateRepository.readScope(exact)).thenReturn(new WorkspaceBranchSyncState(exact).view());
+        var observed = service.getSyncState("alice");
+        assertThat(observed.getWorkspaceId()).isEqualTo("workspace-b");
+        assertThat(observed.getLastPublishedCommitId()).isNull();
+        verify(syncStateRepository, never()).save(any());
+    }
+
+    @Test
+    void localChangesCompareTheSelectedWorkingCopyWithItsCapturedSource() throws Exception {
+        when(contextResolver.resolveRepositoryContextForRead("alice")).thenReturn(
+                RepositoryContext.workspace("repo-a", "workspace-a", "feature/alice", "alice"));
+        when(isolatedWorkspaceRepository.getAheadBehindCounts("feature/another", sourceRepository, "draft"))
+                .thenReturn(new int[]{2, 1});
+
+        assertThat(service.getLocalChanges("alice", "feature/another")).isEqualTo(2);
+
+        verify(syncStateRepository).recordLocalChanges(eq(new WorkspaceSyncScope(
+                "alice", "repo-a", "workspace-a", "feature/another")), eq(2), eq(1), any());
+        verify(primaryRepository, never()).getAheadBehindCounts(any(), any());
+    }
+
+    @Test
     void normalPullEndpointUsesRecordedSourceAndWorkspaceRepositories()
             throws Exception {
         String base = "requirement P-1.REQ-0 {\n  text: \"base\";\n}\n";
@@ -174,7 +206,8 @@ class GitNativeSyncIntegrationServiceTest {
         verify(portfolioGitPort).commitPortfolio(
                 eq("feature/alice"), any(String.class), eq("alice"), eq(exactContext));
         verify(portfolioGitPort).materializePortfolio(merged, "alice", exactContext);
-        assertThat(state.getLastSyncedCommitId()).isEqualTo("source-head");
+        verify(syncStateRepository).recordSync(eq(new WorkspaceSyncScope(
+                "alice", "repo-a", "workspace-a", "feature/alice")), eq("source-head"), any(), eq(false));
         assertThat(workspace.getLastFetchedCommit()).isEqualTo("source-head");
         assertThat(workspace.getLastIntegratedCommit()).isEqualTo("source-head");
     }
@@ -251,7 +284,8 @@ class GitNativeSyncIntegrationServiceTest {
                 eq(merged), eq("alice"),
                 eq(new WorkspaceContext(
                         "alice", "workspace-a", "feature/alice", "repo-a")));
-        assertThat(state.getLastPublishedCommitId()).isEqualTo("source-merge-commit");
+        verify(syncStateRepository).recordSync(eq(new WorkspaceSyncScope(
+                "alice", "repo-a", "workspace-a", "feature/alice")), eq("source-merge-commit"), any(), eq(true));
         assertThat(workspace.getCurrentCommit()).isEqualTo("source-merge-commit");
     }
 

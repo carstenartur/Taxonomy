@@ -192,6 +192,7 @@ class WorkspaceGitHistoryReferencesTest {
                 base.sql("alter table system_repository add column " + name + " varchar(255)");
             for (String name : List.of("base_commit", "current_commit", "last_fetched_commit", "last_integrated_commit"))
                 base.sql("alter table user_workspace add column " + name + " varchar(40)");
+            base.sql("create table workspace_branch_sync(scope_key varchar(64) primary key,repository_id varchar(255),workspace_id varchar(255),last_synced_commit_id varchar(40),last_published_commit_id varchar(40))");
             base.sql("create table sync_state(id bigint primary key,workspace_id varchar(255),last_synced_commit_id varchar(40),last_published_commit_id varchar(40))");
             base.sql("create table architecture_commit_index(id bigint primary key,repository_id varchar(255),workspace_id varchar(255),commit_id varchar(40))");
             base.sql("create table context_history_record(id bigint primary key,from_context_id varchar(36),to_context_id varchar(36),from_commit_id varchar(40),to_commit_id varchar(40))");

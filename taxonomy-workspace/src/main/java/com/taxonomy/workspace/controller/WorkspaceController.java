@@ -378,6 +378,13 @@ public class WorkspaceController {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("username", user);
         result.put("syncStatus", state.getSyncStatus());
+        var scope = state.getObservationScope();
+        if (scope != null) {
+            result.put("repositoryId", scope.repositoryId());
+            result.put("workspaceId", scope.workspaceId());
+            result.put("branch", scope.branch());
+        }
+        result.put("observedAt", state.getUpdatedAt());
         result.put("lastSyncedCommitId", state.getLastSyncedCommitId());
         result.put("lastSyncTimestamp", state.getLastSyncTimestamp());
         result.put("lastPublishedCommitId", state.getLastPublishedCommitId());

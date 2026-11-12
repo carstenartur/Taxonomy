@@ -2,8 +2,6 @@ package com.taxonomy.workspace.model;
 
 import jakarta.persistence.*;
 
-import java.time.Instant;
-
 /**
  * Tracks the synchronization state between a user's workspace and the
  * shared integration repository.
@@ -27,7 +25,7 @@ import java.time.Instant;
     @UniqueConstraint(name = "uq_sync_username", columnNames = "username"),
     @UniqueConstraint(name = "uq_sync_workspace", columnNames = "workspace_id")
 })
-public class SyncState {
+public class SyncState extends WorkspaceSyncProgress {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -39,29 +37,11 @@ public class SyncState {
     @Column(name = "workspace_id", nullable = false)
     private String workspaceId;
 
-    @Column(name = "last_synced_commit_id")
-    private String lastSyncedCommitId;
+    @Transient
+    private WorkspaceSyncScope observationScope;
 
-    @Column(name = "last_sync_timestamp")
-    private Instant lastSyncTimestamp;
-
-    @Column(name = "last_published_commit_id")
-    private String lastPublishedCommitId;
-
-    @Column(name = "last_publish_timestamp")
-    private Instant lastPublishTimestamp;
-
-    @Column(name = "sync_status", nullable = false)
-    private String syncStatus = "UP_TO_DATE";
-
-    @Column(name = "unpublished_commit_count", nullable = false)
-    private int unpublishedCommitCount = 0;
-
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
-
-    @Column(name = "updated_at")
-    private Instant updatedAt;
+    public WorkspaceSyncScope getObservationScope() { return observationScope; }
+    void setObservationScope(WorkspaceSyncScope scope) { observationScope = scope; }
 
     public SyncState() {
     }
@@ -90,67 +70,4 @@ public class SyncState {
         this.workspaceId = workspaceId;
     }
 
-    public String getLastSyncedCommitId() {
-        return lastSyncedCommitId;
-    }
-
-    public void setLastSyncedCommitId(String lastSyncedCommitId) {
-        this.lastSyncedCommitId = lastSyncedCommitId;
-    }
-
-    public Instant getLastSyncTimestamp() {
-        return lastSyncTimestamp;
-    }
-
-    public void setLastSyncTimestamp(Instant lastSyncTimestamp) {
-        this.lastSyncTimestamp = lastSyncTimestamp;
-    }
-
-    public String getLastPublishedCommitId() {
-        return lastPublishedCommitId;
-    }
-
-    public void setLastPublishedCommitId(String lastPublishedCommitId) {
-        this.lastPublishedCommitId = lastPublishedCommitId;
-    }
-
-    public Instant getLastPublishTimestamp() {
-        return lastPublishTimestamp;
-    }
-
-    public void setLastPublishTimestamp(Instant lastPublishTimestamp) {
-        this.lastPublishTimestamp = lastPublishTimestamp;
-    }
-
-    public String getSyncStatus() {
-        return syncStatus;
-    }
-
-    public void setSyncStatus(String syncStatus) {
-        this.syncStatus = syncStatus;
-    }
-
-    public int getUnpublishedCommitCount() {
-        return unpublishedCommitCount;
-    }
-
-    public void setUnpublishedCommitCount(int unpublishedCommitCount) {
-        this.unpublishedCommitCount = unpublishedCommitCount;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(Instant createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public Instant getUpdatedAt() {
-        return updatedAt;
-    }
-
-    public void setUpdatedAt(Instant updatedAt) {
-        this.updatedAt = updatedAt;
-    }
 }

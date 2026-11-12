@@ -718,12 +718,18 @@ curl -u alice:password http://localhost:8080/api/workspace/sync-state
 **Antwort:**
 ```json
 {
+  "repositoryId": "architecture",
+  "workspaceId": "alice-workspace",
+  "branch": "feature-x",
+  "observedAt": "2026-03-15T10:03:00Z",
   "syncStatus": "AHEAD",
   "unpublishedCommitCount": 3,
   "lastSyncTimestamp": "2026-03-15T10:00:00Z",
   "lastPublishTimestamp": null
 }
 ```
+
+Die Antwort nennt das ausgewählte Repository, die Arbeitskopie und den Branch für den angemeldeten Benutzer. Bei einem zentralen Branch ist `workspaceId` null. `observedAt` bezeichnet die jüngste gespeicherte Beobachtung. `lastSyncTimestamp` und `lastPublishTimestamp` enthalten die Zeitpunkte der jeweiligen Vorgänge. Ältere Zeilen ohne erfassten Branch bleiben als historische Datenbankeinträge erhalten.
 
 ### Navigationsverlauf abrufen
 

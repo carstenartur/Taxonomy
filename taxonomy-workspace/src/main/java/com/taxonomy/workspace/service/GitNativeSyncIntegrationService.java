@@ -8,6 +8,7 @@ import com.taxonomy.workspace.storage.CommitProvenance;
 import com.taxonomy.workspace.storage.GitHistoryTransfer;
 import com.taxonomy.workspace.signing.SignatureStatus;
 import com.taxonomy.versioning.service.SemanticGitMergeService;
+import com.taxonomy.workspace.model.WorkspaceSyncScope;
 import com.taxonomy.workspace.model.SyncState;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
@@ -210,7 +211,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         workspaceMetadata.setCurrentCommit(localCommit);
         workspaceMetadata.setLastAccessedAt(Instant.now());
         workspaceRepository.save(workspaceMetadata);
-        updateAfterSync(username, sourceHead != null ? sourceHead : localCommit);
+        recordSync(context, userBranch, sourceHead != null ? sourceHead : localCommit, false);
         return localCommit;
     }
 
@@ -300,7 +301,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         workspaceRepository.save(workspaceMetadata);
         requireSourceAuthority(username, sourceMetadata, true);
         systemRepositoryService.recordLastPush(sourceMetadata.getRepositoryId(), Instant.now());
-        updateAfterPublish(username, sourceCommit);
+        recordSync(context, userBranch, sourceCommit, true);
         return sourceCommit;
     }
 
@@ -331,9 +332,9 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                 destination.head(), username, "Resolve conflict using " + from);
         portfolioGitPort.materializePortfolio(content, username, target);
         if (keepMine) {
-            updateAfterPublish(username, commit);
+            recordSync(context, userBranch, commit, true);
         } else {
-            updateAfterSync(username, chosen.head());
+            recordSync(context, userBranch, chosen.head(), false);
         }
         return commit;
     }
@@ -365,9 +366,9 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         requireSuccess(pull ? "Sync" : "Publish", outcome);
         portfolioGitPort.materializePortfolioHead(into, username, target);
         if (pull) {
-            updateAfterSync(username, repository.getHeadCommit(sharedBranch()));
+            recordSync(context, userBranch, repository.getHeadCommit(sharedBranch()), false);
         } else {
-            updateAfterPublish(username, outcome.commitId());
+            recordSync(context, userBranch, outcome.commitId(), true);
         }
         return outcome.commitId();
     }
@@ -606,25 +607,41 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                 "Update semantic synchronization base");
     }
 
-    private void updateAfterSync(String username, String commit) {
-        SyncState state = getSyncState(username);
-        state.setLastSyncedCommitId(commit);
-        state.setLastSyncTimestamp(Instant.now());
-        state.setSyncStatus("UP_TO_DATE");
-        state.setUpdatedAt(Instant.now());
-        syncStateRepository.save(state);
+    @Override
+    public SyncState getSyncState(String username) {
+        var selected = contextResolver.resolveRepositoryContextForRead(username);
+        var scope = new WorkspaceSyncScope(selected.username(), selected.repositoryId(), selected.workspaceId(), selected.branch());
+        requireSourceAuthority(username, systemRepositoryService.getRepository(selected.repositoryId()), false);
+        // Older username-wide observations cannot prove which working branch produced them.
+        return syncStateRepository.readScope(scope);
     }
 
-    private void updateAfterPublish(String username, String commit) {
-        SyncState state = getSyncState(username);
-        state.setLastPublishedCommitId(commit);
-        state.setLastSyncedCommitId(commit);
-        state.setLastPublishTimestamp(Instant.now());
-        state.setLastSyncTimestamp(Instant.now());
-        state.setSyncStatus("UP_TO_DATE");
-        state.setUnpublishedCommitCount(0);
-        state.setUpdatedAt(Instant.now());
-        syncStateRepository.save(state);
+    @Override
+    public int getLocalChanges(String username, String userBranch) throws IOException {
+        var selected = contextResolver.resolveRepositoryContextForRead(username);
+        String branch = userBranch == null || userBranch.isBlank() ? selected.branch() : userBranch;
+        var source = systemRepositoryService.getRepository(selected.repositoryId());
+        requireSourceAuthority(username, source, false);
+        var central = repositoryFactory.getCentralRepository(selected.repositoryId());
+        int[] counts;
+        if (selected.workspaceId() == null) {
+            counts = central.getAheadBehindCounts(branch, source.getDefaultBranch());
+        } else {
+            var workspace = requireWorkspace(selected.workspaceId());
+            if (!selected.repositoryId().equals(workspace.getSourceRepositoryId())) {
+                throw new IllegalStateException("Selected workspace source changed");
+            }
+            var local = repositoryFactory.openWorkspaceRepository(selected.workspaceId());
+            counts = local.getAheadBehindCounts(branch, central, workspace.resolveUpstreamBranch(source));
+        }
+        var scope = new WorkspaceSyncScope(selected.username(), selected.repositoryId(), selected.workspaceId(), branch);
+        syncStateRepository.recordLocalChanges(scope, counts[0], counts[1], Instant.now());
+        return counts[0];
+    }
+
+    private void recordSync(WorkspaceContext context, String branch, String commit, boolean published) {
+        var scope = new WorkspaceSyncScope(context.username(), context.repositoryId(), context.workspaceId(), branch);
+        syncStateRepository.recordSync(scope, commit, Instant.now(), published);
     }
 
     private BranchSnapshot snapshot(DslGitRepository repository, String branch) throws IOException {
