@@ -70,12 +70,7 @@ services:
     volumes:
       - taxonomy-data:/app/data
       - djl-cache:/root/.djl.ai
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/actuator/health/readiness"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 90s
+    # Inherit the image's curl readiness probe for Caddy's service_healthy dependency.
     restart: unless-stopped
 
   # ─── Caddy Reverse Proxy (automatic HTTPS) ──────────────────
