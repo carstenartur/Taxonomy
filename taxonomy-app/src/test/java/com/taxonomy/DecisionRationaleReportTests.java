@@ -115,7 +115,7 @@ class DecisionRationaleReportTests {
       productFamily.getName(),
       40,
       candidateCodes,
-      "Every concrete candidate remained below the suitability threshold.");
+      "Every concrete candidate remained below the suitability threshold.", 50, Map.of(candidateCodes.getFirst(), 21.5));
 
         DecisionRationaleReport report = reportService.generate(
       new DecisionRationaleReportService.DecisionAnalysisInput(
@@ -132,7 +132,8 @@ class DecisionRationaleReportTests {
         assertThat(report.productCoverageGaps()).containsExactly(gap);
         assertThat(report.warnings())
       .anyMatch(warning -> warning.contains(productFamily.getCode())
-              && warning.contains("Produktabdeckungslücke"));
+              && warning.contains("Produktabdeckungslücke")
+              && warning.contains("50 %") && warning.contains(candidateCodes.getFirst() + " (21.5%)"));
     }
 
     @Test

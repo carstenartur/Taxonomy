@@ -30,8 +30,9 @@ final class PortfolioPercentageReportChecks {
                 return view;
             }
         };
-        var report = new PortfolioReportService(aggregation, null, JsonMapper.builder().build())
-                .render(1L, null, format, "taxonomy", "author", null);
+        var report = new PortfolioReportService(aggregation, org.mockito.Mockito.mock(
+                com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository.class), JsonMapper.builder().build())
+                .render(1L, null, format, "taxonomy", "author", new WorkspaceContext("author", "workspace", "main", "repository"));
         if (format == PortfolioReportService.Format.DOCX) {
             try (var document = new XWPFDocument(new ByteArrayInputStream(report.bytes()))) {
                 var row = document.getTables().getFirst().getRow(1);
