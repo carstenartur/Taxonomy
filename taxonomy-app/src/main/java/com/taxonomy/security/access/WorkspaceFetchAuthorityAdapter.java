@@ -7,6 +7,7 @@ import com.taxonomy.security.model.PrincipalUserDetails;
 import com.taxonomy.security.model.StablePrincipal;
 import com.taxonomy.security.service.PrincipalIdentityService;
 import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
+import com.taxonomy.workspace.service.WorkspacePublicationAuthority;
 import com.taxonomy.workspace.service.RepositoryScope;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -22,7 +23,7 @@ import java.util.UUID;
 
 @Component
 @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
-public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority {
+public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority, WorkspacePublicationAuthority {
     private final PrincipalIdentityService identities;
 
     public WorkspaceFetchAuthorityAdapter(PrincipalIdentityService identities) { this.identities = identities; }
@@ -38,9 +39,17 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority {
     }
 
     @Override public Grant authorize(String username, RepositoryScope scope) {
+        return authorize(username, permission(scope));
+    }
+
+    @Override public Grant authorizePublication(String username) {
+        return authorize(username, ApiPermission.ARCHITECTURE_PUBLISH);
+    }
+
+    private Grant authorize(String username, ApiPermission required) {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         String actor = currentActor(username);
-        if (!ApiAccessPolicy.hasPermission(authentication, permission(scope))) throw denied();
+        if (!ApiAccessPolicy.hasPermission(authentication, required)) throw denied();
         if (authentication.getPrincipal() instanceof PrincipalUserDetails local) {
             return new Grant(actor, "LOCAL", identities.currentLocalAuthority(local.principalId(), username).bindingKey());
         }
@@ -63,8 +72,16 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority {
     }
 
     @Override public void checkPublication(Grant original, String username, RepositoryScope scope, boolean unattended) {
+        checkGrant(original, username, permission(scope), unattended);
+    }
+
+    @Override public void checkPublicationGrant(Grant original, String username, boolean unattended) {
+        checkGrant(original, username, ApiPermission.ARCHITECTURE_PUBLISH, unattended);
+    }
+
+    private void checkGrant(Grant original, String username, ApiPermission required, boolean unattended) {
         if (!unattended) {
-            if (!authorize(username, scope).equals(original)) throw denied();
+            if (!authorize(username, required).equals(original)) throw denied();
             return;
         }
         if ("LEGACY_OIDC".equals(original.loginKind())) throw new FreshLoginRequired();
@@ -75,7 +92,7 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority {
             throw new FreshLoginRequired();
         }
         var local = identities.currentLocalAuthority(id, username);
-        if (!local.bindingKey().equals(original.bindingKey()) || permission(scope).roles().stream()
+        if (!local.bindingKey().equals(original.bindingKey()) || required.roles().stream()
                 .noneMatch(role -> local.roles().contains("ROLE_" + role))) throw denied();
     }
 

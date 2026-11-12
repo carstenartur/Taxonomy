@@ -2,7 +2,22 @@ package com.taxonomy.workspace.storage;
 
 import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.workspace.storage.ExpectedHeadDslCommitter.CommitRequest;
+import com.taxonomy.workspace.signing.SigningTestKeys;
+import com.taxonomy.editor.EditorPersistenceFixture;
+import io.github.carstenartur.jgit.storage.hibernate.DefaultHibernateRepositoryFactory;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.junit.jupiter.api.Test;
 
@@ -14,6 +29,179 @@ class ExpectedHeadDslCommitterTest {
 
     private final ExpectedHeadDslCommitter committer =
             new ExpectedHeadDslCommitter();
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void signedCandidateSurvivesReopeningWithExactBytesAndParents(boolean merge, @TempDir Path temp) throws Exception {
+        var signatures = SigningTestKeys.createService(Files.createDirectory(temp.resolve("keys")));
+        var directory = temp.resolve("objects.git").toFile();
+        String base, incoming, candidate;
+        byte[] original;
+        try (var raw = FileRepositoryBuilder.create(directory)) {
+            raw.create(true);
+            var git = new DslGitRepository(raw, false).withSignatureService(signatures, "workspace-fixture");
+            base = git.commitDslIfHeadMatches("draft", null, "# base", "alice", "base");
+            incoming = merge ? git.commitDslIfHeadMatches("source", null, "# other", "bob", "source") : null;
+            candidate = git.prepareDslCommit("sync-42", "draft", base, incoming, "# reviewed", "alice", "reviewed", null);
+            assertThat(git.getHeadCommit("draft")).isEqualTo(base);
+            assertThat(git.findPreparedDslCommit("sync-42", "draft")).isEqualTo(candidate);
+            assertThat(git.prepareDslCommit("sync-42", "draft", base, incoming, "# reviewed", "alice", "reviewed", null))
+                    .isEqualTo(candidate);
+            assertThatThrownBy(() -> git.prepareDslCommit("sync-42", "draft", base, incoming, "# different", "alice", "reviewed", null))
+                    .isInstanceOf(IOException.class);
+            assertThat(git.findPreparedDslCommit("sync-42", "sync-base")).isNull();
+            assertThat(git.pinExistingDslCommit("sync-42", "sync-base", null, base)).isEqualTo(base);
+            assertThat(git.getHeadCommit("sync-base")).isNull();
+            assertThatThrownBy(() -> git.releasePreparedDslCommit("sync-42", "draft", base)).isInstanceOf(IOException.class);
+            original = raw.open(ObjectId.fromString(candidate)).getBytes();
+            assertThat(git.verifyCommit(candidate).status().name()).isEqualTo("VERIFIED");
+            try (var walk = new RevWalk(raw)) {
+                var commit = walk.parseCommit(ObjectId.fromString(candidate));
+                assertThat(commit.getParentCount()).isEqualTo(merge ? 2 : 1);
+                assertThat(commit.getParent(0).name()).isEqualTo(base);
+                if (merge) assertThat(commit.getParent(1).name()).isEqualTo(incoming);
+            }
+        }
+        try (var raw = new FileRepositoryBuilder().setGitDir(directory).build()) {
+            var git = new DslGitRepository(raw, false).withSignatureService(signatures, "workspace-fixture");
+            assertThat(git.findPreparedDslCommit("sync-42", "draft")).isEqualTo(candidate);
+            assertThatThrownBy(() -> git.publishPreparedDslCommit("sync-42", "draft", null, candidate)).isInstanceOf(IOException.class);
+            assertThat(git.publishPreparedDslCommit("sync-42", "draft", base, candidate)).isEqualTo(candidate);
+            assertThat(git.publishPreparedDslCommit("sync-42", "draft", base, candidate)).isEqualTo(candidate);
+            assertThat(raw.open(ObjectId.fromString(candidate)).getBytes()).containsExactly(original);
+            assertThat(git.publishPreparedDslCommit("sync-42", "sync-base", null, base)).isEqualTo(base);
+            git.releasePreparedDslCommit("sync-42", "draft", candidate);
+            git.releasePreparedDslCommit("sync-42", "draft", candidate);
+            assertThat(git.findPreparedDslCommit("sync-42", "draft")).isNull();
+            assertThat(git.findPreparedDslCommit("sync-42", "sync-base")).isEqualTo(base);
+        }
+    }
+
+    @Test
+    void hibernatePinRetainsTheExactSignedCandidateAcrossDatabaseFactoryRestarts(@TempDir Path temp) throws Exception {
+        var signatures = SigningTestKeys.createService(Files.createDirectory(temp.resolve("keys")));
+        String url = "jdbc:hsqldb:file:" + temp.resolve("journal") + ";shutdown=true";
+        String base, candidate;
+        byte[] bytes;
+        try (var db = new EditorPersistenceFixture(url);
+             var repositories = new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(db.factory), null, signatures)) {
+            var git = repositories.openWorkspaceRepository("prepared-storage");
+            base = git.commitDslIfHeadMatches("draft", null, "# base", "alice", "base");
+            candidate = git.prepareDslCommit("operation", "draft", base, null, "# update", "alice", "update", null);
+            bytes = git.getGitRepository().open(ObjectId.fromString(candidate)).getBytes();
+            assertThat(git.getHeadCommit("draft")).isEqualTo(base);
+        }
+        try (var db = new EditorPersistenceFixture(url);
+             var repositories = new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(db.factory), null, signatures)) {
+            var git = repositories.openWorkspaceRepository("prepared-storage");
+            assertThat(git.findPreparedDslCommit("operation", "draft")).isEqualTo(candidate);
+            assertThat(git.publishPreparedDslCommit("operation", "draft", base, candidate)).isEqualTo(candidate);
+            assertThat(git.getGitRepository().open(ObjectId.fromString(candidate)).getBytes()).containsExactly(bytes);
+        }
+        try (var db = new EditorPersistenceFixture(url);
+             var repositories = new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(db.factory), null, signatures)) {
+            var git = repositories.openWorkspaceRepository("prepared-storage");
+            assertThat(git.publishPreparedDslCommit("operation", "draft", base, candidate)).isEqualTo(candidate);
+            assertThat(git.verifyCommit(candidate).status().name()).isEqualTo("VERIFIED");
+            git.releasePreparedDslCommit("operation", "draft", candidate);
+            assertThat(git.findPreparedDslCommit("operation", "draft")).isNull();
+            assertThat(git.getHeadCommit("draft")).isEqualTo(candidate);
+        }
+    }
+
+    @Test
+    void previouslyOpenedHibernateHandlesObserveEachOthersPinsAndConditionalRelease(@TempDir Path temp) throws Exception {
+        String url = "jdbc:hsqldb:file:" + temp.resolve("independent") + ";shutdown=true";
+        try (var first = new EditorPersistenceFixture(url); var second = new EditorPersistenceFixture(url)) {
+            var writer = first.repositories.openWorkspaceRepository("shared-storage");
+            var observer = second.repositories.openWorkspaceRepository("shared-storage");
+            String base = writer.commitDslIfHeadMatches("draft", null, "# base", "alice", "base");
+            assertThat(observer.findPreparedDslCommit("sync", "draft")).isNull();
+            String candidate = writer.prepareDslCommit("sync", "draft", base, null, "# edit", "alice", "edit", null);
+            assertThat(observer.findPreparedDslCommit("sync", "draft")).isEqualTo(candidate);
+            assertThat(observer.publishPreparedDslCommit("sync", "draft", base, candidate)).isEqualTo(candidate);
+            assertThat(writer.publishPreparedDslCommit("sync", "draft", base, candidate)).isEqualTo(candidate);
+            writer.releasePreparedDslCommit("sync", "draft", candidate);
+            assertThat(observer.findPreparedDslCommit("sync", "draft")).isNull();
+        }
+    }
+
+    @Test
+    void independentRepositoriesCannotReplaceAWinningOperationPin(@TempDir Path temp) throws Exception {
+        var directory = temp.resolve("shared.git").toFile();
+        try (var first = FileRepositoryBuilder.create(directory);
+             var workers = Executors.newFixedThreadPool(2)) {
+            first.create(true);
+            var owner = new DslGitRepository(first, false);
+            var base = owner.commitDslIfHeadMatches("draft", null, "# base", "alice", "base");
+            var ready = new CountDownLatch(2);
+            var start = new CountDownLatch(1);
+            var results = List.of("# left", "# right").stream().map(dsl -> workers.submit(() -> {
+                try (var raw = new FileRepositoryBuilder().setGitDir(directory).build()) {
+                    var worker = new DslGitRepository(raw, false);
+                    ready.countDown();
+                    if (!start.await(10, TimeUnit.SECONDS)) throw new AssertionError("Other writer did not start");
+                    try {
+                        return worker.prepareDslCommit("competing", "draft", base, null, dsl, "alice", "operation", null);
+                    } catch (IOException lostRace) {
+                        return null;
+                    }
+                }
+            })).toList();
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            var firstResult = results.get(0).get(15, TimeUnit.SECONDS);
+            var secondResult = results.get(1).get(15, TimeUnit.SECONDS);
+            var pin = owner.findPreparedDslCommit("competing", "draft");
+            assertThat(pin).isNotNull();
+            assertThat(java.util.Arrays.asList(firstResult, secondResult)).containsExactlyInAnyOrder(pin, null);
+            assertThat(owner.getHeadCommit("draft")).isEqualTo(base);
+            assertThat(owner.publishPreparedDslCommit("competing", "draft", base, pin)).isEqualTo(pin);
+        }
+    }
+
+    @Test
+    void aPreparedInitialCommitNeverOverwritesAnIndependentRootOrTheWrongBranch() throws Exception {
+        try (var git = new DslGitRepository()) {
+            var candidate = git.prepareDslCommit("initial", "draft", null, null, "# reviewed", "alice", "reviewed", null);
+            var independent = git.commitDslIfHeadMatches("draft", null, "# independent", "bob", "independent");
+            assertThatThrownBy(() -> git.publishPreparedDslCommit("initial", "other", null, candidate))
+                    .isInstanceOf(IOException.class);
+            assertThatThrownBy(() -> git.publishPreparedDslCommit("initial", "draft", null, candidate))
+                    .isInstanceOf(BranchHeadConflictException.class);
+            assertThat(git.getHeadCommit("other")).isNull();
+            assertThat(git.getHeadCommit("draft")).isEqualTo(independent);
+            assertThat(git.findPreparedDslCommit("initial", "draft")).isEqualTo(candidate);
+            assertThat(git.prepareDslCommit("initial", "draft", null, null, "# reviewed", "alice", "reviewed", null))
+                    .isEqualTo(candidate);
+            assertThatThrownBy(() -> git.prepareDslCommit("initial", "draft", null, null, "# reviewed", "mallory", "reviewed", null))
+                    .isInstanceOf(IOException.class);
+        }
+    }
+
+    @Test
+    void pinsExistingFastForwardsAndNoOpsWithoutAdoptingAnIndependentHead() throws Exception {
+        try (var git = new DslGitRepository()) {
+            String base = git.commitDslIfHeadMatches("draft", null, "# base", "alice", "base");
+            git.createBranchAtCommit("source", base);
+            String child = git.commitDslIfHeadMatches("source", base, "# child", "bob", "child");
+            String other = git.commitDslIfHeadMatches("unrelated", null, "# unrelated", "bob", "unrelated");
+            assertThatThrownBy(() -> git.pinExistingDslCommit("bad-ff", "draft", base, other)).isInstanceOf(IOException.class);
+            assertThat(git.findPreparedDslCommit("bad-ff", "draft")).isNull();
+            assertThat(git.pinExistingDslCommit("no-op", "draft", base, base)).isEqualTo(base);
+            assertThat(git.publishPreparedDslCommit("no-op", "draft", base, base)).isEqualTo(base);
+            assertThat(git.pinExistingDslCommit("ff", "draft", base, child)).isEqualTo(child);
+            assertThatThrownBy(() -> git.pinExistingDslCommit("ff", "draft", base, base)).isInstanceOf(IOException.class);
+            assertThatThrownBy(() -> git.publishPreparedDslCommit("ff", "draft", base, other)).isInstanceOf(IOException.class);
+            assertThat(git.publishPreparedDslCommit("ff", "draft", base, child)).isEqualTo(child);
+            assertThat(git.publishPreparedDslCommit("ff", "draft", base, child)).isEqualTo(child);
+            String moved = git.commitDslIfHeadMatches("draft", child, "# independent", "bob", "independent");
+            assertThatThrownBy(() -> git.publishPreparedDslCommit("ff", "draft", base, child))
+                    .isInstanceOf(BranchHeadConflictException.class);
+            assertThat(git.getHeadCommit("draft")).isEqualTo(moved);
+            assertThat(git.findPreparedDslCommit("ff", "draft")).isEqualTo(child);
+        }
+    }
 
     @Test
     void createsInitialAndChildCommitsOnlyAtTheExpectedHead() throws Exception {

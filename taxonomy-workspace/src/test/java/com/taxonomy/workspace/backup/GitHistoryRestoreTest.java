@@ -1,6 +1,7 @@
 package com.taxonomy.workspace.backup;
 
 import com.taxonomy.backup.*;
+import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.StagedJgitSchemaMigration;
 import io.github.carstenartur.jgit.storage.hibernate.*;
 import org.eclipse.jgit.api.Git;
@@ -163,9 +164,53 @@ class GitHistoryRestoreTest {
         }
     }
 
+    @ParameterizedTest @EnumSource(value=GitRepresentation.class,names={"BUNDLE","BARE","WORKTREE"})
+    void preparedRevisionIsRetainedWithoutRestoringPublicationAuthority(GitRepresentation representation) throws Exception {
+        try (var source = source(representation, true); var stage = new Stage()) {
+            var pin = source.pin;
+            String retained = "refs/taxonomy-backup/required/" + pin.tag;
+            assertThat(source.payload.exactRef(pin.name)).isNull();
+            assertThat(source.payload.exactRef(retained).getObjectId().name()).isEqualTo(pin.tag);
+            assertThat(source.evidence.state().refs()).doesNotContainKey(pin.name);
+            assertThat(source.evidence.backupRefs()).containsEntry(retained, pin.tag);
+            var prepared = GitHistoryRestore.prepare(source.payload, source.evidence, GitHistoryCapture.Limits.defaults(), CHECK);
+            var proof = GitHistoryRestore.restore(prepared, stage.repository(), UUID.randomUUID(), IMPORTER, CHECK);
+            assertThat(proof.commitMappings()).containsEntry(pin.candidate, pin.candidate);
+            assertThat(GitHistoryRestore.verify(prepared, stage.repository(), CHECK)).isEqualTo(proof);
+            assertThat(stage.repository().exactRef("refs/heads/main").getObjectId().name()).isEqualTo(source.head);
+            assertThat(stage.repository().exactRef("refs/heads/alias").getTarget().getName()).isEqualTo("refs/heads/main");
+            assertThat(stage.repository().exactRef("refs/archive/prepared-evidence").getTarget().getName()).isEqualTo(retained);
+            assertThat(body(stage.repository(), pin.candidate)).isEqualTo("PREPARED ONLY");
+            var git = new DslGitRepository(stage.repository());
+            assertThat(git.findPreparedDslCommit("unpublished-sync", "main")).isNull();
+            assertThatThrownBy(() -> git.publishPreparedDslCommit("unpublished-sync", "main", source.head, pin.candidate))
+                    .isInstanceOf(IOException.class);
+            assertThat(stage.repository().exactRef("refs/heads/main").getObjectId().name()).isEqualTo(source.head);
+        }
+    }
+
+    @Test void rawPrivatePinInIncomingMetadataIsRejectedBeforeAnyObjectWrites() throws Exception {
+        try (var source = source(GitRepresentation.BARE, true); var stage = new Stage()) {
+            var original = source.evidence;
+            var refs = new TreeMap<>(original.state().refs());
+            refs.put(source.pin.name, source.pin.tag);
+            var state = new SnapshotContext.RepositoryState(refs, original.state().symbolicHead(),
+                    original.state().workingStates(), original.state().requiredCommits());
+            var unsafe = new GitHistoryRestore.Source(original.origin(), state, original.backupRefs(), original.symbolicRefs(),
+                    original.reflogs(), original.importedReflogs(), original.objectCount());
+            assertThatThrownBy(() -> GitHistoryRestore.restore(source.payload, unsafe, stage.repository(),
+                    GitHistoryCapture.Limits.defaults(), UUID.randomUUID(), IMPORTER, CHECK)).isInstanceOf(IOException.class);
+            assertThat(contains(stage.repository(), source.head)).isFalse();
+            assertThat(stage.repository().getRefDatabase().getRefsByPrefix(Constants.R_REFS)).isEmpty();
+        }
+    }
+
     private SourceFixture source(GitRepresentation representation)throws Exception {
+        return source(representation, false);
+    }
+    private SourceFixture source(GitRepresentation representation, boolean prepareRevision)throws Exception {
         Path root=Files.createDirectory(temporary.resolve(UUID.randomUUID().toString()));Path original=root.resolve("original");
-        GitHistoryRestore.Source evidence;String first,head,orphan;var sink=new FilesSink(root.resolve("archive"));
+        GitHistoryRestore.Source evidence;String first,head,orphan;PreparedPin prepared=null;var sink=new FilesSink(root.resolve("archive"));
         try(var git=Git.init().setInitialBranch("main").setDirectory(original.toFile()).call()) {
             first=commit(git,"ORIGINAL");head=commit(git,"CURRENT");
             git.tag().setName("original-tag").setAnnotated(true).setTagger(AUTHOR).setMessage("Original annotated tag").call();
@@ -174,6 +219,14 @@ class GitHistoryRestoreTest {
                 var commit=new CommitBuilder();commit.setTreeId(insert.insert(tree));commit.setAuthor(AUTHOR);commit.setCommitter(AUTHOR);commit.setMessage("Original unreachable commit");orphan=insert.insert(commit).name();insert.flush();
             }
             link(git.getRepository(),"refs/heads/alias","refs/heads/main");link(git.getRepository(),"HEAD","refs/heads/alias");
+            if (prepareRevision) {
+                var workspace = new DslGitRepository(git.getRepository());
+                String candidate = workspace.prepareDslCommit("unpublished-sync", "main", head, null,
+                        "PREPARED ONLY", "editor", "Unpublished candidate", null);
+                var pin = git.getRepository().getRefDatabase().getRefsByPrefix("refs/taxonomy/prepared-sync/").getFirst();
+                prepared = new PreparedPin(pin.getName(), pin.getObjectId().name(), candidate);
+                link(git.getRepository(), "refs/archive/prepared-evidence", pin.getName());
+            }
             var capture=GitHistoryCapture.capture(git.getRepository(),Set.of(orphan),Map.of("main",new SnapshotContext.WorkingState(4,head,3)),GitHistoryCapture.Limits.defaults(),CHECK);
             capture.write("original-repository",representation,sink);
             evidence=GitHistoryRestore.Source.captured(capture,new GitReflogProvenance.Origin("a".repeat(64),new BackupRepositoryKey("original",null),"original-repository"));
@@ -183,7 +236,7 @@ class GitHistoryRestoreTest {
         if(representation==GitRepresentation.BUNDLE) {
             Path clone=root.resolve("payload.git");run("git","clone","--mirror",payload.resolve("history.bundle").toString(),clone.toString());payload=clone;
         } else if(representation==GitRepresentation.WORKTREE)payload=payload.resolve(".git");
-        return new SourceFixture(new FileRepositoryBuilder().setGitDir(payload.toFile()).setBare().build(),evidence,first,head,orphan);
+        return new SourceFixture(new FileRepositoryBuilder().setGitDir(payload.toFile()).setBare().build(),evidence,first,head,orphan,prepared);
     }
     private static String commit(Git git,String body)throws Exception {
         Files.writeString(git.getRepository().getWorkTree().toPath().resolve("architecture.taxdsl"),body);git.add().addFilepattern("architecture.taxdsl").call();
@@ -206,7 +259,8 @@ class GitHistoryRestoreTest {
         var process=new ProcessBuilder(args).redirectErrorStream(true).start();byte[] output=process.getInputStream().readAllBytes();
         assertThat(process.waitFor(30,TimeUnit.SECONDS)).isTrue();assertThat(process.exitValue()).as(new String(output,StandardCharsets.UTF_8)).isZero();
     }
-    private record SourceFixture(Repository payload,GitHistoryRestore.Source evidence,String first,String head,String orphan)implements AutoCloseable {
+    private record PreparedPin(String name, String tag, String candidate) { }
+    private record SourceFixture(Repository payload,GitHistoryRestore.Source evidence,String first,String head,String orphan, PreparedPin pin)implements AutoCloseable {
         public void close(){payload.close();}
     }
     private static final class Stage implements AutoCloseable {

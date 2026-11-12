@@ -282,6 +282,39 @@ public class DslGitRepository implements AutoCloseable {
                 new ExpectedHeadDslCommitter.CommitRequest(branch, expectedHead, dslText, author, message, provenance)).commitId();
     }
 
+    /** Prepare and pin the signed object before the journal records its ID or updates the selected branch. */
+    public String prepareDslCommit(String operationId, String branch, String expectedHead, String incomingHead,
+                                   String dslText, String author, String message, CommitProvenance provenance) throws IOException {
+        var parents = incomingHead == null ? List.<String>of() : List.of(incomingHead);
+        var request = new ExpectedHeadDslCommitter.CommitRequest(branch, expectedHead, dslText, author, message, provenance, parents);
+        synchronized (gitRepo) {
+            return new ExpectedHeadDslCommitter().prepare(this, operationId, request);
+        }
+    }
+
+    /** Retain an existing candidate for an initial branch, a no-op or a fast-forward. */
+    public String pinExistingDslCommit(String operationId, String branch, String expectedHead, String candidateId) throws IOException {
+        synchronized (gitRepo) {
+            return new ExpectedHeadDslCommitter().pinExisting(this, operationId, branch, expectedHead, candidateId);
+        }
+    }
+
+    public String findPreparedDslCommit(String operationId, String branch) throws IOException {
+        return new ExpectedHeadDslCommitter().findPrepared(gitRepo, operationId, branch);
+    }
+
+    public String publishPreparedDslCommit(String operationId, String branch, String expectedHead, String candidateId) throws IOException {
+        synchronized (gitRepo) {
+            return new ExpectedHeadDslCommitter().publish(this, operationId, branch, expectedHead, candidateId);
+        }
+    }
+
+    public void releasePreparedDslCommit(String operationId, String branch, String candidateId) throws IOException {
+        synchronized (gitRepo) {
+            new ExpectedHeadDslCommitter().release(gitRepo, operationId, branch, candidateId);
+        }
+    }
+
     /** Verify a no-op or recovery without adopting a concurrent branch head. */
     public String verifyExpectedHead(String branch, String expectedHead) throws IOException {
         return new ExpectedHeadDslCommitter().verifyExpectedHead(this, branch, expectedHead);
@@ -329,9 +362,13 @@ public class DslGitRepository implements AutoCloseable {
 
     /** Refresh independent storage handles before reading a remote observation or enforcing a Git precondition. */
     public Ref readFreshRef(String qualifiedName) throws IOException {
-        synchronized (gitRepo) {
-            gitRepo.scanForRepoChanges();
-            return gitRepo.exactRef(qualifiedName);
+        return readFreshRef(gitRepo, qualifiedName);
+    }
+
+    static Ref readFreshRef(Repository repository, String qualifiedName) throws IOException {
+        synchronized (repository) {
+            repository.scanForRepoChanges();
+            return repository.exactRef(qualifiedName);
         }
     }
 

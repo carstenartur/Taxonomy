@@ -1,6 +1,9 @@
 package com.taxonomy.workspace.service;
 
 import com.taxonomy.versioning.service.SemanticGitMergeService;
+import com.taxonomy.workspace.controller.WorkspaceController;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import com.taxonomy.workspace.model.*;
 import com.taxonomy.workspace.repository.*;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
@@ -36,6 +39,7 @@ class GitNativeSyncSourceAuthorityTest {
         workspace.setWorkspaceId("old-copy"); workspace.setUsername("alice");
         workspace.setSourceRepositoryId("private-source");
         when(rows.findByWorkspaceId("old-copy")).thenReturn(Optional.of(workspace));
+            when(rows.findByWorkspaceIdForUpdate("old-copy")).thenReturn(Optional.of(workspace));
         when(catalog.getRepository("private-source")).thenReturn(source);
         when(contexts.resolveRepositoryContextForUser("alice")).thenReturn(
                 RepositoryContext.workspace("private-source", "old-copy", "main", "alice"));
@@ -182,6 +186,125 @@ class GitNativeSyncSourceAuthorityTest {
         }
     }
 
+    @org.junit.jupiter.api.Test
+    void repeatingAnInterruptedPublishDoesNotAdoptACommitWrittenByAnotherPublisher() throws Exception {
+        var config=new org.hibernate.cfg.Configuration().addAnnotatedClass(WorkspacePublicationOperation.class)
+                .addAnnotatedClass(WorkspacePublicationDecision.class).setProperty("hibernate.connection.url",
+                        "jdbc:hsqldb:mem:publication-" + java.util.UUID.randomUUID() + ";hsqldb.tx=mvcc")
+                .setProperty("hibernate.connection.username","SA").setProperty("hibernate.connection.password","")
+                .setProperty("hibernate.hbm2ddl.auto","create").setProperty("hibernate.search.enabled","false");
+        try (var f = new Fixture(); var factory=config.buildSessionFactory()) {
+            var journal=new WorkspacePublicationJournal(org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(factory),
+                    new org.springframework.orm.jpa.JpaTransactionManager(factory));
+            var actor=mock(WorkspacePublicationAuthority.class);
+            var grant=new WorkspaceFetchAuthority.Grant(java.util.UUID.randomUUID().toString(),"LOCAL","a".repeat(64));
+            when(actor.authorizePublication("alice")).thenReturn(grant);
+            when(actor.currentActor("alice")).thenReturn(grant.principalId());
+            f.service.configurePublications(new WorkspacePublicationRecovery(journal,actor));
+            var user = mock(WorkspaceResolver.class);
+            when(user.resolveCurrentUsername()).thenReturn("alice");
+            var endpoint = new WorkspaceController(null,user,null,null,null,f.service,null,f.catalog);
+            var http = MockMvcBuilders.standaloneSetup(endpoint).build();
+            var firstInput = f.local.commitDsl("main",dsl("Alice reviewed"),"alice","Reviewed change");
+            doThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+                    "projection temporarily unavailable")).doNothing().when(f.portfolio)
+                    .materializePortfolio(anyString(),eq("shared"),any());
+            var first = http.perform(post("/api/workspace/publish").param("userBranch","main")
+                    .header("Idempotency-Key","reviewed-publish")).andReturn().getResponse();
+            assertEquals(202,first.getStatus(),first.getContentAsString());
+            String operation=first.getHeader("X-Operation-Id");
+            assertNotNull(operation);
+            var published = f.source.getHeadCommit("draft");
+            assertTrue(f.source.getDslAtCommit(published).contains("Alice reviewed"));
+            String originalLocal = f.local.getHeadCommit("main");
+            assertTrue(f.source.isAncestor(firstInput,published));
+            var independent = f.source.commitDsl("draft",dsl("Bob advanced"),
+                    "bob","Later publication");
+            http.perform(post("/api/workspace/publish").param("userBranch","main")
+                    .header("Idempotency-Key","reviewed-publish")).andReturn();
+            var settled=f.service.retryPublication(RepositoryContext.workspace("private-source","old-copy","main","alice"),operation);
+            assertEquals("SUPERSEDED",settled.status());
+            assertEquals(published,settled.resultCommit());
+            assertEquals(grant.principalId(),settled.originalActor());
+            assertEquals(independent,f.source.getHeadCommit("draft"),"replaying Alice's operation changed Bob's later source ref");
+            assertEquals(originalLocal,f.local.getHeadCommit("main"),
+                    "replaying the admitted operation integrated a different publisher's later commit");
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(value=WorkspacePublicationOperation.Step.class, mode=EnumSource.Mode.EXCLUDE, names={"COMPLETE"})
+    void restartAfterEachPhaseReusesItsPreparedGitAndRecordedOwnership(WorkspacePublicationOperation.Step interrupted,
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path disk) throws Exception {
+        var context = RepositoryContext.workspace("private-source","old-copy","main","alice");
+        var grant = new WorkspaceFetchAuthority.Grant(java.util.UUID.randomUUID().toString(),"LOCAL","a".repeat(64));
+        var authority = mock(WorkspacePublicationAuthority.class);
+        when(authority.authorizePublication("alice")).thenReturn(grant);
+        when(authority.currentActor("alice")).thenReturn(grant.principalId());
+        String url = "jdbc:hsqldb:file:"+disk.resolve("publication")+";hsqldb.tx=mvcc;shutdown=true";
+        try (var fixture = new Fixture()) {
+            String fork = fixture.source.getHeadCommit("draft");
+            String reviewed = fixture.local.commitDsl("main",dsl("Reviewed phase matrix"),"alice","Review");
+            String operation;
+            try (var first = publicationDatabase(url,"create")) {
+                var journal = publicationJournal(first);
+                var recovery = new WorkspacePublicationRecovery(journal,authority);
+                var pending = recovery.submit(context,false,"one-publication",null,
+                        () -> new WorkspacePublicationJournal.Source("draft",fork,fork,reviewed,null), (row,authorize) -> {
+                            fixture.service.applyPublicationPhase(row,authorize);
+                            if (row.step==interrupted) throw new IOException("Lost acknowledgement after "+interrupted);
+                        });
+                assertEquals("RETRYABLE",pending.status());
+                assertEquals(interrupted.name(),pending.nextPhase());
+                assertEquals(1,pending.attempts());
+                operation=pending.operationId();
+                if (interrupted.ordinal()<=WorkspacePublicationOperation.Step.SOURCE_REF.ordinal()) assertNull(pending.resultCommit());
+                else assertEquals(fixture.source.getHeadCommit("draft"),pending.resultCommit());
+            }
+            try (var restarted = publicationDatabase(url,"validate")) {
+                var journal=publicationJournal(restarted);
+                var recovered=new WorkspacePublicationRecovery(journal,authority)
+                        .retry(context,operation,fixture.service::applyPublicationPhase);
+                assertEquals(operation,recovered.operationId());
+                assertEquals(grant.principalId(),recovered.originalActor());
+                assertEquals(2,recovered.attempts());
+                if (interrupted==WorkspacePublicationOperation.Step.PREPARE) {
+                    assertEquals("MANUAL_REVIEW",recovered.status());
+                    assertEquals(fork,fixture.source.getHeadCommit("draft"));
+                } else {
+                    assertEquals("COMPLETED",recovered.status(),recovered.decisionCode());
+                    assertEquals(recovered.preparedCommit(),recovered.resultCommit());
+                    assertEquals(recovered.resultCommit(),fixture.source.getHeadCommit("draft"));
+                    assertTrue(fixture.source.isAncestor(reviewed,recovered.resultCommit()));
+                    String canonical = new SemanticGitMergeService().mergeContent(dsl("Original"),dsl("Original"),
+                            dsl("Reviewed phase matrix")).mergedText();
+                    assertEquals(canonical,fixture.source.getDslAtCommit(recovered.resultCommit()));
+                    assertEquals(canonical,fixture.local.getDslAtHead("main"));
+                    assertEquals(canonical,fixture.local.getDslAtHead("sync-base"));
+                }
+                try (var session=restarted.openSession()) {
+                    var decisions=session.createQuery("select d from WorkspacePublicationDecision d where d.operation=:id order by d.id",
+                            WorkspacePublicationDecision.class).setParameter("id",operation).getResultList();
+                    assertTrue(decisions.stream().allMatch(decision -> grant.principalId().equals(decision.actor)));
+                    assertTrue(decisions.stream().anyMatch(decision -> "PUBLICATION_INTERRUPTED".equals(decision.decision)));
+                    assertEquals(recovered.decisionCode(),decisions.getLast().decision);
+                }
+            }
+        }
+    }
+
+    private static org.hibernate.SessionFactory publicationDatabase(String url,String schema) {
+        return new org.hibernate.cfg.Configuration().addAnnotatedClass(WorkspacePublicationOperation.class)
+                .addAnnotatedClass(WorkspacePublicationDecision.class).setProperty("hibernate.connection.url",url)
+                .setProperty("hibernate.connection.username","SA").setProperty("hibernate.connection.password","")
+                .setProperty("hibernate.hbm2ddl.auto",schema).setProperty("hibernate.search.enabled","false").buildSessionFactory();
+    }
+
+    private static WorkspacePublicationJournal publicationJournal(org.hibernate.SessionFactory factory) {
+        return new WorkspacePublicationJournal(org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(factory),
+                new org.springframework.orm.jpa.JpaTransactionManager(factory));
+    }
+
     private static String dsl(String title) { return "element A type System {\n  title: \"" + title + "\";\n}\n"; }
     private static final class Fixture implements AutoCloseable {
         final DslGitRepositoryFactory repositories = new DslGitRepositoryFactory(null);
@@ -208,6 +331,7 @@ class GitNativeSyncSourceAuthorityTest {
             workspace.setBaseCommit(base);
             local.commitDsl("main", dsl("Original"), "alice", "Seed");
             when(rows.findByWorkspaceId("old-copy")).thenReturn(Optional.of(workspace));
+            when(rows.findByWorkspaceIdForUpdate("old-copy")).thenReturn(Optional.of(workspace));
             var states = mock(SyncStateRepository.class);
             when(states.findByUsername("alice")).thenReturn(Optional.of(new SyncState()));
             var contexts = mock(WorkspaceContextResolver.class);

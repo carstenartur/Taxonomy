@@ -396,6 +396,38 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         }
     }
 
+    @Override
+    public <T> T applyPreparedVersion(RepositoryContext context, String expectedHead, String candidate, String rationale,
+                                      GitAction<T> action) throws IOException {
+        requireWritable(context);
+        Objects.requireNonNull(candidate, "prepared commit");
+        try (var write = writeBarrier.enter(backupScope(context))) {
+            var repository = repositories.resolveRepository(context);
+            var initial = snapshot(context).state();
+            try {
+                return journal.locked(context, initial, session -> {
+                    var state = session.state();
+                    try {
+                        if (!Objects.equals(state.checkpointCommit(), candidate)) {
+                            if (!Objects.equals(state.checkpointCommit(), expectedHead) || state.pendingCheckpoint() != null
+                                    || state.checkpointRevision() != state.revision()) {
+                                throw new BranchHeadConflictException(context.branch(), expectedHead, state.checkpointCommit(),
+                                        "The editor changed after this publication was prepared");
+                            }
+                        } else {
+                            // The editor already adopted this result. Subsequent local edits stay in that journal.
+                            repository.verifyExpectedHead(context.branch(), candidate);
+                        }
+                        T result = action.run();
+                        repository.verifyExpectedHead(context.branch(), candidate);
+                        importVersionAt(context, session, rationale, repository, candidate);
+                        return result;
+                    } catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
+                });
+            } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }
+        }
+    }
+
     /** Recovery for a version write that reached Git before the journal transaction could finish. */
     public void reconcileVersion(RepositoryContext context) throws IOException {
         try (var write = writeBarrier.enter(backupScope(context))) {
@@ -696,7 +728,11 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
 
     private void importVersion(RepositoryContext context, EditorJournal.Session session, String rationale) throws IOException {
         var repository = repositories.resolveRepository(context);
-        String head = head(repository, context.branch());
+        importVersionAt(context, session, rationale, repository, head(repository, context.branch()));
+    }
+
+    private void importVersionAt(RepositoryContext context, EditorJournal.Session session, String rationale,
+                                 DslGitRepository repository, String head) throws IOException {
         if (Objects.equals(head, session.state().checkpointCommit())) return;
         String dsl = source(repository, head);
         if (!dsl.equals(session.state().dsl())) {

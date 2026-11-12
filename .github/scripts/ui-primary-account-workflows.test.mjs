@@ -334,3 +334,47 @@ test('cleanup waits for both the publish response and its rendered sync-state po
     await harness.settle();
   }
 });
+
+test('pending publication retains its key across reload and a different workspace gets its own key', async () => {
+  const storage = new Map(), calls = [], notices = [];
+  const runtime = {workspaceId:'private-A'};
+  let status = 'RETRYABLE';
+  let sequence = 0;
+  function load() {
+    const window = {
+      addEventListener() {},
+      crypto:{randomUUID:() => 'publication-' + ++sequence},
+      sessionStorage:{getItem:key => storage.get(key), setItem:(key,value) => storage.set(key,value), removeItem:key => storage.delete(key)},
+      __TaxonomyAnalysisSessionContext:{runtime},
+      TaxonomyContextBar:{getCurrentContext:() => ({branch:'draft'})},
+      TaxonomyWorkspaceApi:{
+        publish: async (branch,options) => {
+          calls.push([runtime.workspaceId,branch,options.idempotencyKey]);
+          return {operationId:'saved-operation',status,success:status === 'COMPLETED'};
+        },
+        syncState:async () => null,
+        localChanges:async () => ({changeCount:0})
+      },
+      TaxonomyOperationResult:{
+        showSuccess:() => notices.push('success'),
+        showWarning:(title,detail) => notices.push([title,detail])
+      }
+    };
+    const document = {addEventListener(){},getElementById:() => null};
+    vm.runInNewContext(syncSource,{window,document,AbortController,TaxonomyI18n:{t:(key,...args) => [key,...args].join(' ')},
+      TaxonomyUtils:{escapeHtml:String}});
+    return window.TaxonomyWorkspaceSync;
+  }
+  await load().publish();
+  await load().publish();
+  runtime.workspaceId='private-B';
+  await load().publish();
+  runtime.workspaceId='private-A';
+  status='COMPLETED';
+  await load().publish();
+  await load().publish();
+  assert.deepEqual(calls.map(call => call[2]),['publication-1','publication-1','publication-2','publication-1','publication-3']);
+  assert.deepEqual(notices.slice(0,3).map(notice => notice[0]),Array(3).fill('workspace.sync.publish.pending'));
+  assert.match(notices[0][1],/saved-operation RETRYABLE/);
+  assert.deepEqual(notices.slice(3),['success','success']);
+});

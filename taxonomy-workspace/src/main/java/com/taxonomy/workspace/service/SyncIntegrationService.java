@@ -161,6 +161,13 @@ public class SyncIntegrationService {
      * @return the merge commit SHA on the shared branch
      * @throws IOException if the Git merge operation fails
      */
+    public record Publication(String commit, WorkspacePublicationJournal.View operation) { }
+
+    /** HTTP callers receive the durable receipt with both synchronous and deferred publications. */
+    public Publication publishWithReceipt(String username,String branch,String key,String cause) throws IOException {
+        return new Publication(publishToShared(username,branch),null);
+    }
+
     public String publishToShared(String username, String userBranch) throws IOException {
         log.info("User '{}': publishing branch '{}' to shared branch '{}'",
                 username, userBranch, getSharedBranch());
