@@ -31,7 +31,7 @@ public class WorkspaceFetchRecovery {
         var grant = actors.authorize(context.username());
         var selection = upstream.capture(context);
         var state = journal.admit(context, grant, selection, request, key, causation);
-        return complete(context, grant.principalId(), state);
+        return complete(context, grant.principalId(), state, true);
     }
 
     public WorkspaceFetchJournal.View status(RepositoryContext context, String id) throws IOException {
@@ -43,7 +43,7 @@ public class WorkspaceFetchRecovery {
     public Receipt retry(RepositoryContext context, String id) throws IOException {
         String principal = actors.authorize(context.username()).principalId();
         upstream.inspect(context);
-        return complete(context, principal, journal.status(context, principal, id));
+        return complete(context, principal, journal.status(context, principal, id), false);
     }
 
     public WorkspaceFetchJournal.View archive(RepositoryContext context, String id) throws IOException {
@@ -52,8 +52,10 @@ public class WorkspaceFetchRecovery {
         return journal.archive(context, principal, id);
     }
 
-    private Receipt complete(RepositoryContext context, String principal, WorkspaceFetchJournal.View state) throws IOException {
-        var claim = journal.claim(state.operationId(), principal, false);
+    private Receipt complete(RepositoryContext context, String principal, WorkspaceFetchJournal.View state,
+                             boolean respectBackoff) throws IOException {
+        // Repeating the fetch observes the saved delay. The explicit retry endpoint can request an early attempt.
+        var claim = journal.claim(state.operationId(), principal, respectBackoff);
         if (claim == null) {
             state = journal.status(context, principal, state.operationId());
         } else {
@@ -69,7 +71,8 @@ public class WorkspaceFetchRecovery {
         }
         if ("ARCHIVED".equals(state.phase())) throw new ResponseStatusException(HttpStatus.GONE, "FETCH_ARCHIVED");
         if ("DENIED".equals(state.phase())) throw new AccessDeniedException("Fetch authority changed");
-        if ("RUNNING".equals(state.phase()) || "ADMITTED".equals(state.phase()) || "RETRYABLE".equals(state.phase())) {
+        if ("RUNNING".equals(state.phase()) || "ADMITTED".equals(state.phase()) || "RETRYABLE".equals(state.phase())
+                || "AWAITING_AUTHORIZATION".equals(state.phase())) {
             return new Receipt(state.operationId(), null);
         }
         if (!"COMPLETED".equals(state.phase())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Fetch requires an explicit decision");

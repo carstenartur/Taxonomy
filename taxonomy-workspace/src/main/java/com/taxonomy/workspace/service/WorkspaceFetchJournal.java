@@ -160,9 +160,9 @@ public class WorkspaceFetchJournal {
                 .setParameter("cutoff", cutoff).executeUpdate();
     }
 
-    Claim claim(String id, String executor, boolean scheduled) {
+    Claim claim(String id, String executor, boolean respectBackoff) {
         long now = clock.millis();
-        String eligible = scheduled
+        String eligible = respectBackoff
                 ? "(f.phase in ('ADMITTED','RUNNING','RETRYABLE') and f.nextAttemptAt <= :now)"
                 : "(f.phase in ('ADMITTED','RETRYABLE','AWAITING_AUTHORIZATION') or (f.phase='RUNNING' and f.nextAttemptAt <= :now))";
         String lease = UUID.randomUUID().toString();

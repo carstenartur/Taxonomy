@@ -79,12 +79,38 @@ class WorkspaceUpstreamServiceTest {
         database = new WorkspaceFetchJournalTest.Database();
         actors = mock(WorkspaceFetchAuthority.class);
         when(actors.authorize("alice")).thenReturn(WorkspaceFetchJournalTest.GRANT);
-            when(actors.currentActor("alice")).thenReturn(WorkspaceFetchJournalTest.ALICE);
+        when(actors.currentActor("alice")).thenReturn(WorkspaceFetchJournalTest.ALICE);
         recovery = new WorkspaceFetchRecovery(database.journal, service, actors);
         mvc = MockMvcBuilders.standaloneSetup(new WorkspaceUpstreamController(service, resolver, recovery)).build();
     }
 
     @AfterEach void close() { if (database != null) database.close(); repositories.close(); }
+
+    @Test
+    void duplicateFetchPostReturnsTheOriginalReceiptDuringBackoffAndExplicitRetryCanResumeIt() throws Exception {
+        when(rows.save(workspace)).thenThrow(new IllegalStateException("Lost database acknowledgement")).thenReturn(workspace);
+        String body = "{\"sourceCommit\":\"" + incoming + "\",\"expectedTrackedCommit\":null}";
+        var first = mvc.perform(post("/api/workspace/upstream/fetch").header("Idempotency-Key", "backoff")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isAccepted()).andReturn();
+        String id = first.getResponse().getHeader("X-Operation-Id");
+        assertThat(id).isNotNull();
+        assertThat(tracked.head(target)).isEqualTo(incoming);
+        for (int replay = 0; replay < 6; replay++) {
+            mvc.perform(post("/api/workspace/upstream/fetch").header("Idempotency-Key", "backoff")
+                            .contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isAccepted()).andExpect(header().string("X-Operation-Id", id));
+        }
+        mvc.perform(get("/api/workspace/upstream/operations/{id}", id))
+                .andExpect(jsonPath("$.phase").value("RETRYABLE")).andExpect(jsonPath("$.attempts").value(1));
+        verify(rows, times(1)).save(workspace);
+        mvc.perform(post("/api/workspace/upstream/operations/{id}/retry", id))
+                .andExpect(status().isOk()).andExpect(header().string("X-Operation-Id", id))
+                .andExpect(jsonPath("$.trackedCommit").value(incoming));
+        mvc.perform(get("/api/workspace/upstream/operations/{id}", id))
+                .andExpect(jsonPath("$.phase").value("COMPLETED")).andExpect(jsonPath("$.attempts").value(2));
+        assertThat(target.getHeadCommit("draft")).isEqualTo(local);
+    }
 
     @Test
     void routeFetchesOnlyTheReviewedSourceAndRetainsBothWorkingAndIntegrationHeads() throws Exception {
