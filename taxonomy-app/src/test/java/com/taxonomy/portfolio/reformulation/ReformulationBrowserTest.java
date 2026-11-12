@@ -145,13 +145,24 @@ class ReformulationBrowserTest extends ReformulationWorkflowFixture {
             wait.until(d -> "reformulationOffers".equals(d.switchTo().activeElement().getDomAttribute("id")));
             driver.findElement(By.id("jumpToRequirementText")).sendKeys(Keys.ENTER);
             wait.until(d -> "true".equals(d.findElement(By.id("text-tab")).getDomAttribute("aria-selected")));
-            driver.switchTo().activeElement().sendKeys(Keys.TAB);
-            wait.until(d -> Boolean.TRUE.equals(driver.executeScript("""
-                    const panel = document.getElementById('textPane'), box = panel.getBoundingClientRect();
-                    const hit = document.elementFromPoint(box.left + 10, box.top + 9);
-                    return document.activeElement === panel && hit && panel.contains(hit);
-                    """)));
+            awaitVisibleSourceFocus(driver, wait);
+            new org.openqa.selenium.interactions.Actions(driver).keyDown(Keys.SHIFT)
+                    .sendKeys(Keys.TAB).keyUp(Keys.SHIFT).perform();
+            wait.until(d -> "text-tab".equals(d.switchTo().activeElement().getDomAttribute("id")));
+            new org.openqa.selenium.interactions.Actions(driver).sendKeys(Keys.TAB).perform();
+            awaitVisibleSourceFocus(driver, wait);
         });
+    }
+
+    private static void awaitVisibleSourceFocus(RemoteWebDriver driver, WebDriverWait wait) {
+        wait.until(d -> Boolean.TRUE.equals(driver.executeScript("""
+                const panel = document.getElementById('textPane'), box = panel.getBoundingClientRect();
+                const hit = document.elementFromPoint(box.left + 10, box.top + 9);
+                const state = {focus: document.activeElement.id || document.activeElement.outerHTML.slice(0, 90),
+                    top: box.top, hit: hit?.id || hit?.tagName, ready: document.activeElement === panel && panel.contains(hit)};
+                window.__reformulationClickGeometry = state;
+                return state.ready;
+                """)));
     }
 
     @Test void wideAndNarrowWorkspacePreservesEditsWhitespaceAndExplicitProposalSave() throws Exception {
