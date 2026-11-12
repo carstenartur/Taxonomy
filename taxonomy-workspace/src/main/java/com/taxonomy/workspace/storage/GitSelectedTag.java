@@ -70,12 +70,40 @@ public final class GitSelectedTag {
         }
     }
 
-    /** The caller has verified that the commit belongs to the target's tracked history. */
-    public void publish(DslGitRepository target, String actor) throws IOException {
+    /** Confirm this exact ref without recreating a missing tag or overwriting another writer. */
+    public void verifyRetained(DslGitRepository target) throws IOException {
         var repository = target.getGitRepository();
         synchronized (repository) {
             String current = objectAt(target, name);
-            if (objectId.equals(current)) return;
+            if (objectId.equals(current)) {
+                var update = repository.updateRef(Constants.R_TAGS + name, true);
+                update.setExpectedOldObjectId(ObjectId.fromString(objectId));
+                update.setNewObjectId(ObjectId.fromString(objectId));
+                update.disableRefLog();
+                if (update.update() == RefUpdate.Result.NO_CHANGE) return;
+                current = objectAt(target, name);
+            }
+            throw new BranchHeadConflictException(name, objectId, current, "The retained destination tag changed");
+        }
+    }
+
+    /** The caller has verified that the commit belongs to the target's tracked history. */
+    public void publish(DslGitRepository target, String actor) throws IOException {
+        publish(target, actor, () -> { });
+    }
+
+    @FunctionalInterface
+    public interface PublicationCheck { void verify() throws IOException; }
+
+    public void publish(DslGitRepository target, String actor, PublicationCheck beforePublication) throws IOException {
+        var repository = target.getGitRepository();
+        synchronized (repository) {
+            String current = objectAt(target, name);
+            if (objectId.equals(current)) {
+                beforePublication.verify();
+                verifyRetained(target);
+                return;
+            }
             if (current != null) {
                 throw new BranchHeadConflictException(name, null, current, "An independent destination tag already exists");
             }
@@ -93,6 +121,7 @@ public final class GitSelectedTag {
             update.setForceUpdate(false);
             update.setRefLogIdent(new PersonIdent(actor, "taxonomy@localhost"));
             update.setRefLogMessage("fetch: import selected upstream tag", true);
+            beforePublication.verify();
             RefUpdate.Result result = update.update();
             if (result == RefUpdate.Result.NEW || result == RefUpdate.Result.NO_CHANGE) return;
             if (result == RefUpdate.Result.LOCK_FAILURE || result == RefUpdate.Result.REJECTED) {

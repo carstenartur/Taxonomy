@@ -45,6 +45,7 @@ class CentralForkUpstreamPolicyTest {
     private String base, incoming, local;
     private CentralForkUpstreamService service;
     private MockMvc mvc;
+    private WorkspaceFetchJournalTest.Database database;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -69,10 +70,15 @@ class CentralForkUpstreamPolicyTest {
         service = new CentralForkUpstreamService(catalogue, memberships, git);
         var resolver = mock(WorkspaceResolver.class);
         when(resolver.resolveCurrentUsername()).thenReturn(ACTOR);
-        mvc = MockMvcBuilders.standaloneSetup(new CentralForkUpstreamController(service, resolver)).build();
+        database = new WorkspaceFetchJournalTest.Database();
+        var actors = mock(WorkspaceFetchAuthority.class);
+        when(actors.authorize(ACTOR, RepositoryScope.CENTRAL_WRITE)).thenReturn(WorkspaceFetchJournalTest.GRANT);
+        when(actors.currentActor(ACTOR)).thenReturn(WorkspaceFetchJournalTest.ALICE);
+        var recovery = new WorkspaceFetchRecovery(database.journal, null, actors, service);
+        mvc = MockMvcBuilders.standaloneSetup(new CentralForkUpstreamController(service, resolver, recovery)).build();
     }
 
-    @AfterEach void close() { git.close(); }
+    @AfterEach void close() { if (database != null) database.close(); git.close(); }
 
     enum Change { SOURCE_ROLE, TARGET_ROLE, SOURCE_VISIBILITY, FORK_AUTHORITY }
 
@@ -105,6 +111,43 @@ class CentralForkUpstreamPolicyTest {
         assertThatThrownBy(() -> service.fetchTag("fork", ACTOR, request)).isInstanceOf(AccessDeniedException.class);
         assertThat(target.getGitRepository().exactRef("refs/tags/review")).isNull();
         assertThat(tracking.head(target)).isEqualTo(base);
+    }
+
+    @Test
+    void forkFetchAndSelectedTagHaveScopedDurableReceipts() throws Exception {
+        String fetchBody = "{\"sourceCommit\":\"" + incoming + "\",\"expectedTrackedCommit\":\"" + base + "\"}";
+        var commit = mvc.perform(post(API + "/fetch").contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "first").content(fetchBody))
+                .andExpect(status().isOk()).andExpect(header().exists("X-Operation-Id")).andReturn();
+        String commitId = commit.getResponse().getHeader("X-Operation-Id");
+        mvc.perform(get(API + "/operations/{id}", commitId)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.phase").value("COMPLETED"))
+                .andExpect(jsonPath("$.repositoryId").value("fork"))
+                .andExpect(jsonPath("$.sourceRepositoryId").value("source"))
+                .andExpect(jsonPath("$.workspaceId").isEmpty())
+                .andExpect(jsonPath("$.originalForkPoint").value(base))
+                .andExpect(jsonPath("$.resultCommit").value(incoming));
+        try (var walk = new RevWalk(source.getGitRepository())) {
+            Git.wrap(source.getGitRepository()).tag().setName("review").setAnnotated(false)
+                    .setObjectId(walk.parseCommit(ObjectId.fromString(base))).call();
+        }
+        String tagBody = "{\"name\":\"review\",\"sourceTagObject\":\"" + base
+                + "\",\"trackedCommit\":\"" + incoming + "\"}";
+        var tagged = mvc.perform(post(API + "/fetch-tag").contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "selected").content(tagBody))
+                .andExpect(status().isOk()).andExpect(header().exists("X-Operation-Id"))
+                .andExpect(jsonPath("$.destinationTagObject").value(base)).andReturn();
+        String tagId = tagged.getResponse().getHeader("X-Operation-Id");
+        assertThat(tagId).isNotEqualTo(commitId);
+        mvc.perform(get(API + "/operations/{id}", tagId)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.phase").value("COMPLETED"))
+                .andExpect(jsonPath("$.selectedTag").value("review"))
+                .andExpect(jsonPath("$.requestedTagObject").value(base))
+                .andExpect(jsonPath("$.resultTagObject").value(base));
+        mvc.perform(post(API + "/fetch-tag").contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "selected").content(tagBody))
+                .andExpect(status().isOk()).andExpect(header().string("X-Operation-Id", tagId));
+        assertThat(target.getHeadCommit("main")).isEqualTo(local);
     }
 
     @Test

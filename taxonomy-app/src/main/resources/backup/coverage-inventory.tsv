@@ -79,6 +79,7 @@ com.taxonomy.workspace.model.GitReflogProvenanceRecord	workspace	PORTABLE_PRIMAR
 com.taxonomy.workspace.model.SystemRepository	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.workspace.model.UserWorkspace	workspace	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.workspace.model.WorkspaceProjection	workspace	REBUILDABLE	Rebuild workspace projection from captured DSL and Git; old readiness is invalid
+com.taxonomy.workspace.service.CentralFetchOperation	workspace	PORTABLE_PRIMARY	Central fork transfers and selected tags retain scoped history; an isolated restore imports no lease or credentials
 com.taxonomy.workspace.service.WorkspaceFetchOperation	workspace	PORTABLE_PRIMARY	Exact scoped fetch authority and status; restore active attempts as interrupted without a dispatch lease
 storage.jgit.objects-refs-reflogs	workspace	GIT_PRIMARY	All logical repositories via Git objects/refs plus explicit reflog records; never duplicate physical pack tables
 storage.git.preferences	application	GIT_PRIMARY	Current sanitized preferences or full authorized history; credentials excluded by default
