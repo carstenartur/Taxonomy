@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.io.IOException;
+import java.util.Optional;
 import java.time.Instant;
 import java.util.List;
 import com.taxonomy.dto.WorkspaceInfo;
@@ -176,6 +177,17 @@ public class RepositoryStateService implements com.taxonomy.workspace.service.Wo
             log.error("Failed to build view context for user '{}', branch '{}'", username, branch, e);
             return new ViewContext(null, branch, null, true, false, false);
         }
+    }
+
+    /** Read one selected branch head and its metadata without initializing a user's navigation state. */
+    public Optional<ViewContext> readSelectedViewContext(WorkspaceContext context) throws IOException {
+        DslCommit head = resolveRepository(context).getHeadCommitInfo(context.currentBranch());
+        if (head == null) {
+            return Optional.empty();
+        }
+        UserWorkspaceState state = context.workspaceId() == null ? null : workspaceManager.getScopedWorkspaceState(context);
+        return Optional.of(new ViewContext(head.commitId(), context.currentBranch(), head.timestamp(), true,
+                isProjectionStaleForCommit(state, head.commitId()), isIndexStale(state, head.commitId())));
     }
 
     /**

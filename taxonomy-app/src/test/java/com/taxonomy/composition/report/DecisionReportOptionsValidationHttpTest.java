@@ -22,12 +22,13 @@ class DecisionReportOptionsValidationHttpTest {
         var registry=new ReportRendererRegistry(catalog,java.util.List.of());
         var state=mock(RepositoryStateService.class);var workspace=mock(WorkspaceResolver.class);
         var context=new com.taxonomy.workspace.service.WorkspaceContext("architect","workspace","draft","repository");
-        when(workspace.resolveCurrentContext()).thenReturn(context);
-        when(state.resolveWorkspaceBranch("architect")).thenReturn("draft");
+        when(workspace.resolveUnambiguousContextForRead()).thenReturn(context);
+        var source = new com.taxonomy.dto.ViewContext("a".repeat(40), "draft", java.time.Instant.EPOCH, true, false, false);
+        when(state.readSelectedViewContext(context)).thenReturn(java.util.Optional.of(source));
         var report=mock(com.taxonomy.reporting.api.decision.DecisionRationaleReport.class,RETURNS_DEEP_STUBS);
         when(report.metadata().taxonomyDataFingerprintSha256()).thenReturn("data-sha");
         when(report.metadata().analysisSnapshotFingerprintSha256()).thenReturn("analysis-sha");
-        when(reports.generate(any(),eq(context),isNull(),any())).thenReturn(report);
+        when(reports.generate(any(),eq(context),eq(source),any())).thenReturn(report);
         var semantics=mock(com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter.class);
         when(semantics.adapt(same(report),anyMap(),any())).thenReturn(report);
         var renderer=new com.taxonomy.extension.api.report.ReportRendererExtension() {
@@ -50,7 +51,7 @@ class DecisionReportOptionsValidationHttpTest {
                 .andExpect(header().string("Content-Type","text/markdown"))
                 .andExpect(header().string("X-Taxonomy-Analysis-SHA256","analysis-sha"))
                 .andExpect(header().string("X-Taxonomy-Data-SHA256","data-sha"));
-        verify(workspace).resolveCurrentContext();verify(state).getViewContext("architect","draft",context);
+        verify(workspace).resolveUnambiguousContextForRead();verify(state).readSelectedViewContext(context);
         catalog.beginDraining(identity);
         mvc.perform(post("/api/decision-report/example-markdown").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"scores\":{\"CP\":100},\"businessText\":\"Requirement\"}"))
@@ -59,6 +60,22 @@ class DecisionReportOptionsValidationHttpTest {
                 .content("{\"scores\":{\"CP\":100},\"businessText\":\"Requirement\"}"))
                 .andExpect(status().isBadRequest());
     }
+    @Test void inaccessibleGitStorageReturnsAnUnavailableSourceBeforeRendering() throws Exception {
+        var state = mock(RepositoryStateService.class);
+        var workspace = mock(WorkspaceResolver.class);
+        var selected = new com.taxonomy.workspace.service.WorkspaceContext("architect", null, "review", "source");
+        when(workspace.resolveUnambiguousContextForRead()).thenReturn(selected);
+        when(state.readSelectedViewContext(selected)).thenThrow(new java.io.IOException("storage detail"));
+        var reports = mock(DecisionRationaleReportService.class);
+        var renderers = mock(ReportRendererRegistry.class);
+        var mvc = MockMvcBuilders.standaloneSetup(new DecisionRationaleReportController(reports, renderers, state, workspace)).build();
+        mvc.perform(post("/api/decision-report/json").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scores\":{\"CP\":100},\"businessText\":\"Requirement\"}"))
+                .andExpect(status().isServiceUnavailable()).andExpect(header().string("X-Taxonomy-Source-State", "FAILED"))
+                .andExpect(header().doesNotExist("X-Taxonomy-Commit")).andExpect(content().string(""));
+        verifyNoInteractions(reports, renderers);
+    }
+
     @Test void invalidTypedOptionsRemainClientErrorsWithTheApplicationAdvice() throws Exception {
         var controller = new DecisionRationaleReportController(mock(DecisionRationaleReportService.class),
                 mock(ReportRendererRegistry.class), mock(RepositoryStateService.class), mock(WorkspaceResolver.class));

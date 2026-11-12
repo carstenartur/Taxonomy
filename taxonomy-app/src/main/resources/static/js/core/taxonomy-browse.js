@@ -980,6 +980,7 @@
                     ? window.TaxonomyI18n.getLocale() : document.documentElement.lang
             };
             var frozenRequest = JSON.parse(JSON.stringify(request));
+            var exportContext = window.TaxonomyApiClient.captureContext();
             window.TaxonomyDecisionExport.open({
                 source: decisionText,
                 language: request.language,
@@ -988,10 +989,15 @@
                 analysisLanguage: S.lastAnalysisLanguage,
                 selectedRoots: S.currentView === 'tree' ? [S.currentTreeRoot] : [],
                 submit: async function (selection) {
-                    var report = await window.TaxonomyApiClient.requestBlob('/api/decision-report/' + selection.format, {
+                    var scope = await window.TaxonomyArchitectureWorkspace.analysisScope();
+                    if (!exportContext() || !scope?.repositoryId || !scope.branch || scope.workspaceId === undefined) {
+                        throw new Error(t('sourceLens.unavailable'));
+                    }
+                    var query = new URLSearchParams({repositoryId:scope.repositoryId, workspaceId:scope.workspaceId, branch:scope.branch});
+                    var report = await window.TaxonomyApiClient.requestBlob('/api/decision-report/' + selection.format + '?' + query, {
                         method: 'POST', headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(Object.assign({}, frozenRequest, {exportOptions: selection.options, language: selection.language}))
-                    }, { signal: selection.signal });
+                    }, { signal: selection.signal, pinnedWorkspaceId: scope.workspaceId });
                     await window.TaxonomyDecisionExport.download(report.response, selection.format, null, selection.signal, report.blob, selection.descriptor);
                 }
             });
