@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -91,6 +92,37 @@ class ArchitectureFocusSuggestionServiceTest {
             assertThat(s.sourceId() + " " + s.relationType() + " " + s.targetId())
                     .isNotEqualTo("arch-service USES arch-app");
         });
+    }
+
+    @Test void offeredRelationsFollowTheSelectedWorkbookAndTheAuthoredBriefTogether() throws Exception {
+        var catalogue = new com.taxonomy.dsl.model.CatalogueDefinition("registry-A", false,
+                List.of(new com.taxonomy.dsl.model.CatalogueDefinition.Root("Registers", "PR", "PublicRegister")),
+                List.of(new com.taxonomy.dsl.model.CatalogueDefinition.Direction("PR", "DEPENDS_ON", "PR"),
+                        new com.taxonomy.dsl.model.CatalogueDefinition.Direction("PR", "USES", "PR")));
+        var source = """
+                meta {
+                  catalogueRevision: "registry-A";
+                }
+                element registry-a type PublicRegister {
+                  title: "Registry office";
+                }
+                element registry-b type PublicRegister {
+                  title: "Registry service";
+                }
+                """;
+        var brief = com.taxonomy.dsl.planning.ArchitectureBrief.store(source, Map.of("objective", "Model public registers"));
+        var cited = com.taxonomy.dsl.planning.ArchitectureBrief.putReference(brief, "decision", Map.of(
+                "identifier", "Registry decision", "edition", "1", "section", "2", "scope", "architecture",
+                "role", "binding", "rule", "exclude-relation-v1", "relation", "DEPENDS_ON"));
+        service.useCatalogueDefinitions(model -> {
+            assertThat(model.getCatalogueRevision()).isEqualTo("registry-A");
+            return catalogue;
+        });
+        when(editor.read(scope, null, null)).thenReturn(doc(cited));
+        var investigation = new ArchitectureFocusSuggestionService.Request(context, "registry-a", 8, false, "en");
+        assertThat(service.investigate(scope, investigation).suggestions()).hasSize(2)
+                .extracting(ArchitectureFocusSuggestionService.Suggestion::relationType).containsOnly("USES");
+        verifyNoInteractions(llm, budget);
     }
 
     @Test void unsupportedGenerationRetainsHonestUnassessedLocalCandidates() throws Exception {
@@ -197,6 +229,20 @@ class ArchitectureFocusSuggestionServiceTest {
                 "VERSION_CHANGED", List.of(), List.of(), 0, null, "WORKSPACE_REVISION"));
         assertThatThrownBy(() -> service.investigate(scope, request(true))).hasMessageContaining("not ready");
         verifyNoInteractions(llm, budget);
+    }
+
+    @Test void bindingRuleIsAppliedBeforeOfferingCandidatesToTheProvider() throws Exception {
+        var brief = com.taxonomy.dsl.planning.ArchitectureBrief.store(DSL, Map.of("objective", "Model order processing"));
+        var dsl = com.taxonomy.dsl.planning.ArchitectureBrief.putReference(brief, "local-rule", Map.of(
+                "identifier", "Local decision", "edition", "1", "section", "4", "role", "binding",
+                "scope", "architecture", "rule", "exclude-relation-v1", "relation", "USES"));
+        when(editor.read(scope, null, null)).thenReturn(doc(dsl));
+        generative("{\"suggestions\":[]}");
+        service.investigate(scope, request(true));
+        var capture = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(llm).callLlmRaw(capture.capture(), any());
+        assertThat(capture.getValue()).doesNotContain("\"relationType\":\"USES\"");
+        assertThat(capture.getValue()).contains("\"relationType\":");
     }
 
     @Test void emptyArchitectureNeighborhoodDoesNotCallAnyProvider() throws Exception {

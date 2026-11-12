@@ -226,6 +226,9 @@ public class ArchitectureEditorController {
     private static Command command(WireCommand body, String ifMatch, String ifNoneMatch) {
         requireRevision(body.context(), ifMatch, ifNoneMatch);
         Operation operation = switch (body.kind()) {
+            case "SET_ARCHITECTURE_BRIEF" -> new SemanticCommand(new SetArchitectureBrief(body.properties()));
+            case "SET_ARCHITECTURE_REFERENCE" -> new SemanticCommand(new SetArchitectureReference(body.id(), body.properties()));
+            case "DELETE_ARCHITECTURE_REFERENCE" -> new SemanticCommand(new DeleteArchitectureReference(body.id()));
             case "SET_PLANNING" -> {
                 PlanningEdit p = planning(body);
                 yield new SemanticCommand(new SetRequirementPlanning(body.id(),

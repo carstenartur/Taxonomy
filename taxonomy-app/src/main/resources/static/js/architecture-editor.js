@@ -32,6 +32,7 @@
         el('editorFocus').disabled = !state.selectedNodeId;
         el('editorUnfocus').disabled = state.mode !== 'focus';
     });
+    var briefPanel = window.TaxonomyArchitectureBrief?.create({ root: root, t: t, stage: stage });
     var planningPanel = window.TaxonomyPlanningEditor.create({ t: t, stage: stage });
     var focusPanel = window.ArchitectureFocusPanel({ t: t, request: api.suggest, present: renderer.presentFocus,
         language: function () { return document.documentElement.lang === 'de' ? 'de' : 'en'; },
@@ -194,6 +195,7 @@
         var writable = active && view && view.mayEdit && !busy && !loading;
         el('architectureEditor').setAttribute('aria-busy', String(busy || loading));
         adoptionPanel.setLocked(busy || loading);
+        briefPanel?.setEnabled(writable);
         planningPanel.setEnabled(writable);
         focusPanel.setLocked(!active || busy || loading);
         renderAdmbwExport();
@@ -263,6 +265,7 @@
     }
     function render(preserveDraft) {
         renderPackages(preserveDraft);
+        briefPanel?.render(view, preserveDraft);
         planningPanel.render(view, preserveDraft);
         var c = context();
         publishContext();
@@ -795,7 +798,7 @@
     function draftValue() {
         return JSON.stringify(Array.from(root.querySelectorAll('#editorForm input, #editorForm select, #editorForm textarea, #editorRelationForm input, #editorRelationForm select, #editorPackageFields input, #editorPackageFields select, #editorPackageFields textarea, #editorPlanningForm input, #editorPlanningForm select, #editorPlanningForm textarea, #editorRationale')).map(function (node) { return [node.id,node.value,node.checked]; }));
     }
-    function hasDraft() { return Boolean(view && draftBaseline && draftValue() !== draftBaseline); }
+    function hasDraft() { return Boolean(view && (briefPanel?.hasDraft() || draftBaseline && draftValue() !== draftBaseline)); }
     function getSource() {
         var result = Object.assign({}, activeSource, view ? context() : null, {kind:'working',element:selected,viewId:selectedView,layout:layout,layoutRevision:layoutRevision});
         if (view) {

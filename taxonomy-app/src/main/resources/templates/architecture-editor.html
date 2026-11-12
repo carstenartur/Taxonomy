@@ -166,6 +166,27 @@
                     </div>
                 </fieldset>
             </form>
+            <section id="editorBrief" aria-labelledby="editorBriefTitle">
+                <h2 id="editorBriefTitle" data-i18n="editor.brief.title">Architecture brief</h2>
+                <p id="editorBriefStatus" role="status"></p>
+                <form id="editorBriefForm">
+                    <fieldset id="editorBriefFields" disabled></fieldset>
+                    <label for="editorBriefReason" data-i18n="editor.rationale">Reason for the command</label>
+                    <input id="editorBriefReason" required maxlength="1000"/>
+                    <button id="editorBriefSave" type="submit" disabled data-i18n="editor.preview">Preview change</button>
+                </form>
+                <h3 data-i18n="editor.brief.references">Sources and modelling constraints</h3>
+                <label for="editorBriefReference" data-i18n="editor.brief.reference">Source assignment</label>
+                <select id="editorBriefReference"></select>
+                <form id="editorBriefReferenceForm">
+                    <fieldset id="editorBriefReferenceFields" disabled></fieldset>
+                    <datalist id="editorBriefSources"></datalist>
+                    <label for="editorBriefReferenceReason" data-i18n="editor.rationale">Reason for the command</label>
+                    <input id="editorBriefReferenceReason" required maxlength="1000"/>
+                    <button id="editorBriefReferenceSave" type="submit" disabled data-i18n="editor.preview">Preview change</button>
+                    <button id="editorBriefReferenceRemove" type="button" disabled data-i18n="editor.delete">Preview deletion</button>
+                </form>
+            </section>
             <section id="editorPlanning" aria-labelledby="editorPlanningHeading">
                 <h2 id="editorPlanningHeading" data-i18n="editor.planning.title">Requirement planning information</h2>
                 <p data-i18n="editor.planning.help">Planning goals and source references belong to this workspace requirement. A reference is not proof of compliance; a goal is not confirmation of operation.</p>
@@ -257,6 +278,7 @@
 <th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/api/architecture-editor-api.js}" src="/js/api/architecture-editor-api.js"></script>
 <script th:src="@{/js/architecture-focus.js}" src="/js/architecture-focus.js"></script>
+<script th:src="@{/js/architecture-brief.js}" src="/js/architecture-brief.js"></script>
 <script th:src="@{/js/architecture-planning.js}" src="/js/architecture-planning.js"></script>
 <script th:src="@{/js/analysis-snapshot-adoption.js}" src="/js/analysis-snapshot-adoption.js"></script>
 <script th:src="@{/js/architecture-editor.js}" src="/js/architecture-editor.js"></script>

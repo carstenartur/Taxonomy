@@ -9,8 +9,8 @@ import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.dsl.model.ArchitectureElement;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
-import com.taxonomy.dsl.model.TaxonomyRootTypes;
-import com.taxonomy.dsl.validation.DslValidator;
+import com.taxonomy.dsl.model.CatalogueDefinition;
+import com.taxonomy.dsl.model.CatalogueDefinitionResolver;
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.editor.ArchitectureCommandPort.Context;
 import com.taxonomy.editor.ArchitectureEditorService;
@@ -51,6 +51,12 @@ public class ArchitectureFocusSuggestionService {
     private final ArchitectureEditorService editor;
     private final LlmService llm;
     private final AiPromptBudgetPolicy promptBudget;
+    private CatalogueDefinitionResolver catalogues = CatalogueDefinitionResolver.standard();
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void useCatalogueDefinitions(CatalogueDefinitionResolver catalogues) {
+        this.catalogues = catalogues;
+    }
 
     public ArchitectureFocusSuggestionService(ArchitectureEditorService editor, LlmService llm,
                                               AiPromptBudgetPolicy promptBudget) {
@@ -111,7 +117,7 @@ public class ArchitectureFocusSuggestionService {
         var request = new EngineRequest(sourceId,candidateLimit,useAi,language,Map.copyOf(provenance));
         var source = model.findElement(request.sourceId())
                 .orElseThrow(() -> problem("NOT_FOUND", "sourceId", "The element is not present in this exact source"));
-        List<Triple> candidates = candidates(model, source, request.candidateLimit());
+        List<Triple> candidates = candidates(model, catalogues.forModel(model), source, request.candidateLimit());
         if (candidates.isEmpty()) return response(LOCAL, "NO_CANDIDATES", 0, candidates, List.of());
         var local = local(request, hash, candidates, LOCAL);
         if (!request.useAi()) return response(LOCAL, "LOCAL_CANDIDATES", 0, candidates, local);
@@ -164,7 +170,8 @@ public class ArchitectureFocusSuggestionService {
             throw problem("NOT_FOUND", "context", "This exact editor context is not selected or accessible");
     }
 
-    private static List<Triple> candidates(CanonicalArchitectureModel model, ArchitectureElement focus, int limit) {
+    private static List<Triple> candidates(CanonicalArchitectureModel model, CatalogueDefinition catalogue,
+                                           ArchitectureElement focus, int limit) {
         Set<String> existing = new HashSet<>();
         model.getRelations().forEach(r -> existing.add(r.getSourceId() + " " + r.getRelationType() + " " + r.getTargetId()));
         Set<String> focusTokens = tokens(focus);
@@ -172,15 +179,17 @@ public class ArchitectureFocusSuggestionService {
                 .sorted(Comparator.<ArchitectureElement>comparingInt(e -> overlap(focusTokens, tokens(e))).reversed()
                         .thenComparing(ArchitectureElement::getId)).toList();
         List<Triple> offered = new ArrayList<>();
+        var excluded = com.taxonomy.dsl.planning.ArchitectureBrief.read(model).excludedRelationTypes();
+        var generatableTypes = catalogue.relationDomains().keySet().stream()
+                .filter(type -> !"CONTAINS".equals(type) && !excluded.contains(type)).sorted().toList();
         // Bound expansion independently from the total architecture size; peers retain deterministic text rank.
         int eligiblePeers = 0;
         for (var peer : peers) {
             int before = offered.size();
             int rank = overlap(focusTokens, tokens(peer));
-            for (String type : DslValidator.relationTypes().stream().sorted().toList()) {
-                if ("CONTAINS".equals(type)) continue;
-                add(offered, focus, peer, type, rank, existing);
-                add(offered, peer, focus, type, rank, existing);
+            for (String type : generatableTypes) {
+                add(offered, catalogue, focus, peer, type, rank, existing);
+                add(offered, catalogue, peer, focus, type, rank, existing);
             }
             // A saturated peer must not consume the target-search allowance.
             if (offered.size() > before && ++eligiblePeers >= limit) break;
@@ -189,10 +198,9 @@ public class ArchitectureFocusSuggestionService {
                 .thenComparing(t -> "RELATED_TO".equals(t.relationType()))
                 .thenComparing(Triple::key)).limit(limit).toList();
     }
-    private static void add(List<Triple> result, ArchitectureElement from, ArchitectureElement to,
-                            String type, int rank, Set<String> existing) {
-        if (!com.taxonomy.dsl.validation.RelationMetamodel.isCompatible(TaxonomyRootTypes.rootFor(from.getType()),
-                TaxonomyRootTypes.rootFor(to.getType()), type)) return;
+    private static void add(List<Triple> result, CatalogueDefinition catalogue, ArchitectureElement from,
+                            ArchitectureElement to, String type, int rank, Set<String> existing) {
+        if (!catalogue.allows(catalogue.rootFor(from.getType()), type, catalogue.rootFor(to.getType()))) return;
         var triple = new Triple(from.getId(), to.getId(), type, rank, List.of(excerpt(from), excerpt(to)));
         if (!existing.contains(triple.key())) result.add(triple);
     }

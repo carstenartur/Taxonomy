@@ -251,3 +251,11 @@ Stereotype am Element erfassen. Das Profil **ADMBw R7 Anforderungsherleitung**
 verbindet versionierte Anforderungen mit den zugehörigen Modellelementen.
 Öffnen Sie einen Git-Checkpoint und laden Sie unter **ADMBw-Abgabe vorbereiten**
 den Prüfbericht für C1–S1 und R7. [Regeln und Liefernachweise](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/admbw-conformance-de.md)
+
+### Architekturauftrag und Quellenzuordnungen
+
+Im Modellarbeitsbereich unter **Architekturauftrag** Ziel, Entscheidungsfrage, Beteiligte, Systemgrenze, Ist-/Übergangs-/Zielstand, Referenzarchitektur, vereinbarte Sichten und Liefergegenstände erfassen. In der Vorschau Arbeitsbereich und Version prüfen und die Änderung übernehmen. Frühere Modellversionen zeigen jeweils ihren damaligen Auftrag. Bearbeitet ein Folgeprojekt dieselbe Architektur weiter, bleibt ihr Auftrag über die Modellhistorie verfügbar.
+
+Unter **Quellen und Modellierungsvorgaben** jede einschlägige Quelle mit Kennung, Ausgabe, Fundstelle, fachlicher Rolle, Verbindlichkeit und Geltungsbereich angeben. Je nach Auftrag kommen die European Interoperability Reference Architecture (EIRA) für interoperable Verwaltungsdienste, die Föderale IT-Architekturrichtlinie für einschlägige föderale Vorhaben, ein fachlich passendes Austauschprofil wie ADMBw R7 / FFFmLV oder eigene Auftraggebervorgaben infrage. Die Auswahl hinterlegt den Bezug. Importformate und Abbildungen liegen in den jeweiligen Austauschwerkzeugen. [EIRA](https://interoperable-europe.ec.europa.eu/collection/interoperability-architecture-solutions/solution/eira) · [Föderale IT-Architekturrichtlinie](https://www.it-planungsrat.de/beschluss/beschluss-2025-17)
+
+Bei einer offenen Herleitung **Offen** wählen sowie Frage und Herkunft festhalten. Für eine verbindliche, architekturweit geltende Entscheidung mit belegter Ausgabe und Fundstelle lässt sich **Relationstyp für neue Vorschläge ausschließen (v1)** auswählen. Editor und modellbezogene KI-Vorschlagssuche berücksichtigen den Ausschluss vor der Erzeugung eines Vorschlags. Mehrere Quellenzuordnungen kombinieren ihre ausdrücklich erfassten Ausschlüsse. Eine Orientierungshilfe allein löst keine automatische Prüfung aus. Bestehende Beziehungen und die Historie angenommener Entscheidungen bleiben erhalten.
