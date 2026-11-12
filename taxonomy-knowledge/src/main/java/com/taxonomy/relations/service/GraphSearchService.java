@@ -60,13 +60,15 @@ public class GraphSearchService {
 
     /** Branch reads have their own complete node and relation index, independent of the global index lifecycle. */
     public Optional<GraphSearchResult> searchBranchIfPresent(String query, int maxResults, RepositoryContext context) {
-        if (branchVectors == null || maxResults <= 0) return Optional.empty();
+        if (branchVectors == null) return Optional.empty();
         catalogueRuntimePolicy.requireGlobalIndexAllowed();
         try {
             var source = authority.inspectForBranchSelection(context);
+            String sourceCommit = source.authoritativeCommitId();
+            if (maxResults <= 0) return Optional.of(noResultsRequested());
             if (source.readModel() != ReadModel.PROJECTION || source.count() == 0) return Optional.empty();
             int nodeLimit = Math.min(maxResults, MAX_NODE_RESULTS);
-            return Optional.of(branchVectors.search(context, source.authoritativeCommitId(), query, nodeLimit, safeRelationLimit(nodeLimit)));
+            return Optional.of(branchVectors.search(context, sourceCommit, query, nodeLimit, safeRelationLimit(nodeLimit)));
         } catch (Exception | LinkageError error) {
             if (error instanceof InterruptedException) Thread.currentThread().interrupt();
             throw new SearchUnavailableException();
@@ -85,18 +87,13 @@ public class GraphSearchService {
     @Transactional(readOnly = true)
     public GraphSearchResult searchGlobalSource(String queryText, int maxResults, RepositoryContext context) {
         catalogueRuntimePolicy.requireGlobalIndexAllowed();
-        if (maxResults <= 0) {
-            return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),
-                    Collections.emptyMap(), "No graph search results were requested.");
-        }
-        if (!embeddingService.isAvailable()) {
-            throw new SearchUnavailableException();
-        }
-
-        int nodeLimit = Math.min(maxResults, MAX_NODE_RESULTS);
-        int relationLimit = safeRelationLimit(nodeLimit);
         try {
             var source = authority.inspect(context);
+            if (maxResults <= 0) return noResultsRequested();
+            if (!embeddingService.isAvailable()) throw new SearchUnavailableException();
+
+            int nodeLimit = Math.min(maxResults, MAX_NODE_RESULTS);
+            int relationLimit = safeRelationLimit(nodeLimit);
             float[] queryVector = embeddingService.embedQuery(queryText);
             String indexKey = embeddingService.embeddingIndexKey();
             SearchSession session = Search.session(entityManager);
@@ -140,6 +137,11 @@ public class GraphSearchService {
             log.error("Graph search failed (code=GRAPH_SEARCH_FAILED)");
             throw new SearchUnavailableException();
         }
+    }
+
+    private static GraphSearchResult noResultsRequested() {
+        return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),
+                Collections.emptyMap(), "No graph search results were requested.");
     }
 
     private static int safeRelationLimit(int nodeLimit) {

@@ -57,6 +57,8 @@ public class WorkspaceManager {
     private final DslGitRepository gitRepository;
     private final DslGitRepositoryFactory repositoryFactory;
     private RepositoryMembershipService sourceMemberships;
+    private WorkspaceFetchJournal fetchJournal;
+    private WorkspaceFetchAuthority fetchActors;
     private TransactionTemplate provisioningOutsideReadOnlyTransaction;
     private WorkspaceProvisionPermission provisionPermission = actor -> true;
 
@@ -96,6 +98,16 @@ public class WorkspaceManager {
     public WorkspaceManager(
             UserWorkspaceRepository workspaceRepository,
             @Value("${taxonomy.context.max-history:50}") int maxHistory,
+            SystemRepositoryService systemRepositoryService,
+            DslGitRepositoryFactory repositoryFactory, WorkspaceFetchJournal fetchJournal, WorkspaceFetchAuthority fetchActors) {
+        this(workspaceRepository,maxHistory,systemRepositoryService,repositoryFactory);
+        this.fetchJournal=java.util.Objects.requireNonNull(fetchJournal);
+        this.fetchActors=java.util.Objects.requireNonNull(fetchActors);
+    }
+
+    public WorkspaceManager(
+            UserWorkspaceRepository workspaceRepository,
+            int maxHistory,
             SystemRepositoryService systemRepositoryService,
             DslGitRepositoryFactory repositoryFactory) {
         this.workspaceRepository = workspaceRepository;
@@ -402,8 +414,10 @@ public class WorkspaceManager {
 
         // Settle or archive exactly this owner's receipts while the workspace and matching operations are locked.
         // A storage error rolls this transaction back and leaves the original receipts available for retry.
-        workspaceRepository.archiveFetchesForRemoval(workspaceId, workspace.getSourceRepositoryId(), username,
-                System.currentTimeMillis());
+        if (fetchJournal != null) {
+            fetchJournal.archiveForWorkspaceRemoval(workspaceId,workspace.getSourceRepositoryId(),username,
+                    () -> fetchActors.currentActor(username));
+        }
         if (repositoryFactory != null) {
             repositoryFactory.deleteWorkspaceRepository(workspaceId);
         }
