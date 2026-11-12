@@ -1,5 +1,9 @@
 package com.taxonomy.security.config;
 
+import com.taxonomy.security.access.WorkspaceFetchAuthorityAdapter;
+import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.access.AccessDeniedException;
 import com.taxonomy.backup.IdentityBinding;
 import com.taxonomy.backup.PrincipalId;
 import com.taxonomy.security.keycloak.*;
@@ -53,6 +57,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -106,6 +111,65 @@ class CurrentPrincipalAuthoritySecurityTest {
         http.perform(get("/private-page").session(session)).andExpect(status().isForbidden());
         jdbc.update(update, disabled.equals("account") ? true : 1);
         http.perform(post("/api/projects/p").session(session).with(csrf())).andExpect(status().isOk());
+    }
+
+    @Test void resumedWorkspaceFetchUsesTheCurrentLocalBindingAndRoleInsteadOfItsRecordedLogin() {
+        start(false, KeycloakPrincipalMode.LEGACY);
+        var principal = identities.local(1);
+        var access = new WorkspaceFetchAuthorityAdapter(identities);
+        try {
+            SecurityContextHolder.setContext(new SecurityContextImpl(local(principal)));
+            var grant = access.authorize(principal.scopeKey());
+            assertThat(grant.principalId()).isEqualTo(principal.id().value().toString());
+            assertThat(grant.loginKind()).isEqualTo("LOCAL");
+            SecurityContextHolder.clearContext();
+            access.checkPublication(grant, principal.scopeKey(), true);
+            jdbc.update("update user_roles set role_id=2 where user_id=1 and role_id=1");
+            assertThatThrownBy(() -> access.checkPublication(grant, principal.scopeKey(), true))
+                    .isInstanceOf(AccessDeniedException.class);
+            jdbc.update("insert into user_roles values (1, 1)");
+            addBinding(principal, "https://idp.test", "other-binding");
+            jdbc.update("update principal_binding set enabled=0 where binding_kind='LOCAL' and principal_id=?", principal.id().value().toString());
+            assertThatThrownBy(() -> access.checkPublication(grant, principal.scopeKey(), true))
+                    .isInstanceOf(AccessDeniedException.class);
+        } finally { SecurityContextHolder.clearContext(); }
+    }
+
+    @Test void interactiveRecoveryRequiresTheOriginalVerifiedExternalBinding() {
+        start(true, KeycloakPrincipalMode.STABLE);
+        var principal = identities.oidc("https://idp.test", "original");
+        addBinding(principal, "https://idp.test", "replacement");
+        var access = new WorkspaceFetchAuthorityAdapter(identities);
+        try {
+            SecurityContextHolder.setContext(new SecurityContextImpl(oidc(principal, "https://idp.test", "original", true)));
+            var original = access.authorize(principal.scopeKey());
+            access.checkPublication(original, principal.scopeKey(), false);
+            jdbc.update("update principal_binding set enabled=0 where binding_key=?", original.bindingKey());
+            SecurityContextHolder.setContext(new SecurityContextImpl(oidc(principal, "https://idp.test", "replacement", true)));
+            var replacement = access.authorize(principal.scopeKey());
+            assertThat(replacement.principalId()).isEqualTo(original.principalId());
+            assertThat(replacement.bindingKey()).isNotEqualTo(original.bindingKey());
+            assertThatThrownBy(() -> access.checkPublication(original, principal.scopeKey(), false))
+                    .isInstanceOf(AccessDeniedException.class);
+        } finally { SecurityContextHolder.clearContext(); }
+    }
+
+    @Test void legacyExternalLoginCanFetchAndEqualNamesDoNotShareAnOperationActor() {
+        start(true, KeycloakPrincipalMode.LEGACY);
+        var access = new WorkspaceFetchAuthorityAdapter(identities);
+        try {
+            SecurityContextHolder.setContext(new SecurityContextImpl(oidc(null,"https://idp.test","subject-one",false)));
+            var grant = access.authorize("alice");
+            assertThat(grant.principalId()).matches("[0-9a-f]{64}");
+            assertThat(grant.loginKind()).isEqualTo("LEGACY_OIDC");
+            SecurityContextHolder.clearContext();
+            assertThatThrownBy(() -> access.checkPublication(grant, "alice", true))
+                    .isInstanceOf(WorkspaceFetchAuthority.FreshLoginRequired.class);
+            SecurityContextHolder.setContext(new SecurityContextImpl(oidc(null,"https://idp.test","subject-two",false)));
+            assertThat(access.currentActor("alice")).isNotEqualTo(grant.principalId());
+            assertThatThrownBy(() -> access.checkPublication(grant, "alice", false))
+                    .isInstanceOf(AccessDeniedException.class);
+        } finally { SecurityContextHolder.clearContext(); }
     }
 
     @Test void anotherEnabledBindingCannotRescueTheDisabledLocalLogin() throws Exception {

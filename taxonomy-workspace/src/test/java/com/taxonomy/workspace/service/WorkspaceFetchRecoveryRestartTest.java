@@ -4,6 +4,7 @@ import com.taxonomy.editor.EditorPersistenceFixture;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
 import com.taxonomy.workspace.storage.GitUpstreamRef;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
@@ -17,6 +18,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -43,11 +45,12 @@ class WorkspaceFetchRecoveryRestartTest {
             local = target.commitDsl("draft", "unpublished", "alice", "local");
             process.createWorkspace(base, local);
             process.failBookkeeping.set(true);
-            assertThatThrownBy(() -> process.recovery.fetch(CONTEXT, new WorkspaceUpstreamService.Request(original, null), "review", null))
-                    .isInstanceOf(IllegalStateException.class).hasMessage("Injected bookkeeping loss");
+            var receipt = process.recovery.fetch(CONTEXT, new WorkspaceUpstreamService.Request(original, null), "review", null);
+            assertThat(receipt.result()).isNull();
             assertThat(new GitUpstreamRef("source", "main").head(target)).isEqualTo(original);
             assertThat(process.workspace(false).orElseThrow().getLastFetchedCommit()).isNull();
             operation = process.tx.execute(status -> process.em.createQuery("select f.id from WorkspaceFetchOperation f", String.class).getSingleResult());
+            assertThat(receipt.operationId()).isEqualTo(operation);
             assertThat(process.journal.status(CONTEXT, ALICE, operation).phase()).isEqualTo("RETRYABLE");
             assertThat(process.journal.due()).isEmpty();
         }
@@ -82,7 +85,7 @@ class WorkspaceFetchRecoveryRestartTest {
             String incoming = source.commitDsl("main", "pending", "alice", "incoming");
             String local = target.commitDsl("draft", "private", "alice", "local");
             process.createWorkspace(incoming, local);
-            var id = process.journal.admit(CONTEXT, WorkspaceFetchJournalTest.GRANT, process.upstream.inspect(CONTEXT),
+            var id = process.journal.admit(CONTEXT, WorkspaceFetchJournalTest.GRANT, process.upstream.capture(CONTEXT),
                     new WorkspaceUpstreamService.Request(incoming, null), null, null).operationId();
             process.journal.claim(id, "terminated", false);
             clock.now += Duration.ofMinutes(6).toMillis();
@@ -93,6 +96,62 @@ class WorkspaceFetchRecoveryRestartTest {
             assertThat(new GitUpstreamRef("source", "main").head(target)).isNull();
             assertThat(target.getHeadCommit("draft")).isEqualTo(local);
             assertThat(process.journal.due()).isEmpty();
+        }
+    }
+
+    @Test void aReplacedForkPointCannotAuthorizeAnEarlierOrphan() throws Exception {
+        var clock = new WorkspaceFetchJournalTest.MutableClock();
+        String url = "jdbc:hsqldb:file:" + directory.resolve("fork-point") + ";shutdown=true";
+        try (var process = new Process(url, clock)) {
+            var source = process.persistence.repositories.getCentralRepository("source");
+            var target = process.persistence.repositories.openWorkspaceRepository("w1");
+            String originalBase = source.commitDsl("main", "base", "alice", "fork point");
+            String incoming = source.commitDsl("main", "incoming", "alice", "selected");
+            String local = target.commitDsl("draft", "unrelated", "alice", "unpublished");
+            process.createWorkspace(originalBase, local);
+            var captured = process.journal.admit(CONTEXT, WorkspaceFetchJournalTest.GRANT, process.upstream.capture(CONTEXT),
+                    new WorkspaceUpstreamService.Request(incoming, null), "reviewed", null);
+            assertThat(captured.originalForkPoint()).isEqualTo(originalBase);
+            process.journal.claim(captured.operationId(), "terminated", false);
+            process.tx.executeWithoutResult(status -> process.workspace(true).orElseThrow().setBaseCommit(incoming));
+            clock.now += WorkspaceFetchJournal.LEASE_MILLIS + 1;
+            process.recovery.recoverDue();
+            var result = process.recovery.status(CONTEXT, captured.operationId());
+            assertThat(result.phase()).isEqualTo("MANUAL_REVIEW");
+            assertThat(result.originalForkPoint()).isEqualTo(originalBase);
+            assertThat(new GitUpstreamRef("source", "main").head(target)).isNull();
+            assertThat(target.getHeadCommit("draft")).isEqualTo(local);
+        }
+    }
+
+    @Test void advancedTrackingNeedsRetainedAncestryToSettleAnOrphan() throws Exception {
+        for (boolean descendant : List.of(true, false)) {
+            var clock = new WorkspaceFetchJournalTest.MutableClock();
+            String url = "jdbc:hsqldb:file:" + directory.resolve("tracking-" + descendant) + ";shutdown=true";
+            try (var process = new Process(url, clock)) {
+                var source = process.persistence.repositories.getCentralRepository("source");
+                var target = process.persistence.repositories.openWorkspaceRepository("w1");
+                String requested = source.commitDsl("main", "reviewed", "alice", "incoming");
+                String later = source.commitDsl("main", "advanced", "alice", "later");
+                String local = target.commitDsl("draft", "unrelated", "alice", "unpublished");
+                process.createWorkspace(requested, local);
+                String id = process.journal.admit(CONTEXT, WorkspaceFetchJournalTest.GRANT, process.upstream.capture(CONTEXT),
+                        new WorkspaceUpstreamService.Request(requested, null), "review", null).operationId();
+                process.journal.claim(id, "lost-process", false);
+                GitHistoryTransfer.copyCommitClosure(source, target, later, List.of());
+                var tracking = new GitUpstreamRef("source", "main");
+                String replacement = descendant ? later : local;
+                tracking.advance(target, null, replacement, "successor");
+                clock.now += WorkspaceFetchJournal.LEASE_MILLIS + 1;
+                process.recovery.recoverDue();
+                var view = process.recovery.status(CONTEXT, id);
+                assertThat(view.phase()).isEqualTo(descendant ? "SUPERSEDED" : "MANUAL_REVIEW");
+                assertThat(view.resultCommit()).isEqualTo(descendant ? later : null);
+                assertThat(view.requestedCommit()).isEqualTo(requested);
+                assertThat(tracking.head(target)).isEqualTo(replacement);
+                assertThat(target.getHeadCommit("draft")).isEqualTo(local);
+                assertThat(process.journal.due()).isEmpty();
+            }
         }
     }
 

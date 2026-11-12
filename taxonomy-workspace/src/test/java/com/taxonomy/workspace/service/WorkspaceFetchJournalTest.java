@@ -25,6 +25,7 @@ class WorkspaceFetchJournalTest {
     static final RepositoryContext CONTEXT = RepositoryContext.workspace("source", "w1", "draft", "alice");
     static final String COMMIT = "a".repeat(40);
     static final WorkspaceUpstreamService.Status SOURCE = new WorkspaceUpstreamService.Status("source", "main", COMMIT, "refs/test", null);
+    static final WorkspaceUpstreamService.Capture CAPTURE = new WorkspaceUpstreamService.Capture(SOURCE, COMMIT);
     static final WorkspaceUpstreamService.Request COMMAND = new WorkspaceUpstreamService.Request(COMMIT, null);
 
     static class MutableClock extends Clock {
@@ -56,7 +57,7 @@ class WorkspaceFetchJournalTest {
     @Test void twoWorkersAndAnExpiredOwnerCanOnlyPublishOneRecordedCommit() throws Exception {
         try (var db = new Database(); var workers = Executors.newFixedThreadPool(2)) {
             var journal = db.journal;
-            String id = journal.admit(CONTEXT, GRANT, SOURCE, COMMAND, "same-command", null).operationId();
+            String id = journal.admit(CONTEXT, GRANT, CAPTURE, COMMAND, "same-command", null).operationId();
             var first = workers.submit(() -> journal.claim(id, "one", false));
             var second = workers.submit(() -> journal.claim(id, "two", false));
             var a = first.get();
@@ -84,15 +85,62 @@ class WorkspaceFetchJournalTest {
         }
     }
 
+    @Test void archivedOutcomeIsScopeLocalImmutableAndExpiresAfterItsIdempotencyWindow() throws Exception {
+        try (var db = new Database()) {
+            var journal = db.journal;
+            String id = journal.admit(CONTEXT, GRANT, CAPTURE, COMMAND, "archive", null).operationId();
+            assertThatThrownBy(() -> journal.archive(CONTEXT, ALICE, id)).hasMessageContaining("409");
+            var claim = journal.claim(id, ALICE, false);
+            journal.run(claim, (row, guard) -> new WorkspaceUpstreamService.Status("source", "main", COMMIT, "refs/test", COMMIT));
+            assertThatThrownBy(() -> journal.archive(CONTEXT, BOB, id)).hasMessageContaining("404");
+            var archived = journal.archive(CONTEXT, ALICE, id);
+            assertThat(archived.phase()).isEqualTo("ARCHIVED");
+            assertThat(archived.outcome()).isEqualTo("COMPLETED");
+            assertThat(archived.originalActor()).isEqualTo(ALICE);
+            assertThat(archived.archivedBy()).isEqualTo(ALICE);
+            assertThat(archived.resultCommit()).isNull();
+            db.clock.now += Duration.ofDays(1).toMillis();
+            assertThat(journal.archive(CONTEXT, ALICE, id)).isEqualTo(archived);
+            assertThatThrownBy(() -> journal.admit(CONTEXT, GRANT, CAPTURE, COMMAND, "archive", null)).hasMessageContaining("410");
+            assertThat(journal.due()).isEmpty();
+            db.clock.now += WorkspaceFetchJournal.ARCHIVE_MILLIS;
+            journal.expireDue();
+            assertThatThrownBy(() -> journal.status(CONTEXT, ALICE, id)).hasMessageContaining("404");
+        }
+    }
+
+    @Test void externalAssertionsRequireAnAuthorizedRetryAndUnclaimedWorkExpiresWithItsDecision() throws Exception {
+        try (var db = new Database()) {
+            var journal = db.journal;
+            var grant = new WorkspaceFetchAuthority.Grant(ALICE, "OIDC", "e".repeat(64));
+            String id = journal.admit(CONTEXT, grant, CAPTURE, COMMAND, "external", null).operationId();
+            assertThatThrownBy(() -> journal.run(journal.claim(id, "system:workspace-fetch-recovery", true), (row, guard) -> {
+                throw new WorkspaceFetchAuthority.FreshLoginRequired();
+            })).isInstanceOf(WorkspaceFetchAuthority.FreshLoginRequired.class);
+            assertThat(journal.status(CONTEXT, ALICE, id).phase()).isEqualTo("AWAITING_AUTHORIZATION");
+            assertThat(journal.due()).isEmpty();
+            assertThat(journal.claim(id, "background", true)).isNull();
+            var retry = journal.claim(id, ALICE, false);
+            assertThat(retry).isNotNull();
+            journal.run(retry, (row, guard) -> new WorkspaceUpstreamService.Status("source", "main", COMMIT, "refs/test", COMMIT));
+            db.clock.now += WorkspaceFetchJournal.RETENTION_MILLIS + 1;
+            journal.expireDue();
+            var expired = journal.status(CONTEXT, ALICE, id);
+            assertThat(expired.phase()).isEqualTo("ARCHIVED");
+            assertThat(expired.archivedBy()).isEqualTo("system:workspace-fetch-retention");
+            assertThat(expired.outcome()).isEqualTo("COMPLETED");
+        }
+    }
+
     @Test void scopedKeysAreIdempotentAndAnIndependentManagerRecoversTheOriginalAuthority() {
         var time = new MutableClock();
         String url = "jdbc:hsqldb:mem:wsfetch" + UUID.randomUUID();
         String cause = UUID.randomUUID().toString();
         String id;
         try (var first = new Database(url, time)) {
-            id = first.journal.admit(CONTEXT, GRANT, SOURCE, COMMAND, "retry", cause).operationId();
-            assertThat(first.journal.admit(CONTEXT, GRANT, SOURCE, COMMAND, "retry", null).operationId()).isEqualTo(id);
-            assertThatThrownBy(() -> first.journal.admit(CONTEXT, GRANT, SOURCE,
+            id = first.journal.admit(CONTEXT, GRANT, CAPTURE, COMMAND, "retry", cause).operationId();
+            assertThat(first.journal.admit(CONTEXT, GRANT, CAPTURE, COMMAND, "retry", null).operationId()).isEqualTo(id);
+            assertThatThrownBy(() -> first.journal.admit(CONTEXT, GRANT, CAPTURE,
                     new WorkspaceUpstreamService.Request("b".repeat(40), null), "retry", null)).isInstanceOf(ResponseStatusException.class);
             first.journal.claim(id, "stopped-worker", false);
         }

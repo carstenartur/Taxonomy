@@ -2,14 +2,17 @@ package com.taxonomy.security.access;
 
 import com.taxonomy.backup.IdentityBinding;
 import com.taxonomy.backup.PrincipalId;
-import com.taxonomy.security.keycloak.PrincipalJwtAuthenticationToken;
-import com.taxonomy.security.keycloak.PrincipalOidcUser;
 import com.taxonomy.security.model.PrincipalBinding;
 import com.taxonomy.security.model.PrincipalUserDetails;
+import com.taxonomy.security.model.StablePrincipal;
 import com.taxonomy.security.service.PrincipalIdentityService;
 import com.taxonomy.workspace.service.WorkspaceFetchAuthority;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,9 +28,12 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority {
 
     @Override public String currentActor(String username) {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
-        var principal = identities.requireCurrent(authentication);
-        if (!username.equals(authentication.getName())) throw denied();
-        return principal.value().toString();
+        if (authentication == null || !authentication.isAuthenticated() || !username.equals(authentication.getName())) throw denied();
+        if (authentication instanceof StablePrincipal || authentication.getPrincipal() instanceof StablePrincipal) {
+            return identities.requireCurrent(authentication).value().toString();
+        }
+        // Legacy OIDC keeps its configured workspace name. Only the verified issuer/subject identifies a new operation.
+        return externalBinding(authentication);
     }
 
     @Override public Grant authorize(String username) {
@@ -37,24 +43,30 @@ public class WorkspaceFetchAuthorityAdapter implements WorkspaceFetchAuthority {
         if (authentication.getPrincipal() instanceof PrincipalUserDetails local) {
             return new Grant(actor, "LOCAL", identities.currentLocalAuthority(local.principalId(), username).bindingKey());
         }
-        if (authentication instanceof PrincipalJwtAuthenticationToken jwt) {
-            return external(actor, jwt.getToken().getIssuer().toString(), jwt.getToken().getSubject());
+        String binding = externalBinding(authentication);
+        return new Grant(actor, actor.equals(binding) ? "LEGACY_OIDC" : "OIDC", binding);
+    }
+
+    private static String externalBinding(Authentication authentication) {
+        if (authentication instanceof JwtAuthenticationToken jwt && jwt.getToken().getIssuer() != null) {
+            return binding(jwt.getToken().getIssuer().toString(), jwt.getToken().getSubject());
         }
-        if (authentication.getPrincipal() instanceof PrincipalOidcUser oidc) {
-            return external(actor, oidc.getIssuer().toString(), oidc.getSubject());
-        }
+        if (authentication instanceof OAuth2AuthenticationToken && authentication.getPrincipal() instanceof OidcUser oidc
+                && oidc.getIssuer() != null) return binding(oidc.getIssuer().toString(), oidc.getSubject());
         throw denied();
     }
 
-    private static Grant external(String actor, String issuer, String subject) {
-        return new Grant(actor, "OIDC", PrincipalBinding.key(new IdentityBinding(IdentityBinding.Kind.OIDC, issuer, subject)));
+    private static String binding(String issuer, String subject) {
+        if (subject == null || subject.isBlank()) throw denied();
+        return PrincipalBinding.key(new IdentityBinding(IdentityBinding.Kind.OIDC, issuer, subject));
     }
 
     @Override public void checkPublication(Grant original, String username, boolean unattended) {
         if (!unattended) {
-            if (!authorize(username).principalId().equals(original.principalId())) throw denied();
+            if (!authorize(username).equals(original)) throw denied();
             return;
         }
+        if ("LEGACY_OIDC".equals(original.loginKind())) throw new FreshLoginRequired();
         var id = new PrincipalId(UUID.fromString(original.principalId()));
         if (!"LOCAL".equals(original.loginKind())) {
             if (!identities.isEnabled(id)) throw denied();

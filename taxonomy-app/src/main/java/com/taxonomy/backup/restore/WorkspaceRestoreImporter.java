@@ -160,18 +160,26 @@ public final class WorkspaceRestoreImporter {
             var parent = workspaceById.get(row.workspaceId());
             if (parent == null || !parent.repositoryId().equals(row.repositoryId()) || !parent.ownerScope().equals(row.principalScope())
                     || !"workspace.fetch".equals(row.sourceId().kind()) || !row.sourceId().value().matches("[0-9a-f]{64}")
-                    || row.principalId() == null || !row.principalId().matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")
+                    || row.principalId() == null
                     || row.requestedCommit() == null || !row.requestedCommit().matches("[0-9a-f]{40}")
-                    || row.createdAt() < 0 || row.attempts() < 0 || row.attempts() > 6) throw invalid();
-            for (var commit : Arrays.asList(row.expectedCommit(), row.observedCommit(), row.resultCommit())) {
+                    || row.createdAt() < 0 || row.attempts() < 0 || row.attempts() > 6
+                    || row.authorizationKind() == null || !Set.of("LOCAL", "OIDC", "LEGACY_OIDC").contains(row.authorizationKind()) || !"ANALYSIS_RUN+CONTRIBUTOR".equals(row.requiredPolicy())
+                    || (row.archivedAt() == null) != (row.archivedBy() == null)) throw invalid();
+            for (var commit : Arrays.asList(row.forkPoint(), row.expectedCommit(), row.observedCommit(), row.resultCommit())) {
                 if (commit != null && !commit.matches("[0-9a-f]{40}")) throw invalid();
             }
-            var mapped = principals.get(new PrincipalId(UUID.fromString(row.principalId())));
-            if (mapped == null || !mapped.targetScope().equals(scope(identities,row.principalScope()))) throw invalid();
-            if (!Set.of("ADMITTED","RUNNING","RETRYABLE","COMPLETED","MANUAL_REVIEW","DENIED","AWAITING_AUTHORIZATION").contains(row.phase())) throw invalid();
+            boolean legacy = "LEGACY_OIDC".equals(row.authorizationKind());
+            if (legacy) {
+                if (!row.principalId().matches("[0-9a-f]{64}")) throw invalid();
+            } else {
+                if (!row.principalId().matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")) throw invalid();
+                var mapped = principals.get(new PrincipalId(UUID.fromString(row.principalId())));
+                if (mapped == null || !mapped.targetScope().equals(scope(identities,row.principalScope()))) throw invalid();
+            }
+            if (row.phase() == null || !Set.of("ADMITTED","RUNNING","RETRYABLE","COMPLETED","SUPERSEDED","MANUAL_REVIEW","DENIED","AWAITING_AUTHORIZATION").contains(row.phase())) throw invalid();
             boolean active = Set.of("ADMITTED","RUNNING","RETRYABLE","AWAITING_AUTHORIZATION").contains(row.phase());
             // Source evidence survives an isolated restore; target leases and authorizations are installation-local.
-            model.classify("fetch-journal",row.sourceId().value(),!activeWorkspaces.contains(row.workspaceId())
+            model.classify("fetch-journal",row.sourceId().value(),legacy || !activeWorkspaces.contains(row.workspaceId())
                     ? "PRIVATE_QUARANTINE" : active ? "INTERRUPTED_SOURCE_OPERATION" : "HISTORICAL_SOURCE_OPERATION");
         }
         for(var row:editors) {

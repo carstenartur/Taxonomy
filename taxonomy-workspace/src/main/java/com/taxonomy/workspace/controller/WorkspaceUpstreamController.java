@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -62,8 +63,15 @@ public class WorkspaceUpstreamController {
         return response(recovery.retry(resolver.resolveCurrentRepositoryContextForRead(), id));
     }
 
+    @DeleteMapping("/operations/{id}")
+    @Operation(summary = "Archive a settled working-copy fetch", description = "Removes retained Git results for the current owner and preserves the scoped outcome and deletion decision during the idempotency retention period.")
+    public WorkspaceFetchJournal.View archive(@PathVariable String id) throws IOException {
+        return recovery.archive(resolver.resolveCurrentRepositoryContextForRead(), id);
+    }
+
     private ResponseEntity<WorkspaceUpstreamService.Status> response(WorkspaceFetchRecovery.Receipt receipt) {
-        return ResponseEntity.ok().header("X-Operation-Id", receipt.operationId()).body(receipt.result());
+        return ResponseEntity.status(receipt.result() == null ? HttpStatus.ACCEPTED : HttpStatus.OK)
+                .header("X-Operation-Id", receipt.operationId()).body(receipt.result());
     }
 
     @GetMapping("/tag")

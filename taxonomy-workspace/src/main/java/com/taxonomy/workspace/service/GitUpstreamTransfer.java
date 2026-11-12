@@ -57,6 +57,29 @@ record GitUpstreamTransfer(GitUpstreamRef upstream, DslGitRepository source, Dsl
         return new Status(upstream.repositoryId(), upstream.branch(), head, upstream.name(), incoming);
     }
 
+    /** A recovery may settle from a retained descendant without moving any ref. */
+    Status recover(Request request, Runnable fence) throws IOException {
+        try {
+            return fetch(request, fence);
+        } catch (BranchHeadConflictException changed) {
+            if (!upstream.name().equals(changed.getBranch())) throw changed;
+            String actual = upstream.head(target);
+            if (actual == null || actual.equals(request.sourceCommit())
+                    || !reachable(target, request.sourceCommit(), actual)) throw changed;
+            reauthorize.run();
+            fence.run();
+            throw new Superseded(actual);
+        }
+    }
+
+    static final class Superseded extends IOException {
+        final String retainedCommit;
+        Superseded(String retainedCommit) {
+            super("The tracking ref already contains the requested commit");
+            this.retainedCommit = retainedCommit;
+        }
+    }
+
     TagStatus inspectTag(String name) throws IOException {
         String tracked = upstream.head(target);
         var tag = selectedTag(name, tracked);

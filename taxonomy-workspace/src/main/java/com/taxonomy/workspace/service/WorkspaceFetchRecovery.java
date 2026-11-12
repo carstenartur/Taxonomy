@@ -29,7 +29,7 @@ public class WorkspaceFetchRecovery {
     public Receipt fetch(RepositoryContext context, WorkspaceUpstreamService.Request request,
                          String key, String causation) throws IOException {
         var grant = actors.authorize(context.username());
-        var selection = upstream.inspect(context);
+        var selection = upstream.capture(context);
         var state = journal.admit(context, grant, selection, request, key, causation);
         return complete(context, grant.principalId(), state);
     }
@@ -46,11 +46,33 @@ public class WorkspaceFetchRecovery {
         return complete(context, principal, journal.status(context, principal, id));
     }
 
+    public WorkspaceFetchJournal.View archive(RepositoryContext context, String id) throws IOException {
+        String principal = actors.authorize(context.username()).principalId();
+        upstream.inspect(context);
+        return journal.archive(context, principal, id);
+    }
+
     private Receipt complete(RepositoryContext context, String principal, WorkspaceFetchJournal.View state) throws IOException {
         var claim = journal.claim(state.operationId(), principal, false);
-        state = claim == null ? journal.status(context, principal, state.operationId()) : journal.run(claim, this::apply);
+        if (claim == null) {
+            state = journal.status(context, principal, state.operationId());
+        } else {
+            try {
+                state = journal.run(claim, this::apply);
+            } catch (IOException | RuntimeException failure) {
+                // Return the persisted operation to the caller even when Git succeeded and the database update failed.
+                var recorded = journal.status(context, principal, state.operationId());
+                if ("RETRYABLE".equals(recorded.phase())) return new Receipt(recorded.operationId(), null);
+                if (!"SUPERSEDED".equals(recorded.phase())) throw failure;
+                state = recorded;
+            }
+        }
+        if ("ARCHIVED".equals(state.phase())) throw new ResponseStatusException(HttpStatus.GONE, "FETCH_ARCHIVED");
         if ("DENIED".equals(state.phase())) throw new AccessDeniedException("Fetch authority changed");
-        if (!"COMPLETED".equals(state.phase())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Fetch requires review or is already running");
+        if ("RUNNING".equals(state.phase()) || "ADMITTED".equals(state.phase()) || "RETRYABLE".equals(state.phase())) {
+            return new Receipt(state.operationId(), null);
+        }
+        if (!"COMPLETED".equals(state.phase())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Fetch requires an explicit decision");
         var ref = new GitUpstreamRef(state.repositoryId(), state.sourceBranch());
         return new Receipt(state.operationId(), new WorkspaceUpstreamService.Status(state.repositoryId(), state.sourceBranch(),
                 state.observedSourceCommit(), ref.name(), state.resultCommit()));
@@ -58,6 +80,7 @@ public class WorkspaceFetchRecovery {
 
     @Scheduled(fixedDelayString = "${taxonomy.workspace.fetch-recovery-poll:30000}")
     public void recoverDue() {
+        journal.expireDue();
         for (String id : journal.due()) {
             var claim = journal.claim(id, "system:workspace-fetch-recovery", true);
             if (claim == null) continue;
@@ -74,8 +97,8 @@ public class WorkspaceFetchRecovery {
         var original = new WorkspaceFetchAuthority.Grant(operation.actor, operation.loginKind, operation.bindingKey);
         boolean unattended = "system:workspace-fetch-recovery".equals(operation.executor);
         actors.checkPublication(original, operation.username, unattended);
-        return upstream.fetchRecorded(operation.context(), operation.sourceBranch,
-                new WorkspaceUpstreamService.Request(operation.requested, operation.expected), () -> {
+        return upstream.fetchRecorded(operation.context(), operation.sourceBranch, operation.forkPoint,
+                new WorkspaceUpstreamService.Request(operation.requested, operation.expected), operation.attempts > 1, () -> {
                     actors.checkPublication(original, operation.username, unattended);
                     checkLease.run();
                 });

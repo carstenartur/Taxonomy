@@ -110,8 +110,9 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
         var fetchScope = scope.repositories("f.repository_id", "f.workspace_id");
         write(sink, "fetch-journal", profile, query(scope, false, """
                 select f.operation_id, f.actor_id, f.actor_scope, f.repository_id, f.workspace_id, f.local_branch,
-                       f.source_branch, f.requested_commit, f.expected_commit, f.observed_commit, f.result_commit,
+                       f.source_branch, f.fork_point, f.requested_commit, f.expected_commit, f.observed_commit, f.result_commit,
                        f.cause_id, f.phase, f.attempts, f.decision_code, f.created_at, f.last_attempt_at, f.completed_at,
+                       f.login_kind, f.policy_code, f.archived_at, f.archived_by,
                        w.source_repository_id as parent_repository, w.username as parent_owner
                 from workspace_fetch_operation f left join user_workspace w on w.workspace_id=f.workspace_id""",
                 fetchScope, "f.operation_id"), scoped(scope, "repository_id", "workspace_id", r -> {
@@ -121,9 +122,10 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
                     }
                     return new FetchRecord(reference(r,"workspace.fetch", "operation_id"), text(r,"actor_id"),
                             text(r,"actor_scope"), text(r,"repository_id"), text(r,"workspace_id"), text(r,"local_branch"),
-                            text(r,"source_branch"), text(r,"requested_commit"), text(r,"expected_commit"), text(r,"observed_commit"),
+                            text(r,"source_branch"), text(r,"fork_point"), text(r,"requested_commit"), text(r,"expected_commit"), text(r,"observed_commit"),
                             text(r,"result_commit"), text(r,"cause_id"), text(r,"phase"), r.getInt("attempts"), text(r,"decision_code"),
-                            r.getLong("created_at"), r.getObject("last_attempt_at",Long.class), r.getObject("completed_at",Long.class));
+                            r.getLong("created_at"), r.getObject("last_attempt_at",Long.class), r.getObject("completed_at",Long.class),
+                            text(r,"login_kind"), text(r,"policy_code"), r.getObject("archived_at",Long.class), text(r,"archived_by"));
                 }));
         var editors = scope.repositories("repository_id","workspace_id");
         write(sink,"working-states",profile,query(scope,false,"select scope_id,repository_id,workspace_id,branch,dsl,semantic_revision,checkpoint_commit,checkpoint_revision,pending_checkpoint from editor_workspace",editors,"scope_id"),
@@ -168,9 +170,10 @@ public final class WorkspaceBackupContributor implements BackupDataContributor {
     }
     public record MembershipRecord(SourceRecordId sourceId,String repositoryId,String principalScope,RepositoryRole role,String createdAt,String createdBy,String updatedAt) { }
     public record FetchRecord(SourceRecordId sourceId, String principalId, String principalScope, String repositoryId,
-                              String workspaceId, String branch, String sourceBranch, String requestedCommit,
+                              String workspaceId, String branch, String sourceBranch, String forkPoint, String requestedCommit,
                               String expectedCommit, String observedCommit, String resultCommit, String causationId,
-                              String phase, int attempts, String decisionCode, long createdAt, Long lastAttemptAt, Long completedAt) { }
+                              String phase, int attempts, String decisionCode, long createdAt, Long lastAttemptAt, Long completedAt,
+                              String authorizationKind, String requiredPolicy, Long archivedAt, String archivedBy) { }
     public record SyncRecord(SourceRecordId sourceId,String principalScope,String workspaceId,String lastSyncedCommit,String lastSyncAt,String lastPublishedCommit,String lastPublishAt,String syncStatus,int unpublishedCommitCount,String createdAt,String updatedAt) { }
     public record WorkingStateRecord(SourceRecordId sourceId,String repositoryId,String workspaceId,String branch,String dsl,long semanticRevision,String checkpointCommit,long checkpointRevision,String interruptedCheckpoint) { }
     public record OperationRecord(SourceRecordId sourceId,SourceRecordId editor,String commandId,String actor,String occurredAt,String rationale,String correlationId,String causationId,String kind,String targetOperationId,long previousRevision,long semanticRevision,String fingerprint,int bodyVersion,String beforeDsl,String afterDsl,String affectedIds) { }
