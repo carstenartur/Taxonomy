@@ -649,13 +649,20 @@ class PortfolioStatusPayloadReadTest {
                     .complete(AnalysisStatus.PARTIAL, f.oldSnapshotId, Fixture.TIME, "CALL_BUDGET"));
             var jobs = new JpaRepositoryFactory(f.shared).getRepository(RequirementAnalysisJobRepository.class);
             var control = f.proxy(new CopilotJobControlService(jobs, f.persistence, f.shared));
+            f.resetReads();
             var cancelled = control.cancel(f.jobId, f.projectId, "owner", f.scope);
+            assertThat(f.sql).anyMatch(statement -> statement.contains(" from req_analysis_job ")
+                    && statement.contains(" for update"));
             assertThat(cancelled.status()).isEqualTo(AnalysisStatus.CANCELLED);
             assertThat(cancelled.items()).singleElement().satisfies(item -> {
                 assertThat(item.status()).isEqualTo(AnalysisStatus.PARTIAL);
                 assertThat(item.snapshotId()).isEqualTo(f.oldSnapshotId);
                 assertThat(item.requirementVersionId()).isEqualTo(f.oldVersionId);
             });
+            String scopeKey = PortfolioScope.key("owner", f.scope);
+            f.persistence.markJobRunning(f.jobId, f.projectId, scopeKey);
+            assertThat(f.persistence.getJob(f.jobId, f.projectId, "owner", f.scope)).isEqualTo(cancelled);
+            assertThat(f.persistence.completeJob(f.jobId, f.projectId, scopeKey)).isEqualTo(cancelled);
             f.resetReads();
             assertThat(f.persistence.getJob(f.jobId, f.projectId, "owner", f.scope)).isEqualTo(cancelled);
             f.assertNoSnapshotPayloadRead();

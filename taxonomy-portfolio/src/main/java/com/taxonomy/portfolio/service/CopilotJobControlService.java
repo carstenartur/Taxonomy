@@ -37,7 +37,7 @@ public class CopilotJobControlService {
             WorkspaceContext context) {
         String scopeKey = PortfolioScope.key(username, context);
         RequirementAnalysisJob job = jobRepository
-                .findByIdAndProjectIdAndScopeKey(jobId, projectId, scopeKey)
+                .findByIdAndProjectIdAndScopeKeyForUpdate(jobId, projectId, scopeKey)
                 .orElseThrow(() -> PortfolioException.notFound(
                         "Analysis job not found: " + jobId));
         if (isTerminal(job.getStatus())) {

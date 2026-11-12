@@ -68,7 +68,7 @@ public final class PortfolioPartialDiagnosticsChecks {
         };
         String actor = "diagnostic-test";
         var scope = PortfolioAnalysisWorkspace.select(workspaceResolver, actor);
-        var project = projects.createProject(new CreateProjectRequest("DIAG", "Diagnostic test", null,
+        var project = projects.createProject(new CreateProjectRequest("DIAG-" + name, "Diagnostic test", null,
                 null, null, null, null, null), actor, scope);
         String original = "Provide readable explanations for incomplete scenario information-product analyses.";
         var requirement = projects.createRequirement(project.id(), new CreateRequirementRequest("CIV-1",

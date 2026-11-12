@@ -17,6 +17,8 @@ import com.taxonomy.dto.RelationOrigin;
 import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.dto.RequirementElementView;
 import com.taxonomy.dto.RequirementRelationshipView;
+import com.taxonomy.dto.TaxonomyDataFingerprint;
+import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalyzeProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
@@ -62,7 +64,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -103,7 +107,6 @@ class PortfolioAnalysisCoverageRegressionTest extends RetainedPortfolioCatalogue
                 recommendationService, fingerprintService);
         when(fingerprintService.contentFingerprint(anyString()))
                 .thenAnswer(invocation -> sha256(invocation.getArgument(0)));
-        when(fingerprintService.taxonomyFingerprint()).thenReturn("taxonomy-default");
         when(fingerprintService.promptFingerprint()).thenReturn("prompts-default");
         when(recommendationService.rankMatches(anyMap(), anyString(), anyInt()))
                 .thenAnswer(invocation -> new ArchitectureRecommendation());
@@ -116,17 +119,19 @@ class PortfolioAnalysisCoverageRegressionTest extends RetainedPortfolioCatalogue
         RequirementView requirement = createRequirement(
                 project.id(), context, "REQ-DIFF", "Compare two architecture analyses");
         AtomicInteger pass = new AtomicInteger();
-        when(fingerprintService.taxonomyFingerprint())
-                .thenReturn("taxonomy-v1", "taxonomy-v2");
+        var olderTree = List.of(catalogueNode("CP-1010"), catalogueNode("BP-1000"));
+        var newerTree = List.of(catalogueNode("AP-2020"), catalogueNode("TP-3000"));
         when(fingerprintService.promptFingerprint())
                 .thenReturn("prompts-v1", "prompts-v2");
         when(analyzeRequirementUseCase.analyze(any(AnalyzeRequirementCommand.class)))
                 .thenAnswer(invocation -> {
                     AnalyzeRequirementCommand command = invocation.getArgument(0);
                     boolean second = pass.getAndIncrement() > 0;
-                    return new AnalyzeRequirementResult(second
+                    var result = second
                             ? successfulAnalysis(command, "AP-2020", "TP-3000", 65, true, true)
-                            : successfulAnalysis(command, "CP-1010", "BP-1000", 80, false, false));
+                            : successfulAnalysis(command, "CP-1010", "BP-1000", 80, false, false);
+                    result.setTree(second ? newerTree : olderTree);
+                    return new AnalyzeRequirementResult(result);
                 });
 
         var firstJob = analysisService.analyzeRequirement(
@@ -164,6 +169,9 @@ class PortfolioAnalysisCoverageRegressionTest extends RetainedPortfolioCatalogue
                 relation -> assertThat(relation).contains("AP-2020", "TP-3000"));
         assertThat(diff.removedRelations()).singleElement().satisfies(
                 relation -> assertThat(relation).contains("CP-1010", "BP-1000"));
+        assertThat(older.taxonomyFingerprint()).isEqualTo(TaxonomyDataFingerprint.sha256(olderTree));
+        assertThat(newer.taxonomyFingerprint()).isEqualTo(TaxonomyDataFingerprint.sha256(newerTree));
+        verify(fingerprintService, never()).taxonomyFingerprint();
         assertThat(diff.taxonomyFingerprintChanged()).isTrue();
         assertThat(diff.promptFingerprintChanged()).isTrue();
         assertThat(diff.providerChanged()).isTrue();
@@ -352,6 +360,12 @@ class PortfolioAnalysisCoverageRegressionTest extends RetainedPortfolioCatalogue
                 failed.id(), project.id(), context.username(), context))
                 .isInstanceOf(PortfolioException.class)
                 .hasMessageContaining("no failed items to retry");
+    }
+
+    private static TaxonomyNodeDto catalogueNode(String code) {
+        var node = new TaxonomyNodeDto();
+        node.setCode(code);
+        return node;
     }
 
     private AnalysisResult successfulAnalysis(AnalyzeRequirementCommand command,

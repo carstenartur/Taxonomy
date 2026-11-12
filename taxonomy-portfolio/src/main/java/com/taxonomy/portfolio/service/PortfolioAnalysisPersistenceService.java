@@ -289,7 +289,10 @@ public class PortfolioAnalysisPersistenceService {
 
     @Transactional
     public void markJobRunning(String jobId, Long projectId, String scopeKey) {
-        requireJob(jobId, projectId, scopeKey).markRunning(Instant.now());
+        var job = requireJobForUpdate(jobId, projectId, scopeKey);
+        if (job.getStatus() != AnalysisStatus.CANCELLED) {
+            job.markRunning(Instant.now());
+        }
     }
 
     @Transactional
@@ -395,7 +398,10 @@ public class PortfolioAnalysisPersistenceService {
                                        Long projectId,
                                        String scopeKey) {
         String exactScope = requireScope(scopeKey);
-        RequirementAnalysisJob job = requireJob(jobId, projectId, exactScope);
+        RequirementAnalysisJob job = requireJobForUpdate(jobId, projectId, exactScope);
+        if (job.getStatus() == AnalysisStatus.CANCELLED) {
+            return toJobView(job);
+        }
         List<RequirementAnalysisJobItem> items = itemRepository
                 .findByJobIdAndProjectIdAndScopeKeyOrderByRequirementRequirementKeyAsc(
                         jobId, projectId, exactScope);
@@ -431,15 +437,25 @@ public class PortfolioAnalysisPersistenceService {
         if (failedItems.isEmpty()) {
             throw PortfolioException.conflict("Analysis job has no failed items to retry: " + jobId);
         }
-        // Recheck access for the originally admitted versions before retrying the job.
-        requireRetainedProviderBinding(projectId, job.getId(), job.getProvider(),
-                failedItems.stream().map(item -> new ProjectProviderBinding.Target(
-                        item.getRequirementId(), item.getRequirementVersionId())).toList(), username, context);
+        requireRetryProviderBinding(job, failedItems, username, context);
         for (RequirementAnalysisJobItem item : failedItems) {
             item.prepareRetry(item.getRequirementVersion());
         }
         job.markRunning(Instant.now());
         return toJobView(job);
+    }
+
+    /** A retry keeps its admitted inputs and must still be allowed by the project's current provider binding. */
+    void requireRetryProviderBinding(RequirementAnalysisJob job, List<RequirementAnalysisJobItem> items,
+                                     String username, WorkspaceContext context) {
+        var admittedTargets = items.stream().map(item -> new ProjectProviderBinding.Target(
+                item.getRequirementId(), item.getRequirementVersionId())).toList();
+        requireRetainedProviderBinding(job.getProjectId(), job.getId(), job.getProvider(), admittedTargets, username, context);
+        var currentTargets = items.stream().map(item -> new ProjectProviderBinding.Target(
+                item.getRequirementId(), item.getRequirement().getCurrentVersionId())).toList();
+        if (!currentTargets.equals(admittedTargets)) {
+            requireRetainedProviderBinding(job.getProjectId(), job.getId(), job.getProvider(), currentTargets, username, context);
+        }
     }
 
     /**
@@ -700,6 +716,11 @@ public class PortfolioAnalysisPersistenceService {
         hypothesisLinks.linkSnapshot(
                 PortfolioScope.repositoryId(context), PortfolioScope.workspaceId(context),
                 PortfolioScope.branch(context), analysisSessionId, projectId, requirementId, snapshotId);
+    }
+
+    private RequirementAnalysisJob requireJobForUpdate(String jobId, Long projectId, String scopeKey) {
+        return jobRepository.findByIdAndProjectIdAndScopeKeyForUpdate(jobId, projectId, requireScope(scopeKey))
+                .orElseThrow(() -> PortfolioException.notFound("Analysis job not found: " + jobId));
     }
 
     private RequirementAnalysisJob requireJob(String jobId,

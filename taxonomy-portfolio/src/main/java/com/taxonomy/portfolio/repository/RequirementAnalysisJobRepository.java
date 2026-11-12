@@ -1,7 +1,9 @@
 package com.taxonomy.portfolio.repository;
 
 import com.taxonomy.portfolio.model.RequirementAnalysisJob;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -53,6 +55,12 @@ public interface RequirementAnalysisJobRepository extends JpaRepository<Requirem
             """)
     List<AnalysisJobReadRow> findReadRowsByProjectIdAndScopeKey(
             @Param("projectId") Long projectId, @Param("scopeKey") String scopeKey);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select job from RequirementAnalysisJob job where job.id = :id "
+            + "and job.projectId = :projectId and job.scopeKey = :scopeKey")
+    Optional<RequirementAnalysisJob> findByIdAndProjectIdAndScopeKeyForUpdate(
+            @Param("id") String id, @Param("projectId") Long projectId, @Param("scopeKey") String scopeKey);
 
     Optional<RequirementAnalysisJob> findByIdAndProjectIdAndScopeKey(
             String id, Long projectId, String scopeKey);

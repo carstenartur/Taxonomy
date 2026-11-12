@@ -213,7 +213,7 @@ class CopilotSupportingServicesCoverageTest {
                 AnalysisStatus.CANCELLED)) {
             reset(job, jobs, persistence, entityManager);
             when(job.getStatus()).thenReturn(status);
-            when(jobs.findByIdAndProjectIdAndScopeKey("job-1", 41L, scopeKey))
+            when(jobs.findByIdAndProjectIdAndScopeKeyForUpdate("job-1", 41L, scopeKey))
                     .thenReturn(Optional.of(job));
             when(persistence.getJob("job-1", 41L, context.username(), context))
                     .thenReturn(expected);
@@ -237,7 +237,7 @@ class CopilotSupportingServicesCoverageTest {
         var expected = mock(com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView.class);
         String scopeKey = PortfolioScope.key(context.username(), context);
         when(job.getStatus()).thenReturn(AnalysisStatus.RUNNING);
-        when(jobs.findByIdAndProjectIdAndScopeKey("job-1", 41L, scopeKey))
+        when(jobs.findByIdAndProjectIdAndScopeKeyForUpdate("job-1", 41L, scopeKey))
                 .thenReturn(Optional.of(job));
         when(entityManager.createQuery(anyString())).thenReturn(query);
         when(query.setParameter(anyString(), any())).thenReturn(query);
@@ -264,7 +264,7 @@ class CopilotSupportingServicesCoverageTest {
         CopilotJobControlService service = new CopilotJobControlService(
                 jobs, persistence, entityManager);
         String scopeKey = PortfolioScope.key(context.username(), context);
-        when(jobs.findByIdAndProjectIdAndScopeKey("missing", 41L, scopeKey))
+        when(jobs.findByIdAndProjectIdAndScopeKeyForUpdate("missing", 41L, scopeKey))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.cancel(

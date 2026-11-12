@@ -20,6 +20,12 @@ import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.nio.file.*;
@@ -52,8 +58,9 @@ class AnalysisSnapshotAdoptionUiIT {
             String repository = repositories.getPrimaryRepository().getRepositoryId();
             String defaultBranch = repositories.getPrimaryRepository().getDefaultBranch();
             String branch = "retained-snapshot-branch";
-            app.getBean(com.taxonomy.workspace.storage.DslGitRepositoryFactory.class)
+            String checkpoint = app.getBean(com.taxonomy.workspace.storage.DslGitRepositoryFactory.class)
                     .resolveRepository(RepositoryContext.centralRead(repository,defaultBranch,"admin")).createBranch(branch,defaultBranch);
+            assertThat(checkpoint).isNotBlank();
             var source = new WorkspaceContext("admin",null,branch,repository);
             var projects = app.getBean(ProjectPortfolioService.class);
             var snapshots = app.getBean(PortfolioAnalysisPersistenceService.class);
@@ -76,7 +83,7 @@ class AnalysisSnapshotAdoptionUiIT {
             var edge = new RequirementRelationshipView(); edge.setSourceCode(nodes.get(0).getCode()); edge.setTargetCode(nodes.get(1).getCode()); edge.setRelationType("RELATED_TO");
             graph.setIncludedRelationships(List.of(edge));
             var analysis = new AnalysisResult(); analysis.setStatus("SUCCESS"); analysis.setArchitectureView(graph);
-            var job = snapshots.createOrReuseJob(project.id(),List.of(requirement.id()),"GEMINI",20,"historical-browser-fixture","admin",source);
+            var job = createHistoricalJob(app, source, checkpoint, project.id(), requirement.id());
             String scope = PortfolioScope.key("admin",source);
             var item = snapshots.pendingItems(job.id(),project.id(),scope).getFirst();
             var snapshot = snapshots.persistSnapshot(item.getId(),job.id(),project.id(),scope,UUID.randomUUID().toString(),UUID.randomUUID().toString(),analysis,null,null,null,
@@ -165,6 +172,33 @@ class AnalysisSnapshotAdoptionUiIT {
             var document = restarted.getBean(ArchitectureEditorService.class).read(target,null);
             assertThat(document.context().revision()).isEqualTo(3);
             assertThat(new ArchitectureDslCommands().model(document.dsl()).getViews()).anyMatch(view -> viewId.equals(view.getId()));
+        }
+    }
+    private static AnalysisJobView createHistoricalJob(ConfigurableApplicationContext app, WorkspaceContext source,
+                                                        String checkpoint, Long projectId, Long requirementId) throws Exception {
+        var authentication = app.getBean(AuthenticationConfiguration.class).getAuthenticationManager()
+                .authenticate(UsernamePasswordAuthenticationToken.unauthenticated(source.username(), PASSWORD));
+        var security = SecurityContextHolder.createEmptyContext();
+        security.setAuthentication(authentication);
+        var request = new MockHttpServletRequest();
+        request.addParameter("repositoryId", source.repositoryId());
+        request.addParameter("workspaceId", "");
+        request.addParameter("branch", source.currentBranch());
+        var attributes = new ServletRequestAttributes(request);
+        var previousRequest = RequestContextHolder.getRequestAttributes();
+        var previousSecurity = SecurityContextHolder.getContext();
+        try {
+            SecurityContextHolder.setContext(security);
+            RequestContextHolder.setRequestAttributes(attributes);
+            var selected = app.getBean(WorkspaceResolver.class).resolveCurrentContext();
+            assertThat(selected).isEqualTo(source);
+            return app.getBean(PortfolioAnalysisPersistenceService.class).createOrReuseJob(
+                    projectId, List.of(requirementId), "GEMINI", 20, "historical-browser-fixture",
+                    selected.username(), selected, null, null, new AnalysisModelSelection(checkpoint, null, null));
+        } finally {
+            RequestContextHolder.setRequestAttributes(previousRequest);
+            SecurityContextHolder.setContext(previousSecurity);
+            attributes.requestCompleted();
         }
     }
     private ConfigurableApplicationContext start(String url) {

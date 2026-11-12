@@ -61,13 +61,9 @@ public class PortfolioAnalysisRecoveryService {
                 .findByJobIdAndProjectIdAndScopeKeyAndStatusAndStartedAtBeforeOrderByRequirementRequirementKeyAsc(
                         jobId, projectId, scopeKey, AnalysisStatus.RUNNING, staleBefore);
 
-        var retryTargets = Stream.concat(failed.stream(), stale.stream())
-                .map(item -> new ProjectProviderBinding.Target(item.getRequirementId(), item.getRequirementVersionId()))
-                .toList();
-        if (!retryTargets.isEmpty()) {
-            // Admission and resets share this transaction and the exact version IDs captured above.
-            persistenceService.requireRetainedProviderBinding(projectId, job.getId(), job.getProvider(),
-                    retryTargets, username, context);
+        var retryItems = Stream.concat(failed.stream(), stale.stream()).toList();
+        if (!retryItems.isEmpty()) {
+            persistenceService.requireRetryProviderBinding(job, retryItems, username, context);
         }
 
         int prepared = 0;

@@ -1,5 +1,6 @@
 package com.taxonomy.workspace.controller;
 
+import com.taxonomy.portfolio.RetainedPortfolioCatalogue;
 import org.junit.jupiter.api.Tag;
 
 import org.junit.jupiter.api.Test;
@@ -13,7 +14,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.http.MediaType;
 
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -31,7 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WithMockUser(username = "testuser", roles = {"USER", "ARCHITECT", "ADMIN"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 @Tag("ci-app-shard-domain-integration")
-class WorkspaceControllerTest {
+class WorkspaceControllerTest extends RetainedPortfolioCatalogue {
 
     @Autowired
     private MockMvc mockMvc;
@@ -228,22 +228,18 @@ class WorkspaceControllerTest {
 
     @Test
     void syncFromShared_returnsOk() throws Exception {
-        var result = mockMvc.perform(post("/api/workspace/sync-from-shared"))
-                .andReturn();
-        int status = result.getResponse().getStatus();
-        assertTrue(status == 200 || status == 500,
-                "Expected 200 (sync success) or 500 (no shared repo), got " + status);
+        mockMvc.perform(post("/api/workspace/sync-from-shared"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
     }
 
     // ── Publish ─────────────────────────────────────────────────────
 
     @Test
     void publish_returnsOk() throws Exception {
-        var result = mockMvc.perform(post("/api/workspace/publish"))
-                .andReturn();
-        int status = result.getResponse().getStatus();
-        assertTrue(status == 200 || status == 500,
-                "Expected 200 (publish success) or 500 (no changes), got " + status);
+        mockMvc.perform(post("/api/workspace/publish"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
     }
 
     // ── Switch workspace (not found) ────────────────────────────────

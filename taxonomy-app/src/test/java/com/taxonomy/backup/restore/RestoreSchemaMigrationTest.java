@@ -30,7 +30,7 @@ class RestoreSchemaMigrationTest {
         for (String table : List.of("source_artifact", "source_version", "source_fragment", "user_workspace", "app_user", "app_principal", "principal_binding", "backup_capability_grant", "git_packs", "workspace_git_reflog_provenance", "analysis_cluster_call", "analysis_cluster_attempt", "inventory_comparison", "inventory_assertion", "inventory_observation", "inventory_review", "inventory_mapping", "interop_file"))
             assertThat(rows.queryForObject("select count(*) from " + table, Long.class)).as(table).isZero();
         assertThat(rows.queryForObject("select count(*) from principal_installation", Long.class)).isEqualTo(1);
-        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(17);
+        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(18);
         assertFileExportSchema(target);
         assertReasonLengthColumn(target);
         assertLanguageColumn(target);
@@ -133,20 +133,7 @@ class RestoreSchemaMigrationTest {
         PrincipalSchemaMigration.migrate(target);
         migrateBusinessSchema(target, "8");
         var rows = new JdbcTemplate(target);
-        rows.execute("""
-                insert into arch_project (id, scope_key, workspace_scope, project_key, title,
-                    owner_username, status, created_at, updated_at, row_version, branch_name, repository_id)
-                values (1, 'restore-reason-scope', 'restore-workspace', 'LEGACY', 'Existing project',
-                    'owner', 'ACTIVE', timestamp '2026-01-01 12:00:00', timestamp '2026-01-01 12:00:00',
-                    0, 'main', 'restore-repository')
-                """);
-        rows.execute("""
-                insert into req_analysis_job (id, scope_key, project_id, status, idempotency_key,
-                    provider, max_architecture_nodes, requested_by, created_at, total_items,
-                    successful_items, partial_items, failed_items, row_version)
-                values ('legacy-job', 'restore-reason-scope', 1, 'SUCCESS', 'legacy-request',
-                    'LOCAL_ONNX', 100, 'owner', timestamp '2026-01-01 12:00:00', 1, 1, 0, 0, 0)
-                """);
+        insertLegacyAnalysisJob(rows);
         var legacy = rows.queryForMap("select * from req_analysis_job where id = 'legacy-job'");
         assertThat(legacy).doesNotContainKey("ANALYSIS_REASON_LENGTH");
 
@@ -187,6 +174,23 @@ class RestoreSchemaMigrationTest {
         for (String invalid : List.of("fr", "de", "UNKNOWN", ""))
             assertThatThrownBy(() -> rows.update("update req_analysis_job set analysis_language = ? where id = 'legacy-job'", invalid))
                     .isInstanceOf(DataIntegrityViolationException.class);
+    }
+    @Test void modelAdmissionMigrationKeepsPriorAnalysisJobsWithoutAnInventedBinding() {
+        var target = database();
+        migrateBusinessSchema(target, "1");
+        PrincipalSchemaMigration.migrate(target);
+        migrateBusinessSchema(target, "17");
+        var rows = new JdbcTemplate(target);
+        insertLegacyAnalysisJob(rows);
+        var legacy = rows.queryForMap("select * from req_analysis_job where id = 'legacy-job'");
+        assertThat(legacy).doesNotContainKey("ADMITTED_MODEL_JSON");
+
+        migrateBusinessSchema(target, "18");
+
+        var migrated = rows.queryForMap("select * from req_analysis_job where id = 'legacy-job'");
+        assertThat(migrated).containsEntry("ADMITTED_MODEL_JSON", null);
+        migrated.remove("ADMITTED_MODEL_JSON");
+        assertThat(migrated).isEqualTo(legacy);
     }
     @Test void relationLedgerMigrationPreservesLegacyEvidenceAndUnknownAccounting() throws Exception {
         var target = database();
@@ -345,6 +349,22 @@ class RestoreSchemaMigrationTest {
                 }
             }
         }
+    }
+    private static void insertLegacyAnalysisJob(JdbcTemplate rows) {
+        rows.execute("""
+                insert into arch_project (id, scope_key, workspace_scope, project_key, title,
+                    owner_username, status, created_at, updated_at, row_version, branch_name, repository_id)
+                values (1, 'restore-reason-scope', 'restore-workspace', 'LEGACY', 'Existing project',
+                    'owner', 'ACTIVE', timestamp '2026-01-01 12:00:00', timestamp '2026-01-01 12:00:00',
+                    0, 'main', 'restore-repository')
+                """);
+        rows.execute("""
+                insert into req_analysis_job (id, scope_key, project_id, status, idempotency_key,
+                    provider, max_architecture_nodes, requested_by, created_at, total_items,
+                    successful_items, partial_items, failed_items, row_version)
+                values ('legacy-job', 'restore-reason-scope', 1, 'SUCCESS', 'legacy-request',
+                    'LOCAL_ONNX', 100, 'owner', timestamp '2026-01-01 12:00:00', 1, 1, 0, 0, 0)
+                """);
     }
     private static void insertHypothesis(JdbcTemplate rows, long id, String branch) {
         rows.update("""
