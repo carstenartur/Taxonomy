@@ -80,7 +80,6 @@ async function inspectGraph(root, outputDir, id) {
   const detailFontPx = await root.locator('.impact-map-detail-title')
     .evaluate(element => parseFloat(getComputedStyle(element).fontSize));
   const screenshot = 'impact-map-' + id + '.png';
-  await root.screenshot({path: path.join(outputDir, screenshot)});
   await relation.press('Enter');
   const relatedCode = await select.inputValue();
   assert.ok(relatedCode && relatedCode !== graph.selectedCode && relationship.includes(relatedCode));
@@ -93,5 +92,8 @@ async function inspectGraph(root, outputDir, id) {
   assert.ok(after.focusRestored);
   assert.ok(graph.selectorHeightPx >= 44 && graph.selectorFontPx >= 16
     && detailFontPx >= 16 && targetHeightPx >= 24, 'Native reading controls fall below the reading budgets');
+  // Capturing a tall element temporarily resizes Chromium's viewport. Finish
+  // the keyboard/camera measurement before the screenshot changes the canvas.
+  await root.screenshot({path: path.join(outputDir, screenshot)});
   return {...graph, score, relationship, relatedCode, targetHeightPx, detailFontPx, screenshot};
 }
