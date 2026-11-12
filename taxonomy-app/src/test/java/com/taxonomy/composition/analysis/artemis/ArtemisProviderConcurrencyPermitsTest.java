@@ -77,7 +77,7 @@ class ArtemisProviderConcurrencyPermitsTest {
                 .setPagingDirectory(data.resolve("paging").toString());
         config.addAcceptorConfiguration("tcp", "tcp://127.0.0.1:" + port);
         config.addAddressSetting(PREFIX + ".#", new AddressSettings().setMaxDeliveryAttempts(-1)
-                .setRedeliveryDelay(0).setExpiryDelay(-1L).setAutoCreateQueues(false).setAutoDeleteQueues(false));
+                .setRedeliveryDelay(0).setExpiryDelay(-1L).setAutoCreateAddresses(false).setAutoCreateQueues(false).setAutoDeleteQueues(false));
         broker = new EmbeddedActiveMQ().setConfiguration(config);
         broker.start();
     }

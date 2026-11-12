@@ -4,8 +4,6 @@ import jakarta.jms.DeliveryMode;
 import jakarta.jms.Message;
 import jakarta.jms.Session;
 import org.apache.activemq.artemis.api.core.ActiveMQQueueExistsException;
-import org.apache.activemq.artemis.api.core.QueueConfiguration;
-import org.apache.activemq.artemis.api.core.RoutingType;
 import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.apache.activemq.artemis.jms.client.ActiveMQSession;
 
@@ -28,9 +26,7 @@ public final class ArtemisProviderPermitProvisioner {
         try (var connection = factory.createConnection();
              var session = connection.createSession(true, Session.SESSION_TRANSACTED)) {
             // Atomic broker operation, not a racy browse/count/check-then-seed protocol.
-            ((ActiveMQSession) session).getCoreSession().createQueue(QueueConfiguration.of(queue)
-                    .setAddress(queue).setRoutingType(RoutingType.ANYCAST).setDurable(true)
-                    .setAutoCreated(false).setAutoDelete(false).setPurgeOnNoConsumers(false));
+            ArtemisProviderCapacityQueue.create(((ActiveMQSession) session).getCoreSession(), queue, false);
             try (var producer = session.createProducer(session.createQueue(queue + "::" + queue))) {
                 for (int i = 0; i < capacity; i++) {
                     producer.send(ArtemisProviderConcurrencyPermits.token(session, group, UUID.randomUUID().toString()),
