@@ -1,8 +1,15 @@
 package com.taxonomy;
 
+import com.taxonomy.backup.PrincipalId;
+import com.taxonomy.security.model.PrincipalUserDetails;
+import com.taxonomy.security.service.PrincipalIdentityService;
+import com.taxonomy.security.service.VerifiedLegacyOwnerMigration;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.testcontainers.containers.JdbcDatabaseContainer;
 
 import com.taxonomy.templates.DocumentTemplateWebDavLockManager;
@@ -21,6 +28,27 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Adds durable execution acceptance to the existing PostgreSQL, Oracle and SQL Server suites. */
 abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseContainerIT {
     protected abstract JdbcDatabaseContainer<?> getDatabaseContainer();
+
+    @Test
+    void currentLocalAdministratorCanPreviewLegacyOwnersOnTheDeployedSchema() {
+        var database = getDatabaseContainer();
+        var source = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
+        var jdbc = new JdbcTemplate(source);
+        String adminId = jdbc.queryForObject("select principal_id from app_user where username=?", String.class, "admin");
+        var roles = jdbc.query("""
+                select r.name from app_user u join user_roles ur on ur.user_id=u.id
+                join app_role r on r.id=ur.role_id where u.principal_id=?
+                """, (row, index) -> new SimpleGrantedAuthority(row.getString(1)), adminId);
+        assertThat(roles).contains(new SimpleGrantedAuthority("ROLE_ADMIN"));
+        var admin = new PrincipalUserDetails(new PrincipalId(UUID.fromString(adminId)), "admin", "", true, roles);
+        var authentication = UsernamePasswordAuthenticationToken.authenticated(admin, null, roles);
+        var migration = new VerifiedLegacyOwnerMigration(source, new PrincipalIdentityService(source));
+
+        var preview = migration.preview(authentication, 1);
+
+        assertThat(preview.owners()).hasSizeLessThanOrEqualTo(1);
+        assertThat(preview.fingerprint()).matches("[0-9a-f]{64}");
+    }
 
     private ClusterAnalysisDatabaseContract clusterContract() {
         var database = getDatabaseContainer();

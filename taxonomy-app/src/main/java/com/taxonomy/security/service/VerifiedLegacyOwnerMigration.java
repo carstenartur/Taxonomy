@@ -229,8 +229,8 @@ public final class VerifiedLegacyOwnerMigration {
             int current = jdbc.queryForObject("""
                     select count(*) from app_user u join user_roles ur on ur.user_id=u.id
                     join app_role r on r.id=ur.role_id
-                    where u.principal_id=? and u.enabled=1 and r.name='ROLE_ADMIN'
-                    """, Integer.class, actor.value().toString());
+                    where u.principal_id=? and u.enabled=? and r.name='ROLE_ADMIN'
+                    """, Integer.class, actor.value().toString(), true);
             if (current != 1) throw new AccessDeniedException("Current administrator authority required");
         } else if (!(authentication instanceof PrincipalJwtAuthenticationToken)
                 && !(authentication instanceof OAuth2AuthenticationToken
