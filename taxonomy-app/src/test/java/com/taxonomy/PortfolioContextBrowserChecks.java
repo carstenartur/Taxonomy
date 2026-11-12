@@ -384,7 +384,8 @@ final class PortfolioContextBrowserChecks {
             wait.until(ExpectedConditions.stalenessOf(oldButton));
             WebElement replacement = driver.findElement(retry);
             assertThat(replacement.isEnabled()).as("Retry remains disabled across a card refresh").isFalse();
-            replacement.click();
+            // Bootstrap disables pointer events on this button. Exercise the actual pointer hit target.
+            new Actions(driver).moveToElement(replacement).click().perform();
             assertThat(gate.requests.get()).isEqualTo(1);
             click(toggle);
         } finally {
