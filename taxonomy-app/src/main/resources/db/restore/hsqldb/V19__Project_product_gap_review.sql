@@ -8,7 +8,7 @@ create table project_product_gap_review (
     classification varchar(16) not null,
     rationale varchar(2000) not null,
     reviewer varchar(160) not null,
-    reviewed_at timestamp with time zone not null,
+    reviewed_at timestamp(6) not null,
     constraint fk_product_gap_review_project foreign key (project_id, scope_key) references arch_project(id, scope_key),
     constraint uq_product_gap_review_revision unique(project_id, gap_key, review_revision),
     constraint ck_product_gap_review_class check (classification in ('CREATE','PROCURE','CHANGE','UNDECIDED')),
