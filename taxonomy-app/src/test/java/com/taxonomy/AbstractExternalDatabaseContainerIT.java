@@ -4,10 +4,13 @@ import com.taxonomy.backup.PrincipalId;
 import com.taxonomy.security.model.PrincipalUserDetails;
 import com.taxonomy.security.service.PrincipalIdentityService;
 import com.taxonomy.security.service.VerifiedLegacyOwnerMigration;
+import com.taxonomy.security.service.LegacyOwnerMigrationReadiness;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.testcontainers.containers.JdbcDatabaseContainer;
@@ -18,7 +21,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -48,6 +53,32 @@ abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseConta
 
         assertThat(preview.owners()).hasSizeLessThanOrEqualTo(1);
         assertThat(preview.fingerprint()).matches("[0-9a-f]{64}");
+    }
+
+    @Test
+    void unreservedOwnerWrittenAfterMigrationBlocksStableStartupOnTheDeployedSchema() {
+        var database = getDatabaseContainer();
+        var source = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
+        var jdbc = new JdbcTemplate(source);
+        var transactions = new TransactionTemplate(new DataSourceTransactionManager(source));
+        String owner = "late-owner-" + UUID.randomUUID();
+
+        transactions.executeWithoutResult(transaction -> {
+            var before = LegacyOwnerMigrationReadiness.inspect(source);
+            jdbc.update("insert into context_history_record (username, created_at) values (?, ?)",
+                    owner, Timestamp.from(Instant.now()));
+
+            var after = LegacyOwnerMigrationReadiness.inspect(source);
+            assertThat(after.observedScopes()).isEqualTo(before.observedScopes() + 1);
+            assertThat(after.missingReservations()).isEqualTo(before.missingReservations() + 1);
+            assertThatThrownBy(() -> LegacyOwnerMigrationReadiness.requireReady(source))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("verified migration").hasMessageNotContaining(owner);
+            transaction.setRollbackOnly();
+        });
+
+        assertThat(jdbc.queryForObject("select count(*) from context_history_record where username=?",
+                Integer.class, owner)).isZero();
     }
 
     private ClusterAnalysisDatabaseContract clusterContract() {
