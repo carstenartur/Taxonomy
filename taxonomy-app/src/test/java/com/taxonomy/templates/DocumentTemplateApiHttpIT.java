@@ -1,10 +1,15 @@
 package com.taxonomy.templates;
 
+import com.taxonomy.security.model.AppUser;
+import com.taxonomy.security.repository.RoleRepository;
+import com.taxonomy.security.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -25,6 +30,7 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -62,6 +68,9 @@ class DocumentTemplateApiHttpIT {
     }
 
     @Value("${local.server.port}") private int port;
+    @Autowired private UserRepository users;
+    @Autowired private RoleRepository roles;
+    @Autowired private PasswordEncoder encoder;
     private HttpClient http;
 
     @BeforeEach
@@ -146,15 +155,8 @@ class DocumentTemplateApiHttpIT {
     @Test
     void browserRestoreRequiresConfirmationAndCsrfAndRetainsAStaleSelection() throws Exception {
         byte[] original = original();
-        var cookies = new CookieManager(null, CookiePolicy.ACCEPT_ALL);
-        try (var browser = HttpClient.newBuilder().cookieHandler(cookies)
-                .connectTimeout(Duration.ofSeconds(10)).build()) {
-            var login = browserSend(browser, "GET", "/login", "");
-            assertEquals(200, login.statusCode());
-            var signedIn = browserSend(browser, "POST", "/login",
-                    "username=admin&password=" + formEncode(PASSWORD) + "&_csrf=" + formEncode(csrfToken(login.body())));
-            assertEquals(302, signedIn.statusCode());
-            assertFalse(signedIn.headers().firstValue("Location").orElse("").contains("error"));
+        try (var browser = sessionClient()) {
+            signIn(browser, "admin");
 
             for (String language : List.of("de", "en")) {
                 String id = "restore-ui-" + UUID.randomUUID();
@@ -243,6 +245,104 @@ class DocumentTemplateApiHttpIT {
                 assertEquals(etag(saved), etag(send("GET", api + "/download", EMPTY)));
             }
         }
+    }
+
+    @Test
+    void candidateReadsRequireAdminAndBothMutationsRequireAdminAndCsrf() throws Exception {
+        var reader = new AppUser();
+        reader.setUsername("candidate-reader-" + UUID.randomUUID());
+        reader.setPasswordHash(encoder.encode(PASSWORD));
+        reader.setEnabled(true);
+        reader.setMustChangePassword(false);
+        reader.setRoles(Set.of(roles.findByName("ROLE_USER").orElseThrow()));
+        users.saveAndFlush(reader);
+
+        String id = "decision-rationale-report";
+        String api = API + id;
+        String page = "/admin/document-templates/" + id + "/candidates";
+        var active = send("GET", api + "/download", EMPTY);
+        assertEquals(200, active.statusCode());
+        String base = etag(active).replace("\"", "");
+        int revisions = historySize(api);
+        byte[] submitted = modified(active.body(), "candidate-authorization-boundary");
+
+        try (var admin = sessionClient(); var user = sessionClient()) {
+            signIn(admin, "admin");
+            signIn(user, reader.getUsername());
+            var adminForm = browserSend(admin, "GET", page, "");
+            assertEquals(200, adminForm.statusCode());
+            String adminToken = csrfToken(adminForm.body());
+            var userForm = browserSend(user, "GET", "/change-password", "");
+            assertEquals(200, userForm.statusCode());
+            String userToken = csrfToken(userForm.body());
+            assertEquals(403, browserSend(user, "GET", page, "").statusCode());
+
+            assertEquals(403, stageCandidate(admin, page, base, submitted, null).statusCode());
+            assertEquals(403, stageCandidate(user, page, base, submitted, userToken).statusCode());
+            assertEquals(403, stageCandidate(user, page, base, submitted, null).statusCode());
+            var staged = stageCandidate(admin, page, base, submitted, adminToken);
+            assertEquals(302, staged.statusCode());
+            String path = uri(page).resolve(staged.headers().firstValue("Location").orElseThrow()).getPath();
+            assertTrue(path.matches("/taxonomy" + page + "/[0-9a-f]{40}"), path);
+            String detail = path.substring("/taxonomy".length());
+            var candidate = browserSend(admin, "GET", detail, "");
+            assertEquals(200, candidate.statusCode());
+            assertEquals(403, browserSend(user, "GET", detail, "").statusCode());
+
+            for (String file : List.of("original.dotx", "sample.docx", "validation.json")) {
+                var get = HttpRequest.newBuilder(uri(detail + "/" + file)).GET().build();
+                assertEquals(403, user.send(get, HttpResponse.BodyHandlers.discarding()).statusCode(), file);
+                var downloaded = admin.send(get, HttpResponse.BodyHandlers.ofByteArray());
+                assertEquals(200, downloaded.statusCode(), file);
+                if (file.equals("original.dotx")) assertArrayEquals(submitted, downloaded.body());
+                if (file.equals("validation.json")) assertEquals("PASSED", JSON.readTree(downloaded.body()).get("sample").asString());
+            }
+
+            String activate = detail + "/activate";
+            assertEquals(403, browserSend(admin, "POST", activate, "").statusCode());
+            assertEquals(403, browserSend(user, "POST", activate, "").statusCode());
+            assertEquals(403, browserSend(user, "POST", activate, "_csrf=" + formEncode(userToken)).statusCode());
+            assertEquals(revisions, historySize(api));
+            assertEquals(etag(active), etag(send("GET", api + "/download", EMPTY)));
+            var promoted = browserSend(admin, "POST", activate, "_csrf=" + formEncode(csrfToken(candidate.body())));
+            assertEquals(302, promoted.statusCode());
+            assertEquals("/taxonomy/admin/document-templates/" + id,
+                    uri(activate).resolve(promoted.headers().firstValue("Location").orElseThrow()).getPath());
+            assertEquals(revisions + 1, historySize(api));
+            var current = send("GET", api + "/download", EMPTY);
+            assertPartsEqual(submitted, current.body());
+            assertEquals(200, send("POST", api + "/restore?revision=" + base, EMPTY, "If-Match", etag(current)).statusCode());
+        }
+    }
+
+    private HttpResponse<String> stageCandidate(HttpClient browser, String page, String base, byte[] submitted,
+                                                String csrf) throws Exception {
+        String boundary = "TaxonomyCandidate" + UUID.randomUUID();
+        String field = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n";
+        String prefix = field.formatted("displayName", "Candidate QA") + field.formatted("expectedHead", base)
+                + (csrf == null ? "" : field.formatted("_csrf", csrf))
+                + "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"candidate.dotx\"\r\n"
+                + "Content-Type: " + DOTX + "\r\n\r\n";
+        var request = HttpRequest.newBuilder(uri(page)).timeout(Duration.ofSeconds(30))
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(HttpRequest.BodyPublishers.concat(HttpRequest.BodyPublishers.ofString(prefix),
+                        HttpRequest.BodyPublishers.ofByteArray(submitted),
+                        HttpRequest.BodyPublishers.ofString("\r\n--" + boundary + "--\r\n"))).build();
+        return browser.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    private static HttpClient sessionClient() {
+        return HttpClient.newBuilder().cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL))
+                .connectTimeout(Duration.ofSeconds(10)).build();
+    }
+
+    private void signIn(HttpClient browser, String username) throws Exception {
+        var login = browserSend(browser, "GET", "/login", "");
+        assertEquals(200, login.statusCode());
+        var signedIn = browserSend(browser, "POST", "/login", "username=" + formEncode(username)
+                + "&password=" + formEncode(PASSWORD) + "&_csrf=" + formEncode(csrfToken(login.body())));
+        assertEquals(302, signedIn.statusCode());
+        assertFalse(signedIn.headers().firstValue("Location").orElseThrow().contains("error"));
     }
 
     private HttpResponse<String> browserSend(HttpClient browser, String method, String path, String body)
