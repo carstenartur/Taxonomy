@@ -34,6 +34,19 @@ public class ScopedAnalysisAdapterExecution {
     private final PrincipalIdentityService identities;
     private final AnalysisAdapterStore store;
     private final ObjectMapper json;
+    private org.springframework.beans.factory.ObjectProvider<com.taxonomy.analysis.operation.AnalysisChildSourceAuthority> childSources;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void childSources(org.springframework.beans.factory.ObjectProvider<com.taxonomy.analysis.operation.AnalysisChildSourceAuthority> authorities) {
+        this.childSources = authorities;
+    }
+
+    private boolean retainedSourceCurrent(AnalysisAdapterStore.Operation operation) {
+        if (operation.resultJson() == null || operation.kind().equals("DOCUMENT_EXTRACTION") || operation.kind().equals("REGULATION_MAPPING"))
+            return true;
+        var authority = childSources == null ? null : childSources.getIfAvailable();
+        return authority != null && authority.current(operation);
+    }
 
     public ScopedAnalysisAdapterExecution(WorkspaceResolver workspaces, WorkspaceDslReadPort repositories,
             PrincipalIdentityService identities, EntityManager em, PlatformTransactionManager transactions, ObjectMapper json) {
@@ -66,7 +79,7 @@ public class ScopedAnalysisAdapterExecution {
         if (admission == null) return ResponseEntity.ok(local.get());
         var accepted = admission.operation();
         boolean current = commit.equals(head(handle)) && sourceCurrent.getAsBoolean();
-        if (!admission.claimed()) return current ? response(accepted) : stale();
+        if (!admission.claimed()) return current && retainedSourceCurrent(accepted) ? response(accepted) : stale();
         if (!current) return response(store.settle(owner, accepted.id(), accepted.revision(), null, "STALE_SOURCE"));
         String payload;
         try {
@@ -105,7 +118,7 @@ public class ScopedAnalysisAdapterExecution {
         var context = workspaces.resolveCurrentRepositoryContextForRead();
         var operation = store.read(scope(context),id);
         if ("EXPIRED".equals(operation.state())) throw new ResponseStatusException(HttpStatus.GONE, "Analysis operation expired");
-        if (!"COMPLETED".equals(operation.state()) || !operation.sourceCommit().equals(head(repositories.openRead(context))))
+        if (!"COMPLETED".equals(operation.state()) || !operation.sourceCommit().equals(head(repositories.openRead(context))) || !retainedSourceCurrent(operation))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Analysis source or operation changed");
         return operation;
     }
@@ -114,7 +127,7 @@ public class ScopedAnalysisAdapterExecution {
         var context = workspaces.resolveCurrentRepositoryContextForRead();
         var owner = scope(context);
         var operation = cancel ? store.cancel(owner,id) : store.read(owner,id);
-        if (!cancel && !"EXPIRED".equals(operation.state()) && !operation.sourceCommit().equals(head(repositories.openRead(context))))
+        if (!cancel && !"EXPIRED".equals(operation.state()) && (!operation.sourceCommit().equals(head(repositories.openRead(context))) || !retainedSourceCurrent(operation)))
             return stale();
         return response(operation);
     }
@@ -143,7 +156,7 @@ public class ScopedAnalysisAdapterExecution {
             if ("REGULATION_MAPPING".equals(o.kind()))
                 return builder.body(Map.of("error","REGULATION_MAPPING_FAILED","message","Regulation mapping could not be completed"));
         }
-        if (o.resultJson() != null) return builder.body(json.readTree(o.resultJson()));
+        if (o.resultJson() != null) return builder.body(com.taxonomy.analysis.operation.ChildAnalysisReceipt.publicResult(o.kind(),json.readTree(o.resultJson())));
         return builder.body(Map.of("operationId",o.id(),"state",o.state(),"sequence",o.revision(),
                 "sourceCommit",o.sourceCommit(),"code",o.failureCode() == null ? o.state() : o.failureCode()));
     }

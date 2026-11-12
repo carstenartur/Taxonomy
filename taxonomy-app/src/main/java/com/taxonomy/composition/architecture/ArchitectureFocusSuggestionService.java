@@ -1,5 +1,10 @@
 package com.taxonomy.composition.architecture;
 
+import com.taxonomy.analysis.operation.AnalysisAdapterStore;
+import com.taxonomy.analysis.operation.AnalysisChildOperations;
+import java.util.function.BooleanSupplier;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
 import com.taxonomy.analysis.service.AnalysisExecutionFailures;
 import com.taxonomy.analysis.service.AnalysisRunControl;
@@ -51,6 +56,11 @@ public class ArchitectureFocusSuggestionService {
     private final ArchitectureEditorService editor;
     private final LlmService llm;
     private final AiPromptBudgetPolicy promptBudget;
+    private AnalysisChildOperations childOperations;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void useChildOperations(AnalysisChildOperations operations) { this.childOperations = operations; }
+
     private CatalogueDefinitionResolver catalogues = CatalogueDefinitionResolver.standard();
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -106,33 +116,58 @@ public class ArchitectureFocusSuggestionService {
         if (model.findElement(request.sourceId()).isEmpty())
             throw problem("NOT_FOUND", "sourceId", "The element is not present in this exact editor revision");
         String hash = sha256(document.dsl());
-        var result = investigateModel(model, catalogues.forModel(model),
+        return investigateModel(model, catalogues.forModel(model),
                 com.taxonomy.dsl.planning.ArchitectureBrief.read(model).excludedRelationTypes(),
-                request.sourceId(), request.candidateLimit(), request.useAi(),
-                request.language(), hash, Map.of("x-focus-revision", Long.toString(request.context().revision())));
-        return new Response(request.context(),request.sourceId(),hash,result.method(),result.outcome(),
-                result.modelCalls(),result.candidateCount(),result.suggestions());
+                request.sourceId(), request.candidateLimit(), request.useAi(), request.language(), hash,
+                Map.of("x-focus-revision", Long.toString(request.context().revision())), Response.class,
+                result -> new Response(request.context(), request.sourceId(), hash, result.method(), result.outcome(),
+                        result.modelCalls(), result.candidateCount(), result.suggestions()),
+                () -> editorSourceCurrent(scope, request.context(), hash));
     }
 
-    EngineResult investigateModel(CanonicalArchitectureModel model, CatalogueDefinition catalogue, Set<String> excluded,
-                                  String sourceId, int candidateLimit,
-                                  boolean useAi, String language, String hash, Map<String, String> provenance) {
-        var request = new EngineRequest(sourceId,candidateLimit,useAi,language,Map.copyOf(provenance));
+    public boolean editorSourceCurrent(RepositoryContext scope, Context context, String hash) {
+        try {
+            var current = editor.read(scope, null, null);
+            return context.equals(current.context()) && "WORKSPACE_REVISION".equals(current.source())
+                    && "READY".equals(current.projectionState()) && hash.equals(sha256(current.dsl()));
+        } catch (IOException unavailable) {
+            return false;
+        }
+    }
+
+    private record Execution(boolean dispatch, Supplier<EngineResult> result) {
+        static Execution local(EngineResult result) { return new Execution(false, () -> result); }
+    }
+
+    <T> T investigateModel(CanonicalArchitectureModel model, CatalogueDefinition catalogue, Set<String> excluded,
+                           String sourceId, int candidateLimit, boolean useAi, String language, String hash,
+                           Map<String, String> provenance, Class<T> resultType, Function<EngineResult, T> wrap,
+                           BooleanSupplier sourceCurrent) {
+        var request = new EngineRequest(sourceId, candidateLimit, useAi, language, Map.copyOf(provenance));
+        var plan = prepare(model, catalogue, excluded, request, hash);
+        Supplier<T> result = () -> wrap.apply(plan.result().get());
+        if (!useAi || childOperations == null) return result.get();
+        var fingerprint = AnalysisAdapterStore.digest(resultType.getName(), sourceId, hash, language,
+                Integer.toString(candidateLimit), JSON.writeValueAsString(new java.util.TreeMap<>(provenance)));
+        return childOperations.execute("FOCUS_INVESTIGATION", fingerprint, resultType, plan.dispatch(), result, sourceCurrent);
+    }
+
+    private Execution prepare(CanonicalArchitectureModel model, CatalogueDefinition catalogue, Set<String> excluded,
+                              EngineRequest request, String hash) {
         var source = model.findElement(request.sourceId())
                 .orElseThrow(() -> problem("NOT_FOUND", "sourceId", "The element is not present in this exact source"));
         List<Triple> candidates = candidates(model, catalogue, excluded, source, request.candidateLimit());
-        if (candidates.isEmpty()) return response(LOCAL, "NO_CANDIDATES", 0, candidates, List.of());
+        if (candidates.isEmpty()) return Execution.local(response(LOCAL, "NO_CANDIDATES", 0, candidates, List.of()));
         var local = local(request, hash, candidates, LOCAL);
-        if (!request.useAi()) return response(LOCAL, "LOCAL_CANDIDATES", 0, candidates, local);
+        if (!request.useAi()) return Execution.local(response(LOCAL, "LOCAL_CANDIDATES", 0, candidates, local));
         if (llm.isMockMode()) {
             String method = LOCAL + ":MOCK_PROVIDER";
-            return response(method, "UNASSESSED", 0, candidates, local(request, hash, candidates, method));
+            return Execution.local(response(method, "UNASSESSED", 0, candidates, local(request, hash, candidates, method)));
         }
         if (!llm.supportsGenerativeCompletion()) {
             String method = LOCAL + ":GENERATION_UNSUPPORTED";
-            return response(method, "UNASSESSED", 0, candidates, local(request, hash, candidates, method));
+            return Execution.local(response(method, "UNASSESSED", 0, candidates, local(request, hash, candidates, method)));
         }
-        int[] calls = {0};
         try {
             String provider = llm.getActiveProviderName();
             if (provider == null || provider.isBlank() || provider.length() > 200 || controls(provider))
@@ -146,23 +181,30 @@ public class ArchitectureFocusSuggestionService {
             var target = promptBudget.requireWithinBudget(options.budgetText(prompt), providerId);
             if (!target.available()) {
                 String fallbackMethod = LOCAL + ":AI_UNAVAILABLE";
-                return response(fallbackMethod, "UNASSESSED", 0, candidates,
-                        local(request, hash, candidates, fallbackMethod));
+                return Execution.local(response(fallbackMethod, "UNASSESSED", 0, candidates,
+                        local(request, hash, candidates, fallbackMethod)));
             }
-            String raw = AnalysisRunControl.call(provider, "ARCHITECTURE_FOCUS", () -> {
-                calls[0]++;
-                var detail = new LlmCallDetail();
-                detail.setProvider(provider); detail.setPrompt(prompt);
-                detail.setRawResponse(llm.callLlmRaw(prompt, options));
-                return detail;
-            }).getRawResponse();
-            List<Suggestion> assessed = parse(raw, request, hash, method, candidates, fields);
-            return response(method, "ASSESSED", calls[0], candidates, assessed);
+            var admittedProvider = llm.captureInteractiveProvider(providerId);
+            return new Execution(true, () -> {
+                try (var lease = llm.withProviderBinding(providerId, admittedProvider)) {
+                    String raw = AnalysisRunControl.call(provider, "ARCHITECTURE_FOCUS", () -> {
+                        var detail = new LlmCallDetail();
+                        detail.setProvider(provider);
+                        detail.setPrompt(prompt);
+                        detail.setRawResponse(llm.callLlmRaw(prompt, options));
+                        return detail;
+                    }).getRawResponse();
+                    return response(method, "ASSESSED", 1, candidates, parse(raw, request, hash, method, candidates, fields));
+                } catch (RuntimeException failure) {
+                    AnalysisExecutionFailures.rethrow(failure);
+                    var failed = LOCAL + ":AI_FAILED";
+                    return response(failed, "FAILED", 1, candidates, local(request, hash, candidates, failed));
+                }
+            });
         } catch (RuntimeException failure) {
             AnalysisExecutionFailures.rethrow(failure);
-            String method = LOCAL + (calls[0] == 0 ? ":AI_UNAVAILABLE" : ":AI_FAILED");
-            return response(method, calls[0] == 0 ? "UNASSESSED" : "FAILED", calls[0],
-                    candidates, local(request, hash, candidates, method));
+            var unavailable = LOCAL + ":AI_UNAVAILABLE";
+            return Execution.local(response(unavailable, "UNASSESSED", 0, candidates, local(request, hash, candidates, unavailable)));
         }
     }
 

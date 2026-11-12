@@ -53,6 +53,33 @@ class ArchitectureFocusSuggestionServiceTest {
         return new ArchitectureFocusSuggestionService.Request(context, "arch-service", 8, ai, "en");
     }
 
+    @Test void durableFocusRetainsNativeResponseOnlyAfterBudgetAcceptance() throws Exception {
+        generative(validReply("Processes and validates customer orders"));
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        service.useChildOperations(new com.taxonomy.analysis.operation.AnalysisChildOperations() {
+            @Override public <T> T execute(String kind, String fingerprint, Class<T> type, boolean dispatch,
+                    java.util.function.Supplier<T> work, java.util.function.BooleanSupplier sourceCurrent) {
+                assertThat(kind).isEqualTo("FOCUS_INVESTIGATION");
+                assertThat(fingerprint).matches("[a-f0-9]{64}");
+                assertThat(type).isEqualTo(ArchitectureFocusSuggestionService.Response.class);
+                assertThat(dispatch).isTrue();
+                assertThat(sourceCurrent.getAsBoolean()).isTrue();
+                calls.incrementAndGet();
+                var result = work.get();
+                try { when(editor.read(scope, null, null)).thenReturn(doc(DSL + " ")); }
+                catch (java.io.IOException unexpected) { throw new AssertionError(unexpected); }
+                assertThat(sourceCurrent.getAsBoolean()).isFalse();
+                return result;
+            }
+        });
+        assertThat(service.investigate(scope, request(false)).modelCalls()).isZero();
+        var assessed = service.investigate(scope, request(true));
+        assertThat(assessed.outcome()).isEqualTo("ASSESSED");
+        var stored = new tools.jackson.databind.ObjectMapper().valueToTree(assessed);
+        com.taxonomy.analysis.operation.ChildAnalysisReceipt.validate("FOCUS_INVESTIGATION", "focus", stored);
+        assertThat(calls).hasValue(1);
+    }
+
     @Test void localCandidatesUseCustomUncheckpointedElementsWithoutProviderAccess() throws Exception {
         var response = service.investigate(scope, request(false));
         assertThat(response.outcome()).isEqualTo("LOCAL_CANDIDATES");

@@ -25,7 +25,7 @@ public final class AnalysisAdapterStore {
     public static final long ORPHAN_MILLIS = Duration.ofMinutes(30).toMillis();
     public static final long RETAIN_MILLIS = Duration.ofDays(30).toMillis();
     public static final long MARKER_MILLIS = Duration.ofDays(90).toMillis();
-    private static final Set<String> KINDS = Set.of("DOCUMENT_EXTRACTION", "REGULATION_MAPPING");
+    private static final Set<String> KINDS = Set.of("DOCUMENT_EXTRACTION", "REGULATION_MAPPING", "NODE_CHILDREN", "LEAF_JUSTIFICATION", "FOCUS_INVESTIGATION");
     private final EntityManager em;
     private final TransactionTemplate transactions;
     private final Clock clock;

@@ -21,11 +21,14 @@ public class AnalyzeNodeChildrenUseCase {
     }
 
     public AnalyzeNodeChildrenResult analyze(AnalyzeNodeChildrenCommand command) {
+        return analyze(command, taxonomyService.getChildrenOf(command.parentCode()));
+    }
+
+    public AnalyzeNodeChildrenResult analyze(AnalyzeNodeChildrenCommand command, List<TaxonomyNode> children) {
         var length = com.taxonomy.analysis.service.AnalysisReasonContext.effective(llmService.resolveAnalysisReasonLength(null));
         var language = com.taxonomy.analysis.service.AnalysisLanguageContext.resolveCurrentRequest(null);
         try (var reasons = com.taxonomy.analysis.service.AnalysisReasonContext.open(length);
              var languageScope = com.taxonomy.analysis.service.AnalysisLanguageContext.open(language)) {
-        List<TaxonomyNode> children = taxonomyService.getChildrenOf(command.parentCode());
         if (children.isEmpty()) {
             return AnalyzeNodeChildrenResult.empty().withAnalysisReasonLength(length).withAnalysisLanguage(language);
         }

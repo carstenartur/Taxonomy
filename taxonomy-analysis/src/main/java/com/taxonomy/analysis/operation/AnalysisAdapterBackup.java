@@ -83,8 +83,10 @@ public final class AnalysisAdapterBackup {
                 if (r.failureCode() != null || r.resultJson() == null
                         || r.resultJson().getBytes(StandardCharsets.UTF_8).length > PortableRows.MAX_RECORD_BYTES / 4) throw invalid();
                 var result = JSON.readTree(r.resultJson());
-                String list = "DOCUMENT_EXTRACTION".equals(r.kind()) ? "aiCandidates" : "matches";
-                if (!result.isObject() || !result.path(list).isArray()) throw invalid();
+                if ("DOCUMENT_EXTRACTION".equals(r.kind()) || "REGULATION_MAPPING".equals(r.kind())) {
+                    String list = "DOCUMENT_EXTRACTION".equals(r.kind()) ? "aiCandidates" : "matches";
+                    if (!result.isObject() || !result.path(list).isArray()) throw invalid();
+                } else ChildAnalysisReceipt.validate(r.kind(),r.sourceId().value(),result);
             }
             case "RUNNING","EXPIRED","CANCELLED" -> { if (r.resultJson() != null || r.failureCode() != null) throw invalid(); }
             case "FAILED" -> { if (r.resultJson() != null || r.failureCode() == null || !FAILURES.contains(r.failureCode())) throw invalid(); }
