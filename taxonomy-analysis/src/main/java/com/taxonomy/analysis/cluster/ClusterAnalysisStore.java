@@ -734,7 +734,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
     }
 
     public List<AnalysisProgressEvent> events(AnalysisOperationContext context, long after, int limit) {
-        if (after < 0 || limit < 1 || limit > 1000) throw new IllegalArgumentException("Invalid event replay window");
+        if (after < 0 || limit < 1 || limit > ClusterAnalysisEvent.RETAINED_COUNT) throw new IllegalArgumentException("Invalid event replay window");
         return tx.execute(status -> {
             requireAuthority(requireRun(context.operationId(), false), context);
             return em.createQuery("select e from ClusterAnalysisEvent e where e.operationId=:id and e.revision>:after order by e.revision", ClusterAnalysisEvent.class)
@@ -956,6 +956,11 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         var event = factory(context).progress(run.revision, phase, null, run.completedRoots, run.totalRoots);
         var record = new ClusterAnalysisEvent(); record.id = key(run.id + ":event:" + run.revision);
         record.operationId = run.id; record.revision = run.revision; record.eventJson = encode(event); em.persist(record);
+        if (run.revision > ClusterAnalysisEvent.RETAINED_COUNT) {
+            em.createQuery("delete from ClusterAnalysisEvent e where e.operationId=:id and e.revision<:first")
+                    .setParameter("id", run.id)
+                    .setParameter("first", ClusterAnalysisEvent.firstRetainedRevision(run.revision)).executeUpdate();
+        }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void afterCommit() {
                 try { events.accept(event); }

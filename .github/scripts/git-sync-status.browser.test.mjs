@@ -255,3 +255,37 @@ test('repeated Git refreshes retain the latest sync node without duplicates or e
         assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
 });
+
+test('context polling and keyboard navigation retain focus on the active branch', async () => {
+    const page = await fixture();
+    try {
+        await page.evaluate(() => {
+            document.body.insertAdjacentHTML('beforeend', '<div id="contextBar"></div><button id="outside">Outside</button>');
+            window.TaxonomyI18n.formatBranch = branch => branch;
+        });
+        await page.addScriptTag({path: path.join(resources, 'static/js/versioning/taxonomy-context-bar.js')});
+        const origin = {contextId: 'origin', branch: 'main', commitId: 'aaa', mode: 'EDITABLE'};
+        const variant = {contextId: 'variant', branch: 'review', commitId: 'bbb', mode: 'READ_ONLY',
+            originContextId: 'origin', originBranch: 'main'};
+        async function refresh(data) {
+            await page.evaluate(() => { window.refreshResult = TaxonomyContextBar.fetchAndRender('contextBar'); });
+            await answer(page, '/api/context/current', data);
+            await page.evaluate(() => window.refreshResult);
+        }
+        await refresh(variant);
+        const back = page.getByRole('button', {name: /context\.back$/});
+        await back.focus();
+        await refresh({...variant, dirty: true});
+        assert.equal(await back.evaluate(button => button === document.activeElement), true,
+            'A background refresh must retain keyboard focus on Back');
+        await page.keyboard.press('Enter');
+        await answer(page, '/api/context/back', origin);
+        await page.waitForFunction(() => TaxonomyContextBar.getCurrentContext()?.contextId === 'origin');
+        assert.equal(await page.evaluate(() => document.activeElement.textContent), 'main',
+            'Back disappears at the origin, so focus moves to the new branch name');
+        await page.locator('#outside').focus();
+        await refresh(origin);
+        assert.equal(await page.evaluate(() => document.activeElement.id), 'outside');
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});

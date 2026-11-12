@@ -134,6 +134,26 @@ test('visible resume follows a running operation through SSE and hydrates its pe
     assert.ok(f.calls.every(call => !call.options.method || call.options.method === 'GET'));
 });
 
+test('changing repository selection detaches a durable stream and ignores its late completion', async () => {
+    const f = fixture({status: 'RUNNING'}); await flush();
+    const resume = f.buttons().find(button => /Resume observation/.test(button.textContent));
+    await resume.click();
+    await f.tick();
+    const [stream] = f.streams;
+    assert.ok(stream);
+    f.document.dispatchEvent({type: 'taxonomy:repository-context-changed', detail: {selectionChanged: false}});
+    assert.equal(stream.closed, undefined, 'An unchanged context poll keeps the current stream');
+
+    f.document.dispatchEvent({type: 'taxonomy:repository-context-changed', detail: {selectionChanged: true}});
+    assert.equal(stream.closed, true);
+    assert.equal(f.elements.has('analysisLiveProgress'), false);
+    assert.equal(f.elements.get('analyzeBtn').disabled, false);
+    await stream.send(snapshot('COMPLETED', 3));
+    assert.equal(f.calls.some(call => call.url.includes('/result')), false);
+    assert.equal(f.calls.some(call => call.options.method === 'POST'), false,
+        'Changing the local view must not cancel durable work for another tab');
+});
+
 test('a failed persisted-result read offers a visible read-only retry', async () => {
     let attempts = 0;
     const f = fixture({ requestResult: () => { if (++attempts === 1) throw new Error('offline'); return result; } });

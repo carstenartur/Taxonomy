@@ -7,6 +7,7 @@ import com.taxonomy.workspace.storage.DslCommit;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ElementHistoryAggregation;
+import com.taxonomy.error.SearchUnavailableException;
 import com.taxonomy.workspace.service.RepositoryContext;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -169,7 +170,7 @@ public class CommitIndexService {
                     scope.repositoryId(),
                     scope.workspaceScopeKey(),
                     exception.getClass().getSimpleName());
-            return Collections.emptyList();
+            throw new SearchUnavailableException();
         }
     }
 
@@ -209,7 +210,7 @@ public class CommitIndexService {
                     scope.repositoryId(),
                     scope.workspaceScopeKey(),
                     exception.getClass().getSimpleName());
-            return Collections.emptyList();
+            throw new SearchUnavailableException();
         }
     }
 
@@ -249,7 +250,7 @@ public class CommitIndexService {
                     scope.repositoryId(),
                     scope.workspaceScopeKey(),
                     exception.getClass().getSimpleName());
-            return Collections.emptyList();
+            throw new SearchUnavailableException();
         }
     }
 
