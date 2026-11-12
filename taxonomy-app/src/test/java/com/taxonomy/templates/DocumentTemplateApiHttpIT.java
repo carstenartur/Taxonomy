@@ -452,10 +452,10 @@ class DocumentTemplateApiHttpIT {
     private static byte[] modified(byte[] original, String marker) throws Exception {
         var entries = parts(original);
         String xml = new String(entries.get("word/document.xml"), StandardCharsets.UTF_8);
-        // The final section properties must remain the last body child in valid WordprocessingML.
-        int position = xml.lastIndexOf("<w:sectPr");
-        if (position < 0) position = xml.lastIndexOf("</w:body>");
-        assertTrue(position >= 0);
+        // Brand the cover. The report marker must remain its final non-empty body block.
+        int body = xml.indexOf("<w:body>");
+        assertTrue(body >= 0);
+        int position = body + "<w:body>".length();
         String paragraph = "<w:p><w:r><w:t>" + marker + "</w:t></w:r></w:p>";
         entries.put("word/document.xml", (xml.substring(0, position) + paragraph + xml.substring(position))
                 .getBytes(StandardCharsets.UTF_8));
