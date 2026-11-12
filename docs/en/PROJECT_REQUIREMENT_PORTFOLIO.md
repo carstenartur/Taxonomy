@@ -379,6 +379,10 @@ Typing `produktdemo` (case and surrounding whitespace are ignored) into the anal
 - **Reference evaluation.** `GET /api/product-demo/runs/{id}/comparison` evaluates A0/A1 independently against the scenario reference; unexecuted steps appear as `NOT_EXECUTED`, never as negative findings.
 - **API.** `GET /api/product-demo/scenarios`, `POST /api/product-demo/runs`, `GET /api/product-demo/runs[?projectId=…]`, `GET /api/product-demo/runs/{id}`, `POST /api/product-demo/runs/{id}/close`. Reads require the `USER`, `ARCHITECT` or `ADMIN` role; starting and closing require `ARCHITECT` or `ADMIN`.
 
+For a saved reformulation revision or adoption receipt, the four download buttons produce JSON, Markdown, HTML and Word. Each file records the source version, original text hash and analysis snapshot for the selected record. The browser rejects a response naming another revision or adoption. Decision reports downloaded from an A0 or A1 snapshot use the format list installed for that report type, preserve the snapshot identity and mark replay output with a `DEMO-` filename. The portfolio CSV is a report of the selected current matrix.
+
+The job centre shows the owning project on every card. Running, pending, failed and partially completed jobs remain visible alongside up to twenty recent successful or cancelled jobs. A pending retry stays disabled if the card refreshes or its details are opened.
+
 ## Roles and accessibility
 
 Read-only users can inspect portfolio information but cannot perform architecture mutations. Disabled controls explain the missing capability. Architect and administrator roles can perform the reviewed write operations allowed by the security configuration.
