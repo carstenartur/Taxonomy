@@ -85,3 +85,4 @@ com.taxonomy.workspace.model.SyncState
 com.taxonomy.workspace.model.SystemRepository
 com.taxonomy.workspace.model.UserWorkspace
 com.taxonomy.workspace.model.WorkspaceProjection
+com.taxonomy.workspace.service.WorkspaceFetchOperation

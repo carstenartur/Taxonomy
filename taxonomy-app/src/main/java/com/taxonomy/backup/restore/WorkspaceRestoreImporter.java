@@ -76,6 +76,8 @@ public final class WorkspaceRestoreImporter {
         var workspaces=read(archive,"workspaces",WorkspaceRecord.class,model,r->new SourceRecordId("workspace.workspace",r.workspaceId()),checkpoint);
         var memberships=read(archive,"memberships",MembershipRecord.class,model,MembershipRecord::sourceId,checkpoint);
         var sync=read(archive,"synchronization",SyncRecord.class,model,SyncRecord::sourceId,checkpoint);
+        var fetches = RestoreArchiveRecords.declares(archive, OWNER, "data/workspace/fetch-journal.ndjson")
+                ? read(archive,"fetch-journal",FetchRecord.class,model,FetchRecord::sourceId,checkpoint) : List.<FetchRecord>of();
         var editors=read(archive,"working-states",WorkingStateRecord.class,model,WorkingStateRecord::sourceId,checkpoint);
         var operations=read(archive,"operations",OperationRecord.class,model,OperationRecord::sourceId,checkpoint);
         var checkpoints=read(archive,"checkpoints",CheckpointRecord.class,model,CheckpointRecord::sourceId,checkpoint);
@@ -152,6 +154,25 @@ public final class WorkspaceRestoreImporter {
             model.target("synchronization",row.sourceId().value(),"sync_state","workspace_id",target.targetKey().workspaceId(),columns("id",model.numeric(row.sourceId()),"username",scope,"workspace_id",target.targetKey().workspaceId(),
                     "last_synced_commit_id",commit(commits,row.sourceId(),Field.SYNC_LAST_SYNCED,row.lastSyncedCommit()),"last_sync_timestamp",timestamp(row.lastSyncAt()),"last_published_commit_id",commit(commits,row.sourceId(),Field.SYNC_LAST_PUBLISHED,row.lastPublishedCommit()),
                     "last_publish_timestamp",timestamp(row.lastPublishAt()),"sync_status","RESTORED_REVIEW_REQUIRED","unpublished_commit_count",row.unpublishedCommitCount(),"created_at",timestamp(row.createdAt()),"updated_at",timestamp(row.updatedAt())));
+        }
+        for (var row : fetches) {
+            checkpoint.check();
+            var parent = workspaceById.get(row.workspaceId());
+            if (parent == null || !parent.repositoryId().equals(row.repositoryId()) || !parent.ownerScope().equals(row.principalScope())
+                    || !"workspace.fetch".equals(row.sourceId().kind()) || !row.sourceId().value().matches("[0-9a-f]{64}")
+                    || row.principalId() == null || !row.principalId().matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")
+                    || row.requestedCommit() == null || !row.requestedCommit().matches("[0-9a-f]{40}")
+                    || row.createdAt() < 0 || row.attempts() < 0 || row.attempts() > 6) throw invalid();
+            for (var commit : Arrays.asList(row.expectedCommit(), row.observedCommit(), row.resultCommit())) {
+                if (commit != null && !commit.matches("[0-9a-f]{40}")) throw invalid();
+            }
+            var mapped = principals.get(new PrincipalId(UUID.fromString(row.principalId())));
+            if (mapped == null || !mapped.targetScope().equals(scope(identities,row.principalScope()))) throw invalid();
+            if (!Set.of("ADMITTED","RUNNING","RETRYABLE","COMPLETED","MANUAL_REVIEW","DENIED","AWAITING_AUTHORIZATION").contains(row.phase())) throw invalid();
+            boolean active = Set.of("ADMITTED","RUNNING","RETRYABLE","AWAITING_AUTHORIZATION").contains(row.phase());
+            // Source evidence survives an isolated restore; target leases and authorizations are installation-local.
+            model.classify("fetch-journal",row.sourceId().value(),!activeWorkspaces.contains(row.workspaceId())
+                    ? "PRIVATE_QUARANTINE" : active ? "INTERRUPTED_SOURCE_OPERATION" : "HISTORICAL_SOURCE_OPERATION");
         }
         for(var row:editors) {
             checkpoint.check();sourceEditorById.put(row.sourceId(),row);if(row.semanticRevision()<0||row.checkpointRevision()<0||row.checkpointRevision()>row.semanticRevision())throw invalid();utf8(row.dsl());canonicalUuidOptional(row.interruptedCheckpoint());

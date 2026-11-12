@@ -59,6 +59,12 @@ class WorkspaceEditorRestoreRuntimeTest {
                 assertThat(new JdbcTemplate(fixture.target).queryForObject("select record_json from restore_workspace_evidence where record_kind='operations'",String.class)).contains("\"actor\":\""+SOURCE_SCOPE+"\"");
                 assertThat(new JdbcTemplate(fixture.source).queryForObject("select actor from editor_operation",String.class)).isEqualTo(SOURCE_SCOPE);
                 assertThat(fixture.sourceJournal.read(fixture.sourceContext).state().pendingCheckpoint()).isEqualTo(SAVE);
+                var targetRows = new JdbcTemplate(fixture.target);
+                assertThat(targetRows.queryForObject("select classification from restore_workspace_evidence where record_kind='fetch-journal'",String.class))
+                        .isEqualTo("INTERRUPTED_SOURCE_OPERATION");
+                assertThat(targetRows.queryForObject("select record_json from restore_workspace_evidence where record_kind='fetch-journal'",String.class))
+                        .contains("requestedCommit", "RUNNING", SOURCE_SCOPE).doesNotContain("private-source-worker", "leaseId");
+                assertThat(targetRows.queryForObject("select count(*) from workspace_fetch_operation", Long.class)).isZero();
             }
         }
     }
@@ -100,6 +106,12 @@ class WorkspaceEditorRestoreRuntimeTest {
         sourceJournal.locked(sourceContext,sourceJournal.read(sourceContext).state(),session->session.prepare(metadata(SAVE),actor,"a".repeat(64)));
         assertThat(accepted.context().revision()).isEqualTo(1);
         assertThat(sourceJournal.read(sourceContext).state().pendingCheckpoint()).isEqualTo(SAVE);
+        rows.update("""
+                insert into workspace_fetch_operation(operation_id,fingerprint,cause_id,actor_id,actor_scope,
+                repository_id,workspace_id,local_branch,source_branch,requested_commit,observed_commit,phase,attempts,
+                created_at,last_attempt_at,next_attempt_at,lease_id,executor_id,login_kind,binding_key,policy_code) values(?,?,?,?,?,?,?,?,?,?,?,'RUNNING',1,10,11,80000,?,?,'LOCAL',?,'ANALYSIS_RUN+CONTRIBUTOR')""",
+                "f".repeat(64),"a".repeat(64),"b".repeat(64),principal.value().toString(),SOURCE_SCOPE,CENTRAL.repositoryId(),
+                WORKSPACE.workspaceId(),"main","main",baseline,baseline,UUID.randomUUID().toString(),"private-source-worker","c".repeat(64));
         if (analysis != null) analysis.seed(sourceFactory,principal,sourceContext,baseline);
         var archive=export(source,sourceFactory,principal,analysis != null);
         RestoreSchemaMigration.bootstrap(source,target,CHECK);

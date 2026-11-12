@@ -56,9 +56,17 @@ public class WorkspaceUpstreamService {
     }
 
     @Transactional(rollbackFor = IOException.class)
-    public Status fetch(RepositoryContext selected, Request request) throws IOException {
+    Status fetch(RepositoryContext selected, Request request) throws IOException {
+        return fetchRecorded(selected, null, request, () -> { });
+    }
+
+    @Transactional(rollbackFor = IOException.class)
+    public Status fetchRecorded(RepositoryContext selected, String sourceBranch, Request request, Runnable fence) throws IOException {
         var copy = open(selected, true);
-        var status = copy.transfer().fetch(request);
+        if (sourceBranch != null && !sourceBranch.equals(copy.transfer().upstream().branch())) {
+            throw new BranchHeadConflictException(sourceBranch, request.sourceCommit(), null, "The working copy upstream changed");
+        }
+        var status = copy.transfer().fetch(request, fence);
         copy.workspace().setLastFetchedCommit(status.trackedCommit());
         rows.save(copy.workspace());
         return status;

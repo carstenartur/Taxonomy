@@ -25,6 +25,10 @@ record GitUpstreamTransfer(GitUpstreamRef upstream, DslGitRepository source, Dsl
     }
 
     Status fetch(Request request) throws IOException {
+        return fetch(request, () -> { });
+    }
+
+    Status fetch(Request request, Runnable fence) throws IOException {
         String incoming = request.sourceCommit();
         String tracked = upstream.head(target);
         if (!Objects.equals(tracked, request.expectedTrackedCommit()) && !incoming.equals(tracked)) {
@@ -48,6 +52,7 @@ record GitUpstreamTransfer(GitUpstreamRef upstream, DslGitRepository source, Dsl
         if (!head.equals(currentHead)) {
             throw new BranchHeadConflictException(upstream.branch(), head, currentHead, "Source branch changed during transfer");
         }
+        fence.run();
         upstream.advance(target, tracked, incoming, actor);
         return new Status(upstream.repositoryId(), upstream.branch(), head, upstream.name(), incoming);
     }

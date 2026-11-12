@@ -42,6 +42,9 @@ class WorkspaceUpstreamServiceTest {
     private DslGitRepository target;
     private WorkspaceUpstreamService service;
     private MockMvc mvc;
+    private WorkspaceFetchJournalTest.Database database;
+    private WorkspaceFetchRecovery recovery;
+    private WorkspaceFetchAuthority actors;
     private String base;
     private String incoming;
     private String local;
@@ -73,10 +76,15 @@ class WorkspaceUpstreamServiceTest {
         service = new WorkspaceUpstreamService(rows, catalogue, memberships, repositories);
         var resolver = mock(WorkspaceResolver.class);
         when(resolver.resolveCurrentRepositoryContextForRead()).thenReturn(selected);
-        mvc = MockMvcBuilders.standaloneSetup(new WorkspaceUpstreamController(service, resolver)).build();
+        database = new WorkspaceFetchJournalTest.Database();
+        actors = mock(WorkspaceFetchAuthority.class);
+        when(actors.authorize("alice")).thenReturn(WorkspaceFetchJournalTest.GRANT);
+            when(actors.currentActor("alice")).thenReturn(WorkspaceFetchJournalTest.ALICE);
+        recovery = new WorkspaceFetchRecovery(database.journal, service, actors);
+        mvc = MockMvcBuilders.standaloneSetup(new WorkspaceUpstreamController(service, resolver, recovery)).build();
     }
 
-    @AfterEach void close() { repositories.close(); }
+    @AfterEach void close() { if (database != null) database.close(); repositories.close(); }
 
     @Test
     void routeFetchesOnlyTheReviewedSourceAndRetainsBothWorkingAndIntegrationHeads() throws Exception {
@@ -84,9 +92,17 @@ class WorkspaceUpstreamServiceTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.sourceCommit").value(incoming))
                 .andExpect(jsonPath("$.trackedCommit").isEmpty());
         String request = "{\"sourceCommit\":\"" + incoming + "\",\"expectedTrackedCommit\":null}";
+        String originalOperation = null;
         for (int attempt = 0; attempt < 2; attempt++) {
-            mvc.perform(post("/api/workspace/upstream/fetch").contentType(MediaType.APPLICATION_JSON).content(request))
-                    .andExpect(status().isOk()).andExpect(jsonPath("$.trackedCommit").value(incoming));
+            var result = mvc.perform(post("/api/workspace/upstream/fetch").contentType(MediaType.APPLICATION_JSON).content(request))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.trackedCommit").value(incoming))
+                    .andExpect(header().exists("X-Operation-Id")).andReturn();
+            String operation = result.getResponse().getHeader("X-Operation-Id");
+            if (originalOperation == null) originalOperation = operation;
+            assertThat(operation).isEqualTo(originalOperation);
+            mvc.perform(get("/api/workspace/upstream/operations/{id}", operation)).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.phase").value("COMPLETED"))
+                    .andExpect(jsonPath("$.requestedCommit").value(incoming));
         }
         assertThat(target.getHeadCommit("draft")).isEqualTo(local);
         assertThat(workspace.getCurrentCommit()).isEqualTo(local);
