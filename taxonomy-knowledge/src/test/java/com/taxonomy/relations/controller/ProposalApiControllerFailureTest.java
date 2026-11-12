@@ -34,7 +34,8 @@ class ProposalApiControllerFailureTest {
     private final RelationBranchProjectionReadinessService readiness = mock(RelationBranchProjectionReadinessService.class);
     private final WorkspaceResolver resolver = mock(WorkspaceResolver.class);
     private final ProposalApiController controller = new ProposalApiController(proposals, reviews, readiness,
-            resolver, mock(SystemRepositoryService.class), mock(RepositoryMembershipService.class));
+            resolver, mock(SystemRepositoryService.class), mock(RepositoryMembershipService.class), new ProposalInboxResponses(
+                tools.jackson.databind.json.JsonMapper.builder().build()));
     private final RepositoryContext context = RepositoryContext.workspace("repo-a", "workspace-a", "draft", "alice");
 
     @BeforeEach

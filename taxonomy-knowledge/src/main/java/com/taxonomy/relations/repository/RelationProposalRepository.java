@@ -87,27 +87,35 @@ public interface RelationProposalRepository extends JpaRepository<RelationPropos
             @Param("workspaceId") String workspaceId,
             @Param("sourceCode") String sourceCode);
 
+    interface ReviewTally {
+        long getAccepted();
+        long getReviewed();
+    }
+
     /**
      * Counts reviewed history visible in one selected context. A null workspace
      * intentionally means central rows only; a workspace inherits central rows
      * plus rows from that exact workspace and never sibling workspaces.
      */
     @Query("""
-            SELECT COUNT(p) FROM RelationProposal p
+            SELECT COALESCE(SUM(CASE WHEN p.status = :accepted THEN 1L ELSE 0L END), 0L) AS accepted,
+                   COUNT(p) AS reviewed
+            FROM RelationProposal p
             WHERE p.repositoryId = :repositoryId
               AND (p.workspaceId IS NULL OR p.workspaceId = :workspaceId)
               AND p.sourceNode.taxonomyRoot = :sourceRoot
               AND p.targetNode.taxonomyRoot = :targetRoot
               AND p.relationType = :relationType
-              AND p.status = :status
+              AND p.status IN (:accepted, :rejected)
             """)
-    long countVisibleReviewHistory(
+    ReviewTally visibleReviewHistory(
             @Param("repositoryId") String repositoryId,
             @Param("workspaceId") String workspaceId,
             @Param("sourceRoot") String sourceRoot,
             @Param("targetRoot") String targetRoot,
             @Param("relationType") RelationType relationType,
-            @Param("status") ProposalStatus status);
+            @Param("accepted") ProposalStatus accepted,
+            @Param("rejected") ProposalStatus rejected);
 
     /** Looks up a proposal in exactly one mutable repository/workspace scope. */
     @Query("""

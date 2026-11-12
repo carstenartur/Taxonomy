@@ -209,7 +209,7 @@ public class RelationProposalService {
     @Transactional(readOnly = true)
     public List<RelationProposalDto> getPendingProposals() {
         return getPendingProposalsInContext(
-                workspaceResolver.resolveCurrentRepositoryContext());
+                workspaceResolver.resolveUnambiguousRepositoryForRead());
     }
 
     @Transactional(readOnly = true)
@@ -229,7 +229,7 @@ public class RelationProposalService {
     @Transactional(readOnly = true)
     public List<RelationProposalDto> getAllProposals() {
         return getAllProposalsInContext(
-                workspaceResolver.resolveCurrentRepositoryContext());
+                workspaceResolver.resolveUnambiguousRepositoryForRead());
     }
 
     @Transactional(readOnly = true)
@@ -247,7 +247,7 @@ public class RelationProposalService {
     public List<RelationProposalDto> getProposalsForNode(String sourceCode) {
         return getProposalsForNodeInContext(
                 sourceCode,
-                workspaceResolver.resolveCurrentRepositoryContext());
+                workspaceResolver.resolveUnambiguousRepositoryForRead());
     }
 
     @Transactional(readOnly = true)

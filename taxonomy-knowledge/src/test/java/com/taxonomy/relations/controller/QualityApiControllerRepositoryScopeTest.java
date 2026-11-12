@@ -26,7 +26,8 @@ class QualityApiControllerRepositoryScopeTest {
     void setUp() {
         qualityService = mock(RelationQualityService.class);
         workspaceResolver = mock(WorkspaceResolver.class);
-        controller = new QualityApiController(qualityService, workspaceResolver);
+        controller = new QualityApiController(qualityService, workspaceResolver, new ProposalInboxResponses(
+                tools.jackson.databind.json.JsonMapper.builder().build()));
     }
 
     @Test
@@ -35,7 +36,7 @@ class QualityApiControllerRepositoryScopeTest {
                 "repo-b", "workspace-b1", "feature/b1", "alice");
         RelationQualityMetrics metrics = new RelationQualityMetrics(
                 2, 1, 1, 0, 0.5, 0.8, 0.6, List.of(), List.of());
-        when(workspaceResolver.resolveCurrentRepositoryContext())
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead())
                 .thenReturn(context);
         when(qualityService.calculateMetrics(context)).thenReturn(metrics);
 
@@ -44,7 +45,7 @@ class QualityApiControllerRepositoryScopeTest {
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isSameAs(metrics);
         assertThat(response.getHeaders().getCacheControl()).isEqualTo("no-store");
-        verify(workspaceResolver).resolveCurrentRepositoryContext();
+        verify(workspaceResolver).resolveUnambiguousRepositoryForRead();
         verify(qualityService).calculateMetrics(context);
         verifyNoMoreInteractions(workspaceResolver, qualityService);
     }
@@ -56,7 +57,7 @@ class QualityApiControllerRepositoryScopeTest {
         TopRejectedProposal proposal = new TopRejectedProposal(
                 "A", "Node A", "B", "Node B",
                 "RELATED_TO", 0.9, "evidence");
-        when(workspaceResolver.resolveCurrentRepositoryContext())
+        when(workspaceResolver.resolveUnambiguousRepositoryForRead())
                 .thenReturn(context);
         when(qualityService.topRejected(4, context))
                 .thenReturn(List.of(proposal));
@@ -66,7 +67,7 @@ class QualityApiControllerRepositoryScopeTest {
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).containsExactly(proposal);
         assertThat(response.getHeaders().getCacheControl()).isEqualTo("no-store");
-        verify(workspaceResolver).resolveCurrentRepositoryContext();
+        verify(workspaceResolver).resolveUnambiguousRepositoryForRead();
         verify(qualityService).topRejected(4, context);
         verifyNoMoreInteractions(workspaceResolver, qualityService);
     }

@@ -1175,6 +1175,8 @@ Each taxonomy node row includes a **🔍 Similar** button. Clicking it opens the
 
 The **📊 Quality Dashboard** panel (right column, collapsible) displays metrics about relation proposal quality. Open it by clicking the summary; metrics are loaded automatically.
 
+The dashboard counts the retained proposal inbox for the selected repository. A personal workspace also sees central proposals in that repository. Sibling workspace and other repository reviews are excluded. Other branches in the same workspace see the same inbox history. Totals, type breakdown and rejected examples are calculated from one observation. Accepting or undoing a review targets the selected Git branch and requires its current head. The inbox cannot be retrieved at an old Git commit.
+
 ### Summary Metrics
 
 | Metric | Description |

@@ -1203,6 +1203,8 @@ Jede Taxonomie-Knotenzeile enthält eine Schaltfläche **🔍 Similar**. Durch K
 
 Das Panel **📊 Quality Dashboard** (rechte Spalte, einklappbar) zeigt Metriken zur Qualität der Relationsvorschläge an. Öffnen Sie es durch Klicken auf die Zusammenfassung; die Metriken werden automatisch geladen.
 
+Das Dashboard zählt die gespeicherten Vorschläge des ausgewählten Repositorys. In einem persönlichen Workspace sind auch zentrale Vorschläge desselben Repositorys sichtbar. Bewertungen anderer Workspaces und Repositorys sind ausgeschlossen. Branches desselben Workspaces teilen sich diesen Prüfverlauf. Gesamtwerte, Aufschlüsselung nach Beziehungstyp und abgelehnte Beispiele stammen aus einer gemeinsamen Abfrage. Eine Annahme oder Rücknahme wirkt auf den ausgewählten Git-Branch und erfordert dessen aktuellen Stand. Für einen früheren Git-Commit lässt sich der Prüfverlauf nicht abrufen.
+
 ### Zusammenfassende Metriken
 
 | Metrik | Beschreibung |

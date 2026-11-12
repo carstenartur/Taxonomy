@@ -44,7 +44,9 @@ public class ExplicitWorkspacePinValidationInterceptor implements HandlerInterce
             return true;
         }
 
-        RepositoryContext resolved = workspaceResolver.resolveCurrentRepositoryContext();
+        boolean observational = "GET".equals(request.getMethod()) || "HEAD".equals(request.getMethod());
+        RepositoryContext resolved = observational ? workspaceResolver.resolveCurrentRepositoryContextForRead()
+                : workspaceResolver.resolveCurrentRepositoryContext();
         if (resolved.scope() != RepositoryScope.WORKSPACE
                 || !requestedWorkspaceId.equals(resolved.workspaceId())) {
             throw new AccessDeniedException(
