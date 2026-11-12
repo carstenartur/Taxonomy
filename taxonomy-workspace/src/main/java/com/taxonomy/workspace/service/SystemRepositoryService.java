@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
@@ -128,6 +129,15 @@ public class SystemRepositoryService implements RepositoryMutationFence {
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public void readCurrentAuthorization(String repositoryId, Consumer<SystemRepository> decision) {
         Objects.requireNonNull(decision).accept(getRepository(repositoryId));
+    }
+
+    /** Evaluate the fork and its recorded source in the same fresh catalogue transaction. */
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    public <T> T readCurrentForkAuthorization(String forkId, BiFunction<SystemRepository, SystemRepository, T> decision) {
+        var fork = getRepository(forkId);
+        String sourceId = fork.getUpstreamRepositoryId();
+        if (sourceId == null || sourceId.equals(forkId)) throw new IllegalArgumentException("A central fork is required");
+        return decision.apply(fork, getRepository(sourceId));
     }
 
     /** Record publication without merging an older catalogue entity over current policy. */
