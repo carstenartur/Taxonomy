@@ -1,0 +1,153 @@
+package com.taxonomy.security.service;
+
+import com.taxonomy.backup.PrincipalId;
+import com.taxonomy.security.model.PrincipalUserDetails;
+import com.taxonomy.security.persistence.PrincipalSchemaMigration;
+import org.hsqldb.jdbc.JDBCDataSource;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+
+import java.util.List;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.*;
+
+class VerifiedLegacyOwnerMigrationTest {
+    JDBCDataSource database;
+    JdbcTemplate jdbc;
+    PrincipalIdentityService identities;
+    VerifiedLegacyOwnerMigration migration;
+    Authentication admin;
+
+    @BeforeEach void fixture() {
+        database = new JDBCDataSource();
+        database.setUrl("jdbc:hsqldb:mem:verified-legacy-" + UUID.randomUUID());
+        database.setUser("sa");
+        jdbc = new JdbcTemplate(database);
+        jdbc.execute("create table app_user (id bigint primary key, username varchar(255), enabled boolean)");
+        jdbc.execute("create table app_role (id bigint primary key, name varchar(255))");
+        jdbc.execute("create table user_roles (user_id bigint, role_id bigint)");
+        jdbc.execute("create table user_workspace (username varchar(255), workspace_id varchar(255))");
+        jdbc.update("insert into app_user values (1, 'operator', true)");
+        jdbc.update("insert into app_role values (1, 'ROLE_ADMIN')");
+        jdbc.update("insert into user_roles values (1, 1)");
+        jdbc.update("insert into user_workspace values ('alice', 'private-a'), ('bob', 'private-b')");
+        PrincipalSchemaMigration.migrate(database);
+        identities = new PrincipalIdentityService(database);
+        migration = new VerifiedLegacyOwnerMigration(database, identities);
+        var operator = identities.local(1);
+        var roles = List.of(new SimpleGrantedAuthority("ROLE_ADMIN"));
+        var details = new PrincipalUserDetails(operator.id(), operator.scopeKey(), "unused", true, roles);
+        admin = UsernamePasswordAuthenticationToken.authenticated(details, null, roles);
+    }
+
+    private static VerifiedLegacyOwnerMigration.VerifiedMapping verified(
+            VerifiedLegacyOwnerMigration.UnresolvedOwner owner, String subject) {
+        return new VerifiedLegacyOwnerMigration.VerifiedMapping(
+                owner.principal(), owner.legacyScope(), "https://idp.example", subject, "approved:owner:" + subject);
+    }
+
+    @Test void previewIsBoundedAndNeverInfersUsernameAsSubject() {
+        var preview = migration.preview(admin, 1);
+        assertThat(preview.total()).isEqualTo(2);
+        assertThat(preview.owners()).hasSize(1);
+        assertThat(preview.truncated()).isTrue();
+        assertThat(preview.fingerprint()).hasSize(64);
+        assertThat(jdbc.queryForObject("select count(*) from principal_binding where binding_kind='OIDC'",
+                Integer.class)).isZero();
+        var second = migration.preview(admin, 256);
+        assertThat(second.total()).isEqualTo(2);
+        assertThat(second.truncated()).isFalse();
+        assertThat(second.fingerprint()).isEqualTo(preview.fingerprint());
+        assertThat(second.owners()).extracting(VerifiedLegacyOwnerMigration.UnresolvedOwner::legacyScope)
+                .containsExactly("alice", "bob");
+    }
+
+    @Test void requiresFullExactApprovedPlanAndCommitsBothLinksWithAuditAtomically() {
+        var preview = migration.preview(admin, 256);
+        var alice = preview.owners().get(0);
+        var bob = preview.owners().get(1);
+        assertThatThrownBy(() -> migration.linkVerified(admin, preview.fingerprint(), List.of(verified(alice, "sub-a"))))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> migration.linkVerified(admin, "0".repeat(64),
+                List.of(verified(alice, "sub-a"), verified(bob, "sub-b"))))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> migration.linkVerified(admin, preview.fingerprint(),
+                List.of(verified(alice, "same"), verified(bob, "same"))))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(jdbc.queryForObject("select count(*) from principal_binding where binding_kind='OIDC'",
+                Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit",
+                Integer.class)).isZero();
+
+        migration.linkVerified(admin, preview.fingerprint(),
+                List.of(verified(bob, "sub-b"), verified(alice, "sub-a")));
+        assertThat(migration.preview(admin, 256).total()).isZero();
+        assertThat(identities.oidc("https://idp.example", "sub-a").id()).isEqualTo(alice.principal());
+        assertThat(identities.oidc("https://idp.example", "sub-b").scopeKey()).isEqualTo("bob");
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit",
+                Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("select count(*) from backup_capability_grant where principal_id=?",
+                Integer.class, alice.principal().value().toString())).isZero();
+        var auditDetail = jdbc.queryForObject("select detail from principal_access_audit where target_principal=?",
+                String.class, alice.principal().value().toString());
+        assertThat(auditDetail).startsWith("approval-sha256:").doesNotContain("approved:owner:");
+        assertThatThrownBy(() -> migration.linkVerified(admin, preview.fingerprint(),
+                List.of(verified(alice, "sub-a"), verified(bob, "sub-b"))))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test void existingOidcSubjectCollisionRollsBackAllMappings() {
+        var preview = migration.preview(admin, 256);
+        identities.oidc("https://idp.example", "taken");
+        assertThatThrownBy(() -> migration.linkVerified(admin, preview.fingerprint(), List.of(
+                verified(preview.owners().get(0), "safe"),
+                verified(preview.owners().get(1), "taken"))))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(migration.preview(admin, 256).total()).isEqualTo(2);
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit", Integer.class)).isZero();
+    }
+
+    @Test void unlinkRevokesTheExactSubjectWithoutGivingAwayItsHistoricalOwnership() {
+        var preview = migration.preview(admin, 256);
+        migration.linkVerified(admin, preview.fingerprint(), List.of(
+                verified(preview.owners().get(0), "sub-a"),
+                verified(preview.owners().get(1), "sub-b")));
+        PrincipalId target = preview.owners().get(0).principal();
+        assertThatThrownBy(() -> migration.unlinkVerified(admin, target, "https://idp.example", "wrong", "approved:revoke"))
+                .isInstanceOf(AccessDeniedException.class);
+        migration.unlinkVerified(admin, target, "https://idp.example", "sub-a", "approved:revoke");
+        assertThat(identities.isEnabled(target)).isFalse();
+        assertThatThrownBy(() -> identities.oidc("https://idp.example", "sub-a"))
+                .isInstanceOf(org.springframework.security.authentication.DisabledException.class);
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit", Integer.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("select count(*) from principal_binding where principal_id=?",
+                Integer.class, target.value().toString())).isEqualTo(1);
+    }
+
+    @Test void removedAdminRoleOrUnknownActorCannotPreviewOrLink() {
+        var preview = migration.preview(admin, 256);
+        jdbc.update("delete from user_roles where user_id=1");
+        assertThatThrownBy(() -> migration.preview(admin, 1)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> migration.linkVerified(admin, preview.fingerprint(),
+                List.of(verified(preview.owners().get(0), "a"), verified(preview.owners().get(1), "b"))))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit", Integer.class)).isZero();
+    }
+
+    @Test void restartKeepsVerifiedMappingAndDisabledTombstone() {
+        var before = migration.preview(admin, 256);
+        migration.linkVerified(admin, before.fingerprint(), List.of(
+                verified(before.owners().get(0), "a"), verified(before.owners().get(1), "b")));
+        migration = new VerifiedLegacyOwnerMigration(database, new PrincipalIdentityService(database));
+        assertThat(migration.preview(admin, 256).total()).isZero();
+        assertThat(identities.oidc("https://idp.example", "a").id())
+                .isEqualTo(before.owners().get(0).principal());
+    }
+}
