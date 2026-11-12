@@ -24,5 +24,13 @@ public class AnalysisAdapterOperation {
     @Column(name = "failure_code", length = 48) String failureCode;
     @Column(name = "created_at", nullable = false) long createdAt;
     @Column(name = "updated_at", nullable = false) long updatedAt;
+    // Browser correlations must never advance the provider's compare-and-set revision.
+    @ElementCollection
+    @CollectionTable(name = "analysis_adapter_observer", joinColumns = @JoinColumn(name = "operation_id"),
+            uniqueConstraints = @UniqueConstraint(name = "uq_adapter_observer", columnNames = "observer_key"))
+    @MapKeyColumn(name = "observer_key", nullable = false, length = 64)
+    @Column(name = "observed_at", nullable = false)
+    @org.hibernate.annotations.OptimisticLock(excluded = true)
+    java.util.Map<String, Long> observers = new java.util.HashMap<>();
     @Version @Column(name = "row_version", nullable = false) long revision;
 }

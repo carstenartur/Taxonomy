@@ -1328,6 +1328,30 @@ test('running analysis leaves tools visible with an explanation and does not sta
     }finally{await finish(page);}
 });
 
+async function mountDocumentImport(page, locale, cancelLabel, cancelledLabel, deferWorkspace = false) {
+    const template = await readFile(path.join(resources,'templates/index.html'),'utf8');
+    await page.evaluate(({template,locale,cancelLabel,cancelledLabel,deferWorkspace}) => {
+        const source = new DOMParser().parseFromString(template,'text/html');
+        for (const name of ['documentImportPanel','docCandidateReviewPanel','docAiComparisonPanel','docRegMapResultPanel']) {
+            const element = source.getElementById(name);
+            if (element) document.body.append(element);
+        }
+        document.documentElement.lang = locale;
+        document.getElementById('documentImportPanel').open = true;
+        const messages = {'analysis.adapter.cancel':cancelLabel,'analysis.adapter.cancelled':cancelledLabel,
+            'docimport.regmap.mapping':locale === 'de' ? 'Regulation wird auf Architektur abgebildet…' : 'Mapping regulation to architecture…'};
+        window.TaxonomyI18n = {t:key=>messages[key] || key,resolveUrl:path=>path};
+        window.__TaxonomyAnalysisSessionContext = {runtime:{workspaceId:deferWorkspace ? null : 'document-workspace'}};
+        if (deferWorkspace) window.TaxonomyAnalysisSessionReady = new Promise(resolve => setTimeout(() => {
+            window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'document-workspace';
+            resolve(true);
+        },200));
+    }, {template,locale,cancelLabel,cancelledLabel,deferWorkspace});
+    await installBrowserApiFixture(page, resources);
+    for (const script of ['api/analysis-adapter-api.js','api/import-api.js','shared/taxonomy-document-import.js'])
+        await page.addScriptTag({path:path.join(resources,'static/js',script)});
+}
+
 for (const locale of ['en', 'de']) {
     test('native document receipt can be recovered and cancelled in ' + locale, async () => {
         const page = await browser.newPage({locale});
@@ -1351,23 +1375,7 @@ for (const locale of ['en', 'de']) {
                 await route.fulfill({status,headers,body:JSON.stringify(body)});
             });
             await page.goto(origin);
-            const template = await readFile(path.join(resources,'templates/index.html'),'utf8');
-            await page.evaluate(({template,locale,cancelLabel,cancelledLabel}) => {
-                const source = new DOMParser().parseFromString(template,'text/html');
-                for (const name of ['documentImportPanel','docCandidateReviewPanel','docAiComparisonPanel','docRegMapResultPanel']) {
-                    const element = source.getElementById(name);
-                    if (element) document.body.append(element);
-                }
-                document.documentElement.lang = locale;
-                document.getElementById('documentImportPanel').open = true;
-                const messages = {'analysis.adapter.cancel':cancelLabel,'analysis.adapter.cancelled':cancelledLabel,
-                    'docimport.regmap.mapping':locale === 'de' ? 'Regulation wird auf Architektur abgebildet…' : 'Mapping regulation to architecture…'};
-                window.TaxonomyI18n = {t:key=>messages[key] || key,resolveUrl:path=>path};
-                window.__TaxonomyAnalysisSessionContext = {runtime:{workspaceId:'document-workspace'}};
-            }, {template,locale,cancelLabel,cancelledLabel});
-            await installBrowserApiFixture(page, resources);
-            for (const script of ['api/analysis-adapter-api.js','api/import-api.js','shared/taxonomy-document-import.js'])
-                await page.addScriptTag({path:path.join(resources,'static/js',script)});
+            await mountDocumentImport(page,locale,cancelLabel,cancelledLabel);
             await page.locator('#docImportFile').setInputFiles({name:'notice.pdf',mimeType:'application/pdf',buffer:Buffer.from('controlled input')});
             await page.locator('input[name="importMode"][value="reg-map"]').check();
             const button = page.locator('#docImportUploadBtn');
@@ -1389,3 +1397,56 @@ for (const locale of ['en', 'de']) {
         } finally { await page.close(); }
     });
 }
+
+test('reload during the first physical document request discovers the admitted operation using GET only', async () => {
+    const page = await browser.newPage(), origin = 'https://taxonomy.fixture';
+    const id = '8e370454-53d6-4312-b531-05a4bfab1704', source = 'a'.repeat(40);
+    const calls = [];
+    let token, completed = false, release, submitted;
+    const admission = new Promise(resolve => { submitted = resolve; });
+    const original = new Promise(resolve => { release = resolve; });
+    try {
+        await page.route(origin + '/**', async route => {
+            const req = route.request(), path = new URL(req.url()).pathname;
+            if (path === '/') return route.fulfill({contentType:'text/html',body:'<html><body></body></html>'});
+            calls.push(req.method() + ' ' + path);
+            if (req.method() === 'POST') {
+                assert.equal(path,'/api/documents/map-regulation');
+                token = req.headers()['x-analysis-observer'];
+                assert.match(token,/^[0-9a-f-]{36}$/);
+                submitted();
+                await original;
+                return route.abort().catch(() => {});
+            }
+            assert.ok(path === '/api/analysis-adapters/observations/' + token || path === '/api/analysis-adapters/' + id);
+            const status = completed ? 200 : 202;
+            const body = completed ? {fileName:'notice.pdf',totalPages:1,matches:[{nodeCode:'CP',confidence:.91}]}
+                : {operationId:id,sourceCommit:source,sequence:0,state:'RUNNING'};
+            await route.fulfill({status,headers:{'Content-Type':'application/json','Retry-After':'1',
+                'X-Analysis-Operation-Id':id,'X-Analysis-Source-Commit':source},body:JSON.stringify(body)});
+        });
+        await page.goto(origin);
+        await mountDocumentImport(page,'en','Cancel analysis','Analysis cancelled.');
+        await page.locator('#docImportFile').setInputFiles({name:'notice.pdf',mimeType:'application/pdf',buffer:Buffer.from('private source text')});
+        await page.locator('input[name="importMode"][value="reg-map"]').check();
+        await page.locator('#docImportUploadBtn').click();
+        const cancel = page.getByRole('button',{name:'Cancel analysis'});
+        await admission;
+        const saved = await page.evaluate(() => window.AnalysisAdapterApi.savedDocument());
+        assert.deepEqual(Object.keys(saved).sort(),['action','created','token']);
+        assert.equal(saved.token,token);
+        const beforeReload = calls.length;
+        await page.reload();
+        await mountDocumentImport(page,'en','Cancel analysis','Analysis cancelled.',true);
+        await cancel.waitFor();
+        assert.equal(await page.evaluate(() => window.AnalysisAdapterApi.savedDocument().id),id);
+        completed = true;
+        await page.waitForFunction(() => document.querySelector('#docRegMapTableBody')?.textContent.includes('CP'));
+        assert.equal(calls.filter(call => call.startsWith('POST')).length,1);
+        assert.ok(calls.slice(beforeReload).every(call => call.startsWith('GET')));
+        assert.equal(await page.evaluate(() => window.AnalysisAdapterApi.savedDocument()),null);
+    } finally {
+        release();
+        await page.close();
+    }
+});

@@ -17,6 +17,11 @@ public class AnalysisAdapterObservationController {
     @GetMapping("/{id}")
     public ResponseEntity<?> status(@PathVariable("id") String id) { return operations.status(id, false); }
 
+    @Operation(summary = "Find an admitted native analysis while its original request is running",
+            description = "Resolves the initiating browser's scoped observation to the original operation and source without submitting work. An unknown observation or another account's observation returns 404.")
+    @GetMapping("/observations/{token}")
+    public ResponseEntity<?> observe(@PathVariable("token") String token) { return operations.observe(token); }
+
     @Operation(summary = "Cancel a scoped native analysis",
             description = "Closes a running receipt for its initiating account and repository. The operation retains its original identifier and prevents a late provider result from replacing its terminal state.")
     @PostMapping("/{id}/cancel")

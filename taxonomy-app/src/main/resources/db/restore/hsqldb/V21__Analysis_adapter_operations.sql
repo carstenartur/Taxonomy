@@ -18,3 +18,12 @@ create table analysis_adapter_operation (
     constraint uq_adapter_command unique (command_key)
 );
 create index idx_adapter_retention on analysis_adapter_operation(state,updated_at);
+
+create table analysis_adapter_observer (
+    operation_id varchar(36) not null,
+    observer_key varchar(64) not null,
+    observed_at bigint not null,
+    constraint pk_adapter_observer primary key (operation_id, observer_key),
+    constraint uq_adapter_observer unique (observer_key),
+    constraint fk_adapter_observer foreign key (operation_id) references analysis_adapter_operation(id) on delete cascade
+);

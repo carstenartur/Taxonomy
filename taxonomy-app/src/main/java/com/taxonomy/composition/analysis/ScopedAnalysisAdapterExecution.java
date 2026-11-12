@@ -69,9 +69,10 @@ public class ScopedAnalysisAdapterExecution {
         if (!sourceCurrent.getAsBoolean()) return stale();
         var attributes = RequestContextHolder.getRequestAttributes();
         String key = attributes instanceof ServletRequestAttributes request ? request.getRequest().getHeader("Idempotency-Key") : null;
+        String observer = attributes instanceof ServletRequestAttributes request ? request.getRequest().getHeader("X-Analysis-Observer") : null;
         AnalysisAdapterStore.Admission admission;
         try {
-            admission = store.admit(owner, kind, commit, fingerprint, key, available);
+            admission = store.admit(owner, kind, commit, fingerprint, key, available, observer);
         } catch (ResponseStatusException conflict) {
             if (!HttpStatus.CONFLICT.equals(conflict.getStatusCode())) throw conflict;
             return ResponseEntity.status(HttpStatus.CONFLICT).cacheControl(CacheControl.noStore()).body(Map.of("code","COMMAND_CONFLICT"));
@@ -136,7 +137,16 @@ public class ScopedAnalysisAdapterExecution {
         var context = workspaces.resolveCurrentRepositoryContextForRead();
         var owner = scope(context);
         var operation = cancel ? store.cancel(owner,id) : store.read(owner,id);
-        if (!cancel && !"EXPIRED".equals(operation.state()) && (!operation.sourceCommit().equals(head(repositories.openRead(context))) || !retainedSourceCurrent(operation)))
+        return cancel ? response(operation) : checkedStatus(context, operation);
+    }
+
+    ResponseEntity<?> observe(String token) {
+        var context = workspaces.resolveCurrentRepositoryContextForRead();
+        return checkedStatus(context, store.observe(scope(context), token));
+    }
+
+    private ResponseEntity<?> checkedStatus(RepositoryContext context, AnalysisAdapterStore.Operation operation) {
+        if (!"EXPIRED".equals(operation.state()) && (!operation.sourceCommit().equals(head(repositories.openRead(context))) || !retainedSourceCurrent(operation)))
             return stale(operation);
         return response(operation);
     }

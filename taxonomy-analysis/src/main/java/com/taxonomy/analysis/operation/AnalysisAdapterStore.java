@@ -51,14 +51,20 @@ public final class AnalysisAdapterStore {
     }
 
     public Admission admit(Scope scope, String kind, String source, String fingerprint, String callerKey, boolean dispatchAvailable) {
+        return admit(scope, kind, source, fingerprint, callerKey, dispatchAvailable, null);
+    }
+
+    public Admission admit(Scope scope, String kind, String source, String fingerprint, String callerKey,
+                           boolean dispatchAvailable, String observer) {
+        String observation = observer == null ? null : observerKey(scope, observer);
         if (!kinds().contains(kind) || source == null || !source.matches("[a-f0-9]{40}|[a-f0-9]{64}") || !hash(fingerprint))
             throw new IllegalArgumentException("Invalid analysis command");
         if (callerKey != null && (callerKey.isBlank() || callerKey.length() > 256 || callerKey.chars().anyMatch(Character::isISOControl)))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid analysis idempotency key");
         String key = callerKey == null ? digest("input", source, fingerprint) : digest("caller", callerKey);
         String command = command(scope, kind, key);
-        var found = transactions.execute(status -> byCommand(command));
-        if (found != null) return replay(scope, source, fingerprint, found);
+        var found = transactions.execute(status -> replay(scope, source, fingerprint, command, observation));
+        if (found != null) return found;
         if (!dispatchAvailable) return null;
         try {
             return transactions.execute(status -> {
@@ -69,30 +75,65 @@ public final class AnalysisAdapterStore {
                 row.kind = kind; row.sourceCommit = source; row.fingerprint = fingerprint;
                 row.requestKey = key; row.commandKey = command; row.state = "RUNNING";
                 row.createdAt = row.updatedAt = clock.millis();
+                attach(row, observation);
                 em.persist(row);
                 em.flush();
                 return new Admission(snapshot(row), true);
             });
         } catch (RuntimeException conflict) {
-            var winner = transactions.execute(status -> byCommand(command));
-            if (winner == null) throw conflict;
-            return replay(scope, source, fingerprint, winner);
+            var winner = transactions.execute(status -> replay(scope, source, fingerprint, command, observation));
+            if (winner != null) return winner;
+            if (observation != null && transactions.execute(status -> observedId(observation)) != null)
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Observation already identifies another analysis");
+            throw conflict;
         }
     }
 
-    private Operation byCommand(String command) {
+    private Admission replay(Scope scope, String source, String fingerprint, String command, String observation) {
         var rows = em.createQuery("select o from AnalysisAdapterOperation o where o.commandKey=:command", AnalysisAdapterOperation.class)
                 .setParameter("command", command).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
         if (rows.isEmpty()) return null;
         var row = rows.getFirst();
-        return age(row, clock.millis()) ? snapshot(row) : null;
+        if (!scope.equals(scope(row))) throw unavailable();
+        if (!age(row, clock.millis())) return null;
+        if (!row.sourceCommit.equals(source) || !row.fingerprint.equals(fingerprint))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Analysis source or command changed");
+        attach(row, observation);
+        return new Admission(snapshot(row), false);
     }
 
-    private Admission replay(Scope scope, String source, String fingerprint, Operation prior) {
-        if (!scope.equals(prior.scope())) throw unavailable();
-        if (!prior.sourceCommit().equals(source) || !prior.fingerprint().equals(fingerprint))
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Analysis source or command changed");
-        return new Admission(prior, false);
+    private static String observerKey(Scope scope, String token) {
+        if (token == null || !token.matches("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid analysis observation identifier");
+        return command(scope, "browser-observer", token);
+    }
+
+    private String observedId(String observation) {
+        return em.createQuery("select o.id from AnalysisAdapterOperation o join o.observers marker where key(marker)=:observation", String.class)
+                .setParameter("observation", observation).getResultList().stream().findFirst().orElse(null);
+    }
+
+    private void attach(AnalysisAdapterOperation row, String observation) {
+        if (observation == null || row.observers.containsKey(observation)) return;
+        if (observedId(observation) != null)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Observation already identifies another analysis");
+        if (row.observers.size() >= 32) {
+            if ("RUNNING".equals(row.state))
+                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Analysis observer limit reached");
+            var oldest = row.observers.entrySet().stream().min(java.util.Map.Entry.<String,Long>comparingByValue()
+                    .thenComparing(java.util.Map.Entry.comparingByKey())).orElseThrow();
+            row.observers.remove(oldest.getKey());
+        }
+        row.observers.put(observation, clock.millis());
+    }
+
+    public Operation observe(Scope scope, String token) {
+        String key = observerKey(scope, token);
+        return transactions.execute(status -> {
+            String id = observedId(key);
+            if (id == null) throw unavailable();
+            return snapshot(owned(scope, id));
+        });
     }
 
     public Operation read(Scope scope, String id) { return transactions.execute(status -> snapshot(owned(scope, id))); }

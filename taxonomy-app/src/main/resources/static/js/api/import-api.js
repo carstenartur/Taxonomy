@@ -77,9 +77,13 @@ window.ImportApi = (function () {
     }
 
     async function analyzeDocument(path, data, owner, pending) {
+        var action = path.endsWith('/extract-ai') ? 'extract-ai' : 'map-regulation';
+        var pendingReceipt;
         var response = await window.AnalysisAdapterApi.request(path, {method: 'POST', body: data},
-            {isCurrent: owner, onPending: pending});
-        return response.json();
+            {isCurrent: owner, onPending: pending, documentAction:action, onObserver:token => { pendingReceipt = token; }});
+        var result = await response.json();
+        if (pendingReceipt && (!owner || owner())) window.AnalysisAdapterApi.forgetDocument(pendingReceipt);
+        return result;
     }
 
     return {

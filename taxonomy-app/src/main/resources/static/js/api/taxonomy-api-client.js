@@ -284,6 +284,7 @@ window.TaxonomyApiClient = (function () {
         var chrome = window.TaxonomyAppChrome?.getContext?.() || {};
         var source = window.TaxonomyArchitectureWorkflow?.getScope?.() || {};
         return JSON.stringify([value?.contextId, value?.branch, value?.commitId,
+            window.TaxonomyContextBar?.getSelectionGeneration?.(),
             chrome.project?.id, chrome.requirement?.id, chrome.requirement?.version,
             chrome.architecture?.repositoryId, chrome.architecture?.workspaceScopeKey,
             chrome.architecture?.branch, ignoreModelStand ? null : chrome.architecture?.modelStand,
@@ -594,7 +595,9 @@ window.TaxonomyApiClient = (function () {
     function request(url, init, options) {
         if (!options?.observeResponse) return performRequest(url, init, options);
         var current = captureContext(options, init);
-        return performRequest(url, init, options).then(function (response) {
+        var first = options.observeAdmission ? options.observeAdmission(performRequest, url, init || {}, options, current)
+            : performRequest(url, init, options);
+        return first.then(function (response) {
             return options.observeResponse(response, url, init || {}, options, current);
         }).catch(function (error) { throw options.operationError ? options.operationError(error) : error; });
     }

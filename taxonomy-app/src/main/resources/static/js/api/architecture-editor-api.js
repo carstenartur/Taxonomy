@@ -50,7 +50,7 @@ window.ArchitectureEditorApi = (function () {
         suggest: function (request, options) { return write('/focus/suggestions', request, request.context, {
             isCurrent: options?.isCurrent, onPending: options?.onPending, signal: options?.signal,
             timeoutMillis: 120000, operationError: function (error) { return window.AnalysisAdapterApi?.describe(error) || error; },
-            observeResponse: function (response, url, init, options, current) {
+            observeAdmission: window.AnalysisAdapterApi?.admission, observeResponse: function (response, url, init, options, current) {
                 return response.status === 202 ? window.AnalysisAdapterApi.follow(response, url, init, options, current) : response;
             }
         }); },

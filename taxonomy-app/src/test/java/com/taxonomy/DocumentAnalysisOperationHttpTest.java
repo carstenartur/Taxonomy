@@ -32,17 +32,25 @@ class DocumentAnalysisOperationHttpTest {
             when(fixture.analysis.extractWithAi(anyString(),anyString())).thenAnswer(call -> {
                 entered.countDown(); assertTrue(release.await(15,TimeUnit.SECONDS)); return List.of();
             });
+            String observer = UUID.randomUUID().toString();
             var original = pool.submit(() -> {
                 fixture.login();
                 try { return fixture.mvc.perform(multipart("/api/documents/extract-ai").file(fixture.file)
-                        .header("Idempotency-Key","active-command")).andReturn().getResponse(); }
+                        .header("X-Analysis-Observer",observer).header("Idempotency-Key","active-command")).andReturn().getResponse(); }
                 finally { SecurityContextHolder.clearContext(); }
             });
             try {
                 assertTrue(entered.await(10,TimeUnit.SECONDS));
+                String observation = "/api/analysis-adapters/observations/" + observer;
+                var first = fixture.mvc.perform(get(observation)).andExpect(status().isAccepted())
+                        .andExpect(jsonPath("$.sequence").value(0)).andReturn().getResponse();
+                String id = first.getHeader("X-Analysis-Operation-Id");
+                var actor = fixture.actor.getAndSet(PrincipalId.create());
+                fixture.mvc.perform(get(observation)).andExpect(status().isNotFound());
+                fixture.actor.set(actor);
                 var accepted = fixture.mvc.perform(multipart("/api/documents/extract-ai").file(fixture.file)
                         .header("Idempotency-Key","active-command")).andExpect(status().isAccepted())
-                        .andExpect(jsonPath("$.state").value("RUNNING")).andExpect(jsonPath("$.phase").value("RUNNING"))
+                        .andExpect(header().string("X-Analysis-Operation-Id",id)).andExpect(jsonPath("$.state").value("RUNNING")).andExpect(jsonPath("$.phase").value("RUNNING"))
                         .andExpect(header().string("X-Analysis-Sequence","0")).andExpect(jsonPath("$.startedAt").isNumber())
                         .andReturn().getResponse();
                 String location = accepted.getHeader("Content-Location");

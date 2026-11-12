@@ -62,9 +62,12 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
         String source = "f".repeat(40), inputs = "a".repeat(64);
         var service = new com.taxonomy.analysis.operation.AnalysisAdapterStore(em, transactions, Clock.fixed(instant, java.time.ZoneOffset.UTC));
         var ready = new CountDownLatch(2); var start = new CountDownLatch(1);
+        var observers = new java.util.concurrent.ConcurrentLinkedQueue<String>();
         java.util.concurrent.Callable<com.taxonomy.analysis.operation.AnalysisAdapterStore.Admission> submit = () -> {
             ready.countDown(); assertTrue(start.await(10,TimeUnit.SECONDS));
-            return service.admit(owner,"REGULATION_MAPPING",source,inputs,"one-command",true);
+            String token = UUID.randomUUID().toString();
+            observers.add(token);
+            return service.admit(owner,"REGULATION_MAPPING",source,inputs,"one-command",true,token);
         };
         try (var pool = Executors.newFixedThreadPool(2)) {
             var f1 = pool.submit(submit); var f2 = pool.submit(submit);
@@ -72,11 +75,31 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
             var first = f1.get(15,TimeUnit.SECONDS); var second = f2.get(15,TimeUnit.SECONDS);
             assertNotEquals(first.claimed(), second.claimed());
             var run = first.operation(); assertEquals(run.id(), second.operation().id());
+            for (var token : observers) {
+                assertEquals(run.id(),service.observe(owner,token).id());
+                assertEquals(404, assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                        () -> service.observe(other,token)).getStatusCode().value());
+            }
+            var reused = assertThrows(org.springframework.web.server.ResponseStatusException.class, () ->
+                    service.admit(owner,"REGULATION_MAPPING",source,inputs,"different",true,observers.element()));
+            assertEquals(409,reused.getStatusCode().value());
             String result = "{\"fileName\":\"notice.pdf\",\"totalPages\":1,\"inputCharacters\":12,\"inputTruncated\":false,\"matches\":[{\"nodeCode\":\"CP\",\"confidence\":0.8}]}";
             var completed = service.settle(owner,run.id(),run.revision(),result,null);
             assertEquals(result, completed.resultJson());
             assertEquals(404, assertThrows(org.springframework.web.server.ResponseStatusException.class, () -> service.read(other,run.id())).getStatusCode().value());
             assertEquals(completed, service.admit(owner,"REGULATION_MAPPING",source,inputs,"one-command",false).operation());
+            String nextObserver = UUID.randomUUID().toString();
+            var bounded = service.admit(owner,"REGULATION_MAPPING",source,inputs,"bounded-observers",true).operation();
+            for (int i = 0; i < 32; i++) {
+                var attached = service.admit(owner,"REGULATION_MAPPING",source,inputs,"bounded-observers",true,UUID.randomUUID().toString());
+                assertFalse(attached.claimed());
+                assertEquals(bounded.revision(),attached.operation().revision());
+            }
+            assertEquals(429,assertThrows(org.springframework.web.server.ResponseStatusException.class, () ->
+                    service.admit(owner,"REGULATION_MAPPING",source,inputs,"bounded-observers",true,nextObserver)).getStatusCode().value());
+            assertEquals("COMPLETED",service.settle(owner,bounded.id(),bounded.revision(),result,null).state());
+            assertFalse(service.admit(owner,"REGULATION_MAPPING",source,inputs,"bounded-observers",true,nextObserver).claimed());
+            assertEquals(bounded.id(),service.observe(owner,nextObserver).id());
             var cancel = service.admit(owner,"REGULATION_MAPPING",source,inputs,"cancel",true).operation();
             assertEquals("CANCELLED", service.cancel(owner,cancel.id()).state());
             assertEquals("CANCELLED", service.settle(owner,cancel.id(),cancel.revision(),result,null).state());
@@ -90,6 +113,7 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
                     instant.plus(java.time.Duration.ofDays(31)),java.time.ZoneOffset.UTC));
             future.sweepScope(owner,instant.plus(java.time.Duration.ofDays(31)).toEpochMilli());
             assertEquals("EXPIRED", future.read(owner,run.id()).state());
+            assertEquals("EXPIRED",future.observe(owner,observers.element()).state());
             var expired = future.admit(owner,"REGULATION_MAPPING",source,inputs,"one-command",true);
             assertFalse(expired.claimed()); assertNull(expired.operation().resultJson());
             assertEquals("RUNNING",service.read(other,foreign.id()).state());
@@ -107,6 +131,8 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
             var replayed = service.admit(target,"REGULATION_MAPPING",source,inputs,"one-command",false).operation();
             assertEquals(remapped,replayed.id()); assertEquals(result,replayed.resultJson()); assertEquals(completed.revision(),replayed.revision());
             future.sweepScope(owner,instant.plus(java.time.Duration.ofDays(121)).toEpochMilli());
+            assertEquals(404, assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                    () -> future.observe(owner,observers.element())).getStatusCode().value());
             assertEquals(404,assertThrows(org.springframework.web.server.ResponseStatusException.class,() -> service.read(owner,run.id())).getStatusCode().value());
             assertEquals("RUNNING",service.read(other,foreign.id()).state());
         }

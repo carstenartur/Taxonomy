@@ -16,7 +16,7 @@ window.ArchitectureSourceFocusApi = Object.freeze({
         }, { retries: 0, timeoutMillis: 120000, signal: options && options.signal, pinnedWorkspaceId: workspace,
             isCurrent: options?.isCurrent, onPending: options?.onPending,
             operationError: function (error) { return window.AnalysisAdapterApi?.describe(error) || error; },
-            observeResponse: function (response, url, init, policy, current) {
+            observeAdmission: window.AnalysisAdapterApi?.admission, observeResponse: function (response, url, init, policy, current) {
                 return response.status === 202 ? window.AnalysisAdapterApi.follow(response, url, init, policy, current) : response;
             } })
             .then(function (response) { return response.json(); });

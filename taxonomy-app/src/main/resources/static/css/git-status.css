@@ -141,13 +141,17 @@ button[data-guard].guard-blocked {
     color: var(--bs-secondary, #6c757d);
 }
 
-.workspace-bar .wb-breadcrumb a {
+.workspace-bar .wb-breadcrumb button {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
     color: var(--bs-primary, #0d6efd);
     text-decoration: none;
     cursor: pointer;
 }
 
-.workspace-bar .wb-breadcrumb a:hover {
+.workspace-bar .wb-breadcrumb button:hover {
     text-decoration: underline;
 }
 
