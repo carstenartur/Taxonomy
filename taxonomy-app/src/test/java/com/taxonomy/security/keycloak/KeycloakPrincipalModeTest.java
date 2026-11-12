@@ -71,7 +71,7 @@ class KeycloakPrincipalModeTest {
         context.withPropertyValues("taxonomy.keycloak.principal-mode=STABLE")
                 .run(c -> assertThat(c).hasFailed());
         jdbc.update("delete from user_workspace");
-        jdbc.update("delete from app_principal where scope_key=\'alice\'");
+        jdbc.update("delete from app_principal where scope_key='alice'");
         context.withPropertyValues("taxonomy.keycloak.principal-mode=STABLE").run(c -> {
             assertThat(c).hasNotFailed();
             var bearer = c.getBean(KeycloakJwtAuthConverter.class).convert(jwt());
@@ -80,7 +80,7 @@ class KeycloakPrincipalModeTest {
             assertThat(browser.getName()).isEqualTo(bearer.getName());
             assertThat(bearer).isInstanceOf(StablePrincipal.class);
             assertThat(browser).isInstanceOf(StablePrincipal.class);
-            assertThat(jdbc.queryForObject("select enabled from app_principal where scope_key='alice'", Integer.class)).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from app_principal where scope_key='alice'", Integer.class)).isZero();
         });
     }
 
@@ -103,7 +103,7 @@ class KeycloakPrincipalModeTest {
         context.withPropertyValues("taxonomy.backup.enabled=true", "taxonomy.keycloak.principal-mode=STABLE")
                 .run(c -> assertThat(c).hasFailed());
         jdbc.update("delete from user_workspace");
-        jdbc.update("delete from app_principal where scope_key=\'alice\'");
+        jdbc.update("delete from app_principal where scope_key='alice'");
         context.withPropertyValues("taxonomy.backup.enabled=true", "taxonomy.keycloak.principal-mode=STABLE")
                 .run(c -> assertThat(c).hasNotFailed());
     }
