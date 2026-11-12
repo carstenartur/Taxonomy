@@ -236,6 +236,22 @@ class VerifiedLegacyOwnerMigrationTest {
                 Integer.class)).isZero();
     }
 
+    @Test void blankPostMigrationOwnerFailsClosedWithoutIssuingMappings() {
+        var initial = migration.preview(admin, 256);
+        jdbc.update("insert into user_workspace values ('  ', 'malformed-owner')");
+        assertThatThrownBy(() -> LegacyOwnerMigrationReadiness.inspect(database))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("operator repair");
+        assertThatThrownBy(() -> migration.linkVerified(admin, initial.fingerprint(), List.of(
+                verified(initial.owners().get(0), "sub-a"),
+                verified(initial.owners().get(1), "sub-b"))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("operator repair");
+        assertThat(jdbc.queryForObject("select count(*) from principal_access_audit", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from principal_binding where binding_kind='OIDC'",
+                Integer.class)).isZero();
+    }
+
     @Test void verifiedLinksClearTheReadinessFenceWithoutInferringUsernames() {
         var initial = migration.preview(admin, 256);
         var inventory = LegacyOwnerMigrationReadiness.inspect(database);

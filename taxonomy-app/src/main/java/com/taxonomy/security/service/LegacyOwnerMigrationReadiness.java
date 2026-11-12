@@ -86,7 +86,12 @@ public final class LegacyOwnerMigrationReadiness {
             try (var statement = connection.createStatement(); var rows = statement.executeQuery(sql)) {
                 while (rows.next()) {
                     String scope = rows.getString(1);
-                    if (scope != null && !scope.isBlank()) {
+                    if (scope != null && scope.isBlank()) {
+                        // A malformed owner is not proof of an absent historical identity.
+                        // Never silently discard it at the STABLE authority boundary.
+                        throw new IllegalStateException("Historical owner scope is blank; operator repair required");
+                    }
+                    if (scope != null) {
                         scopes.add(scope);
                         if (scopes.size() > MAX_SCOPES) {
                             throw new IllegalStateException("Historical owner inventory exceeds the safe startup bound");
