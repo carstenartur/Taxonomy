@@ -32,33 +32,45 @@ public class WorkspaceSyncStateUpdatesImpl implements WorkspaceSyncStateUpdates 
 
     @Override
     public void recordSync(WorkspaceSyncScope scope, String commit, Instant at, boolean published) {
-        observe(scope, at, () -> {
-            entities.createQuery("""
-                    update WorkspaceBranchSyncState s set s.lastSyncedCommitId=:commit, s.lastSyncTimestamp=:at
-                    where s.scopeKey=:key and (s.lastSyncTimestamp is null or s.lastSyncTimestamp <= :at)""")
-                    .setParameter("commit", commit).setParameter("at", at).setParameter("key", scope.key()).executeUpdate();
-            if (published) {
+        record(scope,commit,at,at,at,published);
+    }
+
+    @Override
+    public void recordPublication(WorkspaceSyncScope scope,String commit,Instant businessTime,Instant sourceObservedAt,Instant refreshedAt) {
+        Instant validThrough=businessTime==null || sourceObservedAt.isBefore(businessTime) ? sourceObservedAt : businessTime;
+        record(scope,commit,businessTime,validThrough,refreshedAt,true);
+    }
+
+    private void record(WorkspaceSyncScope scope,String commit,Instant businessTime,Instant validThrough,Instant observedAt,boolean published) {
+        observe(scope,observedAt,() -> {
+            if (businessTime!=null) {
                 entities.createQuery("""
-                        update WorkspaceBranchSyncState s set s.lastPublishedCommitId=:commit, s.lastPublishTimestamp=:at
-                        where s.scopeKey=:key and (s.lastPublishTimestamp is null or s.lastPublishTimestamp <= :at)""")
-                        .setParameter("commit", commit).setParameter("at", at).setParameter("key", scope.key()).executeUpdate();
+                        update WorkspaceBranchSyncState s set s.lastSyncedCommitId=:commit, s.lastSyncTimestamp=:at
+                        where s.scopeKey=:key and (s.lastSyncTimestamp is null or s.lastSyncTimestamp <= :at)""")
+                        .setParameter("commit",commit).setParameter("at",businessTime).setParameter("key",scope.key()).executeUpdate();
+                if (published) {
+                    entities.createQuery("""
+                            update WorkspaceBranchSyncState s set s.lastPublishedCommitId=:commit, s.lastPublishTimestamp=:at
+                            where s.scopeKey=:key and (s.lastPublishTimestamp is null or s.lastPublishTimestamp <= :at)""")
+                            .setParameter("commit",commit).setParameter("at",businessTime).setParameter("key",scope.key()).executeUpdate();
+                }
             }
-            updateProjection(scope, at, published ? 0 : null, "UP_TO_DATE");
+            updateProjection(scope,observedAt,validThrough,published ? 0 : null,"UP_TO_DATE");
         });
     }
 
     @Override
     public void recordLocalChanges(WorkspaceSyncScope scope, int ahead, int behind, Instant at) {
         String status = ahead > 0 ? (behind > 0 ? "DIVERGED" : "AHEAD") : (behind > 0 ? "BEHIND" : "UP_TO_DATE");
-        observe(scope, at, () -> updateProjection(scope, at, ahead, status));
+        observe(scope, at, () -> updateProjection(scope, at, at, ahead, status));
     }
 
-    private void updateProjection(WorkspaceSyncScope scope, Instant at, Integer count, String status) {
+    private void updateProjection(WorkspaceSyncScope scope, Instant at, Instant validThrough, Integer count, String status) {
         var update = entities.createQuery("""
                 update WorkspaceBranchSyncState s set s.syncStatus=:status, s.updatedAt=:at,
                 s.unpublishedCommitCount=coalesce(:count, s.unpublishedCommitCount)
-                where s.scopeKey=:key and (s.updatedAt is null or s.updatedAt <= :at)""");
-        update.setParameter("status", status).setParameter("at", at).setParameter("count", count)
+                where s.scopeKey=:key and (s.updatedAt is null or s.updatedAt <= :validThrough)""");
+        update.setParameter("status", status).setParameter("at", at).setParameter("validThrough",validThrough).setParameter("count", count)
                 .setParameter("key", scope.key()).executeUpdate();
     }
 

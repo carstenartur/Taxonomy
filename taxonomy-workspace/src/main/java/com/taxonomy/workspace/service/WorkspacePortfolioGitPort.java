@@ -23,6 +23,9 @@ public interface WorkspacePortfolioGitPort {
         validatePortfolio(localDsl, candidateDsl);
     }
 
+    /** Read the complete portable portfolio under its normal write fences in the publication transaction. */
+    String lockedPublicationDigest(String username, WorkspaceContext context);
+
     String commitPortfolio(String branch,
                            String message,
                            String username,

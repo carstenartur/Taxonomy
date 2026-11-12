@@ -69,6 +69,13 @@ abstract class AbstractExternalDatabaseContainerIT extends AbstractDatabaseConta
         WorkspaceBranchProgressDatabaseContractTest.verify(source);
     }
 
+    @Test @Order(28)
+    void publicationSurvivesIndependentDatabaseSessionsAndFencesDeletedSources() throws Exception {
+        var database=getDatabaseContainer();
+        com.taxonomy.workspace.service.WorkspacePublicationDatabaseContractTest.verify(new DriverManagerDataSource(
+                database.getJdbcUrl(),database.getUsername(),database.getPassword()));
+    }
+
     @Test @Order(24)
     void webDavLeasesFenceIndependentApplicationHandlesAndRetainExactGitVersions() throws Exception {
         var database = getDatabaseContainer();

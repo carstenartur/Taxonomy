@@ -126,6 +126,11 @@ class GitNativeSyncPortfolioProjectionTest {
         }
 
         @Override
+        public String lockedPublicationDigest(String username, WorkspaceContext context) {
+            return com.taxonomy.identity.StableIdentityHash.sha256(acceptedDsl);
+        }
+
+        @Override
         public String commitPortfolio(String branch, String message, String username, WorkspaceContext context)
                 throws IOException {
             committedContexts.add(context);

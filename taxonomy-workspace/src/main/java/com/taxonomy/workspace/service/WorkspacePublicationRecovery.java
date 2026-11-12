@@ -56,6 +56,30 @@ public class WorkspacePublicationRecovery {
         }
     }
 
+    @FunctionalInterface interface PinCleaner {
+        void release(WorkspacePublicationOperation row,Runnable grant) throws IOException;
+    }
+
+    void cleanDue(PinCleaner cleaner) {
+        for (String id : journal.dueForCleanup()) clean(id,WORKER,false,cleaner);
+        journal.expireDue();
+    }
+
+    void cleanArchived(RepositoryContext selected, String id, PinCleaner cleaner) {
+        var actor=actors.authorizePublication(selected.username());
+        journal.get(selected,actor.principalId(),id);
+        clean(id,actor.principalId(),true,cleaner);
+    }
+
+    private void clean(String id,String executor,boolean requested,PinCleaner cleaner) {
+        journal.cleanup(id,executor,requested,row -> {
+            var original=new WorkspaceFetchAuthority.Grant(row.actor,row.loginKind,row.binding);
+            Runnable grant=() -> actors.checkPublicationGrant(original,row.username,!requested);
+            grant.run();
+            cleaner.release(row,grant);
+        });
+    }
+
     private WorkspacePublicationJournal.View resume(RepositoryContext context,String actor,WorkspacePublicationJournal.View row,
             boolean explicit,PhaseExecutor executor) {
         if (row.archivedAt()!=null) throw new ResponseStatusException(HttpStatus.GONE,"Publication archived");
@@ -82,7 +106,11 @@ public class WorkspacePublicationRecovery {
             } catch (AccessDeniedException failure) {
                 return journal.decide(claim,DENIED,"AUTHORIZATION_REVOKED");
             } catch (Superseded failure) {
-                return journal.decide(claim,SUPERSEDED,"RETAINED_DESCENDANT");
+                return journal.decide(claim,SUPERSEDED,"RETAINED_DESCENDANT",failure.source,failure.sourceTime);
+            } catch (SemanticConflict failure) {
+                return journal.decide(claim,MANUAL_REVIEW,"SEMANTIC_CONFLICT");
+            } catch (com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem failure) {
+                return journal.decide(claim,MANUAL_REVIEW,"RECONCILIATION_REQUIRED");
             } catch (BranchHeadConflictException failure) {
                 return journal.decide(claim,MANUAL_REVIEW,"AUTHORITY_CHANGED");
             } catch (ResponseStatusException failure) {
@@ -96,7 +124,18 @@ public class WorkspacePublicationRecovery {
         }
     }
 
+    static final class SemanticConflict extends IOException {
+        SemanticConflict(String message) { super(message); }
+    }
+
     static final class Superseded extends IOException {
-        Superseded() { super("A retained branch already descends from the recorded publication"); }
+        final boolean source;
+        final java.time.Instant sourceTime;
+        Superseded(boolean source) { this(source,null); }
+        Superseded(boolean source,java.time.Instant sourceTime) {
+            super("A retained branch already descends from the recorded publication");
+            this.source=source;
+            this.sourceTime=sourceTime;
+        }
     }
 }

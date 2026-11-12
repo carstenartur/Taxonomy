@@ -232,6 +232,33 @@ class GitNativeSyncSourceAuthorityTest {
         }
     }
 
+    @org.junit.jupiter.api.Test
+    void terminalCleanupAfterRestartReleasesOnlyItsOwnPinsAndPreservesAnotherOperationsPin() throws Exception {
+        var context = RepositoryContext.workspace("private-source","old-copy","main","alice");
+        var grant = new WorkspaceFetchAuthority.Grant(java.util.UUID.randomUUID().toString(),"LOCAL","a".repeat(64));
+        var authority = mock(WorkspacePublicationAuthority.class);
+        when(authority.authorizePublication("alice")).thenReturn(grant);
+        when(authority.currentActor("alice")).thenReturn(grant.principalId());
+        try (var fixture=new Fixture(); var factory=publicationDatabase("jdbc:hsqldb:mem:pin-cleanup-"+java.util.UUID.randomUUID(),"create")) {
+            var journal=publicationJournal(factory);
+            fixture.service.configurePublications(new WorkspacePublicationRecovery(journal,authority));
+            fixture.local.commitDsl("main",dsl("Retain this published change"),"alice","Review");
+            var published=fixture.service.publishWithReceipt("alice","main","cleanup-command",null).operation();
+            assertEquals("COMPLETED",published.status());
+            var original=fixture.source.getHeadCommit("draft");
+            var other=fixture.source.pinExistingDslCommit("other-operation","draft",original,original);
+            fixture.service.configurePublications(new WorkspacePublicationRecovery(publicationJournal(factory),authority));
+            fixture.service.recoverDuePublications();
+            assertNull(fixture.source.findPreparedDslCommit(published.operationId(),"draft"));
+            assertNull(fixture.local.findPreparedDslCommit(published.operationId(),"main"));
+            assertNull(fixture.local.findPreparedDslCommit(published.operationId(),"sync-base"));
+            assertEquals(other,fixture.source.findPreparedDslCommit("other-operation","draft"));
+            assertEquals(original,fixture.source.getHeadCommit("draft"));
+            assertEquals("COMPLETED",fixture.service.publicationStatus(context,published.operationId()).status());
+            assertEquals("ARCHIVED",fixture.service.archivePublication(context,published.operationId()).status());
+        }
+    }
+
     @ParameterizedTest
     @EnumSource(value=WorkspacePublicationOperation.Step.class, mode=EnumSource.Mode.EXCLUDE, names={"COMPLETE"})
     void restartAfterEachPhaseReusesItsPreparedGitAndRecordedOwnership(WorkspacePublicationOperation.Step interrupted,
@@ -293,6 +320,137 @@ class GitNativeSyncSourceAuthorityTest {
         }
     }
 
+    @org.junit.jupiter.api.Test
+    void retentionRedactsOnlyReleasedScopedReceiptsAndPreventsTheirKeyFromCreatingAnotherPublication() throws Exception {
+        var first=RepositoryContext.workspace("private-source","copy-A","main","alice");
+        var second=RepositoryContext.workspace("private-source","copy-B","main","alice");
+        var grant=new WorkspaceFetchAuthority.Grant(java.util.UUID.randomUUID().toString(),"LOCAL","a".repeat(64));
+        var source=new WorkspacePublicationJournal.Source("draft","1".repeat(40),"1".repeat(40),"2".repeat(40),null);
+        var origin=java.time.Instant.parse("2026-01-01T00:00:00Z");
+        try(var factory=publicationDatabase("jdbc:hsqldb:mem:publication-retention-"+java.util.UUID.randomUUID(),"create")) {
+            var manager=new org.springframework.orm.jpa.JpaTransactionManager(factory);
+            var em=org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(factory);
+            java.util.function.IntFunction<WorkspacePublicationJournal> journalAt=day -> new WorkspacePublicationJournal(em,manager,
+                    java.time.Clock.fixed(origin.plus(java.time.Duration.ofDays(day)),java.time.ZoneOffset.UTC));
+            var journal=journalAt.apply(0);
+            var initial=journal.admit(first,grant,false,"shared-client-key",null,() -> source);
+            var unrelated=journal.admit(second,grant,false,"shared-client-key",null,() -> source);
+            var claim=journal.claim(initial.operationId(),grant.principalId(),false);
+            journal.decide(claim,WorkspacePublicationOperation.Status.MANUAL_REVIEW,"REVIEW");
+            journalAt.apply(30).expireDue();
+            var archived=journalAt.apply(30).get(first,grant.principalId(),initial.operationId());
+            assertEquals("ARCHIVED",archived.status());
+            assertNotNull(archived.expectedLocalCommit());
+            journalAt.apply(121).expireDue();
+            assertNull(journalAt.apply(121).get(first,grant.principalId(),initial.operationId()).redactedAt());
+            journalAt.apply(121).cleanup(initial.operationId(),grant.principalId(),true,row -> {});
+            journalAt.apply(121).expireDue();
+            var reduced=journalAt.apply(121).get(first,grant.principalId(),initial.operationId());
+            assertNotNull(reduced.redactedAt()); assertNull(reduced.expectedLocalCommit());
+            assertEquals(initial.operationId(),reduced.operationId());
+            assertEquals(grant.principalId(),reduced.originalActor());
+            assertEquals("ADMITTED",journal.get(second,grant.principalId(),unrelated.operationId()).status());
+            var gone=assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                    () -> journal.admit(first,grant,false,"shared-client-key",null,() -> { throw new AssertionError("replayed operation recaptured Git"); }));
+            assertEquals(410,gone.getStatusCode().value());
+            try(var session=factory.openSession()){
+                var decisions=session.createQuery("select d.decision from WorkspacePublicationDecision d where d.operation=:id order by d.id",String.class)
+                        .setParameter("id",initial.operationId()).getResultList();
+                assertEquals(java.util.List.of("ADMITTED","REVIEW","ARCHIVED","PINS_RELEASED","GIT_DETAILS_REDACTED"),decisions);
+            }
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    void aLaterPrivateDescendantBeforeCentralPublicationIsNeverReportedAsAPublishedResult() throws Exception {
+        var selected=RepositoryContext.workspace("private-source","old-copy","main","alice");
+        var grant=new WorkspaceFetchAuthority.Grant(java.util.UUID.randomUUID().toString(),"LOCAL","a".repeat(64));
+        var authority=mock(WorkspacePublicationAuthority.class);
+        when(authority.authorizePublication("alice")).thenReturn(grant);
+        try (var fixture=new Fixture(); var factory=publicationDatabase("jdbc:hsqldb:mem:private-descendant-"+java.util.UUID.randomUUID(),"create")) {
+            var recovery=new WorkspacePublicationRecovery(publicationJournal(factory),authority);
+            String central=fixture.source.getHeadCommit("draft");
+            String local=fixture.local.commitDsl("main",dsl("Reviewed edit"),"alice","Project");
+            var operation=recovery.submit(selected,false,"private-descendant",null,
+                    () -> new WorkspacePublicationJournal.Source("draft",central,central,local,null),(row,check) -> {
+                        if (row.step==WorkspacePublicationOperation.Step.SOURCE_REF) {
+                            fixture.local.publishPreparedDslCommit(row.id,row.localBranch,row.expectedLocal,row.preparedLocal);
+                            fixture.local.commitDsl("main",dsl("Later private edit"),"alice","Amend private copy");
+                            throw new java.io.IOException("Interrupted");
+                        }
+                        fixture.service.applyPublicationPhase(row,check);
+                    });
+            assertEquals("RETRYABLE",operation.status());
+            var result=recovery.retry(selected,operation.operationId(),fixture.service::applyPublicationPhase);
+            assertEquals("MANUAL_REVIEW",result.status());
+            assertEquals("WORKSPACE_ADVANCED_BEFORE_SOURCE",result.decisionCode());
+            assertNull(result.resultCommit());
+            assertNull(result.sourceObservedAt());
+            assertEquals(central,fixture.source.getHeadCommit("draft"));
+            assertTrue(fixture.local.getDslAtHead("main").contains("Later private edit"));
+        }
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"shared","alice"})
+    void laterDatabaseOnlyPortfolioEditSurvivesRecovery(String changedOwner) throws Exception {
+        var selected=RepositoryContext.workspace("private-source","old-copy","main","alice");
+        var grant=new WorkspaceFetchAuthority.Grant(java.util.UUID.randomUUID().toString(),"LOCAL","a".repeat(64));
+        var authority=mock(WorkspacePublicationAuthority.class);
+        when(authority.authorizePublication("alice")).thenReturn(grant);
+        try (var fixture=new Fixture(); var factory=publicationDatabase("jdbc:hsqldb:mem:portfolio-source-"+java.util.UUID.randomUUID(),"create")) {
+            var recovery=new WorkspacePublicationRecovery(publicationJournal(factory),authority);
+            fixture.local.commitDsl("main",dsl("Reviewed edit"),"alice","Publish");
+            String central=fixture.source.getHeadCommit("draft");
+            String local=fixture.local.getHeadCommit("main");
+            var operation=recovery.submit(selected,false,"same-publication",null,() ->
+                new WorkspacePublicationJournal.Source("draft",central,central,local,null),(row,check) -> {
+                    if (row.step==WorkspacePublicationOperation.Step.SOURCE_REF) throw new java.io.IOException("Interrupted before publish");
+                    fixture.service.applyPublicationPhase(row,check);
+                });
+            assertEquals("RETRYABLE",operation.status());
+            when(fixture.portfolio.lockedPublicationDigest(eq(changedOwner),any())).thenReturn("c".repeat(64));
+            var result=recovery.retry(selected,operation.operationId(),fixture.service::applyPublicationPhase);
+            assertEquals("MANUAL_REVIEW",result.status());
+            assertEquals("SEMANTIC_CONFLICT",result.decisionCode());
+            assertNull(result.resultCommit());
+            assertEquals(central,fixture.source.getHeadCommit("draft"));
+            verify(fixture.portfolio,never()).materializePortfolio(anyString(),anyString(),any());
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    void finalExpiredLeaseHasOneTerminalDecisionAndOnePinCleanup() throws Exception {
+        var owner=RepositoryContext.workspace("private-source","copy","main","alice");
+        var grant=new WorkspaceFetchAuthority.Grant(java.util.UUID.randomUUID().toString(),"LOCAL","a".repeat(64));
+        var original=java.time.Instant.parse("2026-01-01T00:00:00Z");
+        try (var factory=publicationDatabase("jdbc:hsqldb:mem:expired-publication-"+java.util.UUID.randomUUID(),"create")) {
+            var em=org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(factory);
+            var manager=new org.springframework.orm.jpa.JpaTransactionManager(factory);
+            java.util.function.IntFunction<WorkspacePublicationJournal> at=minute -> new WorkspacePublicationJournal(em,manager,
+                    java.time.Clock.fixed(original.plusSeconds(minute*60L),java.time.ZoneOffset.UTC));
+            String cause=java.util.UUID.randomUUID().toString();
+            var operation=at.apply(0).admit(owner,grant,false,"interrupted",cause,
+                    () -> new WorkspacePublicationJournal.Source("main",null,null,null,null));
+            assertEquals(409,assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                    () -> at.apply(0).admit(owner,grant,false,"interrupted",java.util.UUID.randomUUID().toString(),
+                            () -> {throw new AssertionError("Conflicting replay touched Git");})).getStatusCode().value());
+            for (int i=0;i<6;i++) assertNotNull(at.apply(i*6).claim(operation.operationId(),"worker-"+i,false));
+            var finalWorker=at.apply(36);
+            assertNull(finalWorker.claim(operation.operationId(),"last-observer",false));
+            assertNull(finalWorker.claim(operation.operationId(),"second-observer",false));
+            var exhausted=finalWorker.get(owner,grant.principalId(),operation.operationId());
+            assertEquals("MANUAL_REVIEW",exhausted.status());
+            assertEquals(6,exhausted.attempts());
+            assertEquals(java.util.List.of(operation.operationId()),finalWorker.dueForCleanup());
+            try (var session=factory.openSession()) {
+                var decisions=session.createQuery("select d.executor from WorkspacePublicationDecision d where d.operation=:id and d.decision='ATTEMPTS_EXHAUSTED'",String.class)
+                        .setParameter("id",operation.operationId()).getResultList();
+                assertEquals(java.util.List.of("last-observer"),decisions);
+            }
+        }
+    }
+
     private static org.hibernate.SessionFactory publicationDatabase(String url,String schema) {
         return new org.hibernate.cfg.Configuration().addAnnotatedClass(WorkspacePublicationOperation.class)
                 .addAnnotatedClass(WorkspacePublicationDecision.class).setProperty("hibernate.connection.url",url)
@@ -318,6 +476,7 @@ class GitNativeSyncSourceAuthorityTest {
         final WorkspacePortfolioGitPort portfolio = mock(WorkspacePortfolioGitPort.class);
         final GitNativeSyncIntegrationService service;
         Fixture() throws Exception {
+            when(portfolio.lockedPublicationDigest(anyString(),any())).thenReturn("b".repeat(64));
             sourceMetadata.setRepositoryId("private-source"); sourceMetadata.setSlug("private-source");
             sourceMetadata.setDefaultBranch("draft"); sourceMetadata.setVisibility(RepositoryVisibility.PRIVATE);
             when(catalog.getRepository("private-source")).thenReturn(sourceMetadata);

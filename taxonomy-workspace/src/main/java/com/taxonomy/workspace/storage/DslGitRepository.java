@@ -309,6 +309,12 @@ public class DslGitRepository implements AutoCloseable {
         }
     }
 
+    public Instant preparedPublicationTime(String operationId,String branch,String previous,String candidate) throws IOException {
+        synchronized (gitRepo) {
+            return new ExpectedHeadDslCommitter().publicationTime(gitRepo,operationId,branch,previous,candidate);
+        }
+    }
+
     public void releasePreparedDslCommit(String operationId, String branch, String candidateId) throws IOException {
         synchronized (gitRepo) {
             new ExpectedHeadDslCommitter().release(gitRepo, operationId, branch, candidateId);

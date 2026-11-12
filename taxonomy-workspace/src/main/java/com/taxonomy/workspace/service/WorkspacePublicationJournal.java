@@ -47,7 +47,7 @@ public class WorkspacePublicationJournal {
     record Claim(RepositoryOperationLeases.Claim lease, String executor) {}
     public record View(String operationId,String causationId,String status,String nextPhase,String originalActor,String lastExecutor,
                 String repositoryId,String workspaceId,String branch,String sourceBranch,String expectedSourceCommit,String expectedLocalCommit,
-                String preparedCommit,String resultCommit,int attempts,String decisionCode,long createdAt,Long lastAttemptAt,Long publishedAt,Long completedAt,Long archivedAt) {}
+                String preparedCommit,String resultCommit,int attempts,String decisionCode,long createdAt,Long lastAttemptAt,Long publishedAt,Long sourceObservedAt,Long completedAt,Long archivedAt,Long pinsReleasedAt,Long redactedAt) {}
     @FunctionalInterface interface PhaseAction { void run(WorkspacePublicationOperation row,Runnable checkLease) throws IOException; }
     @FunctionalInterface interface Snapshot { Source capture() throws IOException; }
 
@@ -60,7 +60,7 @@ public class WorkspacePublicationJournal {
         String id = com.taxonomy.identity.StableIdentityHash.sha256(String.join("\u0000","workspace.publish",
                 context.repositoryWorkspaceScopeKey(),grant.principalId(),token));
         var previous = transaction.execute(tx -> entities.find(WorkspacePublicationOperation.class,id));
-        if (previous != null) return replay(previous,context,grant.principalId(),keepWorkspace);
+        if (previous != null) return replay(previous,context,grant.principalId(),keepWorkspace,cause);
         var source = snapshot.capture();
         try {
             return transaction.execute(tx -> {
@@ -79,7 +79,7 @@ public class WorkspacePublicationJournal {
         } catch (RuntimeException failure) {
             var competing = transaction.execute(tx -> entities.find(WorkspacePublicationOperation.class,id));
             if (competing == null) throw failure;
-            return replay(competing,context,grant.principalId(),keepWorkspace);
+            return replay(competing,context,grant.principalId(),keepWorkspace,cause);
         }
     }
 
@@ -101,6 +101,29 @@ public class WorkspacePublicationJournal {
         });
     }
 
+    /** Owner deletion takes this snapshot and retires its receipts in the same transaction as physical workspace deletion. */
+    @org.springframework.transaction.annotation.Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void archiveForWorkspaceRemoval(String workspace,String repository,String owner,java.util.function.Supplier<String> deletingActor) {
+        var ids=entities.createQuery("""
+                select p.id from WorkspacePublicationOperation p where p.workspace=:workspace and p.repository=:repository
+                and p.username=:owner and p.archivedAt is null order by p.id""",String.class)
+                .setParameter("workspace",workspace).setParameter("repository",repository).setParameter("owner",owner).getResultList();
+        if (ids.isEmpty()) return;
+        String actor=java.util.Objects.requireNonNull(deletingActor.get(),"Authenticated deleting actor");
+        for (String id:ids) {
+            if (entities.createQuery("""
+                    update WorkspacePublicationOperation p set p.archivedAt=:now,p.archivedBy=:actor
+                    where p.id=:id and p.workspace=:workspace and p.repository=:repository and p.username=:owner
+                    and p.archivedAt is null""")
+                    .setParameter("id",id).setParameter("workspace",workspace).setParameter("repository",repository)
+                    .setParameter("owner",owner).setParameter("now",clock.millis()).setParameter("actor",actor).executeUpdate()!=1) continue;
+            var row=entities.find(WorkspacePublicationOperation.class,id);
+            entities.refresh(row);
+            if (row.completedAt==null) settle(row,DENIED,"WORKSPACE_DELETED",actor);
+            event(row,actor,"ARCHIVED");
+        }
+    }
+
     List<String> due() {
         return transaction.execute(tx -> entities.createQuery("""
                 select p.id from WorkspacePublicationOperation p where p.phase in :states and p.archivedAt is null
@@ -109,7 +132,10 @@ public class WorkspacePublicationJournal {
     }
 
     Claim claim(String id,String executor,boolean explicitRetry) {
-        var claim=leases.claim(WorkspacePublicationOperation.class,id,executor,!explicitRetry);
+        var claim=leases.claim(WorkspacePublicationOperation.class,id,executor,!explicitRetry,row -> {
+            row.cleanupDueAt=row.completedAt;
+            event(row,executor,row.decision);
+        });
         return claim==null ? null : new Claim(claim,executor);
     }
 
@@ -119,7 +145,9 @@ public class WorkspacePublicationJournal {
                 var row=locked(claim);
                 try { action.run(row,() -> leases.requireCurrent(row,claim.lease())); } catch (IOException failure) { throw new UncheckedIOException(failure); }
                 var applied=row.step;
-                if (applied==Step.SOURCE_REF && row.publishedAt==null) row.publishedAt=clock.millis();
+                if (applied==Step.SOURCE_REF) {
+                    row.sourceObservedAt=clock.millis();
+                }
                 event(row,claim.executor(),"APPLIED");
                 row.step=Step.values()[applied.ordinal()+1];
                 if (row.step==Step.COMPLETE) settle(row,COMPLETED,"COMPLETED");
@@ -130,15 +158,97 @@ public class WorkspacePublicationJournal {
     }
 
     View decide(Claim claim,Status status,String decision) {
+        return decide(claim,status,decision,false,null);
+    }
+
+    View decide(Claim claim,Status status,String decision,boolean confirmedSourceAncestor,java.time.Instant sourceTime) {
         return transaction.execute(tx -> {
             var row=locked(claim);
-            if (status==RETRYABLE && row.attempts>=MAX_ATTEMPTS) settle(row,MANUAL_REVIEW,"ATTEMPTS_EXHAUSTED");
+            if (confirmedSourceAncestor && row.sourceObservedAt==null) row.sourceObservedAt=clock.millis();
+            if (confirmedSourceAncestor && sourceTime!=null && row.publishedAt==null) row.publishedAt=sourceTime.toEpochMilli();
+            if (status==SUPERSEDED && row.sourceObservedAt==null) settle(row,MANUAL_REVIEW,"WORKSPACE_ADVANCED_BEFORE_SOURCE");
+            else if (status==RETRYABLE && row.attempts>=MAX_ATTEMPTS) settle(row,MANUAL_REVIEW,"ATTEMPTS_EXHAUSTED");
             else if (status==RETRYABLE || status==AWAITING_AUTHORIZATION) {
                 row.phase=status.name(); row.decision=decision; row.lease=null;
                 row.nextAttemptAt=status==RETRYABLE ? clock.millis()+Math.min(300_000,1000L << (row.attempts-1)) : null;
                 event(row,claim.executor(),decision);
             } else settle(row,status,decision);
             return view(row);
+        });
+    }
+
+    /** Retain a scope-owned idempotency tombstone and its append-only decision trail after sensitive ref details expire. */
+    void expireDue() {
+        long now=clock.millis();
+        long archiveCutoff=now-Duration.ofDays(30).toMillis();
+        long redactCutoff=now-Duration.ofDays(90).toMillis();
+        var ids=transaction.execute(tx -> entities.createQuery("""
+                select p.id from WorkspacePublicationOperation p where
+                    (p.archivedAt is null and (p.completedAt <= :archive
+                        or (p.phase='AWAITING_AUTHORIZATION' and p.lastAttemptAt <= :archive)))
+                    or (p.archivedAt <= :redact and p.redactedAt is null and p.pinsReleasedAt is not null)
+                order by p.id""",String.class).setParameter("archive",archiveCutoff)
+                .setParameter("redact",redactCutoff).setMaxResults(16).getResultList());
+        for (String id:ids) transaction.executeWithoutResult(tx -> {
+            String actor="system:workspace-publication-retention";
+            int archived=entities.createQuery("""
+                    update WorkspacePublicationOperation p set p.archivedAt=:now,p.archivedBy=:actor
+                    where p.id=:id and p.archivedAt is null and (p.completedAt <= :cutoff
+                        or (p.phase='AWAITING_AUTHORIZATION' and p.lastAttemptAt <= :cutoff))""")
+                    .setParameter("now",now).setParameter("actor",actor).setParameter("id",id)
+                    .setParameter("cutoff",archiveCutoff).executeUpdate();
+            if (archived==1) {
+                var row=entities.find(WorkspacePublicationOperation.class,id);
+                entities.refresh(row);
+                if (row.completedAt==null) settle(row,MANUAL_REVIEW,"AUTHORIZATION_EXPIRED",actor);
+                event(row,actor,"ARCHIVED");
+                return;
+            }
+            int redacted=entities.createQuery("""
+                    update WorkspacePublicationOperation p set p.redactedAt=:now,p.binding='REDACTED',
+                        p.inputLocal=null,p.inputSource=null,p.inputTracking=null,p.expectedLocal=null,p.expectedTracking=null,
+                        p.preparedLocal=null,p.preparedSource=null,p.preparedTracking=null,p.forkPoint=null,p.mergedDigest=null,
+                        p.centralPortfolioDigest=null,p.localPortfolioDigest=null
+                    where p.id=:id and p.archivedAt <= :cutoff and p.redactedAt is null and p.pinsReleasedAt is not null""")
+                    .setParameter("now",now).setParameter("cutoff",redactCutoff).setParameter("id",id).executeUpdate();
+            if (redacted==1) event(entities.find(WorkspacePublicationOperation.class,id),actor,"GIT_DETAILS_REDACTED");
+        });
+    }
+
+    List<String> dueForCleanup() {
+        return transaction.execute(tx -> entities.createQuery("""
+                select p.id from WorkspacePublicationOperation p where p.completedAt is not null
+                and p.pinsReleasedAt is null and p.cleanupDueAt <= :now order by p.cleanupDueAt,p.id""", String.class)
+                .setParameter("now",clock.millis()).setMaxResults(8).getResultList());
+    }
+
+    @FunctionalInterface interface CleanupAction { void release(WorkspacePublicationOperation row) throws IOException; }
+
+    void cleanup(String id, String executor, boolean requested, CleanupAction action) {
+        transaction.executeWithoutResult(tx -> {
+            // A real conditional write serializes concurrent cleaners on HSQL MVCC and server databases.
+            String eligibility=requested ? "" : " and p.cleanupDueAt <= :now";
+            var query=entities.createQuery("""
+                    update WorkspacePublicationOperation p set p.cleanupDueAt=p.cleanupDueAt
+                    where p.id=:id and p.completedAt is not null and p.pinsReleasedAt is null""" + eligibility)
+                    .setParameter("id",id);
+            if (!requested) query.setParameter("now",clock.millis());
+            if (query.executeUpdate()!=1) return;
+            var row=entities.find(WorkspacePublicationOperation.class,id);
+            entities.refresh(row);
+            try {
+                action.release(row);
+                row.pinsReleasedAt=clock.millis();
+                row.cleanupDueAt=null;
+                event(row,executor,"PINS_RELEASED");
+            } catch (WorkspaceFetchAuthority.FreshLoginRequired | org.springframework.security.access.AccessDeniedException unavailable) {
+                row.cleanupDueAt=null;
+                event(row,executor,"PIN_CLEANUP_AUTHORIZATION_REQUIRED");
+            } catch (IOException unavailable) {
+                // Already removed private refs may safely be retried. Retain evidence and require a scoped operator retry.
+                row.cleanupDueAt=null;
+                event(row,executor,"PIN_CLEANUP_REVIEW_REQUIRED");
+            }
         });
     }
 
@@ -149,14 +259,19 @@ public class WorkspacePublicationJournal {
     }
 
     private void settle(WorkspacePublicationOperation row,Status status,String decision) {
-        row.phase=status.name();row.decision=decision;row.completedAt=clock.millis();row.lease=null;row.nextAttemptAt=null;
-        event(row,row.executor,decision);
+        settle(row,status,decision,row.executor);
     }
 
-    private static View replay(WorkspacePublicationOperation row,RepositoryContext context,String actor,boolean keep) {
+    private void settle(WorkspacePublicationOperation row,Status status,String decision,String actor) {
+        row.phase=status.name();row.decision=decision;row.completedAt=clock.millis();row.lease=null;row.nextAttemptAt=null;
+        row.cleanupDueAt=row.completedAt;
+        event(row,actor,decision);
+    }
+
+    private static View replay(WorkspacePublicationOperation row,RepositoryContext context,String actor,boolean keep,String cause) {
         if (!row.belongsTo(context,actor)) throw missing();
         if (row.archivedAt!=null) throw new ResponseStatusException(HttpStatus.GONE,"Publication archived");
-        if (row.keepWorkspace!=keep) throw new ResponseStatusException(HttpStatus.CONFLICT,"Idempotency key belongs to another command");
+        if (row.keepWorkspace!=keep || cause!=null && !row.cause.equals(UUID.fromString(cause).toString())) throw new ResponseStatusException(HttpStatus.CONFLICT,"Idempotency key belongs to another command");
         return view(row);
     }
 
@@ -172,8 +287,8 @@ public class WorkspacePublicationJournal {
 
     private static View view(WorkspacePublicationOperation row) {
         return new View(row.id,row.cause,row.archivedAt==null?row.phase:"ARCHIVED",row.step.name(),row.actor,row.executor,
-                row.repository,row.workspace,row.localBranch,row.sourceBranch,row.inputSource,row.inputLocal,row.preparedSource,row.publishedAt==null ? null : row.preparedSource,row.attempts,
-                row.decision,row.createdAt,row.lastAttemptAt,row.publishedAt,row.completedAt,row.archivedAt);
+                row.repository,row.workspace,row.localBranch,row.sourceBranch,row.inputSource,row.inputLocal,row.preparedSource,row.sourceObservedAt==null ? null : row.preparedSource,row.attempts,
+                row.decision,row.createdAt,row.lastAttemptAt,row.publishedAt,row.sourceObservedAt,row.completedAt,row.archivedAt,row.pinsReleasedAt,row.redactedAt);
     }
 
     private static ResponseStatusException missing() { return new ResponseStatusException(HttpStatus.NOT_FOUND,"Publication unavailable"); }

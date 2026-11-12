@@ -746,6 +746,16 @@ curl -u alice:password -X POST "http://localhost:8080/api/workspace/publish?user
 
 **Response:** `{ "success": true, "branch": "feature-x", "mergeCommit": "def5678...", "publishedAt": "2026-03-15T10:05:00Z" }`
 
+A private working copy returns an operation ID in the response and in `X-Operation-Id`. Supply the same `Idempotency-Key` when repeating the same publish from the same actor, repository, workspace and branch. An optional UUID in `X-Causation-Id` links the request to its initiating command. A keyless request creates a new operation.
+
+| Request in the selected working copy | Result |
+| --- | --- |
+| `GET /api/workspace/publications/{id}` | Inspect the recorded inputs, phase, source observation, result and audit times. A prepared commit becomes a reported result once the source ref has been observed. |
+| `POST /api/workspace/publications/{id}/retry` | Recheck the original identity and current contribution rights, then resume the stored operation. A live lease or a required fresh login leaves it pending. |
+| `DELETE /api/workspace/publications/{id}` | Archive a terminal receipt and attempt conditional cleanup of its own private Git refs. An active operation returns **409**. |
+
+Publish and retry return **202** while recovery is pending, **403** when access is revoked, or **409** when the recorded source requires reconciliation. A normal replay observes the current backoff. The receipt records archiving separately from the original publication. Completed receipts are automatically archived after 30 days. After a further 90 days and confirmed private-ref cleanup, a scoped tombstone retains the original operation ID and prevents another publication with the archived key (**410**).
+
 ### Get Sync State
 
 ```bash

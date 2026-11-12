@@ -96,6 +96,10 @@ class ExpectedHeadDslCommitterTest {
             var git = repositories.openWorkspaceRepository("prepared-storage");
             assertThat(git.findPreparedDslCommit("operation", "draft")).isEqualTo(candidate);
             assertThat(git.publishPreparedDslCommit("operation", "draft", base, candidate)).isEqualTo(candidate);
+            var movement=git.preparedPublicationTime("operation","draft",base,candidate);
+            assertThat(movement).isNotNull();
+            assertThat(git.preparedPublicationTime("another-operation","draft",base,candidate)).isNull();
+            assertThat(git.preparedPublicationTime("operation","draft",null,candidate)).isNull();
             assertThat(git.getGitRepository().open(ObjectId.fromString(candidate)).getBytes()).containsExactly(bytes);
         }
         try (var db = new EditorPersistenceFixture(url);
@@ -103,9 +107,52 @@ class ExpectedHeadDslCommitterTest {
             var git = repositories.openWorkspaceRepository("prepared-storage");
             assertThat(git.publishPreparedDslCommit("operation", "draft", base, candidate)).isEqualTo(candidate);
             assertThat(git.verifyCommit(candidate).status().name()).isEqualTo("VERIFIED");
+            assertThat(git.preparedPublicationTime("operation","draft",base,candidate)).isNotNull();
             git.releasePreparedDslCommit("operation", "draft", candidate);
             assertThat(git.findPreparedDslCommit("operation", "draft")).isNull();
             assertThat(git.getHeadCommit("draft")).isEqualTo(candidate);
+        }
+    }
+
+    @Test
+    void terminalCleanupUsesExistingStorageAndChecksTheGrantAtRefDeletion(@TempDir Path temp) throws Exception {
+        var signatures = SigningTestKeys.createService(Files.createDirectory(temp.resolve("keys")));
+        String url = "jdbc:hsqldb:file:" + temp.resolve("cleanup") + ";shutdown=true";
+        String current, prepared, neighbor;
+        try (var db = new EditorPersistenceFixture(url)) {
+            var git = db.repositories.openWorkspaceRepository("reviewed");
+            current = git.commitDslIfHeadMatches("draft", null, "# base", "alice", "original");
+            prepared = git.prepareDslCommit("first", "draft", current, null, "# retained", "alice", "first", null);
+            neighbor = git.prepareDslCommit("second", "draft", current, null, "# neighbor", "alice", "second", null);
+        }
+        try (var db = new EditorPersistenceFixture(url);
+             var reopened = new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(db.factory), null, signatures, db.factory)) {
+            var calls = new java.util.concurrent.atomic.AtomicInteger();
+            assertThatThrownBy(() -> reopened.releasePublicationPin("source", "reviewed", "first", "draft", prepared, () -> {
+                if (calls.incrementAndGet() >= 3) throw new org.springframework.security.access.AccessDeniedException("grant withdrawn");
+            })).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+            var observed = db.repositories.openWorkspaceRepository("reviewed");
+            assertThat(observed.findPreparedDslCommit("first", "draft")).isEqualTo(prepared);
+            assertThatThrownBy(() -> reopened.releasePublicationPin("source", "reviewed", "first", "draft", neighbor, () -> {}))
+                    .isInstanceOf(IOException.class);
+            reopened.releasePublicationPin("source", "reviewed", "first", "draft", prepared, () -> {});
+            reopened.releasePublicationPin("source", "reviewed", "first", "draft", prepared, () -> {});
+            assertThat(observed.findPreparedDslCommit("first", "draft")).isNull();
+            assertThat(observed.findPreparedDslCommit("second", "draft")).isEqualTo(neighbor);
+            assertThat(observed.getHeadCommit("draft")).isEqualTo(current);
+            assertThatThrownBy(() -> reopened.requireRemovedWorkspaceStorage("reviewed",() -> {})).isInstanceOf(IOException.class);
+            assertThat(observed.findPreparedDslCommit("second","draft")).isEqualTo(neighbor);
+            int count = storedRepositoryCount(db);
+            reopened.requireRemovedWorkspaceStorage("missing",() -> {});
+            assertThatThrownBy(() -> reopened.releasePublicationPin("source", "missing", "first", "draft", prepared, () -> {}))
+                    .isInstanceOf(IOException.class);
+            assertThat(storedRepositoryCount(db)).isEqualTo(count);
+        }
+    }
+
+    private static int storedRepositoryCount(EditorPersistenceFixture db) {
+        try (var session = db.factory.openSession()) {
+            return ((Number) session.createNativeQuery("select count(*) from git_repository_lifecycle", Long.class).getSingleResult()).intValue();
         }
     }
 

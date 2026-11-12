@@ -157,6 +157,26 @@ class CurrentPrincipalAuthoritySecurityTest {
         } finally { SecurityContextHolder.clearContext(); }
     }
 
+    @Test void publishingNeedsTheCurrentArchitectPermissionOnTheRecordedBinding() {
+        start(false, KeycloakPrincipalMode.LEGACY);
+        var principal=identities.local(1);
+        var access=new WorkspaceFetchAuthorityAdapter(identities);
+        try {
+            SecurityContextHolder.setContext(new SecurityContextImpl(local(principal)));
+            var publication=access.authorizePublication(principal.scopeKey());
+            SecurityContextHolder.clearContext();
+            access.checkPublicationGrant(publication,principal.scopeKey(),true);
+            jdbc.update("insert into app_role values (3,'ROLE_USER')");
+            jdbc.update("update user_roles set role_id=3 where user_id=1 and role_id=1");
+            assertThatThrownBy(() -> access.checkPublicationGrant(publication,principal.scopeKey(),true))
+                    .isInstanceOf(AccessDeniedException.class);
+            SecurityContextHolder.setContext(new SecurityContextImpl(local(principal,List.of(new SimpleGrantedAuthority("ROLE_USER")))));
+            assertThat(access.authorize(principal.scopeKey(),RepositoryScope.WORKSPACE).principalId())
+                    .isEqualTo(publication.principalId());
+            assertThatThrownBy(() -> access.authorizePublication(principal.scopeKey())).isInstanceOf(AccessDeniedException.class);
+        } finally { SecurityContextHolder.clearContext(); }
+    }
+
     @Test void interactiveRecoveryRequiresTheOriginalVerifiedExternalBinding() {
         start(true, KeycloakPrincipalMode.STABLE);
         var principal = identities.oidc("https://idp.test", "original");

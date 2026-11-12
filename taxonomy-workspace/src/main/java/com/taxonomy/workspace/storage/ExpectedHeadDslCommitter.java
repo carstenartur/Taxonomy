@@ -47,7 +47,7 @@ public final class ExpectedHeadDslCommitter {
             ObjectId tree = dslRepository.insertDslTree(inserter, request.dslText(), request.provenance());
             ObjectId candidate = insertCommit(dslRepository, inserter, request, tree);
             inserter.flush();
-            return updateBranch(repository, request.branch(), expectedHead, candidate, personIdent(request.author()), request.message());
+            return updateBranch(repository, request.branch(), expectedHead, candidate, personIdent(request.author()), request.message(),false);
         }
     }
 
@@ -66,14 +66,19 @@ public final class ExpectedHeadDslCommitter {
     }
 
     private static CommitResult updateBranch(Repository repository, String branch, ObjectId expected, ObjectId candidate,
-                                             PersonIdent actor, String message) throws IOException {
+                                             PersonIdent actor, String message, boolean publication) throws IOException {
         String refName = Constants.R_HEADS + branch;
         RefUpdate update = repository.updateRef(refName);
         update.setNewObjectId(candidate);
         update.setExpectedOldObjectId(expected);
         update.setForceUpdate(false);
         update.setRefLogIdent(actor);
-        update.setRefLogMessage("commit: " + message, true);
+        if (publication) {
+            update.setForceRefLog(true);
+            update.setRefLogMessage(message,false);
+        } else {
+            update.setRefLogMessage("commit: " + message,true);
+        }
         var result = update.update();
         return switch (result) {
             case NEW, FAST_FORWARD, FORCED -> new CommitResult(candidate.name(), headName(expected), result);
@@ -157,12 +162,34 @@ public final class ExpectedHeadDslCommitter {
             return verifyExpectedHead(storage, branch, candidate.name());
         }
         try {
-            return updateBranch(repo, branch, expected, candidate, pin.commit().getCommitterIdent(),
-                    pin.commit().getFullMessage()).commitId();
+            var publishedBy=new PersonIdent(pin.commit().getCommitterIdent(),java.time.Instant.now());
+            return updateBranch(repo,branch,expected,candidate,publishedBy,publicationReflog(operationId),true).commitId();
         } catch (BranchHeadConflictException concurrent) {
             if (!candidate.name().equals(concurrent.getActualHeadCommit())) throw concurrent;
             return verifyExpectedHead(storage, branch, candidate.name());
         }
+    }
+
+    private static String publicationReflog(String operation) {
+        return "publish prepared workspace operation " + com.taxonomy.identity.StableIdentityHash.sha256(operation);
+    }
+
+    /** Only an exact native ref movement proves when the recorded operation changed the business source. */
+    java.time.Instant publicationTime(Repository repo,String operation,String branch,String before,String after) throws IOException {
+        org.eclipse.jgit.lib.ReflogReader reader;
+        try {
+            reader=repo.getReflogReader(Constants.R_HEADS+normalizeBranch(branch));
+        } catch (UnsupportedOperationException noReflog) {
+            return null;
+        }
+        if (reader==null) return null;
+        ObjectId expected=expectedHeadObjectId(before);
+        ObjectId candidate=ObjectId.fromString(after);
+        for (var entry:reader.getReverseEntries(64)) {
+            if (expected.equals(entry.getOldId()) && candidate.equals(entry.getNewId())
+                    && publicationReflog(operation).equals(entry.getComment())) return entry.getWho().getWhenAsInstant();
+        }
+        return null;
     }
 
     void release(Repository repo, String operationId, String branch, String candidateId) throws IOException {
@@ -188,7 +215,7 @@ public final class ExpectedHeadDslCommitter {
         }
     }
 
-    private static String pinRef(String operationId, String branch) {
+    static String pinRef(String operationId, String branch) {
         if (operationId == null || operationId.isBlank()) throw new IllegalArgumentException("operationId must not be blank");
         return "refs/taxonomy/prepared-sync/" + StableIdentityHash.sha256(operationId) + "/" + StableIdentityHash.sha256(branch);
     }
