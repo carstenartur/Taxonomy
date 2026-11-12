@@ -57,6 +57,8 @@ public class RelationProjectionOperationsApiController {
         this.membershipService = membershipService;
     }
 
+    @Operation(summary = "Inspect the selected branch vector generation",
+            description = "Checks the retained node and relation index against the authorized branch, current commit, catalogue and embedding model.")
     @GetMapping("/vectors")
     public ResponseEntity<BranchGraphVectors.Status> vectorStatus() {
         var context = workspaceResolver.resolveCurrentRepositoryContextForRead();
@@ -64,12 +66,16 @@ public class RelationProjectionOperationsApiController {
         return ResponseEntity.ok(vectors.inspect(context));
     }
 
+    @Operation(summary = "Rebuild the selected branch vector generation",
+            description = "Requires a writable scope and the current commit as a strong If-Match ETag. Publishes the node and relation vectors together.")
     @PostMapping("/vectors/rebuild")
     public ResponseEntity<BranchGraphVectors.Status> rebuildVectors(
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) {
         return changeVectors(ifMatch, false);
     }
 
+    @Operation(summary = "Purge the selected branch vector generation",
+            description = "Requires a writable scope and the current commit as a strong If-Match ETag. Removes the selected generation and retains the branch relation projection.")
     @org.springframework.web.bind.annotation.DeleteMapping("/vectors")
     public ResponseEntity<BranchGraphVectors.Status> purgeVectors(
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) {

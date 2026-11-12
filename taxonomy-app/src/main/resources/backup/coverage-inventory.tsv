@@ -32,6 +32,7 @@ com.taxonomy.catalog.model.TaxonomyNode	knowledge	PORTABLE_PRIMARY	Explicit vers
 com.taxonomy.catalog.model.TaxonomyRelation	knowledge	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.relations.model.RelationDecisionProjection	knowledge	REBUILDABLE	Rebuild using RelationBranchProjectionRebuildService from captured DSL
 com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint	knowledge	REBUILDABLE	Rebuild together with relation projection; never restore stale readiness
+com.taxonomy.relations.service.BranchGraphVectorGeneration	knowledge	REBUILDABLE	Rebuild native node and relation vectors from the restored branch, catalogue and pinned model after relation projection recovery
 com.taxonomy.relations.model.RelationEvidence	knowledge	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.relations.model.RelationHypothesis	knowledge	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.relations.model.RelationProjectionRecovery	knowledge	PORTABLE_PRIMARY	Durable recovery journal with commit provenance and failure history; restore pending work without old worker claims
