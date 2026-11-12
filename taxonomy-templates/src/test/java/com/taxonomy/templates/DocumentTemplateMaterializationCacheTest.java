@@ -80,6 +80,24 @@ class DocumentTemplateMaterializationCacheTest {
         assertThat(cache.sizeBytes()).isLessThanOrEqualTo(5);
     }
 
+    @Test
+    void exactLengthsHaveAnIndependentBoundAndNeverCacheFailuresOrCrossTemplates() throws Exception {
+        var cache = new DocumentTemplateMaterializationCache(1, 4, null);
+        assertThatThrownBy(() -> cache.packedLength("alpha", commit('a'), () -> {
+            throw new IOException("invalid package");
+        })).isInstanceOf(IOException.class);
+        assertThat(cache.packedLength("alpha", commit('a'), () -> 31)).isEqualTo(31);
+        assertThat(cache.packedLength("beta", commit('a'), () -> 47)).isEqualTo(47);
+        assertThat(cache.packedLength("alpha", commit('a'), () -> -1)).isEqualTo(31);
+        assertThat(cache.packedLength("alpha", commit('b'), () -> 59)).isEqualTo(59);
+        for (int i = 0; i < DocumentTemplateMaterializationCache.MAX_LENGTH_ENTRIES; i++) {
+            cache.packedLength("other-" + i, commit('a'), () -> 1);
+        }
+        assertThat(cache.lengthEntries()).isEqualTo(DocumentTemplateMaterializationCache.MAX_LENGTH_ENTRIES);
+        assertThat(cache.entries()).isZero();
+        assertThat(cache.packedLength("alpha", commit('a'), () -> 55)).isEqualTo(55);
+    }
+
     private static String commit(char value) {
         return String.valueOf(value).repeat(40);
     }

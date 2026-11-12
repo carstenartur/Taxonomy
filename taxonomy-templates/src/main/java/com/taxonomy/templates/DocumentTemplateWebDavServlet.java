@@ -127,16 +127,13 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
                 writeCollectionResponse(writer, collectionHref(request));
                 if (!"0".equals(depth)) {
                     for (TemplateDescriptor descriptor : templates.list()) {
-                        TemplateFile file = templates.downloadCurrent(
-                                descriptor.templateId());
-                        byte[] content = file.content();
                         writeTemplateResponse(
                                 writer,
-                                templateHref(request, file.manifest().fileName()),
-                                file.manifest().displayName(),
-                                file.commitId(),
-                                file.manifest().updatedAt(),
-                                content.length,
+                                templateHref(request, descriptor.fileName()),
+                                descriptor.displayName(),
+                                descriptor.headCommit(),
+                                descriptor.updatedAt(),
+                                templates.packedLength(descriptor),
                                 locks.find(descriptor.templateId()));
                     }
                 }
