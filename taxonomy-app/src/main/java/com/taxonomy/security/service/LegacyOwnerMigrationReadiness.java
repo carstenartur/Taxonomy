@@ -110,6 +110,7 @@ public final class LegacyOwnerMigrationReadiness {
                 owners.setString(1, scope);
                 boolean found = false;
                 boolean verified = false;
+                Set<String> historicalOidcIds = new HashSet<>();
                 try (var rows = owners.executeQuery()) {
                     while (rows.next()) {
                         found = true;
@@ -122,11 +123,19 @@ public final class LegacyOwnerMigrationReadiness {
                             if (scope.equals("principal-" + id.toLowerCase(Locale.ROOT))) {
                                 verified = true; // new server-generated STABLE scope
                             } else {
-                                audit.setString(1, id);
-                                try (var matches = audit.executeQuery()) {
-                                    if (matches.next() && matches.getInt(1) > 0) verified = true;
-                                }
+                                historicalOidcIds.add(id);
                             }
+                        }
+                    }
+                }
+                // Close the owner cursor first: SQL Server connections without MARS may not
+                // execute a second statement while the initial ResultSet is still open.
+                if (!verified) for (String id : historicalOidcIds) {
+                    audit.setString(1, id);
+                    try (var matches = audit.executeQuery()) {
+                        if (matches.next() && matches.getInt(1) > 0) {
+                            verified = true;
+                            break;
                         }
                     }
                 }
