@@ -45,7 +45,8 @@ class GitHistoryTransferTest {
                     new Rejected(new GitHistoryTransfer.Limits(sizes.size(), largest, bytes - 1), "byte budget"))) {
                 try (var target = new DslGitRepository()) {
                     String local = target.commitDsl("draft", "private work", "bob", "Keep this");
-                    assertThatThrownBy(() -> GitHistoryTransfer.copyCommitClosure(source, target, tip, List.of(), rejected.limits()))
+                    var bounded = new GitHistoryTransfer(rejected.limits());
+                    assertThatThrownBy(() -> bounded.transfer(source, target, tip, List.of()))
                             .isInstanceOf(IOException.class).hasMessageContaining(rejected.reason());
                     assertThat(upstream.head(target)).isNull();
                     assertThat(target.getHeadCommit("draft")).isEqualTo(local);
@@ -56,8 +57,8 @@ class GitHistoryTransferTest {
                 }
             }
             try (var target = new DslGitRepository()) {
-                assertThat(GitHistoryTransfer.copyCommitClosure(source, target, tip, List.of(),
-                        new GitHistoryTransfer.Limits(sizes.size(), largest, bytes))).isEqualTo(bytes);
+                var bounded = new GitHistoryTransfer(new GitHistoryTransfer.Limits(sizes.size(), largest, bytes));
+                assertThat(bounded.transfer(source, target, tip, List.of())).isEqualTo(bytes);
                 assertThat(upstream.head(target)).isNull();
                 upstream.advance(target, null, tip, "bob");
                 assertThat(target.getDslAtCommit(tip)).isEqualTo("updated version");
