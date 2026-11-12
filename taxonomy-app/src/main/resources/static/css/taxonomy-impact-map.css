@@ -41,6 +41,20 @@
     line-height: 1.4;
 }
 
+.impact-map-inspect {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.6rem 1rem;
+    font-weight: 600;
+}
+
+.impact-map-inspect-select {
+    min-width: 0;
+    min-height: 44px;
+    width: 100%;
+    font-size: 1rem;
+}
+
 .impact-map-kpis {
     display: flex;
     flex: 1 1 23rem;
@@ -384,14 +398,14 @@
 }
 
 .impact-map-detail-title {
-    font-size: 0.92rem;
+    font-size: 1rem;
     font-weight: 750;
 }
 
 .impact-map-detail-code {
     color: var(--bs-secondary-color, #6c757d);
     font-family: var(--bs-font-monospace, monospace);
-    font-size: 0.74rem;
+    font-size: 0.875rem;
 }
 
 .impact-map-detail-grid {
@@ -399,7 +413,7 @@
     grid-template-columns: max-content minmax(0, 1fr);
     gap: 0.18rem 0.65rem;
     margin: 0;
-    font-size: 0.76rem;
+    font-size: 0.875rem;
 }
 
 .impact-map-detail-grid dt {
@@ -437,6 +451,7 @@
 }
 
 .impact-map-related-item {
+    min-height: 2rem;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.5rem;
