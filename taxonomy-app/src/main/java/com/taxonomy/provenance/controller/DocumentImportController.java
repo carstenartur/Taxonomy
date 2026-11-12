@@ -2,13 +2,13 @@ package com.taxonomy.provenance.controller;
 
 import com.taxonomy.dto.AiExtractedCandidate;
 import com.taxonomy.analysis.operation.AnalysisAdapterStore;
-import com.taxonomy.composition.analysis.ScopedAnalysisAdapterExecution;
 import com.taxonomy.dto.DocumentParseResult;
 import com.taxonomy.dto.RegulationArchitectureMatch;
 import com.taxonomy.dto.RequirementSourceLinkDto;
 import com.taxonomy.dto.SourceArtifactDto;
 import com.taxonomy.model.SourceType;
 import com.taxonomy.provenance.config.DocumentImportLimits;
+import com.taxonomy.provenance.service.DocumentAnalysisExecution;
 import com.taxonomy.provenance.service.DocumentAnalysisService;
 import com.taxonomy.provenance.service.DocumentLimitException;
 import com.taxonomy.provenance.service.DocumentParserService;
@@ -47,13 +47,13 @@ public class DocumentImportController {
     private final DocumentProvenanceCommandService provenanceCommands;
     private final DocumentAnalysisService analysisService;
     private final DocumentImportLimits limits;
-    private final ScopedAnalysisAdapterExecution operations;
+    private final DocumentAnalysisExecution operations;
 
     public DocumentImportController(DocumentParserService parserService,
                                     SourceProvenanceService provenanceService,
                                     DocumentProvenanceCommandService provenanceCommands,
                                     DocumentAnalysisService analysisService,
-                                    DocumentImportLimits limits, ScopedAnalysisAdapterExecution operations) {
+                                    DocumentImportLimits limits, DocumentAnalysisExecution operations) {
         this.parserService = parserService;
         this.provenanceService = provenanceService;
         this.provenanceCommands = provenanceCommands;

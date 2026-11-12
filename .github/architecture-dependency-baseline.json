@@ -333,6 +333,13 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.analysis",
+      "toContext": "provenance",
+      "toPackage": "com.taxonomy.provenance.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.editor",
       "classDependencyCount": 7
@@ -1763,13 +1770,6 @@
       "fromPackage": "com.taxonomy.provenance.controller",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.operation",
-      "classDependencyCount": 1
-    },
-    {
-      "fromContext": "provenance",
-      "fromPackage": "com.taxonomy.provenance.controller",
-      "toContext": "app-composition",
-      "toPackage": "com.taxonomy.composition.analysis",
       "classDependencyCount": 1
     },
     {

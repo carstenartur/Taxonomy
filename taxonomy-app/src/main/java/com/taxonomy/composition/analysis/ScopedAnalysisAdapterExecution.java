@@ -1,6 +1,7 @@
 package com.taxonomy.composition.analysis;
 
 import com.taxonomy.analysis.operation.AnalysisAdapterStore;
+import com.taxonomy.provenance.service.DocumentAnalysisExecution;
 import com.taxonomy.security.service.PrincipalIdentityService;
 import com.taxonomy.shared.features.ConditionalOnFeature;
 import com.taxonomy.workspace.service.RepositoryContext;
@@ -28,7 +29,7 @@ import java.util.function.Supplier;
 @Service
 @org.springframework.scheduling.annotation.EnableScheduling
 @ConditionalOnFeature({"analysis"})
-public class ScopedAnalysisAdapterExecution {
+public class ScopedAnalysisAdapterExecution implements DocumentAnalysisExecution {
     private final WorkspaceResolver workspaces;
     private final WorkspaceDslReadPort repositories;
     private final PrincipalIdentityService identities;
@@ -54,6 +55,7 @@ public class ScopedAnalysisAdapterExecution {
         this.store = new AnalysisAdapterStore(em, transactions); this.json = json;
     }
 
+    @Override
     public ResponseEntity<?> execute(String kind, String fingerprint, boolean available, Supplier<?> work, Supplier<?> local) {
         return execute(kind, fingerprint, available, work, local, () -> true);
     }
