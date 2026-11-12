@@ -3,6 +3,7 @@ import path from 'node:path';
 import { openRoleSession } from './ui-role-fixtures.mjs';
 import { createRoleStateEvidence } from './ui-role-state-evidence.mjs';
 import { captureFailureEvidence } from './ui-evidence-policy.mjs';
+import { measureCatalogueSearch } from './ui-catalogue-search-budget.mjs';
 import { isolateRoleStateScenario } from './ui-role-state-isolation.mjs';
 import { runRoleStateFlow } from './ui-role-state-flow.mjs';
 import { runSystemInformationAcceptance } from './system-information-acceptance.mjs';
@@ -321,6 +322,11 @@ try {
     throw new Error('Standards integration introduced console errors or external requests');
   }
   checks.push('reviewed standards import, durable history, frozen export and reflow');
+  if (['desktop-user-chromium', 'desktop-architect-firefox', 'mobile-admin-webkit'].includes(profileId)) {
+    taskMeasurements.failedStep = 'real catalogue search budget';
+    taskMeasurements.catalogueSearch = await measureCatalogueSearch(context, baseUrl);
+    checks.push('measured 100 catalogue results, preserved keyboard focus and disclosed the selected description');
+  }
   taskMeasurements.schemaVersion = 1;
   taskMeasurements.failedStep = null;
 } catch (error) {
