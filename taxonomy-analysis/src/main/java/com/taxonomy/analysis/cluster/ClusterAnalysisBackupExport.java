@@ -107,7 +107,7 @@ public final class ClusterAnalysisBackupExport {
                     var run = parent(r, scope, included); String eventJson = text(r, "event_json");
                     long revision = r.getLong("child_revision"); var message = decode(eventJson);
                     if (!(message instanceof AnalysisProgressEvent event) || !sameContext(event.envelope(), run.context)
-                            || event.sequence() != revision || revision != revisions.getOrDefault(run.id, 0L) + 1 || revision > run.revision)
+                            || event.sequence() != revision || !ClusterAnalysisEvent.follows(revisions.getOrDefault(run.id, 0L), revision, run.revision) || revision > run.revision)
                         throw new IOException("Cluster analysis event reference is inconsistent");
                     revisions.put(run.id, revision);
                     return new ClusterAnalysisBackupRecords.Event(PortableRows.reference(r, "analysis.cluster-event", "id"), reference(run.id), revision, eventJson);
