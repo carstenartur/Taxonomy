@@ -132,3 +132,38 @@ for (const [workspaceId, basePath] of [['architect-workspace', ''], ['admin-work
     assert.equal(result.routes.length, 0, 'All four one-shot interception outcomes must be exercised');
   });
 }
+
+test('retained document analysis observes its native result without uploading twice', async () => {
+  const id = '12345678-1234-1234-1234-123456789abc';
+  const calls = [];
+  const native = {fileName: 'notice.pdf', matches: [{nodeCode: 'CP'}]};
+  const responses = [{state: 'RUNNING', operationId: id}, {state: 'RUNNING', operationId: id}, native];
+  const window = {location:{href:'https://taxonomy.example/',origin:'https://taxonomy.example'},
+    __TaxonomyAnalysisSessionContext:{runtime:{workspaceId:'original'}}, setTimeout: (run) => queueMicrotask(run),
+    fetch: async (path, init) => {
+      calls.push([init.method || 'GET', new URL(path,'https://taxonomy.example').pathname]);
+      return new Response(JSON.stringify(responses.shift()),{status:responses.length ? 202 : 200,headers:{'Content-Type':'application/json'}});
+    }};
+  canonicalFixture.install({window,document:{},URL,console},['api/import-api.js']);
+  let cleared = false;
+  const result = await window.ImportApi.mapRegulation(new FormData(),() => true, () => () => { cleared = true; });
+  assert.equal(JSON.stringify(result), JSON.stringify(native));
+  assert.deepEqual(calls,[['POST','/api/documents/map-regulation'],['GET','/api/analysis-adapters/'+id],['GET','/api/analysis-adapters/'+id]]);
+  assert.equal(cleared,true);
+});
+
+test('superseded document analysis never polls or cancels in the replacement workspace', async () => {
+  const id = '12345678-1234-1234-1234-123456789abc';
+  const runtime = {workspaceId:'original'};
+  let cancellation, submitted = 0, cleaned = false;
+  const window = {location:{href:'https://taxonomy.example/',origin:'https://taxonomy.example'},
+    __TaxonomyAnalysisSessionContext:{runtime}, setTimeout: run => { runtime.workspaceId='replacement'; queueMicrotask(run); },
+    fetch: async () => { submitted++; return new Response(JSON.stringify({state:'RUNNING',operationId:id}),
+      {status:202,headers:{'Content-Type':'application/json'}}); }};
+  canonicalFixture.install({window,document:{},URL,console},['api/import-api.js']);
+  await assert.rejects(window.ImportApi.extractDocumentWithAi(new FormData(),undefined, cancel => {
+    cancellation=cancel; return () => { cleaned=true; };
+  }), error => error.code==='ABORTED');
+  await assert.rejects(cancellation(), error => error.code==='ABORTED');
+  assert.equal(submitted,1); assert.equal(cleaned,true);
+});

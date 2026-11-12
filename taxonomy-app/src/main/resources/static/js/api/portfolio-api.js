@@ -356,8 +356,8 @@ window.TaxonomyPortfolioApi = (function () {
         uploadDocument: function (formData) {
             return sendFormData('/api/documents/upload', formData);
         },
-        extractDocumentWithAi: function (formData) {
-            return sendFormData('/api/documents/extract-ai', formData);
+        extractDocumentWithAi: function (formData, owner, pending) {
+            return window.ImportApi.extractDocumentWithAi(formData, owner, pending);
         },
         importReviewedRequirements: function (projectId, body) {
             return sendJsonResponse(projectPath(projectId) + '/requirements/import-review',

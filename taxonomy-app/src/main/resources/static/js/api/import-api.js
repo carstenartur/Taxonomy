@@ -76,10 +76,53 @@ window.ImportApi = (function () {
             {method: 'POST', body: data, headers: headers}, {pinnedWorkspaceId: workspace});
     }
 
+    function recoveryError(error) {
+        var code = error?.responseBody?.code;
+        var key = {
+            ANALYSIS_EXPIRED: 'docimport.operation.expired', CANCELLED: 'docimport.operation.cancelled',
+            STALE_SOURCE: 'docimport.operation.stale', COMMAND_CONFLICT: 'docimport.operation.stale',
+            OUTCOME_UNKNOWN: 'docimport.operation.unknown'
+        }[code];
+        if (key && window.TaxonomyI18n?.t) error.message = window.TaxonomyI18n.t(key);
+        return error;
+    }
+
+    async function analyzeDocument(path, data, owner, pending) {
+        var context = client.captureContext();
+        var current = function () { return context() && (!owner || owner()); };
+        function guard() {
+            if (!current()) throw Object.assign(new Error('Request context was superseded'), {code: 'ABORTED'});
+        }
+        var cleanup;
+        try {
+            var result = await client.sendFormData(path, data);
+            if (result?.state !== 'RUNNING') return result;
+            var id = result.operationId;
+            if (!/^[a-f0-9-]{36}$/.test(id || '')) throw new Error('Invalid analysis operation');
+            var statusPath = '/api/analysis-adapters/' + encodeURIComponent(id);
+            guard();
+            if (pending) cleanup = pending(async function () {
+                guard();
+                try { await client.sendJson(statusPath + '/cancel', {}, 'POST'); }
+                catch (error) { if (error?.responseBody?.code !== 'CANCELLED') throw recoveryError(error); }
+            });
+            while (result?.state === 'RUNNING') {
+                await new Promise(function (resolve) { window.setTimeout(resolve, 2000); });
+                guard();
+                result = await client.getJson(statusPath);
+                if (result?.state === 'RUNNING' && result.operationId !== id)
+                    throw new Error('Analysis operation changed');
+            }
+            guard();
+            return result;
+        } catch (error) { throw recoveryError(error); }
+        finally { if (cleanup) cleanup(); }
+    }
+
     return {
         uploadDocument: function (data) { return client.sendFormData('/api/documents/upload', data); },
-        extractDocumentWithAi: function (data) { return client.sendFormData('/api/documents/extract-ai', data); },
-        mapRegulation: function (data) { return client.sendFormData('/api/documents/map-regulation', data); },
+        extractDocumentWithAi: function (data, owner, pending) { return analyzeDocument('/api/documents/extract-ai', data, owner, pending); },
+        mapRegulation: function (data, owner, pending) { return analyzeDocument('/api/documents/map-regulation', data, owner, pending); },
         loadProfiles:    loadProfiles,
         preview:         preview,
         execute:         execute,

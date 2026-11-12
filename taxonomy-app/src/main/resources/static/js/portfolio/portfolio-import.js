@@ -208,7 +208,20 @@
             const form = new FormData();
             form.append('file', state.currentFile);
             form.append('sourceType', document.getElementById('sourceType').value);
-            const result = await api().extractDocumentWithAi(form);
+            const file = state.currentFile;
+            const current = window.TaxonomyApiClient.captureContext();
+            const owns = () => current() && state.currentFile === file;
+            const result = await api().extractDocumentWithAi(form, owns, cancel => {
+                const button = document.getElementById('cancelAiImport');
+                button.classList.remove('d-none');
+                button.disabled = false;
+                button.onclick = async () => {
+                    button.disabled = true;
+                    try { await cancel(); } catch (error) { if (owns()) { button.disabled = false; showError(error); } }
+                };
+                return () => { button.classList.add('d-none'); button.onclick = null; };
+            });
+            if (!owns()) return;
             (result.aiCandidates || []).forEach(candidate => {
                 if (state.candidates.some(existing => normalize(existing.text) === normalize(candidate.text))) return;
                 addCandidate({
@@ -221,7 +234,7 @@
             enrichDuplicateSuggestions();
             renderReview();
         } catch (error) {
-            showError(error);
+            if (error.code !== 'ABORTED') showError(error);
         } finally {
             setBusy(false);
         }

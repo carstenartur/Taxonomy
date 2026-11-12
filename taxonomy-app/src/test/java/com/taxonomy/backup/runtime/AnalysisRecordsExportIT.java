@@ -24,6 +24,31 @@ import static com.taxonomy.backup.runtime.CurrentStateExportIT.*;
 import static org.assertj.core.api.Assertions.*;
 
 class AnalysisRecordsExportIT {
+    @Test void adapterBackupSelectsTheStableActorAndExactWorkspaceAndPreservesTheNativeResult() throws Exception {
+        var snapshot = scoped(BackupProfile.REPOSITORY_HISTORY);
+        String actor = snapshot.authorization().principalId().value().toString();
+        try (var fixture = new Fixture()) {
+            String saved = UUID.randomUUID().toString(), foreign = UUID.randomUUID().toString();
+            for (String id : List.of(saved,foreign,UUID.randomUUID().toString())) {
+                String owner = id.equals(foreign) ? UUID.randomUUID().toString() : actor;
+                String workspace = id.equals(saved) || id.equals(foreign) ? "private-a" : "private-b";
+                fixture.jdbc.update("insert into analysis_adapter_operation(id,actor,repository_id,workspace_id,branch_name,kind,"
+                        +"source_commit,command_key,request_key,fingerprint,state,result_json,created_at,updated_at,row_version) "
+                        +"values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",id,owner,"repo-a",workspace,"draft","REGULATION_MAPPING",
+                        "f".repeat(40),com.taxonomy.analysis.operation.AnalysisAdapterStore.digest(id),"a".repeat(64),"b".repeat(64),
+                        "COMPLETED","{\"matches\":[{\"nodeCode\":\"CP\"}]}",1L,2L,3L);
+            }
+            var output = new Contents();
+            new AnalysisBackupContributor(fixture.database,"alice").write(snapshot,output);
+            assertThat(records(output,"adapter-operations")).singleElement().satisfies(record -> {
+                assertThat(record.path("sourceId").path("value").asText()).isEqualTo(saved);
+                assertThat(record.path("scope").path("actor").asText()).isEqualTo(actor);
+                assertThat(record.path("resultJson").asText()).contains("nodeCode");
+                assertThat(record.path("sequence").asLong()).isEqualTo(3);
+            });
+        }
+    }
+
     @ParameterizedTest @ValueSource(booleans = {false, true})
     void largePlainAndStoredPackedResultsExportAsLosslessBoundedFields(boolean storedPacked) throws Exception {
         String original = "{\"reasons\":{\"CP\":\"" + "Complete source evidence. ".repeat(540_000) + "\"}}";
@@ -290,7 +315,8 @@ class AnalysisRecordsExportIT {
             new AnalysisBackupContributor(database, "alice").write(scoped(BackupProfile.CURRENT_STATE), output);
             assertThat(ids(output, "continuations")).containsExactlyInAnyOrderElementsOf(expected);
             assertThat(records(output, "questions")).hasSize(205);
-            assertThat(database.sql).hasSize(7);
+            assertThat(database.sql).hasSize(8);
+            assertThat(database.sql.get(6)).contains("analysis_adapter_operation", "actor=?");
             assertThat(database.sql.get(1)).doesNotContain("request_json", "result_json");
             assertThat(database.sql.subList(2, 6).stream().map(query -> query.chars().filter(c -> c == '?').count())).containsExactly(200L, 5L, 200L, 5L);
             database.assertClosed();
@@ -368,7 +394,7 @@ class AnalysisRecordsExportIT {
         for (String dataset : ANALYSIS_DATASETS) assertThat(records(output, dataset)).as("Selected Git version cannot attribute present-day %s", dataset).isEmpty();
     }
     private static final List<String> ANALYSIS_DATASETS = List.of("drafts", "continuations", "questions",
-            "cluster-runs", "cluster-work", "cluster-inputs", "cluster-events", "cluster-calls", "cluster-attempts");
+            "cluster-runs", "cluster-work", "cluster-inputs", "cluster-events", "cluster-calls", "cluster-attempts", "adapter-operations");
     private static void assertCompleteAnalysisDatasets(Contents output, BackupProfile profile) throws IOException {
         assertThat(output.entries.keySet()).containsExactlyInAnyOrderElementsOf(
                 ANALYSIS_DATASETS.stream().map(dataset -> "data/analysis/" + dataset + ".ndjson").toList());

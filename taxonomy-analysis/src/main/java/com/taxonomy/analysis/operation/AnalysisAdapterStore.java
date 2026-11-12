@@ -168,7 +168,8 @@ public final class AnalysisAdapterStore {
         try {
             var sha = MessageDigest.getInstance("SHA-256");
             for (String part : parts) {
-                byte[] bytes = Objects.requireNonNull(part).getBytes(StandardCharsets.UTF_8);
+                if (part == null) { sha.update(ByteBuffer.allocate(4).putInt(-1).array()); continue; }
+                byte[] bytes = part.getBytes(StandardCharsets.UTF_8);
                 sha.update(ByteBuffer.allocate(4).putInt(bytes.length).array()); sha.update(bytes);
             }
             return HexFormat.of().formatHex(sha.digest());

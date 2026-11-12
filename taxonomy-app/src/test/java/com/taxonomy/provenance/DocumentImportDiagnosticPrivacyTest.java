@@ -38,14 +38,24 @@ class DocumentImportDiagnosticPrivacyTest {
     private final DocumentParserService parser = mock(DocumentParserService.class);
     private final DocumentProvenanceCommandService commands = mock(DocumentProvenanceCommandService.class);
     private final DocumentAnalysisService analysis = mock(DocumentAnalysisService.class);
+    private final com.taxonomy.composition.analysis.ScopedAnalysisAdapterExecution operations = mock(com.taxonomy.composition.analysis.ScopedAnalysisAdapterExecution.class);
     private final DocumentImportController controller = new DocumentImportController(
-            parser, mock(SourceProvenanceService.class), commands, analysis, new DocumentImportLimits());
+            parser, mock(SourceProvenanceService.class), commands, analysis, new DocumentImportLimits(), operations);
     private final MockMultipartFile upload = new MockMultipartFile(
             "file", FILENAME, "application/pdf", new byte[]{1});
     private final Logger logger = (Logger) LoggerFactory.getLogger(DocumentImportController.class);
     private final ListAppender<ILoggingEvent> events = new ListAppender<>();
     private Level previousLevel;
     private boolean previousAdditive;
+
+    @BeforeEach
+    void nativeAnalysisBoundary() throws Exception {
+        when(parser.computeContentHash(upload)).thenReturn("a".repeat(64));
+        org.mockito.Mockito.doAnswer(call -> org.springframework.http.ResponseEntity.ok(
+                ((java.util.function.Supplier<?>) call.getArgument(3)).get())).when(operations).execute(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyBoolean(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
 
     @BeforeEach
     void captureDiagnostics() {

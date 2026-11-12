@@ -186,3 +186,9 @@ angepasst werden.  Templates sind nach Kategorien gruppiert:
    pflegen
 4. **Kombinieren Sie verwandte Kandidaten** in einem einzigen Analyselauf für
    kohärente Architektur-Ansichten
+
+### KI-Extraktion und Regelwerkszuordnung wieder aufnehmen
+
+Beide Dokumentrouten speichern vor dem Provideraufruf einen Auftrag für das auslösende Konto, Repository, den Arbeitsbereich, Branch und Quell-Commit. Derselbe `Idempotency-Key` verwendet den ursprünglichen Auftrag. Ohne diesen Header gilt das auch für dieselbe Datei mit gleichem Namen, Optionen und Quellstand. Ändert sich der Inhalt oder die Quelle bei gleichem explizitem Schlüssel, antwortet die Anwendung mit HTTP 409. Ist kein Provider konfiguriert, erzeugt eine rein lokale Antwort keinen Auftrag.
+
+Eine gleichzeitige Anfrage erhält HTTP 202 und die ursprüngliche Auftragskennung. `GET /api/analysis-adapters/{id}` liest das Ergebnis im Format der Dokumentroute. Beide Importseiten fragen diesen Pfad ab, solange der Auftrag läuft. Die Schaltfläche zum Abbrechen sendet `POST /api/analysis-adapters/{id}/cancel`. Ein verspätetes Providerergebnis kann den Abbruch nicht überschreiben. Fehlt 30 Minuten nach dem Start weiterhin das Ergebnis, wird der Ausgang als unbekannt gemeldet. Die Ergebnisdaten bleiben 30 Tage erhalten. Anschließend verhindert ein kompakter Vermerk weitere 90 Tage lang eine erneute Ausführung und liefert währenddessen HTTP 410. Die Wiederherstellung bewahrt die ursprüngliche Zeitangabe und beendet unterbrochene Aufträge ohne neuen Provideraufruf.

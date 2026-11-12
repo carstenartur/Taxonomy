@@ -49,6 +49,55 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
     private volatile Runnable beforeCompletionInsert = () -> { };
     private volatile Consumer<CompletionInsert> completionInsertObserver = ignored -> { };
 
+    com.taxonomy.composition.analysis.ScopedAnalysisAdapterExecution adapterGateway(
+            com.taxonomy.workspace.service.WorkspaceResolver resolver, com.taxonomy.workspace.service.WorkspaceDslReadPort git,
+            com.taxonomy.security.service.PrincipalIdentityService identities) {
+        return new com.taxonomy.composition.analysis.ScopedAnalysisAdapterExecution(resolver,git,identities,em,transactions,JSON);
+    }
+
+    void durableDocumentAdapterRetainsItsNativeResultAndFencesLateCompletion() throws Exception {
+        var instant = java.time.Instant.now();
+        var owner = new com.taxonomy.analysis.operation.AnalysisAdapterStore.Scope(identity, "repo", "ws", "main");
+        var other = new com.taxonomy.analysis.operation.AnalysisAdapterStore.Scope(UUID.randomUUID().toString(), "repo", "ws", "main");
+        String source = "f".repeat(40), inputs = "a".repeat(64);
+        var service = new com.taxonomy.analysis.operation.AnalysisAdapterStore(em, transactions, Clock.fixed(instant, java.time.ZoneOffset.UTC));
+        var ready = new CountDownLatch(2); var start = new CountDownLatch(1);
+        java.util.concurrent.Callable<com.taxonomy.analysis.operation.AnalysisAdapterStore.Admission> submit = () -> {
+            ready.countDown(); assertTrue(start.await(10,TimeUnit.SECONDS));
+            return service.admit(owner,"REGULATION_MAPPING",source,inputs,"one-command",true);
+        };
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var f1 = pool.submit(submit); var f2 = pool.submit(submit);
+            assertTrue(ready.await(10,TimeUnit.SECONDS)); start.countDown();
+            var first = f1.get(15,TimeUnit.SECONDS); var second = f2.get(15,TimeUnit.SECONDS);
+            assertNotEquals(first.claimed(), second.claimed());
+            var run = first.operation(); assertEquals(run.id(), second.operation().id());
+            String result = "{\"matches\":[{\"code\":\"CP\"}]}";
+            var completed = service.settle(owner,run.id(),run.revision(),result,null);
+            assertEquals(result, completed.resultJson());
+            assertEquals(404, assertThrows(org.springframework.web.server.ResponseStatusException.class, () -> service.read(other,run.id())).getStatusCode().value());
+            assertEquals(completed, service.admit(owner,"REGULATION_MAPPING",source,inputs,"one-command",false).operation());
+            var cancel = service.admit(owner,"REGULATION_MAPPING",source,inputs,"cancel",true).operation();
+            assertEquals("CANCELLED", service.cancel(owner,cancel.id()).state());
+            assertEquals("CANCELLED", service.settle(owner,cancel.id(),cancel.revision(),result,null).state());
+            var foreign = service.admit(other,"REGULATION_MAPPING",source,inputs,"one-command",true).operation();
+            var future = new com.taxonomy.analysis.operation.AnalysisAdapterStore(em,transactions,Clock.fixed(
+                    instant.plus(java.time.Duration.ofDays(31)),java.time.ZoneOffset.UTC));
+            assertEquals("EXPIRED", future.read(owner,run.id()).state());
+            var expired = future.admit(owner,"REGULATION_MAPPING",source,inputs,"one-command",true);
+            assertFalse(expired.claimed()); assertNull(expired.operation().resultJson());
+            assertEquals("RUNNING",service.read(other,foreign.id()).state());
+            var record = new com.taxonomy.analysis.operation.AnalysisAdapterBackup.Receipt(
+                    new com.taxonomy.backup.SourceRecordId("analysis.adapter",run.id()),owner,run.kind(),source,run.requestKey(),inputs,
+                    "COMPLETED",result,null,run.createdAt(),completed.updatedAt(),completed.revision());
+            var target = new com.taxonomy.analysis.operation.AnalysisAdapterStore.Scope(other.actor(),"restored-repo",null,"other");
+            String remapped = UUID.randomUUID().toString();
+            com.taxonomy.analysis.operation.AnalysisAdapterBackup.restore(em,transactions,record,remapped,target);
+            var replayed = service.admit(target,"REGULATION_MAPPING",source,inputs,"one-command",false).operation();
+            assertEquals(remapped,replayed.id()); assertEquals(result,replayed.resultJson()); assertEquals(completed.revision(),replayed.revision());
+        }
+    }
+
     record CompletionInsert(Connection connection, boolean executingSql) { }
 
     void observeCompletionInserts(Consumer<CompletionInsert> observer) {
@@ -97,7 +146,7 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
                 return observe(super.getConnection(username, password));
             }
         });
-        factory.setManagedTypes(PersistenceManagedTypes.of(ClusterAnalysisRun.class.getName(), ClusterAnalysisWork.class.getName(),
+        factory.setManagedTypes(PersistenceManagedTypes.of(com.taxonomy.analysis.operation.AnalysisAdapterOperation.class.getName(), ClusterAnalysisRun.class.getName(), ClusterAnalysisWork.class.getName(),
                 ClusterAnalysisInput.class.getName(), ClusterAnalysisEvent.class.getName(), ClusterAnalysisCall.class.getName(), ClusterAnalysisAttempt.class.getName(),
                 AnalysisDispatchIntent.class.getName(), AnalysisTaskCompletionRecord.class.getName()));
         factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
