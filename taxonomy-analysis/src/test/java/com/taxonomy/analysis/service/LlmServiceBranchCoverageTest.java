@@ -736,6 +736,11 @@ class LlmServiceBranchCoverageTest {
         assertThat(result.getProductCoverageGaps().get(0).productFamilyCode()).isEqualTo("IP-F");
         assertThat(result.getProductCoverageGaps().get(0).candidateCodes())
                 .containsExactly("IP-P1", "IP-P2");
+        var evidence = new tools.jackson.databind.ObjectMapper().valueToTree(result.getProductCoverageGaps().getFirst());
+        assertThat(evidence.path("minimumSuitabilityScore").intValue(-1)).isEqualTo(50);
+        assertThat(evidence.at("/assessedProductScores/IP-P1").doubleValue(-1)).isEqualTo(30d);
+        assertThat(evidence.at("/assessedProductScores/IP-P2").doubleValue(-1)).isEqualTo(20d);
+
     }
 
     @Test

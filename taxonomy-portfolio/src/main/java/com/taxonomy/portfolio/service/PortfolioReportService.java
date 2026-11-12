@@ -58,13 +58,15 @@ public class PortfolioReportService {
     private final PortfolioAggregationService aggregationService;
     private final RequirementAnalysisSnapshotRepository snapshotRepository;
     private final ObjectMapper objectMapper;
+    private final ProjectProductGapReviewService gapReviews;
 
     public PortfolioReportService(PortfolioAggregationService aggregationService,
                                   RequirementAnalysisSnapshotRepository snapshotRepository,
-                                  ObjectMapper objectMapper) {
+                                  ObjectMapper objectMapper, ProjectProductGapReviewService gapReviews) {
         this.aggregationService = aggregationService;
         this.snapshotRepository = snapshotRepository;
         this.objectMapper = objectMapper;
+        this.gapReviews = gapReviews;
     }
 
     @Transactional(readOnly = true)
@@ -75,7 +77,7 @@ public class PortfolioReportService {
                                  String username,
                                  WorkspaceContext context) {
         ProjectPortfolioView portfolio = aggregationService.build(projectId, username, context);
-        ReportModel model = buildModel(portfolio, requirementId);
+        ReportModel model = buildModel(portfolio, requirementId, PortfolioScope.key(username, context), format);
         String baseName = safeFilename(portfolio.project().projectKey()
                 + (requirementId != null ? "-" + model.requirements().get(0).requirementKey() : "-portfolio"));
         return switch (format) {
@@ -94,7 +96,7 @@ public class PortfolioReportService {
                 filename + "." + format.extension());
     }
 
-    private ReportModel buildModel(ProjectPortfolioView portfolio, Long requirementId) {
+    private ReportModel buildModel(ProjectPortfolioView portfolio, Long requirementId, String scopeKey, Format format) {
         List<RequirementView> requirements = requirementId == null
                 ? portfolio.requirements()
                 : portfolio.requirements().stream()
@@ -117,8 +119,8 @@ public class PortfolioReportService {
         List<SnapshotBaseline> baselines = new ArrayList<>();
         for (RequirementView requirement : requirements) {
             if (requirement.currentAnalysisSnapshotId() == null) continue;
-            snapshotRepository.findByIdAndProjectId(
-                            requirement.currentAnalysisSnapshotId(), portfolio.project().id())
+            snapshotRepository.findByIdAndProjectIdAndScopeKey(
+                            requirement.currentAnalysisSnapshotId(), portfolio.project().id(), scopeKey)
                     .map(snapshot -> baseline(requirement, snapshot))
                     .ifPresent(baselines::add);
         }
@@ -134,7 +136,7 @@ public class PortfolioReportService {
                 portfolio.requirementTaxonomyMatrix(),
                 portfolio.requirementSolutionMatrix(),
                 portfolio.solutionProductMatrix(),
-                baselines);
+                baselines, format == Format.CSV ? List.of() : gapReviews.forReport(portfolio.project().id(), requirementId, scopeKey));
     }
 
     private SnapshotBaseline baseline(RequirementView requirement,
@@ -196,6 +198,18 @@ public class PortfolioReportService {
                 .append('|').append(escapeMarkdown(node.title())).append('|')
                 .append(node.requirementCount()).append('|').append(AnalysisPercentages.display(node.maximumDirectScore()))
                 .append('|').append(AnalysisPercentages.display(node.averageRelevance() * 100)).append("|\n"));
+        if (!model.productCoverageGaps().isEmpty()) {
+            output.append("\n## Product coverage gaps\n\n");
+            for (var family : model.productCoverageGaps()) {
+                output.append("### ").append(escapeMarkdown(family.familyCode())).append(" — ")
+                        .append(escapeMarkdown(family.familyName())).append("\n\n");
+                output.append("- Classification: ").append(family.classification()).append(" (v").append(family.revision()).append(")\n");
+                for (var observation : family.observations()) {
+                    output.append("- ").append(escapeMarkdown(gapEvidence(observation))).append('\n');
+                }
+                output.append('\n');
+            }
+        }
         output.append("\n## Solutions and products\n\n");
         for (ProjectSolutionView solution : model.solutions()) {
             output.append("### ").append(solution.solution().solutionKey()).append(" — ")
@@ -292,6 +306,14 @@ public class PortfolioReportService {
                         String.valueOf(node.requirementCount()), AnalysisPercentages.display(node.maximumDirectScore()),
                         AnalysisPercentages.display(node.averageRelevance() * 100));
             }
+            if (!model.productCoverageGaps().isEmpty()) {
+                title(document, "Product coverage gaps", 2);
+                for (var family : model.productCoverageGaps()) {
+                    title(document, family.familyCode() + " — " + nullSafe(family.familyName()), 3);
+                    paragraph(document, "Classification: " + family.classification() + " (v" + family.revision() + ")", false);
+                    for (var observation : family.observations()) paragraph(document, gapEvidence(observation), false);
+                }
+            }
             title(document, "Solutions and products", 2);
             for (ProjectSolutionView solution : model.solutions()) {
                 title(document, solution.solution().solutionKey() + " — "
@@ -330,6 +352,20 @@ public class PortfolioReportService {
         } catch (IOException error) {
             throw new IllegalStateException("Unable to render portfolio DOCX report", error);
         }
+    }
+
+    private static String gapEvidence(ProjectProductGaps.Observation source) {
+        var text = new StringBuilder().append(source.requirementKey()).append(" v").append(source.requirementVersion())
+                .append(" · Snapshot ").append(source.snapshotId()).append(" · Catalogue ").append(nullSafe(source.catalogueFingerprint()));
+        if (source.minimumSuitabilityScore() != null) text.append(" · Suitability threshold ").append(source.minimumSuitabilityScore()).append('%');
+        if (source.reason() != null && !source.reason().isBlank()) text.append(" · ").append(source.reason());
+        for (var candidate : source.candidates()) {
+            text.append(" · ").append(candidate.code()).append(" (");
+            if (candidate.assessedScore() != null) text.append(AnalysisPercentages.display(candidate.assessedScore())).append(" assessed, ");
+            text.append(AnalysisPercentages.display(candidate.recordedScore())).append(" recorded)");
+            if (candidate.reason() != null && !candidate.reason().isBlank()) text.append(" — ").append(candidate.reason());
+        }
+        return text.toString();
     }
 
     private String csv(ReportModel model, String matrixName) {
@@ -452,6 +488,6 @@ public class PortfolioReportService {
             MatrixView requirementTaxonomyMatrix,
             MatrixView requirementSolutionMatrix,
             MatrixView solutionProductMatrix,
-            List<SnapshotBaseline> baselines) {
+            List<SnapshotBaseline> baselines, List<ProjectProductGapReviewService.ReviewedFamily> productCoverageGaps) {
     }
 }

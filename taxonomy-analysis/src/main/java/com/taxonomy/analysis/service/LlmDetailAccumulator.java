@@ -12,6 +12,7 @@ final class LlmDetailAccumulator {
     private static final int TEXT_LIMIT = 32_768;
     private static final String TRUNCATED = "\n[diagnostic transcript truncated]";
     private final Map<String, Double> scores = new LinkedHashMap<>();
+    private final Map<String, Double> assessedProductScores = new LinkedHashMap<>();
     private final Map<String, String> reasons = new LinkedHashMap<>();
     private final Map<String, RootAssessment> rootAssessments = new LinkedHashMap<>();
     private final StringBuilder prompts = new StringBuilder();
@@ -26,6 +27,7 @@ final class LlmDetailAccumulator {
         count++;
         if (detail.getScores() != null) scores.putAll(detail.getScores());
         if (detail.getReasons() != null) reasons.putAll(detail.getReasons());
+        assessedProductScores.putAll(detail.getAssessedProductScores());
         rootAssessments.putAll(detail.getRootAssessments());
         if (provider == null) provider = detail.getProvider();
         if (discrepancy == null) discrepancy = detail.getDiscrepancy();
@@ -50,6 +52,7 @@ final class LlmDetailAccumulator {
         LlmCallDetail result = new LlmCallDetail();
         result.setScores(scores);
         result.setReasons(reasons);
+        result.setAssessedProductScores(assessedProductScores);
         result.setRootAssessments(rootAssessments);
         result.setProvider(provider);
         result.setPrompt(prompts.toString());

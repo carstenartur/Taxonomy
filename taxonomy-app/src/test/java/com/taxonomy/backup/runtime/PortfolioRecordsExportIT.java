@@ -208,7 +208,7 @@ class PortfolioRecordsExportIT {
             var contributor = new PortfolioBackupContributor(fixture.database);
             var snapshot = snapshot(profile, new BackupScope.Installation());
             var output = new Contents(); contributor.write(snapshot, output);
-            assertThat(output.entries).hasSize(25);
+            assertThat(output.entries).hasSize(26);
             assertThat(records(output, "project")).hasSize(2);
             assertThat(output.text()).contains("CURRENT-ALICE", "CURRENT-BOB");
             assertThat(records(output, "requirement-version")).hasSize(profile.includesHistory() ? 4 : 2);
@@ -236,7 +236,7 @@ class PortfolioRecordsExportIT {
             var scope = new BackupScope.Workspace("repo-a", "private-a");
             var current = new Contents();
             contributor.write(snapshot(BackupProfile.CURRENT_STATE, scope), current);
-            assertThat(current.entries).hasSize(25);
+            assertThat(current.entries).hasSize(26);
             assertThat(current.text()).contains("CURRENT-ALICE", "Solution ALICE", "Product ALICE", "Coverage ALICE", "Conflict ALICE")
                     .doesNotContain("FOREIGN", "OLD-ALICE", "FROZEN-ALICE", "PREDECESSOR-ALICE", "VARIANT-ALICE", "OLD-RUN-ALICE",
                             "NO-REVISION-ALICE", "PREVIEW-ALICE", "ADOPTION-ALICE", "EVIDENCE-ALICE", "WORKER-OWNER");
@@ -269,6 +269,9 @@ class PortfolioRecordsExportIT {
             }
             assertThat(history.text()).contains("OLD-ALICE", "FROZEN-ALICE", "PREDECESSOR-ALICE", "VARIANT-ALICE", "OLD-RUN-ALICE",
                     "NO-REVISION-ALICE", "PREVIEW-ALICE", "ADOPTION-ALICE", "EVIDENCE-ALICE").doesNotContain("FOREIGN", "WORKER-OWNER");
+            assertThat(records(current, "product-gap-review")).singleElement().satisfies(row ->
+                    assertThat(row.path("classification").asText()).isEqualTo("PROCURE"));
+            assertThat(records(history, "product-gap-review")).extracting(row -> row.path("revision").asInt()).containsExactly(1, 2);
             assertThat(records(history, "requirement-version")).hasSize(2);
             assertThat(records(history, "reformulation-revision")).hasSize(2);
             for (String dataset : List.of("reformulation-run", "reformulation-checkpoint", "reformulation-usage-session", "reformulation-usage-attempt")) {
@@ -279,7 +282,7 @@ class PortfolioRecordsExportIT {
                     .anyMatch(value -> value.contains("FROZEN-ALICE"));
             assertThat(contributor.componentId()).isEqualTo(new BackupComponentId("portfolio"));
             assertThat(contributor.schemaVersion()).isEqualTo(1);
-            assertThat(contributor.categories()).hasSize(25).contains(ProductCatalogEntry.class.getName(), ReformulationUsageAttempt.class.getName());
+            assertThat(contributor.categories()).hasSize(26).contains(ProductCatalogEntry.class.getName(), ReformulationUsageAttempt.class.getName());
             assertThat(contributor.omissions(BackupProfile.CURRENT_STATE)).anyMatch(value -> value.contains("original text"));
             assertThat(contributor.omissions(BackupProfile.REPOSITORY_HISTORY)).noneMatch(value -> value.contains("original text"));
             assertThat(contributor.omissions(BackupProfile.SELECTED_VERSION)).anyMatch(value -> value.contains("selected Git document"));
@@ -302,7 +305,7 @@ class PortfolioRecordsExportIT {
             var selected = snapshot(BackupProfile.SELECTED_VERSION, new BackupScope.Workspace("repo-a", "private-a"));
             var output = new Contents();
             contributor.write(selected, output);
-            assertThat(output.entries).hasSize(25);
+            assertThat(output.entries).hasSize(26);
             for (var entry : output.entries.entrySet()) {
                 assertThat(new String(entry.getValue(), StandardCharsets.UTF_8).lines()).as(entry.getKey())
                         .hasSize(1).allMatch(line -> line.contains("\"schemaVersion\":1") && line.contains("SELECTED_VERSION"));
@@ -374,6 +377,10 @@ class PortfolioRecordsExportIT {
             var second = new ProjectRequirement(project, "R-CONFLICT", "Other requirement " + marker, RequirementStatus.DRAFT, 20,
                     Criticality.HIGH, RequirementType.SECURITY, ReviewStatus.PROPOSED, "alice", NOW);
             em.persist(second); em.flush();
+            em.persist(new ProductGapReview(project.getId(), scope, "f".repeat(64), 1, "a".repeat(64),
+                    ProductGapReview.Classification.CREATE, "Initial review " + marker, "alice", NOW));
+            em.persist(new ProductGapReview(project.getId(), scope, "f".repeat(64), 2, "b".repeat(64),
+                    ProductGapReview.Classification.PROCURE, "Latest review " + marker, "alice", NOW));
             var conflict = new ProjectConflict(project, requirement, second, ConflictType.HOSTING, "c".repeat(64), "Conflict " + marker, "Conflict evidence", .85, NOW);
             conflict.review(ConflictStatus.RESOLVED, "Resolution " + marker, "alice", NOW); em.persist(conflict);
             var proposal = new ReformulationProposal(proposalId, scope, project.getId(), requirement.getId(), version.getId(), analysis.getId(),
