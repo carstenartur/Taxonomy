@@ -148,14 +148,18 @@ class ArtemisProviderPermitQuarantineTest {
                     "http://127.0.0.1:" + server.getAddress().getPort() + "/provider")
                     .redirectErrorStream(true).redirectOutput(data.resolve("worker.log").toFile()).start();
             assertTrue(entered.await(10, TimeUnit.SECONDS), "Independent worker must enter actual provider HTTP");
+            var slot = broker.getActiveMQServer().locateQueue(
+                    org.apache.activemq.artemis.api.core.SimpleString.of(PREFIX + "." + GROUP));
+            assertEquals(1, slot.getMessageCount(), "The queue still accounts for the delivered receipt");
+            assertEquals(1, slot.getDeliveringCount(), "The worker still owns the receipt during physical HTTP");
+            try (var administrator = factory()) {
+                assertTrue(ArtemisProviderPermitProvisioner.inspect(administrator, PREFIX, GROUP, 10).receipts().isEmpty(),
+                        "The administrative browser cannot observe a receipt still delivered to its owner");
+            }
             worker.destroyForcibly(); assertTrue(worker.waitFor(5, TimeUnit.SECONDS));
             // Wait until the broker actually rolls back the dead worker delivery:
             // rejection while its old delivery is still held would not prove quarantine.
-            await(() -> {
-                var queue = broker.getActiveMQServer().locateQueue(
-                        org.apache.activemq.artemis.api.core.SimpleString.of(PREFIX + "." + GROUP));
-                return queue.getDeliveringCount() == 0 && queue.getMessageCount() == 1;
-            });
+            await(() -> slot.getDeliveringCount() == 0 && slot.getMessageCount() == 1);
             assertEquals(1, active.get(), "Remote request is still running after worker death");
             assertThrows(ProviderConcurrencyPermits.UnavailableException.class,
                     () -> permits().acquire(LlmProvider.OPENAI, () -> {}));

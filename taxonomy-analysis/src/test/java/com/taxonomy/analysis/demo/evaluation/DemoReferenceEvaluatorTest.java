@@ -95,6 +95,31 @@ class DemoReferenceEvaluatorTest {
         assertThat(failed).contains("aspect:identity", "node:BR-1101", "relation:UA-1605 USES CR-1065");
     }
 
+    @Test void reversedDependencyFailsOnlyTheAffectedIteration() {
+        var relations = new HashSet<>(a1().relations());
+        relations.remove("UA-1605 USES CR-1036");
+        relations.add("CR-1036 USES UA-1605");
+        var report = DemoReferenceEvaluator.evaluate(reference, a0(),
+                new DemoReferenceEvaluator.Observation(R1, a1().scores(), relations));
+        assertThat(report.checks()).filteredOn(check -> check.id().equals("relation:UA-1605 USES CR-1036"))
+                .extracting(DemoReferenceEvaluator.Check::iteration, DemoReferenceEvaluator.Check::status)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("R0", DemoReferenceEvaluator.Status.PASS),
+                        org.assertj.core.groups.Tuple.tuple("R1", DemoReferenceEvaluator.Status.FAIL));
+    }
+
+    @Test void contradictoryOfflineDecisionCannotPassWithUnchangedOnlineScores() {
+        String offline = R1.replace("Eine Offline-Erfassung ist nicht erforderlich; Buchungen erfolgen nur online.",
+                "Buchungen müssen auch ohne Verbindung am Terminal gespeichert werden.");
+        var report = DemoReferenceEvaluator.evaluate(reference, a0(),
+                new DemoReferenceEvaluator.Observation(offline, a1().scores(), a1().relations()));
+        assertThat(report.checks()).filteredOn(check -> check.id().equals("aspect:offline"))
+                .singleElement().satisfies(check -> {
+                    assertThat(check.iteration()).isEqualTo("R1");
+                    assertThat(check.status()).isEqualTo(DemoReferenceEvaluator.Status.FAIL);
+                });
+        assertThat(report.overall()).isEqualTo(DemoReferenceEvaluator.Overall.FAIL);
+    }
+
     @Test void missingSecondAnalysisIsIncompleteNotNegative() {
         var report = DemoReferenceEvaluator.evaluate(reference, a0(), null);
         assertThat(report.overall()).isEqualTo(DemoReferenceEvaluator.Overall.INCOMPLETE);

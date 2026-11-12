@@ -47,8 +47,8 @@ Provision each new queue once with
 or its administrative `main(<quota-group>, <capacity>)`. The command uses the
 `TAXONOMY_ANALYSIS_ARTEMIS_*` broker/TLS/credential environment and optional
 `TAXONOMY_ANALYSIS_PROVIDER_PERMITS_DESTINATION_PREFIX`. It does not launch the
-Spring application. Use separate administrative credentials with queue-creation
-permission; application consumers only need send/consume access to their queues. Inspection
+Spring application. Use separate administrative credentials with address-creation and queue-creation
+permissions; application consumers only need send/consume access to their queues. Inspection
 uses a separate administrative account with browse access, not worker credentials.
 
 For the packaged Spring Boot application (replace the JAR path as needed):

@@ -43,7 +43,7 @@ class ArtemisProviderRateQuotasTest {
                 .setLargeMessagesDirectory(data.resolve("large").toString()).setPagingDirectory(data.resolve("paging").toString());
         config.addAcceptorConfiguration("tcp", "tcp://127.0.0.1:" + listeningPort);
         config.addAddressSetting(PREFIX + ".#", new AddressSettings().setMaxDeliveryAttempts(-1).setRedeliveryDelay(0)
-                .setExpiryDelay(-1L).setAutoCreateQueues(false).setAutoDeleteQueues(false));
+                .setExpiryDelay(-1L).setAutoCreateAddresses(false).setAutoCreateQueues(false).setAutoDeleteQueues(false));
         return config;
     }
     @AfterEach void close() throws Exception { while (!resources.isEmpty()) resources.pop().close(); if (broker != null) broker.stop(); }
@@ -831,8 +831,7 @@ class ArtemisProviderRateQuotasTest {
     }
     void provision(ProviderQuotaLedger.Policy policy,String body,boolean exclusive,String adapter) throws Exception {
         try (var factory = factory(); var connection = factory.createConnection();var session = connection.createSession(true, Session.SESSION_TRANSACTED)) {
-            ((ActiveMQSession)session).getCoreSession().createQueue(QueueConfiguration.of(QUEUE).setAddress(QUEUE)
-                    .setRoutingType(RoutingType.ANYCAST).setDurable(true).setExclusive(exclusive).setAutoDelete(false).setAutoCreated(false));
+            ArtemisProviderCapacityQueue.create(((ActiveMQSession) session).getCoreSession(), QUEUE, exclusive);
             try (var producer = session.createProducer(session.createQueue(QUEUE + "::" + QUEUE))) {
                 var message = session.createTextMessage(body);
                 message.setIntProperty("schemaVersion", 1);message.setStringProperty("quotaGroup", GROUP);

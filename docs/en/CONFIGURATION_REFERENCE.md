@@ -279,6 +279,7 @@ Effective policy and readiness can be inspected at `GET /api/ai-automation`. Gen
 |---|---|---|---|
 | `ADMIN_PASSWORD` | `admin.token` | empty | Optional `X-Admin-Token`/Bearer value for sensitive Actuator and legacy admin-token checks. Empty disables this extra token layer; it does not replace role-based login authorization. |
 | `TAXONOMY_ADMIN_PASSWORD` | `taxonomy.admin-password` | empty outside production; required in production | Initial local administrator credential. An empty value in non-production causes Taxonomy to write a one-time random password to an owner-only temporary file and log only its path. |
+| `TAXONOMY_BEARER_MAX_TOKEN_LENGTH` | `taxonomy.security.bearer.max-token-length` | `8192` | Maximum bearer token length in characters for Keycloak API authentication. Longer tokens are rejected before provider authentication. |
 | `TAXONOMY_LOGIN_RATE_LIMIT` | `taxonomy.security.login-rate-limit.enabled` | `true` | Enables failed-login rate limiting by client address. |
 | `TAXONOMY_LOGIN_MAX_ATTEMPTS` | `taxonomy.security.login-rate-limit.max-attempts` | `5` | Failed attempts allowed before lockout. |
 | `TAXONOMY_LOGIN_LOCKOUT_SECONDS` | `taxonomy.security.login-rate-limit.lockout-seconds` | `300` | Lockout duration. |

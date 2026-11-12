@@ -33,18 +33,19 @@ window.TaxonomyReformulationReports = (function () {
                     const expected = {json:'application/json',md:'text/markdown',html:'text/html',
                         docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}[format];
                     const disposition = response.headers.get('Content-Disposition') || '';
+                    const identity = captured.commandId ? 'adoption-' + captured.commandId : 'revision-' + captured.revision;
+                    const filename = 'reformulation-' + captured.proposalId + '-' + identity + '.' + format;
+                    const isDemo = disposition === `attachment; filename="DEMO-${filename}"`;
                     if ((response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() !== expected
-                            || !disposition.startsWith('attachment;')
+                            || (!isDemo && disposition !== `attachment; filename="${filename}"`)
                             || !/^[a-f0-9]{64}$/.test(response.headers.get('X-Content-SHA256') || ''))
                         throw new Error(de ? 'Keine gültige Berichtsausgabe erhalten.' : 'No valid report response received.');
                     const blob = await response.blob();
                     if (button.isConnected === false) return; // A different selection replaced this inspector.
                     const url = URL.createObjectURL(blob);
                     const link = document.createElement('a');
-                    const identity = captured.commandId ? 'adoption-' + captured.commandId : 'revision-' + captured.revision;
-                    const filename = 'reformulation-' + captured.proposalId + '-' + identity + '.' + format;
                     link.href = url;
-                    link.download = disposition === `attachment; filename="DEMO-${filename}"` ? 'DEMO-' + filename : filename;
+                    link.download = isDemo ? 'DEMO-' + filename : filename;
                     try { document.body.append(link); link.click(); }
                     finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000); }
                     status.textContent = de ? 'Gespeicherter Stand exportiert.' : 'Saved record exported.';

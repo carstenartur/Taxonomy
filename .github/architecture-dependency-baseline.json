@@ -1494,6 +1494,13 @@
     },
     {
       "fromContext": "knowledge",
+      "fromPackage": "com.taxonomy.catalog.service",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.storage",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "knowledge",
       "fromPackage": "com.taxonomy.catalog.snapshot",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",

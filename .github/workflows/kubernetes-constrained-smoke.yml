@@ -163,6 +163,7 @@ jobs:
 
       - name: Build, install and verify Taxonomy under quota
         env:
+          MEASURE_SMALL_SEARCH: 'true'
           KIND_CLUSTER_NAME: taxonomy-smoke
           SOURCE_SHA: ${{ github.sha }}
           KEEP_RESOURCES: 'true'

@@ -592,6 +592,10 @@ test('the comparison dialog reads one authorized workspace and ignores results f
   const {context} = app;
   const {window, document} = context;
   const results = {innerHTML: '', textContent: ''};
+  const lifecycle = new EventTarget();
+  window.addEventListener = lifecycle.addEventListener.bind(lifecycle);
+  const documentEvents = new EventTarget();
+  document.addEventListener = documentEvents.addEventListener.bind(documentEvents);
   const nodes = {contextCompareModal: {querySelector: () => null, addEventListener() {}}, contextCompareResults: results};
   for (const id of ['compareLeftBranch', 'compareRightBranch', 'compareLeftCommit', 'compareRightCommit']) {
     nodes[id] = {value: '', replaceChildren() {}, appendChild() {}, addEventListener() {}};
