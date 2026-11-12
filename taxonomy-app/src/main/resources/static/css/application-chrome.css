@@ -7,18 +7,22 @@
 .taxonomy-app-mainrow, #applicationMenuGroups { display: flex; align-items: center; gap: .25rem; min-width: 0; }
 .taxonomy-app-mainrow { gap: .75rem; }
 .taxonomy-app-navigation .taxonomy-app-brand { flex: 0 0 auto; color: inherit; font-size: 1.05rem; font-weight: 750; text-decoration: none; padding: .5rem 0; }
-.taxonomy-app-navigation details { position: relative; margin: 0; padding: 0; border: 0; color: inherit; background: transparent; }
-.taxonomy-app-navigation details > summary { display: inline-flex; align-items: center; justify-content: center; gap: .35rem; min-width: 44px; min-height: 44px; padding: .5rem .6rem; margin: 0; border: 1px solid transparent; border-radius: .35rem; color: inherit; background: transparent; font: 600 .9375rem/1.4 system-ui, sans-serif; white-space: nowrap; cursor: pointer; list-style: none; }
-.taxonomy-app-navigation details > summary::-webkit-details-marker { display: none; }
-.taxonomy-app-navigation details > summary::after { content: ''; width: .4em; height: .4em; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-.15em) rotate(45deg); }
-.taxonomy-app-navigation details[open] > summary::after { transform: translateY(.1em) rotate(225deg); }
-.taxonomy-app-navigation details > summary:hover, .taxonomy-app-navigation details[open] > summary { background: color-mix(in srgb, currentColor 14%, transparent); }
-.taxonomy-app-navigation :is(a, button, summary):focus-visible { outline: 3px solid #ffcf71; outline-offset: 2px; }
+.taxonomy-app-toolbar details { position: relative; margin: 0; padding: 0; border: 0; color: inherit; background: transparent; }
+.taxonomy-app-toolbar details > summary { display: inline-flex; align-items: center; justify-content: center; gap: .35rem; min-width: 44px; min-height: 44px; padding: .5rem .6rem; margin: 0; border: 1px solid transparent; border-radius: .35rem; color: inherit; background: transparent; font: 600 .9375rem/1.4 system-ui, sans-serif; white-space: nowrap; cursor: pointer; list-style: none; }
+.taxonomy-app-toolbar details > summary::-webkit-details-marker { display: none; }
+.taxonomy-app-toolbar details > summary::after { content: ''; width: .4em; height: .4em; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-.15em) rotate(45deg); }
+.taxonomy-app-toolbar details[open] > summary::after { transform: translateY(.1em) rotate(225deg); }
+.taxonomy-app-toolbar details > summary:hover, .taxonomy-app-toolbar details[open] > summary { background: color-mix(in srgb, currentColor 14%, transparent); }
+.taxonomy-app-toolbar :where(a, button, summary):focus-visible { outline: 3px solid #ffcf71; outline-offset: 2px; }
 .taxonomy-app-chrome .taxonomy-app-menu { display: none; }
 .taxonomy-app-menu-icon { display: none; }
 .application-menu-content { position: absolute; z-index: 1060; top: calc(100% + .35rem); inset-inline-start: 0; width: min(24rem, calc(100vw - 1rem)); max-height: calc(100dvh - 5rem); overflow: auto; padding: .4rem; background: var(--bs-body-bg, #fff); color: var(--bs-body-color, #17243a); border: 1px solid var(--bs-border-color, #b8c7dc); border-radius: .35rem; box-shadow: 0 .25rem .75rem #0003; }
 #applicationTools, #applicationHelp { position: static; }
 #applicationTools .application-menu-content, #applicationHelp .application-menu-content { inset-inline-start: auto; inset-inline-end: 0; max-width: 100%; }
+#applicationAccount { flex: 0 0 auto; }
+#applicationAccount > .application-menu-content { position: absolute; inset-inline-start: auto; inset-inline-end: 0; width: min(18rem, calc(100vw - 1rem)); }
+#applicationAccount .application-menu-group { overflow-wrap: anywhere; }
+#applicationLogoutForm { margin: 0; }
 .application-menu-content :is(a, button) { display: flex; align-items: center; gap: .4rem; width: 100%; min-height: 44px; padding: .5rem .75rem; margin: 0; border: 0; border-radius: .25rem; background: transparent; color: inherit; font: inherit; text-align: start; text-decoration: none; }
 .application-menu-content :is(a, button):not(:disabled):hover { background: var(--bs-tertiary-bg, #eef3fa); }
 .application-menu-content button:not(:disabled) { cursor: pointer; }

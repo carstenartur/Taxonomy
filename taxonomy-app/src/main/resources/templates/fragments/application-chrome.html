@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org"><head>
 <th:block th:fragment="styles">
+    <link th:replace="~{fragments/favicon :: link}"/>
     <link rel="stylesheet" th:href="@{/css/application-chrome.css}" href="/css/application-chrome.css"/>
     <link rel="stylesheet" th:href="@{/css/architecture-lifecycle.css}" href="/css/architecture-lifecycle.css"/>
     <link rel="stylesheet" th:href="@{/css/shared/architecture-diagram.css}" href="/css/shared/architecture-diagram.css"/>
@@ -97,6 +98,19 @@
         <a id="applicationRequirementLink" data-app-route="analysis" data-page="analyze" th:href="@{/#analyze}" href="/#analyze" th:attr="aria-current=${active == 'analysis' || active == 'requirement' ? 'page' : null}" th:text="#{app.workspace.requirement}">Requirement</a>
         <a id="applicationArchitectureLink" data-app-route="architecture" data-page="architecture" data-taxonomy-feature="architecture" th:href="@{/#architecture}" href="/#architecture" th:attr="aria-current=${active == 'architecture' ? 'page' : null}" th:text="#{nav.architecture}">Architecture</a>
     </nav>
+    <details id="applicationAccount" th:if="${applicationAccount != null}">
+        <summary th:text="#{account.menu}">Account</summary>
+        <div class="application-menu-content">
+            <span class="application-menu-group" th:if="${!#strings.isEmpty(applicationAccount.displayName)}"
+                  th:text="${applicationAccount.displayName}">Username</span>
+            <form id="applicationLogoutForm" method="post" th:action="@{/logout}">
+                <button type="submit" th:text="${applicationAccount.singleSignOn} ? #{logout.sso.submit} : #{logout.submit}"
+                        th:attr="aria-describedby=${applicationAccount.singleSignOn ? 'applicationLogoutScope' : null}">Sign out</button>
+            </form>
+            <small id="applicationLogoutScope" class="application-menu-group" th:if="${applicationAccount.singleSignOn}"
+                   th:text="#{logout.sso.scope}">This can sign you out of other applications that use the same sign-in.</small>
+        </div>
+    </details>
     </div>
     <div id="applicationPageActions" class="taxonomy-app-page-actions"><th:block th:replace="${localActions}"></th:block></div>
     <div id="applicationSystemStatus" class="taxonomy-app-status"></div>

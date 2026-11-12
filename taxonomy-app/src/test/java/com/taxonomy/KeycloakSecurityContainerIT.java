@@ -295,21 +295,14 @@ class KeycloakSecurityContainerIT {
                 Map.of("Cookie", sessionCookie, csrfHeader, csrfToken));
         assertThat(withCsrf.statusCode()).isEqualTo(400);
 
-        ((JavascriptExecutor) driver).executeScript("""
-                const form = document.createElement('form');
-                form.method = 'post';
-                form.action = '/logout';
-                const csrf = document.createElement('input');
-                csrf.type = 'hidden';
-                csrf.name = '_csrf';
-                csrf.value = arguments[0];
-                form.appendChild(csrf);
-                document.body.appendChild(form);
-                form.submit();
-                """, csrfToken);
-
-        new WebDriverWait(driver, Duration.ofSeconds(30))
-                .until(ExpectedConditions.visibilityOfElementLocated(By.id("username")));
+        ((JavascriptExecutor) driver).executeScript("window.TaxonomyOnboarding?.dismiss();");
+        var wait = new WebDriverWait(driver, Duration.ofSeconds(30));
+        wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationAccount > summary"))).click();
+        var signOut = wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#applicationLogoutForm button")));
+        assertThat(signOut.getAccessibleName()).isEqualTo("Sign out of single sign-on");
+        assertThat(driver.findElement(By.id("applicationLogoutScope")).isDisplayed()).isTrue();
+        signOut.click();
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("username")));
         assertThat(driver.getCurrentUrl()).startsWith(KEYCLOAK_ORIGIN);
 
         HttpResponse<String> staleSession = appRequest(
