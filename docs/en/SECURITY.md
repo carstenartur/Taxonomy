@@ -24,6 +24,7 @@ Activate the `keycloak` Spring profile to delegate authentication to Keycloak.
 
 - Browser authentication uses OAuth 2.0/OIDC login.
 - REST clients use Bearer JWT access tokens.
+- The resource server accepts Bearer credentials up to 8,192 characters by default. Set `TAXONOMY_BEARER_MAX_TOKEN_LENGTH` to a positive integer to change the limit. The same limit applies when an installation supplies a custom token resolver. A request that declares Bearer authentication receives HTTP 401 if the resolver returns no credential.
 - Trusted role claims are mapped to the application's READER, USER (Analyst), ARCHITECT, and ADMIN authorities. Bearer tokens also retain explicit OAuth `scope`/`scp` authorities.
 - Local password management is not the authoritative identity-management path in this profile.
 
