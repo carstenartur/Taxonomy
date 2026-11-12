@@ -168,6 +168,12 @@ Repository-Zugriff oder BCrypt zurück. Normale Kontopasswörter, die nicht mit
 `taxdav_` beginnen, laufen weiterhin durch den gewöhnlichen HTTP-Basic-Pfad von
 Spring Security.
 
+Kann der Zugangsdaten-Speicher die Prüfung nicht abschließen, erhält der WebDAV-Client
+HTTP 503 mit leerem Antworttext und `Cache-Control: no-store`. Nach der Wiederherstellung
+kann der Client dieselben Zugangsdaten erneut verwenden. Für die Sperre zählen nur
+fehlgeschlagene Anmeldungen. Taxonomy protokolliert einen Widerruf, sobald die Datenbank
+die Transaktion bestätigt hat.
+
 Fehlgeschlagene App-Anmeldungen werden über einen SHA-256-Digest fester Länge aus dem
 vom Framework aufgelösten Peer und dem normalisierten übermittelten Benutzernamen
 gezählt; rohe Identitäten bleiben nicht in der Sperrtabelle. Zehn Fehlversuche innerhalb

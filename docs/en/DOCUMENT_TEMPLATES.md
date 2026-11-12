@@ -159,6 +159,12 @@ passwords, and malformed `taxdav_` candidates before repository lookup or BCrypt
 Ordinary account passwords that do not start with `taxdav_` continue to the normal
 Spring Security HTTP-Basic flow.
 
+When the credential store cannot complete verification, the WebDAV request receives
+HTTP 503 with an empty body and `Cache-Control: no-store`. The client can retry
+with the same credential once storage recovers. Taxonomy counts only authentication
+failures toward lockout and records a revocation in the audit log after its database
+transaction commits.
+
 Failed application-credential attempts are tracked by a fixed-size SHA-256 digest of
 the framework-resolved peer and normalized supplied username; raw identities are not
 retained in the lockout table. Ten failures within one minute lock that identity. The
