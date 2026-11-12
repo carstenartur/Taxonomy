@@ -212,3 +212,44 @@ test('legacy and named switch requests share ordering and callers retain the leg
   assert.deepEqual(stored, ['last']);
   assert.deepEqual(navigations, ['last']);
 });
+
+for (const changeAt of ['while loading', 'before confirmation', 'unchanged']) {
+  test('restore dialog retains the authorizing workspace and selection: ' + changeAt, async () => {
+    const h = harness(async () => { throw new Error('Unexpected network request'); });
+    const doc = h.context.document, win = h.context.window;
+    const confirm = new EventTarget(), body = {innerHTML:''};
+    const modal = Object.assign(new EventTarget(), {
+      isConnected:false,
+      querySelector: selector => selector === '#versionsConfirmBtn' ? confirm : body,
+      remove() { this.isConnected = false; }
+    });
+    doc.body = {insertAdjacentHTML() { modal.isConnected = true; }};
+    doc.getElementById = id => id === 'versionsConfirmModal' && modal.isConnected ? modal : null;
+    h.context.bootstrap.Modal = class {
+      show() {}
+      hide() { modal.dispatchEvent(new Event('hide.bs.modal')); }
+      dispose() {}
+    };
+    let release, generation = 1, writes = 0;
+    const pending = new Promise(resolve => { release = resolve; });
+    win.TaxonomyContextBar = {getSelectionGeneration: () => generation};
+    win.TaxonomyContextCompare = {fromDocumentDiff: () => null};
+    win.TaxonomyVersioningApi = {
+      state: async () => Response.json({headCommit:'a'.repeat(40)}),
+      diff: () => pending,
+      restore: async () => { writes++; return Response.json({error:'fixture complete'}); }
+    };
+    h.load('versioning/taxonomy-versions.js');
+    const preview = win.TaxonomyVersions.restoreVersion('b'.repeat(40));
+    await settle();
+    assert.equal(confirm.disabled, true);
+    if (changeAt === 'while loading') generation += 2; // including a return to the same workspace
+    release(Response.json({}));
+    await preview;
+    assert.equal(confirm.disabled, changeAt === 'while loading');
+    if (changeAt === 'before confirmation') h.change();
+    confirm.dispatchEvent(new Event('click'));
+    await settle();
+    assert.equal(writes, changeAt === 'unchanged' ? 1 : 0);
+  });
+}
