@@ -383,8 +383,9 @@ public class WorkspaceManager {
      * rejects or cannot complete deletion, the workspace row remains available for
      * diagnosis and retry rather than becoming an orphaned Git namespace.</p>
      */
+    @org.springframework.transaction.annotation.Transactional
     public void deleteWorkspace(String workspaceId, String username) {
-        UserWorkspace workspace = workspaceRepository.findByWorkspaceId(workspaceId)
+        UserWorkspace workspace = workspaceRepository.findByWorkspaceIdForUpdate(workspaceId)
                 .orElseThrow(() ->
                         new IllegalArgumentException("Workspace not found: " + workspaceId));
 
@@ -399,14 +400,18 @@ public class WorkspaceManager {
             throw new IllegalArgumentException("Cannot delete the default workspace");
         }
 
-        workspaceStates.keySet().removeIf(key -> workspaceId.equals(key.workspaceId()));
-        activeWorkspaceByUser.entrySet()
-                .removeIf(entry -> entry.getValue().equals(workspaceId));
-
+        // Settle or archive exactly this owner's receipts while the workspace and matching operations are locked.
+        // A storage error rolls this transaction back and leaves the original receipts available for retry.
+        workspaceRepository.archiveFetchesForRemoval(workspaceId, workspace.getSourceRepositoryId(), username,
+                System.currentTimeMillis());
         if (repositoryFactory != null) {
             repositoryFactory.deleteWorkspaceRepository(workspaceId);
         }
         workspaceRepository.delete(workspace);
+        workspaceStates.keySet().removeIf(key -> workspaceId.equals(key.workspaceId()));
+        activeWorkspaceByUser.entrySet()
+                .removeIf(entry -> entry.getValue().equals(workspaceId));
+
         log.info("Deleted workspace '{}' and its logical Git repository for user '{}'",
                 workspaceId, username);
     }

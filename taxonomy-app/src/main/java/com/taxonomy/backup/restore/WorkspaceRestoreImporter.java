@@ -158,8 +158,13 @@ public final class WorkspaceRestoreImporter {
         for (var row : fetches) {
             checkpoint.check();
             var parent = workspaceById.get(row.workspaceId());
-            if (parent == null || !parent.repositoryId().equals(row.repositoryId()) || !parent.ownerScope().equals(row.principalScope())
-                    || !"workspace.fetch".equals(row.sourceId().kind()) || !row.sourceId().value().matches("[0-9a-f]{64}")
+            boolean detached = Boolean.TRUE.equals(row.detachedWorkspace());
+            if (detached) {
+                if (parent != null || archive.manifest().request().profile() != BackupProfile.INSTALLATION_FULL) throw invalid();
+                required(row.repositoryId(),255); required(row.workspaceId(),255); required(row.principalScope(),255);
+            } else if (parent == null || !parent.repositoryId().equals(row.repositoryId())
+                    || !parent.ownerScope().equals(row.principalScope())) throw invalid();
+            if (!"workspace.fetch".equals(row.sourceId().kind()) || !row.sourceId().value().matches("[0-9a-f]{64}")
                     || row.principalId() == null
                     || row.requestedCommit() == null || !row.requestedCommit().matches("[0-9a-f]{40}")
                     || row.createdAt() < 0 || row.attempts() < 0 || row.attempts() > 6
@@ -179,8 +184,11 @@ public final class WorkspaceRestoreImporter {
             if (row.phase() == null || !Set.of("ADMITTED","RUNNING","RETRYABLE","COMPLETED","SUPERSEDED","MANUAL_REVIEW","DENIED","AWAITING_AUTHORIZATION").contains(row.phase())) throw invalid();
             boolean active = Set.of("ADMITTED","RUNNING","RETRYABLE","AWAITING_AUTHORIZATION").contains(row.phase());
             // Source evidence survives an isolated restore; target leases and authorizations are installation-local.
-            model.classify("fetch-journal",row.sourceId().value(),legacy || !activeWorkspaces.contains(row.workspaceId())
-                    ? "PRIVATE_QUARANTINE" : active ? "INTERRUPTED_SOURCE_OPERATION" : "HISTORICAL_SOURCE_OPERATION");
+            String classification;
+            if (detached) classification = "DETACHED_SOURCE_QUARANTINE";
+            else if (legacy || !activeWorkspaces.contains(row.workspaceId())) classification = "PRIVATE_QUARANTINE";
+            else classification = active ? "INTERRUPTED_SOURCE_OPERATION" : "HISTORICAL_SOURCE_OPERATION";
+            model.classify("fetch-journal",row.sourceId().value(),classification);
         }
         for(var row:editors) {
             checkpoint.check();sourceEditorById.put(row.sourceId(),row);if(row.semanticRevision()<0||row.checkpointRevision()<0||row.checkpointRevision()>row.semanticRevision())throw invalid();utf8(row.dsl());canonicalUuidOptional(row.interruptedCheckpoint());

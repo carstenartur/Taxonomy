@@ -28,6 +28,19 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
     @Query("select w from UserWorkspace w where w.workspaceId = :workspaceId")
     Optional<UserWorkspace> findByWorkspaceIdForUpdate(@Param("workspaceId") String workspaceId);
 
+    /** Preserve prior terminal outcomes and fence outstanding fetches when their owner removes the working copy. */
+    @Modifying
+    @Query("""
+            update WorkspaceFetchOperation f set
+                f.phase = case when f.completedAt is null then 'DENIED' else f.phase end,
+                f.decision = case when f.completedAt is null then 'WORKSPACE_DELETED' else f.decision end,
+                f.completedAt = coalesce(f.completedAt, :now), f.archivedAt = :now,
+                f.archivedBy='system:workspace-delete', f.nextAttemptAt=null, f.lease=null, f.observed=null, f.result=null
+            where f.workspaceId=:workspace and f.repositoryId=:repository and f.username=:owner and f.archivedAt is null
+            """)
+    int archiveFetchesForRemoval(@Param("workspace") String workspace, @Param("repository") String repository,
+            @Param("owner") String owner, @Param("now") long now);
+
     /** Called only by the owner-authorized sharing service while holding the workspace row lock. */
     @Modifying
     @Query("update UserWorkspace w set w.collaborative = :enabled where w.workspaceId = :workspaceId")

@@ -45,7 +45,7 @@ class WorkspaceManagerGitDeletionTest {
         workspace.setUsername("alice");
         workspace.setShared(false);
         workspace.setDefault(false);
-        when(workspaceRepository.findByWorkspaceId("workspace-42"))
+        when(workspaceRepository.findByWorkspaceIdForUpdate("workspace-42"))
                 .thenReturn(Optional.of(workspace));
     }
 
