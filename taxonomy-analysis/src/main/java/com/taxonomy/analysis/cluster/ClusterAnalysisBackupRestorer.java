@@ -122,7 +122,9 @@ public final class ClusterAnalysisBackupRestorer {
                 }
                 em.persist(restored);
             }
+            long firstRetained = ClusterAnalysisEvent.firstRetainedRevision(run.revision + (interrupted ? 1 : 0));
             for (var event : archive.events()) {
+                if (event.revision() < firstRetained) continue;
                 var original = (AnalysisProgressEvent) decode(event.eventJson());
                 persistEvent(new AnalysisProgressEvent(remapEnvelope(original.envelope(), source.context(), target),
                         original.sequence(), original.phase(), original.completedTasks(), original.totalTasks()));
@@ -246,7 +248,10 @@ public final class ClusterAnalysisBackupRestorer {
             requireReference(event.sourceId(), "analysis.cluster-event", event.run(), run, sourceIds);
             var message = decode(event.eventJson());
             require(message instanceof AnalysisProgressEvent, "Expected archived progress event"); var progress = (AnalysisProgressEvent) message;
-            require(event.revision() == ++revision && progress.sequence() == revision && ClusterAnalysisBackupExport.sameContext(progress.envelope(), source), "Invalid archived progress sequence");
+            require(ClusterAnalysisEvent.follows(revision, event.revision(), run.revision())
+                    && progress.sequence() == event.revision() && ClusterAnalysisBackupExport.sameContext(progress.envelope(), source),
+                    "Invalid archived progress sequence");
+            revision = event.revision();
             characters += bounded(event.eventJson());
         }
         require(revision == run.revision() && characters <= 64_000_000L, "Incomplete or oversized archived aggregate");

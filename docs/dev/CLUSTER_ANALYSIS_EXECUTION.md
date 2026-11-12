@@ -80,6 +80,12 @@ Artemis remains opt-in (`TAXONOMY_ANALYSIS_TRANSPORT_MODE=artemis`). This integr
 does not turn the local process registry or legacy SSE endpoint into a restart-safe
 distributed queue, and does not claim a new production HA verification result.
 
+Each clustered operation keeps its latest 1,000 progress notifications as it advances.
+Reconnecting clients read the current persisted snapshot and its original revision.
+Restoring a backup preserves that revision and retains the same bounded window,
+including the interruption notification when unfinished work is restored. Older
+backups containing a full contiguous history can still be imported.
+
 The #808 question-continuation protocol now has an explicit distributed binding.
 `AnalysisContinuationService.beginDistributed` freezes request, catalogue, provider
 and scoring/relation policy identity, then binds the durable claim to the admitted
